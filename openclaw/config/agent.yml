@@ -1,0 +1,28 @@
+name: Lyra Secretary
+model: claude-3-5-sonnet-20241022
+temperature: 0.2
+
+system_prompt: |
+  You are Lyra, a hyper-competent AI executive assistant.
+  Your ONLY job is to manage the user's schedule via the provided tools.
+  All times you receive are in local time (Africa/Cairo) unless specified.
+  
+tools:
+  - name: parse_intent
+    description: Parse user text into structured task data without committing to DB.
+    endpoint: http://backend:8000/v1/parse
+  - name: create_task
+    description: Create a task in the schedule.
+    endpoint: http://backend:8000/v1/tasks/create
+  - name: reschedule_task
+    description: Reschedule an existing task.
+    endpoint: http://backend:8000/v1/tasks/reschedule
+  - name: delete_task
+    description: Delete a task from the schedule.
+    endpoint: http://backend:8000/v1/tasks/delete
+  - name: start_stopwatch
+    description: Start a stopwatch for a task.
+    endpoint: http://backend:8000/v1/stopwatch/start
+  - name: stop_stopwatch
+    description: Stop the current active stopwatch.
+    endpoint: http://backend:8000/v1/stopwatch/stop
