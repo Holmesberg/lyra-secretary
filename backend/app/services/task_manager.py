@@ -71,22 +71,23 @@ class TaskManager:
         duration_minutes = int((end - start).total_seconds() / 60)
         
         # Create task (transaction safety)
-        with self.db.begin():
-            task = Task(
-                title=title,
-                planned_start_utc=start,
-                planned_end_utc=end,
-                planned_duration_minutes=duration_minutes,
-                category=category,
-                state=state,
-                source=source,
-                confidence_score=confidence_score,
-                created_at=now_utc(),
-                last_modified_at=now_utc()
-            )
-            
-            self.db.add(task)
-            self.db.flush()  # Get task_id
+        task = Task(
+            title=title,
+            planned_start_utc=start,
+            planned_end_utc=end,
+            planned_duration_minutes=duration_minutes,
+            category=category,
+            state=state,
+            source=source,
+            confidence_score=confidence_score,
+            created_at=now_utc(),
+            last_modified_at=now_utc()
+        )
+        
+        self.db.add(task)
+        self.db.flush()  # Get task_id
+        self.db.commit()
+        self.db.refresh(task)
         
         # Sync to Notion (async, non-blocking)
         try:
@@ -117,8 +118,7 @@ class TaskManager:
         if not task:
             raise ValueError("Task not found")
         
-        with self.db.begin():
-            task = self.state_machine.transition(task, TaskState.EXECUTING)
+        task = self.state_machine.transition(task, TaskState.EXECUTING)
         
         # Sync to Notion
         try:
@@ -151,11 +151,10 @@ class TaskManager:
         
         executed_duration = int((executed_end - executed_start).total_seconds() / 60)
         
-        with self.db.begin():
-            task.executed_start_utc = executed_start
-            task.executed_end_utc = executed_end
-            task.executed_duration_minutes = executed_duration
-            task = self.state_machine.transition(task, TaskState.EXECUTED)
+        task.executed_start_utc = executed_start
+        task.executed_end_utc = executed_end
+        task.executed_duration_minutes = executed_duration
+        task = self.state_machine.transition(task, TaskState.EXECUTED)
         
         # Sync to Notion
         try:
@@ -180,8 +179,7 @@ class TaskManager:
         if not task:
             raise ValueError("Task not found")
         
-        with self.db.begin():
-            task = self.state_machine.transition(task, TaskState.SKIPPED, notes=reason)
+        task = self.state_machine.transition(task, TaskState.SKIPPED, notes=reason)
         
         # Sync to Notion
         try:
@@ -208,8 +206,7 @@ class TaskManager:
         if not task.is_mutable:
             raise ImmutableTaskError("Cannot delete immutable task")
         
-        with self.db.begin():
-            task = self.state_machine.transition(task, TaskState.DELETED)
+        task = self.state_machine.transition(task, TaskState.DELETED)
         
         # Remove from Notion
         try:
@@ -264,11 +261,12 @@ class TaskManager:
         )
         
         # Update task
-        with self.db.begin():
-            task.planned_start_utc = new_start
-            task.planned_end_utc = new_end
-            task.planned_duration_minutes = int((new_end - new_start).total_seconds() / 60)
-            task.last_modified_at = now_utc()
+        task.planned_start_utc = new_start
+        task.planned_end_utc = new_end
+        task.planned_duration_minutes = int((new_end - new_start).total_seconds() / 60)
+        task.last_modified_at = now_utc()
+        self.db.commit()
+        self.db.refresh(task)
         
         # Sync to Notion
         try:

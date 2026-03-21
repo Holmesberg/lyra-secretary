@@ -65,7 +65,7 @@ class TaskParser:
             end = start + timedelta(minutes=duration_minutes)
         
         # Convert to UTC for storage
-        start_utc = to_utc(start) if start else now_local()
+        start_utc = to_utc(start) if start else to_utc(now_local())
         end_utc = to_utc(end) if end else None
         
         return TaskParseResponse(
@@ -85,7 +85,7 @@ class TaskParser:
         Returns:
             (title, remaining_text)
         """
-        time_indicators = r'\b(at|from|@|tomorrow|today|tonight|in|next|this)\b'
+        time_indicators = r'\b(at|from|@|tomorrow|today|tonight|in|next|this)\b|\bfor\b(?=\s*\d)'
         
         match = re.search(time_indicators, text, re.IGNORECASE)
         if match:
@@ -114,18 +114,32 @@ class TaskParser:
             'PREFER_DATES_FROM': 'future',
         }
         
-        parsed = dateparser.parse(text, settings=settings_dict)
+        duration_minutes = self._extract_duration(text)
+        
+        # Clean text of duration strings before passing to dateparser
+        duration_pattern = r'\b(?:for\s+)?(?:\d+(?:\.\d+)?|\d+\s*[-–]\s*\d+)\s*(?:hours?|hrs?|h|minutes?|mins?|m)\b'
+        clean_text = re.sub(duration_pattern, '', text, flags=re.IGNORECASE).strip()
+        # Strip trailing/leading artifacts that duration extraction might leave behind
+        clean_text = re.sub(r'^\s*(for|and)\b\s*', '', clean_text, flags=re.IGNORECASE).strip()
+        clean_text = re.sub(r'\s*\b(for|and)\b\s*$', '', clean_text, flags=re.IGNORECASE).strip()
+        
+        parsed = None
+        if clean_text:
+            parsed = dateparser.parse(clean_text, settings=settings_dict)
+            
         if parsed:
             # If time is in past (same day), adjust to tomorrow
             now = now_local()
             if parsed.date() == now.date() and parsed.time() < now.time():
                 parsed = parsed + timedelta(days=1)
             
-            duration_minutes = self._extract_duration(text)
             end = self._extract_end_time(text, parsed)
             
             return parsed, end, duration_minutes, 0.85
-        
+            
+        if duration_minutes is not None:
+            return None, None, duration_minutes, 0.5
+            
         return None, None, None, 0.0
     
     def _extract_duration(self, text: str) -> Optional[int]:
