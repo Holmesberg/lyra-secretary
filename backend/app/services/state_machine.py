@@ -3,12 +3,7 @@ from typing import Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.db.models import Task, TaskState
-
-class ImmutableTaskError(Exception):
-    pass
-
-class InvalidStateTransitionError(Exception):
-    pass
+from app.core.exceptions import ImmutableTaskError, InvalidStateTransitionError
 
 class StateMachine:
     """Enforce task state transition rules."""

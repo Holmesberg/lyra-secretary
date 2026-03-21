@@ -61,14 +61,15 @@ class StopwatchManager:
             )
         
         # Create stopwatch session (transaction safety)
-        with self.db.begin():
-            session = StopwatchSession(
-                task_id=task.task_id,
-                start_time_utc=now_utc(),
-                auto_closed=False
-            )
-            self.db.add(session)
-            self.db.flush()
+        session = StopwatchSession(
+            task_id=task.task_id,
+            start_time_utc=now_utc(),
+            auto_closed=False
+        )
+        self.db.add(session)
+        self.db.flush()
+        self.db.commit()
+        self.db.refresh(session)
         
         # Store in Redis
         self.redis.set_active_stopwatch(
@@ -111,16 +112,16 @@ class StopwatchManager:
         # Stop stopwatch (transaction safety)
         stop_time = now_utc()
         
-        with self.db.begin():
-            # Close session
-            session.end_time_utc = stop_time
-            
-            # Mark task as completed
-            task = self.task_manager.complete_task(
-                task_id=task.task_id,
-                executed_start=session.start_time_utc,
-                executed_end=stop_time
-            )
+        # Close session
+        session.end_time_utc = stop_time
+        self.db.add(session)
+        
+        # Mark task as completed (commits both)
+        task = self.task_manager.complete_task(
+            task_id=task.task_id,
+            executed_start=session.start_time_utc,
+            executed_end=stop_time
+        )
         
         # Clear Redis
         self.redis.clear_active_stopwatch(user_id)
