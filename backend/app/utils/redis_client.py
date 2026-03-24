@@ -85,24 +85,6 @@ class RedisClient:
         key = f"undo:{entity_id}"
         self.client.delete(key)
     
-    # Idempotency pattern (Telegram webhooks)
-    def check_telegram_update(self, update_id: int) -> bool:
-        """
-        Check if Telegram update already processed.
-        
-        Returns:
-            True if duplicate (already processed)
-            False if new
-        """
-        key = f"telegram:update:{update_id}"
-        
-        if self.client.exists(key):
-            return True  # Duplicate
-        
-        # Mark as processed (60 second TTL)
-        self.client.setex(key, 60, "1")
-        return False  # New
-    
     # Notion sync queue
     def queue_notion_sync(self, task_id: str, task_data: Dict[str, Any]):
         """Queue task for Notion sync (if API down)."""

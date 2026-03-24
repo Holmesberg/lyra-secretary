@@ -18,11 +18,6 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_PASSWORD: str = ""
     
-    # Telegram
-    TELEGRAM_BOT_TOKEN: str = ""
-    TELEGRAM_WEBHOOK_URL: str = ""
-    TELEGRAM_WEBHOOK_SECRET: str = ""
-    
     # Notion
     NOTION_API_KEY: str = ""
     NOTION_DATABASE_ID: str = ""
