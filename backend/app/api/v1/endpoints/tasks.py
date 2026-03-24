@@ -81,6 +81,7 @@ async def create_task(
                 can_proceed=True
             )
         
+        assert task is not None  # guaranteed by the None check above
         response = TaskCreateResponse(
             task_id=task.task_id,
             created=True,
@@ -95,6 +96,14 @@ async def create_task(
         
         return response
         
+    except ValueError as e:
+        error_msg = str(e)
+        if "start_in_past" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "start_in_past", "message": "Task start time is in the past. Did you mean tomorrow?"}
+            )
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Task creation error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

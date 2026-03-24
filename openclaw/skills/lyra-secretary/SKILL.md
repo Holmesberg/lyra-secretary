@@ -53,9 +53,9 @@ curl -s -X POST http://backend:8000/v1/create \
 
 | Field              | Type     | Required | Default     | Notes                        |
 |--------------------|----------|----------|-------------|------------------------------|
-| `title`            | string   | yes      |             | 1–255 chars                  |
-| `start`            | datetime | yes      |             | ISO 8601, **UTC**            |
-| `end`              | datetime | yes      |             | Must be after start, **UTC** |
+| `title`            | string   | yes      |             | 1–255 chars                         |
+| `start`            | datetime | yes      |             | ISO 8601, **Cairo local**           |
+| `end`              | datetime | yes      |             | Must be after start, **Cairo local** |
 | `category`         | string   | no       | null        | e.g. "work", "health"        |
 | `state`            | string   | no       | `"planned"` | planned/executing/executed   |
 | `source`           | string   | no       | `"manual"`  | manual/voice/ai              |
@@ -86,7 +86,7 @@ curl -s -X POST http://backend:8000/v1/reschedule \
 | Field       | Type     | Required | Notes                                   |
 |-------------|----------|----------|-----------------------------------------|
 | `task_id`   | string   | yes      | 36-char UUID                            |
-| `new_start` | datetime | yes      | ISO 8601, **UTC**                       |
+| `new_start` | datetime | yes      | ISO 8601, **Cairo local**               |
 | `new_end`   | datetime | no       | If omitted, preserves original duration |
 
 **Response:** `{ task_id, rescheduled: bool, new_start, new_end, conflicts[] }`
@@ -189,11 +189,11 @@ curl -s "http://backend:8000/v1/tasks/query?date=2026-03-24"
 ## Workflow
 
 > **CRITICAL: Timezone Rule**
-> Always convert times to ISO 8601 with **no timezone suffix**. Africa/Cairo is UTC+2 in winter, UTC+3 in summer (EET/EEST). If user says "9am", pass `07:00:00` (winter) or `06:00:00` (summer) as UTC. When in doubt, call `/v1/parse` and use the `start` value it returns.
+> All times must be sent as **Africa/Cairo local time** in ISO 8601 format with **no timezone suffix**. The backend converts to UTC internally. If the user says "9am", send `09:00:00`. Do NOT subtract hours or convert to UTC yourself. When in doubt, call `/v1/parse` and use the `start` value it returns.
 
 1. When the user says something like "schedule gym at 9am tomorrow":
    - Extract the title, start, and end times yourself
-   - Convert local time to UTC (subtract 2h in winter / 3h in summer)
+   - Send times as **Cairo local** — if user says "9am", send `09:00:00`
    - Call **create** directly with the extracted fields
    - If time is ambiguous (e.g. "later", "this evening"), call **parse** first as a fallback
    - If conflicts returned, inform the user and ask whether to force
@@ -212,3 +212,18 @@ curl -s "http://backend:8000/v1/tasks/query?date=2026-03-24"
    - Always query before asserting a task exists or doesn't exist
 
 5. Always confirm actions to the user with the response data.
+
+---
+
+## Hard Rules (NEVER violate)
+
+1. **NEVER auto-force a conflict.** When `/v1/create` returns `created: false` with conflicts, always show the full conflict list to the user and ask "Force schedule anyway?" before calling create with `force: true`. Do not silently override conflicts.
+
+2. **NEVER perform bulk destructive operations without confirmation.** When the user says "cancel everything", "delete all tasks", or similar:
+   - First call `/v1/tasks/query` to list all affected tasks
+   - Show the list: "This will delete X tasks: [names]. Confirm?"
+   - Only proceed after explicit user confirmation
+
+3. **NEVER create tasks with generic names.** If the user asks for multiple tasks without specifying names (e.g. "5 back to back tasks"), ask for the name of each task before creating. Do not use "Task 1", "Task 2", etc.
+
+4. **Always report times from the API response**, never from your own extraction. After calling `/v1/create`, report the `start` and `end` values from the response JSON, not what you extracted from the user's input.
