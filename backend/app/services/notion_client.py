@@ -36,22 +36,25 @@ class NotionClient:
 
         try:
             properties = self._build_properties(task)
+            logger.info(f"Notion sync payload for task {task.task_id}: {properties}")
             
             if task.notion_page_id:
                 # Update existing page
+                logger.info(f"Updating existing Notion page {task.notion_page_id}")
                 response = self.client.pages.update(
                     page_id=task.notion_page_id,
                     properties=properties
                 )
-                logger.info(f"Updated Notion page for task {task.task_id}")
+                logger.info(f"Updated Notion page for task {task.task_id}. Response: {response}")
             else:
                 # Create new page
+                logger.info(f"Creating new Notion page in database {self.database_id}")
                 response = self.client.pages.create(
-                    parent={"database_id": self.database_id},
+                    parent={"type": "database_id", "database_id": self.database_id},
                     properties=properties
                 )
                 task.notion_page_id = response["id"]
-                logger.info(f"Created Notion page for task {task.task_id}")
+                logger.info(f"Created Notion page for task {task.task_id}. Response: {response}")
             
             return response["id"]
             
@@ -97,7 +100,7 @@ class NotionClient:
             },
             "State": {
                 "status": {
-                    "name": task.state.value
+                    "name": task.state.value if hasattr(task.state, 'value') else str(task.state)
                 }
             },
         }
