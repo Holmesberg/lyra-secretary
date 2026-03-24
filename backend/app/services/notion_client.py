@@ -1,6 +1,7 @@
 """Notion API client for calendar sync."""
 import logging
 from typing import Optional, Dict, Any
+from sqlalchemy.orm import Session
 
 from notion_client import Client
 from notion_client.errors import APIResponseError
@@ -21,7 +22,7 @@ class NotionClient:
         self.database_id = settings.NOTION_DATABASE_ID
     
     @retry_with_backoff(max_retries=3, base_delay=1.0)
-    def sync_task(self, task: Task) -> Optional[str]:
+    def sync_task(self, task: Task, db: Optional[Session] = None) -> Optional[str]:
         """
         Sync task to Notion database.
         
@@ -54,7 +55,11 @@ class NotionClient:
                     properties=properties
                 )
                 task.notion_page_id = response["id"]
-                logger.info(f"Created Notion page for task {task.task_id}. Response: {response}")
+                logger.info(f"Created Notion page for task {task.task_id}. Page ID: {response['id']}")
+                # Persist notion_page_id to DB so future syncs use update
+                if db:
+                    db.commit()
+                    db.refresh(task)
             
             return response["id"]
             

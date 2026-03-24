@@ -61,6 +61,14 @@ class TaskManager:
             (created_task, conflicts)
             If conflicts exist and not forced: (None, conflicts)
         """
+        # LYR-034: Treat all incoming times as Cairo local, convert to UTC
+        start = to_utc(start)
+        end = to_utc(end)
+        
+        # P4: Reject tasks with start time in the past (5 min buffer)
+        if start < now_utc() - timedelta(minutes=5):
+            raise ValueError("start_in_past: Task start time is in the past. Did you mean tomorrow?")
+        
         # Detect conflicts
         conflicts = self.conflict_detector.detect(start, end)
         
@@ -92,7 +100,7 @@ class TaskManager:
         # Sync to Notion (non-blocking)
         notion_synced = False
         try:
-            self.notion.sync_task(task)
+            self.notion.sync_task(task, db=self.db)
             notion_synced = True
         except Exception as e:
             import logging
@@ -124,7 +132,7 @@ class TaskManager:
         
         # Sync to Notion
         try:
-            self.notion.sync_task(task)
+            self.notion.sync_task(task, db=self.db)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during start_task: {e}", exc_info=True)
@@ -162,7 +170,7 @@ class TaskManager:
         
         # Sync to Notion
         try:
-            self.notion.sync_task(task)
+            self.notion.sync_task(task, db=self.db)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during complete_task: {e}", exc_info=True)
@@ -189,7 +197,7 @@ class TaskManager:
         
         # Sync to Notion
         try:
-            self.notion.sync_task(task)
+            self.notion.sync_task(task, db=self.db)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during skip_task: {e}", exc_info=True)
@@ -216,18 +224,20 @@ class TaskManager:
         
         task = self.state_machine.transition(task, TaskState.DELETED)
         
-        # Remove from Notion
+        # Sync delete state to Notion (archive the page)
         try:
             if task.notion_page_id:
                 self.notion.archive_page(task.notion_page_id)
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Notion archive failed during delete_task: {e}", exc_info=True)
         
-        # Cache for undo
+        # Cache for undo (P3: safe .value access)
+        state_value = task.state.value if hasattr(task.state, 'value') else str(task.state)
         self.redis.cache_undo_action("delete_task", task.task_id, {
             "task_id": task.task_id,
             "title": task.title,
-            "previous_state": task.state.value
+            "previous_state": state_value
         })
         
         return task
@@ -256,10 +266,13 @@ class TaskManager:
         if not task.is_mutable:
             raise ImmutableTaskError("Cannot reschedule immutable task")
         
-        # Calculate new end if not provided
+        # LYR-034: Treat incoming times as Cairo local, convert to UTC
+        new_start = to_utc(new_start)
         if new_end is None:
             duration = task.planned_end_utc - task.planned_start_utc
             new_end = new_start + duration
+        else:
+            new_end = to_utc(new_end)
         
         # Check for conflicts (excluding current task)
         conflicts = self.conflict_detector.detect(
@@ -278,7 +291,7 @@ class TaskManager:
         
         # Sync to Notion
         try:
-            self.notion.sync_task(task)
+            self.notion.sync_task(task, db=self.db)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during reschedule_task: {e}", exc_info=True)

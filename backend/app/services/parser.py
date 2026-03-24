@@ -64,14 +64,15 @@ class TaskParser:
         if start and end is None and duration_minutes:
             end = start + timedelta(minutes=duration_minutes)
         
-        # Convert to UTC for storage
-        start_utc = to_utc(start) if start else to_utc(now_local())
-        end_utc = to_utc(end) if end else None
+        # Return Cairo local times — backend create_task() handles UTC conversion
+        # Parser already produces Cairo local times via dateparser TIMEZONE setting
+        start_local = start if start else now_local()
+        end_local = end if end else None
         
         return TaskParseResponse(
             title=title or "Untitled Task",
-            start=start_utc,
-            end=end_utc,
+            start=start_local,
+            end=end_local,
             duration_minutes=duration_minutes,
             category=category,
             confidence=confidence,
@@ -110,7 +111,7 @@ class TaskParser:
         # Use dateparser with user's timezone
         settings_dict = {
             'TIMEZONE': self.user_tz,
-            'RETURN_AS_TIMEZONE_AWARE': False,
+            'RETURN_AS_TIMEZONE_AWARE': True,
             'PREFER_DATES_FROM': 'future',
         }
         
