@@ -93,6 +93,8 @@ class TaskManager:
         try:
             self.notion.sync_task(task)
         except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Notion sync failed during create_task: {e}", exc_info=True)
             # Don't fail task creation if Notion fails
             pass
         
@@ -123,7 +125,9 @@ class TaskManager:
         # Sync to Notion
         try:
             self.notion.sync_task(task)
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Notion sync failed during start_task: {e}", exc_info=True)
             pass
         
         return task
@@ -159,7 +163,9 @@ class TaskManager:
         # Sync to Notion
         try:
             self.notion.sync_task(task)
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Notion sync failed during complete_task: {e}", exc_info=True)
             pass
         
         return task
@@ -184,7 +190,9 @@ class TaskManager:
         # Sync to Notion
         try:
             self.notion.sync_task(task)
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Notion sync failed during skip_task: {e}", exc_info=True)
             pass
         
         return task
@@ -271,7 +279,9 @@ class TaskManager:
         # Sync to Notion
         try:
             self.notion.sync_task(task)
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Notion sync failed during reschedule_task: {e}", exc_info=True)
             pass
         
         return task, conflicts
