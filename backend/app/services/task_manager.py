@@ -43,7 +43,7 @@ class TaskManager:
         source: TaskSource = TaskSource.MANUAL,
         confidence_score: Optional[float] = None,
         force_conflicts: bool = False
-    ) -> tuple[Optional[Task], list[Task]]:
+    ) -> tuple[Optional[Task], list[Task], bool]:
         """
         Create a new task.
         
@@ -65,7 +65,7 @@ class TaskManager:
         conflicts = self.conflict_detector.detect(start, end)
         
         if conflicts and not force_conflicts:
-            return None, conflicts
+            return None, conflicts, False
         
         # Calculate duration
         duration_minutes = int((end - start).total_seconds() / 60)
@@ -89,14 +89,14 @@ class TaskManager:
         self.db.commit()
         self.db.refresh(task)
         
-        # Sync to Notion (async, non-blocking)
+        # Sync to Notion (non-blocking)
+        notion_synced = False
         try:
             self.notion.sync_task(task)
+            notion_synced = True
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during create_task: {e}", exc_info=True)
-            # Don't fail task creation if Notion fails
-            pass
         
         # Cache for undo
         self.redis.cache_undo_action("create_task", task.task_id, {
@@ -104,7 +104,7 @@ class TaskManager:
             "title": task.title
         })
         
-        return task, []
+        return task, [], notion_synced
     
     def start_task(self, task_id: str) -> Task:
         """
