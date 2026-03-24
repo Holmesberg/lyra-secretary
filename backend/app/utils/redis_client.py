@@ -84,7 +84,17 @@ class RedisClient:
         """Clear undo data."""
         key = f"undo:{entity_id}"
         self.client.delete(key)
-    
+    # Idempotency (duplicate request protection)
+    def check_idempotency(self, key: str) -> Optional[str]:
+        """Check if idempotency key exists. Returns cached response JSON if duplicate."""
+        redis_key = f"idempotency:{key}"
+        return self.client.get(redis_key)
+
+    def set_idempotency(self, key: str, response_json: str, ttl_seconds: int = 30):
+        """Store idempotency key with response for TTL seconds."""
+        redis_key = f"idempotency:{key}"
+        self.client.setex(redis_key, ttl_seconds, response_json)
+
     # Notion sync queue
     def queue_notion_sync(self, task_id: str, task_data: Dict[str, Any]):
         """Queue task for Notion sync (if API down)."""
