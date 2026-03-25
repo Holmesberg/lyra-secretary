@@ -10,6 +10,15 @@ from app.core.config import settings
 from app.db.models import Task, TaskState
 from app.utils.time_utils import to_local
 from app.utils.retry import retry_with_backoff
+import pytz
+
+def _to_cairo(dt):
+    if dt is None:
+        return None
+    cairo = pytz.timezone('Africa/Cairo')
+    if dt.tzinfo is None:
+        dt = pytz.utc.localize(dt)
+    return dt.astimezone(cairo).strftime("%Y-%m-%dT%H:%M:%S+02:00")
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +82,6 @@ class NotionClient:
         start = task.executed_start_utc or task.planned_start_utc
         end = task.executed_end_utc or task.planned_end_utc
         
-        # Convert UTC to local time for display
-        start_local = to_local(start)
-        end_local = to_local(end)
-        
         # State icon
         state_icons = {
             TaskState.PLANNED: "☐",
@@ -99,8 +104,8 @@ class NotionClient:
             },
             "Start": {
                 "date": {
-                    "start": start_local.isoformat(),
-                    "end": end_local.isoformat()
+                    "start": _to_cairo(start),
+                    "end": _to_cairo(end) if end else None
                 }
             },
             "State": {
