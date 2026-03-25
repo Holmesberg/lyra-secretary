@@ -7,7 +7,6 @@ import logging
 
 from app.api.deps import get_db
 from app.db.models import Task, TaskState
-from app.utils.time_utils import to_utc
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
