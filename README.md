@@ -136,6 +136,8 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 
 - ✅ Parse natural language → structured task data
 - ✅ Create / reschedule / delete tasks
+- ✅ Query endpoint (search tasks by timeframe, category, state)
+- ✅ Undo support (30-second TTL via Redis)
 - ✅ Stopwatch with planned vs. actual duration delta
 - ✅ Notion calendar sync (create + update pages)
 - ✅ Conflict detection
@@ -144,8 +146,6 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 
 ## Roadmap
 
-- [ ] Query endpoint (search tasks by timeframe, category, state)
-- [ ] Undo support (30-second TTL via Redis)
 - [ ] OpenClaw tool schema (structured tool definitions)
 - [ ] BCI cognitive session logging (EEG state during tasks)
 - [ ] Weekly/monthly analytics and pattern reports
