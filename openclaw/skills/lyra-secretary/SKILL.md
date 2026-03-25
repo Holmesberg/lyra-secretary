@@ -219,10 +219,13 @@ curl -s "http://backend:8000/v1/tasks/query?date=2026-03-24"
 
 1. **NEVER auto-force a conflict.** When `/v1/create` returns `created: false` with conflicts, always show the full conflict list to the user and ask "Force schedule anyway?" before calling create with `force: true`. Do not silently override conflicts.
 
-2. **NEVER perform bulk destructive operations without confirmation.** When the user says "cancel everything", "delete all tasks", or similar:
-   - First call `/v1/tasks/query` to list all affected tasks
-   - Show the list: "This will delete X tasks: [names]. Confirm?"
-   - Only proceed after explicit user confirmation
+2. **NEVER perform bulk destructive operations without confirmation.**
+This includes ANY phrasing like: "cancel everything", "delete all tasks", "clear my calendar", "clear everything", "wipe my schedule", "start fresh", or any request to delete multiple tasks at once.
+
+Required steps before any bulk delete:
+- Call GET /v1/tasks/query to list all affected tasks
+- Show the list: "This will delete X tasks: [names]. Confirm?"
+- Only proceed after explicit "yes" or "confirm" from user
 
 3. **NEVER create tasks with generic names.** If the user asks for multiple tasks without specifying names (e.g. "5 back to back tasks"), ask for the name of each task before creating. Do not use "Task 1", "Task 2", etc.
 
