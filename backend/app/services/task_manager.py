@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
 
+import logging
+
 from app.db.models import Task, TaskState, TaskSource
 from app.services.parser import TaskParser
 from app.services.state_machine import StateMachine
@@ -16,6 +18,8 @@ from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import to_utc, now_utc
 from app.core.exceptions import ImmutableTaskError
+
+logger = logging.getLogger(__name__)
 
 
 class TaskManager:
@@ -61,10 +65,6 @@ class TaskManager:
             (created_task, conflicts)
             If conflicts exist and not forced: (None, conflicts)
         """
-        # LYR-034: Treat all incoming times as Cairo local, convert to UTC
-        start = to_utc(start)
-        end = to_utc(end)
-        
         # P4: Reject tasks with start time in the past (5 min buffer)
         if start < now_utc() - timedelta(minutes=5):
             raise ValueError("start_in_past: Task start time is in the past. Did you mean tomorrow?")
@@ -266,13 +266,9 @@ class TaskManager:
         if not task.is_mutable:
             raise ImmutableTaskError("Cannot reschedule immutable task")
         
-        # LYR-034: Treat incoming times as Cairo local, convert to UTC
-        new_start = to_utc(new_start)
         if new_end is None:
             duration = task.planned_end_utc - task.planned_start_utc
             new_end = new_start + duration
-        else:
-            new_end = to_utc(new_end)
         
         # Check for conflicts (excluding current task)
         conflicts = self.conflict_detector.detect(

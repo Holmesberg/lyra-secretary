@@ -8,15 +8,12 @@ from app.schemas.parse import ParseResponse
 from app.schemas.task import TaskParseResponse
 from app.db.session import SessionLocal
 from app.db.models import CategoryMapping
-from app.core.config import settings
-from app.utils.time_utils import to_utc, now_local
 
 
 class TaskParser:
     """Parse natural language into structured task data."""
     
     def __init__(self):
-        self.user_tz = settings.USER_TIMEZONE
         self.db = SessionLocal()
     
     def parse(self, text: str) -> TaskParseResponse:
@@ -64,15 +61,14 @@ class TaskParser:
         if start and end is None and duration_minutes:
             end = start + timedelta(minutes=duration_minutes)
         
-        # Return Cairo local times — backend create_task() handles UTC conversion
-        # Parser already produces Cairo local times via dateparser TIMEZONE setting
-        start_local = start if start else now_local()
-        end_local = end if end else None
+        # Return raw parsed times (no timezone awareness)
+        start_raw = start if start else datetime.now()
+        end_raw = end if end else None
         
         return TaskParseResponse(
             title=title or "Untitled Task",
-            start=start_local,
-            end=end_local,
+            start=start_raw,
+            end=end_raw,
             duration_minutes=duration_minutes,
             category=category,
             confidence=confidence,
@@ -108,10 +104,8 @@ class TaskParser:
         if not text:
             return None, None, None, 0.0
         
-        # Use dateparser with user's timezone
+        # Use dateparser with no timezone awareness
         settings_dict = {
-            'TIMEZONE': self.user_tz,
-            'RETURN_AS_TIMEZONE_AWARE': True,
             'PREFER_DATES_FROM': 'future',
         }
         
@@ -130,7 +124,7 @@ class TaskParser:
             
         if parsed:
             # If time is in past (same day), adjust to tomorrow
-            now = now_local()
+            now = datetime.now()
             if parsed.date() == now.date() and parsed.time() < now.time():
                 parsed = parsed + timedelta(days=1)
             
@@ -186,7 +180,7 @@ class TaskParser:
                 end_str = match.group(1)
                 end = dateparser.parse(
                     end_str,
-                    settings={'TIMEZONE': self.user_tz, 'RELATIVE_BASE': start}
+                    settings={'RELATIVE_BASE': start}
                 )
                 if end and end > start:
                     return end
