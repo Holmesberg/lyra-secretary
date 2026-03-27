@@ -48,16 +48,18 @@ class StateMachine:
             ImmutableTaskError: If task is immutable
             InvalidStateTransitionError: If transition invalid
         """
+        current_state = TaskState(task.state) if isinstance(task.state, str) else task.state
+        
         # Check if task is immutable
         if not task.is_mutable:
             raise ImmutableTaskError(
-                f"Task {task.task_id} is {task.state.value} and cannot be modified"
+                f"Task {task.task_id} is {(task.state.value if hasattr(task.state, 'value') else str(task.state))} and cannot be modified"
             )
         
         # Check if transition is valid
-        if new_state not in self.TRANSITIONS.get(task.state, set()):
+        if new_state not in self.TRANSITIONS.get(current_state, set()):
             raise InvalidStateTransitionError(
-                f"Cannot transition from {task.state.value} to {new_state.value}"
+                f"Cannot transition from {(task.state.value if hasattr(task.state, 'value') else str(task.state))} to {(new_state.value if hasattr(new_state, 'value') else str(new_state))}"
             )
         
         # Perform transition
