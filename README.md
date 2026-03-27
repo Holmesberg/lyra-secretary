@@ -143,6 +143,7 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ Conflict detection
 - ✅ State machine (planned → executing → executed/skipped/deleted)
 - ✅ OpenClaw integration via Docker network bridge
+- ✅ Stopwatch Redis desync recovery (auto-restores from SQLite on restart)
 
 ## Roadmap
 

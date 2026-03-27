@@ -21,6 +21,28 @@ class StopwatchManager:
         self.db = db
         self.redis = RedisClient()
         self.task_manager = TaskManager(db)
+        
+    def _recover_from_db(self, user_id: str) -> Optional[dict]:
+        session = self.db.query(StopwatchSession).filter(
+            StopwatchSession.end_time_utc == None
+        ).first()
+        
+        if not session:
+            return None
+            
+        task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
+        if not task:
+            return None
+            
+        self.redis.set_active_stopwatch(
+            user_id=user_id,
+            session_id=session.session_id,
+            task_id=task.task_id,
+            title=task.title,
+            start_time=session.start_time_utc.isoformat()
+        )
+        
+        return self.redis.get_active_stopwatch(user_id)
     
     def start(
         self,
@@ -33,6 +55,9 @@ class StopwatchManager:
         """
         # Check for active stopwatch
         active = self.redis.get_active_stopwatch(user_id)
+        if not active:
+            active = self._recover_from_db(user_id)
+            
         if active:
             raise StopwatchAlreadyRunningError(
                 f"Stopwatch already running for task {active['task_id']}"
@@ -53,7 +78,7 @@ class StopwatchManager:
             
             # Create task with current time as start
             now = now_utc()
-            task, _ = self.task_manager.create_task(
+            task, _, _ = self.task_manager.create_task(
                 title=title,
                 start=now,
                 end=now + timedelta(hours=1),  # Default 1h duration
@@ -92,7 +117,11 @@ class StopwatchManager:
         # Get active stopwatch from Redis
         active = self.redis.get_active_stopwatch(user_id)
         if not active:
-            raise NoActiveStopwatchError("No active stopwatch")
+            recovered = self._recover_from_db(user_id)
+            if recovered:
+                active = recovered
+            else:
+                raise NoActiveStopwatchError("No active stopwatch")
         
         # Get session from DB
         session = self.db.query(StopwatchSession).filter(
