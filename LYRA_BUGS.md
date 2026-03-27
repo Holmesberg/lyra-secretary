@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: March 25, 2026 — post stress test cleanup
+Last updated: March 27, 2026 — post stress test cleanup
 
 ---
 
-## Open (11 bugs)
+## Open (15 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -19,10 +19,15 @@ Last updated: March 25, 2026 — post stress test cleanup
 | LYR-035 | 🟡 medium | skill | Task ID retrieved from memory not backend | On delete, Lyra used conversation memory for task ID. Violates hard constraint. |
 | LYR-036 | 🟡 medium | skill | Context lost on follow-up corrections | Short follow-ups like "next week" treated as new standalone request instead of continuing previous intent. |
 | LYR-037 | 🟡 medium | skill | False conflict between tasks on different days | Hallucinated conflict between Monday and Tuesday tasks. Likely ghost records from bad-UTC era. Retest on clean database. |
-
+| LYR-040 | 🔴 high | backend | `'str' object has no attribute 'value'` in delete endpoint | Task state stored as string not enum in some paths |
+| LYR-041 | 🔴 high | backend | Stopwatch/Redis desync — task EXECUTING in DB but no Redis session | `stop timer` returns "no active stopwatch" |
+| LYR-042 | 🟡 medium | skill | Clear schedule leaves EXECUTING tasks — only deletes PLANNED | Should stop active timers first then delete |
+| LYR-043 | 🟡 medium | skill | Duplicate task created instead of state transition | Memory references ghost task not in backend (LYR-035 variant) |
+| LYR-044 | 🟡 medium | notion | Executed tasks not syncing to Notion — `notion_page_id` null after stopwatch stop | Sync fails silently |
+| LYR-045 | 🟡 medium | notion | Duplicate EXECUTING tasks in Notion — ghost task from memory leaked into Notion | |
 ---
 
-## Fixed (24 bugs)
+## Fixed (26 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
@@ -50,6 +55,8 @@ Last updated: March 25, 2026 — post stress test cleanup
 | LYR-030 | 🟡 medium | skill | Generic task names created | SKILL.md Hard Rule #3: never use generic names like "Task 1". |
 | LYR-032 | 🔴 high | notion | Bulk reschedule creates duplicates | Fixed by LYR-023 — `notion_page_id` persisted. |
 | LYR-033 | 🔴 high | notion | State split SQLite vs Notion | Fixed by LYR-022. |
+| LYR-040 | 🔴 high | backend | State machine enum .value error | State machine normalizes task.state to TaskState enum before transition lookup. All .value calls guarded with hasattr() check. |
+| LYR-041 | 🔴 high | backend | Redis stopwatch desync | _recover_from_db() method added to StopwatchManager. On Redis desync, queries SQLite for open StopwatchSession and restores Redis state. Also fixed 3-value tuple unpack in unplanned task creation. |
 
 ---
 
