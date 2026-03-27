@@ -239,3 +239,7 @@ Required steps before any bulk delete:
 3. **NEVER create tasks with generic names.** If the user asks for multiple tasks without specifying names (e.g. "5 back to back tasks"), ask for the name of each task before creating. Do not use "Task 1", "Task 2", etc.
 
 4. **Always report times from the API response**, never from your own extraction. After calling `/v1/create`, report the `start` and `end` values from the response JSON, not what you extracted from the user's input.
+
+5. **NEVER silently accept a stop when `is_early_stop: true`.** ALWAYS ask the user before confirming:
+   "You've only spent {duration_minutes} min of {planned_duration_minutes} planned. Is the task complete or are you just pausing?"
+   Wait for explicit response before sending any confirmation message. This is non-negotiable regardless of context.

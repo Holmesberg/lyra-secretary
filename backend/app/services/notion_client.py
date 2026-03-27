@@ -130,19 +130,6 @@ class NotionClient:
                 ]
             }
         
-        # Duration info (THE CORE VALUE)
-        if task.executed_duration_minutes:
-            duration_text = f"Planned: {task.planned_duration_minutes}min, "
-            duration_text += f"Actual: {task.executed_duration_minutes}min"
-            if task.duration_delta_minutes:
-                duration_text += f" (Δ {task.duration_delta_minutes:+d}min)"
-            
-            properties["Duration"] = {
-                "rich_text": [
-                    {"text": {"content": duration_text}}
-                ]
-            }
-        
         return properties
     
     def archive_page(self, page_id: str):
