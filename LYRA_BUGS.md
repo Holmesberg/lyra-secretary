@@ -4,11 +4,10 @@ Last updated: March 27, 2026 — post stress test cleanup
 
 ---
 
-## Open (15 bugs)
+## Open (14 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
-| LYR-003 | 🟡 medium | backend | Stopwatch path inconsistency | Endpoints at `/v1/start` and `/v1/stop` should be `/v1/stopwatch/start` and `/v1/stopwatch/stop`. Will cause path collisions later. |
 | LYR-007 | 🟡 medium | openclaw | OpenClaw memory vs actual state | Hard constraint added to SKILL.md but not fully validated. If task deleted via Swagger, OpenClaw may still believe it exists. |
 | LYR-015 | 🟡 medium | notion | No backfill for pre-fix tasks | Tasks created before Notion sync fix exist in SQLite but not in Notion. Need `POST /v1/tasks/{task_id}/sync`. |
 | LYR-018 | 🟢 low | notion | Orphaned SQLite records in conflict messages | Old tasks in SQLite but not in Notion appear in conflict detection. Same class as LYR-015. |
@@ -27,7 +26,7 @@ Last updated: March 27, 2026 — post stress test cleanup
 | LYR-045 | 🟡 medium | notion | Duplicate EXECUTING tasks in Notion — ghost task from memory leaked into Notion | |
 ---
 
-## Fixed (26 bugs)
+## Fixed (27 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
@@ -57,6 +56,7 @@ Last updated: March 27, 2026 — post stress test cleanup
 | LYR-033 | 🔴 high | notion | State split SQLite vs Notion | Fixed by LYR-022. |
 | LYR-040 | 🔴 high | backend | State machine enum .value error | State machine normalizes task.state to TaskState enum before transition lookup. All .value calls guarded with hasattr() check. |
 | LYR-041 | 🔴 high | backend | Redis stopwatch desync | _recover_from_db() method added to StopwatchManager. On Redis desync, queries SQLite for open StopwatchSession and restores Redis state. Also fixed 3-value tuple unpack in unplanned task creation. |
+| LYR-003 | 🟡 medium | backend | Stopwatch path inconsistency | Prefixed endpoints with `/v1/stopwatch/`. Updated SKILL.md and FastAPI router. |
 
 ---
 
