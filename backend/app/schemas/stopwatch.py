@@ -35,6 +35,8 @@ class StopwatchStopResponse(BaseModel):
     executed_at: datetime
     is_early_stop: bool = False
     notion_synced: bool = True
+    requires_confirmation: bool = False
+    confirmation_message: Optional[str] = None
 
 
 class StopwatchStatusResponse(BaseModel):
