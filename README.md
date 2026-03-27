@@ -43,7 +43,7 @@ Telegram → OpenClaw (AI agent) → FastAPI backend → SQLite + Redis → Noti
 ### 1. Clone
 
 ```bash
-git clone https://github.com/your-username/lyra-secretary.git
+git clone https://github.com/Holmesberg/lyra-secretary.git
 cd lyra-secretary
 ```
 
