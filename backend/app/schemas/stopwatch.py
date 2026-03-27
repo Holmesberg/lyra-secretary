@@ -21,6 +21,8 @@ class StopwatchStartResponse(BaseModel):
     session_id: str
     task_id: str
     start_time: datetime
+    is_future_task: bool = False
+    planned_start: Optional[datetime] = None
 
 
 class StopwatchStopResponse(BaseModel):
@@ -31,6 +33,8 @@ class StopwatchStopResponse(BaseModel):
     planned_duration_minutes: Optional[int]
     delta_minutes: Optional[int]
     executed_at: datetime
+    is_early_stop: bool = False
+    notion_synced: bool = True
 
 
 class StopwatchStatusResponse(BaseModel):

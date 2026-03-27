@@ -49,9 +49,11 @@ class StopwatchManager:
         task_id: Optional[str] = None,
         title: Optional[str] = None,
         user_id: str = "user_primary"
-    ) -> tuple[StopwatchSession, Task]:
+    ) -> tuple[StopwatchSession, Task, bool]:
         """
         Start stopwatch.
+        
+        Returns (session, task, is_future_task).
         """
         # Check for active stopwatch
         active = self.redis.get_active_stopwatch(user_id)
@@ -85,6 +87,12 @@ class StopwatchManager:
                 state=TaskState.EXECUTING
             )
         
+        # LYR-021: detect future task
+        is_future_task = False
+        if hasattr(task, 'planned_start_utc') and task.planned_start_utc:
+            if task.planned_start_utc > now_utc() + timedelta(minutes=5):
+                is_future_task = True
+        
         # Create stopwatch session (transaction safety)
         session = StopwatchSession(
             task_id=task.task_id,
@@ -105,14 +113,16 @@ class StopwatchManager:
             start_time=session.start_time_utc.isoformat()
         )
         
-        return session, task
+        return session, task, is_future_task
     
     def stop(
         self,
         user_id: str = "user_primary"
-    ) -> tuple[StopwatchSession, Task]:
+    ) -> tuple[StopwatchSession, Task, bool, bool]:
         """
         Stop active stopwatch.
+        
+        Returns (session, task, is_early_stop, notion_synced).
         """
         # Get active stopwatch from Redis
         active = self.redis.get_active_stopwatch(user_id)
@@ -141,12 +151,19 @@ class StopwatchManager:
         # Stop stopwatch (transaction safety)
         stop_time = now_utc()
         
+        # LYR-024: detect early stop (< 50% of planned duration)
+        is_early_stop = False
+        executed_minutes = int((stop_time - session.start_time_utc).total_seconds() / 60)
+        if task.planned_duration_minutes and task.planned_duration_minutes > 0:
+            if executed_minutes < (task.planned_duration_minutes * 0.5):
+                is_early_stop = True
+        
         # Close session
         session.end_time_utc = stop_time
         self.db.add(session)
         
-        # Mark task as completed (commits both)
-        task = self.task_manager.complete_task(
+        # Mark task as completed (commits both), LYR-044: capture sync status
+        task, notion_synced = self.task_manager.complete_task(
             task_id=task.task_id,
             executed_start=session.start_time_utc,
             executed_end=stop_time
@@ -155,7 +172,7 @@ class StopwatchManager:
         # Clear Redis
         self.redis.clear_active_stopwatch(user_id)
         
-        return session, task
+        return session, task, is_early_stop, notion_synced
     
     def get_status(
         self,

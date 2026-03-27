@@ -25,7 +25,7 @@ async def start_stopwatch(
     try:
         manager = StopwatchManager(db)
         
-        session, task = manager.start(
+        session, task, is_future_task = manager.start(
             task_id=request.task_id,
             title=request.title
         )
@@ -33,7 +33,9 @@ async def start_stopwatch(
         return StopwatchStartResponse(
             session_id=session.session_id,
             task_id=task.task_id,
-            start_time=session.start_time_utc
+            start_time=session.start_time_utc,
+            is_future_task=is_future_task,
+            planned_start=task.planned_start_utc
         )
         
     except StopwatchAlreadyRunningError as e:
@@ -51,7 +53,7 @@ async def stop_stopwatch(
     try:
         manager = StopwatchManager(db)
         
-        session, task = manager.stop()
+        session, task, is_early_stop, notion_synced = manager.stop()
         
         return StopwatchStopResponse(
             task_id=task.task_id,
@@ -59,7 +61,9 @@ async def stop_stopwatch(
             duration_minutes=task.executed_duration_minutes,
             planned_duration_minutes=task.planned_duration_minutes,
             delta_minutes=task.duration_delta_minutes,
-            executed_at=task.executed_end_utc
+            executed_at=task.executed_end_utc,
+            is_early_stop=is_early_stop,
+            notion_synced=notion_synced
         )
         
     except NoActiveStopwatchError as e:

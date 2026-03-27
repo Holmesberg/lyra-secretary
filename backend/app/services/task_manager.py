@@ -145,7 +145,7 @@ class TaskManager:
         task_id: str,
         executed_start: datetime,
         executed_end: datetime
-    ) -> Task:
+    ) -> tuple[Task, bool]:
         """
         Mark task as completed.
         
@@ -155,7 +155,7 @@ class TaskManager:
             executed_end: Actual end time (UTC)
             
         Returns:
-            Updated task
+            (updated_task, notion_synced)
         """
         task = self.db.query(Task).filter(Task.task_id == task_id).first()
         if not task:
@@ -169,14 +169,14 @@ class TaskManager:
         task = self.state_machine.transition(task, TaskState.EXECUTED)
         
         # Sync to Notion
+        notion_synced = False
         try:
             self.notion.sync_task(task, db=self.db)
+            notion_synced = True
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Notion sync failed during complete_task: {e}", exc_info=True)
-            pass
+            logger.error(f"Notion sync failed during complete_task: {e}", exc_info=True)
         
-        return task
+        return task, notion_synced
     
     def skip_task(self, task_id: str, reason: Optional[str] = None) -> Task:
         """
