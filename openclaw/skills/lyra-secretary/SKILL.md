@@ -115,10 +115,10 @@ curl -s -X POST http://backend:8000/v1/delete \
 
 Starts a live timer. Links to an existing task, or creates an unplanned one if only `title` is given.
 
-> **IMPORTANT:** Before starting a stopwatch, always call `GET http://backend:8000/v1/status` first. If `active=true`, inform the user a timer is already running and show `elapsed_minutes`.
+> **IMPORTANT:** Before starting a stopwatch, always call `GET http://backend:8000/v1/stopwatch/status` first. If `active=true`, inform the user a timer is already running and show `elapsed_minutes`.
 
 ```bash
-curl -s -X POST http://backend:8000/v1/start \
+curl -s -X POST http://backend:8000/v1/stopwatch/start \
   -H "Content-Type: application/json" \
   -d '{"task_id": "<uuid>"}'
 ```
@@ -126,7 +126,7 @@ curl -s -X POST http://backend:8000/v1/start \
 Or for an unplanned task:
 
 ```bash
-curl -s -X POST http://backend:8000/v1/start \
+curl -s -X POST http://backend:8000/v1/stopwatch/start \
   -H "Content-Type: application/json" \
   -d '{"title": "Quick errand"}'
 ```
@@ -147,7 +147,7 @@ curl -s -X POST http://backend:8000/v1/start \
 Stops the currently active stopwatch. No request body needed.
 
 ```bash
-curl -s -X POST http://backend:8000/v1/stop \
+curl -s -X POST http://backend:8000/v1/stopwatch/stop \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -159,7 +159,7 @@ curl -s -X POST http://backend:8000/v1/stop \
 ### 7. Stopwatch Status (read-only)
 
 ```bash
-curl -s http://backend:8000/v1/status
+curl -s http://backend:8000/v1/stopwatch/status
 ```
 
 **Response:** `{ active: bool, session_id, task_id, task_title, start_time, elapsed_minutes }`
@@ -200,7 +200,7 @@ curl -s "http://backend:8000/v1/tasks/query?date=2026-03-24"
    - If `notion_synced: false`, tell the user "Task created but Notion sync failed"
 
 2. When the user says "start timer for \<task\>":
-   - First call **status** (`GET /v1/status`) to check if a stopwatch is already running
+   - First call **status** (`GET /v1/stopwatch/status`) to check if a stopwatch is already running
    - If `active=true`, tell the user: "A timer is already running for {task_title} ({elapsed_minutes} min). Stop it first."
    - If `active=false`, call **start** with the task_id or title
 
