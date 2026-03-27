@@ -1,5 +1,6 @@
 """Stopwatch endpoints."""
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 import logging
 
@@ -47,11 +48,30 @@ async def start_stopwatch(
 
 @router.post("/stop", response_model=StopwatchStopResponse)
 async def stop_stopwatch(
+    confirmed: bool = Query(False, description="Set to true to confirm early stop"),
     db: Session = Depends(get_db)
 ) -> StopwatchStopResponse:
-    """Stop active stopwatch."""
+    """Stop active stopwatch. Requires ?confirmed=true if stopping before 50% of planned duration."""
     try:
         manager = StopwatchManager(db)
+        
+        # LYR-024: Check early stop BEFORE committing
+        is_early, elapsed, planned = manager.check_early_stop()
+        if is_early and not confirmed:
+            return StopwatchStopResponse(
+                task_id="",
+                session_id="",
+                duration_minutes=elapsed,
+                planned_duration_minutes=planned,
+                delta_minutes=None,
+                executed_at=datetime.utcnow(),
+                is_early_stop=True,
+                requires_confirmation=True,
+                confirmation_message=(
+                    f"Only {elapsed} min of {planned} planned elapsed. "
+                    f"Call stop again with ?confirmed=true to confirm completion."
+                )
+            )
         
         session, task, is_early_stop, notion_synced = manager.stop()
         

@@ -21,7 +21,29 @@ class StopwatchManager:
         self.db = db
         self.redis = RedisClient()
         self.task_manager = TaskManager(db)
+
+    def check_early_stop(self, user_id: str = "user_primary") -> tuple[bool, int, int]:
+        """
+        Check if stopping now would be an early stop (< 50% of planned).
         
+        Returns (is_early_stop, elapsed_minutes, planned_minutes).
+        Does NOT stop the timer.
+        """
+        active = self.redis.get_active_stopwatch(user_id)
+        if not active:
+            active = self._recover_from_db(user_id)
+        if not active:
+            return False, 0, 0
+
+        start_time = datetime.fromisoformat(active['start_time'])
+        elapsed = int((now_utc() - start_time).total_seconds() / 60)
+
+        task = self.db.query(Task).filter(Task.task_id == active['task_id']).first()
+        planned = task.planned_duration_minutes if task and task.planned_duration_minutes else 0
+
+        is_early = planned > 0 and elapsed < (planned * 0.5)
+        return is_early, elapsed, planned
+
     def _recover_from_db(self, user_id: str) -> Optional[dict]:
         session = self.db.query(StopwatchSession).filter(
             StopwatchSession.end_time_utc == None

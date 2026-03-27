@@ -209,12 +209,12 @@ curl -s "http://backend:8000/v1/tasks/query?date=2026-03-24"
 
 3. When the user says "stop" or "done":
    - Call **stop** (`POST /v1/stopwatch/stop`, no body needed)
-   - If the response has `is_early_stop: true`, ask the user:
-     "You've only spent {duration_minutes} min of {planned_duration_minutes} planned.
-     1. Yes, task is complete  2. No, just pausing"
-     - If user says **"1" or "complete"**: confirm normally — the task is already transitioned to EXECUTED.
-     - If user says **"2" or "pausing"**: inform the user the timer has been stopped and the time has been logged, but the task has been marked as EXECUTED. Note this is a current backend limitation — pause support is tracked as a future enhancement.
-   - If the response has `notion_synced: false`, add a brief note: "Task logged but Notion may not reflect this yet."
+   - If the response has `requires_confirmation: true`:
+     - Show the `confirmation_message` to the user
+     - Ask: "Is the task complete? (yes/no)"
+     - If user says **"yes"**: call `POST /v1/stopwatch/stop?confirmed=true` to finalize
+     - If user says **"no"**: call `GET /v1/stopwatch/status` and report elapsed time — timer is still running
+   - If the response has `notion_synced: false`, add: "Task logged but Notion may not reflect this yet."
 
 4. To check what tasks exist:
    - Call **query** (`GET /v1/tasks/query?date=YYYY-MM-DD`)
