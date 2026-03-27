@@ -203,9 +203,18 @@ curl -s "http://backend:8000/v1/tasks/query?date=2026-03-24"
    - First call **status** (`GET /v1/stopwatch/status`) to check if a stopwatch is already running
    - If `active=true`, tell the user: "A timer is already running for {task_title} ({elapsed_minutes} min). Stop it first."
    - If `active=false`, call **start** with the task_id or title
+   - If the response has `is_future_task: true`, **do NOT proceed automatically**. Warn the user:
+     "⚠️ This task is scheduled for {planned_start}. It hasn't started yet. Start the timer anyway? (yes/no)"
+     Wait for explicit **"yes"** before calling start again. If user says **"no"**, do nothing.
 
 3. When the user says "stop" or "done":
-   - Call **stop** (no body needed)
+   - Call **stop** (`POST /v1/stopwatch/stop`, no body needed)
+   - If the response has `is_early_stop: true`, ask the user:
+     "You've only spent {duration_minutes} min of {planned_duration_minutes} planned.
+     1. Yes, task is complete  2. No, just pausing"
+     - If user says **"1" or "complete"**: confirm normally — the task is already transitioned to EXECUTED.
+     - If user says **"2" or "pausing"**: inform the user the timer has been stopped and the time has been logged, but the task has been marked as EXECUTED. Note this is a current backend limitation — pause support is tracked as a future enhancement.
+   - If the response has `notion_synced: false`, add a brief note: "Task logged but Notion may not reflect this yet."
 
 4. To check what tasks exist:
    - Call **query** (`GET /v1/tasks/query?date=YYYY-MM-DD`)
