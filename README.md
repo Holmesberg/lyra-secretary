@@ -144,6 +144,11 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ State machine (planned → executing → executed/skipped/deleted)
 - ✅ OpenClaw integration via Docker network bridge
 - ✅ Stopwatch Redis desync recovery (auto-restores from SQLite on restart)
+- ✅ 30-second undo window (POST /v1/undo — reverts create and delete)
+- ✅ APScheduler background workers (reminders, Notion retry, timer overflow)
+- ✅ Notion sync retry queue (failed syncs queued in Redis, retried every 5 min)
+- ✅ Pre-task reminders (15-minute warning via OpenClaw notify)
+- ✅ Timer overflow notification (alerts)
 
 ## Roadmap
 
