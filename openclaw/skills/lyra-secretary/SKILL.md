@@ -245,6 +245,15 @@ Required steps before any bulk delete:
 
 4. **Always report times from the API response**, never from your own extraction. After calling `/v1/create`, report the `start` and `end` values from the response JSON, not what you extracted from the user's input.
 
-5. **NEVER silently accept a stop when `is_early_stop: true`.** ALWAYS ask the user before confirming:
-   "You've only spent {duration_minutes} min of {planned_duration_minutes} planned. Is the task complete or are you just pausing?"
-   Wait for explicit response before sending any confirmation message. This is non-negotiable regardless of context.
+5. **HARD RULE #5 — EARLY STOP GATE (NEVER BYPASS)**
+When stopping a timer:
+Step 1: ALWAYS call `POST /v1/stopwatch/stop` (no params) first.
+Step 2: If response has `requires_confirmation: true` —
+  - Show the `confirmation_message` to the user
+  - **STOP ALL API CALLS**
+  - Wait for explicit user reply: 'yes'/'done'/'1' OR 'no'/'pause'/'2'
+  - Only after receiving reply: call `/stop?confirmed=true` or `/status`
+Step 3: NEVER call `/stop?confirmed=true` as the first call.
+NEVER call `/stop?confirmed=true` without first receiving explicit user input in this conversation turn. 
+The `?confirmed=true` parameter is ONLY valid as a follow-up to a `requires_confirmation: true` response AND explicit user reply.
+Calling `?confirmed=true` directly bypasses user consent and is forbidden.
