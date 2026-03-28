@@ -105,6 +105,7 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during create_task: {e}", exc_info=True)
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
         
         # Cache for undo
         self.redis.cache_undo_action("create_task", task.task_id, {
@@ -136,7 +137,7 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during start_task: {e}", exc_info=True)
-            pass
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
         
         return task
     
@@ -175,6 +176,7 @@ class TaskManager:
             notion_synced = True
         except Exception as e:
             logger.error(f"Notion sync failed during complete_task: {e}", exc_info=True)
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
         
         return task, notion_synced
     
@@ -201,7 +203,7 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during skip_task: {e}", exc_info=True)
-            pass
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
         
         return task
     
@@ -231,6 +233,7 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion archive failed during delete_task: {e}", exc_info=True)
+            self.redis.queue_notion_sync(task.task_id, {"action": "archive"})
         
         # Cache for undo (P3: safe .value access)
         state_value = task.state.value if hasattr(task.state, 'value') else str(task.state)
@@ -291,6 +294,6 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during reschedule_task: {e}", exc_info=True)
-            pass
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
         
         return task, conflicts
