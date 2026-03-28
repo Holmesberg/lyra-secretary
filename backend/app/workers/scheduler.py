@@ -5,6 +5,7 @@ import logging
 
 from app.workers.jobs.reminders import check_upcoming_tasks
 from app.workers.jobs.notion_sync import retry_failed_syncs
+from app.workers.jobs.timer_overflow import check_timer_overflow
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -28,11 +29,22 @@ def start_scheduler():
         name="Retry failed Notion syncs",
         replace_existing=True
     )
+
+    # Timer overflow (check every 2 minutes)
+    scheduler.add_job(
+        check_timer_overflow,
+        trigger=IntervalTrigger(minutes=2),
+        id="timer_overflow",
+        name="Check for overflowing stopwatch sessions",
+        replace_existing=True
+    )
     
     scheduler.start()
     logger.info("APScheduler started")
 
+
 def shutdown_scheduler():
     """Shutdown scheduler gracefully."""
-    scheduler.shutdown()
+    if scheduler.running:
+        scheduler.shutdown()
     logger.info("APScheduler shutdown")

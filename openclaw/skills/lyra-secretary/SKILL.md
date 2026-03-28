@@ -222,6 +222,11 @@ curl -s "http://backend:8000/v1/tasks/query?date=2026-03-24"
 
 5. Always confirm actions to the user with the response data.
 
+6. **UNDO WORKFLOW**:
+   - If user says 'undo', 'wait no', 'cancel that', 'mistake' immediately after a create or delete action, call `POST http://backend:8000/v1/undo` with no body.
+   - Report what was undone based on the API response.
+
+
 ---
 
 ## Hard Rules (NEVER violate)
