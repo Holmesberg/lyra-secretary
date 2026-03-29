@@ -10,17 +10,27 @@ The long-term vision: integrate with **LYRA BCI** (EEG-based cognitive state det
 
 ## Architecture
 
-```
-Telegram → OpenClaw (AI agent) → FastAPI backend → SQLite + Redis → Notion
-```
+At a glance: **Telegram** → **OpenClaw** (AI agent) → **FastAPI** → **TaskManager** → **SQLite**, **Redis**, **Notion**; **APScheduler** runs in-process for reminders, timer overflow, and Notion retry. Details below.
 
-- **Telegram** — user-facing chat interface
-- **OpenClaw** — AI agent that interprets natural language and calls the backend API
-- **FastAPI backend** — stateless REST API handling task CRUD, stopwatch, conflict detection, state machine
-- **SQLite** — persistent task storage with Alembic migrations
-- **Redis** — stopwatch sessions, undo cache, sync queues
-- **Notion** — calendar sync (two-way page create/update)
+## System Design
 
+High-resolution diagrams (dark theme) live in [`docs/diagrams/`](docs/diagrams/); regenerate with `python docs/diagrams/generate_diagrams.py` after installing `matplotlib`.
+
+### System architecture
+
+![System architecture: layers and data flow](docs/diagrams/architecture.png)
+
+### Task state machine
+
+States and transitions match `StateMachine.TRANSITIONS` in [`backend/app/services/state_machine.py`](backend/app/services/state_machine.py); methods are on `TaskManager` (see [`backend/app/services/task_manager.py`](backend/app/services/task_manager.py)).
+
+![Task state machine](docs/diagrams/state-machine.png)
+
+### Task lifecycle (data flow)
+
+Create → `POST /v1/create` → start stopwatch → `POST /v1/stopwatch/start` → stop → `POST /v1/stopwatch/stop` → Notion `sync_task()` on success paths. Routes are mounted in [`backend/app/api/v1/router.py`](backend/app/api/v1/router.py).
+
+![Task lifecycle sequence](docs/diagrams/data-flow.png)
 ## Tech Stack
 
 | Layer       | Technology                          |
