@@ -1,0 +1,247 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.3.13",
+    "lastTouchedAt": "2026-03-26T03:55:33.905Z"
+  },
+  "wizard": {
+    "lastRunAt": "2026-03-26T03:55:06.385Z",
+    "lastRunVersion": "2026.3.13",
+    "lastRunCommand": "onboard",
+    "lastRunMode": "local"
+  },
+  "browser": {
+    "enabled": true,
+    "defaultProfile": "chrome",
+    "profiles": {
+      "chrome": {
+        "cdpPort": 18792,
+        "driver": "openclaw",
+        "color": "#4285F4"
+      }
+    }
+  },
+  "auth": {
+    "profiles": {
+      "openrouter:default": {
+        "provider": "openrouter",
+        "mode": "api_key"
+      },
+      "anthropic:default": {
+        "provider": "anthropic",
+        "mode": "api_key"
+      },
+      "google:default": {
+        "provider": "google",
+        "mode": "api_key"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "ollama/qwen3:8b"
+      },
+      "models": {
+        "openrouter/auto": {
+          "alias": "OpenRouter"
+        },
+        "openrouter/mistralai/mistral-7b-instruct:free": {
+          "params": {
+            "reasoning": null
+          }
+        },
+        "anthropic/claude-sonnet-4-5": {
+          "alias": "sonnet"
+        },
+        "openrouter/meta-llama/llama-3.3-70b-instruct": {
+          "alias": "llama"
+        },
+        "openrouter/z-ai/glm-4.5-air:free": {
+          "alias": "glm"
+        },
+        "google/gemini-2.5-flash": {
+          "alias": "gemini"
+        },
+        "ollama/qwen3:8b": {
+          "alias": "qwen"
+        }
+      },
+      "workspace": "/home/node/.openclaw/workspace",
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      },
+      "sandbox": {
+        "mode": "off",
+        "scope": "agent",
+        "docker": {
+          "network": "none"
+        }
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "subagents": {
+          "allowAgents": [
+            "lyra-reflector",
+            "lyra-islam"
+          ]
+        }
+      },
+      {
+        "id": "lyra-reflector",
+        "name": "Lyra Reflector",
+        "workspace": "/home/node/.openclaw/workspace/lyra-reflector",
+        "agentDir": "/home/node/.openclaw/agents/lyra-reflector",
+        "model": {
+          "primary": "openrouter/z-ai/glm-4.5-air:free",
+          "fallbacks": [
+            "openrouter/meta-llama/llama-3.3-70b-instruct",
+            "anthropic/claude-sonnet-4-5"
+          ]
+        }
+      },
+      {
+        "id": "lyra-islam",
+        "name": "Lyra Islam",
+        "workspace": "/home/node/.openclaw/workspace/lyra-islam",
+        "agentDir": "/home/node/.openclaw/agents/lyra-islam",
+        "model": {
+          "primary": "openrouter/z-ai/glm-4.5-air:free",
+          "fallbacks": [
+            "openrouter/meta-llama/llama-3.3-70b-instruct",
+            "anthropic/claude-sonnet-4-5"
+          ]
+        }
+      }
+    ]
+  },
+  "tools": {
+    "profile": "coding",
+    "web": {
+      "search": {
+        "provider": "perplexity"
+      }
+    },
+    "sessions": {
+      "visibility": "all"
+    },
+    "agentToAgent": {
+      "enabled": true
+    },
+    "sandbox": {
+      "tools": {
+        "allow": [
+          "exec",
+          "read",
+          "write",
+          "edit",
+          "apply_patch"
+        ]
+      }
+    }
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "session-memory": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "dmPolicy": "pairing",
+      "botToken": "8394670721:AAGeYRs-Z-Nx5Gh-wTnU6K4tDCCfS9XmW3M",
+      "allowFrom": [
+        "6801299573"
+      ],
+      "groupPolicy": "allowlist",
+      "streaming": "partial"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "lan",
+    "controlUi": {
+      "allowedOrigins": [
+        "http://127.0.0.1:18789",
+        "http://localhost:18789",
+        "*"
+      ]
+    },
+    "auth": {
+      "mode": "token",
+      "token": "191c472610f9c2d176c7becc4564af6a509c7ea50e70b0892b0ab72867524ebd"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    },
+    "nodes": {
+      "denyCommands": [
+        "camera.snap",
+        "camera.clip",
+        "screen.record",
+        "calendar.add",
+        "contacts.add",
+        "reminders.add"
+      ]
+    }
+  },
+  "skills": {
+    "install": {
+      "nodeManager": "npm"
+    }
+  },
+  "plugins": {
+    "allow": [
+      "memory-core",
+      "llm-task",
+      "telegram"
+    ]
+  },
+  "models": {
+    "providers": {
+      "ollama": {
+        "apiKey": "ollama-local",
+        "baseUrl": "http://host.docker.internal:11434",
+        "models": [
+          {
+            "id": "qwen3:8b",
+            "name": "Qwen3 8B"
+          },
+          {
+            "id": "qwen3:14b",
+            "name": "Qwen3 14B"
+          },
+          {
+            "id": "qwen3:30b",
+            "name": "Qwen3 30B"
+          }
+        ]
+      }
+    }
+  }
+}

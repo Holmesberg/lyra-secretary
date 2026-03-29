@@ -129,26 +129,52 @@ All endpoints are under `/v1/`.
 | POST   | `/v1/stop`     | Stop active stopwatch                    |
 | GET    | `/v1/status`   | Get stopwatch status                     |
 | GET    | `/v1/health`   | Health check                             |
+| GET    | `/v1/tasks/{task_id}` | Fetch single task with full detail |
+| POST   | `/v1/undo` | Undo last create or delete (30s window) |
+| POST   | `/v1/notifications/push` | Push notification to queue |
+| GET    | `/v1/notifications/pending` | Poll and drain notification queue |
 
 Full request/response schemas are documented in [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md) and in Swagger UI at `/docs`.
 
 ## Current Status
 
-- ✅ Parse natural language → structured task data
-- ✅ Create / reschedule / delete tasks
-- ✅ Query endpoint (search tasks by timeframe, category, state)
-- ✅ Undo support (30-second TTL via Redis)
-- ✅ Stopwatch with planned vs. actual duration delta
-- ✅ Notion calendar sync (create + update pages)
-- ✅ Conflict detection
-- ✅ State machine (planned → executing → executed/skipped/deleted)
+**Core pipeline**
+- ✅ Natural language parsing → structured task data
+- ✅ Create / reschedule / delete tasks with conflict detection
+- ✅ State machine: `PLANNED → EXECUTING → EXECUTED / SKIPPED / DELETED`
+- ✅ Immutable history — executed tasks are permanent records
+- ✅ 30-second undo window (`POST /v1/undo`)
+
+**Stopwatch**
+- ✅ Planned vs. actual duration tracking (delta)
+- ✅ Early-stop gate — backend requires explicit confirmation if stopped before 50% of planned duration
+- ✅ Future task warning — warns before starting timer for a task not yet scheduled
+- ✅ Redis desync recovery — auto-restores active session from SQLite on restart
+
+**API**
+- ✅ `GET /v1/tasks/{task_id}` — single task fetch with full detail
+- ✅ `GET /v1/tasks/query` — query by date, category, state
+- ✅ `POST /v1/undo` — 30-second undo window via Redis TTL
+- ✅ `POST /v1/notifications/push` + `GET /v1/notifications/pending` — notification queue
+
+**Background workers (APScheduler)**
+- ✅ Pre-task reminders — 15-minute warning, polls every 1 minute
+- ✅ Timer overflow notification — alerts when session exceeds planned duration + 5 min
+- ✅ Notion sync retry queue — failed syncs retried every 5 minutes
+
+**Integrations**
+- ✅ Notion calendar sync — create, update, archive pages
 - ✅ OpenClaw integration via Docker network bridge
-- ✅ Stopwatch Redis desync recovery (auto-restores from SQLite on restart)
-- ✅ 30-second undo window (POST /v1/undo — reverts create and delete)
-- ✅ APScheduler background workers (reminders, Notion retry, timer overflow)
-- ✅ Notion sync retry queue (failed syncs queued in Redis, retried every 5 min)
-- ✅ Pre-task reminders (15-minute warning via OpenClaw notify)
-- ✅ Timer overflow notification (alerts)
+- ✅ Idempotency keys — deduplication via Redis (30s TTL)
+- ✅ Notification polling — backend pushes, OpenClaw polls every 30s
+
+**Agent behavior (SKILL.md)**
+- ✅ Hard Rule #1 — never auto-force conflicts
+- ✅ Hard Rule #2 — bulk delete requires confirmation
+- ✅ Hard Rule #3 — never use generic task names
+- ✅ Hard Rule #4 — always report times from API response
+- ✅ Hard Rule #5 — early-stop gate enforced at backend + skill level
+- ✅ Hard Rule #6 — verify task state via backend before any mutation
 
 ## Roadmap
 

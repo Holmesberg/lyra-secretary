@@ -14,6 +14,10 @@ Use the `exec` tool with `curl` to call these endpoints.
 
 Base URL: `http://backend:8000/v1`
 
+> **Note**: The backend scheduler sends notifications to OpenClaw at `POST http://openclaw-gateway:18789/api/notify`.
+> This endpoint must be enabled in `openclaw.json` under `agents.webhooks` or `gateway.hooks` configuration.
+> If not available, notifications log to backend only.
+
 ### 1. Parse Intent (stateless, fallback only)
 
 Parses natural language into structured task data. Does NOT create anything.
@@ -234,6 +238,11 @@ curl -s http://backend:8000/v1/tasks/<uuid>
 6. **UNDO WORKFLOW**:
    - If user says 'undo', 'wait no', 'cancel that', 'mistake' immediately after a create or delete action, call `POST http://backend:8000/v1/undo` with no body.
    - Report what was undone based on the API response.
+
+7. **PROACTIVE NOTIFICATIONS**:
+   - Every 30 seconds, poll `GET http://backend:8000/v1/notifications/pending`
+   - If count > 0, send each notification message to the user via Telegram.
+   - Clear after sending (already handled by the endpoint).
 
 
 ---
