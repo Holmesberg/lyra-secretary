@@ -186,6 +186,15 @@ curl -s "http://backend:8000/v1/tasks/query?date=2026-03-24"
 
 ---
 
+### 9. Get Single Task
+```bash
+curl -s http://backend:8000/v1/tasks/<uuid>
+```
+
+**Response:** full task detail including state, category, times, delta.
+
+---
+
 ## Workflow
 
 > **CRITICAL: Timezone Rule**
@@ -257,3 +266,10 @@ Step 3: NEVER call `/stop?confirmed=true` as the first call.
 NEVER call `/stop?confirmed=true` without first receiving explicit user input in this conversation turn. 
 The `?confirmed=true` parameter is ONLY valid as a follow-up to a `requires_confirmation: true` response AND explicit user reply.
 Calling `?confirmed=true` directly bypasses user consent and is forbidden.
+
+6. **HARD RULE #6 — VERIFY BEFORE ACTING.**
+Before starting a timer, deleting, or rescheduling any task referenced by name or from memory:
+1. Call `GET /v1/tasks/query` to find the task_id
+2. Call `GET /v1/tasks/{task_id}` to verify current state
+3. Only then proceed with the action
+NEVER use a task_id from conversation memory without verifying it still exists and is in the expected state.
