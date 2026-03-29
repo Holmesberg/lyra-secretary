@@ -12,9 +12,9 @@ class StateMachine:
     TRANSITIONS = {
         TaskState.PLANNED: {
             TaskState.EXECUTING,
-            TaskState.EXECUTED,
             TaskState.SKIPPED,
-            TaskState.DELETED
+            TaskState.DELETED,
+            # EXECUTED only from EXECUTING (e.g. StopwatchManager.stop → complete_task)
         },
         TaskState.EXECUTING: {
             TaskState.EXECUTED
