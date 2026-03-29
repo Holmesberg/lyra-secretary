@@ -1,5 +1,9 @@
 # Lyra Secretary v1.1
 
+[![CI](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml/badge.svg)](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Repository](https://img.shields.io/badge/GitHub-lyra--secretary-181717?logo=github)](https://github.com/Holmesberg/lyra-secretary)
+
 > Adaptive scheduling backend for a personal cognitive operating system
 
 ## What Is This?
@@ -14,7 +18,7 @@ At a glance: **Telegram** → **OpenClaw** (AI agent) → **FastAPI** → **Task
 
 ## System Design
 
-High-resolution diagrams (dark theme) live in [`docs/diagrams/`](docs/diagrams/); regenerate with `python docs/diagrams/generate_diagrams.py` after installing `matplotlib`.
+High-resolution diagrams (dark theme) live in [`docs/diagrams/`](docs/diagrams/); regenerate with `python docs/diagrams/generate_diagrams.py` after installing `matplotlib`. Index: [`docs/README.md`](docs/README.md).
 
 ### System architecture
 
@@ -31,6 +35,7 @@ States and transitions match `StateMachine.TRANSITIONS` in [`backend/app/service
 Create → `POST /v1/create` → start stopwatch → `POST /v1/stopwatch/start` → stop → `POST /v1/stopwatch/stop` → Notion `sync_task()` on success paths. Routes are mounted in [`backend/app/api/v1/router.py`](backend/app/api/v1/router.py).
 
 ![Task lifecycle sequence](docs/diagrams/data-flow.png)
+
 ## Tech Stack
 
 | Layer       | Technology                          |
@@ -127,22 +132,23 @@ OpenClaw runs as a **separate Docker stack**. To connect it to the Lyra backend:
 
 ## API Endpoints
 
-All endpoints are under `/v1/`.
+All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopwatch` (see [`backend/app/api/v1/router.py`](backend/app/api/v1/router.py)).
 
-| Method | Endpoint       | Description                              |
-|--------|----------------|------------------------------------------|
-| POST   | `/v1/parse`    | Parse natural language → structured task |
-| POST   | `/v1/create`   | Create a task                            |
-| POST   | `/v1/reschedule` | Reschedule an existing task            |
-| POST   | `/v1/delete`   | Soft-delete a task                       |
-| POST   | `/v1/start`    | Start stopwatch for a task               |
-| POST   | `/v1/stop`     | Stop active stopwatch                    |
-| GET    | `/v1/status`   | Get stopwatch status                     |
-| GET    | `/v1/health`   | Health check                             |
-| GET    | `/v1/tasks/{task_id}` | Fetch single task with full detail |
-| POST   | `/v1/undo` | Undo last create or delete (30s window) |
-| POST   | `/v1/notifications/push` | Push notification to queue |
-| GET    | `/v1/notifications/pending` | Poll and drain notification queue |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/parse` | Parse natural language → structured task |
+| POST | `/v1/create` | Create a task |
+| POST | `/v1/reschedule` | Reschedule an existing task |
+| POST | `/v1/delete` | Soft-delete a task |
+| POST | `/v1/stopwatch/start` | Start stopwatch for a task (or ad-hoc title) |
+| POST | `/v1/stopwatch/stop` | Stop active stopwatch (`?confirmed=true` if early stop) |
+| GET | `/v1/stopwatch/status` | Get stopwatch status |
+| GET | `/v1/health` | Health check |
+| GET | `/v1/tasks/query` | Query tasks by date, category, state |
+| GET | `/v1/tasks/{task_id}` | Fetch single task with full detail |
+| POST | `/v1/undo` | Undo last create or delete (30s window) |
+| POST | `/v1/notifications/push` | Push notification to queue |
+| GET | `/v1/notifications/pending` | Poll and drain notification queue |
 
 Full request/response schemas are documented in [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md) and in Swagger UI at `/docs`.
 
@@ -192,6 +198,10 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - [ ] BCI cognitive session logging (EEG state during tasks)
 - [ ] Weekly/monthly analytics and pattern reports
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-MIT
+This project is licensed under the [MIT License](LICENSE).

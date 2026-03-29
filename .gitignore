@@ -47,3 +47,8 @@ data/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# OS / logs
+.DS_Store
+Thumbs.db
+*.log
