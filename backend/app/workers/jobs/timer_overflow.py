@@ -45,19 +45,17 @@ def check_timer_overflow():
                 )
                 
                 try:
-                    # Notify OpenClaw
-                    response = httpx.post(
-                        "http://openclaw-gateway:18789/api/notify",
-                        json={"message": message},
+                    import httpx, json
+                    # Notify OpenClaw via backend queue
+                    httpx.post(
+                        "http://localhost:8000/v1/notifications/push", 
+                        json={"type": "timer_overflow", "message": message},
                         timeout=5.0
                     )
-                    response.raise_for_status()
-                    logger.info(f"Sent overflow notification for session {session.session_id}")
+                    logger.info(f"Queued overflow notification for session {session.session_id} via backend queue")
                     
                 except Exception as e:
-                    logger.warning(f"Failed to send overflow notification (OpenClaw): {e}")
-                    # Log if OpenClaw notify unavailable per user instructions
-                    logger.info(f"Logged Overflow: {message}")
+                    logger.error(f"Failed to queue overflow notification: {e}")
                 
                 # Always mark as notified to avoid spamming every 2 minutes
                 redis.client.setex(notified_key, 86400, "1")  # 24hr TTL
