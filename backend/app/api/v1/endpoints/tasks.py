@@ -13,11 +13,13 @@ from app.schemas.task import (
     TaskRescheduleResponse,
     TaskDeleteRequest,
     TaskDeleteResponse,
+    TaskDetail,
     ConflictInfo,
 )
 from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
 from app.core.exceptions import ImmutableTaskError
+from app.db.models import Task
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -170,3 +172,34 @@ async def delete_task(
     except Exception as e:
         logger.error(f"Delete error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tasks/{task_id}", response_model=TaskDetail)
+async def get_task(
+    task_id: str,
+    db: Session = Depends(get_db)
+) -> TaskDetail:
+    """Fetch a single task by ID."""
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return TaskDetail(
+        task_id=task.task_id,
+        title=task.title,
+        category=task.category,
+        planned_start=task.planned_start_utc,
+        planned_end=task.planned_end_utc,
+        planned_duration_minutes=task.planned_duration_minutes,
+        executed_start=task.executed_start_utc,
+        executed_end=task.executed_end_utc,
+        executed_duration_minutes=task.executed_duration_minutes,
+        state=task.state,
+        source=task.source,
+        confidence_score=task.confidence_score,
+        notes=task.notes,
+        created_at=task.created_at,
+        last_modified_at=task.last_modified_at,
+        duration_delta_minutes=task.duration_delta_minutes,
+        is_mutable=task.is_mutable
+    )
+
