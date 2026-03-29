@@ -34,7 +34,13 @@ States and transitions match `StateMachine.TRANSITIONS` in [`backend/app/service
 
 Create → `POST /v1/create` → start stopwatch → `POST /v1/stopwatch/start` → stop → `POST /v1/stopwatch/stop` → Notion `sync_task()` on success paths. Routes are mounted in [`backend/app/api/v1/router.py`](backend/app/api/v1/router.py).
 
-![Task lifecycle sequence](docs/diagrams/data-flow.png)
+![Task lifecycle sequence — main path (≤15 steps)](docs/diagrams/data-flow.png)
+
+### Undo path (optional)
+
+`POST /v1/undo` within the 30s window — separate sequence from the main lifecycle.
+
+![Undo sequence](docs/diagrams/data-flow-undo.png)
 
 ## Tech Stack
 

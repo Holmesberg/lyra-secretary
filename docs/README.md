@@ -8,7 +8,8 @@ This folder holds **system design assets** for [Lyra Secretary](https://github.c
 |------|-------------|
 | [`architecture.png`](diagrams/architecture.png) | End-to-end components, layers, and data flow (Telegram, OpenClaw, FastAPI, TaskManager, SQLite, Redis, APScheduler, Notion). |
 | [`state-machine.png`](diagrams/state-machine.png) | Task states and valid transitions (`StateMachine` / `TaskManager`). |
-| [`data-flow.png`](diagrams/data-flow.png) | Sequence: create → start → stop (Redis SET / GET / DEL) → optional **undo**; six actors. |
+| [`data-flow.png`](diagrams/data-flow.png) | Main lifecycle (≤15 steps): create → start → stop; six actors. |
+| [`data-flow-undo.png`](diagrams/data-flow-undo.png) | `POST /v1/undo` path (30s window), separate from main diagram. |
 
 PNGs use a shared dark theme and **280 DPI** export. To regenerate after changing layout or colors:
 
