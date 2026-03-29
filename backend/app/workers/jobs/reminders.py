@@ -34,24 +34,18 @@ def check_upcoming_tasks():
                 continue
                 
             try:
-                # Notify OpenClaw
-                # Calculate exactly how many minutes are left
+                import httpx, json
+                # Notify OpenClaw via backend queue
                 minutes_left = max(0, int((task.planned_start_utc - now).total_seconds() / 60))
-                message = f"⏰ Reminder: '{task.title}' starts in {minutes_left} minutes!"
-                
-                # Using httpx synchronously as the job is a normal function
-                response = httpx.post(
-                    "http://openclaw-gateway:18789/api/notify",
-                    json={"message": message},
+                httpx.post(
+                    "http://localhost:8000/v1/notifications/push", 
+                    json={"type": "reminder", "message": f"⏰ {task.title} starts in {minutes_left} minutes"},
                     timeout=5.0
                 )
-                response.raise_for_status()
-                logger.info(f"Sent reminder for task {task.task_id} via OpenClaw")
+                logger.info(f"Queued reminder for task {task.task_id} via backend queue")
                 
             except Exception as e:
-                logger.warning(f"Failed to send reminder via OpenClaw (endpoint might not exist yet): {e}")
-                # TODO: OpenClaw notification endpoint may not exist yet
-                logger.info(f"Logged Reminder: {task.title} starts soon.")
+                logger.error(f"Failed to queue reminder notification: {e}")
             
             # Always mark as notified to avoid spamming every minute
             redis.client.setex(notified_key, 7200, "1")
