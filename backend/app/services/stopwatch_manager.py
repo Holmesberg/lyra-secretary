@@ -70,7 +70,8 @@ class StopwatchManager:
         self,
         task_id: Optional[str] = None,
         title: Optional[str] = None,
-        user_id: str = "user_primary"
+        user_id: str = "user_primary",
+        pre_task_readiness: Optional[int] = None,
     ) -> tuple[StopwatchSession, Task, bool]:
         """
         Start stopwatch.
@@ -116,16 +117,27 @@ class StopwatchManager:
                 is_future_task = True
         
         # Create stopwatch session (transaction safety)
+        actual_start = now_utc()
         session = StopwatchSession(
             task_id=task.task_id,
-            start_time_utc=now_utc(),
+            start_time_utc=actual_start,
             auto_closed=False
         )
         self.db.add(session)
         self.db.flush()
+
+        # Discrepancy measurement fields
+        task.pre_task_readiness = pre_task_readiness
+        task.initiation_status = "initiated"
+        if task.planned_start_utc:
+            delay = int((actual_start - task.planned_start_utc).total_seconds() / 60)
+            task.initiation_delay_minutes = delay
+        self.db.add(task)
+
         self.db.commit()
         self.db.refresh(session)
-        
+        self.db.refresh(task)
+
         # Store in Redis
         self.redis.set_active_stopwatch(
             user_id=user_id,
@@ -134,17 +146,22 @@ class StopwatchManager:
             title=task.title,
             start_time=session.start_time_utc.isoformat()
         )
-        
+
         return session, task, is_future_task
     
     def stop(
         self,
-        user_id: str = "user_primary"
+        user_id: str = "user_primary",
+        post_task_reflection: Optional[int] = None,
     ) -> tuple[StopwatchSession, Task, bool, bool]:
         """
         Stop active stopwatch.
-        
+
         Returns (session, task, is_early_stop, notion_synced).
+
+        If no active stopwatch but post_task_reflection is provided, updates
+        the most recently completed task (within 10 min) with the reflection score.
+        This supports the two-call pattern: stop → ask reflection → stop again.
         """
         # Get active stopwatch from Redis
         active = self.redis.get_active_stopwatch(user_id)
@@ -152,6 +169,33 @@ class StopwatchManager:
             recovered = self._recover_from_db(user_id)
             if recovered:
                 active = recovered
+            elif post_task_reflection is not None:
+                # Reflection-only update: find the most recently completed task
+                from datetime import timedelta
+                cutoff = now_utc() - timedelta(minutes=10)
+                task = (
+                    self.db.query(Task)
+                    .filter(
+                        Task.state == TaskState.EXECUTED,
+                        Task.executed_end_utc >= cutoff
+                    )
+                    .order_by(Task.executed_end_utc.desc())
+                    .first()
+                )
+                if task:
+                    task.post_task_reflection = post_task_reflection
+                    self.db.commit()
+                    self.db.refresh(task)
+                    session = (
+                        self.db.query(StopwatchSession)
+                        .filter(StopwatchSession.task_id == task.task_id)
+                        .order_by(StopwatchSession.end_time_utc.desc())
+                        .first()
+                    )
+                    return session, task, False, True
+                raise NoActiveStopwatchError(
+                    "No active stopwatch and no recent task to update reflection"
+                )
             else:
                 raise NoActiveStopwatchError("No active stopwatch")
         
@@ -190,10 +234,16 @@ class StopwatchManager:
             executed_start=session.start_time_utc,
             executed_end=stop_time
         )
-        
+
+        # Save reflection if provided in the same call
+        if post_task_reflection is not None:
+            task.post_task_reflection = post_task_reflection
+            self.db.commit()
+            self.db.refresh(task)
+
         # Clear Redis
         self.redis.clear_active_stopwatch(user_id)
-        
+
         return session, task, is_early_stop, notion_synced
     
     def get_status(

@@ -101,6 +101,12 @@ class Task(Base):
         onupdate=datetime.utcnow
     )
     
+    # Discrepancy measurement (research instrument — do not remove)
+    pre_task_readiness: Mapped[Optional[int]] = mapped_column(Integer)
+    post_task_reflection: Mapped[Optional[int]] = mapped_column(Integer)
+    initiation_status: Mapped[str] = mapped_column(String(20), default="not_started")
+    initiation_delay_minutes: Mapped[Optional[int]] = mapped_column(Integer)
+
     # Notion sync
     notion_page_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
     
@@ -140,15 +146,22 @@ class Task(Base):
     def duration_delta_minutes(self) -> Optional[int]:
         """
         Planned - Executed duration.
-        
+
         Positive = finished early
         Negative = took longer than planned
-        
+
         This is the core data for adaptive scheduling.
         """
         if self.executed_duration_minutes is None:
             return None
         return self.planned_duration_minutes - self.executed_duration_minutes
+
+    @property
+    def discrepancy_score(self) -> Optional[int]:
+        """Absolute difference between pre and post readiness ratings."""
+        if self.pre_task_readiness is None or self.post_task_reflection is None:
+            return None
+        return abs(self.pre_task_readiness - self.post_task_reflection)
 
 
 class StopwatchSession(Base):

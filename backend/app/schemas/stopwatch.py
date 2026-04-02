@@ -14,6 +14,22 @@ class StopwatchStartRequest(BaseModel):
         None,
         description="Required if task_id is None"
     )
+    pre_task_readiness: Optional[int] = Field(
+        None,
+        ge=1,
+        le=5,
+        description="Self-rated readiness before task (1=exhausted, 5=very sharp)"
+    )
+
+
+class StopwatchStopRequest(BaseModel):
+    """Request to stop stopwatch."""
+    post_task_reflection: Optional[int] = Field(
+        None,
+        ge=1,
+        le=5,
+        description="Self-rated focus quality after task (1=very poor, 5=excellent)"
+    )
 
 
 class StopwatchStartResponse(BaseModel):
@@ -23,6 +39,8 @@ class StopwatchStartResponse(BaseModel):
     start_time: datetime
     is_future_task: bool = False
     planned_start: Optional[datetime] = None
+    pre_task_readiness: Optional[int] = None
+    initiation_delay_minutes: Optional[int] = None
 
 
 class StopwatchStopResponse(BaseModel):
@@ -37,6 +55,8 @@ class StopwatchStopResponse(BaseModel):
     notion_synced: bool = True
     requires_confirmation: bool = False
     confirmation_message: Optional[str] = None
+    post_task_reflection: Optional[int] = None
+    discrepancy_score: Optional[int] = None
 
 
 class StopwatchStatusResponse(BaseModel):

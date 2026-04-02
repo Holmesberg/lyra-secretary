@@ -124,7 +124,7 @@ Starts a live timer. Links to an existing task, or creates an unplanned one if o
 ```bash
 curl -s -X POST http://backend:8000/v1/stopwatch/start \
   -H "Content-Type: application/json" \
-  -d '{"task_id": "<uuid>"}'
+  -d '{"task_id": "<uuid>", "pre_task_readiness": 4}'
 ```
 
 Or for an unplanned task:
@@ -132,35 +132,62 @@ Or for an unplanned task:
 ```bash
 curl -s -X POST http://backend:8000/v1/stopwatch/start \
   -H "Content-Type: application/json" \
-  -d '{"title": "Quick errand"}'
+  -d '{"title": "Quick errand", "pre_task_readiness": 3}'
 ```
 
 **Request body:**
 
-| Field     | Type   | Required | Notes                          |
-|-----------|--------|----------|--------------------------------|
-| `task_id` | string | no       | 36-char UUID of existing task  |
-| `title`   | string | no       | Required if task_id is omitted |
+| Field                | Type    | Required | Notes                                          |
+|----------------------|---------|----------|------------------------------------------------|
+| `task_id`            | string  | no       | 36-char UUID of existing task                  |
+| `title`              | string  | no       | Required if task_id is omitted                 |
+| `pre_task_readiness` | integer | no       | 1–5 self-rated sharpness before task starts    |
 
-**Response:** `{ session_id, task_id, start_time }`
+**Response:** `{ session_id, task_id, start_time, pre_task_readiness, initiation_delay_minutes }`
 
 ---
 
 ### 6. Stop Stopwatch
 
-Stops the currently active stopwatch. No request body needed.
+Stops the currently active stopwatch. Optional body to pass reflection score.
 
 ```bash
 curl -s -X POST http://backend:8000/v1/stopwatch/stop \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -d '{"post_task_reflection": 3}'
 ```
 
-**Response:** `{ task_id, session_id, duration_minutes, planned_duration_minutes, delta_minutes, executed_at }`
+To update reflection on an already-completed task (within last 10 min):
+
+```bash
+curl -s -X POST http://backend:8000/v1/stopwatch/stop \
+  -H "Content-Type: application/json" \
+  -d '{"post_task_reflection": 2}'
+```
+
+**Request body:**
+
+| Field                  | Type    | Required | Notes                                        |
+|------------------------|---------|----------|----------------------------------------------|
+| `post_task_reflection` | integer | no       | 1–5 self-rated focus quality after task ends |
+
+**Response:** `{ task_id, session_id, duration_minutes, planned_duration_minutes, delta_minutes, executed_at, post_task_reflection, discrepancy_score }`
 
 ---
 
-### 7. Stopwatch Status (read-only)
+### 7. Discrepancy Analytics
+
+```bash
+curl -s http://backend:8000/v1/analytics/discrepancy
+```
+
+**Response:** `{ sessions: [...], summary: { total_sessions, initiated_count, abandoned_count, avg_discrepancy, avg_delta_minutes, avg_initiation_delay_minutes } }`
+
+Each session includes: `task_id, title, date, planned_duration_minutes, executed_duration_minutes, delta_minutes, pre_task_readiness, post_task_reflection, discrepancy_score, initiation_status, initiation_delay_minutes, category, time_of_day, session_index_in_day`
+
+---
+
+### 8. Stopwatch Status (read-only)
 
 ```bash
 curl -s http://backend:8000/v1/stopwatch/status
@@ -170,7 +197,7 @@ curl -s http://backend:8000/v1/stopwatch/status
 
 ---
 
-### 8. Query Tasks
+### 9. Query Tasks
 
 To check what tasks exist before creating, rescheduling, or deleting.
 
@@ -190,7 +217,7 @@ curl -s "http://backend:8000/v1/tasks/query?date=2026-03-24"
 
 ---
 
-### 9. Get Single Task
+### 10. Get Single Task
 ```bash
 curl -s http://backend:8000/v1/tasks/<uuid>
 ```
@@ -215,18 +242,31 @@ curl -s http://backend:8000/v1/tasks/<uuid>
 2. When the user says "start timer for \<task\>":
    - First call **status** (`GET /v1/stopwatch/status`) to check if a stopwatch is already running
    - If `active=true`, tell the user: "A timer is already running for {task_title} ({elapsed_minutes} min). Stop it first."
-   - If `active=false`, call **start** with the task_id or title
+   - If `active=false`:
+     **READINESS CAPTURE (mandatory):**
+     Ask: "Quick check — how sharp are you right now? (1=exhausted, 3=neutral, 5=very sharp)"
+     Wait for user reply. Use the number as `pre_task_readiness`. If user says "skip" or doesn't reply with a number, use `null`. Never skip asking.
+   - Call **start** with the task_id (or title) and `pre_task_readiness`
    - If the response has `is_future_task: true`, **do NOT proceed automatically**. Warn the user:
      "⚠️ This task is scheduled for {planned_start}. It hasn't started yet. Start the timer anyway? (yes/no)"
      Wait for explicit **"yes"** before calling start again. If user says **"no"**, do nothing.
 
 3. When the user says "stop" or "done":
-   - Call **stop** (`POST /v1/stopwatch/stop`, no body needed)
+   - Call **stop** (`POST /v1/stopwatch/stop`, empty body `{}`) first
    - If the response has `requires_confirmation: true`:
      - Show the `confirmation_message` to the user
      - Ask: "Is the task complete? (yes/no)"
-     - If user says **"yes"**: call `POST /v1/stopwatch/stop?confirmed=true` to finalize
+     - If user says **"yes"**:
+       **REFLECTION CAPTURE (mandatory):**
+       Ask: "How was your actual focus? (1=very poor, 3=average, 5=excellent)"
+       Wait for user reply. Use the number as `post_task_reflection`. If user skips, use `null`.
+       Call `POST /v1/stopwatch/stop?confirmed=true` with body `{"post_task_reflection": <value>}`
      - If user says **"no"**: call `GET /v1/stopwatch/status` and report elapsed time — timer is still running
+   - If `requires_confirmation` was false (normal stop), after stop returns:
+     **REFLECTION CAPTURE (mandatory):**
+     Ask: "How was your actual focus? (1=very poor, 3=average, 5=excellent)"
+     Wait for user reply. Call `POST /v1/stopwatch/stop` again with body `{"post_task_reflection": <value>}`.
+     Do NOT confirm task completion to user until reflection is captured.
    - If the response has `notion_synced: false`, add: "Task logged but Notion may not reflect this yet."
 
 4. To check what tasks exist:
