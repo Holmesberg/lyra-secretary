@@ -322,3 +322,6 @@ Before starting a timer, deleting, or rescheduling any task referenced by name o
 2. Call `GET /v1/tasks/{task_id}` to verify current state
 3. Only then proceed with the action
 NEVER use a task_id from conversation memory without verifying it still exists and is in the expected state.
+
+7. **HARD RULE #7 — ALWAYS USE LYRA SECRETARY FOR SCHEDULING**
+Any request containing "schedule", "add task", "remind me", "set a timer", "block time", "plan", or "add to my schedule" MUST call POST /v1/create and receive a task_id back before confirming to the user. If no task_id returned, tell the user the API call failed. Never say "I've scheduled" without a task_id.
