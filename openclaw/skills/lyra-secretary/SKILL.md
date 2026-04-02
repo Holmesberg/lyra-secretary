@@ -325,3 +325,8 @@ NEVER use a task_id from conversation memory without verifying it still exists a
 
 7. **HARD RULE #7 — ALWAYS USE LYRA SECRETARY FOR SCHEDULING**
 Any request containing "schedule", "add task", "remind me", "set a timer", "block time", "plan", or "add to my schedule" MUST call POST /v1/create and receive a task_id back before confirming to the user. If no task_id returned, tell the user the API call failed. Never say "I've scheduled" without a task_id.
+
+8. **HARD RULE #8 — STOPWATCH ALWAYS USES TASK_ID**
+Never call `/v1/stopwatch/start` or `/v1/stopwatch/stop` with a `title` field.
+Always query first via `GET /v1/tasks/query`, extract `task_id` from the response, then call `/v1/stopwatch/start` with `{"task_id": "<uuid>"}`.
+Calling stopwatch endpoints with `title` instead of `task_id` will return 404.

@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 2, 2026 — v1.2 shipped. 20 open, 37 fixed.
+Last updated: April 2, 2026 — v1.2 shipped. 22 open, 37 fixed.
 
 ---
 
-## Open (20 bugs)
+## Open (22 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -28,6 +28,8 @@ Last updated: April 2, 2026 — v1.2 shipped. 20 open, 37 fixed.
 | LYR-052 | 🟡 medium | openclaw | Reminder cron fires during active session → `LiveSessionModelSwitchError` | Isolated cron session clashes with live session's model state; delivery silently dropped. Partially addressed by backend-direct Telegram delivery (no longer OpenClaw-dependent). Needs validation that direct path fires reliably. |
 | LYR-053 | 🟡 medium | openclaw | Exec approval not enabled on Telegram — blocks autonomous skill execution | Every HTTP tool call requires Web UI approval rather than auto-approving on Telegram. Must enable exec approvals for Telegram channel in `openclaw.json` `gateway.nodes` or exec-approvals config. |
 | LYR-054 | 🟢 low | data | `category` null on tasks without explicit category context | Parser not inferring category from task title when user omits it (e.g. "lec 2 AI" → `category: null`). `category_mapping` keyword lookup not applied during task creation via OpenClaw. |
+| LYR-056 | 🟡 medium | parser | Multi-task chaining via "then" keyword not supported | Only first task in a compound request gets created. Second task silently dropped, no error returned. Fix: `TaskParser.parse_chained()` added — splits on "then", chains end→start for tasks without explicit time. `/v1/parse` endpoint updated to return `{ tasks: [...], compound: bool }`. |
+| LYR-057 | 🔴 high | skill | Stopwatch called with `title` instead of `task_id` → 404 | Model calls `/v1/stopwatch/start` with `{"title": "..."}` instead of querying first for `task_id`. Returns 404, timer never starts. Hard Rule #8 added to SKILL.md. Needs validation. |
 
 ---
 
@@ -77,20 +79,22 @@ Last updated: April 2, 2026 — v1.2 shipped. 20 open, 37 fixed.
 
 ## Priority Order for Next Session
 
-1. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
-2. LYR-049 — investigate skill context loss on model switch; consider pinning model or injecting SKILL.md on fallback
-3. LYR-048 — validate Hard Rule #5 fix with Sonnet (GLM bypass confirmed)
-4. LYR-053 — enable exec approvals on Telegram to unblock autonomous skill execution
-5. LYR-043 — validate Hard Rule #6 fixes duplicate task creation
-6. LYR-052 — validate backend-direct Telegram reminders fire reliably; confirm `LiveSessionModelSwitchError` gone
-7. LYR-050 — write and run backfill script for historical `initiation_status` on EXECUTED tasks
-8. LYR-046 — fix category clearing on Notion update
-9. LYR-042 — clear schedule stops active timers first
-10. LYR-035 — fully validate Hard Rule #6 covers memory ID issue
-11. LYR-036 — carry context on follow-up corrections
-12. LYR-054 — apply category_mapping keyword inference at task creation time
-13. LYR-037 — retest false conflict on clean database
-14. LYR-015 + LYR-018 + LYR-020 — backfill sync endpoint, clean test data
-15. LYR-019 — day-of-week label fix
-16. LYR-007 — validate memory constraint fully working
-17. LYR-047 — document as Notion limitation
+1. LYR-057 — validate Hard Rule #8 fix; confirm stopwatch/start no longer called with title
+2. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
+3. LYR-049 — investigate skill context loss on model switch; consider pinning model or injecting SKILL.md on fallback
+4. LYR-048 — validate Hard Rule #5 fix with Sonnet (GLM bypass confirmed)
+5. LYR-053 — enable exec approvals on Telegram to unblock autonomous skill execution
+6. LYR-043 — validate Hard Rule #6 fixes duplicate task creation
+7. LYR-052 — validate backend-direct Telegram reminders fire reliably; confirm `LiveSessionModelSwitchError` gone
+8. LYR-056 — validate "then" chaining in parse_chained(); test compound request end-to-end
+9. LYR-050 — write and run backfill script for historical `initiation_status` on EXECUTED tasks
+10. LYR-046 — fix category clearing on Notion update
+11. LYR-042 — clear schedule stops active timers first
+12. LYR-035 — fully validate Hard Rule #6 covers memory ID issue
+13. LYR-036 — carry context on follow-up corrections
+14. LYR-054 — apply category_mapping keyword inference at task creation time
+15. LYR-037 — retest false conflict on clean database
+16. LYR-015 + LYR-018 + LYR-020 — backfill sync endpoint, clean test data
+17. LYR-019 — day-of-week label fix
+18. LYR-007 — validate memory constraint fully working
+19. LYR-047 — document as Notion limitation

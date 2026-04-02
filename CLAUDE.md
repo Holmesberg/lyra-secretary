@@ -72,7 +72,7 @@ Transitions are enforced by `services/state_machine.py`. Completed/skipped/delet
 | `services/state_machine.py` | Validates and applies state transitions |
 | `services/conflict_detector.py` | Half-open interval `[start, end)` overlap detection |
 | `services/stopwatch_manager.py` | Timer lifecycle; early-stop gate at <50% planned duration |
-| `services/parser.py` | NLP (dateparser) → structured task fields |
+| `services/parser.py` | NLP (dateparser) → structured task fields. `parse_chained(text)` handles "then"-separated compound requests. |
 | `services/notion_client.py` | Notion API sync; failures enqueued in Redis |
 | `workers/scheduler.py` | APScheduler setup wired into FastAPI lifespan |
 
@@ -87,6 +87,10 @@ OpenClaw runs in a separate Docker Compose stack. Connect the two via Docker net
 ## Configuration
 
 Copy `.env.example` to `.env`. Required vars: `DATABASE_URL`, `REDIS_URL`, `NOTION_API_KEY`, `NOTION_DATABASE_ID`, `USER_TIMEZONE` (IANA, e.g. `Africa/Cairo`). `SECRET_KEY` must be ≥ 32 chars. All times are stored as UTC internally; `USER_TIMEZONE` controls display conversion via `utils/time_utils.py`.
+
+## Endpoint deprecations
+
+- `POST /v1/parse` — scheduled for deprecation. LLMs should call `/v1/create` directly with structured fields extracted from user input. Use `/v1/parse` only as a last resort for genuinely ambiguous time expressions (e.g. "later", "this evening"). The endpoint now returns `{ tasks: [...], compound: bool }` and supports "then"-chained compound requests via `TaskParser.parse_chained()`.
 
 ## Known issues
 
