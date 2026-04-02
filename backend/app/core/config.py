@@ -1,4 +1,6 @@
 """Application configuration using Pydantic Settings."""
+from typing import Optional
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -31,6 +33,10 @@ class Settings(BaseSettings):
     # User Context (CRITICAL)
     USER_TIMEZONE: str = "Africa/Cairo"
     USER_ID: str = "user_primary"
+
+    # Telegram (Optional — direct reminder delivery)
+    TELEGRAM_BOT_TOKEN: Optional[str] = Field(None, env="TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID: Optional[str] = Field(None, env="TELEGRAM_CHAT_ID")
     
     class Config:
         env_file = ".env"
