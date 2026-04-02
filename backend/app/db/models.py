@@ -158,10 +158,24 @@ class Task(Base):
 
     @property
     def discrepancy_score(self) -> Optional[int]:
-        """Absolute difference between pre and post readiness ratings."""
+        """Absolute cognitive shift between pre and post task ratings.
+        Formula: abs(pre_task_readiness - post_task_reflection)
+        NOT abs(planned_duration - actual_duration) — that is duration_delta_minutes.
+        """
         if self.pre_task_readiness is None or self.post_task_reflection is None:
             return None
-        return abs(self.pre_task_readiness - self.post_task_reflection)
+        return abs(self.pre_task_readiness - self.post_task_reflection)  # cognitive shift magnitude
+
+    @property
+    def signed_discrepancy(self) -> Optional[int]:
+        """Signed cognitive shift: post_task_reflection - pre_task_readiness.
+        Positive = task was restorative (ended sharper than started)
+        Negative = task was depleting (ended duller than started)
+        Zero = neutral cognitive impact
+        """
+        if self.pre_task_readiness is None or self.post_task_reflection is None:
+            return None
+        return self.post_task_reflection - self.pre_task_readiness
 
 
 class StopwatchSession(Base):
