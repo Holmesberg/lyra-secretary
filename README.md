@@ -1,4 +1,4 @@
-# Lyra Secretary v1.1
+# Lyra Secretary v1.2
 
 [![CI](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml/badge.svg)](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -9,6 +9,8 @@
 ## What Is This?
 
 Lyra Secretary is a FastAPI backend that manages your daily schedule by tracking **planned vs. executed task duration** — the **delta** — to learn behavioral patterns over time. Every task records how long you *said* it would take and how long it *actually* took, building a quantitative profile of your time usage.
+
+As of v1.2, Lyra also captures a **discrepancy measurement layer**: self-rated readiness before each task (`pre_task_readiness`) and focus quality after (`post_task_reflection`), plus `initiation_delay_minutes` and `initiation_status` (initiated / abandoned / not_started). These feed the `GET /v1/analytics/discrepancy` endpoint and are the core instrument for the cognitive research layer.
 
 The long-term vision: integrate with **LYRA BCI** (EEG-based cognitive state detection) to close the loop — the scheduler adapts not just to what you *did*, but to how you *felt* while doing it.
 
@@ -146,8 +148,8 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | POST | `/v1/create` | Create a task |
 | POST | `/v1/reschedule` | Reschedule an existing task |
 | POST | `/v1/delete` | Soft-delete a task |
-| POST | `/v1/stopwatch/start` | Start stopwatch for a task (or ad-hoc title) |
-| POST | `/v1/stopwatch/stop` | Stop active stopwatch (`?confirmed=true` if early stop) |
+| POST | `/v1/stopwatch/start` | Start stopwatch; accepts `pre_task_readiness` (1–5) |
+| POST | `/v1/stopwatch/stop` | Stop stopwatch; accepts `post_task_reflection` (1–5); `?confirmed=true` if early stop |
 | GET | `/v1/stopwatch/status` | Get stopwatch status |
 | GET | `/v1/health` | Health check |
 | GET | `/v1/tasks/query` | Query tasks by date, category, state |
@@ -155,6 +157,7 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | POST | `/v1/undo` | Undo last create or delete (30s window) |
 | POST | `/v1/notifications/push` | Push notification to queue |
 | GET | `/v1/notifications/pending` | Poll and drain notification queue |
+| GET | `/v1/analytics/discrepancy` | Discrepancy measurement data — readiness, reflection, initiation stats |
 
 Full request/response schemas are documented in [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md) and in Swagger UI at `/docs`.
 
@@ -173,16 +176,26 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ Future task warning — warns before starting timer for a task not yet scheduled
 - ✅ Redis desync recovery — auto-restores active session from SQLite on restart
 
+**Discrepancy measurement layer (v1.2)**
+- ✅ `pre_task_readiness` (1–5) — captured at stopwatch start
+- ✅ `post_task_reflection` (1–5) — captured at stopwatch stop; supports two-call reflection pattern
+- ✅ `initiation_delay_minutes` — computed at start: actual minus planned start time
+- ✅ `initiation_status` — `initiated` / `abandoned` / `not_started`; abandoned tasks auto-detected every 30 min
+- ✅ `discrepancy_score` — `abs(pre_task_readiness - post_task_reflection)`
+- ✅ `GET /v1/analytics/discrepancy` — full per-session breakdown with time-of-day, session index, summary stats
+
 **API**
 - ✅ `GET /v1/tasks/{task_id}` — single task fetch with full detail
 - ✅ `GET /v1/tasks/query` — query by date, category, state
 - ✅ `POST /v1/undo` — 30-second undo window via Redis TTL
 - ✅ `POST /v1/notifications/push` + `GET /v1/notifications/pending` — notification queue
+- ✅ `GET /v1/analytics/discrepancy` — discrepancy experiment data
 
 **Background workers (APScheduler)**
 - ✅ Pre-task reminders — 15-minute warning, polls every 1 minute
 - ✅ Timer overflow notification — alerts when session exceeds planned duration + 5 min
 - ✅ Notion sync retry queue — failed syncs retried every 5 minutes
+- ✅ Abandoned task detection — marks unstarted past-due tasks every 30 minutes
 
 **Integrations**
 - ✅ Notion calendar sync — create, update, archive pages
@@ -203,6 +216,7 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - [ ] OpenClaw tool schema (structured tool definitions)
 - [ ] BCI cognitive session logging (EEG state during tasks)
 - [ ] Weekly/monthly analytics and pattern reports
+- [ ] `POST /v1/tasks/{task_id}/sync` — backfill Notion for pre-fix tasks (LYR-015)
 
 ## Contributing
 

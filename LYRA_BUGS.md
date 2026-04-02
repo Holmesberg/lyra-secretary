@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: March 29, 2026 — v1.2 milestone approaching. 11 open, 35 fixed.
+Last updated: April 2, 2026 — v1.2 shipped. 11 open, 36 fixed.
 
 ---
 
@@ -64,6 +64,7 @@ Last updated: March 29, 2026 — v1.2 milestone approaching. 11 open, 35 fixed.
 | LYR-SCHED | 🟡 medium | backend | Missing APScheduler background workers | `scheduler.py` + 4 jobs: reminders (1min), Notion retry (5min), timer overflow (2min). Hooked into FastAPI lifespan. Confirmed firing via logs. |
 | LYR-NOTIF | 🟡 medium | backend | No notification delivery to Telegram | Polling system implemented. Backend pushes to `POST /v1/notifications/push`. OpenClaw polls `GET /v1/notifications/pending` every 30s. Verified queue push/pop working. |
 | LYR-RULE6 | 🟡 medium | skill | No backend verification before mutations | Hard Rule #6 added to SKILL.md: always call query + single fetch before any timer start, delete, or reschedule. |
+| LYR-DISC | 🟡 medium | backend | No cognitive measurement data captured | Discrepancy measurement layer implemented: `pre_task_readiness`, `post_task_reflection`, `initiation_status`, `initiation_delay_minutes` on Task model. `discrepancy_score` property. Abandoned task detection job (30 min). `GET /v1/analytics/discrepancy` endpoint. Readiness/reflection capture workflow added to SKILL.md. Migration 002 applied. |
 
 ---
 
