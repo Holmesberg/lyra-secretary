@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 2, 2026 — v1.2 shipped. 11 open, 36 fixed.
+Last updated: April 2, 2026 — v1.2 shipped. 20 open, 37 fixed.
 
 ---
 
-## Open (11 bugs)
+## Open (20 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -22,6 +22,12 @@ Last updated: April 2, 2026 — v1.2 shipped. 11 open, 36 fixed.
 | LYR-046 | 🟡 medium | notion | Category field null in Notion after task executes | Category present on create but cleared on update sync. Likely conditional in `_build_properties()` skipping category during updates. |
 | LYR-047 | 🟢 low | notion | "Past Due" showing on EXECUTED tasks | Status groups correctly configured (EXECUTED in Complete). Notion platform limitation — no programmatic fix available. Document only. |
 | LYR-048 | 🔴 high | skill | Early-stop gate bypassed — model calls `?confirmed=true` directly | GLM skips `/stop` entirely and calls `/stop?confirmed=true` without user input. Confirmed via logs. Hard Rule #5 strengthened but not yet re-validated. |
+| LYR-049 | 🔴 high | skill | Reschedule used as proxy for stopwatch/start on model switch | Sonnet without SKILL.md context improvises wrong endpoints — uses `/v1/reschedule` instead of `/v1/stopwatch/start`. Happens when model switches mid-session and new model has no skill context. Root cause same as LYR-051. |
+| LYR-050 | 🟡 medium | data | `initiation_status` stuck on `not_started` for historical EXECUTED tasks | Tasks created before discrepancy fields existed completed successfully but never had `initiation_status` set. Backfill script needed: set `initiated` on all EXECUTED tasks where `initiation_status = 'not_started'`. |
+| LYR-051 | 🔴 high | openclaw | Tasks confirmed to user but never POSTed to backend | Lyra says "scheduled" without a `task_id`. Hard Rule #7 added. Root cause: model loses SKILL.md context on rate-limit fallback and improvises confirmation without calling the API. Needs validation after rate-limit recovery. |
+| LYR-052 | 🟡 medium | openclaw | Reminder cron fires during active session → `LiveSessionModelSwitchError` | Isolated cron session clashes with live session's model state; delivery silently dropped. Partially addressed by backend-direct Telegram delivery (no longer OpenClaw-dependent). Needs validation that direct path fires reliably. |
+| LYR-053 | 🟡 medium | openclaw | Exec approval not enabled on Telegram — blocks autonomous skill execution | Every HTTP tool call requires Web UI approval rather than auto-approving on Telegram. Must enable exec approvals for Telegram channel in `openclaw.json` `gateway.nodes` or exec-approvals config. |
+| LYR-054 | 🟢 low | data | `category` null on tasks without explicit category context | Parser not inferring category from task title when user omits it (e.g. "lec 2 AI" → `category: null`). `category_mapping` keyword lookup not applied during task creation via OpenClaw. |
 
 ---
 
@@ -65,19 +71,26 @@ Last updated: April 2, 2026 — v1.2 shipped. 11 open, 36 fixed.
 | LYR-NOTIF | 🟡 medium | backend | No notification delivery to Telegram | Polling system implemented. Backend pushes to `POST /v1/notifications/push`. OpenClaw polls `GET /v1/notifications/pending` every 30s. Verified queue push/pop working. |
 | LYR-RULE6 | 🟡 medium | skill | No backend verification before mutations | Hard Rule #6 added to SKILL.md: always call query + single fetch before any timer start, delete, or reschedule. |
 | LYR-DISC | 🟡 medium | backend | No cognitive measurement data captured | Discrepancy measurement layer implemented: `pre_task_readiness`, `post_task_reflection`, `initiation_status`, `initiation_delay_minutes` on Task model. `discrepancy_score` property. Abandoned task detection job (30 min). `GET /v1/analytics/discrepancy` endpoint. Readiness/reflection capture workflow added to SKILL.md. Migration 002 applied. |
+| LYR-055 | 🟢 low | docker | `version` attribute in docker-compose.yml generates warning | `version: "3.8"` is obsolete in Docker Compose v2+; generates warning on every command. Removed. |
 
 ---
 
 ## Priority Order for Next Session
 
-1. LYR-048 — validate Hard Rule #5 fix with Sonnet (GLM bypass confirmed)
-2. LYR-043 — validate Hard Rule #6 fixes duplicate task creation
-3. LYR-046 — fix category clearing on Notion update
-4. LYR-042 — clear schedule stops active timers first
-5. LYR-035 — fully validate Hard Rule #6 covers memory ID issue
-6. LYR-036 — carry context on follow-up corrections
-7. LYR-037 — retest false conflict on clean database
-8. LYR-015 + LYR-018 + LYR-020 — backfill sync endpoint, clean test data
-9. LYR-019 — day-of-week label fix
-10. LYR-007 — validate memory constraint fully working
-11. LYR-047 — document as Notion limitation
+1. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
+2. LYR-049 — investigate skill context loss on model switch; consider pinning model or injecting SKILL.md on fallback
+3. LYR-048 — validate Hard Rule #5 fix with Sonnet (GLM bypass confirmed)
+4. LYR-053 — enable exec approvals on Telegram to unblock autonomous skill execution
+5. LYR-043 — validate Hard Rule #6 fixes duplicate task creation
+6. LYR-052 — validate backend-direct Telegram reminders fire reliably; confirm `LiveSessionModelSwitchError` gone
+7. LYR-050 — write and run backfill script for historical `initiation_status` on EXECUTED tasks
+8. LYR-046 — fix category clearing on Notion update
+9. LYR-042 — clear schedule stops active timers first
+10. LYR-035 — fully validate Hard Rule #6 covers memory ID issue
+11. LYR-036 — carry context on follow-up corrections
+12. LYR-054 — apply category_mapping keyword inference at task creation time
+13. LYR-037 — retest false conflict on clean database
+14. LYR-015 + LYR-018 + LYR-020 — backfill sync endpoint, clean test data
+15. LYR-019 — day-of-week label fix
+16. LYR-007 — validate memory constraint fully working
+17. LYR-047 — document as Notion limitation
