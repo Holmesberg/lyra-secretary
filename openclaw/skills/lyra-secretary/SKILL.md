@@ -268,6 +268,11 @@ curl -s http://backend:8000/v1/tasks/<uuid>
      Wait for user reply. Call `POST /v1/stopwatch/stop` again with body `{"post_task_reflection": <value>}`.
      Do NOT confirm task completion to user until reflection is captured.
    - If the response has `notion_synced: false`, add: "Task logged but Notion may not reflect this yet."
+   - **BEHAVIORAL INSIGHT (after reflection is captured):**
+     Call `GET http://backend:8000/v1/analytics/insights?auto_mark=true`
+     If `ready: true` and `insights` list is non-empty, share the first insight's `observation` to the user in one sentence — no preamble.
+     If `ready: false`, say nothing.
+     The `auto_mark=true` param suppresses insights already shown in the last 24 hours — no repeat nagging.
 
 4. To check what tasks exist:
    - Call **query** (`GET /v1/tasks/query?date=YYYY-MM-DD`)
