@@ -75,6 +75,59 @@ class TaskParser:
             ambiguities=ambiguities
         )
     
+    def parse_chained(self, text: str) -> list[TaskParseResponse]:
+        """
+        Parse a compound request containing multiple tasks separated by "then".
+
+        Each segment after the first inherits the end time of the previous task
+        as its start time when no explicit start is given.
+
+        Returns a list of TaskParseResponse objects in order.
+        Single-task inputs return a one-element list.
+        """
+        segments = [s.strip() for s in re.split(r'\s+then\s+', text, flags=re.IGNORECASE) if s.strip()]
+        if len(segments) == 1:
+            return [self.parse(text)]
+
+        results = []
+        prev_end: Optional[datetime] = None
+
+        for segment in segments:
+            title, remaining = self._extract_title(segment)
+            start, end, duration_minutes, time_confidence = self._extract_time(remaining or segment)
+            if start is None:
+                start, end, duration_minutes, time_confidence = self._extract_time(segment)
+
+            # Chain: if no explicit start time, pick up where the previous task ended
+            if start is None and prev_end is not None:
+                start = prev_end
+                if duration_minutes:
+                    end = start + timedelta(minutes=duration_minutes)
+
+            ambiguities = []
+            if start and end is None and duration_minutes is None:
+                ambiguities.append("duration_missing")
+
+            if start and end is None and duration_minutes:
+                end = start + timedelta(minutes=duration_minutes)
+
+            category = self._infer_category(title or "")
+            confidence = self._calculate_confidence(title, start, end, duration_minutes, time_confidence)
+            start_raw = start if start else datetime.now()
+
+            results.append(TaskParseResponse(
+                title=title or "Untitled Task",
+                start=start_raw,
+                end=end,
+                duration_minutes=duration_minutes,
+                category=category,
+                confidence=confidence,
+                ambiguities=ambiguities,
+            ))
+            prev_end = end  # carry forward for next segment
+
+        return results
+
     def _extract_title(self, text: str) -> Tuple[Optional[str], Optional[str]]:
         """
         Extract task title from text.
