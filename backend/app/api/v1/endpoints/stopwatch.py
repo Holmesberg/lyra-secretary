@@ -10,9 +10,17 @@ from app.schemas.stopwatch import (
     StopwatchStartResponse,
     StopwatchStopRequest,
     StopwatchStopResponse,
+    StopwatchPauseResponse,
+    StopwatchResumeResponse,
     StopwatchStatusResponse,
 )
-from app.services.stopwatch_manager import StopwatchManager, StopwatchAlreadyRunningError, NoActiveStopwatchError
+from app.services.stopwatch_manager import (
+    StopwatchManager,
+    StopwatchAlreadyRunningError,
+    StopwatchAlreadyPausedError,
+    StopwatchNotPausedError,
+    NoActiveStopwatchError,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -21,18 +29,16 @@ logger = logging.getLogger(__name__)
 @router.post("/start", response_model=StopwatchStartResponse)
 async def start_stopwatch(
     request: StopwatchStartRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> StopwatchStartResponse:
     """Start stopwatch. Optionally pass pre_task_readiness (1–5) in body."""
     try:
         manager = StopwatchManager(db)
-
         session, task, is_future_task = manager.start(
             task_id=request.task_id,
             title=request.title,
             pre_task_readiness=request.pre_task_readiness,
         )
-
         return StopwatchStartResponse(
             session_id=session.session_id,
             task_id=task.task_id,
@@ -42,7 +48,6 @@ async def start_stopwatch(
             pre_task_readiness=task.pre_task_readiness,
             initiation_delay_minutes=task.initiation_delay_minutes,
         )
-
     except StopwatchAlreadyRunningError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -50,28 +55,59 @@ async def start_stopwatch(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/pause", response_model=StopwatchPauseResponse)
+async def pause_stopwatch(db: Session = Depends(get_db)) -> StopwatchPauseResponse:
+    """
+    Pause the active stopwatch. Use during prayer, breaks, or interruptions.
+    Paused time is excluded from executed_duration and delta on stop.
+    """
+    try:
+        manager = StopwatchManager(db)
+        result = manager.pause()
+        return StopwatchPauseResponse(**result)
+    except NoActiveStopwatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except StopwatchAlreadyPausedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Stopwatch pause error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/resume", response_model=StopwatchResumeResponse)
+async def resume_stopwatch(db: Session = Depends(get_db)) -> StopwatchResumeResponse:
+    """
+    Resume a paused stopwatch. Reports how many minutes were paused.
+    """
+    try:
+        manager = StopwatchManager(db)
+        result = manager.resume()
+        return StopwatchResumeResponse(**result)
+    except NoActiveStopwatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except StopwatchNotPausedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Stopwatch resume error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/stop", response_model=StopwatchStopResponse)
 async def stop_stopwatch(
     request: StopwatchStopRequest = None,
     confirmed: bool = Query(False, description="Set to true to confirm early stop"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> StopwatchStopResponse:
     """
     Stop active stopwatch. Requires ?confirmed=true if stopping before 50% of planned duration.
-
-    Optional body: { "post_task_reflection": 1-5 }
-    If no active stopwatch but post_task_reflection is provided, updates the most recently
-    completed task (within 10 minutes) — supports the two-call reflection pattern.
+    If paused when stop is called, auto-resumes first and counts final pause in deduction.
     """
     if request is None:
         request = StopwatchStopRequest()
 
-    post_task_reflection = request.post_task_reflection
-
     try:
         manager = StopwatchManager(db)
 
-        # LYR-024: Check early stop BEFORE committing
         is_early, elapsed, planned = manager.check_early_stop()
         if is_early and not confirmed:
             return StopwatchStopResponse(
@@ -84,15 +120,14 @@ async def stop_stopwatch(
                 is_early_stop=True,
                 requires_confirmation=True,
                 confirmation_message=(
-                    f"Only {elapsed} min of {planned} planned elapsed. "
+                    f"Only {elapsed} min of active work of {planned} planned. "
                     f"Call stop again with ?confirmed=true to confirm completion."
-                )
+                ),
             )
 
         session, task, is_early_stop, notion_synced = manager.stop(
-            post_task_reflection=post_task_reflection,
+            post_task_reflection=request.post_task_reflection,
         )
-
         return StopwatchStopResponse(
             task_id=task.task_id,
             session_id=session.session_id,
@@ -114,19 +149,12 @@ async def stop_stopwatch(
 
 
 @router.get("/status", response_model=StopwatchStatusResponse)
-async def stopwatch_status(
-    db: Session = Depends(get_db)
-) -> StopwatchStatusResponse:
-    """Get stopwatch status."""
+async def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResponse:
+    """Get stopwatch status. Includes paused state and total paused minutes."""
     try:
         manager = StopwatchManager(db)
         status = manager.get_status()
-
-        if status:
-            return StopwatchStatusResponse(**status)
-        else:
-            return StopwatchStatusResponse(active=False)
-
+        return StopwatchStatusResponse(**status) if status else StopwatchStatusResponse(active=False)
     except Exception as e:
         logger.error(f"Stopwatch status error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

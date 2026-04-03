@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 
 from app.api.deps import get_db
-from app.db.models import Task, TaskState
+from app.db.models import Task, TaskState, StopwatchSession
 from app.utils.time_utils import to_local
 from app.utils.redis_client import RedisClient
 
@@ -73,6 +73,14 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
             "session_index_in_day": session_idx,
         }
 
+        # Sum paused minutes across all stopwatch sessions for this task
+        sessions_for_task = (
+            db.query(StopwatchSession)
+            .filter(StopwatchSession.task_id == t.task_id)
+            .all()
+        )
+        total_paused = sum(s.total_paused_minutes for s in sessions_for_task)
+
         research_sessions.append({
             **common,
             "planned_duration_minutes": t.planned_duration_minutes,
@@ -80,6 +88,8 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
             "delta_minutes": t.duration_delta_minutes,
             "initiation_status": t.initiation_status,
             "initiation_delay_minutes": t.initiation_delay_minutes,
+            "pause_count": t.pause_count,
+            "total_paused_minutes": total_paused,
         })
 
         product_sessions.append({

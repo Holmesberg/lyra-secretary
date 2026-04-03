@@ -106,6 +106,7 @@ class Task(Base):
     post_task_reflection: Mapped[Optional[int]] = mapped_column(Integer)
     initiation_status: Mapped[str] = mapped_column(String(20), default="not_started")
     initiation_delay_minutes: Mapped[Optional[int]] = mapped_column(Integer)
+    pause_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # Notion sync
     notion_page_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
@@ -196,6 +197,8 @@ class StopwatchSession(Base):
     start_time_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     end_time_utc: Mapped[Optional[datetime]] = mapped_column(DateTime)
     auto_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    paused_at_utc: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    total_paused_minutes: Mapped[int] = mapped_column(Integer, default=0)
     
     # Relationship
     task: Mapped["Task"] = relationship(back_populates="stopwatch_sessions")
