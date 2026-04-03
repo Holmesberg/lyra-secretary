@@ -88,6 +88,16 @@ OpenClaw runs in a separate Docker Compose stack. Connect the two via Docker net
 
 Copy `.env.example` to `.env`. Required vars: `DATABASE_URL`, `REDIS_URL`, `NOTION_API_KEY`, `NOTION_DATABASE_ID`, `USER_TIMEZONE` (IANA, e.g. `Africa/Cairo`). `SECRET_KEY` must be ≥ 32 chars. All times are stored as UTC internally; `USER_TIMEZONE` controls display conversion via `utils/time_utils.py`.
 
+## SKILL.md Editing Rules
+
+- Keep `openclaw/skills/lyra-secretary/SKILL.md` **under 150 lines total**.
+- Verification preamble must stay first (before Hard Rules).
+- Hard Rules must stay at the top, numbered, unchanged structure.
+- Every endpoint: method, path, required fields (*), key response fields only — one line.
+- Never add prose explanations, curl examples, or markdown tables — bullet points only.
+- After any edit, run `wc -l` and reject if over 150.
+- Always copy the updated file to `/mnt/c/Users/alina/openclaw/skills/lyra-secretary/SKILL.md` and restart the gateway.
+
 ## Endpoint deprecations
 
 - `POST /v1/parse` — scheduled for deprecation. LLMs should call `/v1/create` directly with structured fields extracted from user input. Use `/v1/parse` only as a last resort for genuinely ambiguous time expressions (e.g. "later", "this evening"). The endpoint now returns `{ tasks: [...], compound: bool }` and supports "then"-chained compound requests via `TaskParser.parse_chained()`.
