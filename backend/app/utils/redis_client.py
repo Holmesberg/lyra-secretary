@@ -54,6 +54,21 @@ class RedisClient:
         key = f"stopwatch:active:{user_id}"
         self.client.delete(key)
         logger.info(f"Stopwatch cleared for user {user_id}")
+
+    def set_pause_state(self, user_id: str, session_id: str, paused_at: str):
+        """Store pause state (no TTL — persists until resumed or stopped)."""
+        key = f"stopwatch:paused:{user_id}"
+        self.client.set(key, json.dumps({"session_id": session_id, "paused_at": paused_at}))
+
+    def get_pause_state(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get pause state if stopwatch is currently paused."""
+        key = f"stopwatch:paused:{user_id}"
+        data = self.client.get(key)
+        return json.loads(data) if data else None
+
+    def clear_pause_state(self, user_id: str):
+        """Clear pause state on resume or stop."""
+        self.client.delete(f"stopwatch:paused:{user_id}")
     
     # Undo pattern (30 second TTL)
     def cache_undo_action(

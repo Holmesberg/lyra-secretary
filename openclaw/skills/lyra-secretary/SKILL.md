@@ -284,7 +284,17 @@ curl -s http://backend:8000/v1/tasks/<uuid>
    - If user says 'undo', 'wait no', 'cancel that', 'mistake' immediately after a create or delete action, call `POST http://backend:8000/v1/undo` with no body.
    - Report what was undone based on the API response.
 
-7. **PROACTIVE NOTIFICATIONS**:
+8. **PAUSE/RESUME** — for prayer, breaks, or interruptions during an active timer:
+   - When user mentions prayer, a break, or an interruption:
+     Call `POST http://backend:8000/v1/stopwatch/pause`
+     Confirm: "Timer paused — resume when you're back."
+   - When user returns and says "back", "ready", "resume", or similar:
+     Call `POST http://backend:8000/v1/stopwatch/resume`
+     Report: "Timer resumed. {paused_minutes} min paused, not counted toward your session."
+   - **NEVER stop the timer for breaks — always pause.**
+   - Paused time is automatically excluded from the session delta on stop.
+
+9. **PROACTIVE NOTIFICATIONS**:
    - Every 30 seconds, poll `GET http://backend:8000/v1/notifications/pending`
    - If count > 0, send each notification message to the user via Telegram.
    - Clear after sending (already handled by the endpoint).

@@ -5,35 +5,16 @@ from pydantic import BaseModel, Field
 
 
 class StopwatchStartRequest(BaseModel):
-    """Request to start stopwatch."""
-    task_id: Optional[str] = Field(
-        None,
-        description="If None, creates new unplanned task"
-    )
-    title: Optional[str] = Field(
-        None,
-        description="Required if task_id is None"
-    )
-    pre_task_readiness: Optional[int] = Field(
-        None,
-        ge=1,
-        le=5,
-        description="Self-rated readiness before task (1=exhausted, 5=very sharp)"
-    )
+    task_id: Optional[str] = Field(None, description="If None, creates new unplanned task")
+    title: Optional[str] = Field(None, description="Required if task_id is None")
+    pre_task_readiness: Optional[int] = Field(None, ge=1, le=5)
 
 
 class StopwatchStopRequest(BaseModel):
-    """Request to stop stopwatch."""
-    post_task_reflection: Optional[int] = Field(
-        None,
-        ge=1,
-        le=5,
-        description="Self-rated focus quality after task (1=very poor, 5=excellent)"
-    )
+    post_task_reflection: Optional[int] = Field(None, ge=1, le=5)
 
 
 class StopwatchStartResponse(BaseModel):
-    """Response from starting stopwatch."""
     session_id: str
     task_id: str
     start_time: datetime
@@ -44,7 +25,6 @@ class StopwatchStartResponse(BaseModel):
 
 
 class StopwatchStopResponse(BaseModel):
-    """Response from stopping stopwatch."""
     task_id: str
     session_id: str
     duration_minutes: int
@@ -59,11 +39,24 @@ class StopwatchStopResponse(BaseModel):
     discrepancy_score: Optional[int] = None
 
 
+class StopwatchPauseResponse(BaseModel):
+    paused: bool
+    elapsed_minutes: int
+    paused_at: datetime
+
+
+class StopwatchResumeResponse(BaseModel):
+    resumed: bool
+    paused_minutes: int
+    total_paused_minutes: int
+
+
 class StopwatchStatusResponse(BaseModel):
-    """Current stopwatch status."""
     active: bool
     session_id: Optional[str] = None
     task_id: Optional[str] = None
     task_title: Optional[str] = None
     start_time: Optional[datetime] = None
     elapsed_minutes: Optional[int] = None
+    paused: bool = False
+    total_paused_minutes: int = 0
