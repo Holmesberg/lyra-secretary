@@ -243,6 +243,7 @@ See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (34 open, 37 fixed). Key
 - [ ] `POST /v1/tasks/{task_id}/sync` — backfill Notion for pre-fix tasks (LYR-015)
 - [ ] Per-model timeout in OpenClaw config (blocked on upstream: openclaw/openclaw#43946)
 - [ ] `POST /v1/stopwatch/retroactive` — log completed sessions after the fact with full timestamp control (for untracked sessions)
+- [ ] `unplanned_execution_rate` in analytics — detect structured vs chaotic days, correlate with delta and discrepancy patterns
 
 ## Contributing
 

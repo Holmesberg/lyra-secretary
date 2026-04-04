@@ -3218,8 +3218,99 @@ File: backend/app/services/task_manager.py
 
 ---
 
+---
+
+## Behavioral Layer 2: Unplanned Execution Detection
+
+### Discovery
+Day 1 of the experiment revealed a third behavioral class not captured by the original model:
+
+| Class | Description | Currently tracked |
+|-------|-------------|-------------------|
+| Planned → Executed | Normal flow with delta + discrepancy | ✅ |
+| Planned → Not executed | Abandoned/skipped tasks | ✅ |
+| Unplanned → Executed | Task started without scheduling | ❌ |
+
+The third class is not noise — it is a distinct behavioral signal indicating reactive vs structured execution patterns.
+
+### New Variable: Unplanned Execution Rate
+`unplanned_tasks / total_tasks` per day
+
+Correlate against:
+- delta patterns (estimation accuracy)
+- discrepancy scores (readiness vs reflection gap)
+- time of day (morning structure vs afternoon chaos)
+- sequence position in day (does structure degrade linearly or collapse at a threshold?)
+
+### Two Failure Modes (expanded model)
+1. **Estimation failure** — planned vs actual duration mismatch (delta)
+2. **Initiation failure** — planning vs action mismatch (unplanned execution rate)
+
+Most productivity systems only track #1. Lyra tracks both.
+
+### Interaction Between Failure Modes
+These are not independent. Hypotheses to test:
+- High unplanned rate correlates with worse estimation accuracy (reactive mode = less time awareness)
+- Days with >50% unplanned tasks show lower average post_task_reflection (less focus in reactive mode)
+- Unplanned tasks cluster in afternoons — morning structure depletes executive function
+- Readiness scores on unplanned tasks are systematically different from planned tasks (if captured)
+
+### Solution Layers (phased)
+
+**Layer 1 — Retroactive capture (v1.4, must-have)**
+`POST /v1/stopwatch/retroactive`
+- Accepts: `title`, `start_time`, `end_time`, `pre_task_readiness` (optional), `post_task_reflection` (optional)
+- Creates task in EXECUTED state with correct delta
+- Tagged as `initiation_status: "retroactive"`
+- End-of-day prompt: "What did you work on that wasn't tracked?"
+- Must flow through `TaskManager` like all other writes (Single Mutation Authority)
+- Notion sync on creation (task appears as completed in calendar)
+
+**Layer 2 — Pattern detection (v1.4)**
+`GET /v1/analytics/discrepancy` returns `unplanned_execution_rate` per day
+- Detect: structured days vs chaotic days
+- Threshold: >40% unplanned = "chaotic day" flag
+- Track trend over time: is the user becoming more or less structured?
+
+**Layer 3 — Gentle interception (v1.5)**
+When user becomes active in Telegram without an active timer:
+"Are you starting something?" → Yes (create task) / No (ignore)
+- NOT a reminder. A soft capture hook.
+- Cooldown: max once per 90 minutes to avoid notification fatigue
+- Only fires during user's typical active hours (learned from data)
+
+**Layer 4 — Pre-commitment (v1.5)**
+Night-before anchor scheduling
+"Schedule tomorrow in 60 seconds" — 2-3 blocks only
+- Anchor-based planning over full-day planning (resilience over precision)
+- Anchor = high-priority block that structures the day around it
+- If anchors hold, unplanned execution around them is acceptable
+- Measure: anchor adherence rate vs full-schedule adherence rate
+
+**Layer 5 — Signal framing (model)**
+Rename mentally:
+- NOT "user forgot to log"
+- YES "system detected unstructured execution event"
+
+This is data, not error. The system's job is to measure, not judge.
+
+### Experiment Protocol Addition
+Until Layer 1 is built:
+- Before sleep: 2-minute retroactive log of untracked sessions
+- Approximate duration is sufficient (±5 min acceptable)
+- Note: `pre_task_readiness` optional for retroactive entries
+- Minimum viable data: title + approximate start/end time
+- Track manually in Telegram: "retroactive: [task] [start]-[end]"
+
+### Success Metrics for Layer 2
+- Unplanned execution rate decreasing over 14-day rolling window
+- Correlation between daily structure score and self-reported focus quality
+- Anchor adherence rate >70% within 30 days of Layer 4 deployment
+
+---
+
 **END OF SPECIFICATION**
 
-This document is complete, implementation-ready, and focuses on the core value: adaptive scheduling through delta tracking.
+This document is complete, implementation-ready, and focuses on the core value: adaptive scheduling through delta tracking and behavioral measurement.
 
 **Ready to build.**
