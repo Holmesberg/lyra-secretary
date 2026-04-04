@@ -1,18 +1,20 @@
+1. NEVER CONFIRM WITHOUT A BACKEND RESPONSE (task_id or session_id required)
+2. NEVER USE SHELL COMMANDS (curl, grep, bash — use HTTP tool only)
+3. ALWAYS ASK READINESS BEFORE START — send "Rate readiness (1-5):" WAIT for reply
+4. ALWAYS ASK REFLECTION AFTER STOP — send "Rate focus (1-5):" WAIT for reply
+5. NEVER ASSUME USER INPUT — never default readiness or reflection to any value
+6. STOPWATCH USES TASK_ID ONLY — never title
+
 ---
 name: lyra-secretary
 description: Manage tasks and schedule via the Lyra Secretary backend API running at http://backend:8000
 ---
 
 ---
-CRITICAL: Never use curl, grep, bash, shell commands, or exec.
-All backend calls must use OpenClaw's HTTP tool directly, not shell commands.
-Calling curl triggers exec approval which breaks the workflow.
-Use HTTP GET/POST to http://backend:8000 endpoints only.
-CRITICAL: You are connected to a live FastAPI backend at http://backend:8000
+You are connected to a live FastAPI backend at http://backend:8000
 Every scheduling, timer, or task action MUST call an endpoint and receive a
 response before confirming to the user.
 If any endpoint returns an error, tell the user exactly what failed.
-Never confirm success without a JSON response containing task_id or session_id.
 Test connectivity: GET http://backend:8000/v1/health must return {"status":"ok"}
 TIMEZONE RULE: Always pass times exactly as the user states them in Cairo local time.
 Never add or subtract hours. Never convert to UTC yourself.
@@ -38,15 +40,6 @@ Never mention UTC offset. Never add +02:00. Never calculate "Cairo = UTC+2".
 
 7. **HARD RULE #7 — ALWAYS USE LYRA FOR SCHEDULING**
    Any "schedule", "add task", "remind me", "block time", "plan" request MUST call POST /v1/create and receive `task_id` before confirming. Never say "scheduled" without a task_id.
-
-8. **HARD RULE #8 — STOPWATCH USES TASK_ID ONLY**
-   Never call stopwatch endpoints with `title`. Always query first → extract task_id → call with `{"task_id": "<uuid>"}`.
-
-9. **HARD RULE #9 — NEVER CONFIRM WITHOUT RESPONSE**
-   You must receive a JSON response from the backend before telling the user anything succeeded. Response must contain `task_id` (tasks) or `session_id` (stopwatch). If you did not call the backend, say: "I need to call the backend first" and call it.
-
-10. **HARD RULE #10 — NEVER ASSUME USER INPUT**
-    Never fill in a user's response for them. If you ask a question and receive no reply, wait. Do not proceed with an assumed answer. Do not set pre_task_readiness, post_task_reflection, or any user-provided field without an explicit numeric response from the user.
 
 ---
 
@@ -94,27 +87,17 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 - If conflicts → show list → ask to force
 
 **Start timer:**
-- GET /v1/tasks/query ��� get task_id
+- GET /v1/tasks/query → get task_id
 - GET /v1/stopwatch/status → if active: report running timer, stop first
-- READINESS CAPTURE (MANDATORY — NO EXCEPTIONS):
-  STOP. Before calling /v1/stopwatch/start you MUST:
-  1. Send this exact message to user: "Rate your readiness (1=exhausted, 3=neutral, 5=sharp):"
-  2. WAIT for user to reply with a number
-  3. If user does not reply, do NOT proceed. Ask again.
-  4. NEVER assume, guess, or default readiness. NEVER use 5 as default.
-  5. Only after receiving a number, call /v1/stopwatch/start with that number.
-- POST /v1/stopwatch/start → get `session_id`
+- Send "Rate your readiness (1=exhausted, 3=neutral, 5=sharp):" — WAIT for number
+- POST /v1/stopwatch/start with `pre_task_readiness` → get `session_id`
 - If `is_future_task: true` → warn → wait for "yes" before proceeding
 
 **Stop timer:**
 - POST /v1/stopwatch/stop → if `requires_confirmation: true` → show message → wait for "yes"/"no"
 - If "yes" → POST /v1/stopwatch/stop?confirmed=true
-- REFLECTION CAPTURE (MANDATORY — NO EXCEPTIONS):
-  After /v1/stopwatch/stop returns, STOP. You MUST:
-  1. Send this exact message: "Rate your focus during the session (1=very poor, 3=average, 5=excellent):"
-  2. WAIT for user reply
-  3. NEVER skip this step. NEVER assume focus level.
-  4. Only after receiving a number, call /v1/stopwatch/stop again with post_task_reflection.
+- Send "Rate your focus during the session (1=very poor, 3=average, 5=excellent):" — WAIT for number
+- POST /v1/stopwatch/stop with `post_task_reflection`
 - After reflection: GET /v1/analytics/insights?auto_mark=true → if `ready: true` and insights non-empty: share first `observation` in one sentence
 
 **Prayer / break:**
