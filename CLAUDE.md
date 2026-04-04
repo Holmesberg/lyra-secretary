@@ -71,7 +71,7 @@ Transitions are enforced by `services/state_machine.py`. Completed/skipped/delet
 | `services/task_manager.py` | All task CRUD, the one place that calls everything else |
 | `services/state_machine.py` | Validates and applies state transitions |
 | `services/conflict_detector.py` | Half-open interval `[start, end)` overlap detection |
-| `services/stopwatch_manager.py` | Timer lifecycle; early-stop gate at <50% planned duration |
+| `services/stopwatch_manager.py` | Timer lifecycle: start, stop, pause/resume; early-stop gate at <50% planned duration |
 | `services/parser.py` | NLP (dateparser) → structured task fields. `parse_chained(text)` handles "then"-separated compound requests. |
 | `services/notion_client.py` | Notion API sync; failures enqueued in Redis |
 | `workers/scheduler.py` | APScheduler setup wired into FastAPI lifespan |

@@ -1,11 +1,11 @@
-# Lyra Secretary v1.1
+# Lyra Secretary v1.3
 ## Complete Implementation Specification
 **Master Technical Specification + Implementation Guide**
 
 ---
 
-**Version:** v1.1 Final  
-**Status:** Implementation Ready  
+**Version:** v1.3  
+**Status:** Implemented — Active Development  
 **Philosophy:** Learning-First, Production-Quality  
 **Target Deployment:** 14 Days  
 **Project Path:** `d:\Projects\Adaptive scheduler 2`
@@ -78,7 +78,7 @@ Everything else (Telegram, Notion, parsing) is interface decoration.
 
 ### 1.3 Scope Definition
 
-**✅ In Scope (v1.1):**
+**✅ In Scope (v1.1 baseline):**
 - Text input via Telegram (natural language parsing)
 - Voice input via Telegram (Whisper transcription)
 - Task creation, rescheduling, deletion
@@ -91,16 +91,32 @@ Everything else (Telegram, Notion, parsing) is interface decoration.
 - Pre-task reminders
 - Redis-based stopwatch persistence
 
-**❌ Out of Scope (Removed for v1.1):**
+**✅ Added in v1.2 — Discrepancy Measurement Layer:**
+- `pre_task_readiness` (1–5) captured at stopwatch start
+- `post_task_reflection` (1–5) captured at stopwatch stop
+- `initiation_delay_minutes` — actual minus planned start time
+- `initiation_status` — initiated / abandoned / not_started
+- `discrepancy_score` — abs(readiness − reflection)
+- `GET /v1/analytics/discrepancy` — per-session breakdown with time-of-day analysis
+- Abandoned task detection job (APScheduler, 30-min interval)
+
+**✅ Added in v1.3 — Behavioral Insights + Stopwatch Enhancements:**
+- Stopwatch pause/resume — prayer and break support, paused time excluded from delta
+- `GET /v1/analytics/insights` — rule-based behavioral pattern detection
+- All API datetime responses converted to local timezone (UTC internal only)
+- `GET /v1/skill/ping` — skill health check with active stopwatch and pending task count
+- Agent Hard Rules #1–#7 enforced via SKILL.md
+- Readiness and reflection capture as mandatory agent workflow steps
+
+**❌ Out of Scope:**
 - ~~OCR/Image parsing~~ (unnecessary ML complexity)
-- ~~Insights engine~~ (no data for 2-3 months)
 - ~~Category learning~~ (use static seed data)
 - ~~Notion external edit detection~~ (premature complexity)
 - ~~Grace period auto-skip~~ (behavior will change frequently)
 - ~~Audit event table~~ (SQLite history sufficient)
 - ~~Input flood protection~~ (single user, unnecessary)
 
-**🔴 Critical Additions (Were Missing):**
+**🔴 Critical Additions (Were Missing from v1.0):**
 - ✅ Timezone handling (UTC storage, Cairo display)
 - ✅ Idempotency keys (Telegram webhook duplicates)
 - ✅ Transaction safety (atomic mutations)
@@ -142,13 +158,18 @@ Everything else (Telegram, Notion, parsing) is interface decoration.
 │  Skills (HTTP Tools):                                   │
 │  ├─ transcribe_voice (Whisper API)                      │
 │  ├─ parse_input → POST /v1/parse                        │
-│  ├─ create_task → POST /v1/tasks/create                 │
+│  ├─ create_task → POST /v1/create                       │
 │  ├─ start_stopwatch → POST /v1/stopwatch/start          │
 │  ├─ stop_stopwatch → POST /v1/stopwatch/stop            │
+│  ├─ pause_stopwatch → POST /v1/stopwatch/pause          │
+│  ├─ resume_stopwatch → POST /v1/stopwatch/resume        │
 │  ├─ query_tasks → GET /v1/tasks/query                   │
-│  ├─ reschedule_task → POST /v1/tasks/reschedule         │
-│  ├─ delete_task → POST /v1/tasks/delete                 │
-│  └─ undo → POST /v1/undo                                │
+│  ├─ get_task → GET /v1/tasks/{task_id}                  │
+│  ├─ reschedule_task → POST /v1/reschedule               │
+│  ├─ delete_task → POST /v1/delete                       │
+│  ├─ undo → POST /v1/undo                                │
+│  ├─ insights → GET /v1/analytics/insights               │
+│  └─ skill_ping → GET /v1/skill/ping                     │
 └──────────────────────┬──────────────────────────────────┘
                        │
                        │ HTTP Skills
@@ -2775,7 +2796,7 @@ skills:
     
   - name: create_task
     type: http
-    endpoint: "http://backend:8000/v1/tasks/create"
+    endpoint: "http://backend:8000/v1/create"
     method: POST
     
   - name: start_stopwatch
@@ -2787,6 +2808,46 @@ skills:
     type: http
     endpoint: "http://backend:8000/v1/stopwatch/stop"
     method: POST
+
+  - name: pause_stopwatch
+    type: http
+    endpoint: "http://backend:8000/v1/stopwatch/pause"
+    method: POST
+
+  - name: resume_stopwatch
+    type: http
+    endpoint: "http://backend:8000/v1/stopwatch/resume"
+    method: POST
+
+  - name: query_tasks
+    type: http
+    endpoint: "http://backend:8000/v1/tasks/query"
+    method: GET
+
+  - name: reschedule_task
+    type: http
+    endpoint: "http://backend:8000/v1/reschedule"
+    method: POST
+
+  - name: delete_task
+    type: http
+    endpoint: "http://backend:8000/v1/delete"
+    method: POST
+
+  - name: undo
+    type: http
+    endpoint: "http://backend:8000/v1/undo"
+    method: POST
+
+  - name: insights
+    type: http
+    endpoint: "http://backend:8000/v1/analytics/insights"
+    method: GET
+
+  - name: skill_ping
+    type: http
+    endpoint: "http://backend:8000/v1/skill/ping"
+    method: GET
 ```
 
 ---

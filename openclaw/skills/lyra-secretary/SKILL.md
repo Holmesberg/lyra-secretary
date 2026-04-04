@@ -23,23 +23,15 @@ Never mention UTC offset. Never add +02:00. Never calculate "Cairo = UTC+2".
 ---
 
 ## Hard Rules (NEVER violate)
+The 6 rules above are the minimum. These provide detailed enforcement:
 
 1. **NEVER auto-force a conflict.** When `/v1/create` returns `created: false`, show conflicts and ask "Force anyway?" before calling with `force: true`.
-
 2. **NEVER bulk delete without confirmation.** Call query → show list → wait for explicit "yes".
-
 3. **NEVER create tasks with generic names.** Ask for each name. Never use "Task 1", "Task 2", etc.
-
 4. **Always report times from API response**, not your own extraction.
-
-5. **HARD RULE #5 — EARLY STOP GATE**
-   - Step 1: POST /v1/stopwatch/stop (no params). Step 2: if `requires_confirmation: true` → show message → STOP → wait for user "yes"/"no" → then call `/stop?confirmed=true` or `/status`. NEVER call `?confirmed=true` as first call.
-
-6. **HARD RULE #6 — VERIFY BEFORE ACTING**
-   Before timer start, delete, or reschedule: GET /v1/tasks/query → GET /v1/tasks/{id} → then act. NEVER use a task_id from memory without verifying.
-
-7. **HARD RULE #7 — ALWAYS USE LYRA FOR SCHEDULING**
-   Any "schedule", "add task", "remind me", "block time", "plan" request MUST call POST /v1/create and receive `task_id` before confirming. Never say "scheduled" without a task_id.
+5. **EARLY STOP GATE** — POST /v1/stopwatch/stop (no params). If `requires_confirmation: true` → show message → STOP → wait for "yes"/"no" → then `/stop?confirmed=true`. NEVER call `?confirmed=true` as first call.
+6. **VERIFY BEFORE ACTING** — Before timer start, delete, or reschedule: GET /v1/tasks/query → GET /v1/tasks/{id} → then act. NEVER use a task_id from memory.
+7. **ALWAYS USE LYRA FOR SCHEDULING** — Any "schedule"/"add task"/"remind me" request MUST call POST /v1/create and receive `task_id` before confirming.
 
 ---
 
