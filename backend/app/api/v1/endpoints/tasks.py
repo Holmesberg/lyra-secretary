@@ -20,6 +20,7 @@ from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
 from app.core.exceptions import ImmutableTaskError
 from app.db.models import Task
+from app.utils.time_utils import to_local
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -68,13 +69,13 @@ async def create_task(
                 ConflictInfo(
                     task_id=c.task_id,
                     title=c.title,
-                    start=c.planned_start_utc,
-                    end=c.planned_end_utc,
+                    start=to_local(c.planned_start_utc),
+                    end=to_local(c.planned_end_utc),
                     state=c.state
                 )
                 for c in conflicts
             ]
-            
+
             return TaskCreateResponse(
                 task_id=None,
                 created=False,
@@ -130,18 +131,18 @@ async def reschedule_task(
             ConflictInfo(
                 task_id=c.task_id,
                 title=c.title,
-                start=c.planned_start_utc,
-                end=c.planned_end_utc,
+                start=to_local(c.planned_start_utc),
+                end=to_local(c.planned_end_utc),
                 state=c.state
             )
             for c in conflicts
         ]
-        
+
         return TaskRescheduleResponse(
             task_id=task.task_id,
             rescheduled=True,
-            new_start=task.planned_start_utc,
-            new_end=task.planned_end_utc,
+            new_start=to_local(task.planned_start_utc),
+            new_end=to_local(task.planned_end_utc),
             conflicts=conflict_info
         )
         
@@ -187,11 +188,11 @@ async def get_task(
         task_id=task.task_id,
         title=task.title,
         category=task.category,
-        planned_start=task.planned_start_utc,
-        planned_end=task.planned_end_utc,
+        planned_start=to_local(task.planned_start_utc),
+        planned_end=to_local(task.planned_end_utc),
         planned_duration_minutes=task.planned_duration_minutes,
-        executed_start=task.executed_start_utc,
-        executed_end=task.executed_end_utc,
+        executed_start=to_local(task.executed_start_utc) if task.executed_start_utc else None,
+        executed_end=to_local(task.executed_end_utc) if task.executed_end_utc else None,
         executed_duration_minutes=task.executed_duration_minutes,
         state=task.state,
         source=task.source,

@@ -65,10 +65,14 @@ class TaskManager:
             (created_task, conflicts)
             If conflicts exist and not forced: (None, conflicts)
         """
+        # Convert naive local times (Cairo) to UTC before storing
+        start = to_utc(start)
+        end = to_utc(end)
+
         # P4: Reject tasks with start time in the past (5 min buffer)
         if start < now_utc() - timedelta(minutes=5):
             raise ValueError("start_in_past: Task start time is in the past. Did you mean tomorrow?")
-        
+
         # Detect conflicts
         conflicts = self.conflict_detector.detect(start, end)
         
@@ -269,10 +273,15 @@ class TaskManager:
         if not task.is_mutable:
             raise ImmutableTaskError("Cannot reschedule immutable task")
         
+        # Convert naive local times (Cairo) to UTC before storing
+        new_start = to_utc(new_start)
+
         if new_end is None:
             duration = task.planned_end_utc - task.planned_start_utc
             new_end = new_start + duration
-        
+        else:
+            new_end = to_utc(new_end)
+
         # Check for conflicts (excluding current task)
         conflicts = self.conflict_detector.detect(
             new_start,

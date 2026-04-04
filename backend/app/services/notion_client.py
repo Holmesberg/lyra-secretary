@@ -10,17 +10,13 @@ from app.core.config import settings
 from app.db.models import Task, TaskState
 from app.utils.time_utils import to_local
 from app.utils.retry import retry_with_backoff
-from zoneinfo import ZoneInfo
 
-def _to_local_iso(dt):
-    """Convert a UTC datetime to the user's local time with correct UTC offset."""
+
+def _to_utc_iso(dt):
+    """Format a naive UTC datetime as ISO 8601 with +00:00 offset for Notion."""
     if dt is None:
         return None
-    tz = ZoneInfo(settings.USER_TIMEZONE)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-    local_dt = dt.astimezone(tz)
-    return local_dt.strftime("%Y-%m-%dT%H:%M:%S") + local_dt.strftime("%z")[:3] + ":" + local_dt.strftime("%z")[3:]
+    return dt.strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +102,8 @@ class NotionClient:
             },
             "Start": {
                 "date": {
-                    "start": _to_local_iso(start),
-                    "end": _to_local_iso(end) if end else None
+                    "start": _to_utc_iso(start),
+                    "end": _to_utc_iso(end) if end else None
                 }
             },
             "State": {
