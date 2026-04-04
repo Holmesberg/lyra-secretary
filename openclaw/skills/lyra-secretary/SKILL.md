@@ -4,6 +4,10 @@ description: Manage tasks and schedule via the Lyra Secretary backend API runnin
 ---
 
 ---
+CRITICAL: Never use curl, grep, bash, shell commands, or exec.
+All backend calls must use OpenClaw's HTTP tool directly, not shell commands.
+Calling curl triggers exec approval which breaks the workflow.
+Use HTTP GET/POST to http://backend:8000 endpoints only.
 CRITICAL: You are connected to a live FastAPI backend at http://backend:8000
 Every scheduling, timer, or task action MUST call an endpoint and receive a
 response before confirming to the user.
@@ -90,16 +94,27 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 - If conflicts → show list → ask to force
 
 **Start timer:**
-- GET /v1/tasks/query → get task_id
+- GET /v1/tasks/query ��� get task_id
 - GET /v1/stopwatch/status → if active: report running timer, stop first
-- Ask readiness: "How sharp right now? (1–5)" → use as `pre_task_readiness`
+- READINESS CAPTURE (MANDATORY — NO EXCEPTIONS):
+  STOP. Before calling /v1/stopwatch/start you MUST:
+  1. Send this exact message to user: "Rate your readiness (1=exhausted, 3=neutral, 5=sharp):"
+  2. WAIT for user to reply with a number
+  3. If user does not reply, do NOT proceed. Ask again.
+  4. NEVER assume, guess, or default readiness. NEVER use 5 as default.
+  5. Only after receiving a number, call /v1/stopwatch/start with that number.
 - POST /v1/stopwatch/start → get `session_id`
 - If `is_future_task: true` → warn → wait for "yes" before proceeding
 
 **Stop timer:**
 - POST /v1/stopwatch/stop → if `requires_confirmation: true` → show message → wait for "yes"/"no"
 - If "yes" → POST /v1/stopwatch/stop?confirmed=true
-- After stop: ask "Focus quality? (1–5)" → POST /v1/stopwatch/stop with `{"post_task_reflection": N}`
+- REFLECTION CAPTURE (MANDATORY — NO EXCEPTIONS):
+  After /v1/stopwatch/stop returns, STOP. You MUST:
+  1. Send this exact message: "Rate your focus during the session (1=very poor, 3=average, 5=excellent):"
+  2. WAIT for user reply
+  3. NEVER skip this step. NEVER assume focus level.
+  4. Only after receiving a number, call /v1/stopwatch/stop again with post_task_reflection.
 - After reflection: GET /v1/analytics/insights?auto_mark=true → if `ready: true` and insights non-empty: share first `observation` in one sentence
 
 **Prayer / break:**
