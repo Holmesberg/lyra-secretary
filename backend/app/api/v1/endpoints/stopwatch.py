@@ -43,7 +43,7 @@ async def start_stopwatch(
         return StopwatchStartResponse(
             session_id=session.session_id,
             task_id=task.task_id,
-            start_time=session.start_time_utc,
+            start_time=to_local(session.start_time_utc),
             is_future_task=is_future_task,
             planned_start=to_local(task.planned_start_utc),
             pre_task_readiness=task.pre_task_readiness,
@@ -65,6 +65,7 @@ async def pause_stopwatch(db: Session = Depends(get_db)) -> StopwatchPauseRespon
     try:
         manager = StopwatchManager(db)
         result = manager.pause()
+        result["paused_at"] = to_local(result["paused_at"])
         return StopwatchPauseResponse(**result)
     except NoActiveStopwatchError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -117,7 +118,7 @@ async def stop_stopwatch(
                 duration_minutes=elapsed,
                 planned_duration_minutes=planned,
                 delta_minutes=None,
-                executed_at=datetime.utcnow(),
+                executed_at=to_local(datetime.utcnow()),
                 is_early_stop=True,
                 requires_confirmation=True,
                 confirmation_message=(
@@ -135,7 +136,7 @@ async def stop_stopwatch(
             duration_minutes=task.executed_duration_minutes,
             planned_duration_minutes=task.planned_duration_minutes,
             delta_minutes=task.duration_delta_minutes,
-            executed_at=task.executed_end_utc,
+            executed_at=to_local(task.executed_end_utc),
             is_early_stop=is_early_stop,
             notion_synced=notion_synced,
             post_task_reflection=task.post_task_reflection,
@@ -155,6 +156,8 @@ async def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResp
     try:
         manager = StopwatchManager(db)
         status = manager.get_status()
+        if status and status.get("start_time"):
+            status["start_time"] = to_local(status["start_time"])
         return StopwatchStatusResponse(**status) if status else StopwatchStatusResponse(active=False)
     except Exception as e:
         logger.error(f"Stopwatch status error: {e}", exc_info=True)

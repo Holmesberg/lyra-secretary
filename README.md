@@ -1,4 +1,4 @@
-# Lyra Secretary v1.2
+# Lyra Secretary v1.3
 
 [![CI](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml/badge.svg)](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -150,6 +150,8 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | POST | `/v1/delete` | Soft-delete a task |
 | POST | `/v1/stopwatch/start` | Start stopwatch; accepts `pre_task_readiness` (1–5) |
 | POST | `/v1/stopwatch/stop` | Stop stopwatch; accepts `post_task_reflection` (1–5); `?confirmed=true` if early stop |
+| POST | `/v1/stopwatch/pause` | Pause active stopwatch (prayer/break) |
+| POST | `/v1/stopwatch/resume` | Resume paused stopwatch |
 | GET | `/v1/stopwatch/status` | Get stopwatch status |
 | GET | `/v1/health` | Health check |
 | GET | `/v1/tasks/query` | Query tasks by date, category, state |
@@ -158,6 +160,8 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | POST | `/v1/notifications/push` | Push notification to queue |
 | GET | `/v1/notifications/pending` | Poll and drain notification queue |
 | GET | `/v1/analytics/discrepancy` | Discrepancy measurement data — readiness, reflection, initiation stats |
+| GET | `/v1/analytics/insights` | Behavioral insights — pattern detection after sufficient sessions |
+| GET | `/v1/skill/ping` | Skill health check — active stopwatch, pending tasks today |
 
 Full request/response schemas are documented in [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md) and in Swagger UI at `/docs`.
 
@@ -175,6 +179,7 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ Early-stop gate — backend requires explicit confirmation if stopped before 50% of planned duration
 - ✅ Future task warning — warns before starting timer for a task not yet scheduled
 - ✅ Redis desync recovery — auto-restores active session from SQLite on restart
+- ✅ Pause/resume — prayer and break support without stopping the timer; paused time excluded from delta
 
 **Discrepancy measurement layer (v1.2)**
 - ✅ `pre_task_readiness` (1–5) — captured at stopwatch start
@@ -203,6 +208,12 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ Idempotency keys — deduplication via Redis (30s TTL)
 - ✅ Notification polling — backend pushes, OpenClaw polls every 30s
 
+**Behavioral insights (v1.3)**
+- ✅ `GET /v1/analytics/insights` — rule-based pattern detection across sessions
+- ✅ Time-of-day performance, readiness correlation, abandonment patterns, estimation trends
+- ✅ Auto-mark insights as delivered; fires only after minimum session threshold
+- ✅ All API datetime responses in local timezone (UTC stays internal to DB only)
+
 **Agent behavior (SKILL.md)**
 - ✅ Hard Rule #1 — never auto-force conflicts
 - ✅ Hard Rule #2 — bulk delete requires confirmation
@@ -210,6 +221,19 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ Hard Rule #4 — always report times from API response
 - ✅ Hard Rule #5 — early-stop gate enforced at backend + skill level
 - ✅ Hard Rule #6 — verify task state via backend before any mutation
+- ✅ Hard Rule #7 — always use Lyra for scheduling (never confirm without task_id)
+- ✅ Readiness capture — mandatory pre-task self-rating before timer start
+- ✅ Reflection capture — mandatory post-task focus rating after timer stop
+
+## Known Issues
+
+See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (34 open, 37 fixed). Key active issues:
+
+- **LYR-063** 🔴 OpenClaw caches stale API keys — new keys not picked up without manual fix
+- **LYR-066** 🔴 Local models (Qwen3.5:9b) ignore Hard Rules — delete without confirmation
+- **LYR-051** 🔴 Agent confirms tasks without backend response on rate-limit fallback
+- **LYR-061** 🟡 Behavioral insights fire prematurely (threshold check not enforced)
+- **LYR-068** 🟡 Notion date timezone double conversion on certain property settings
 
 ## Roadmap
 
@@ -217,6 +241,7 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - [ ] BCI cognitive session logging (EEG state during tasks)
 - [ ] Weekly/monthly analytics and pattern reports
 - [ ] `POST /v1/tasks/{task_id}/sync` — backfill Notion for pre-fix tasks (LYR-015)
+- [ ] Per-model timeout in OpenClaw config (blocked on upstream: openclaw/openclaw#43946)
 
 ## Contributing
 

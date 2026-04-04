@@ -1,5 +1,5 @@
 1. NEVER CONFIRM WITHOUT A BACKEND RESPONSE (task_id or session_id required)
-2. NEVER USE SHELL COMMANDS (curl, grep, bash — use HTTP tool only)
+2. USE HTTP TOOL FOR ALL BACKEND CALLS. If HTTP tool unavailable, curl is allowed. NEVER use grep, bash pipelines, or python3.
 3. ALWAYS ASK READINESS BEFORE START — send "Rate readiness (1-5):" WAIT for reply
 4. ALWAYS ASK REFLECTION AFTER STOP — send "Rate focus (1-5):" WAIT for reply
 5. NEVER ASSUME USER INPUT — never default readiness or reflection to any value
