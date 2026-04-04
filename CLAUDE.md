@@ -98,13 +98,6 @@ Copy `.env.example` to `.env`. Required vars: `DATABASE_URL`, `REDIS_URL`, `NOTI
 - After any edit, run `wc -l` and reject if over 150.
 - Always copy the updated file to `/mnt/c/Users/alina/openclaw/skills/lyra-secretary/SKILL.md` and restart the gateway.
 
-## Pending endpoints
-
-- `POST /v1/stopwatch/retroactive` — log completed sessions after the fact with full timestamp control.
-  Body: `title`, `start_time`, `end_time`, `pre_task_readiness` (optional), `post_task_reflection` (optional).
-  Creates task in EXECUTED state with correct delta, skips live timer.
-  Use case: end-of-day retroactive logging for untracked sessions.
-
 ## Endpoint deprecations
 
 - `POST /v1/parse` — scheduled for deprecation. LLMs should call `/v1/create` directly with structured fields extracted from user input. Use `/v1/parse` only as a last resort for genuinely ambiguous time expressions (e.g. "later", "this evening"). The endpoint now returns `{ tasks: [...], compound: bool }` and supports "then"-chained compound requests via `TaskParser.parse_chained()`.

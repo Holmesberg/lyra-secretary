@@ -119,6 +119,68 @@ class TaskManager:
         
         return task, [], notion_synced
     
+    def create_retroactive_task(
+        self,
+        title: str,
+        start_time: datetime,
+        end_time: datetime,
+        category: Optional[str] = None,
+        pre_task_readiness: Optional[int] = None,
+        post_task_reflection: Optional[int] = None,
+    ) -> tuple[Task, bool]:
+        """
+        Create a completed task from past timestamps (retroactive logging).
+
+        Bypasses: past-time check, conflict detection, state machine.
+        Sets planned = executed (delta = 0 by definition).
+
+        Returns:
+            (task, notion_synced)
+        """
+        start_utc = to_utc(start_time)
+        end_utc = to_utc(end_time)
+
+        if end_utc <= start_utc:
+            raise ValueError("end_time must be after start_time")
+
+        duration_minutes = int((end_utc - start_utc).total_seconds() / 60)
+        if duration_minutes < 1:
+            raise ValueError("Session must be at least 1 minute")
+
+        task = Task(
+            title=title,
+            category=category,
+            planned_start_utc=start_utc,
+            planned_end_utc=end_utc,
+            planned_duration_minutes=duration_minutes,
+            executed_start_utc=start_utc,
+            executed_end_utc=end_utc,
+            executed_duration_minutes=duration_minutes,
+            state=TaskState.EXECUTED,
+            source=TaskSource.MANUAL,
+            initiation_status="retroactive",
+            pre_task_readiness=pre_task_readiness,
+            post_task_reflection=post_task_reflection,
+            created_at=now_utc(),
+            last_modified_at=now_utc(),
+        )
+
+        self.db.add(task)
+        self.db.flush()
+        self.db.commit()
+        self.db.refresh(task)
+
+        # Sync to Notion
+        notion_synced = False
+        try:
+            self.notion.sync_task(task, db=self.db)
+            notion_synced = True
+        except Exception as e:
+            logger.error(f"Notion sync failed during create_retroactive_task: {e}", exc_info=True)
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+
+        return task, notion_synced
+
     def start_task(self, task_id: str) -> Task:
         """
         Start a task (transition PLANNED → EXECUTING).

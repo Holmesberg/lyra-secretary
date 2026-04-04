@@ -55,6 +55,8 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 
 **POST /v1/stopwatch/stop** — body: `post_task_reflection` (1–5, optional) — query: `?confirmed=true` — returns: `task_id`, `session_id`, `duration_minutes`, `delta_minutes`, `requires_confirmation`
 
+**POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`* (ISO8601), `end_time`* (ISO8601), `pre_task_readiness` (1–5), `post_task_reflection` (1–5), `category` — returns: `task_id`, `duration_minutes`, `delta_minutes` (always 0), `notion_synced`
+
 **POST /v1/stopwatch/pause** — no body — returns: `paused`, `elapsed_minutes`, `paused_at`
 
 **POST /v1/stopwatch/resume** — no body — returns: `resumed`, `paused_minutes`, `total_paused_minutes`
@@ -96,6 +98,11 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 - POST /v1/stopwatch/pause → "Timer paused — resume when you're back."
 - On return: POST /v1/stopwatch/resume → "Timer resumed. {paused_minutes} min not counted."
 - NEVER stop the timer for breaks — always pause.
+
+**Retroactive logging (end-of-day catch-up):**
+- User says "I worked on X from 2pm to 4pm" → POST /v1/stopwatch/retroactive with title, start_time, end_time
+- Optionally ask readiness + reflection (same as live sessions)
+- No timer needed — task is created directly as EXECUTED
 
 **Undo:** POST /v1/undo immediately after create or delete.
 

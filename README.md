@@ -161,6 +161,7 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | GET | `/v1/notifications/pending` | Poll and drain notification queue |
 | GET | `/v1/analytics/discrepancy` | Discrepancy measurement data — readiness, reflection, initiation stats |
 | GET | `/v1/analytics/insights` | Behavioral insights — pattern detection after sufficient sessions |
+| POST | `/v1/stopwatch/retroactive` | Log completed session after the fact — creates EXECUTED task from timestamps |
 | GET | `/v1/skill/ping` | Skill health check — active stopwatch, pending tasks today |
 
 Full request/response schemas are documented in [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md) and in Swagger UI at `/docs`.
@@ -180,6 +181,7 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ Future task warning — warns before starting timer for a task not yet scheduled
 - ✅ Redis desync recovery — auto-restores active session from SQLite on restart
 - ✅ Pause/resume — prayer and break support without stopping the timer; paused time excluded from delta
+- ✅ Retroactive logging — `POST /v1/stopwatch/retroactive` for end-of-day catch-up of untracked sessions
 
 **Discrepancy measurement layer (v1.2)**
 - ✅ `pre_task_readiness` (1–5) — captured at stopwatch start
@@ -242,7 +244,7 @@ See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (34 open, 37 fixed). Key
 - [ ] Weekly/monthly analytics and pattern reports
 - [ ] `POST /v1/tasks/{task_id}/sync` — backfill Notion for pre-fix tasks (LYR-015)
 - [ ] Per-model timeout in OpenClaw config (blocked on upstream: openclaw/openclaw#43946)
-- [ ] `POST /v1/stopwatch/retroactive` — log completed sessions after the fact with full timestamp control (for untracked sessions)
+- [x] `POST /v1/stopwatch/retroactive` — log completed sessions after the fact with full timestamp control (for untracked sessions)
 - [ ] `unplanned_execution_rate` in analytics — detect structured vs chaotic days, correlate with delta and discrepancy patterns
 
 ## Contributing
