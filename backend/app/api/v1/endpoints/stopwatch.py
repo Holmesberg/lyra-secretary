@@ -13,6 +13,8 @@ from app.schemas.stopwatch import (
     StopwatchPauseResponse,
     StopwatchResumeResponse,
     StopwatchStatusResponse,
+    RetroactiveRequest,
+    RetroactiveResponse,
 )
 from app.services.stopwatch_manager import (
     StopwatchManager,
@@ -21,6 +23,7 @@ from app.services.stopwatch_manager import (
     StopwatchNotPausedError,
     NoActiveStopwatchError,
 )
+from app.services.task_manager import TaskManager
 from app.utils.time_utils import to_local
 
 router = APIRouter()
@@ -161,4 +164,44 @@ async def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResp
         return StopwatchStatusResponse(**status) if status else StopwatchStatusResponse(active=False)
     except Exception as e:
         logger.error(f"Stopwatch status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/retroactive", response_model=RetroactiveResponse)
+async def retroactive_log(
+    request: RetroactiveRequest,
+    db: Session = Depends(get_db),
+) -> RetroactiveResponse:
+    """
+    Log a completed session after the fact with full timestamp control.
+    Creates task directly in EXECUTED state with initiation_status='retroactive'.
+    Delta is 0 by definition (planned = executed for retroactive sessions).
+    """
+    try:
+        manager = TaskManager(db)
+        task, notion_synced = manager.create_retroactive_task(
+            title=request.title,
+            start_time=request.start_time,
+            end_time=request.end_time,
+            category=request.category,
+            pre_task_readiness=request.pre_task_readiness,
+            post_task_reflection=request.post_task_reflection,
+        )
+        return RetroactiveResponse(
+            task_id=task.task_id,
+            title=task.title,
+            start_time=to_local(task.executed_start_utc),
+            end_time=to_local(task.executed_end_utc),
+            duration_minutes=task.executed_duration_minutes,
+            delta_minutes=0,
+            initiation_status="retroactive",
+            pre_task_readiness=task.pre_task_readiness,
+            post_task_reflection=task.post_task_reflection,
+            discrepancy_score=task.discrepancy_score,
+            notion_synced=notion_synced,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Retroactive log error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -8,7 +8,7 @@ Status: 📋 backlog | 🔨 in progress | ✅ done
 
 ## v1.4 — Measurement Integrity
 
-### 🔴 POST /v1/stopwatch/retroactive
+### ✅ POST /v1/stopwatch/retroactive
 Log completed sessions after the fact with full timestamp control.
 
 **Body:**
@@ -23,11 +23,11 @@ Log completed sessions after the fact with full timestamp control.
 }
 ```
 **Behavior:**
-- Creates task in EXECUTED state
-- Computes delta from provided timestamps
+- Creates task in EXECUTED state (bypasses state machine and past-time check)
+- Sets planned = executed (delta = 0 by definition)
 - Tags initiation_status: "retroactive"
 - Notion sync as normal
-- pre/post optional — retroactive sessions still capture delta even without readiness scores
+- pre/post optional — retroactive sessions still capture discrepancy even without readiness scores
 
 **Use case:** End-of-day logging of untracked sessions. Discovered on Day 1 of experiment.
 

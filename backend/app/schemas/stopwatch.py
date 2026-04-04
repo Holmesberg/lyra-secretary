@@ -60,3 +60,26 @@ class StopwatchStatusResponse(BaseModel):
     elapsed_minutes: Optional[int] = None
     paused: bool = False
     total_paused_minutes: int = 0
+
+
+class RetroactiveRequest(BaseModel):
+    title: str
+    start_time: datetime
+    end_time: datetime
+    pre_task_readiness: Optional[int] = Field(None, ge=1, le=5)
+    post_task_reflection: Optional[int] = Field(None, ge=1, le=5)
+    category: Optional[str] = None
+
+
+class RetroactiveResponse(BaseModel):
+    task_id: str
+    title: str
+    start_time: datetime
+    end_time: datetime
+    duration_minutes: int
+    delta_minutes: int = 0
+    initiation_status: str = "retroactive"
+    pre_task_readiness: Optional[int] = None
+    post_task_reflection: Optional[int] = None
+    discrepancy_score: Optional[int] = None
+    notion_synced: bool = True
