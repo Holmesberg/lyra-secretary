@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 4, 2026 — v1.2. 34 open, 37 fixed.
+Last updated: April 4, 2026 — v1.3. 35 open, 37 fixed.
 
 ---
 
-## Open (34 bugs)
+## Open (35 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -43,6 +43,7 @@ Last updated: April 4, 2026 — v1.2. 34 open, 37 fixed.
 | LYR-067 | 🟡 medium | openclaw | Qwen3.5:9b gets stuck replaying cached response in loop under GPU load | Model repeats same output indefinitely when Ollama is under memory pressure. |
 | LYR-068 | 🟡 medium | notion | Notion date property timezone confusion | UTC offset in payload causes double conversion depending on property timezone setting. |
 | LYR-069 | 🟢 low | openclaw | Claude 3 Haiku too old to load skill system | Ignores SKILL.md entirely, uses built-in cron instead of Lyra endpoints. |
+| LYR-070 | 🟡 medium | backend | Conflict detection fires on EXECUTED tasks | Tasks in EXECUTED/SKIPPED/DELETED state should not block new task creation in the same time slot. Only PLANNED and EXECUTING states should conflict. Fix in `conflict_detector.py`: filter candidate tasks to `state IN ('PLANNED', 'EXECUTING')` before checking overlap. |
 
 ---
 
