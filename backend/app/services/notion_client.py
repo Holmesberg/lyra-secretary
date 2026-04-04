@@ -10,15 +10,17 @@ from app.core.config import settings
 from app.db.models import Task, TaskState
 from app.utils.time_utils import to_local
 from app.utils.retry import retry_with_backoff
-import pytz
+from zoneinfo import ZoneInfo
 
-def _to_cairo(dt):
+def _to_local_iso(dt):
+    """Convert a UTC datetime to the user's local time with correct UTC offset."""
     if dt is None:
         return None
-    cairo = pytz.timezone('Africa/Cairo')
+    tz = ZoneInfo(settings.USER_TIMEZONE)
     if dt.tzinfo is None:
-        dt = pytz.utc.localize(dt)
-    return dt.astimezone(cairo).strftime("%Y-%m-%dT%H:%M:%S+02:00")
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    local_dt = dt.astimezone(tz)
+    return local_dt.strftime("%Y-%m-%dT%H:%M:%S") + local_dt.strftime("%z")[:3] + ":" + local_dt.strftime("%z")[3:]
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +106,8 @@ class NotionClient:
             },
             "Start": {
                 "date": {
-                    "start": _to_cairo(start),
-                    "end": _to_cairo(end) if end else None
+                    "start": _to_local_iso(start),
+                    "end": _to_local_iso(end) if end else None
                 }
             },
             "State": {
