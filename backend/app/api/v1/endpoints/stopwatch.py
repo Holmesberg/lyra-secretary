@@ -21,6 +21,7 @@ from app.services.stopwatch_manager import (
     StopwatchNotPausedError,
     NoActiveStopwatchError,
 )
+from app.utils.time_utils import to_local
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ async def start_stopwatch(
             task_id=task.task_id,
             start_time=session.start_time_utc,
             is_future_task=is_future_task,
-            planned_start=task.planned_start_utc,
+            planned_start=to_local(task.planned_start_utc),
             pre_task_readiness=task.pre_task_readiness,
             initiation_delay_minutes=task.initiation_delay_minutes,
         )

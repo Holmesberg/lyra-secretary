@@ -7,6 +7,7 @@ import logging
 
 from app.api.deps import get_db
 from app.db.models import Task, TaskState
+from app.utils.time_utils import to_utc, to_local
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -39,8 +40,8 @@ async def query_tasks(
         if date:
             try:
                 target_date = datetime.strptime(date, "%Y-%m-%d")
-                day_start = target_date
-                day_end = target_date + timedelta(days=1)
+                day_start = to_utc(target_date)  # midnight Cairo → UTC
+                day_end = to_utc(target_date + timedelta(days=1))
                 query = query.filter(
                     Task.planned_start_utc >= day_start,
                     Task.planned_start_utc < day_end
@@ -59,8 +60,8 @@ async def query_tasks(
             {
                 "task_id": t.task_id,
                 "title": t.title,
-                "start": t.planned_start_utc.isoformat() if t.planned_start_utc else None,
-                "end": t.planned_end_utc.isoformat() if t.planned_end_utc else None,
+                "start": to_local(t.planned_start_utc).isoformat() if t.planned_start_utc else None,
+                "end": to_local(t.planned_end_utc).isoformat() if t.planned_end_utc else None,
                 "state": t.state.value if hasattr(t.state, 'value') else str(t.state),
                 "category": t.category,
             }
