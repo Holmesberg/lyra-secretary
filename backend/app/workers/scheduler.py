@@ -6,7 +6,7 @@ import logging
 from app.workers.jobs.reminders import check_upcoming_tasks
 from app.workers.jobs.notion_sync import retry_failed_syncs
 from app.workers.jobs.timer_overflow import check_timer_overflow
-from app.workers.jobs.abandoned_tasks import check_abandoned_tasks
+from app.workers.jobs.overdue_tasks import detect_and_skip_overdue_tasks
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -40,12 +40,12 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Abandoned task detection (check every 30 minutes)
+    # Overdue task detection (check every 30 minutes)
     scheduler.add_job(
-        check_abandoned_tasks,
+        detect_and_skip_overdue_tasks,
         trigger=IntervalTrigger(minutes=30),
-        id="abandoned_tasks",
-        name="Mark unstarted past-due tasks as abandoned",
+        id="overdue_tasks",
+        name="Detect and skip overdue unstarted tasks",
         replace_existing=True
     )
 
