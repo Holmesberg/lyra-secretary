@@ -81,6 +81,16 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
         )
         total_paused = sum(s.total_paused_minutes for s in sessions_for_task)
 
+        # Build pause pattern
+        pause_reasons = [s.pause_reason for s in sessions_for_task if s.pause_reason]
+        pause_initiators = [s.pause_initiator for s in sessions_for_task if s.pause_initiator]
+        first_pause_minute = None
+        for s in sessions_for_task:
+            if s.paused_at_utc and s.start_time_utc:
+                mins = int((s.paused_at_utc - s.start_time_utc).total_seconds() / 60)
+                if first_pause_minute is None or mins < first_pause_minute:
+                    first_pause_minute = mins
+
         research_sessions.append({
             **common,
             "planned_duration_minutes": t.planned_duration_minutes,
@@ -90,6 +100,16 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
             "initiation_delay_minutes": t.initiation_delay_minutes,
             "pause_count": t.pause_count,
             "total_paused_minutes": total_paused,
+            "pause_pattern": {
+                "pause_count": t.pause_count or 0,
+                "total_paused_minutes": total_paused,
+                "first_pause_at_minute": first_pause_minute,
+                "pause_reasons": pause_reasons,
+                "pause_initiators": pause_initiators,
+            },
+            "parent_task_id": t.parent_task_id,
+            "interruption_type": t.interruption_type,
+            "replaces_task_id": t.replaces_task_id,
         })
 
         product_sessions.append({
@@ -107,6 +127,31 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
     delta_vals = [s["delta_minutes"] for s in research_sessions if s["delta_minutes"] is not None]
     delay_vals = [s["initiation_delay_minutes"] for s in research_sessions if s["initiation_delay_minutes"] is not None]
 
+    interrupted = [s for s in research_sessions if s.get("parent_task_id")]
+    substituted = [s for s in research_sessions if s.get("replaces_task_id")]
+
+    # Self-consistency score: per category+time_of_day, variance of discrepancy_score
+    consistency_buckets: dict[str, list[int]] = defaultdict(list)
+    for t in tasks:
+        if t.discrepancy_score is not None and t.category:
+            tod = _time_of_day(to_local(t.planned_start_utc))
+            key = f"{t.category}_{tod}"
+            consistency_buckets[key].append(t.discrepancy_score)
+
+    self_consistency = []
+    for key, scores in consistency_buckets.items():
+        if len(scores) < 2:
+            continue
+        mean = sum(scores) / len(scores)
+        variance = round(sum((s - mean) ** 2 for s in scores) / len(scores), 2)
+        cat, tod = key.rsplit("_", 1)
+        self_consistency.append({
+            "category": cat,
+            "time_of_day": tod,
+            "variance": variance,
+            "sessions": len(scores),
+        })
+
     research_summary = {
         "total_sessions": total,
         "initiated_count": len(initiated),
@@ -114,6 +159,9 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
         "abandoned_rate": round(len(abandoned) / total, 3) if total else 0.0,
         "avg_delta_minutes": _avg(delta_vals),
         "avg_initiation_delay_minutes": _avg(delay_vals),
+        "interruption_rate": round(len(interrupted) / total, 3) if total else 0.0,
+        "substitution_rate": round(len(substituted) / total, 3) if total else 0.0,
+        "self_consistency_scores": self_consistency,
     }
 
     # --- Product layer summary ---
