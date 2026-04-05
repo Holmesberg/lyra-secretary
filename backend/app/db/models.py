@@ -199,7 +199,10 @@ class StopwatchSession(Base):
     auto_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     paused_at_utc: Mapped[Optional[datetime]] = mapped_column(DateTime)
     total_paused_minutes: Mapped[int] = mapped_column(Integer, default=0)
-    
+    pause_reason: Mapped[Optional[str]] = mapped_column(String(50))
+    pause_initiator: Mapped[Optional[str]] = mapped_column(String(20))
+    original_pre_task_readiness: Mapped[Optional[int]] = mapped_column(Integer)
+
     # Relationship
     task: Mapped["Task"] = relationship(back_populates="stopwatch_sessions")
     

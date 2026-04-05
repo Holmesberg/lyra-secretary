@@ -39,10 +39,21 @@ class StopwatchStopResponse(BaseModel):
     discrepancy_score: Optional[int] = None
 
 
+PAUSE_REASONS = {"mental_fatigue", "distraction", "task_difficulty", "external_interruption", "intentional_break", "prayer"}
+PAUSE_INITIATORS = {"self", "external"}
+
+
+class StopwatchPauseRequest(BaseModel):
+    pause_reason: Optional[str] = Field(None, description="One of: mental_fatigue, distraction, task_difficulty, external_interruption, intentional_break, prayer")
+    pause_initiator: Optional[str] = Field(None, description="self or external")
+
+
 class StopwatchPauseResponse(BaseModel):
     paused: bool
     elapsed_minutes: int
     paused_at: datetime
+    pause_reason: Optional[str] = None
+    pause_initiator: Optional[str] = None
 
 
 class StopwatchResumeResponse(BaseModel):
@@ -60,6 +71,16 @@ class StopwatchStatusResponse(BaseModel):
     elapsed_minutes: Optional[int] = None
     paused: bool = False
     total_paused_minutes: int = 0
+
+
+class ReadinessCorrectionRequest(BaseModel):
+    pre_task_readiness: int = Field(..., ge=1, le=5)
+
+
+class ReadinessCorrectionResponse(BaseModel):
+    corrected: bool
+    original: Optional[int] = None
+    new: int
 
 
 class RetroactiveRequest(BaseModel):

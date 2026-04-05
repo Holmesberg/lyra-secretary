@@ -10,11 +10,16 @@ from app.schemas.stopwatch import (
     StopwatchStartResponse,
     StopwatchStopRequest,
     StopwatchStopResponse,
+    StopwatchPauseRequest,
     StopwatchPauseResponse,
     StopwatchResumeResponse,
     StopwatchStatusResponse,
+    ReadinessCorrectionRequest,
+    ReadinessCorrectionResponse,
     RetroactiveRequest,
     RetroactiveResponse,
+    PAUSE_REASONS,
+    PAUSE_INITIATORS,
 )
 from app.services.stopwatch_manager import (
     StopwatchManager,
@@ -60,14 +65,32 @@ async def start_stopwatch(
 
 
 @router.post("/pause", response_model=StopwatchPauseResponse)
-async def pause_stopwatch(db: Session = Depends(get_db)) -> StopwatchPauseResponse:
+async def pause_stopwatch(
+    request: StopwatchPauseRequest = None,
+    db: Session = Depends(get_db),
+) -> StopwatchPauseResponse:
     """
     Pause the active stopwatch. Use during prayer, breaks, or interruptions.
     Paused time is excluded from executed_duration and delta on stop.
+
+    Optional body: pause_reason (mental_fatigue|distraction|task_difficulty|
+    external_interruption|intentional_break|prayer), pause_initiator (self|external).
     """
+    if request is None:
+        request = StopwatchPauseRequest()
+
+    # Validate enums if provided
+    if request.pause_reason and request.pause_reason not in PAUSE_REASONS:
+        raise HTTPException(status_code=400, detail=f"Invalid pause_reason. Must be one of: {', '.join(sorted(PAUSE_REASONS))}")
+    if request.pause_initiator and request.pause_initiator not in PAUSE_INITIATORS:
+        raise HTTPException(status_code=400, detail=f"Invalid pause_initiator. Must be one of: {', '.join(sorted(PAUSE_INITIATORS))}")
+
     try:
         manager = StopwatchManager(db)
-        result = manager.pause()
+        result = manager.pause(
+            pause_reason=request.pause_reason,
+            pause_initiator=request.pause_initiator,
+        )
         result["paused_at"] = to_local(result["paused_at"])
         return StopwatchPauseResponse(**result)
     except NoActiveStopwatchError as e:
@@ -164,6 +187,28 @@ async def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResp
         return StopwatchStatusResponse(**status) if status else StopwatchStatusResponse(active=False)
     except Exception as e:
         logger.error(f"Stopwatch status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/correct-readiness", response_model=ReadinessCorrectionResponse)
+async def correct_readiness(
+    request: ReadinessCorrectionRequest,
+    db: Session = Depends(get_db),
+) -> ReadinessCorrectionResponse:
+    """
+    Correct pre_task_readiness on the active session. No time limit —
+    works any time while the stopwatch is running. Logs original value.
+    """
+    try:
+        manager = StopwatchManager(db)
+        result = manager.correct_readiness(
+            pre_task_readiness=request.pre_task_readiness,
+        )
+        return ReadinessCorrectionResponse(**result)
+    except NoActiveStopwatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Readiness correction error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -175,7 +175,12 @@ class StopwatchManager:
 
         return session, task, is_future_task
 
-    def pause(self, user_id: str = "user_primary") -> dict:
+    def pause(
+        self,
+        user_id: str = "user_primary",
+        pause_reason: Optional[str] = None,
+        pause_initiator: Optional[str] = None,
+    ) -> dict:
         """Pause the active stopwatch. Stores pause timestamp in DB and Redis."""
         active = self._get_active(user_id)
         if not active:
@@ -189,11 +194,21 @@ class StopwatchManager:
         elapsed = self._active_elapsed(session, None)
 
         session.paused_at_utc = now
+        if pause_reason:
+            session.pause_reason = pause_reason
+        if pause_initiator:
+            session.pause_initiator = pause_initiator
         self.db.commit()
 
         self.redis.set_pause_state(user_id, session.session_id, now.isoformat())
 
-        return {"paused": True, "elapsed_minutes": elapsed, "paused_at": now}
+        return {
+            "paused": True,
+            "elapsed_minutes": elapsed,
+            "paused_at": now,
+            "pause_reason": pause_reason,
+            "pause_initiator": pause_initiator,
+        }
 
     def resume(self, user_id: str = "user_primary") -> dict:
         """Resume a paused stopwatch. Accumulates paused duration."""
@@ -323,6 +338,31 @@ class StopwatchManager:
         self.redis.clear_active_stopwatch(user_id)
 
         return session, task, is_early_stop, notion_synced
+
+    def correct_readiness(
+        self,
+        pre_task_readiness: int,
+        user_id: str = "user_primary",
+    ) -> dict:
+        """Correct pre_task_readiness on the active session. No time limit."""
+        active = self._get_active(user_id)
+        if not active:
+            raise NoActiveStopwatchError("No active stopwatch")
+
+        session = self._get_session(active["session_id"])
+        task = self.db.query(Task).filter(Task.task_id == active["task_id"]).first()
+        if not task:
+            raise ValueError("Task not found")
+
+        original = task.pre_task_readiness
+        # Store original on session for audit trail (only first correction)
+        if session.original_pre_task_readiness is None and original is not None:
+            session.original_pre_task_readiness = original
+        task.pre_task_readiness = pre_task_readiness
+        self.db.commit()
+        self.db.refresh(task)
+
+        return {"corrected": True, "original": original, "new": pre_task_readiness}
 
     def get_status(self, user_id: str = "user_primary") -> Optional[dict]:
         """Get current stopwatch status including pause state."""
