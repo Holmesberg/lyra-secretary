@@ -119,15 +119,6 @@ class NotionClient:
                 "multi_select": [{"name": task.category}]
             }
         
-        if task.notes:
-            properties["Notes"] = {
-                "rich_text": [
-                    {
-                        "text": {"content": task.notes[:2000]}
-                    }
-                ]
-            }
-        
         return properties
     
     def archive_page(self, page_id: str):
