@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 5, 2026 — v1.3. 42 open, 37 fixed.
+Last updated: April 5, 2026 — v1.4. 37 open, 42 fixed.
 
 ---
 
-## Open (35 bugs)
+## Open (37 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -43,18 +43,13 @@ Last updated: April 5, 2026 — v1.3. 42 open, 37 fixed.
 | LYR-067 | 🟡 medium | openclaw | Qwen3.5:9b gets stuck replaying cached response in loop under GPU load | Model repeats same output indefinitely when Ollama is under memory pressure. |
 | LYR-068 | 🟡 medium | notion | Notion date property timezone confusion | UTC offset in payload causes double conversion depending on property timezone setting. |
 | LYR-069 | 🟢 low | openclaw | Claude 3 Haiku too old to load skill system | Ignores SKILL.md entirely, uses built-in cron instead of Lyra endpoints. |
-| LYR-070 | 🟡 medium | backend | Conflict detection fires on EXECUTED tasks | Tasks in EXECUTED/SKIPPED/DELETED state should not block new task creation in the same time slot. Only PLANNED and EXECUTING states should conflict. Fix in `conflict_detector.py`: filter candidate tasks to `state IN ('PLANNED', 'EXECUTING')` before checking overlap. |
 | LYR-071 | 🔴 high | openclaw | Approval requests still firing despite exec-approvals fix | `ask:"never"` + wildcard `"*"` not fully suppressing prompts. Haiku still triggers approval on every curl call. |
 | LYR-072 | 🟡 medium | skill | Must delete conflicting task to schedule replacement | No "replace" or "skip and reschedule" flow. User said "skip CO review and schedule debugging" which required a delete + create. Should be atomic. |
-| LYR-073 | 🟡 medium | backend | Conflict detected with DELETED task | CO review was deleted but Lyra still detected it as conflicting. Conflict detector should exclude DELETED state. Related to LYR-070. |
-| LYR-074 | 🔴 high | backend | Undo window too short or not working | User tried to correct readiness from 5 to 3 immediately after start but undo window had already expired. 30 seconds is too short for real-world use. Either extend to 5 minutes or add `POST /v1/stopwatch/correct-readiness`. |
-| LYR-075 | 🟡 medium | backend | Overflow notification fires while timer is paused | CSE242 timer was paused for 78 minutes but overflow fired anyway at 217 minutes elapsed including pause time. Overflow should compare `active_elapsed` (total − paused) not wall clock. |
-| LYR-076 | 🟡 medium | skill | Lyra misinterprets "75%" completion as focus rating | When asked "how complete are you" and user replied "75%", Lyra asked for clarification whether it was focus quality or completion. The overflow prompt response should only accept percentages, not be ambiguous. |
 | LYR-077 | 🟢 low | skill | Readiness assumed 5 without asking | Debugging session started with `pre_task_readiness:5` without Lyra asking the question first. Hard Rule violation again. |
 
 ---
 
-## Fixed (37 bugs)
+## Fixed (42 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
@@ -95,50 +90,51 @@ Last updated: April 5, 2026 — v1.3. 42 open, 37 fixed.
 | LYR-RULE6 | 🟡 medium | skill | No backend verification before mutations | Hard Rule #6 added to SKILL.md: always call query + single fetch before any timer start, delete, or reschedule. |
 | LYR-DISC | 🟡 medium | backend | No cognitive measurement data captured | Discrepancy measurement layer implemented: `pre_task_readiness`, `post_task_reflection`, `initiation_status`, `initiation_delay_minutes` on Task model. `discrepancy_score` property. Abandoned task detection job (30 min). `GET /v1/analytics/discrepancy` endpoint. Readiness/reflection capture workflow added to SKILL.md. Migration 002 applied. |
 | LYR-055 | 🟢 low | docker | `version` attribute in docker-compose.yml generates warning | `version: "3.8"` is obsolete in Docker Compose v2+; generates warning on every command. Removed. |
+| LYR-070 | 🟡 medium | backend | Conflict detection fires on EXECUTED tasks | Fixed: filter to `state IN ('PLANNED', 'EXECUTING')` only. Also fixed `is_mutable` to include SKIPPED. |
+| LYR-073 | 🟡 medium | backend | Conflict detected with DELETED task | Fixed by LYR-070 — DELETED excluded from conflict detection. |
+| LYR-074 | 🔴 high | backend | Undo window too short for readiness correction | Fixed: `POST /v1/stopwatch/correct-readiness` — no time limit, works during active session. Logs original value. |
+| LYR-075 | 🟡 medium | backend | Overflow notification fires while timer is paused | Fixed: subtract `total_paused_minutes` and current pause from elapsed in `timer_overflow.py`. |
+| LYR-076 | 🟡 medium | skill | "75%" completion misinterpreted as focus rating | Fixed: overflow prompt now says "Reply with 'done' or a completion percentage". |
 
 ---
 
 ## Priority Order for Next Session
 
 ### Critical (🔴)
-1. LYR-074 — Undo window too short (30s); readiness correction impossible in practice
-2. LYR-071 — exec-approvals `ask:"never"` + `"*"` not suppressing Haiku approval prompts
-3. LYR-063 — OpenClaw caches stale API keys in auth-profiles.json; billing failures block model permanently
-4. LYR-066 — Qwen3.5:9b deletes tasks without confirmation; local models ignore Hard Rules
-5. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
-6. LYR-048 — validate Hard Rule #5 fix with Haiku (GLM bypass confirmed)
-7. LYR-049 — skill context loss on model switch; model improvises wrong endpoints
+1. LYR-071 — exec-approvals `ask:"never"` + `"*"` not suppressing Haiku approval prompts
+2. LYR-063 — OpenClaw caches stale API keys in auth-profiles.json; billing failures block model permanently
+3. LYR-066 — Qwen3.5:9b deletes tasks without confirmation; local models ignore Hard Rules
+4. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
+5. LYR-048 — validate Hard Rule #5 fix with Haiku (GLM bypass confirmed)
+6. LYR-049 — skill context loss on model switch; model improvises wrong endpoints
 
 ### Medium (🟡)
-8. LYR-073 — Conflict detected with DELETED task; should exclude DELETED state (related to LYR-070)
-9. LYR-072 — No atomic "skip and reschedule" flow; requires manual delete + create
-10. LYR-075 — Overflow notification fires during pause; should use active_elapsed not wall clock
-11. LYR-076 — Overflow prompt misinterprets "75%" completion as focus rating
-12. LYR-064 — ANTHROPIC_API_KEY not in docker-compose.yml env block (fixed locally, needs upstream)
-13. LYR-059 — Haiku uses curl instead of HTTP tool; SKILL.md rule softened
-14. LYR-065 — Qwen3.5:9b skips readiness/reflection capture
-15. LYR-062 — agent approves its own exec requests
-16. LYR-061 — insights fire after 1 session, should require 3
-17. LYR-053 — enable exec approvals on Telegram
-18. LYR-057 — validate Hard Rule #8 fix; stopwatch/start with task_id only
-19. LYR-043 — validate Hard Rule #6 fixes duplicate task creation
-20. LYR-052 — validate backend-direct Telegram reminders
-21. LYR-067 — Qwen3.5:9b loops under GPU load
-22. LYR-068 — Notion date timezone double conversion
-23. LYR-046 — category cleared on Notion update
-24. LYR-042 — clear schedule leaves EXECUTING tasks
-25. LYR-056 — validate "then" chaining in parse_chained()
-26. LYR-050 — backfill initiation_status on historical tasks
-27. LYR-035 — validate Hard Rule #6 covers memory ID issue
-28. LYR-036 — context lost on follow-up corrections
+7. LYR-072 — No atomic "skip and reschedule" flow; requires manual delete + create
+8. LYR-064 — ANTHROPIC_API_KEY not in docker-compose.yml env block (fixed locally, needs upstream)
+9. LYR-059 — Haiku uses curl instead of HTTP tool; SKILL.md rule softened
+10. LYR-065 — Qwen3.5:9b skips readiness/reflection capture
+11. LYR-062 — agent approves its own exec requests
+12. LYR-061 — insights fire after 1 session, should require 3
+13. LYR-053 — enable exec approvals on Telegram
+14. LYR-057 — validate Hard Rule #8 fix; stopwatch/start with task_id only
+15. LYR-043 — validate Hard Rule #6 fixes duplicate task creation
+16. LYR-052 — validate backend-direct Telegram reminders
+17. LYR-067 — Qwen3.5:9b loops under GPU load
+18. LYR-068 — Notion date timezone double conversion
+19. LYR-046 — category cleared on Notion update
+20. LYR-042 — clear schedule leaves EXECUTING tasks
+21. LYR-056 — validate "then" chaining in parse_chained()
+22. LYR-050 — backfill initiation_status on historical tasks
+23. LYR-035 — validate Hard Rule #6 covers memory ID issue
+24. LYR-036 — context lost on follow-up corrections
 
 ### Low (🟢)
-29. LYR-077 — Readiness assumed 5 without asking; Hard Rule violation
-30. LYR-060 — overflow notification misses short tasks
-31. LYR-069 — Claude 3 Haiku too old for skill system
-32. LYR-054 — category_mapping inference at creation time
-33. LYR-037 — retest false conflict on clean database
-34. LYR-015 + LYR-018 + LYR-020 — backfill sync, clean test data
-35. LYR-019 — day-of-week label fix
-36. LYR-007 — validate memory constraint
-37. LYR-047 — document as Notion limitation
+25. LYR-077 — Readiness assumed 5 without asking; Hard Rule violation
+26. LYR-060 — overflow notification misses short tasks
+27. LYR-069 — Claude 3 Haiku too old for skill system
+28. LYR-054 — category_mapping inference at creation time
+29. LYR-037 — retest false conflict on clean database
+30. LYR-015 + LYR-018 + LYR-020 — backfill sync, clean test data
+31. LYR-019 — day-of-week label fix
+32. LYR-007 — validate memory constraint
+33. LYR-047 — document as Notion limitation
