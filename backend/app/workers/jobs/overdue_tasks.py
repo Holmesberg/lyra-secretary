@@ -1,4 +1,4 @@
-"""Abandoned task detection job."""
+"""Overdue task detection job."""
 import logging
 
 from app.db.session import SessionLocal
@@ -9,7 +9,7 @@ from app.utils.time_utils import now_utc
 logger = logging.getLogger(__name__)
 
 
-def check_abandoned_tasks():
+def detect_and_skip_overdue_tasks():
     """
     Transition PLANNED tasks to SKIPPED if their window passed without a timer start.
 
@@ -54,6 +54,6 @@ def check_abandoned_tasks():
         logger.info(f"Transitioned {count} task(s) to SKIPPED (abandoned)")
 
     except Exception as e:
-        logger.error(f"Error in abandoned_tasks job: {e}", exc_info=True)
+        logger.error(f"Error in overdue_tasks job: {e}", exc_info=True)
     finally:
         db.close()
