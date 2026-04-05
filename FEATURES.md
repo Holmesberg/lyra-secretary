@@ -1,5 +1,5 @@
 # Lyra Secretary — Feature Backlog
-*Last updated: April 4, 2026*
+*Last updated: April 5, 2026*
 
 Priority: 🔴 critical | 🟡 important | 🟢 nice-to-have
 Status: 📋 backlog | 🔨 in progress | ✅ done
@@ -81,17 +81,41 @@ Force Notion sync for tasks created before timezone pipeline fix. Resolves LYR-0
 
 ---
 
-### 🟡 Pause reason classification
+### ✅ Pause reason classification
 Add `pause_reason` enum to pause endpoint: `prayer` / `break` / `interruption`.
 
 Distinguishes planned pauses from involuntary interruptions. Interruption frequency is an analytical signal — high rate correlates with environment, not cognitive state. All pause types excluded from delta.
 
 Resolves validity threat VT-6 (see MANIFESTO.md).
 
+**Implemented:** POST /v1/stopwatch/pause accepts optional `pause_reason` (mental_fatigue|distraction|task_difficulty|external_interruption|intentional_break|prayer) and `pause_initiator` (self|external). Migration 004.
+
 ---
 
-### 🟡 Fix conflict detection on immutable tasks (LYR-070)
+### ✅ Fix conflict detection on immutable tasks (LYR-070)
 Filter candidate tasks in `conflict_detector.py` to `state IN ('PLANNED', 'EXECUTING')` before checking overlap. EXECUTED/SKIPPED/DELETED tasks should not block new task creation.
+
+**Implemented:** One-line fix in conflict_detector.py. Also fixed `Task.is_mutable` to include SKIPPED state.
+
+---
+
+### ✅ Readiness correction endpoint (LYR-074)
+POST /v1/stopwatch/correct-readiness — corrects pre_task_readiness any time during active session. No time limit (unlike 30s undo window). Logs original value for audit. Migration 004.
+
+---
+
+### ✅ Parent task ID for interruption tracking
+When a new task starts while another is PAUSED, links via `parent_task_id`. Records `interruption_type` (urgent|scheduled_override|distraction|unknown). Paused session stays unclosed for later resumption. Migration 005.
+
+---
+
+### ✅ Task substitution tracking
+When a task is DELETED and a new task is created in the same/overlapping slot within 10 minutes, bidirectional linkage: `replaces_task_id` / `replaced_by_task_id`. Best-effort, non-blocking. Migration 006.
+
+---
+
+### ✅ Analytics: pause_pattern, interruption/substitution rates, self-consistency
+Research layer additions: per-session pause_pattern (reasons, initiators, first_pause_at_minute), parent_task_id, replaces_task_id. Summary: interruption_rate, substitution_rate, self_consistency_scores (per category+time_of_day variance of discrepancy).
 
 ---
 
@@ -353,6 +377,6 @@ Required for README, BR41N.IO submission, LinkedIn.
 
 ---
 
-*See LYRA_BUGS.md for active bug tracker (LYR-001 through LYR-070).*
+*See LYRA_BUGS.md for active bug tracker (LYR-001 through LYR-077).*
 *See MANIFESTO.md for research and product philosophy.*
 *See CLAUDE.md for developer context and agent architecture.*
