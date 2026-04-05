@@ -108,6 +108,10 @@ class Task(Base):
     initiation_delay_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     pause_count: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Void tracking (system_error sessions excluded from analytics)
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    voided_reason: Mapped[Optional[str]] = mapped_column(String(200))
+
     # Interruption tracking
     parent_task_id: Mapped[Optional[str]] = mapped_column(String(36))
     interruption_type: Mapped[Optional[str]] = mapped_column(String(20))

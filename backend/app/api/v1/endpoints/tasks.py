@@ -14,8 +14,12 @@ from app.schemas.task import (
     TaskDeleteRequest,
     TaskDeleteResponse,
     TaskDetail,
+    TaskVoidRequest,
+    TaskVoidResponse,
     ConflictInfo,
 )
+from app.db.models import TaskState
+from app.utils.time_utils import now_utc as _now_utc
 from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
 from app.core.exceptions import ImmutableTaskError
@@ -173,6 +177,44 @@ async def delete_task(
     except Exception as e:
         logger.error(f"Delete error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tasks/{task_id}/void", response_model=TaskVoidResponse)
+async def void_task(
+    task_id: str,
+    request: TaskVoidRequest = None,
+    db: Session = Depends(get_db),
+) -> TaskVoidResponse:
+    """
+    Void an EXECUTED task — marks initiation_status='system_error'.
+    Task stays EXECUTED (immutable history preserved) but is excluded
+    from all analytics queries. Use for sessions corrupted by agent
+    or testing errors.
+    """
+    if request is None:
+        request = TaskVoidRequest()
+
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.state != TaskState.EXECUTED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only EXECUTED tasks can be voided (current state: {task.state})",
+        )
+    previous = task.initiation_status
+    task.initiation_status = "system_error"
+    task.voided_at = _now_utc()
+    task.voided_reason = request.voided_reason
+    db.commit()
+    db.refresh(task)
+    return TaskVoidResponse(
+        task_id=task.task_id,
+        voided=True,
+        previous_initiation_status=previous,
+        voided_at=to_local(task.voided_at),
+        voided_reason=task.voided_reason,
+    )
 
 
 @router.get("/tasks/{task_id}", response_model=TaskDetail)

@@ -143,3 +143,17 @@ class TaskDeleteResponse(BaseModel):
     """Response from deleting a task."""
     task_id: str
     deleted: bool
+
+
+class TaskVoidRequest(BaseModel):
+    """Request to void an EXECUTED task."""
+    voided_reason: Optional[str] = Field(None, max_length=200)
+
+
+class TaskVoidResponse(BaseModel):
+    """Response from voiding a task."""
+    task_id: str
+    voided: bool
+    previous_initiation_status: str
+    voided_at: datetime
+    voided_reason: Optional[str] = None

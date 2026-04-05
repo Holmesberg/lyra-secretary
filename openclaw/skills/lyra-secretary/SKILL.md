@@ -65,6 +65,8 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 
 **GET /v1/stopwatch/status** — returns: `active`, `task_title`, `elapsed_minutes`, `paused`, `total_paused_minutes`
 
+**POST /v1/tasks/{task_id}/void** — body (optional): `voided_reason` — returns: `voided`, `voided_at` — marks EXECUTED task as system_error, excluded from analytics
+
 **POST /v1/undo** — no body — reverts last create or delete
 
 **GET /v1/analytics/insights?auto_mark=true** — returns: `insights[]` with `observation`, `ready`
@@ -114,6 +116,14 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 - User says "I worked on X from 2pm to 4pm" → POST /v1/stopwatch/retroactive with title, start_time, end_time
 - Optionally ask readiness + reflection (same as live sessions)
 - No timer needed — task is created directly as EXECUTED
+
+**Void session:**
+- If user says a session was accidentally started or data is wrong:
+- GET /v1/tasks/query → find the task → GET /v1/tasks/{id} → confirm it is EXECUTED
+- Ask: "What happened?" (optional, store as voided_reason)
+- POST /v1/tasks/{task_id}/void with voided_reason
+- Confirm: "Session voided — excluded from analytics but preserved in history."
+- NEVER delete EXECUTED tasks — always void instead.
 
 **Undo:** POST /v1/undo immediately after create or delete.
 

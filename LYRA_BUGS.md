@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 5, 2026 — v1.4. 37 open, 42 fixed.
+Last updated: April 5, 2026 — v1.4. 38 open, 42 fixed.
 
 ---
 
-## Open (37 bugs)
+## Open (38 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -46,6 +46,7 @@ Last updated: April 5, 2026 — v1.4. 37 open, 42 fixed.
 | LYR-071 | 🔴 high | openclaw | Approval requests still firing despite exec-approvals fix | `ask:"never"` + wildcard `"*"` not fully suppressing prompts. Haiku still triggers approval on every curl call. |
 | LYR-072 | 🟡 medium | skill | Must delete conflicting task to schedule replacement | No "replace" or "skip and reschedule" flow. User said "skip CO review and schedule debugging" which required a delete + create. Should be atomic. |
 | LYR-077 | 🟢 low | skill | Readiness assumed 5 without asking | Debugging session started with `pre_task_readiness:5` without Lyra asking the question first. Hard Rule violation again. |
+| LYR-078 | 🔴 high | openclaw | Agent autonomously executed Lyra build during testing | Claude Code agent started and stopped the Lyra build task during testing — zero-duration session, bypassed early-stop gate with `?confirmed=true`, pre/post self-filled. Session voided via `POST /v1/tasks/{id}/void`. |
 
 ---
 
@@ -101,12 +102,13 @@ Last updated: April 5, 2026 — v1.4. 37 open, 42 fixed.
 ## Priority Order for Next Session
 
 ### Critical (🔴)
-1. LYR-071 — exec-approvals `ask:"never"` + `"*"` not suppressing Haiku approval prompts
-2. LYR-063 — OpenClaw caches stale API keys in auth-profiles.json; billing failures block model permanently
-3. LYR-066 — Qwen3.5:9b deletes tasks without confirmation; local models ignore Hard Rules
-4. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
-5. LYR-048 — validate Hard Rule #5 fix with Haiku (GLM bypass confirmed)
-6. LYR-049 — skill context loss on model switch; model improvises wrong endpoints
+1. LYR-078 — Agent autonomously executed Lyra build during testing; zero-duration, bypassed early-stop
+2. LYR-071 — exec-approvals `ask:"never"` + `"*"` not suppressing Haiku approval prompts
+3. LYR-063 — OpenClaw caches stale API keys in auth-profiles.json; billing failures block model permanently
+4. LYR-066 — Qwen3.5:9b deletes tasks without confirmation; local models ignore Hard Rules
+5. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
+6. LYR-048 — validate Hard Rule #5 fix with Haiku (GLM bypass confirmed)
+7. LYR-049 — skill context loss on model switch; model improvises wrong endpoints
 
 ### Medium (🟡)
 7. LYR-072 — No atomic "skip and reschedule" flow; requires manual delete + create

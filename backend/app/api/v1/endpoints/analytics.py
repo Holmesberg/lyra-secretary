@@ -43,6 +43,7 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
             (Task.state == TaskState.EXECUTED) |
             (Task.initiation_status.in_(["initiated", "abandoned"]))
         )
+        .filter(Task.initiation_status != "system_error")
         .order_by(Task.planned_start_utc)
         .all()
     )
@@ -121,6 +122,7 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
         })
 
     # --- Research layer summary ---
+    voided_count = db.query(Task).filter(Task.initiation_status == "system_error").count()
     total = len(research_sessions)
     initiated = [s for s in research_sessions if s["initiation_status"] == "initiated"]
     abandoned = [s for s in research_sessions if s["initiation_status"] == "abandoned"]
@@ -162,6 +164,7 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
         "interruption_rate": round(len(interrupted) / total, 3) if total else 0.0,
         "substitution_rate": round(len(substituted) / total, 3) if total else 0.0,
         "self_consistency_scores": self_consistency,
+        "voided_count": voided_count,
     }
 
     # --- Product layer summary ---
@@ -438,7 +441,12 @@ async def get_insights(
     """
     MIN_SESSIONS = 3
 
-    all_tasks = db.query(Task).order_by(Task.planned_start_utc).all()
+    all_tasks = (
+        db.query(Task)
+        .filter(Task.initiation_status != "system_error")
+        .order_by(Task.planned_start_utc)
+        .all()
+    )
 
     # Gate check: need at least MIN_SESSIONS executed tasks with delta data
     delta_sessions = [
