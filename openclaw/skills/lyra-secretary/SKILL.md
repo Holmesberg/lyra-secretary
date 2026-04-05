@@ -75,6 +75,20 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 
 ---
 
+## Category Inference (apply when user doesn't specify)
+- gym, workout, run, walk, sport, fitness → fitness
+- lecture, class, CSE*, PHM*, course → academic
+- study, review, read, problem set, homework, assignment → study
+- debug, build, code, implement, fix, feature, Lyra → development
+- meeting, call, sync, standup → meeting
+- prayer, Fajr, Isha, Dhuhr, Asr, Maghrib, Taraweeh → prayer
+- idea, planning, reflection, journal, review → self_reflection
+- interview, network, LinkedIn → network
+
+Always include `category` in POST /v1/create. Never leave it null.
+
+---
+
 ## Workflow
 
 **On session start (/new or /reset):** Call GET /v1/skill/ping. If it fails: "Backend is unreachable, commands will not work."
