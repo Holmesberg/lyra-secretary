@@ -45,8 +45,8 @@ def check_timer_overflow():
 
                 message = (
                     f"⏱️ '{task.title}' has been running for {elapsed_minutes} min "
-                    f"(planned: {planned} min). How complete are you? "
-                    "Reply with a percentage (e.g. 75%) or 'done'."
+                    f"(planned: {planned} min). "
+                    "Reply with 'done' to stop, or a completion percentage (e.g. 75%)."
                 )
 
                 # 1. Try direct Telegram delivery
