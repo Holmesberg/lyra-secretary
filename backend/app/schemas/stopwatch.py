@@ -93,6 +93,7 @@ class RetroactiveRequest(BaseModel):
     pre_task_readiness: Optional[int] = Field(None, ge=1, le=5)
     post_task_reflection: Optional[int] = Field(None, ge=1, le=5)
     category: Optional[str] = None
+    planned_duration_minutes: Optional[int] = None
 
 
 class RetroactiveResponse(BaseModel):
@@ -101,7 +102,8 @@ class RetroactiveResponse(BaseModel):
     start_time: datetime
     end_time: datetime
     duration_minutes: int
-    delta_minutes: int = 0
+    planned_duration_minutes: int
+    delta_minutes: int
     initiation_status: str = "retroactive"
     pre_task_readiness: Optional[int] = None
     post_task_reflection: Optional[int] = None

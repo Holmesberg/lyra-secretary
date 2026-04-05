@@ -144,12 +144,14 @@ class TaskManager:
         category: Optional[str] = None,
         pre_task_readiness: Optional[int] = None,
         post_task_reflection: Optional[int] = None,
+        planned_duration_minutes: Optional[int] = None,
     ) -> tuple[Task, bool]:
         """
         Create a completed task from past timestamps (retroactive logging).
 
         Bypasses: past-time check, conflict detection, state machine.
-        Sets planned = executed (delta = 0 by definition).
+        If planned_duration_minutes provided, computes real delta.
+        Otherwise sets planned = executed (delta = 0).
 
         Returns:
             (task, notion_synced)
@@ -160,19 +162,26 @@ class TaskManager:
         if end_utc <= start_utc:
             raise ValueError("end_time must be after start_time")
 
-        duration_minutes = int((end_utc - start_utc).total_seconds() / 60)
-        if duration_minutes < 1:
+        executed_duration = int((end_utc - start_utc).total_seconds() / 60)
+        if executed_duration < 1:
             raise ValueError("Session must be at least 1 minute")
+
+        if planned_duration_minutes is not None:
+            planned_dur = planned_duration_minutes
+            planned_end_utc = start_utc + timedelta(minutes=planned_dur)
+        else:
+            planned_dur = executed_duration
+            planned_end_utc = end_utc
 
         task = Task(
             title=title,
             category=category,
             planned_start_utc=start_utc,
-            planned_end_utc=end_utc,
-            planned_duration_minutes=duration_minutes,
+            planned_end_utc=planned_end_utc,
+            planned_duration_minutes=planned_dur,
             executed_start_utc=start_utc,
             executed_end_utc=end_utc,
-            executed_duration_minutes=duration_minutes,
+            executed_duration_minutes=executed_duration,
             state=TaskState.EXECUTED,
             source=TaskSource.MANUAL,
             initiation_status="retroactive",

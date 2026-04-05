@@ -1,4 +1,4 @@
-# Lyra Secretary v1.3
+# Lyra Secretary v1.4
 
 [![CI](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml/badge.svg)](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -150,8 +150,9 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | POST | `/v1/delete` | Soft-delete a task |
 | POST | `/v1/stopwatch/start` | Start stopwatch; accepts `pre_task_readiness` (1–5) |
 | POST | `/v1/stopwatch/stop` | Stop stopwatch; accepts `post_task_reflection` (1–5); `?confirmed=true` if early stop |
-| POST | `/v1/stopwatch/pause` | Pause active stopwatch (prayer/break) |
+| POST | `/v1/stopwatch/pause` | Pause active stopwatch; accepts `pause_reason` and `pause_initiator` |
 | POST | `/v1/stopwatch/resume` | Resume paused stopwatch |
+| POST | `/v1/stopwatch/correct-readiness` | Correct pre_task_readiness during active session |
 | GET | `/v1/stopwatch/status` | Get stopwatch status |
 | GET | `/v1/health` | Health check |
 | GET | `/v1/tasks/query` | Query tasks by date, category, state |
@@ -162,6 +163,7 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | GET | `/v1/analytics/discrepancy` | Discrepancy measurement data — readiness, reflection, initiation stats |
 | GET | `/v1/analytics/insights` | Behavioral insights — pattern detection after sufficient sessions |
 | POST | `/v1/stopwatch/retroactive` | Log completed session after the fact — creates EXECUTED task from timestamps |
+| POST | `/v1/tasks/{task_id}/void` | Mark corrupted EXECUTED task as system_error — excluded from analytics |
 | GET | `/v1/skill/ping` | Skill health check — active stopwatch, pending tasks today |
 
 Full request/response schemas are documented in [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md) and in Swagger UI at `/docs`.
@@ -210,6 +212,15 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ Idempotency keys — deduplication via Redis (30s TTL)
 - ✅ Notification polling — backend pushes, OpenClaw polls every 30s
 
+**Measurement integrity (v1.4)**
+- ✅ Pause reason classification — `pause_reason` (6 types) and `pause_initiator` (self/external) on pause endpoint
+- ✅ Readiness correction — `POST /v1/stopwatch/correct-readiness` during active session, no time limit
+- ✅ Parent task interruption tracking — `parent_task_id` links new task to paused task
+- ✅ Task substitution tracking — bidirectional `replaces_task_id` / `replaced_by_task_id` linkage
+- ✅ Void endpoint — `POST /v1/tasks/{task_id}/void` marks corrupted sessions as system_error
+- ✅ Conflict detector fix — EXECUTED/SKIPPED/DELETED tasks no longer block new task creation
+- ✅ Analytics: pause_pattern, interruption_rate, substitution_rate, self_consistency_scores
+
 **Behavioral insights (v1.3)**
 - ✅ `GET /v1/analytics/insights` — rule-based pattern detection across sessions
 - ✅ Time-of-day performance, readiness correlation, abandonment patterns, estimation trends
@@ -229,8 +240,10 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 
 ## Known Issues
 
-See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (34 open, 37 fixed). Key active issues:
+See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (39 open, 42 fixed). Key active issues:
 
+- **LYR-078** 🔴 Agent autonomously executed Lyra task — zero-duration session, bypassed early-stop gate
+- **LYR-071** 🔴 Exec-approval `ask:"never"` not suppressing Haiku approval prompts
 - **LYR-063** 🔴 OpenClaw caches stale API keys — new keys not picked up without manual fix
 - **LYR-066** 🔴 Local models (Qwen3.5:9b) ignore Hard Rules — delete without confirmation
 - **LYR-051** 🔴 Agent confirms tasks without backend response on rate-limit fallback
@@ -245,6 +258,12 @@ See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (34 open, 37 fixed). Key
 - [ ] `POST /v1/tasks/{task_id}/sync` — backfill Notion for pre-fix tasks (LYR-015)
 - [ ] Per-model timeout in OpenClaw config (blocked on upstream: openclaw/openclaw#43946)
 - [x] `POST /v1/stopwatch/retroactive` — log completed sessions after the fact with full timestamp control (for untracked sessions)
+- [x] Pause reason classification — `pause_reason` + `pause_initiator` on pause endpoint
+- [x] Readiness correction — `POST /v1/stopwatch/correct-readiness` during active session
+- [x] Parent task interruption tracking — `parent_task_id` links new task to interrupted paused task
+- [x] Task substitution tracking — bidirectional linkage when deleted task replaced in same slot
+- [x] Void endpoint — `POST /v1/tasks/{task_id}/void` for corrupted/agent-generated sessions
+- [x] Conflict detector fix — EXECUTED/SKIPPED/DELETED no longer block new task creation
 - [ ] `unplanned_execution_rate` in analytics — detect structured vs chaotic days, correlate with delta and discrepancy patterns
 - [ ] `GET /v1/analytics/cascade` — cascade failure detection, morning anchor score, skip propagation probability
 - [ ] Paper 2: "Sequential task abandonment in knowledge workers" — independent of discrepancy hypothesis, data already being collected

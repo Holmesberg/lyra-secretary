@@ -1,6 +1,6 @@
-# Lyra Secretary — Manifesto v1.1
+# Lyra Secretary — Manifesto v1.2
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
-*Revised: April 4, 2026. Critiques from GPT-4o and Claude Sonnet incorporated.*
+*Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats updated, repo alignment pass.*
 
 ---
 
@@ -306,6 +306,8 @@ Ali Nasser is the worst possible generalization target. Highly self-aware, syste
 
 Phase 1B recruitment must deliberately target subjects who are NOT like the primary researcher — different cognitive styles, different planning habits, different relationships to self-monitoring.
 
+Day 2 revealed another specificity: Ali's cascade failures are morning-anchor dependent — skipping the first task (fitness, 6am) cascades into the rest of the day. This may be a personality-specific pattern, not a universal one. Phase 1B subjects must explicitly include people who are NOT morning-dependent — those whose day structure doesn't hinge on a single anchor task — to test whether cascade failure is a general phenomenon or a morning-routine artifact.
+
 **Success condition at Day 5-7:**
 > "I can predict when I'll fail before I start."
 
@@ -434,7 +436,7 @@ The bias_factor is no longer personal — it's a distribution. Some people consi
 
 **Mitigation:** Extend the pause system. Currently pause supports prayer/break. Add an `interruption` pause type that logs the cause. Distinguish: planned pause (prayer), voluntary pause (break), involuntary pause (interruption). All paused time is excluded from delta, but interruption frequency is a separate analytical signal — high interruption rate correlates with role type and environment, not cognitive state.
 
-**Status:** Pause exists but has no type classification. Add `pause_reason` field to v1.4.
+**Status:** Implemented in v1.4. `pause_reason` (6 enum values: mental_fatigue, distraction, task_difficulty, external_interruption, intentional_break, prayer) and `pause_initiator` (self/external) added to `POST /v1/stopwatch/pause`. Migration 004.
 
 ### VT-7: Anchor Scheduling Has No Evidence Base
 **Threat:** The manifesto claims "anchor-based planning is more resilient than full-day planning" but cites no evidence. This drives a major v1.5 feature (Layer 4 pre-commitment).
@@ -464,20 +466,29 @@ The bias_factor is no longer personal — it's a distribution. Some people consi
 
 **Status:** No pre-survey or progressive framing designed. Critical for Phase 1B onboarding. Add to v1.5 backlog.
 
+### VT-11: System-Generated Data Contamination
+**Threat:** AI agent acting autonomously can create false behavioral data — starting timers, filling readiness/reflection scores, bypassing early-stop gates. Discovered when Claude Code agent autonomously executed a Lyra build task during testing (LYR-078). Zero-duration session with self-filled pre/post ratings. The system cannot distinguish human-initiated from agent-initiated sessions.
+
+**Mitigation:** `POST /v1/tasks/{task_id}/void` marks corrupted sessions as `initiation_status="system_error"`, excluded from all analytics but preserved in history. Prevention requires agent-side guardrails (exec-approval enforcement) rather than backend detection — the backend sees identical HTTP requests regardless of source.
+
+**Status:** Void endpoint implemented in v1.4. Prevention depends on OpenClaw exec-approval fixes (LYR-071, LYR-078).
+
 ---
 
 ## What This Is Really About
 
-You are testing whether human self-perception has enough structure to be modeled.
+You are testing two things:
+
+1. **Can the gap between how a person thinks they are and how they actually perform be measured, learned, and eventually closed?** This is the discrepancy hypothesis — the original question.
+
+2. **Does skipping one task cause the next to fall?** This is the cascade failure discovery — observed on Day 2, independent of discrepancy, and potentially the faster path to a publishable finding.
 
 Not "can I be more productive."
 Not "can I build a startup."
 
-**Can the gap between how a person thinks they are and how they actually perform be measured, learned, and eventually closed?**
-
-If yes, everything else — the product, the paper, the BCI, the startup — is downstream.
-
-If no, you still have a working adaptive scheduler, 45 commits of solid engineering, an international hackathon entry, and the clearest possible signal to pivot before overinvesting.
+If discrepancy predicts delta — the product, the paper, the BCI, the startup are all downstream.
+If cascade failure is real — Paper 2 ships first, independent of whether discrepancy pans out.
+If neither — you still have a working adaptive scheduler, 62 commits of solid engineering, an international hackathon entry, and the clearest possible signal to pivot before overinvesting.
 
 Either way, you win.
 

@@ -223,7 +223,7 @@ async def retroactive_log(
     """
     Log a completed session after the fact with full timestamp control.
     Creates task directly in EXECUTED state with initiation_status='retroactive'.
-    Delta is 0 by definition (planned = executed for retroactive sessions).
+    If planned_duration_minutes provided, computes real delta. Otherwise delta=0.
     """
     try:
         manager = TaskManager(db)
@@ -234,14 +234,17 @@ async def retroactive_log(
             category=request.category,
             pre_task_readiness=request.pre_task_readiness,
             post_task_reflection=request.post_task_reflection,
+            planned_duration_minutes=request.planned_duration_minutes,
         )
+        delta = task.planned_duration_minutes - task.executed_duration_minutes
         return RetroactiveResponse(
             task_id=task.task_id,
             title=task.title,
             start_time=to_local(task.executed_start_utc),
             end_time=to_local(task.executed_end_utc),
             duration_minutes=task.executed_duration_minutes,
-            delta_minutes=0,
+            planned_duration_minutes=task.planned_duration_minutes,
+            delta_minutes=delta,
             initiation_status="retroactive",
             pre_task_readiness=task.pre_task_readiness,
             post_task_reflection=task.post_task_reflection,

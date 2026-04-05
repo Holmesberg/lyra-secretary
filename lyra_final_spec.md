@@ -1,3 +1,5 @@
+> ⚠️ This document is deprecated as of v1.4. See MANIFESTO.md for current system philosophy, FEATURES.md for roadmap, and README.md for technical documentation.
+
 # Lyra Secretary v1.3
 ## Complete Implementation Specification
 **Master Technical Specification + Implementation Guide**
