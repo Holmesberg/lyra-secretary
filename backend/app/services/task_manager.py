@@ -111,12 +111,29 @@ class TaskManager:
             logging.getLogger(__name__).error(f"Notion sync failed during create_task: {e}", exc_info=True)
             self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
         
+        # Substitution detection: link to recently DELETED task in overlapping slot
+        try:
+            cutoff = now_utc() - timedelta(minutes=10)
+            deleted_task = self.db.query(Task).filter(
+                Task.state == TaskState.DELETED,
+                Task.last_modified_at >= cutoff,
+                Task.planned_start_utc < end,
+                Task.planned_end_utc > start,
+            ).first()
+            if deleted_task:
+                task.replaces_task_id = deleted_task.task_id
+                deleted_task.replaced_by_task_id = task.task_id
+                self.db.commit()
+                self.db.refresh(task)
+        except Exception as e:
+            logger.warning(f"Substitution linkage failed (non-blocking): {e}")
+
         # Cache for undo
         self.redis.cache_undo_action("create_task", task.task_id, {
             "task_id": task.task_id,
             "title": task.title
         })
-        
+
         return task, [], notion_synced
     
     def create_retroactive_task(

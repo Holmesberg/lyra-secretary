@@ -112,6 +112,10 @@ class Task(Base):
     parent_task_id: Mapped[Optional[str]] = mapped_column(String(36))
     interruption_type: Mapped[Optional[str]] = mapped_column(String(20))
 
+    # Substitution tracking
+    replaced_by_task_id: Mapped[Optional[str]] = mapped_column(String(36))
+    replaces_task_id: Mapped[Optional[str]] = mapped_column(String(36))
+
     # Notion sync
     notion_page_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
     
