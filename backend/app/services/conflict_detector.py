@@ -35,7 +35,7 @@ class ConflictDetector:
             List of conflicting tasks
         """
         query = self.db.query(Task).filter(
-            Task.state.in_([TaskState.PLANNED, TaskState.EXECUTING, TaskState.EXECUTED]),
+            Task.state.in_([TaskState.PLANNED, TaskState.EXECUTING]),
             Task.planned_start_utc < end,
             Task.planned_end_utc > start
         )
