@@ -108,6 +108,10 @@ class Task(Base):
     initiation_delay_minutes: Mapped[Optional[int]] = mapped_column(Integer)
     pause_count: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Interruption tracking
+    parent_task_id: Mapped[Optional[str]] = mapped_column(String(36))
+    interruption_type: Mapped[Optional[str]] = mapped_column(String(20))
+
     # Notion sync
     notion_page_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
     

@@ -115,13 +115,29 @@ class StopwatchManager:
         title: Optional[str] = None,
         user_id: str = "user_primary",
         pre_task_readiness: Optional[int] = None,
+        interruption_type: Optional[str] = None,
     ) -> tuple[StopwatchSession, Task, bool]:
-        """Start stopwatch. Returns (session, task, is_future_task)."""
+        """Start stopwatch. Returns (session, task, is_future_task).
+
+        If the current stopwatch is PAUSED, the new task is linked as an
+        interruption via parent_task_id. The paused session stays in DB
+        (unclosed) and can be resumed later.
+        """
         active = self._get_active(user_id)
+        paused_task_id = None
+
         if active:
-            raise StopwatchAlreadyRunningError(
-                f"Stopwatch already running for task {active['task_id']}"
-            )
+            pause_state = self.redis.get_pause_state(user_id)
+            if pause_state:
+                # Current timer is paused — allow starting a new task
+                paused_task_id = active["task_id"]
+                # Clear active stopwatch from Redis (DB session stays unclosed)
+                self.redis.clear_active_stopwatch(user_id)
+                self.redis.clear_pause_state(user_id)
+            else:
+                raise StopwatchAlreadyRunningError(
+                    f"Stopwatch already running for task {active['task_id']}"
+                )
 
         if task_id:
             task = self.db.query(Task).filter(Task.task_id == task_id).first()
@@ -156,6 +172,9 @@ class StopwatchManager:
 
         task.pre_task_readiness = pre_task_readiness
         task.initiation_status = "initiated"
+        if paused_task_id:
+            task.parent_task_id = paused_task_id
+            task.interruption_type = interruption_type or "unknown"
         if task.planned_start_utc:
             delay = int((actual_start - task.planned_start_utc).total_seconds() / 60)
             task.initiation_delay_minutes = delay
