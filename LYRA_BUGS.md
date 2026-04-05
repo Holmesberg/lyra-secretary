@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 5, 2026 — v1.4. 38 open, 42 fixed.
+Last updated: April 5, 2026 — v1.4. 39 open, 42 fixed.
 
 ---
 
-## Open (38 bugs)
+## Open (39 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -47,6 +47,7 @@ Last updated: April 5, 2026 — v1.4. 38 open, 42 fixed.
 | LYR-072 | 🟡 medium | skill | Must delete conflicting task to schedule replacement | No "replace" or "skip and reschedule" flow. User said "skip CO review and schedule debugging" which required a delete + create. Should be atomic. |
 | LYR-077 | 🟢 low | skill | Readiness assumed 5 without asking | Debugging session started with `pre_task_readiness:5` without Lyra asking the question first. Hard Rule violation again. |
 | LYR-078 | 🔴 high | openclaw | Agent autonomously executed Lyra build during testing | Claude Code agent started and stopped the Lyra build task during testing — zero-duration session, bypassed early-stop gate with `?confirmed=true`, pre/post self-filled. Session voided via `POST /v1/tasks/{id}/void`. |
+| LYR-079 | 🟡 medium | backend | `session_index_in_day` not exposed in task query responses | Computed in analytics but not returned by `GET /v1/tasks/query` or `GET /v1/tasks/{task_id}`. Required for cascade analysis and sequence-aware insights. |
 
 ---
 
@@ -128,7 +129,8 @@ Last updated: April 5, 2026 — v1.4. 38 open, 42 fixed.
 21. LYR-056 — validate "then" chaining in parse_chained()
 22. LYR-050 — backfill initiation_status on historical tasks
 23. LYR-035 — validate Hard Rule #6 covers memory ID issue
-24. LYR-036 — context lost on follow-up corrections
+24. LYR-079 — session_index_in_day not exposed in task query responses (cascade prereq)
+25. LYR-036 — context lost on follow-up corrections
 
 ### Low (🟢)
 25. LYR-077 — Readiness assumed 5 without asking; Hard Rule violation

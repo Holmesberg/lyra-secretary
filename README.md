@@ -246,6 +246,8 @@ See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (34 open, 37 fixed). Key
 - [ ] Per-model timeout in OpenClaw config (blocked on upstream: openclaw/openclaw#43946)
 - [x] `POST /v1/stopwatch/retroactive` — log completed sessions after the fact with full timestamp control (for untracked sessions)
 - [ ] `unplanned_execution_rate` in analytics — detect structured vs chaotic days, correlate with delta and discrepancy patterns
+- [ ] `GET /v1/analytics/cascade` — cascade failure detection, morning anchor score, skip propagation probability
+- [ ] Paper 2: "Sequential task abandonment in knowledge workers" — independent of discrepancy hypothesis, data already being collected
 
 ## Contributing
 

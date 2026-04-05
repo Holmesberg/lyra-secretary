@@ -1,5 +1,5 @@
 # Lyra Secretary — Feature Backlog
-*Last updated: April 5, 2026*
+*Last updated: April 5, 2026 — cascade analytics added*
 
 Priority: 🔴 critical | 🟡 important | 🟢 nice-to-have
 Status: 📋 backlog | 🔨 in progress | ✅ done
@@ -138,6 +138,62 @@ Different reasons need different interventions:
 Track session duration vs post_task_reflection score. If longer sessions consistently show lower reflection, cognitive degradation within sessions is measurable without BCI.
 
 Computable from existing data — add to `GET /v1/analytics/discrepancy` research layer.
+
+---
+
+## v1.4 — Cascade Analytics (research layer)
+
+*Discovered April 5, 2026. See MANIFESTO.md "The Cascade Failure Discovery".*
+
+### 🟡 GET /v1/analytics/cascade
+
+New endpoint returning cascade failure metrics per day and across days.
+
+**Response:**
+```json
+{
+  "daily": [
+    {
+      "date": "2026-04-05",
+      "cascade_score": 0.5,
+      "morning_anchor_executed": false,
+      "first_skip_time": "06:00",
+      "first_skip_category": "fitness",
+      "consecutive_skip_sequences": [["Gym", "SWE backlog"], ["CSE281 lecture"]],
+      "total_planned": 6,
+      "total_executed": 2,
+      "total_skipped": 3
+    }
+  ],
+  "summary": {
+    "avg_cascade_score": 0.5,
+    "morning_anchor_execution_rate": 0.0,
+    "skip_propagation_probability": 0.67,
+    "most_cascade_prone_category": "fitness",
+    "most_cascade_prone_time_of_day": "morning"
+  }
+}
+```
+
+---
+
+### 🟡 Add cascade metrics to existing analytics
+
+In `GET /v1/analytics/discrepancy` research_layer summary:
+- `cascade_score` for the queried date range
+- `morning_anchor_executed` boolean per day
+- `skip_propagation_probability` across all sessions
+
+---
+
+### 🟢 Expose session_index_in_day in task responses
+
+Already computed in analytics, not returned in task endpoints. Expose in:
+- `GET /v1/tasks/query` responses
+- `GET /v1/tasks/{task_id}` response
+- `GET /v1/analytics/discrepancy` sessions (already present)
+
+Required for cascade analysis and sequence-aware insights.
 
 ---
 
@@ -322,11 +378,13 @@ Only after BCI validity gate passes. Not before.
 ---
 
 ### 🟡 Paper 2
-"Unplanned execution rate as a measure of planning layer adherence"
+"Sequential task abandonment in knowledge workers: evidence for a cascade failure model of daily execution"
 
-**Independent of discrepancy hypothesis.** Can be written earlier.
+**Independent of discrepancy hypothesis.** Fastest path to publication — data already being collected from Day 1, effect visible in 2 days.
 
-**Core finding:** measures whether a planning system is actually being used, not just whether estimates are accurate. New construct, underexplored in literature.
+**Core finding:** Skipping task N increases P(skip task N+1), modulated by category, time of day, and sequence position. Also incorporates unplanned execution rate as a secondary construct — measures whether the planning layer is being used at all.
+
+**Venue candidates:** CHI, CSCW, Behavior Research Methods.
 
 ---
 

@@ -185,6 +185,69 @@ This deserves its own paper independent of the discrepancy hypothesis.
 
 ---
 
+## The Cascade Failure Discovery
+
+*Discovered: April 5, 2026. Day 2 of the experiment.*
+
+Observation: Skipping Gym at 6am cascaded into skipping SWE backlog at 7:30am, skipping CSE281 at 2pm, and restructuring the entire afternoon.
+
+This is not noise. This is a behavioral pattern nobody has measured cleanly.
+
+### The Cascade Hypothesis
+
+Skipping task N increases the probability of skipping task N+1, with effect size modulated by:
+- **Task category** — does skipping fitness cascade differently than skipping study?
+- **Time of day** — morning skips more damaging than afternoon skips?
+- **Sequence position** — first task of day is load-bearing
+- **Initiation delay of task N** — partial start vs full skip
+
+### Why This Is Researchable Now
+
+The data structure already captures everything needed:
+- Which task was skipped (`state = SKIPPED`)
+- Sequence position (`session_index_in_day`)
+- Category
+- Time of day
+- What came before and after (timestamp ordering)
+- Whether the cascade continued (subsequent states)
+
+No additional instrumentation needed. The signal is already being collected.
+
+### The Independent Research Finding
+
+This does not depend on the discrepancy hypothesis surviving.
+
+Even if discrepancy → delta shows no signal:
+- The cascade pattern is a standalone finding
+- Measurable from existing data
+- Potentially publishable independently
+
+### Paper 2 (faster path than Paper 1)
+
+Title candidate: *"Sequential task abandonment in knowledge workers: evidence for a cascade failure model of daily execution"*
+
+Core finding: Skipping task N increases P(skip task N+1), modulated by category, time of day, and sequence position.
+
+Why faster than Paper 1:
+- Doesn't require discrepancy signal validation
+- Structure already captured in DB from Day 1
+- Effect visible in 2 days of data
+- No ML needed — pure behavioral statistics
+
+Venue candidates: CHI, CSCW, Behavior Research Methods
+
+### Cascade Metrics to Add to Analytics
+
+1. **cascade_score** per day: `consecutive_skips / total_planned_tasks`
+
+2. **first_task_completion_rate**: Did the first planned task of the day execute? Correlation with `rest_of_day_completion_rate`
+
+3. **skip_propagation_probability**: `P(task N+1 skipped | task N skipped)` — segmented by: same category, different category, same time block
+
+4. **morning_anchor_score**: Boolean — did the first morning task (before 9am) execute? Track correlation with `total_day_delta`
+
+---
+
 ## The Desirability Assumptions
 
 | ID | Assumption | Risk | Test |
@@ -278,7 +341,7 @@ BCI is not rhetorical vision. It is a testable hypothesis that requires its own 
 
 **Phase 4 — Research**
 Paper 1: "Metacognitive discrepancy as predictor of execution failure" — after 30-60 days data.
-Paper 2: "Unplanned execution rate as measure of planning layer adherence" — independent of discrepancy hypothesis, can be written earlier.
+Paper 2: "Sequential task abandonment in knowledge workers" — cascade failure model + unplanned execution rate. Independent of discrepancy hypothesis. Data already being collected from Day 1.
 Paper 3: cognitive-behavioral loop modeling — after ML layer works.
 
 ---
@@ -424,5 +487,5 @@ The experiment has started. Stay in measurement mode.
 
 *"The system is not trying to make you productive. It's trying to make you accurate."*
 
-*Lyra Secretary v1.3 — 45 commits — April 4, 2026*
-*Manifesto v1.1 — revised April 4, 2026*
+*Lyra Secretary v1.4 — April 5, 2026*
+*Manifesto v1.2 — revised April 5, 2026 (cascade failure discovery added)*
