@@ -47,6 +47,7 @@ async def start_stopwatch(
             task_id=request.task_id,
             title=request.title,
             pre_task_readiness=request.pre_task_readiness,
+            interruption_type=request.interruption_type,
         )
         return StopwatchStartResponse(
             session_id=session.session_id,
@@ -56,6 +57,8 @@ async def start_stopwatch(
             planned_start=to_local(task.planned_start_utc),
             pre_task_readiness=task.pre_task_readiness,
             initiation_delay_minutes=task.initiation_delay_minutes,
+            parent_task_id=task.parent_task_id,
+            interruption_type=task.interruption_type,
         )
     except StopwatchAlreadyRunningError as e:
         raise HTTPException(status_code=400, detail=str(e))

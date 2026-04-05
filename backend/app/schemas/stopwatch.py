@@ -8,6 +8,7 @@ class StopwatchStartRequest(BaseModel):
     task_id: Optional[str] = Field(None, description="If None, creates new unplanned task")
     title: Optional[str] = Field(None, description="Required if task_id is None")
     pre_task_readiness: Optional[int] = Field(None, ge=1, le=5)
+    interruption_type: Optional[str] = Field(None, description="urgent|scheduled_override|distraction|unknown")
 
 
 class StopwatchStopRequest(BaseModel):
@@ -22,6 +23,8 @@ class StopwatchStartResponse(BaseModel):
     planned_start: Optional[datetime] = None
     pre_task_readiness: Optional[int] = None
     initiation_delay_minutes: Optional[int] = None
+    parent_task_id: Optional[str] = None
+    interruption_type: Optional[str] = None
 
 
 class StopwatchStopResponse(BaseModel):
