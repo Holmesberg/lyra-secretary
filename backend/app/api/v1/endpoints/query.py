@@ -18,6 +18,7 @@ async def query_tasks(
     date: Optional[str] = Query(None, description="Filter by date (YYYY-MM-DD)"),
     category: Optional[str] = Query(None, description="Filter by category"),
     state: Optional[str] = Query("planned", description="Filter by state"),
+    initiation_status: Optional[str] = Query(None, description="Filter by initiation_status (e.g. system_error, retroactive)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -52,7 +53,11 @@ async def query_tasks(
         # Filter by category
         if category:
             query = query.filter(Task.category == category)
-        
+
+        # Filter by initiation_status
+        if initiation_status:
+            query = query.filter(Task.initiation_status == initiation_status)
+
         # Order by start time
         tasks = query.order_by(Task.planned_start_utc).all()
         
@@ -64,6 +69,7 @@ async def query_tasks(
                 "end": to_local(t.planned_end_utc).isoformat() if t.planned_end_utc else None,
                 "state": t.state.value if hasattr(t.state, 'value') else str(t.state),
                 "category": t.category,
+                "initiation_status": t.initiation_status,
             }
             for t in tasks
         ]
