@@ -141,7 +141,7 @@ class Task(Base):
     @property
     def is_mutable(self) -> bool:
         """Can this task be modified?"""
-        return self.state not in (TaskState.EXECUTED, TaskState.DELETED)
+        return self.state not in (TaskState.EXECUTED, TaskState.SKIPPED, TaskState.DELETED)
     
     @property
     def duration_delta_minutes(self) -> Optional[int]:

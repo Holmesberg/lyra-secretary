@@ -29,6 +29,13 @@ def check_timer_overflow():
                 continue
 
             elapsed_minutes = int((now - session.start_time_utc).total_seconds() / 60)
+            # Subtract accumulated paused time
+            elapsed_minutes -= session.total_paused_minutes
+            # If currently paused, subtract ongoing pause too
+            if session.paused_at_utc:
+                current_pause = int((now - session.paused_at_utc).total_seconds() / 60)
+                elapsed_minutes -= current_pause
+            elapsed_minutes = max(0, elapsed_minutes)
             planned = task.planned_duration_minutes
 
             if elapsed_minutes > (planned + 5):
