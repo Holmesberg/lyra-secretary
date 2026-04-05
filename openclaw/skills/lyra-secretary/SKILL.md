@@ -57,9 +57,11 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 
 **POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`* (ISO8601), `end_time`* (ISO8601), `pre_task_readiness` (1–5), `post_task_reflection` (1–5), `category` — returns: `task_id`, `duration_minutes`, `delta_minutes` (always 0), `notion_synced`
 
-**POST /v1/stopwatch/pause** — no body — returns: `paused`, `elapsed_minutes`, `paused_at`
+**POST /v1/stopwatch/pause** — body (optional): `pause_reason` (mental_fatigue|distraction|task_difficulty|external_interruption|intentional_break|prayer), `pause_initiator` (self|external) — returns: `paused`, `elapsed_minutes`, `paused_at`, `pause_reason`, `pause_initiator`
 
 **POST /v1/stopwatch/resume** — no body — returns: `resumed`, `paused_minutes`, `total_paused_minutes`
+
+**POST /v1/stopwatch/correct-readiness** — body: `pre_task_readiness`* (1-5) — returns: `corrected`, `original`, `new` — works any time during active session
 
 **GET /v1/stopwatch/status** — returns: `active`, `task_title`, `elapsed_minutes`, `paused`, `total_paused_minutes`
 
@@ -94,10 +96,19 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 - POST /v1/stopwatch/stop with `post_task_reflection`
 - After reflection: GET /v1/analytics/insights?auto_mark=true → if `ready: true` and insights non-empty: share first `observation` in one sentence
 
-**Prayer / break:**
-- POST /v1/stopwatch/pause → "Timer paused — resume when you're back."
+**Prayer / break / interruption:**
+- When user says pause, ask ONE question: "Self-initiated or external? (self/external)"
+- Optional follow-up only if external: "What kind? (instructor break / technical / environment / personal)"
+- POST /v1/stopwatch/pause with `pause_reason` and `pause_initiator` → "Timer paused — resume when you're back."
+- If user ignores the question — proceed with null, never block on it
 - On return: POST /v1/stopwatch/resume → "Timer resumed. {paused_minutes} min not counted."
 - NEVER stop the timer for breaks — always pause.
+
+**Readiness correction:**
+- If user says readiness was wrong (e.g. "I said 5 but it was 3"):
+- POST /v1/stopwatch/correct-readiness with correct value
+- Works any time during active session — no time limit
+- Confirm: "Readiness corrected from X to Y."
 
 **Retroactive logging (end-of-day catch-up):**
 - User says "I worked on X from 2pm to 4pm" → POST /v1/stopwatch/retroactive with title, start_time, end_time
