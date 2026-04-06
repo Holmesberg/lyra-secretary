@@ -4,6 +4,8 @@
 4. ALWAYS ASK REFLECTION AFTER STOP — send "Rate focus (1-5):" WAIT for reply
 5. NEVER ASSUME USER INPUT — never default readiness or reflection to any value
 6. STOPWATCH USES TASK_ID ONLY — never title
+7. ALWAYS ASK PAUSE REASON BEFORE PAUSING — send "Self-initiated or external? (self/external)" WAIT for reply
+8. NEVER say "undo window expired" for readiness correction during active session — call POST /v1/stopwatch/correct-readiness (no time limit)
 
 ---
 name: lyra-secretary
@@ -100,10 +102,18 @@ Always include `category` in POST /v1/create. Never leave it null.
 
 **Start timer:**
 - GET /v1/tasks/query → get task_id
-- GET /v1/stopwatch/status → if active: report running timer, stop first
+- GET /v1/stopwatch/status → if active AND paused: use interruption flow below
+- If active AND not paused: report running timer, stop first
 - Send "Rate your readiness (1=exhausted, 3=neutral, 5=sharp):" — WAIT for number
 - POST /v1/stopwatch/start with `pre_task_readiness` → get `session_id`
 - If `is_future_task: true` → warn → wait for "yes" before proceeding
+
+**Starting while another task is PAUSED (interruption flow):**
+- Say: "[Paused task] is paused. Start [new task] as interruption? You can resume [paused task] after."
+- If yes: POST /v1/stopwatch/start with `pre_task_readiness` + `interruption_type`
+- Backend links via `parent_task_id` automatically
+- When new task stops, remind: "[Paused task] is still paused. Resume?"
+- NEVER auto-resume the parent task
 
 **Stop timer:**
 - POST /v1/stopwatch/stop → if `requires_confirmation: true` → show message → wait for "yes"/"no"
@@ -121,24 +131,18 @@ Always include `category` in POST /v1/create. Never leave it null.
 - NEVER stop the timer for breaks — always pause.
 
 **Readiness correction:**
-- If user says readiness was wrong (e.g. "I said 5 but it was 3"):
-- POST /v1/stopwatch/correct-readiness with correct value
-- Works any time during active session — no time limit
-- Confirm: "Readiness corrected from X to Y."
+- User says readiness was wrong → POST /v1/stopwatch/correct-readiness with correct value
+- Works any time during active session. Confirm: "Readiness corrected from X to Y."
 
-**Retroactive logging (end-of-day catch-up):**
-- User says "I worked on X from 2pm to 4pm" → POST /v1/stopwatch/retroactive with title, start_time, end_time
-- Optionally ask readiness + reflection (same as live sessions)
-- No timer needed — task is created directly as EXECUTED
+**Retroactive logging:**
+- "I worked on X from 2pm to 4pm" → POST /v1/stopwatch/retroactive with title, start_time, end_time
+- Optionally ask readiness + reflection. Task created directly as EXECUTED.
 
 **Void session:**
-- If user says a session was accidentally started or data is wrong:
-- GET /v1/tasks/query → find the task → GET /v1/tasks/{id} → confirm it is EXECUTED
-- Ask: "What happened?" (optional, store as voided_reason)
-- POST /v1/tasks/{task_id}/void with voided_reason
-- Confirm: "Session voided — excluded from analytics but preserved in history."
+- GET /v1/tasks/query → GET /v1/tasks/{id} → confirm EXECUTED → ask reason
+- POST /v1/tasks/{task_id}/void with voided_reason → "Session voided — excluded from analytics."
 - NEVER delete EXECUTED tasks — always void instead.
 
 **Undo:** POST /v1/undo immediately after create or delete.
 
-**Notifications:** Poll GET /v1/notifications/pending every 30 seconds. Send any pending messages to user.
+**Notifications:** Poll GET /v1/notifications/pending every 30s. Send pending messages to user.
