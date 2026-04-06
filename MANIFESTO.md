@@ -118,6 +118,8 @@ The forward prediction comes from the model, not from a single session's discrep
 
 We are building a system that learns how a specific human is wrong about themselves and uses that to make them more accurate over time.
 
+We are not building a planning tool that requires planning effort. The system should make planning nearly invisible by Day 14. Friction score is the product metric that proves this.
+
 ---
 
 ## System Architecture

@@ -1,5 +1,5 @@
 # Lyra Secretary — Feature Backlog
-*Last updated: April 5, 2026 — cascade analytics added*
+*Last updated: April 6, 2026 — cognitive friction reducers added*
 
 Priority: 🔴 critical | 🟡 important | 🟢 nice-to-have
 Status: 📋 backlog | 🔨 in progress | ✅ done
@@ -284,7 +284,97 @@ Compare anchor adherence rate vs full-schedule adherence rate. Hypothesis: ancho
 
 ---
 
-## v1.6 — Multi-user
+## v1.6 — Planning Friction Elimination
+
+### Cognitive Friction Reducers
+
+### 📋 FEATURE J — "Yesterday's Wins" reverse planning
+Instead of blank-slate morning planning, Lyra starts with:
+"Yesterday you completed: [list]. What carries over or builds on this?"
+
+- **Trigger:** Morning briefing or first message of the day
+- **Requires:** Query EXECUTED tasks from yesterday, show titles + durations
+- **Psychology:** Momentum-based planning — continuation not creation
+- **Zero new data required** — already in DB
+
+---
+
+### 📋 FEATURE K — One Domino commitment
+Minimum viable planning flow:
+1. Lyra: "Pick one task that must happen tomorrow to feel like a win."
+2. User picks one → Lyra suggests 1-2 micro-tasks from history patterns
+3. Everything else stays flexible/untracked
+
+- **Endpoint:** `POST /v1/schedule/anchors` with exactly 1 primary anchor
+- **Psychology:** Eliminates decision paralysis, creates first domino
+- **Relates to:** v1.5 night-before anchor scheduling (2-3 blocks). This is the minimal version — one anchor only.
+
+---
+
+### 📋 FEATURE L — "What's Already Decided?" scan
+Before any planning prompt, query:
+- Today's recurring tasks
+- Already-scheduled PLANNED tasks
+- Prayer times (when Aladhan integration exists)
+
+Output: "Tomorrow already has [N] fixed blocks (prayer 5:30, lecture 11am, gym template). What's left to decide?"
+
+- Frames planning as gap-filling, not blank-slate building
+- Reduces perceived planning load by showing what's already handled
+
+---
+
+### 📋 FEATURE M — Last Action Inference
+If user sends any Telegram message while:
+- A task's planned start time has passed
+- No active stopwatch
+- Task is still PLANNED
+
+Lyra asks: "Looks like [task] was scheduled to start — working on it? (start timer / skip / not yet)"
+
+- One tap. Turns passive chat into opportunistic tracking.
+- **Implementation:** SKILL.md rule — on every message, check for overdue PLANNED tasks with no active stopwatch.
+- **Differs from** v1.5 gentle interception: that targets *unplanned* sessions (no scheduled task). This targets *overdue planned* tasks.
+
+---
+
+### 📋 FEATURE N — Voice Delta Dump
+After natural break or session end via voice note:
+User sends voice: "Just finished debugging, took longer because of X"
+
+OpenClaw transcribes → extracts: task reference, duration estimate, reason → creates retroactive session automatically. Zero typing friction.
+
+- **Implementation:** OpenClaw Talk mode already supports voice notes. Parse transcript for: task title, duration, reflection, unplanned_reason.
+
+---
+
+### 📋 FEATURE O — Auto-pause on inactivity (v1.7 candidate)
+If no Telegram activity for 20+ minutes during active timer:
+- Auto-pause the stopwatch
+- Next message: "Timer was auto-paused after 20 min inactivity. Resume or log reason?"
+
+Reduces manual pause tagging for natural breaks.
+
+- **Implementation:** APScheduler job checking active sessions + last_seen_active timestamp.
+
+---
+
+### 📋 FEATURE P — Friction Score (research layer)
+Track per day:
+- `planning_messages`: number of messages spent scheduling
+- `correction_count`: readiness corrections + retroactive fixes
+- `initiation_delays`: avg minutes late to start
+- `timer_miss_rate`: tasks executed without timer
+
+Combine into `daily_friction_score` (0-10, lower = less friction).
+
+- Add to `GET /v1/analytics/discrepancy` summary
+- Add to weekly insights: "Your planning friction dropped X% this week."
+- **This makes the system self-aware** — quantifies the friction reduction features' actual impact
+
+---
+
+## v1.7 — Multi-user
 
 ### 🟡 User table + timezone per user
 Replace single USER_TIMEZONE env var with per-user timezone stored in DB.
