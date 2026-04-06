@@ -156,7 +156,7 @@ async def stop_stopwatch(
                 ),
             )
 
-        session, task, is_early_stop, notion_synced, paused_parent = manager.stop(
+        session, task, is_early_stop, notion_synced, paused_parent, micro_mirror = manager.stop(
             post_task_reflection=request.post_task_reflection,
         )
         return StopwatchStopResponse(
@@ -171,6 +171,7 @@ async def stop_stopwatch(
             post_task_reflection=task.post_task_reflection,
             discrepancy_score=task.discrepancy_score,
             paused_parent=paused_parent,
+            micro_mirror=micro_mirror,
         )
 
     except NoActiveStopwatchError as e:
@@ -236,6 +237,7 @@ async def retroactive_log(
             pre_task_readiness=request.pre_task_readiness,
             post_task_reflection=request.post_task_reflection,
             planned_duration_minutes=request.planned_duration_minutes,
+            unplanned_reason=request.unplanned_reason,
         )
         delta = task.planned_duration_minutes - task.executed_duration_minutes
         return RetroactiveResponse(

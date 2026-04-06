@@ -158,6 +158,7 @@ class TaskManager:
         pre_task_readiness: Optional[int] = None,
         post_task_reflection: Optional[int] = None,
         planned_duration_minutes: Optional[int] = None,
+        unplanned_reason: Optional[str] = None,
     ) -> tuple[Task, bool]:
         """
         Create a completed task from past timestamps (retroactive logging).
@@ -203,6 +204,7 @@ class TaskManager:
             initiation_status="retroactive",
             pre_task_readiness=pre_task_readiness,
             post_task_reflection=post_task_reflection,
+            unplanned_reason=unplanned_reason,
             created_at=now_utc(),
             last_modified_at=now_utc(),
         )

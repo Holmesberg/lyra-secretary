@@ -1,5 +1,5 @@
 """Analytics endpoints — discrepancy experiment measurement layer."""
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -7,7 +7,7 @@ from collections import defaultdict
 
 from app.api.deps import get_db
 from app.db.models import Task, TaskState, StopwatchSession
-from app.utils.time_utils import to_local
+from app.utils.time_utils import to_local, now_utc
 from app.utils.redis_client import RedisClient
 
 router = APIRouter()
@@ -507,4 +507,191 @@ async def get_insights(
         "sessions_analyzed": sessions_analyzed,
         "min_sessions_required": MIN_SESSIONS,
         "ready": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Cascade Analytics
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/cascade")
+async def get_cascade(
+    days: int = Query(7, ge=1, le=90, description="Look-back window in days"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Cascade failure analysis: does skipping/abandoning task N predict
+    skipping task N+1?
+
+    Returns per-day cascade chains, morning-anchor analysis, and
+    aggregate cascade_score = P(skip N+1 | skip N).
+    """
+    cutoff = now_utc() - timedelta(days=days)
+
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.planned_start_utc >= cutoff,
+            Task.initiation_status != "system_error",
+        )
+        .order_by(Task.planned_start_utc)
+        .all()
+    )
+
+    # Group by local date
+    days_map: dict[date, list[Task]] = defaultdict(list)
+    for t in tasks:
+        d = to_local(t.planned_start_utc).date()
+        days_map[d].append(t)
+
+    daily_cascades = []
+    total_skip_followed_by_skip = 0
+    total_skip_followed_by_any = 0
+    morning_anchor_skips = 0
+    morning_anchor_cascade_days = 0
+    total_days_with_morning = 0
+
+    for d in sorted(days_map.keys()):
+        day_tasks = days_map[d]
+        chain = []
+        current_streak = 0
+
+        for i, t in enumerate(day_tasks):
+            is_skip = t.state in (TaskState.SKIPPED, TaskState.DELETED) or t.initiation_status == "abandoned"
+
+            if is_skip:
+                current_streak += 1
+            else:
+                current_streak = 0
+
+            # Track skip-followed-by-skip
+            if i > 0:
+                prev = day_tasks[i - 1]
+                prev_skip = prev.state in (TaskState.SKIPPED, TaskState.DELETED) or prev.initiation_status == "abandoned"
+                if prev_skip:
+                    total_skip_followed_by_any += 1
+                    if is_skip:
+                        total_skip_followed_by_skip += 1
+
+            chain.append({
+                "task_id": t.task_id,
+                "title": t.title,
+                "category": t.category,
+                "state": t.state.value if hasattr(t.state, "value") else str(t.state),
+                "initiation_status": t.initiation_status,
+                "is_skip": is_skip,
+                "streak": current_streak,
+            })
+
+        # Morning anchor analysis (first task of the day)
+        if day_tasks:
+            first = day_tasks[0]
+            local_hour = to_local(first.planned_start_utc).hour
+            if local_hour < 9:
+                total_days_with_morning += 1
+                first_skip = first.state in (TaskState.SKIPPED, TaskState.DELETED) or first.initiation_status == "abandoned"
+                if first_skip:
+                    morning_anchor_skips += 1
+                    # Did the rest of the day cascade?
+                    rest_skips = sum(
+                        1 for t in day_tasks[1:]
+                        if t.state in (TaskState.SKIPPED, TaskState.DELETED) or t.initiation_status == "abandoned"
+                    )
+                    if len(day_tasks) > 1 and rest_skips / (len(day_tasks) - 1) > 0.5:
+                        morning_anchor_cascade_days += 1
+
+        max_streak = max((c["streak"] for c in chain), default=0)
+        skip_count = sum(1 for c in chain if c["is_skip"])
+
+        daily_cascades.append({
+            "date": d.isoformat(),
+            "total_tasks": len(day_tasks),
+            "skip_count": skip_count,
+            "max_streak": max_streak,
+            "chain": chain,
+        })
+
+    cascade_score = (
+        round(total_skip_followed_by_skip / total_skip_followed_by_any, 3)
+        if total_skip_followed_by_any > 0 else 0.0
+    )
+
+    return {
+        "days_analyzed": len(daily_cascades),
+        "cascade_score": cascade_score,
+        "cascade_score_label": "P(skip N+1 | skip N)",
+        "total_skip_followed_by_skip": total_skip_followed_by_skip,
+        "total_skip_followed_by_any": total_skip_followed_by_any,
+        "morning_anchor": {
+            "days_with_morning_task": total_days_with_morning,
+            "morning_skips": morning_anchor_skips,
+            "cascade_days": morning_anchor_cascade_days,
+            "cascade_rate": (
+                round(morning_anchor_cascade_days / morning_anchor_skips, 3)
+                if morning_anchor_skips > 0 else 0.0
+            ),
+        },
+        "daily": daily_cascades,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Bias Factor
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/bias_factor")
+async def get_bias_factor(
+    min_sessions: int = Query(5, ge=2, le=50, description="Minimum sessions per bucket"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Per category+time_of_day estimation bias factor.
+
+    bias_factor = avg(executed_duration / planned_duration) per bucket.
+    > 1.0 means tasks consistently take longer than planned.
+    < 1.0 means tasks finish early.
+
+    Only buckets with >= min_sessions are returned.
+    """
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.state == TaskState.EXECUTED,
+            Task.initiation_status != "system_error",
+            Task.executed_duration_minutes != None,
+            Task.planned_duration_minutes > 0,
+        )
+        .all()
+    )
+
+    buckets: dict[str, list[float]] = defaultdict(list)
+    for t in tasks:
+        cat = t.category or "uncategorized"
+        tod = _time_of_day(to_local(t.planned_start_utc))
+        key = f"{cat}|{tod}"
+        ratio = t.executed_duration_minutes / t.planned_duration_minutes
+        buckets[key].append(ratio)
+
+    results = []
+    for key, ratios in sorted(buckets.items()):
+        if len(ratios) < min_sessions:
+            continue
+        cat, tod = key.split("|", 1)
+        avg_ratio = round(sum(ratios) / len(ratios), 3)
+        results.append({
+            "category": cat,
+            "time_of_day": tod,
+            "bias_factor": avg_ratio,
+            "sessions": len(ratios),
+            "interpretation": (
+                "on target" if 0.9 <= avg_ratio <= 1.1
+                else "underestimates" if avg_ratio > 1.1
+                else "overestimates"
+            ),
+        })
+
+    return {
+        "buckets": results,
+        "min_sessions": min_sessions,
+        "total_executed": len(tasks),
     }

@@ -308,7 +308,7 @@ class StopwatchManager:
                         .order_by(StopwatchSession.end_time_utc.desc())
                         .first()
                     )
-                    return session, task, False, True, None
+                    return session, task, False, True, None, None
                 raise NoActiveStopwatchError(
                     "No active stopwatch and no recent task to update reflection"
                 )
@@ -365,6 +365,26 @@ class StopwatchManager:
             self.db.commit()
             self.db.refresh(task)
 
+        # Micro-mirror: one-line behavioral observation (priority: initiation > delta > pauses)
+        micro_mirror = None
+        delay = task.initiation_delay_minutes
+        delta = task.duration_delta_minutes
+        duration = task.executed_duration_minutes or 0
+        pauses = task.pause_count or 0
+
+        if delay is not None and delay > 10:
+            micro_mirror = f"Started {delay} min late."
+        elif delay is not None and delay <= 0:
+            micro_mirror = "Started on time."
+        elif delta is not None and delta < -20:
+            micro_mirror = f"Ran {abs(delta)} min over plan."
+        elif delta is not None and delta > 20:
+            micro_mirror = f"Finished {delta} min early."
+        elif pauses == 0 and duration > 30:
+            micro_mirror = "No pauses — strong focus block."
+        elif pauses >= 3:
+            micro_mirror = f"{pauses} pauses — fragmented session."
+
         self.redis.clear_active_stopwatch(user_id)
 
         # Check for any paused parent session still open
@@ -389,7 +409,7 @@ class StopwatchManager:
                     "paused_minutes": paused_mins,
                 }
 
-        return session, task, is_early_stop, notion_synced, paused_parent
+        return session, task, is_early_stop, notion_synced, paused_parent, micro_mirror
 
     def correct_readiness(
         self,

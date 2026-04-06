@@ -47,6 +47,7 @@ class StopwatchStopResponse(BaseModel):
     post_task_reflection: Optional[int] = None
     discrepancy_score: Optional[int] = None
     paused_parent: Optional[PausedParentInfo] = None
+    micro_mirror: Optional[str] = None
 
 
 PAUSE_REASONS = {"mental_fatigue", "distraction", "task_difficulty", "external_interruption", "intentional_break", "prayer"}
@@ -101,6 +102,7 @@ class RetroactiveRequest(BaseModel):
     post_task_reflection: Optional[int] = Field(None, ge=1, le=5)
     category: Optional[str] = None
     planned_duration_minutes: Optional[int] = None
+    unplanned_reason: Optional[str] = None
 
 
 class RetroactiveResponse(BaseModel):

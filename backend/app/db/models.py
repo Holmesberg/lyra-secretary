@@ -120,6 +120,9 @@ class Task(Base):
     replaced_by_task_id: Mapped[Optional[str]] = mapped_column(String(36))
     replaces_task_id: Mapped[Optional[str]] = mapped_column(String(36))
 
+    # Unplanned execution tracking
+    unplanned_reason: Mapped[Optional[str]] = mapped_column(String(30))
+
     # Notion sync
     notion_page_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
     
