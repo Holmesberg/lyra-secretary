@@ -96,7 +96,19 @@ Copy `.env.example` to `.env`. Required vars: `DATABASE_URL`, `REDIS_URL`, `NOTI
 - Every endpoint: method, path, required fields (*), key response fields only — one line.
 - Never add prose explanations, curl examples, or markdown tables — bullet points only.
 - After any edit, run `wc -l` and reject if over 150.
-- Always copy the updated file to `/mnt/c/Users/alina/openclaw/skills/lyra-secretary/SKILL.md` and restart the gateway.
+- **Three-way sync required after ANY SKILL.md edit** — all three locations must match:
+  ```bash
+  # 1. Source of truth (already edited):
+  #    openclaw/skills/lyra-secretary/SKILL.md
+  # 2. Copy to host:
+  cp "openclaw/skills/lyra-secretary/SKILL.md" "/mnt/c/Users/alina/openclaw/skills/lyra-secretary/SKILL.md"
+  # 3. Copy into container:
+  docker exec openclaw-openclaw-gateway-1 rm -f /home/node/.openclaw/skills/lyra-secretary/SKILL.md
+  docker cp "openclaw/skills/lyra-secretary/SKILL.md" openclaw-openclaw-gateway-1:/home/node/.openclaw/skills/lyra-secretary/SKILL.md
+  # 4. Restart gateway:
+  cd /mnt/c/Users/alina/openclaw && docker-compose restart
+  ```
+- Never edit one location without updating the other two.
 
 ## Endpoint deprecations
 
