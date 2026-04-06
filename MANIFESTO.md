@@ -181,7 +181,31 @@ This variable answers a different question — not "how wrong were your estimate
 
 The third pattern is where most people actually live. Lyra is the first system that can detect it, measure it, and eventually interrupt it — not by forcing logging, but by making the value of the planning layer visible over time.
 
-This deserves its own paper independent of the discrepancy hypothesis.
+### The Three Behavioral Profiles
+
+**Profile 1: Calibrated Executor**
+- Low unplanned rate, low delta
+- Uses the planning layer, estimates accurately
+- The target state. Lyra's value here is confirmation and trend monitoring.
+- Detectable via: unplanned_rate < 0.15, avg |delta| < 10 min, execution rate > 0.8
+
+**Profile 2: Reactive Executor**
+- High unplanned rate, variable delta
+- Executes effectively but bypasses planning entirely
+- Good work happens — it's just not structured. The planning layer adds no value yet.
+- Detectable via: unplanned_rate > 0.4, initiation_status mostly "retroactive" or unplanned
+- Intervention: Layer 3 gentle interception, not forced logging
+
+**Profile 3: Overplanner**
+- High task creation rate, low execution rate, long initiation delays
+- Feels productive during planning. Delta never computed because timer never starts.
+- The planning layer becomes the activity itself.
+- Detectable via: high create count + low EXECUTING transition rate + high avg initiation delay
+- No other system distinguishes this from genuine productivity.
+
+Each profile needs a different intervention. Lyra must detect which profile applies before offering corrections — giving a Reactive Executor estimation feedback is useless; giving an Overplanner more planning tools is harmful.
+
+This taxonomy deserves its own paper independent of the discrepancy hypothesis.
 
 ---
 
@@ -245,6 +269,18 @@ Venue candidates: CHI, CSCW, Behavior Research Methods
 3. **skip_propagation_probability**: `P(task N+1 skipped | task N skipped)` — segmented by: same category, different category, same time block
 
 4. **morning_anchor_score**: Boolean — did the first morning task (before 9am) execute? Track correlation with `total_day_delta`
+
+### Sleep as Leading Indicator
+
+Sleep hours may be the strongest upstream predictor of cascade failure — stronger than readiness, category, or time of day.
+
+The hypothesis: sleep < 6h → morning anchor skip → cascade. If true, sleep is the leading indicator and cascade is the trailing one. The intervention shifts from "don't skip the first task" to "protect your sleep."
+
+Testable with existing data + one new field: `sleep_hours` (optional, captured at first task start or retroactively). If sleep correlates with first-task skip rate and cascade_score more strongly than pre_task_readiness does, sleep becomes the primary input to the prediction model.
+
+This is not a wellness feature. It is a measurement correction: without sleep data, the bias_factor model attributes morning overruns to estimation error when they may be fatigue artifacts.
+
+**Status:** `sleep_hours` field not yet implemented. Add to v1.5 as optional morning check-in.
 
 ---
 
@@ -450,7 +486,7 @@ The bias_factor is no longer personal — it's a distribution. Some people consi
 
 **Mitigation:** When retroactive logging (Layer 1), add optional `unplanned_reason` enum: `unexpected_task` / `forgot_to_log` / `planning_friction` / `spontaneous_decision`. Different reasons need different interventions: friction → simplify input, forgetting → gentle interception, spontaneous → anchor planning.
 
-**Status:** Not yet designed. Add `unplanned_reason` to retroactive endpoint spec.
+**Status:** Implemented in v1.4. `unplanned_reason` field (unexpected/forgot/friction/spontaneous) added to `POST /v1/stopwatch/retroactive` and Task model. Migration 008.
 
 ### VT-9: No Cognitive Degradation Model
 **Threat:** The manifesto assumes cognitive state is stable within a session. But for 45-90 minute blocks, attention degrades. post_task_reflection captures the average (or rather, the peak-end recall), but the trajectory matters — a session that starts focused and ends distracted is different from one that starts slow and enters flow.
