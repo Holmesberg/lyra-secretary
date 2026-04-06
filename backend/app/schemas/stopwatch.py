@@ -27,6 +27,12 @@ class StopwatchStartResponse(BaseModel):
     interruption_type: Optional[str] = None
 
 
+class PausedParentInfo(BaseModel):
+    task_id: str
+    title: str
+    paused_minutes: int
+
+
 class StopwatchStopResponse(BaseModel):
     task_id: str
     session_id: str
@@ -40,6 +46,7 @@ class StopwatchStopResponse(BaseModel):
     confirmation_message: Optional[str] = None
     post_task_reflection: Optional[int] = None
     discrepancy_score: Optional[int] = None
+    paused_parent: Optional[PausedParentInfo] = None
 
 
 PAUSE_REASONS = {"mental_fatigue", "distraction", "task_difficulty", "external_interruption", "intentional_break", "prayer"}

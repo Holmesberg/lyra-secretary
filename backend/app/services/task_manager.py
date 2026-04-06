@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 import logging
 
-from app.db.models import Task, TaskState, TaskSource
+from app.db.models import Task, TaskState, TaskSource, CategoryMapping
 from app.services.parser import TaskParser
 from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector
@@ -37,6 +37,15 @@ class TaskManager:
         self.notion = NotionClient()
         self.redis = RedisClient()
     
+    def _infer_category(self, title: str) -> Optional[str]:
+        """Infer category from title using CategoryMapping table."""
+        title_lower = title.lower()
+        mappings = self.db.query(CategoryMapping).all()
+        for m in mappings:
+            if m.keyword.lower() in title_lower:
+                return m.category
+        return None
+
     def create_task(
         self,
         title: str,
@@ -79,6 +88,10 @@ class TaskManager:
         if conflicts and not force_conflicts:
             return None, conflicts, False
         
+        # Auto-infer category from title if not provided
+        if not category:
+            category = self._infer_category(title)
+
         # Calculate duration
         duration_minutes = int((end - start).total_seconds() / 60)
         
@@ -161,6 +174,9 @@ class TaskManager:
 
         if end_utc <= start_utc:
             raise ValueError("end_time must be after start_time")
+
+        if not category:
+            category = self._infer_category(title)
 
         executed_duration = int((end_utc - start_utc).total_seconds() / 60)
         if executed_duration < 1:

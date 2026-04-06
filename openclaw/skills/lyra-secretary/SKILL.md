@@ -4,8 +4,7 @@
 4. ALWAYS ASK REFLECTION AFTER STOP — send "Rate focus (1-5):" WAIT for reply
 5. NEVER ASSUME USER INPUT — never default readiness or reflection to any value
 6. STOPWATCH USES TASK_ID ONLY — never title
-7. ALWAYS ASK PAUSE REASON BEFORE PAUSING — send "Self-initiated or external? (self/external)" WAIT for reply
-8. NEVER say "undo window expired" for readiness correction during active session — call POST /v1/stopwatch/correct-readiness (no time limit)
+7. NEVER say "undo window expired" for readiness correction during active session — call POST /v1/stopwatch/correct-readiness (no time limit)
 
 ---
 name: lyra-secretary
@@ -77,21 +76,9 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 
 ---
 
-## Category Inference (apply when user doesn't specify)
-- gym, workout, run, walk, sport, fitness → fitness
-- lecture, class, CSE*, PHM*, course → academic
-- study, review, read, problem set, homework, assignment → study
-- debug, build, code, implement, fix, feature, Lyra → development
-- meeting, call, sync, standup → meeting
-- prayer, Fajr, Isha, Dhuhr, Asr, Maghrib, Taraweeh → prayer
-- idea, planning, reflection, journal, review → self_reflection
-- interview, network, LinkedIn → network
-
-Always include `category` in POST /v1/create. Never leave it null.
-
----
-
 ## Workflow
+
+Category is auto-inferred by backend from title keywords. Include `category` in POST /v1/create if you know it — backend fills it if not.
 
 **On session start (/new or /reset):** Call GET /v1/skill/ping. If it fails: "Backend is unreachable, commands will not work."
 
@@ -112,7 +99,6 @@ Always include `category` in POST /v1/create. Never leave it null.
 - Say: "[Paused task] is paused. Start [new task] as interruption? You can resume [paused task] after."
 - If yes: POST /v1/stopwatch/start with `pre_task_readiness` + `interruption_type`
 - Backend links via `parent_task_id` automatically
-- When new task stops, remind: "[Paused task] is still paused. Resume?"
 - NEVER auto-resume the parent task
 
 **Stop timer:**
@@ -120,13 +106,12 @@ Always include `category` in POST /v1/create. Never leave it null.
 - If "yes" → POST /v1/stopwatch/stop?confirmed=true
 - Send "Rate your focus during the session (1=very poor, 3=average, 5=excellent):" — WAIT for number
 - POST /v1/stopwatch/stop with `post_task_reflection`
-- After reflection: GET /v1/analytics/insights?auto_mark=true → if `ready: true` and insights non-empty: share first `observation` in one sentence
+- If response contains `paused_parent` → tell user: "[title] is still paused ({paused_minutes} min). Resume when ready."
+- After reflection: GET /v1/analytics/insights?auto_mark=true → if insights non-empty: share first `observation`
 
 **Prayer / break / interruption:**
-- When user says pause, ask ONE question: "Self-initiated or external? (self/external)"
-- Optional follow-up only if external: "What kind? (instructor break / technical / environment / personal)"
+- Ask "Self-initiated or external? (self/external)" — if user ignores, proceed (backend defaults to intentional_break/self)
 - POST /v1/stopwatch/pause with `pause_reason` and `pause_initiator` → "Timer paused — resume when you're back."
-- If user ignores the question — proceed with null, never block on it
 - On return: POST /v1/stopwatch/resume → "Timer resumed. {paused_minutes} min not counted."
 - NEVER stop the timer for breaks — always pause.
 

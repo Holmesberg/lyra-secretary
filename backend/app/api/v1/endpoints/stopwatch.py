@@ -156,7 +156,7 @@ async def stop_stopwatch(
                 ),
             )
 
-        session, task, is_early_stop, notion_synced = manager.stop(
+        session, task, is_early_stop, notion_synced, paused_parent = manager.stop(
             post_task_reflection=request.post_task_reflection,
         )
         return StopwatchStopResponse(
@@ -170,6 +170,7 @@ async def stop_stopwatch(
             notion_synced=notion_synced,
             post_task_reflection=task.post_task_reflection,
             discrepancy_score=task.discrepancy_score,
+            paused_parent=paused_parent,
         )
 
     except NoActiveStopwatchError as e:

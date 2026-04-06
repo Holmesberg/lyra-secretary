@@ -213,10 +213,8 @@ class StopwatchManager:
         elapsed = self._active_elapsed(session, None)
 
         session.paused_at_utc = now
-        if pause_reason:
-            session.pause_reason = pause_reason
-        if pause_initiator:
-            session.pause_initiator = pause_initiator
+        session.pause_reason = pause_reason or "intentional_break"
+        session.pause_initiator = pause_initiator or "self"
         self.db.commit()
 
         self.redis.set_pause_state(user_id, session.session_id, now.isoformat())
@@ -225,8 +223,8 @@ class StopwatchManager:
             "paused": True,
             "elapsed_minutes": elapsed,
             "paused_at": now,
-            "pause_reason": pause_reason,
-            "pause_initiator": pause_initiator,
+            "pause_reason": session.pause_reason,
+            "pause_initiator": session.pause_initiator,
         }
 
     def resume(self, user_id: str = "user_primary") -> dict:
@@ -297,7 +295,7 @@ class StopwatchManager:
                         .order_by(StopwatchSession.end_time_utc.desc())
                         .first()
                     )
-                    return session, task, False, True
+                    return session, task, False, True, None
                 raise NoActiveStopwatchError(
                     "No active stopwatch and no recent task to update reflection"
                 )
@@ -356,7 +354,29 @@ class StopwatchManager:
 
         self.redis.clear_active_stopwatch(user_id)
 
-        return session, task, is_early_stop, notion_synced
+        # Check for any paused parent session still open
+        paused_parent = None
+        orphan = (
+            self.db.query(StopwatchSession)
+            .filter(
+                StopwatchSession.paused_at_utc != None,
+                StopwatchSession.end_time_utc == None,
+                StopwatchSession.task_id != task.task_id,
+            )
+            .first()
+        )
+        if orphan:
+            parent_task = self.db.query(Task).filter(Task.task_id == orphan.task_id).first()
+            if parent_task:
+                paused_at = orphan.paused_at_utc
+                paused_mins = int((now_utc() - paused_at).total_seconds() / 60) if paused_at else 0
+                paused_parent = {
+                    "task_id": parent_task.task_id,
+                    "title": parent_task.title,
+                    "paused_minutes": paused_mins,
+                }
+
+        return session, task, is_early_stop, notion_synced, paused_parent
 
     def correct_readiness(
         self,
