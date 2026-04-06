@@ -3,10 +3,14 @@ from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
 
+import logging
+
 from app.db.models import StopwatchSession, Task, TaskState
 from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
-from app.utils.time_utils import now_utc
+from app.utils.time_utils import now_utc, to_local
+
+logger = logging.getLogger(__name__)
 
 class StopwatchAlreadyRunningError(Exception):
     pass
@@ -80,12 +84,20 @@ class StopwatchManager:
         return is_early, elapsed, planned
 
     def _recover_from_db(self, user_id: str) -> Optional[dict]:
-        session = self.db.query(StopwatchSession).filter(
+        unclosed = self.db.query(StopwatchSession).filter(
             StopwatchSession.end_time_utc == None
-        ).first()
+        ).order_by(StopwatchSession.start_time_utc.desc()).all()
 
-        if not session:
+        if not unclosed:
             return None
+
+        if len(unclosed) > 1:
+            logger.warning(
+                f"Multiple unclosed sessions found ({len(unclosed)}) — "
+                f"recovering most recent. Others may be orphaned."
+            )
+
+        session = unclosed[0]
 
         task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
         if not task:
@@ -147,11 +159,12 @@ class StopwatchManager:
         else:
             if not title:
                 raise ValueError("Title required for unplanned task")
-            now = now_utc()
+            # create_task() expects Cairo local time (calls to_utc internally)
+            local_now = to_local(now_utc())
             task, _, _ = self.task_manager.create_task(
                 title=title,
-                start=now,
-                end=now + timedelta(hours=1),
+                start=local_now,
+                end=local_now + timedelta(hours=1),
                 state=TaskState.EXECUTING
             )
 

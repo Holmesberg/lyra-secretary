@@ -229,12 +229,20 @@ class StopwatchSession(Base):
         return self.end_time_utc is None
     
     @property
-    def duration_minutes(self) -> Optional[int]:
-        """Duration in minutes (if stopped)."""
+    def wall_clock_minutes(self) -> Optional[int]:
+        """Wall clock duration in minutes (if stopped). Includes paused time."""
         if self.end_time_utc is None:
             return None
         delta = self.end_time_utc - self.start_time_utc
         return int(delta.total_seconds() / 60)
+
+    @property
+    def active_duration_minutes(self) -> Optional[int]:
+        """Active work duration in minutes (wall clock minus paused time)."""
+        if self.end_time_utc is None:
+            return None
+        wall = int((self.end_time_utc - self.start_time_utc).total_seconds() / 60)
+        return max(0, wall - self.total_paused_minutes)
 
 
 class CategoryMapping(Base):
