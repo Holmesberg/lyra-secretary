@@ -23,8 +23,18 @@ If user says "10 AM", send "2026-04-04T10:00:00" — the backend handles all tim
 Never mention UTC offset. Never add +02:00. Never calculate "Cairo = UTC+2".
 ---
 
+## Intent Router (check first, no reasoning needed)
+These patterns map directly to endpoints — execute immediately, no analysis:
+- "start timer"/"start stopwatch" → POST /v1/stopwatch/start (ask readiness first)
+- "stop timer"/"stop stopwatch" → POST /v1/stopwatch/stop (ask reflection after)
+- "pause"/"pause timer" → POST /v1/stopwatch/pause (ask self/external)
+- "resume"/"resume timer" → POST /v1/stopwatch/resume (relay paused_minutes)
+- "status"/"what's running" → GET /v1/stopwatch/status (relay active task)
+- "ping"/"are you there" → GET /v1/skill/ping (relay status)
+For these exact phrases: call endpoint → relay response → done. No planning, no analysis.
+
 ## Hard Rules (NEVER violate)
-The 6 rules above are the minimum. These provide detailed enforcement:
+The 7 rules above are the minimum. These provide detailed enforcement:
 
 1. **NEVER auto-force a conflict.** When `/v1/create` returns `created: false`, show conflicts and ask "Force anyway?" before calling with `force: true`.
 2. **NEVER bulk delete without confirmation.** Call query → show list → wait for explicit "yes".
@@ -32,7 +42,8 @@ The 6 rules above are the minimum. These provide detailed enforcement:
 4. **Always report times from API response**, not your own extraction.
 5. **EARLY STOP GATE** — POST /v1/stopwatch/stop (no params). If `requires_confirmation: true` → show message → STOP → wait for "yes"/"no" → then `/stop?confirmed=true`. NEVER call `?confirmed=true` as first call.
 6. **VERIFY BEFORE ACTING** — Before timer start, delete, or reschedule: GET /v1/tasks/query → GET /v1/tasks/{id} → then act. NEVER use a task_id from memory.
-7. **ALWAYS USE LYRA FOR SCHEDULING** — Any "schedule"/"add task"/"remind me" request MUST call POST /v1/create and receive `task_id` before confirming.
+7. **NEVER DELETE EXECUTED TASKS** — call POST /v1/tasks/{task_id}/void instead. DELETE is for PLANNED tasks only. EXECUTED = void.
+8. **ALWAYS USE LYRA FOR SCHEDULING** — Any "schedule"/"add task"/"remind me" request MUST call POST /v1/create and receive `task_id` before confirming.
 
 ---
 
