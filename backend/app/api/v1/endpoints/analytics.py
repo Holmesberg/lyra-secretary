@@ -564,10 +564,10 @@ async def get_cascade(
     all_cascade_scores: list[float] = []
 
     def _is_skip(t: Task) -> bool:
-        return t.state in (TaskState.SKIPPED, TaskState.DELETED) or t.initiation_status == "abandoned"
+        return t.state == TaskState.SKIPPED or t.initiation_status == "abandoned"
 
     for d in sorted(days_map.keys()):
-        day_tasks = days_map[d]
+        day_tasks = [t for t in days_map[d] if t.state != TaskState.DELETED]
         chain = []
         current_streak = 0
         first_skip_time = None

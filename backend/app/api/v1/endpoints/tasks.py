@@ -267,39 +267,25 @@ async def clear_schedule(
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Atomically clear all mutable tasks from the schedule.
+    Delete all PLANNED tasks from the schedule.
 
-    Order of operations:
-    1. Stop active stopwatch (if any) — no reflection captured, session void-flagged
-    2. Abandon all EXECUTING tasks → SKIPPED with reason "cleared"
-    3. Soft-delete all PLANNED tasks
-
-    Returns counts of affected tasks. Use this instead of manual query + delete
-    loops so that active timers are never left dangling.
+    Blocked with 400 if a stopwatch session is active — the user must stop
+    the timer first so the session is properly closed with reflection.
+    EXECUTING / PAUSED / EXECUTED / SKIPPED tasks are never touched.
     """
-    stopwatch_stopped = False
-    stopped_task_id = None
-    try:
-        sw = StopwatchManager(db)
-        session, task, *_ = sw.stop()
-        stopwatch_stopped = True
-        stopped_task_id = task.task_id
-    except NoActiveStopwatchError:
-        pass
-    except Exception as e:
-        logger.warning(f"clear_schedule: stopwatch stop failed (non-blocking): {e}")
+    sw = StopwatchManager(db)
+    status = sw.get_status()
+    if status.get("active"):
+        task_title = status.get("task_title", "current task")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "active_timer",
+                "message": f"Stop timer for {task_title} before clearing schedule.",
+            },
+        )
 
     manager = TaskManager(db)
-
-    executing = db.query(Task).filter(Task.state == TaskState.EXECUTING).all()
-    abandoned_ids = []
-    for t in executing:
-        try:
-            manager.skip_task(t.task_id, reason="cleared")
-            abandoned_ids.append(t.task_id)
-        except Exception as e:
-            logger.warning(f"clear_schedule: could not abandon {t.task_id}: {e}")
-
     planned = db.query(Task).filter(Task.state == TaskState.PLANNED).all()
     deleted_ids = []
     for t in planned:
@@ -311,11 +297,7 @@ async def clear_schedule(
 
     return {
         "cleared": True,
-        "stopwatch_stopped": stopwatch_stopped,
-        "stopped_task_id": stopped_task_id,
-        "executing_abandoned": len(abandoned_ids),
         "planned_deleted": len(deleted_ids),
-        "total_affected": len(abandoned_ids) + len(deleted_ids),
     }
 
 

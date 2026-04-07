@@ -29,18 +29,17 @@ def test_missing_reflection_and_paused_minutes():
     assert "unplanned_reason" not in fields
 
 
-def test_planned_task_skips_unplanned_reason():
-    """planned_duration_minutes present → unplanned_reason not required.
-    Validation passes; any downstream error (service/DB) is outside this test's scope."""
+def test_planned_task_still_requires_unplanned_reason():
+    """planned_duration_minutes does NOT bypass unplanned_reason — always required."""
     r = client.post("/v1/stopwatch/retroactive", json={
         **BASE,
         "post_task_reflection": 4,
         "total_paused_minutes": 0,
         "planned_duration_minutes": 120,
     })
-    # Validation must not reject with missing_required_fields
-    if r.status_code == 400:
-        assert r.json().get("detail", {}).get("error") != "missing_required_fields"
+    assert r.status_code == 400
+    fields = [f["field"] for f in r.json()["detail"]["missing_fields"]]
+    assert "unplanned_reason" in fields
 
 
 def test_missing_only_unplanned_reason():

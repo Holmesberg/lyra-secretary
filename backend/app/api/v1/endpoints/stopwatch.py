@@ -242,7 +242,7 @@ async def retroactive_log(
             "field": "total_paused_minutes",
             "prompt": "Any paused time to subtract? (minutes, or 0)",
         })
-    if request.unplanned_reason is None and request.planned_duration_minutes is None:
+    if request.unplanned_reason is None:
         missing.append({
             "field": "unplanned_reason",
             "prompt": "Why wasn't this planned? 1. Unexpected task  2. Forgot to log  3. Planning friction  4. Spontaneous decision",

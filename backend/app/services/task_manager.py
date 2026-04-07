@@ -38,11 +38,22 @@ class TaskManager:
         self.redis = RedisClient()
     
     def _infer_category(self, title: str) -> Optional[str]:
-        """Infer category from title using CategoryMapping table."""
+        """Infer category from title using CategoryMapping table.
+
+        Checks exact word matches first (prevents false substring hits like
+        'run' inside 'running'). Falls back to substring for multi-word
+        keywords such as 'problem set'.
+        """
         title_lower = title.lower()
+        words = set(title_lower.split())
         mappings = self.db.query(CategoryMapping).all()
+        # Pass 1: exact word match
         for m in mappings:
-            if m.keyword.lower() in title_lower:
+            if m.keyword.lower() in words:
+                return m.category
+        # Pass 2: multi-word keyword substring fallback
+        for m in mappings:
+            if " " in m.keyword and m.keyword.lower() in title_lower:
                 return m.category
         return None
 

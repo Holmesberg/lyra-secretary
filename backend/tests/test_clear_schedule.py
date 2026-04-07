@@ -1,10 +1,15 @@
 """
-Tests for LYR-042: POST /v1/schedule/clear must handle EXECUTING tasks.
+Tests for POST /v1/schedule/clear.
+- Blocks with 400 if stopwatch active
+- Deletes PLANNED tasks only when no active timer
+- Never touches EXECUTING / PAUSED
 """
-from fastapi.testclient import TestClient
 from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+
+from app.db.models import Task, TaskSource, TaskState
 from app.main import app
-from app.db.models import Task, TaskState, TaskSource
 from app.utils.time_utils import now_utc
 from datetime import timedelta
 from tests.conftest import TestingSession
@@ -28,12 +33,28 @@ def _seed(state: TaskState, task_id: str):
     db.close()
 
 
+def test_clear_blocked_when_timer_active():
+    """400 returned if stopwatch is active."""
+    with patch("app.api.v1.endpoints.tasks.StopwatchManager") as mock_sw:
+        mock_sw.return_value.get_status.return_value = {
+            "active": True,
+            "task_title": "Deep work",
+        }
+        r = client.post("/v1/schedule/clear")
+
+    assert r.status_code == 400
+    body = r.json()
+    assert body["detail"]["error"] == "active_timer"
+    assert "Deep work" in body["detail"]["message"]
+
+
 def test_clear_deletes_planned_tasks():
+    """PLANNED tasks are removed when no active timer."""
     _seed(TaskState.PLANNED, "clear-p1")
     _seed(TaskState.PLANNED, "clear-p2")
 
     with patch("app.api.v1.endpoints.tasks.StopwatchManager") as mock_sw:
-        mock_sw.return_value.stop.side_effect = Exception("no active")
+        mock_sw.return_value.get_status.return_value = {"active": False}
         r = client.post("/v1/schedule/clear")
 
     assert r.status_code == 200
@@ -42,22 +63,18 @@ def test_clear_deletes_planned_tasks():
     assert body["planned_deleted"] >= 2
 
 
-def test_clear_abandons_executing_tasks():
+def test_clear_does_not_touch_executing():
+    """EXECUTING tasks are left untouched."""
     _seed(TaskState.EXECUTING, "clear-e1")
 
     with patch("app.api.v1.endpoints.tasks.StopwatchManager") as mock_sw:
-        mock_sw.return_value.stop.side_effect = Exception("no active")
+        mock_sw.return_value.get_status.return_value = {"active": False}
         r = client.post("/v1/schedule/clear")
 
     assert r.status_code == 200
-    body = r.json()
-    assert body["cleared"] is True
-    assert body["executing_abandoned"] >= 1
-
-
-def test_clear_response_shape():
-    r = client.post("/v1/schedule/clear")
-    assert r.status_code == 200
-    body = r.json()
-    for field in ("cleared", "stopwatch_stopped", "planned_deleted", "executing_abandoned", "total_affected"):
-        assert field in body
+    # EXECUTING task still in DB
+    db = TestingSession()
+    t = db.query(Task).filter(Task.task_id == "clear-e1").first()
+    db.close()
+    assert t is not None
+    assert t.state == TaskState.EXECUTING

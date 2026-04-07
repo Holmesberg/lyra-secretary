@@ -44,6 +44,7 @@ The 7 rules above are the minimum. These provide detailed enforcement:
 6. **VERIFY BEFORE ACTING** — Before timer start, delete, or reschedule: GET /v1/tasks/query → GET /v1/tasks/{id} → then act. NEVER use a task_id from memory.
 7. **NEVER DELETE EXECUTED TASKS** — call POST /v1/tasks/{task_id}/void instead. DELETE is for PLANNED tasks only. EXECUTED = void.
 8. **ALWAYS USE LYRA FOR SCHEDULING** — Any "schedule"/"add task"/"remind me" request MUST call POST /v1/create and receive `task_id` before confirming.
+9. **NEVER ANSWER FROM MEMORY FOR LIVE STATE** — Timer status, elapsed time, task state: ALWAYS call GET /v1/stopwatch/status or GET /v1/tasks/query first. Memory is stale. Backend is truth.
 
 ---
 
@@ -64,7 +65,7 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 **POST /v1/schedule/clear** — stops active timer + abandons EXECUTING + deletes PLANNED — returns: `cleared`, `executing_abandoned`, `planned_deleted`
 **POST /v1/stopwatch/start** — body: `task_id`* (never title), `pre_task_readiness` (1–5) — returns: `session_id`, `task_id`, `is_future_task`
 **POST /v1/stopwatch/stop** — body: `post_task_reflection` (1–5, optional) — query: `?confirmed=true` — returns: `task_id`, `duration_minutes`, `delta_minutes`, `requires_confirmation`
-**POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`*, `end_time`*, `pre_task_readiness`, `post_task_reflection`, `category`, `planned_duration_minutes`, `unplanned_reason` (unexpected|forgot|friction|spontaneous), `total_paused_minutes` — returns: `task_id`, `duration_minutes`, `delta_minutes`
+**POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`*, `end_time`*, `post_task_reflection`*, `total_paused_minutes`*, `unplanned_reason`* (unexpected|forgot|friction|spontaneous), `pre_task_readiness`, `category`, `planned_duration_minutes` — returns: `task_id`, `duration_minutes`, `delta_minutes`
 **POST /v1/stopwatch/pause** — body (optional): `pause_reason`, `pause_initiator` (self|external) — returns: `paused`, `elapsed_minutes`, `paused_at`
 **POST /v1/stopwatch/resume** — no body — returns: `resumed`, `paused_minutes`, `total_paused_minutes`
 **POST /v1/stopwatch/correct-readiness** — body: `pre_task_readiness`* (1-5) — returns: `corrected`, `original`, `new`
