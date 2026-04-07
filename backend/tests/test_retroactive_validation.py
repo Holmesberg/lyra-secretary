@@ -70,4 +70,4 @@ def test_unplanned_reason_options_present():
     missing = r.json()["detail"]["missing_fields"]
     unplanned = next(f for f in missing if f["field"] == "unplanned_reason")
     assert "options" in unplanned
-    assert unplanned["options"]["1"] == "unexpected"
+    assert unplanned["options"]["1"] == "unexpected_task"

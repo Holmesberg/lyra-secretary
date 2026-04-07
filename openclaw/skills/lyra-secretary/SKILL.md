@@ -65,7 +65,7 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 **POST /v1/schedule/clear** — stops active timer + abandons EXECUTING + deletes PLANNED — returns: `cleared`, `executing_abandoned`, `planned_deleted`
 **POST /v1/stopwatch/start** — body: `task_id`* (never title), `pre_task_readiness` (1–5) — returns: `session_id`, `task_id`, `is_future_task`
 **POST /v1/stopwatch/stop** — body: `post_task_reflection` (1–5, optional) — query: `?confirmed=true` — returns: `task_id`, `duration_minutes`, `delta_minutes`, `requires_confirmation`
-**POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`*, `end_time`*, `post_task_reflection`*, `total_paused_minutes`*, `unplanned_reason`* (unexpected|forgot|friction|spontaneous), `pre_task_readiness`, `category`, `planned_duration_minutes` — returns: `task_id`, `duration_minutes`, `delta_minutes`
+**POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`*, `end_time`*, `post_task_reflection`*, `total_paused_minutes`*, `unplanned_reason`* (unexpected_task|forgot_to_log|planning_friction|spontaneous_decision), `pre_task_readiness`, `category`, `planned_duration_minutes` — returns: `task_id`, `duration_minutes`, `delta_minutes`
 **POST /v1/stopwatch/pause** — body (optional): `pause_reason`, `pause_initiator` (self|external) — returns: `paused`, `elapsed_minutes`, `paused_at`
 **POST /v1/stopwatch/resume** — no body — returns: `resumed`, `paused_minutes`, `total_paused_minutes`
 **POST /v1/stopwatch/correct-readiness** — body: `pre_task_readiness`* (1-5) — returns: `corrected`, `original`, `new`
@@ -112,8 +112,9 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - After reflection: GET /v1/analytics/insights?auto_mark=true → if insights non-empty: share first `observation`
 
 **Prayer / break / interruption:**
-- Ask "Self-initiated or external? (self/external)" — if user ignores, proceed (backend defaults to intentional_break/self)
-- POST /v1/stopwatch/pause with `pause_reason` and `pause_initiator` → "Timer paused — resume when you're back."
+- Ask "Self-initiated or external? (self/external)" → `pause_initiator`
+- Ask "Reason? 1. Mental fatigue  2. Distraction  3. Task difficulty  4. External interrupt  5. Intentional break  6. Prayer" — WAIT for number → map: 1=mental_fatigue 2=distraction 3=task_difficulty 4=external_interruption 5=intentional_break 6=prayer
+- POST /v1/stopwatch/pause with `pause_reason` + `pause_initiator` → "Timer paused — resume when you're back."
 - On return: POST /v1/stopwatch/resume → "Timer resumed. {paused_minutes} min not counted."
 - NEVER stop the timer for breaks — always pause.
 
@@ -121,7 +122,7 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 
 **Retroactive logging** ("I did X from 2pm to 4pm" = past session):
 - Confirm title and times with user → POST /v1/stopwatch/retroactive (include `planned_duration_minutes` if stated)
-- If response has `missing_fields`: ask user each `prompt` one at a time — WAIT after each — then retry with all answers included
+- If `missing_fields`: ask each prompt one at a time, WAIT — map unplanned_reason: 1=unexpected_task 2=forgot_to_log 3=planning_friction 4=spontaneous_decision — retry with all answers
 
 **Follow-up correction** ("actually", "make that", "next week", time-only reply with no task name):
 - GET /v1/tasks/last → use returned task_id for the reschedule/edit

@@ -246,7 +246,7 @@ async def retroactive_log(
         missing.append({
             "field": "unplanned_reason",
             "prompt": "Why wasn't this planned? 1. Unexpected task  2. Forgot to log  3. Planning friction  4. Spontaneous decision",
-            "options": {"1": "unexpected", "2": "forgot", "3": "friction", "4": "spontaneous"},
+            "options": {"1": "unexpected_task", "2": "forgot_to_log", "3": "planning_friction", "4": "spontaneous_decision"},
         })
     if missing:
         raise HTTPException(

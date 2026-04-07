@@ -91,14 +91,8 @@ class NotionClient:
         }
         icon = state_icons.get(task.state, "")
 
-        # Notion Status field mapping. PAUSED is internal-only; map to EXECUTING
-        # in Notion so we don't require the user to add a "PAUSED" option to
-        # their Notion database. The ⏸ title prefix makes paused visible.
         state_val = task.state.value if hasattr(task.state, 'value') else str(task.state)
-        if state_val == "PAUSED":
-            notion_status_name = "EXECUTING"
-        else:
-            notion_status_name = state_val
+        notion_status_name = state_val
         
         properties = {
             "Title": {
