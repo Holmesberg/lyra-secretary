@@ -57,10 +57,12 @@ Last updated: April 7, 2026 — v1.5. 37 open, 53 fixed.
 | ~~LYR-086~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Agent answers timer status from memory instead of calling backend~~ | Fixed: Hard Rule #9 added — never answer live state from memory, always call `GET /v1/stopwatch/status` or `GET /v1/tasks/query`. |
 | ~~LYR-087~~ | ~~🟡 medium~~ | ~~backend~~ | ~~DELETED tasks counted as skips in cascade analytics~~ | Fixed: `_is_skip()` now only checks `SKIPPED` state; DELETED tasks filtered from cascade chain entirely. |
 | LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Pause A → start B → stop B → resume A: Redis loses task A's active session reference. User continues work untracked. |
+| ~~LYR-089~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Reflection not asked when early stop confirmed~~ | Fixed: SKILL.md stop flow updated — reflection collected before `?confirmed=true` call, not as a separate 3rd call. |
+| ~~LYR-090~~ | ~~🔴 high~~ | ~~backend~~ | ~~0-minute active session marked EXECUTED instead of SKIPPED~~ | Fixed: `StopwatchManager.stop()` checks `active_elapsed == 0` before `complete_task()` — transitions directly to SKIPPED with `initiation_status='abandoned'`. Stop response includes `skip_reason: 'zero_duration'`. |
 
 ---
 
-## Fixed (47 bugs)
+## Fixed (49 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
@@ -112,6 +114,8 @@ Last updated: April 7, 2026 — v1.5. 37 open, 53 fixed.
 | LYR-085 | 🔴 high | backend | `POST /v1/schedule/clear` auto-stopped timer and mass-deleted PLANNED tasks without confirmation | Fixed: blocks with 400 `{"error":"active_timer"}` if stopwatch running. Only deletes PLANNED tasks; never touches EXECUTING/PAUSED. |
 | LYR-086 | 🟡 medium | skill | Agent answered timer status from memory instead of calling backend | Fixed: SKILL.md Hard Rule #9 — never answer live state (timer, elapsed, task state) from memory; always call backend first. |
 | LYR-087 | 🟡 medium | backend | DELETED tasks inflated cascade_score as false skips | Fixed: `_is_skip()` now only treats `SKIPPED` state as a skip; DELETED tasks filtered from each day's chain before cascade scoring. |
+| LYR-089 | 🟡 medium | skill | Reflection not asked when early stop confirmed | Fixed: SKILL.md stop flow — ask reflection BEFORE `?confirmed=true` call. Eliminated the erroneous 3-call pattern. |
+| LYR-090 | 🔴 high | backend | 0-minute active session marked EXECUTED instead of SKIPPED | Fixed: `StopwatchManager.stop()` early-exits with SKIPPED transition when `active_elapsed == 0`. Stop response includes `skipped: true, skip_reason: 'zero_duration'`. |
 
 ---
 

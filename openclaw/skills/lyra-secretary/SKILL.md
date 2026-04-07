@@ -11,6 +11,8 @@ description: Manage tasks, schedule, and stopwatch via the Lyra Secretary backen
 5. NEVER ASSUME USER INPUT — never default readiness or reflection to any value
 6. STOPWATCH USES TASK_ID ONLY — never title
 7. NEVER say "undo window expired" for readiness correction during active session — call POST /v1/stopwatch/correct-readiness (no time limit)
+8. NEVER USE OPENCLAW NATIVE TOOLS (cron, tasks, reminders) — ALL scheduling/timer actions go through HTTP to http://backend:8000 only
+9. ALWAYS ASK PAUSE QUESTIONS BEFORE PAUSE — send "Self or external? (self/external)" WAIT → then "1.Fatigue 2.Distraction 3.Difficulty 4.External 5.Break 6.Prayer" WAIT → then POST /v1/stopwatch/pause with both fields
 
 You are connected to a live FastAPI backend at http://backend:8000
 Every scheduling, timer, or task action MUST call an endpoint and receive a
@@ -60,7 +62,8 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 **GET /v1/tasks/last** — most recently operated task (1-hr window) — returns: `task_id`, `title`, `state` — 404 if expired
 **POST /v1/tasks/{task_id}/sync** — force Notion backfill — returns: `synced`, `notion_page_id`
 **POST /v1/tasks/{task_id}/void** — body (optional): `voided_reason` — marks EXECUTED as system_error, excluded from analytics
-**POST /v1/tasks/{task_id}/mark-abandoned** — body (optional): `reason` — EXECUTING|PAUSED → SKIPPED
+**POST /v1/tasks/{task_id}/mark-abandoned** — body (optional): `reason` — EXECUTING|PAUSED|PLANNED → SKIPPED (PLANNED sets initiation_status=user_skipped)
+**POST /v1/tasks/swap** — body: `task_a_id`*, `task_b_id`* — swaps SKIPPED↔PLANNED: reactivates SKIPPED at the PLANNED task's slot, marks PLANNED as user_skipped — returns: `reactivated_task_id`, `skipped_task_id`
 **POST /v1/schedule/clear** — stops active timer + abandons EXECUTING + deletes PLANNED — returns: `cleared`, `executing_abandoned`, `planned_deleted`
 **POST /v1/stopwatch/start** — body: `task_id`* (never title), `pre_task_readiness` (1–5) — returns: `session_id`, `task_id`, `is_future_task`
 **POST /v1/stopwatch/stop** — body: `post_task_reflection` (1–5, optional) — query: `?confirmed=true` — returns: `task_id`, `duration_minutes`, `delta_minutes`, `requires_confirmation`
@@ -102,10 +105,10 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - NEVER auto-resume the parent task
 
 **Stop timer:**
-- POST /v1/stopwatch/stop → if `requires_confirmation: true` → show message → wait for "yes"/"no"
-- If "yes" → POST /v1/stopwatch/stop?confirmed=true
-- Send "Rate your focus during the session (1=very poor, 3=average, 5=excellent):" — WAIT for number
-- POST /v1/stopwatch/stop with `post_task_reflection`
+- POST /v1/stopwatch/stop → if `requires_confirmation: true` → show message → wait "yes"/"no"
+- If "yes": send "Rate focus (1=very poor, 3=average, 5=excellent):" — WAIT for number → POST /v1/stopwatch/stop?confirmed=true with `post_task_reflection`
+- If no confirmation required: send focus question — WAIT → POST /v1/stopwatch/stop with `post_task_reflection`
+- If response has `skip_reason: zero_duration` → task was SKIPPED (0 active minutes) — do NOT ask for reflection
 - If response contains `paused_parent` → tell user: "[title] is still paused ({paused_minutes} min). Resume when ready."
 - If response contains `micro_mirror` → relay it verbatim to user (one-line behavioral observation)
 - After reflection: GET /v1/analytics/insights?auto_mark=true → if insights non-empty: share first `observation`
