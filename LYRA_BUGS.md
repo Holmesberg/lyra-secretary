@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 7, 2026 — v1.4. 33 open, 48 fixed.
+Last updated: April 7, 2026 — v1.5. 37 open, 53 fixed.
 
 ---
 
-## Open (39 bugs)
+## Open (43 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -48,10 +48,19 @@ Last updated: April 7, 2026 — v1.4. 33 open, 48 fixed.
 | LYR-077 | 🟢 low | skill | Readiness assumed 5 without asking | Debugging session started with `pre_task_readiness:5` without Lyra asking the question first. Hard Rule violation again. |
 | LYR-078 | 🔴 high | openclaw | Agent autonomously executed Lyra build during testing | Claude Code agent started and stopped the Lyra build task during testing — zero-duration session, bypassed early-stop gate with `?confirmed=true`, pre/post self-filled. Session voided via `POST /v1/tasks/{id}/void`. |
 | ~~LYR-079~~ | ~~🟡 medium~~ | ~~backend~~ | ~~`session_index_in_day` not exposed in task query responses~~ | Fixed: already present in `GET /v1/tasks/query` response. |
+| LYR-080 | 🔴 high | backend | Backend rebuild during active paused session corrupts task/session references | Desync recovery restores pause time but loses task linkage. Delta not computed. stop response returns wrong task_id. |
+| LYR-081 | 🔴 high | skill | Agent auto-forces conflict override without asking user | Hard Rule #1 violation. During batch scheduling, agent resolved conflict silently instead of showing conflict list and waiting for explicit yes/no. |
+| LYR-082 | 🟡 medium | skill | Agent uses planned_duration to compute end_time when explicit end_time provided | "Debugging from 2:37pm to 4pm, planned 54 mins" → end_time computed as 15:31 (2:37 + 54min) instead of 16:00. `planned_duration_minutes` should only affect delta, never override explicit end_time. |
+| ~~LYR-083~~ | ~~🟡 medium~~ | ~~backend~~ | ~~Category inference returns "work" for "debug session"~~ | Fixed: `task_manager._infer_category` now uses word-boundary matching; "debug" → development. |
+| ~~LYR-084~~ | ~~🟡 medium~~ | ~~backend~~ | ~~`unplanned_reason` skipped when `planned_duration_minutes` provided~~ | Fixed: bypass removed — `unplanned_reason` always required on retroactive endpoint. |
+| ~~LYR-085~~ | ~~🔴 high~~ | ~~backend~~ | ~~`POST /v1/schedule/clear` auto-stopped timer and deleted 4 PLANNED tasks without confirmation~~ | Fixed: now blocks with 400 `active_timer` if stopwatch running. Deletes PLANNED only when no active timer. |
+| ~~LYR-086~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Agent answers timer status from memory instead of calling backend~~ | Fixed: Hard Rule #9 added — never answer live state from memory, always call `GET /v1/stopwatch/status` or `GET /v1/tasks/query`. |
+| ~~LYR-087~~ | ~~🟡 medium~~ | ~~backend~~ | ~~DELETED tasks counted as skips in cascade analytics~~ | Fixed: `_is_skip()` now only checks `SKIPPED` state; DELETED tasks filtered from cascade chain entirely. |
+| LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Pause A → start B → stop B → resume A: Redis loses task A's active session reference. User continues work untracked. |
 
 ---
 
-## Fixed (42 bugs)
+## Fixed (47 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
@@ -97,48 +106,55 @@ Last updated: April 7, 2026 — v1.4. 33 open, 48 fixed.
 | LYR-074 | 🔴 high | backend | Undo window too short for readiness correction | Fixed: `POST /v1/stopwatch/correct-readiness` — no time limit, works during active session. Logs original value. |
 | LYR-075 | 🟡 medium | backend | Overflow notification fires while timer is paused | Fixed: subtract `total_paused_minutes` and current pause from elapsed in `timer_overflow.py`. |
 | LYR-076 | 🟡 medium | skill | "75%" completion misinterpreted as focus rating | Fixed: overflow prompt now says "Reply with 'done' or a completion percentage". |
+| LYR-079 | 🟡 medium | backend | `session_index_in_day` not exposed in task query responses | Fixed: field was already present in `GET /v1/tasks/query` response; confirmed in this session. |
+| LYR-083 | 🟡 medium | backend | Category inference returns wrong category for "debug session" | Fixed: `task_manager._infer_category` rewritten with word-boundary matching (exact word check before substring fallback). "debug" → development. |
+| LYR-084 | 🟡 medium | backend | `unplanned_reason` bypassed when `planned_duration_minutes` present in retroactive | Fixed: removed bypass — `unplanned_reason` always required regardless of `planned_duration_minutes`. |
+| LYR-085 | 🔴 high | backend | `POST /v1/schedule/clear` auto-stopped timer and mass-deleted PLANNED tasks without confirmation | Fixed: blocks with 400 `{"error":"active_timer"}` if stopwatch running. Only deletes PLANNED tasks; never touches EXECUTING/PAUSED. |
+| LYR-086 | 🟡 medium | skill | Agent answered timer status from memory instead of calling backend | Fixed: SKILL.md Hard Rule #9 — never answer live state (timer, elapsed, task state) from memory; always call backend first. |
+| LYR-087 | 🟡 medium | backend | DELETED tasks inflated cascade_score as false skips | Fixed: `_is_skip()` now only treats `SKIPPED` state as a skip; DELETED tasks filtered from each day's chain before cascade scoring. |
 
 ---
 
 ## Priority Order for Next Session
 
 ### Critical (🔴)
-1. LYR-078 — Agent autonomously executed Lyra build during testing; zero-duration, bypassed early-stop
-2. LYR-071 — exec-approvals `ask:"never"` + `"*"` not suppressing Haiku approval prompts
-3. LYR-063 — OpenClaw caches stale API keys in auth-profiles.json; billing failures block model permanently
-4. LYR-066 — Qwen3.5:9b deletes tasks without confirmation; local models ignore Hard Rules
-5. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
-6. LYR-048 — validate Hard Rule #5 fix with Haiku (GLM bypass confirmed)
-7. LYR-049 — skill context loss on model switch; model improvises wrong endpoints
+1. LYR-080 — Backend rebuild during active paused session corrupts task/session linkage; delta not computed
+2. LYR-081 — Agent auto-forces conflict override without asking user (Hard Rule #1 violation)
+3. LYR-078 — Agent autonomously executed Lyra build during testing; zero-duration, bypassed early-stop
+4. LYR-071 — exec-approvals `ask:"never"` + `"*"` not suppressing Haiku approval prompts
+5. LYR-063 — OpenClaw caches stale API keys in auth-profiles.json; billing failures block model permanently
+6. LYR-066 — Qwen3.5:9b deletes tasks without confirmation; local models ignore Hard Rules
+7. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
+8. LYR-048 — validate Hard Rule #5 fix with Haiku (GLM bypass confirmed)
+9. LYR-049 — skill context loss on model switch; model improvises wrong endpoints
 
 ### Medium (🟡)
-7. LYR-072 — No atomic "skip and reschedule" flow; requires manual delete + create
-8. LYR-064 — ANTHROPIC_API_KEY not in docker-compose.yml env block (fixed locally, needs upstream)
-9. LYR-059 — Haiku uses curl instead of HTTP tool; SKILL.md rule softened
-10. LYR-065 — Qwen3.5:9b skips readiness/reflection capture
-11. LYR-062 — agent approves its own exec requests
-12. LYR-061 — insights fire after 1 session, should require 3
-13. LYR-053 — enable exec approvals on Telegram
-14. LYR-057 — validate Hard Rule #8 fix; stopwatch/start with task_id only
-15. LYR-043 — validate Hard Rule #6 fixes duplicate task creation
-16. LYR-052 — validate backend-direct Telegram reminders
-17. LYR-067 — Qwen3.5:9b loops under GPU load
-18. LYR-068 — Notion date timezone double conversion
-19. LYR-046 — category cleared on Notion update
-20. LYR-042 — clear schedule leaves EXECUTING tasks
-21. LYR-056 — validate "then" chaining in parse_chained()
-22. LYR-050 — backfill initiation_status on historical tasks
-23. LYR-035 — validate Hard Rule #6 covers memory ID issue
-24. LYR-079 — session_index_in_day not exposed in task query responses (cascade prereq)
-25. LYR-036 — context lost on follow-up corrections
+10. LYR-088 — resume() loses Redis session reference after another stopwatch runs in between
+11. LYR-082 — Agent computes end_time from planned_duration when explicit end_time provided
+12. LYR-072 — No atomic "skip and reschedule" flow; requires manual delete + create
+13. LYR-064 — ANTHROPIC_API_KEY not in docker-compose.yml env block (fixed locally, needs upstream)
+14. LYR-059 — Haiku uses curl instead of HTTP tool; SKILL.md rule softened
+15. LYR-065 — Qwen3.5:9b skips readiness/reflection capture
+16. LYR-062 — agent approves its own exec requests
+17. LYR-061 — insights fire after 1 session, should require 3
+18. LYR-053 — enable exec approvals on Telegram
+19. LYR-057 — validate Hard Rule #8 fix; stopwatch/start with task_id only
+20. LYR-043 — validate Hard Rule #6 fixes duplicate task creation
+21. LYR-052 — validate backend-direct Telegram reminders
+22. LYR-067 — Qwen3.5:9b loops under GPU load
+23. LYR-068 — Notion date timezone double conversion
+24. LYR-056 — validate "then" chaining in parse_chained()
+25. LYR-050 — backfill initiation_status on historical tasks
+26. LYR-035 — validate Hard Rule #6 covers memory ID issue
+27. LYR-036 — context lost on follow-up corrections
 
 ### Low (🟢)
-25. LYR-077 — Readiness assumed 5 without asking; Hard Rule violation
-26. LYR-060 — overflow notification misses short tasks
-27. LYR-069 — Claude 3 Haiku too old for skill system
-28. LYR-054 — category_mapping inference at creation time
-29. LYR-037 — retest false conflict on clean database
-30. LYR-015 + LYR-018 + LYR-020 — backfill sync, clean test data
-31. LYR-019 — day-of-week label fix
-32. LYR-007 — validate memory constraint
-33. LYR-047 — document as Notion limitation
+28. LYR-077 — Readiness assumed 5 without asking; Hard Rule violation
+29. LYR-060 — overflow notification misses short tasks
+30. LYR-069 — Claude 3 Haiku too old for skill system
+31. LYR-054 — category_mapping inference at creation time
+32. LYR-037 — retest false conflict on clean database
+33. LYR-015 + LYR-018 + LYR-020 — backfill sync, clean test data
+34. LYR-019 — day-of-week label fix
+35. LYR-007 — validate memory constraint
+36. LYR-047 — document as Notion limitation
