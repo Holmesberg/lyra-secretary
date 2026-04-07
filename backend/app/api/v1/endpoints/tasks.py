@@ -16,6 +16,8 @@ from app.schemas.task import (
     TaskDetail,
     TaskVoidRequest,
     TaskVoidResponse,
+    MarkAbandonedRequest,
+    MarkAbandonedResponse,
     ConflictInfo,
 )
 from app.db.models import TaskState
@@ -214,6 +216,47 @@ async def void_task(
         previous_initiation_status=previous,
         voided_at=to_local(task.voided_at),
         voided_reason=task.voided_reason,
+    )
+
+
+@router.post("/tasks/{task_id}/mark-abandoned", response_model=MarkAbandonedResponse)
+async def mark_abandoned(
+    task_id: str,
+    request: MarkAbandonedRequest = None,
+    db: Session = Depends(get_db),
+) -> MarkAbandonedResponse:
+    """
+    Mark an EXECUTING or PAUSED task as abandoned (→ SKIPPED).
+    Sets initiation_status='abandoned'. Use when user stops mid-task
+    without completing, or when a paused task is never resumed.
+    """
+    if request is None:
+        request = MarkAbandonedRequest()
+
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.state not in (TaskState.EXECUTING, TaskState.PAUSED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only EXECUTING or PAUSED tasks can be abandoned (current state: {task.state})",
+        )
+
+    previous = task.state
+    try:
+        manager = TaskManager(db)
+        task = manager.skip_task(task_id, reason=request.reason or "abandoned mid-session")
+        task.initiation_status = "abandoned"
+        db.commit()
+        db.refresh(task)
+    except ImmutableTaskError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return MarkAbandonedResponse(
+        task_id=task.task_id,
+        abandoned=True,
+        previous_state=previous,
+        new_state=task.state,
     )
 
 

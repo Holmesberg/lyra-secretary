@@ -157,3 +157,16 @@ class TaskVoidResponse(BaseModel):
     previous_initiation_status: str
     voided_at: datetime
     voided_reason: Optional[str] = None
+
+
+class MarkAbandonedRequest(BaseModel):
+    """Request to mark an EXECUTING or PAUSED task as abandoned (→ SKIPPED)."""
+    reason: Optional[str] = Field(None, max_length=200)
+
+
+class MarkAbandonedResponse(BaseModel):
+    """Response from marking a task abandoned."""
+    task_id: str
+    abandoned: bool
+    previous_state: TaskState
+    new_state: TaskState
