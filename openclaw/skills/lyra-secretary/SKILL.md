@@ -27,7 +27,7 @@ Never mention UTC offset. Never add +02:00. Never calculate "Cairo = UTC+2".
 These patterns map directly to endpoints — execute immediately, no analysis:
 - "start timer"/"start stopwatch" → POST /v1/stopwatch/start (ask readiness first)
 - "stop timer"/"stop stopwatch" → POST /v1/stopwatch/stop (ask reflection after)
-- "pause"/"pause timer" → POST /v1/stopwatch/pause (ask self/external)
+- "pause"/"pause timer" → ask self/external → ask reason MCQ (1–6) → POST /v1/stopwatch/pause
 - "resume"/"resume timer" → POST /v1/stopwatch/resume (relay paused_minutes)
 - "status"/"what's running" → GET /v1/stopwatch/status (relay active task)
 - "ping"/"are you there" → GET /v1/skill/ping (relay status)
