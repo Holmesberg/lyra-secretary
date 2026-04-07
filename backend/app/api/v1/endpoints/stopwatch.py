@@ -21,6 +21,7 @@ from app.schemas.stopwatch import (
     PAUSE_REASONS,
     PAUSE_INITIATORS,
 )
+from app.db.models import TaskState
 from app.services.stopwatch_manager import (
     StopwatchManager,
     StopwatchAlreadyRunningError,
@@ -159,19 +160,22 @@ async def stop_stopwatch(
         session, task, is_early_stop, notion_synced, paused_parent, micro_mirror = manager.stop(
             post_task_reflection=request.post_task_reflection,
         )
+        zero_duration_skip = task.state == TaskState.SKIPPED and task.executed_duration_minutes in (None, 0)
         return StopwatchStopResponse(
             task_id=task.task_id,
             session_id=session.session_id,
-            duration_minutes=task.executed_duration_minutes,
+            duration_minutes=task.executed_duration_minutes or 0,
             planned_duration_minutes=task.planned_duration_minutes,
             delta_minutes=task.duration_delta_minutes,
-            executed_at=to_local(task.executed_end_utc),
+            executed_at=to_local(task.executed_end_utc or datetime.utcnow()),
             is_early_stop=is_early_stop,
             notion_synced=notion_synced,
             post_task_reflection=task.post_task_reflection,
             discrepancy_score=task.discrepancy_score,
             paused_parent=paused_parent,
             micro_mirror=micro_mirror,
+            skipped=zero_duration_skip,
+            skip_reason="zero_duration" if zero_duration_skip else None,
         )
 
     except NoActiveStopwatchError as e:

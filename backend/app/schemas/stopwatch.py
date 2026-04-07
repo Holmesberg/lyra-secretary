@@ -48,6 +48,8 @@ class StopwatchStopResponse(BaseModel):
     discrepancy_score: Optional[int] = None
     paused_parent: Optional[PausedParentInfo] = None
     micro_mirror: Optional[str] = None
+    skipped: bool = False
+    skip_reason: Optional[str] = None
 
 
 PAUSE_REASONS = {"mental_fatigue", "distraction", "task_difficulty", "external_interruption", "intentional_break", "prayer"}

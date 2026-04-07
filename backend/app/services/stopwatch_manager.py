@@ -365,6 +365,25 @@ class StopwatchManager:
             if active_elapsed < (task.planned_duration_minutes * 0.5):
                 is_early_stop = True
 
+        # Zero-duration guard: no active work → SKIPPED, not EXECUTED
+        if active_elapsed == 0:
+            session.end_time_utc = stop_time
+            self.db.add(session)
+            task.state = TaskState.SKIPPED
+            task.initiation_status = "abandoned"
+            task.last_modified_at = now_utc()
+            self.db.commit()
+            self.db.refresh(session)
+            self.db.refresh(task)
+            self.redis.clear_active_stopwatch(user_id)
+            notion_synced_zero = False
+            try:
+                self.task_manager.notion.sync_task(task, db=self.db)
+                notion_synced_zero = True
+            except Exception as e:
+                logger.error(f"Notion sync failed on zero-duration skip: {e}", exc_info=True)
+            return session, task, True, notion_synced_zero, None, None
+
         session.end_time_utc = stop_time
         self.db.add(session)
 
