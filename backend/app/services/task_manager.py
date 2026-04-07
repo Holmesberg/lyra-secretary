@@ -141,13 +141,15 @@ class TaskManager:
         except Exception as e:
             logger.warning(f"Substitution linkage failed (non-blocking): {e}")
 
-        # Cache for undo
-        self.redis.cache_undo_action("create_task", task.task_id, {
-            "task_id": task.task_id,
-            "title": task.title
-        })
-
-        self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
+        # Cache for undo — best-effort
+        try:
+            self.redis.cache_undo_action("create_task", task.task_id, {
+                "task_id": task.task_id,
+                "title": task.title
+            })
+            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
+        except Exception:
+            pass
         return task, [], notion_synced
     
     def create_retroactive_task(
@@ -292,9 +294,15 @@ class TaskManager:
             notion_synced = True
         except Exception as e:
             logger.error(f"Notion sync failed during complete_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+            try:
+                self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+            except Exception:
+                pass
 
-        self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
+        try:
+            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
+        except Exception:
+            pass
         return task, notion_synced
     
     def skip_task(self, task_id: str, reason: Optional[str] = None) -> Task:
@@ -352,14 +360,17 @@ class TaskManager:
             logging.getLogger(__name__).error(f"Notion archive failed during delete_task: {e}", exc_info=True)
             self.redis.queue_notion_sync(task.task_id, {"action": "archive"})
         
-        # Cache for undo (P3: safe .value access)
-        state_value = task.state.value if hasattr(task.state, 'value') else str(task.state)
-        self.redis.cache_undo_action("delete_task", task.task_id, {
-            "task_id": task.task_id,
-            "title": task.title,
-            "previous_state": state_value
-        })
-        
+        # Cache for undo — best-effort, Redis may be unavailable in some environments
+        try:
+            state_value = task.state.value if hasattr(task.state, 'value') else str(task.state)
+            self.redis.cache_undo_action("delete_task", task.task_id, {
+                "task_id": task.task_id,
+                "title": task.title,
+                "previous_state": state_value
+            })
+        except Exception:
+            pass
+
         return task
     
     def reschedule_task(
@@ -416,7 +427,13 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during reschedule_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+            try:
+                self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+            except Exception:
+                pass
 
-        self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
+        try:
+            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
+        except Exception:
+            pass
         return task, conflicts
