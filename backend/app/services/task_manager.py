@@ -357,7 +357,7 @@ class TaskManager:
         if not task:
             raise ValueError("Task not found")
         
-        if not task.is_mutable:
+        if task.state in (TaskState.EXECUTED, TaskState.DELETED):
             raise ImmutableTaskError("Cannot delete immutable task")
         
         task = self.state_machine.transition(task, TaskState.DELETED)

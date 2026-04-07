@@ -27,7 +27,7 @@ class StateMachine:
             # PAUSED → EXECUTED goes via EXECUTING (auto-resume in stop())
         },
         TaskState.EXECUTED: set(),  # Immutable
-        TaskState.SKIPPED: set(),   # Immutable
+        TaskState.SKIPPED: {TaskState.DELETED},  # Soft-delete cleanup only
         TaskState.DELETED: set(),   # Immutable
     }
     
