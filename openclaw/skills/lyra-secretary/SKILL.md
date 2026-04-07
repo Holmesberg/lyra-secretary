@@ -27,7 +27,6 @@ Never mention UTC offset. Never add +02:00. Never calculate "Cairo = UTC+2".
 These patterns map directly to endpoints — execute immediately, no analysis:
 - "start timer"/"start stopwatch" → POST /v1/stopwatch/start (ask readiness first)
 - "stop timer"/"stop stopwatch" → POST /v1/stopwatch/stop (ask reflection after)
-- "pause"/"pause timer" → ask self/external → ask reason MCQ (1–6) → POST /v1/stopwatch/pause
 - "resume"/"resume timer" → POST /v1/stopwatch/resume (relay paused_minutes)
 - "status"/"what's running" → GET /v1/stopwatch/status (relay active task)
 - "ping"/"are you there" → GET /v1/skill/ping (relay status)
@@ -111,10 +110,10 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - If response contains `micro_mirror` → relay it verbatim to user (one-line behavioral observation)
 - After reflection: GET /v1/analytics/insights?auto_mark=true → if insights non-empty: share first `observation`
 
-**Prayer / break / interruption:**
-- Ask "Self-initiated or external? (self/external)" → `pause_initiator`
-- Ask "Reason? 1. Mental fatigue  2. Distraction  3. Task difficulty  4. External interrupt  5. Intentional break  6. Prayer" — WAIT for number → map: 1=mental_fatigue 2=distraction 3=task_difficulty 4=external_interruption 5=intentional_break 6=prayer
-- POST /v1/stopwatch/pause with `pause_reason` + `pause_initiator` → "Timer paused — resume when you're back."
+**Pause ("pause"/"pause timer"/prayer/break):**
+- Ask "Self-initiated or external? (self/external)" — WAIT → set `pause_initiator`
+- Ask "Reason? 1. Mental fatigue  2. Distraction  3. Task difficulty  4. External interrupt  5. Intentional break  6. Prayer" — WAIT → map: 1=mental_fatigue 2=distraction 3=task_difficulty 4=external_interruption 5=intentional_break 6=prayer → set `pause_reason`
+- POST /v1/stopwatch/pause with both fields → "Timer paused — resume when you're back."
 - On return: POST /v1/stopwatch/resume → "Timer resumed. {paused_minutes} min not counted."
 - NEVER stop the timer for breaks — always pause.
 
