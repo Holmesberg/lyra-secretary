@@ -126,3 +126,17 @@ class RedisClient:
         """Remove synced items from queue."""
         key = "notion:sync_queue"
         self.client.ltrim(key, count, -1)
+
+    # Last-operated task (context for follow-up corrections)
+    def set_last_task(self, task_id: str, title: str, state: str, ttl_seconds: int = 3600):
+        """Store the most recently operated task for 1 hour (follow-up context)."""
+        self.client.setex(
+            "last_operated_task",
+            ttl_seconds,
+            json.dumps({"task_id": task_id, "title": title, "state": state}),
+        )
+
+    def get_last_task(self) -> Optional[Dict[str, Any]]:
+        """Return the most recently operated task, or None if window expired."""
+        data = self.client.get("last_operated_task")
+        return json.loads(data) if data else None

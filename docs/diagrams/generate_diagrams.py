@@ -170,78 +170,114 @@ def draw_architecture() -> None:
 
 
 def draw_state_machine() -> None:
-    """Happy path horizontal; terminal band below with grouping; subtitle unchanged."""
-    fig, ax = plt.subplots(figsize=(12.5, 6.2), dpi=DPI, facecolor=BG)
-    ax.set_xlim(0, 12.5)
-    ax.set_ylim(0.3, 6.0)
+    """
+    Full state machine with PAUSED in the flow band.
+    Flow (horizontal): PLANNED → EXECUTING ⇄ PAUSED → EXECUTED
+    Terminal band: SKIPPED (from PLANNED/EXECUTING/PAUSED), DELETED (from PLANNED)
+    """
+    fig, ax = plt.subplots(figsize=(14.5, 6.8), dpi=DPI, facecolor=BG)
+    ax.set_xlim(0, 14.5)
+    ax.set_ylim(0.3, 6.2)
     ax.axis("off")
 
-    ax.text(6.25, 5.75, "Task state machine", ha="center", va="top", fontsize=16, fontweight="700", color=TEXT)
+    ax.text(7.25, 6.0, "Task state machine", ha="center", va="top", fontsize=16, fontweight="700", color=TEXT)
     ax.text(
-        6.25,
-        5.2,
-        "PLANNED → EXECUTING → EXECUTED is the completion path (stopwatch). "
-        "PLANNED → EXECUTED is not allowed.",
-        ha="center",
-        va="top",
-        fontsize=8.8,
-        color=TEXT_MUTED,
+        7.25, 5.45,
+        "PAUSED is non-terminal — must resolve to EXECUTED (auto-resume on stop) or SKIPPED (mark-abandoned).",
+        ha="center", va="top", fontsize=8.8, color=TEXT_MUTED,
     )
 
-    # Upper band: mutable flow
-    ax.axhspan(3.15, 4.85, facecolor=LANE_BG, alpha=0.6, zorder=0)
-    ax.text(0.45, 4.0, "Flow", ha="left", va="center", fontsize=8, fontweight="600", color=TEXT_MUTED)
+    # Flow band
+    ax.axhspan(3.1, 4.9, facecolor=LANE_BG, alpha=0.6, zorder=0)
+    ax.text(0.35, 4.0, "Flow\n(mutable)", ha="left", va="center", fontsize=8, fontweight="600", color=TEXT_MUTED)
 
-    def st(x, y, name, *, terminal=False):
+    SW = 2.0   # state box width
+    SH = 0.88  # state box height
+    SY = 3.5   # y baseline
+
+    def st(x, name, *, terminal=False):
         ed = TERMINAL_BORDER if terminal else MUTABLE_BORDER
-        ls = "--" if terminal else "-"
         fill = "#151a22" if terminal else SURFACE
-        ax.add_patch(
-            FancyBboxPatch(
-                (x, y),
-                2.2,
-                0.88,
-                boxstyle="round,pad=0.03,rounding_size=0.14",
-                facecolor=fill,
-                edgecolor=ed,
-                linewidth=1.15,
-                linestyle=ls,
-            )
-        )
-        ax.text(x + 1.1, y + 0.52, name, ha="center", va="center", fontsize=10.5, fontweight="600", color=TEXT)
-        ax.text(x + 1.1, y + 0.25, "terminal" if terminal else "mutable", ha="center", fontsize=7, color=TEXT_MUTED, style="italic")
+        ax.add_patch(FancyBboxPatch(
+            (x, SY), SW, SH,
+            boxstyle="round,pad=0.03,rounding_size=0.14",
+            facecolor=fill, edgecolor=ed, linewidth=1.15,
+            linestyle="--" if terminal else "-",
+        ))
+        ax.text(x + SW / 2, SY + SH * 0.58, name, ha="center", va="center",
+                fontsize=10, fontweight="600", color=TEXT)
+        ax.text(x + SW / 2, SY + SH * 0.25, "terminal" if terminal else "mutable",
+                ha="center", fontsize=7, color=TEXT_MUTED, style="italic")
 
-    init_x, init_y = 0.65, 3.95
+    # State x positions
+    PX, EX, PAX, EXDX = 1.1, 3.8, 6.5, 9.8
+
+    init_x, init_y = 0.65, SY + SH / 2
     ax.add_patch(Circle((init_x, init_y), 0.1, facecolor=TEXT, edgecolor=TEXT, zorder=5))
-    st(1.25, 3.55, "PLANNED", terminal=False)
-    _arrow_labeled(ax, init_x + 0.1, init_y, 1.25, 3.99, "create")
-    st(4.0, 3.55, "EXECUTING", terminal=False)
-    st(6.75, 3.55, "EXECUTED", terminal=True)
+    st(PX, "PLANNED")
+    st(EX, "EXECUTING")
+    st(PAX, "PAUSED")
+    st(EXDX, "EXECUTED", terminal=True)
 
-    _arrow_labeled(ax, 3.45, 3.99, 4.0, 3.99, "start_task()")
-    _arrow_labeled(ax, 6.2, 3.99, 6.75, 3.99, "complete_task()")
+    # ● → PLANNED
+    _arrow_labeled(ax, init_x + 0.1, init_y, PX, init_y, "")
 
-    # Terminal band — grouped, not orphaned
-    ax.axhspan(0.55, 2.35, facecolor=LANE_BG, alpha=0.75, zorder=0)
-    ax.text(0.45, 1.45, "Terminal\n(from PLANNED)", ha="left", va="center", fontsize=8, fontweight="600", color=TEXT_MUTED)
-    ax.add_patch(
-        FancyBboxPatch(
-            (1.0, 0.7),
-            7.8,
-            1.5,
-            boxstyle="round,pad=0.02,rounding_size=0.2",
-            facecolor="none",
-            edgecolor=LINE,
-            linewidth=1,
-            linestyle=(0, (5, 3)),
-        )
-    )
-    ax.text(4.9, 1.95, "Skip / delete without executing", ha="center", fontsize=7.5, color=TEXT_MUTED)
+    # PLANNED → EXECUTING
+    _arrow_labeled(ax, PX + SW, SY + 0.44, EX, SY + 0.44, "start_task()")
 
-    st(2.1, 1.05, "SKIPPED", terminal=True)
-    st(5.35, 1.05, "DELETED", terminal=True)
-    _arrow_labeled(ax, 2.45, 3.55, 2.45, 1.93, "skip_task()")
-    _arrow_labeled(ax, 3.45, 3.55, 5.8, 1.93, "delete_task()")
+    # EXECUTING → PAUSED (lower arrow)
+    ax.annotate("", xy=(PAX, SY + 0.3), xytext=(EX + SW, SY + 0.3),
+                arrowprops=dict(arrowstyle="-|>", color=AMBER, lw=1.1, mutation_scale=8))
+    ax.text((EX + SW + PAX) / 2, SY + 0.14, "pause()", ha="center", fontsize=6.7, color=TEXT_MUTED)
+
+    # PAUSED → EXECUTING (upper arrow)
+    ax.annotate("", xy=(EX + SW, SY + 0.62), xytext=(PAX, SY + 0.62),
+                arrowprops=dict(arrowstyle="-|>", color=GREEN, lw=1.1, mutation_scale=8))
+    ax.text((EX + SW + PAX) / 2, SY + 0.76, "resume()", ha="center", fontsize=6.7, color=TEXT_MUTED)
+
+    # EXECUTING → EXECUTED (arc over PAUSED)
+    ax.annotate("", xy=(EXDX, SY + 0.8), xytext=(EX + SW, SY + 0.8),
+                arrowprops=dict(arrowstyle="-|>", color=ACCENT, lw=1.15, mutation_scale=9,
+                                connectionstyle="arc3,rad=-0.28"))
+    ax.text((EX + SW + EXDX) / 2, SY + 1.38, "complete_task()", ha="center", fontsize=6.8, color=TEXT_MUTED)
+
+    # Terminal band
+    ax.axhspan(0.5, 2.3, facecolor=LANE_BG, alpha=0.75, zorder=0)
+    ax.text(0.35, 1.4, "Terminal\n(immutable)", ha="left", va="center", fontsize=8, fontweight="600", color=TEXT_MUTED)
+    ax.add_patch(FancyBboxPatch(
+        (1.0, 0.65), 8.5, 1.5,
+        boxstyle="round,pad=0.02,rounding_size=0.2",
+        facecolor="none", edgecolor=LINE, linewidth=1, linestyle=(0, (5, 3)),
+    ))
+    ax.text(5.25, 1.93, "immutable once reached — excluded from future mutations", ha="center", fontsize=7.5, color=TEXT_MUTED)
+
+    TX_SK, TX_DEL = 2.2, 5.8
+    st(TX_SK, "SKIPPED", terminal=True)
+    st(TX_DEL, "DELETED", terminal=True)
+
+    # PLANNED → SKIPPED
+    ax.annotate("", xy=(TX_SK + 1.0, 2.15), xytext=(PX + 0.6, SY),
+                arrowprops=dict(arrowstyle="-|>", color=TERMINAL_BORDER, lw=1.0, mutation_scale=7,
+                                connectionstyle="arc3,rad=0.0"))
+    ax.text(PX + 0.5, 2.7, "skip_task()", ha="left", fontsize=6.5, color=TEXT_MUTED)
+
+    # PLANNED → DELETED
+    ax.annotate("", xy=(TX_DEL + 1.0, 2.15), xytext=(PX + 1.5, SY),
+                arrowprops=dict(arrowstyle="-|>", color=TERMINAL_BORDER, lw=1.0, mutation_scale=7,
+                                connectionstyle="arc3,rad=0.2"))
+    ax.text(PX + 1.4, 2.5, "delete_task()", ha="left", fontsize=6.5, color=TEXT_MUTED)
+
+    # EXECUTING → SKIPPED (mark-abandoned)
+    ax.annotate("", xy=(TX_SK + SW * 0.6, 2.15), xytext=(EX + SW * 0.5, SY),
+                arrowprops=dict(arrowstyle="-|>", color=ROSE, lw=1.0, mutation_scale=7,
+                                connectionstyle="arc3,rad=-0.15"))
+    ax.text(EX + 0.2, 2.85, "mark-abandoned", ha="left", fontsize=6.2, color=ROSE)
+
+    # PAUSED → SKIPPED (mark-abandoned)
+    ax.annotate("", xy=(TX_SK + SW * 0.9, 2.15), xytext=(PAX + SW * 0.2, SY),
+                arrowprops=dict(arrowstyle="-|>", color=ROSE, lw=1.0, mutation_scale=7,
+                                connectionstyle="arc3,rad=-0.22"))
+    ax.text(PAX + 0.0, 2.85, "mark-abandoned", ha="left", fontsize=6.2, color=ROSE)
 
     _save(fig, "state-machine.png")
 

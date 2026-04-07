@@ -226,7 +226,34 @@ async def retroactive_log(
     Log a completed session after the fact with full timestamp control.
     Creates task directly in EXECUTED state with initiation_status='retroactive'.
     If planned_duration_minutes provided, computes real delta. Otherwise delta=0.
+
+    Returns HTTP 400 with missing_fields when contextual fields are absent.
+    The caller should ask the user for each field's prompt (one at a time),
+    collect all answers, then retry with the completed request.
     """
+    missing = []
+    if request.post_task_reflection is None:
+        missing.append({
+            "field": "post_task_reflection",
+            "prompt": "Focus quality? (1=very poor, 3=average, 5=excellent)",
+        })
+    if request.total_paused_minutes is None:
+        missing.append({
+            "field": "total_paused_minutes",
+            "prompt": "Any paused time to subtract? (minutes, or 0)",
+        })
+    if request.unplanned_reason is None and request.planned_duration_minutes is None:
+        missing.append({
+            "field": "unplanned_reason",
+            "prompt": "Why wasn't this planned? 1. Unexpected task  2. Forgot to log  3. Planning friction  4. Spontaneous decision",
+            "options": {"1": "unexpected", "2": "forgot", "3": "friction", "4": "spontaneous"},
+        })
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "missing_required_fields", "missing_fields": missing},
+        )
+
     try:
         manager = TaskManager(db)
         task, notion_synced = manager.create_retroactive_task(

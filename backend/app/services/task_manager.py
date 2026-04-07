@@ -147,6 +147,7 @@ class TaskManager:
             "title": task.title
         })
 
+        self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
         return task, [], notion_synced
     
     def create_retroactive_task(
@@ -292,7 +293,8 @@ class TaskManager:
         except Exception as e:
             logger.error(f"Notion sync failed during complete_task: {e}", exc_info=True)
             self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
-        
+
+        self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
         return task, notion_synced
     
     def skip_task(self, task_id: str, reason: Optional[str] = None) -> Task:
@@ -415,5 +417,6 @@ class TaskManager:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during reschedule_task: {e}", exc_info=True)
             self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
-        
+
+        self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
         return task, conflicts

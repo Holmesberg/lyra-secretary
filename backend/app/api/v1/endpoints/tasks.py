@@ -23,6 +23,8 @@ from app.schemas.task import (
 from app.db.models import TaskState
 from app.utils.time_utils import now_utc as _now_utc
 from app.services.task_manager import TaskManager
+from app.services.stopwatch_manager import StopwatchManager, NoActiveStopwatchError
+from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
 from app.core.exceptions import ImmutableTaskError
 from app.db.models import Task
@@ -258,6 +260,90 @@ async def mark_abandoned(
         previous_state=previous,
         new_state=task.state,
     )
+
+
+@router.post("/schedule/clear")
+async def clear_schedule(
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Atomically clear all mutable tasks from the schedule.
+
+    Order of operations:
+    1. Stop active stopwatch (if any) — no reflection captured, session void-flagged
+    2. Abandon all EXECUTING tasks → SKIPPED with reason "cleared"
+    3. Soft-delete all PLANNED tasks
+
+    Returns counts of affected tasks. Use this instead of manual query + delete
+    loops so that active timers are never left dangling.
+    """
+    stopwatch_stopped = False
+    stopped_task_id = None
+    try:
+        sw = StopwatchManager(db)
+        session, task, *_ = sw.stop()
+        stopwatch_stopped = True
+        stopped_task_id = task.task_id
+    except NoActiveStopwatchError:
+        pass
+    except Exception as e:
+        logger.warning(f"clear_schedule: stopwatch stop failed (non-blocking): {e}")
+
+    manager = TaskManager(db)
+
+    executing = db.query(Task).filter(Task.state == TaskState.EXECUTING).all()
+    abandoned_ids = []
+    for t in executing:
+        try:
+            manager.skip_task(t.task_id, reason="cleared")
+            abandoned_ids.append(t.task_id)
+        except Exception as e:
+            logger.warning(f"clear_schedule: could not abandon {t.task_id}: {e}")
+
+    planned = db.query(Task).filter(Task.state == TaskState.PLANNED).all()
+    deleted_ids = []
+    for t in planned:
+        try:
+            manager.delete_task(t.task_id)
+            deleted_ids.append(t.task_id)
+        except Exception as e:
+            logger.warning(f"clear_schedule: could not delete {t.task_id}: {e}")
+
+    return {
+        "cleared": True,
+        "stopwatch_stopped": stopwatch_stopped,
+        "stopped_task_id": stopped_task_id,
+        "executing_abandoned": len(abandoned_ids),
+        "planned_deleted": len(deleted_ids),
+        "total_affected": len(abandoned_ids) + len(deleted_ids),
+    }
+
+
+@router.post("/tasks/{task_id}/sync")
+async def sync_task_to_notion(
+    task_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Force a Notion sync for a specific task.
+
+    Use to backfill tasks created before the timezone pipeline fix (LYR-015),
+    or to recover tasks that failed to sync due to transient Notion API errors.
+    """
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    try:
+        notion = NotionClient()
+        page_id = notion.sync_task(task, db=db)
+        return {
+            "task_id": task_id,
+            "synced": True,
+            "notion_page_id": page_id or task.notion_page_id,
+        }
+    except Exception as e:
+        logger.error(f"Manual Notion sync failed for {task_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Notion sync failed: {e}")
 
 
 @router.get("/tasks/{task_id}", response_model=TaskDetail)

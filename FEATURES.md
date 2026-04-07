@@ -33,7 +33,7 @@ Log completed sessions after the fact with full timestamp control.
 
 ---
 
-### 🔴 Unplanned execution rate in analytics
+### ✅ Unplanned execution rate in analytics
 Add `unplanned_execution_rate` to `GET /v1/analytics/discrepancy` research layer.
 
 ```
@@ -74,10 +74,10 @@ Used by: adaptive planning feature (v1.5).
 
 ---
 
-### 🟡 Backfill endpoint for pre-fix tasks
+### ✅ Backfill endpoint for pre-fix tasks (LYR-015)
 `POST /v1/tasks/{task_id}/sync`
 
-Force Notion sync for tasks created before timezone pipeline fix. Resolves LYR-015.
+Force Notion sync for any task. Use to backfill tasks created before timezone pipeline fix or after transient Notion API failures.
 
 ---
 
@@ -119,8 +119,8 @@ Research layer additions: per-session pause_pattern (reasons, initiators, first_
 
 ---
 
-### 🟡 Enforce min_sessions in insights engine (LYR-061)
-Insights fire after 1 session with noise data. Threshold check must enforce `min_sessions_required=3` before any insight is generated.
+### ✅ Enforce min_sessions in insights engine (LYR-061)
+Global gate: MIN_SESSIONS=3 enforced. `_insight_discrepancy_signal()` now returns None instead of a noise "no clear link yet" message when no real signal found.
 
 ---
 
@@ -145,7 +145,7 @@ Computable from existing data — add to `GET /v1/analytics/discrepancy` researc
 
 *Discovered April 5, 2026. See MANIFESTO.md "The Cascade Failure Discovery".*
 
-### 🟡 GET /v1/analytics/cascade
+### ✅ GET /v1/analytics/cascade
 
 New endpoint returning cascade failure metrics per day and across days.
 
@@ -177,7 +177,7 @@ New endpoint returning cascade failure metrics per day and across days.
 
 ---
 
-### 🟡 Add cascade metrics to existing analytics
+### ✅ Add cascade metrics to existing analytics
 
 In `GET /v1/analytics/discrepancy` research_layer summary:
 - `cascade_score` for the queried date range

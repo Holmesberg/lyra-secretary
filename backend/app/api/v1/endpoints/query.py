@@ -1,13 +1,14 @@
 """Task query endpoint."""
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 import logging
 
 from app.api.deps import get_db
 from app.db.models import Task, TaskState
 from app.utils.time_utils import to_utc, to_local
+from app.utils.redis_client import RedisClient
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -90,3 +91,32 @@ async def query_tasks(
     except Exception as e:
         logger.error(f"Query error: {e}", exc_info=True)
         return {"tasks": [], "total": 0}
+
+
+@router.get("/tasks/last")
+async def get_last_task(db: Session = Depends(get_db)):
+    """
+    Return the most recently created, rescheduled, or completed task (1-hour window).
+
+    Used by the agent to resolve follow-up corrections like "actually make that
+    next week" without requiring the user to repeat the task name or ID.
+    Returns 404 if no task was operated in the last hour.
+    """
+    redis = RedisClient()
+    last = redis.get_last_task()
+    if not last:
+        raise HTTPException(
+            status_code=404,
+            detail="No task operated in the last hour. Please specify the task.",
+        )
+    # Verify task still exists in DB (could have been deleted)
+    task = db.query(Task).filter(Task.task_id == last["task_id"]).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Last task no longer exists.")
+    return {
+        "task_id": task.task_id,
+        "title": task.title,
+        "state": task.state.value if hasattr(task.state, "value") else str(task.state),
+        "start": to_local(task.planned_start_utc).isoformat() if task.planned_start_utc else None,
+        "end": to_local(task.planned_end_utc).isoformat() if task.planned_end_utc else None,
+    }

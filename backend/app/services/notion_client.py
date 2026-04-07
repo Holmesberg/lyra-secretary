@@ -121,14 +121,13 @@ class NotionClient:
                     "name": notion_status_name
                 }
             },
+            # Always include Category so update syncs never silently lose it.
+            # Empty array explicitly clears it in Notion when SQLite has null.
+            "Category": {
+                "multi_select": [{"name": task.category}] if task.category else []
+            },
         }
-        
-        # Optional fields
-        if task.category:
-            properties["Category"] = {
-                "multi_select": [{"name": task.category}]
-            }
-        
+
         return properties
     
     def archive_page(self, page_id: str):

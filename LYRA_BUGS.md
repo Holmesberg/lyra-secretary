@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 5, 2026 — v1.4. 39 open, 42 fixed.
+Last updated: April 7, 2026 — v1.4. 33 open, 48 fixed.
 
 ---
 
@@ -9,17 +9,17 @@ Last updated: April 5, 2026 — v1.4. 39 open, 42 fixed.
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
 | LYR-007 | 🟡 medium | openclaw | OpenClaw memory vs actual state | Hard constraint in SKILL.md not fully validated. If task deleted via Swagger, OpenClaw may still believe it exists. |
-| LYR-015 | 🟡 medium | notion | No backfill for pre-fix tasks | Tasks created before Notion sync fix exist in SQLite but not in Notion. Need `POST /v1/tasks/{task_id}/sync`. |
+| ~~LYR-015~~ | ~~🟡 medium~~ | ~~notion~~ | ~~No backfill for pre-fix tasks~~ | Fixed: `POST /v1/tasks/{task_id}/sync` implemented. |
 | LYR-018 | 🟢 low | notion | Orphaned SQLite records in conflict messages | Old tasks in SQLite but not in Notion appear in conflict detection. Same class as LYR-015. |
 | LYR-019 | 🟡 medium | skill | Day-of-week label mismatch | Lyra labeled Friday Mar 27 as "Thursday Mar 27". Day label wrong in weekly view. |
 | LYR-020 | 🟢 low | notion | Test tasks polluting schedule | Smoke test tasks still visible in Notion. Need cleanup. |
 | LYR-035 | 🟡 medium | skill | Task ID retrieved from memory not backend | On delete/start, Lyra uses conversation memory for task ID instead of querying backend. Hard Rule #6 added but not fully validated. |
-| LYR-036 | 🟡 medium | skill | Context lost on follow-up corrections | Short follow-ups like "next week" treated as new standalone request instead of continuing previous intent. |
+| ~~LYR-036~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Context lost on follow-up corrections~~ | Fixed: `GET /v1/tasks/last` returns most recently operated task (1-hr TTL). SKILL.md rule added. |
 | LYR-037 | 🟡 medium | skill | False conflict between tasks on different days | Hallucinated conflict between Monday and Tuesday tasks. Likely ghost records from bad-UTC era. Retest on clean database. |
-| LYR-042 | 🟡 medium | skill | Clear schedule leaves EXECUTING tasks | Clear schedule only deletes PLANNED tasks. Should stop active timers first, then delete. |
+| ~~LYR-042~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Clear schedule leaves EXECUTING tasks~~ | Fixed: `POST /v1/schedule/clear` atomically stops timer + abandons EXECUTING + deletes PLANNED. |
 | LYR-043 | 🔴 high | skill | Duplicate task created instead of using existing | When starting timer, Lyra creates new task from memory instead of querying backend for existing PLANNED task. Hard Rule #6 should fix — not yet fully validated. |
 | LYR-045 | 🟡 medium | notion | Duplicate EXECUTING tasks in Notion | Ghost tasks from memory leaked into Notion. Downstream of LYR-043. |
-| LYR-046 | 🟡 medium | notion | Category field null in Notion after task executes | Category present on create but cleared on update sync. Likely conditional in `_build_properties()` skipping category during updates. |
+| ~~LYR-046~~ | ~~🟡 medium~~ | ~~notion~~ | ~~Category field null in Notion after task executes~~ | Fixed: `_build_properties()` always includes Category (empty array if null, preventing drift). |
 | LYR-047 | 🟢 low | notion | "Past Due" showing on EXECUTED tasks | Status groups correctly configured (EXECUTED in Complete). Notion platform limitation — no programmatic fix available. Document only. |
 | LYR-048 | 🔴 high | skill | Early-stop gate bypassed — model calls `?confirmed=true` directly | GLM skips `/stop` entirely and calls `/stop?confirmed=true` without user input. Confirmed via logs. Hard Rule #5 strengthened but not yet re-validated. |
 | LYR-049 | 🔴 high | skill | Reschedule used as proxy for stopwatch/start on model switch | Sonnet without SKILL.md context improvises wrong endpoints — uses `/v1/reschedule` instead of `/v1/stopwatch/start`. Happens when model switches mid-session and new model has no skill context. Root cause same as LYR-051. |
@@ -34,7 +34,7 @@ Last updated: April 5, 2026 — v1.4. 39 open, 42 fixed.
 | LYR-058 | 🟢 low | backend | Stopwatch API returns UTC datetimes to agent | `start_time`, `executed_at`, `paused_at` in stopwatch responses were raw UTC. Agent sees wrong times. Fixed: all datetime fields now pass through `to_local()`. |
 | LYR-059 | 🟡 medium | openclaw | Haiku 4.5 uses curl shell commands instead of HTTP tool | Triggers exec approval on every backend call. SKILL.md rule updated to allow curl as fallback. |
 | LYR-060 | 🟢 low | backend | 5-minute task overflow notification didn't fire | APScheduler may not catch short-duration tasks that complete before the 2-min poll interval. |
-| LYR-061 | 🟡 medium | backend | Insight fires after 1 session with noise data | Threshold check not working, fires before `min_sessions_required=3`. |
+| ~~LYR-061~~ | ~~🟡 medium~~ | ~~backend~~ | ~~Insight fires after 1 session with noise data~~ | Fixed: MIN_SESSIONS=3 gate enforced. `_insight_discrepancy_signal()` returns None instead of noise message. |
 | LYR-062 | 🟡 medium | openclaw | Lyra approves its own exec requests | `/approve` sent by agent not user — approval loop bypasses security intent. |
 | LYR-063 | 🔴 high | openclaw | auth-profiles.json caches billing failure from old API key | New key never picked up without manual edit of `~/.openclaw/agents/main/agent/auth-profiles.json`. OpenClaw doesn't re-read env vars into cached credential store. |
 | LYR-064 | 🟡 medium | docker | ANTHROPIC_API_KEY not passed to OpenClaw Docker container | Requires manual `docker-compose.yml` env entry. Key in `.env` but not mapped in compose environment block. |
@@ -47,7 +47,7 @@ Last updated: April 5, 2026 — v1.4. 39 open, 42 fixed.
 | LYR-072 | 🟡 medium | skill | Must delete conflicting task to schedule replacement | No "replace" or "skip and reschedule" flow. User said "skip CO review and schedule debugging" which required a delete + create. Should be atomic. |
 | LYR-077 | 🟢 low | skill | Readiness assumed 5 without asking | Debugging session started with `pre_task_readiness:5` without Lyra asking the question first. Hard Rule violation again. |
 | LYR-078 | 🔴 high | openclaw | Agent autonomously executed Lyra build during testing | Claude Code agent started and stopped the Lyra build task during testing — zero-duration session, bypassed early-stop gate with `?confirmed=true`, pre/post self-filled. Session voided via `POST /v1/tasks/{id}/void`. |
-| LYR-079 | 🟡 medium | backend | `session_index_in_day` not exposed in task query responses | Computed in analytics but not returned by `GET /v1/tasks/query` or `GET /v1/tasks/{task_id}`. Required for cascade analysis and sequence-aware insights. |
+| ~~LYR-079~~ | ~~🟡 medium~~ | ~~backend~~ | ~~`session_index_in_day` not exposed in task query responses~~ | Fixed: already present in `GET /v1/tasks/query` response. |
 
 ---
 

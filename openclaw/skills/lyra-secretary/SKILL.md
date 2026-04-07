@@ -52,40 +52,27 @@ The 7 rules above are the minimum. These provide detailed enforcement:
 Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601, no timezone suffix**
 
 **GET /v1/skill/ping** — returns: `{status, active_stopwatch, pending_tasks_today}`
-
 **POST /v1/create** — body: `title`*, `start`*, `end`*, `category`, `force` — returns: `task_id`, `created`, `conflicts[]`, `notion_synced`
-
 **POST /v1/reschedule** — body: `task_id`*, `new_start`*, `new_end` — returns: `task_id`, `rescheduled`, `new_start`, `new_end`
-
 **POST /v1/delete** — body: `task_id`* — returns: `task_id`, `deleted`
-
 **GET /v1/tasks/query?date=YYYY-MM-DD&state=planned** — returns: `tasks[]` with `task_id`, `title`, `start`, `end`, `state`
-
 **GET /v1/tasks/{task_id}** — returns: full task detail
-
-**POST /v1/stopwatch/start** — body: `task_id`* (never title) , `pre_task_readiness` (1–5) — returns: `session_id`, `task_id`, `is_future_task`
-
-**POST /v1/stopwatch/stop** — body: `post_task_reflection` (1–5, optional) — query: `?confirmed=true` — returns: `task_id`, `session_id`, `duration_minutes`, `delta_minutes`, `requires_confirmation`
-
-**POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`* (ISO8601), `end_time`* (ISO8601), `pre_task_readiness` (1–5), `post_task_reflection` (1–5), `category`, `planned_duration_minutes`, `unplanned_reason` (unexpected|forgot|friction|spontaneous), `total_paused_minutes` — returns: `task_id`, `duration_minutes`, `delta_minutes`, `notion_synced`
-
-**POST /v1/stopwatch/pause** — body (optional): `pause_reason` (mental_fatigue|distraction|task_difficulty|external_interruption|intentional_break|prayer), `pause_initiator` (self|external) — returns: `paused`, `elapsed_minutes`, `paused_at`, `pause_reason`, `pause_initiator`
-
+**GET /v1/tasks/last** — most recently operated task (1-hr window) — returns: `task_id`, `title`, `state` — 404 if expired
+**POST /v1/tasks/{task_id}/sync** — force Notion backfill — returns: `synced`, `notion_page_id`
+**POST /v1/tasks/{task_id}/void** — body (optional): `voided_reason` — marks EXECUTED as system_error, excluded from analytics
+**POST /v1/tasks/{task_id}/mark-abandoned** — body (optional): `reason` — EXECUTING|PAUSED → SKIPPED
+**POST /v1/schedule/clear** — stops active timer + abandons EXECUTING + deletes PLANNED — returns: `cleared`, `executing_abandoned`, `planned_deleted`
+**POST /v1/stopwatch/start** — body: `task_id`* (never title), `pre_task_readiness` (1–5) — returns: `session_id`, `task_id`, `is_future_task`
+**POST /v1/stopwatch/stop** — body: `post_task_reflection` (1–5, optional) — query: `?confirmed=true` — returns: `task_id`, `duration_minutes`, `delta_minutes`, `requires_confirmation`
+**POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`*, `end_time`*, `pre_task_readiness`, `post_task_reflection`, `category`, `planned_duration_minutes`, `unplanned_reason` (unexpected|forgot|friction|spontaneous), `total_paused_minutes` — returns: `task_id`, `duration_minutes`, `delta_minutes`
+**POST /v1/stopwatch/pause** — body (optional): `pause_reason`, `pause_initiator` (self|external) — returns: `paused`, `elapsed_minutes`, `paused_at`
 **POST /v1/stopwatch/resume** — no body — returns: `resumed`, `paused_minutes`, `total_paused_minutes`
-
-**POST /v1/stopwatch/correct-readiness** — body: `pre_task_readiness`* (1-5) — returns: `corrected`, `original`, `new` — works any time during active session
-
+**POST /v1/stopwatch/correct-readiness** — body: `pre_task_readiness`* (1-5) — returns: `corrected`, `original`, `new`
 **GET /v1/stopwatch/status** — returns: `active`, `task_title`, `elapsed_minutes`, `paused`, `total_paused_minutes`
-
-**POST /v1/tasks/{task_id}/void** — body (optional): `voided_reason` — returns: `voided`, `voided_at` — marks EXECUTED task as system_error, excluded from analytics
-
-**POST /v1/tasks/{task_id}/mark-abandoned** — body (optional): `reason` — EXECUTING|PAUSED → SKIPPED. States: PLANNED → EXECUTING ⇄ PAUSED → EXECUTED | SKIPPED | DELETED. PAUSED tasks still conflict (shown as paused, not running).
-
 **POST /v1/undo** — no body — reverts last create or delete
-
 **GET /v1/analytics/insights?auto_mark=true** — returns: `insights[]` with `observation`, `ready`
-
-**POST /v1/parse** — body: `text`* — DEPRECATED, use only for ambiguous time expressions — returns: `tasks[]`
+**GET /v1/analytics/cascade?days=7** — cascade analysis: `cascade_score`, `morning_anchor_execution_rate`, `most_cascade_prone_category` per day
+**POST /v1/parse** — DEPRECATED — body: `text`* — use only for ambiguous time expressions
 
 ---
 
@@ -129,14 +116,16 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - On return: POST /v1/stopwatch/resume → "Timer resumed. {paused_minutes} min not counted."
 - NEVER stop the timer for breaks — always pause.
 
-**Readiness correction:**
-- User says readiness was wrong → POST /v1/stopwatch/correct-readiness with correct value
-- Works any time during active session. Confirm: "Readiness corrected from X to Y."
+**Readiness correction:** User says readiness was wrong → POST /v1/stopwatch/correct-readiness → "Readiness corrected from X to Y." Works any time during active session.
 
 **Retroactive logging** ("I did X from 2pm to 4pm" = past session):
-- Ask focus (1-5) → `post_task_reflection`; ask paused minutes (0 if none) → `total_paused_minutes`
-- If unplanned, ask reason (unexpected|forgot|friction|spontaneous) → `unplanned_reason`
-- Send `planned_duration_minutes` if user stated it. POST /v1/stopwatch/retroactive → confirm `task_id`
+- Confirm title and times with user → POST /v1/stopwatch/retroactive (include `planned_duration_minutes` if stated)
+- If response has `missing_fields`: ask user each `prompt` one at a time — WAIT after each — then retry with all answers included
+
+**Follow-up correction** ("actually", "make that", "next week", time-only reply with no task name):
+- GET /v1/tasks/last → use returned task_id for the reschedule/edit
+
+**Clear schedule:** POST /v1/schedule/clear → handles active timer + EXECUTING + PLANNED atomically.
 
 **Void session:**
 - GET /v1/tasks/query → GET /v1/tasks/{id} → confirm EXECUTED → ask reason

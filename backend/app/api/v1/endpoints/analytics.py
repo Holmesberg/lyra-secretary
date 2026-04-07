@@ -126,11 +126,18 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
     total = len(research_sessions)
     initiated = [s for s in research_sessions if s["initiation_status"] == "initiated"]
     abandoned = [s for s in research_sessions if s["initiation_status"] == "abandoned"]
+    retroactive = [s for s in research_sessions if s["initiation_status"] == "retroactive"]
     delta_vals = [s["delta_minutes"] for s in research_sessions if s["delta_minutes"] is not None]
     delay_vals = [s["initiation_delay_minutes"] for s in research_sessions if s["initiation_delay_minutes"] is not None]
 
     interrupted = [s for s in research_sessions if s.get("parent_task_id")]
     substituted = [s for s in research_sessions if s.get("replaces_task_id")]
+
+    # Unplanned reason breakdown
+    reason_counts: dict[str, int] = defaultdict(int)
+    for t in tasks:
+        if t.initiation_status == "retroactive" and t.unplanned_reason:
+            reason_counts[t.unplanned_reason] += 1
 
     # Self-consistency score: per category+time_of_day, variance of discrepancy_score
     consistency_buckets: dict[str, list[int]] = defaultdict(list)
@@ -159,6 +166,9 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
         "initiated_count": len(initiated),
         "abandoned_count": len(abandoned),
         "abandoned_rate": round(len(abandoned) / total, 3) if total else 0.0,
+        "retroactive_count": len(retroactive),
+        "unplanned_execution_rate": round(len(retroactive) / total, 3) if total else 0.0,
+        "unplanned_reason_breakdown": dict(reason_counts),
         "avg_delta_minutes": _avg(delta_vals),
         "avg_initiation_delay_minutes": _avg(delay_vals),
         "interruption_rate": round(len(interrupted) / total, 3) if total else 0.0,
@@ -417,11 +427,7 @@ def _insight_discrepancy_signal(tasks: list) -> Optional[dict]:
             f"On sessions where your cognitive state shifted most, your execution error was {pct}% higher.",
             n,
         )
-    return _insight(
-        "discrepancy_signal",
-        "No clear link between your readiness shift and execution error yet — keep logging.",
-        n,
-    )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -547,30 +553,59 @@ async def get_cascade(
     daily_cascades = []
     total_skip_followed_by_skip = 0
     total_skip_followed_by_any = 0
+    morning_anchor_executed_days = 0
     morning_anchor_skips = 0
     morning_anchor_cascade_days = 0
     total_days_with_morning = 0
+    category_skip_counts: dict[str, int] = defaultdict(int)
+    category_total_counts: dict[str, int] = defaultdict(int)
+    tod_skip_counts: dict[str, int] = defaultdict(int)
+    tod_total_counts: dict[str, int] = defaultdict(int)
+    all_cascade_scores: list[float] = []
+
+    def _is_skip(t: Task) -> bool:
+        return t.state in (TaskState.SKIPPED, TaskState.DELETED) or t.initiation_status == "abandoned"
 
     for d in sorted(days_map.keys()):
         day_tasks = days_map[d]
         chain = []
         current_streak = 0
+        first_skip_time = None
+        first_skip_category = None
+        consecutive_sequences: list[list[str]] = []
+        current_seq: list[str] = []
 
         for i, t in enumerate(day_tasks):
-            is_skip = t.state in (TaskState.SKIPPED, TaskState.DELETED) or t.initiation_status == "abandoned"
+            skip = _is_skip(t)
+            tod = _time_of_day(to_local(t.planned_start_utc))
 
-            if is_skip:
+            # Category / TOD counters for summary
+            if t.category:
+                category_total_counts[t.category] += 1
+                if skip:
+                    category_skip_counts[t.category] += 1
+            tod_total_counts[tod] += 1
+            if skip:
+                tod_skip_counts[tod] += 1
+
+            if skip:
                 current_streak += 1
+                current_seq.append(t.title)
+                if first_skip_time is None:
+                    first_skip_time = to_local(t.planned_start_utc).strftime("%H:%M")
+                    first_skip_category = t.category
             else:
+                if current_seq:
+                    consecutive_sequences.append(current_seq)
+                current_seq = []
                 current_streak = 0
 
             # Track skip-followed-by-skip
             if i > 0:
                 prev = day_tasks[i - 1]
-                prev_skip = prev.state in (TaskState.SKIPPED, TaskState.DELETED) or prev.initiation_status == "abandoned"
-                if prev_skip:
+                if _is_skip(prev):
                     total_skip_followed_by_any += 1
-                    if is_skip:
+                    if skip:
                         total_skip_followed_by_skip += 1
 
             chain.append({
@@ -579,34 +614,56 @@ async def get_cascade(
                 "category": t.category,
                 "state": t.state.value if hasattr(t.state, "value") else str(t.state),
                 "initiation_status": t.initiation_status,
-                "is_skip": is_skip,
+                "is_skip": skip,
                 "streak": current_streak,
             })
 
-        # Morning anchor analysis (first task of the day)
+        if current_seq:
+            consecutive_sequences.append(current_seq)
+
+        # Morning anchor analysis (first task before 9am)
+        morning_anchor_executed = False
         if day_tasks:
             first = day_tasks[0]
             local_hour = to_local(first.planned_start_utc).hour
             if local_hour < 9:
                 total_days_with_morning += 1
-                first_skip = first.state in (TaskState.SKIPPED, TaskState.DELETED) or first.initiation_status == "abandoned"
-                if first_skip:
+                if _is_skip(first):
                     morning_anchor_skips += 1
-                    # Did the rest of the day cascade?
-                    rest_skips = sum(
-                        1 for t in day_tasks[1:]
-                        if t.state in (TaskState.SKIPPED, TaskState.DELETED) or t.initiation_status == "abandoned"
-                    )
+                    rest_skips = sum(1 for t in day_tasks[1:] if _is_skip(t))
                     if len(day_tasks) > 1 and rest_skips / (len(day_tasks) - 1) > 0.5:
                         morning_anchor_cascade_days += 1
+                else:
+                    morning_anchor_executed = True
+                    morning_anchor_executed_days += 1
 
+        executed_count = sum(1 for t in day_tasks if t.state == TaskState.EXECUTED)
+        skipped_count = sum(1 for t in day_tasks if _is_skip(t))
         max_streak = max((c["streak"] for c in chain), default=0)
-        skip_count = sum(1 for c in chain if c["is_skip"])
+
+        # Per-day cascade score
+        day_skip_pairs = sum(
+            1 for i in range(1, len(day_tasks))
+            if _is_skip(day_tasks[i - 1])
+        )
+        day_skip_skip = sum(
+            1 for i in range(1, len(day_tasks))
+            if _is_skip(day_tasks[i - 1]) and _is_skip(day_tasks[i])
+        )
+        day_cascade = round(day_skip_skip / day_skip_pairs, 3) if day_skip_pairs > 0 else 0.0
+        all_cascade_scores.append(day_cascade)
 
         daily_cascades.append({
             "date": d.isoformat(),
             "total_tasks": len(day_tasks),
-            "skip_count": skip_count,
+            "total_planned": len(day_tasks),
+            "total_executed": executed_count,
+            "total_skipped": skipped_count,
+            "cascade_score": day_cascade,
+            "morning_anchor_executed": morning_anchor_executed,
+            "first_skip_time": first_skip_time,
+            "first_skip_category": first_skip_category,
+            "consecutive_skip_sequences": consecutive_sequences,
             "max_streak": max_streak,
             "chain": chain,
         })
@@ -616,14 +673,37 @@ async def get_cascade(
         if total_skip_followed_by_any > 0 else 0.0
     )
 
+    # Most cascade-prone category and TOD (highest skip rate with >= 3 tasks)
+    most_prone_category = max(
+        (c for c in category_total_counts if category_total_counts[c] >= 3),
+        key=lambda c: category_skip_counts.get(c, 0) / category_total_counts[c],
+        default=None,
+    )
+    most_prone_tod = max(
+        (tod for tod in tod_total_counts if tod_total_counts[tod] >= 3),
+        key=lambda tod: tod_skip_counts.get(tod, 0) / tod_total_counts[tod],
+        default=None,
+    )
+
     return {
         "days_analyzed": len(daily_cascades),
         "cascade_score": cascade_score,
         "cascade_score_label": "P(skip N+1 | skip N)",
         "total_skip_followed_by_skip": total_skip_followed_by_skip,
         "total_skip_followed_by_any": total_skip_followed_by_any,
+        "summary": {
+            "avg_cascade_score": round(sum(all_cascade_scores) / len(all_cascade_scores), 3) if all_cascade_scores else 0.0,
+            "skip_propagation_probability": cascade_score,
+            "morning_anchor_execution_rate": (
+                round(morning_anchor_executed_days / total_days_with_morning, 3)
+                if total_days_with_morning > 0 else 0.0
+            ),
+            "most_cascade_prone_category": most_prone_category,
+            "most_cascade_prone_time_of_day": most_prone_tod,
+        },
         "morning_anchor": {
             "days_with_morning_task": total_days_with_morning,
+            "morning_anchor_executed_days": morning_anchor_executed_days,
             "morning_skips": morning_anchor_skips,
             "cascade_days": morning_anchor_cascade_days,
             "cascade_rate": (
