@@ -384,6 +384,69 @@ class TaskManager:
 
         return task
     
+    def swap_tasks(self, task_a_id: str, task_b_id: str) -> tuple["Task", "Task"]:
+        """
+        Atomically swap a SKIPPED task and a PLANNED task.
+
+        The SKIPPED task is reactivated as PLANNED at the other task's time slot.
+        The PLANNED task is marked SKIPPED with initiation_status='user_skipped'.
+
+        Intentionally bypasses state machine immutability — this is the only
+        operation allowed to do so, and only for SKIPPED↔PLANNED pairs.
+        """
+        task_a = self.db.query(Task).filter(Task.task_id == task_a_id).first()
+        task_b = self.db.query(Task).filter(Task.task_id == task_b_id).first()
+        if not task_a:
+            raise ValueError(f"Task {task_a_id} not found")
+        if not task_b:
+            raise ValueError(f"Task {task_b_id} not found")
+
+        states = {task_a.state, task_b.state}
+        if states != {TaskState.SKIPPED, TaskState.PLANNED}:
+            raise ValueError("swap requires exactly one SKIPPED task and one PLANNED task")
+
+        skipped = task_a if task_a.state == TaskState.SKIPPED else task_b
+        planned = task_b if task_a.state == TaskState.SKIPPED else task_a
+
+        # Snapshot the planned task's slot before mutating anything
+        new_start = planned.planned_start_utc
+        new_end = planned.planned_end_utc
+        new_duration = planned.planned_duration_minutes
+
+        # Reactivate the SKIPPED task — adopt the planned slot, clear execution data
+        skipped.state = TaskState.PLANNED
+        skipped.planned_start_utc = new_start
+        skipped.planned_end_utc = new_end
+        skipped.planned_duration_minutes = new_duration
+        skipped.executed_start_utc = None
+        skipped.executed_end_utc = None
+        skipped.executed_duration_minutes = None
+        skipped.initiation_status = "not_started"
+        skipped.pre_task_readiness = None
+        skipped.post_task_reflection = None
+        skipped.last_modified_at = now_utc()
+
+        # Mark the formerly-planned task as user-skipped
+        planned.state = TaskState.SKIPPED
+        planned.initiation_status = "user_skipped"
+        planned.last_modified_at = now_utc()
+
+        self.db.commit()
+        self.db.refresh(skipped)
+        self.db.refresh(planned)
+
+        for t in (skipped, planned):
+            try:
+                self.notion.sync_task(t, db=self.db)
+            except Exception as e:
+                logger.error(f"Notion sync failed on swap for {t.task_id}: {e}", exc_info=True)
+                try:
+                    self.redis.queue_notion_sync(t.task_id, {"action": "sync"})
+                except Exception:
+                    pass
+
+        return skipped, planned
+
     def reschedule_task(
         self,
         task_id: str,

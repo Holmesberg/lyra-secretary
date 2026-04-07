@@ -160,13 +160,26 @@ class TaskVoidResponse(BaseModel):
 
 
 class MarkAbandonedRequest(BaseModel):
-    """Request to mark an EXECUTING or PAUSED task as abandoned (→ SKIPPED)."""
+    """Request to mark an EXECUTING, PAUSED, or PLANNED task as skipped."""
     reason: Optional[str] = Field(None, max_length=200)
 
 
 class MarkAbandonedResponse(BaseModel):
-    """Response from marking a task abandoned."""
+    """Response from marking a task skipped/abandoned."""
     task_id: str
     abandoned: bool
     previous_state: TaskState
     new_state: TaskState
+
+
+class SwapRequest(BaseModel):
+    """Request to swap a SKIPPED task and a PLANNED task."""
+    task_a_id: str
+    task_b_id: str
+
+
+class SwapResponse(BaseModel):
+    """Response from swapping two tasks."""
+    swapped: bool
+    reactivated_task_id: str
+    skipped_task_id: str

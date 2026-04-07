@@ -18,6 +18,8 @@ from app.schemas.task import (
     TaskVoidResponse,
     MarkAbandonedRequest,
     MarkAbandonedResponse,
+    SwapRequest,
+    SwapResponse,
     ConflictInfo,
 )
 from app.db.models import TaskState
@@ -228,9 +230,11 @@ async def mark_abandoned(
     db: Session = Depends(get_db),
 ) -> MarkAbandonedResponse:
     """
-    Mark an EXECUTING or PAUSED task as abandoned (→ SKIPPED).
-    Sets initiation_status='abandoned'. Use when user stops mid-task
-    without completing, or when a paused task is never resumed.
+    Skip an EXECUTING, PAUSED, or PLANNED task (→ SKIPPED).
+
+    EXECUTING/PAUSED: initiation_status='abandoned' (started but not finished).
+    PLANNED: initiation_status='user_skipped' (explicitly declined before starting).
+    Both preserve the task as a cascade data point.
     """
     if request is None:
         request = MarkAbandonedRequest()
@@ -238,17 +242,19 @@ async def mark_abandoned(
     task = db.query(Task).filter(Task.task_id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.state not in (TaskState.EXECUTING, TaskState.PAUSED):
+    if task.state not in (TaskState.EXECUTING, TaskState.PAUSED, TaskState.PLANNED):
         raise HTTPException(
             status_code=400,
-            detail=f"Only EXECUTING or PAUSED tasks can be abandoned (current state: {task.state})",
+            detail=f"Only EXECUTING, PAUSED, or PLANNED tasks can be skipped (current state: {task.state})",
         )
 
     previous = task.state
+    is_planned = task.state == TaskState.PLANNED
+    default_reason = "user_skipped" if is_planned else "abandoned mid-session"
     try:
         manager = TaskManager(db)
-        task = manager.skip_task(task_id, reason=request.reason or "abandoned mid-session")
-        task.initiation_status = "abandoned"
+        task = manager.skip_task(task_id, reason=request.reason or default_reason)
+        task.initiation_status = "user_skipped" if is_planned else "abandoned"
         db.commit()
         db.refresh(task)
     except ImmutableTaskError as e:
@@ -260,6 +266,33 @@ async def mark_abandoned(
         previous_state=previous,
         new_state=task.state,
     )
+
+
+@router.post("/tasks/swap", response_model=SwapResponse)
+async def swap_tasks(
+    request: SwapRequest,
+    db: Session = Depends(get_db),
+) -> SwapResponse:
+    """
+    Atomically swap a SKIPPED task and a PLANNED task.
+
+    The SKIPPED task is reactivated as PLANNED at the PLANNED task's time slot.
+    The PLANNED task is marked SKIPPED (initiation_status='user_skipped').
+    Either task_id can be the SKIPPED or PLANNED one — order doesn't matter.
+    """
+    try:
+        manager = TaskManager(db)
+        reactivated, skipped = manager.swap_tasks(request.task_a_id, request.task_b_id)
+        return SwapResponse(
+            swapped=True,
+            reactivated_task_id=reactivated.task_id,
+            skipped_task_id=skipped.task_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Swap error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/schedule/clear")
