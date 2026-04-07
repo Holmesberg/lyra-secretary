@@ -238,6 +238,7 @@ async def retroactive_log(
             post_task_reflection=request.post_task_reflection,
             planned_duration_minutes=request.planned_duration_minutes,
             unplanned_reason=request.unplanned_reason,
+            total_paused_minutes=request.total_paused_minutes,
         )
         delta = task.planned_duration_minutes - task.executed_duration_minutes
         return RetroactiveResponse(

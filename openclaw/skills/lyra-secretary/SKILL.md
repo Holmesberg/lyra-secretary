@@ -67,7 +67,7 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 
 **POST /v1/stopwatch/stop** — body: `post_task_reflection` (1–5, optional) — query: `?confirmed=true` — returns: `task_id`, `session_id`, `duration_minutes`, `delta_minutes`, `requires_confirmation`
 
-**POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`* (ISO8601), `end_time`* (ISO8601), `pre_task_readiness` (1–5), `post_task_reflection` (1–5), `category`, `planned_duration_minutes`, `unplanned_reason` (unexpected|forgot|friction|spontaneous) — returns: `task_id`, `duration_minutes`, `delta_minutes`, `notion_synced`
+**POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`* (ISO8601), `end_time`* (ISO8601), `pre_task_readiness` (1–5), `post_task_reflection` (1–5), `category`, `planned_duration_minutes`, `unplanned_reason` (unexpected|forgot|friction|spontaneous), `total_paused_minutes` — returns: `task_id`, `duration_minutes`, `delta_minutes`, `notion_synced`
 
 **POST /v1/stopwatch/pause** — body (optional): `pause_reason` (mental_fatigue|distraction|task_difficulty|external_interruption|intentional_break|prayer), `pause_initiator` (self|external) — returns: `paused`, `elapsed_minutes`, `paused_at`, `pause_reason`, `pause_initiator`
 
@@ -133,11 +133,10 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - User says readiness was wrong → POST /v1/stopwatch/correct-readiness with correct value
 - Works any time during active session. Confirm: "Readiness corrected from X to Y."
 
-**Retroactive logging:**
-- "I worked on X from 2pm to 4pm" → POST /v1/stopwatch/retroactive with title, start_time, end_time
-- Optionally ask readiness + reflection. Task created directly as EXECUTED.
-- If task wasn't planned, ask: "Why wasn't this planned?" (unexpected|forgot|friction|spontaneous) → send as `unplanned_reason`
-- If user knows original planned duration, send `planned_duration_minutes` for accurate delta
+**Retroactive logging** ("I did X from 2pm to 4pm" = past session):
+- Ask focus (1-5) → `post_task_reflection`; ask paused minutes (0 if none) → `total_paused_minutes`
+- If unplanned, ask reason (unexpected|forgot|friction|spontaneous) → `unplanned_reason`
+- Send `planned_duration_minutes` if user stated it. POST /v1/stopwatch/retroactive → confirm `task_id`
 
 **Void session:**
 - GET /v1/tasks/query → GET /v1/tasks/{id} → confirm EXECUTED → ask reason

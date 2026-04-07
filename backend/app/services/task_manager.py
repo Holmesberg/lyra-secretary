@@ -159,6 +159,7 @@ class TaskManager:
         post_task_reflection: Optional[int] = None,
         planned_duration_minutes: Optional[int] = None,
         unplanned_reason: Optional[str] = None,
+        total_paused_minutes: Optional[int] = None,
     ) -> tuple[Task, bool]:
         """
         Create a completed task from past timestamps (retroactive logging).
@@ -179,9 +180,13 @@ class TaskManager:
         if not category:
             category = self._infer_category(title)
 
-        executed_duration = int((end_utc - start_utc).total_seconds() / 60)
+        wall_clock = int((end_utc - start_utc).total_seconds() / 60)
+        paused = total_paused_minutes or 0
+        if paused > wall_clock:
+            raise ValueError("total_paused_minutes cannot exceed wall-clock duration")
+        executed_duration = wall_clock - paused
         if executed_duration < 1:
-            raise ValueError("Session must be at least 1 minute")
+            raise ValueError("Session must be at least 1 minute of active work")
 
         if planned_duration_minutes is not None:
             planned_dur = planned_duration_minutes

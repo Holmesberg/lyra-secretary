@@ -103,6 +103,7 @@ class RetroactiveRequest(BaseModel):
     category: Optional[str] = None
     planned_duration_minutes: Optional[int] = None
     unplanned_reason: Optional[str] = None
+    total_paused_minutes: Optional[int] = Field(None, ge=0)
 
 
 class RetroactiveResponse(BaseModel):
