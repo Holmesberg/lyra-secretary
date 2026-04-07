@@ -52,10 +52,13 @@ Background jobs (APScheduler) run inside the FastAPI process: reminders every 1 
 ### Task State Machine
 
 ```
-PLANNED → EXECUTING → EXECUTED (immutable)
-        ↘ SKIPPED  (immutable)
+PLANNED → EXECUTING ⇄ PAUSED → EXECUTED (immutable)
+        ↘ SKIPPED  (immutable, from PLANNED|EXECUTING|PAUSED)
 PLANNED → DELETED   (soft delete, immutable)
 ```
+
+PAUSED is non-terminal: it must resolve to EXECUTED (via auto-resume on stop)
+or SKIPPED (via `POST /v1/tasks/{id}/mark-abandoned`).
 
 Transitions are enforced by `services/state_machine.py`. Completed/skipped/deleted tasks cannot be mutated.
 

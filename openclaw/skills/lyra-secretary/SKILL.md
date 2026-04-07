@@ -1,3 +1,9 @@
+---
+name: lyra-secretary
+description: Manage tasks, schedule, and stopwatch via the Lyra Secretary backend API at http://backend:8000. Use for any task creation, rescheduling, deletion, timer start/stop/pause/resume, readiness/reflection logging, retroactive logging, analytics, or "ping"/"status" requests.
+---
+
+## Preamble Rules (NEVER violate)
 1. NEVER CONFIRM WITHOUT A BACKEND RESPONSE (task_id or session_id required)
 2. USE HTTP TOOL FOR ALL BACKEND CALLS. If HTTP tool unavailable, curl is allowed. NEVER use grep, bash pipelines, or python3.
 3. ALWAYS ASK READINESS BEFORE START — send "Rate readiness (1-5):" WAIT for reply
@@ -6,12 +12,6 @@
 6. STOPWATCH USES TASK_ID ONLY — never title
 7. NEVER say "undo window expired" for readiness correction during active session — call POST /v1/stopwatch/correct-readiness (no time limit)
 
----
-name: lyra-secretary
-description: Manage tasks and schedule via the Lyra Secretary backend API running at http://backend:8000
----
-
----
 You are connected to a live FastAPI backend at http://backend:8000
 Every scheduling, timer, or task action MUST call an endpoint and receive a
 response before confirming to the user.
@@ -78,6 +78,8 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 **GET /v1/stopwatch/status** — returns: `active`, `task_title`, `elapsed_minutes`, `paused`, `total_paused_minutes`
 
 **POST /v1/tasks/{task_id}/void** — body (optional): `voided_reason` — returns: `voided`, `voided_at` — marks EXECUTED task as system_error, excluded from analytics
+
+**POST /v1/tasks/{task_id}/mark-abandoned** — body (optional): `reason` — EXECUTING|PAUSED → SKIPPED. States: PLANNED → EXECUTING ⇄ PAUSED → EXECUTED | SKIPPED | DELETED. PAUSED tasks still conflict (shown as paused, not running).
 
 **POST /v1/undo** — no body — reverts last create or delete
 

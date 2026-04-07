@@ -173,7 +173,7 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 **Core pipeline**
 - ✅ Natural language parsing → structured task data
 - ✅ Create / reschedule / delete tasks with conflict detection
-- ✅ State machine: `PLANNED → EXECUTING → EXECUTED / SKIPPED / DELETED`
+- ✅ State machine: `PLANNED → EXECUTING ⇄ PAUSED → EXECUTED / SKIPPED / DELETED` (PAUSED is non-terminal; auto-resumes on stop)
 - ✅ Immutable history — executed tasks are permanent records
 - ✅ 30-second undo window (`POST /v1/undo`)
 
