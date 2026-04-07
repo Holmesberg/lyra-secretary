@@ -1,459 +1,501 @@
 """
-Generate system design PNGs (high-DPI, dark theme).
-
-Layout rules (project convention):
-- No nested boxes overlapping component boundaries
-- Every arrow has a visible label
-- ≤3 levels of visual hierarchy (title → swimlane → nodes)
-- Architecture: flat rows + horizontal swimlanes only
-- State machine: happy path horizontal; terminal states in a lower band
-- Main sequence: ≤15 steps; undo is data-flow-undo.png
+Lyra Secretary — system design diagrams (dark theme, 220 DPI).
+Run:  python docs/diagrams/generate_diagrams.py
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch, Circle
+from matplotlib.lines import Line2D
 
 OUT = Path(__file__).resolve().parent
 
-BG = "#0a0c10"
-SURFACE = "#12161c"
-LANE_BG = "#0e1218"
-TEXT = "#eef1f6"
-TEXT_MUTED = "#8b95a8"
-ACCENT = "#5b9fd4"
-ACCENT_SOFT = "#3d6d94"
-LINE = "#4a5a70"
-MUTABLE_BORDER = "#5b9fd4"
-TERMINAL_BORDER = "#5c6575"
-GREEN = "#4db383"
-AMBER = "#d4a24b"
-VIOLET = "#9b7ed9"
-ROSE = "#d67a9a"
-CYAN = "#4db8d4"
+# ── Palette ───────────────────────────────────────────────────────────────────
+BG       = "#0d1117"
+SURFACE  = "#161b22"
+LANE     = "#0f1318"
+TEXT     = "#e6edf3"
+MUTED    = "#8b949e"
+BORDER   = "#30363d"
+ACCENT   = "#58a6ff"   # blue   — HTTP / calls
+GREEN    = "#3fb950"   # green  — storage writes / resume
+AMBER    = "#d29922"   # amber  — pause
+ROSE     = "#f85149"   # red    — abandon
+VIOLET   = "#bc8cff"   # purple — OpenClaw
+CYAN     = "#39c5cf"   # teal   — Telegram
+M_BDR    = "#58a6ff"   # mutable state box border
+T_BDR    = "#484f58"   # terminal state box border
 
-DPI = 280
+DPI = 220
 
-plt.rcParams.update(
-    {
-        "font.family": "sans-serif",
-        "font.sans-serif": ["Segoe UI", "Helvetica Neue", "Arial", "DejaVu Sans", "sans-serif"],
-        "font.size": 9,
-    }
-)
+plt.rcParams.update({
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Segoe UI", "Helvetica Neue", "Arial", "DejaVu Sans"],
+    "font.size": 9,
+})
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _save(fig, name: str) -> None:
-    fig.savefig(OUT / name, dpi=DPI, facecolor=BG, edgecolor="none", bbox_inches="tight", pad_inches=0.45)
+    fig.savefig(
+        OUT / name, dpi=DPI, facecolor=BG, edgecolor="none",
+        bbox_inches="tight", pad_inches=0.45,
+    )
     plt.close(fig)
 
 
-def _node(ax, x, y, w, h, title, subtitle, *, edge, fill=SURFACE):
-    ax.add_patch(
-        FancyBboxPatch(
-            (x, y),
-            w,
-            h,
-            boxstyle="round,pad=0.03,rounding_size=0.14",
-            facecolor=fill,
-            edgecolor=edge,
-            linewidth=1.2,
-        )
-    )
-    ax.text(x + w / 2, y + h * 0.58, title, ha="center", va="center", fontsize=10, fontweight="600", color=TEXT)
-    ax.text(x + w / 2, y + h * 0.28, subtitle, ha="center", va="center", fontsize=7.2, color=TEXT_MUTED)
+def _box(ax, cx, cy, w, h, label, sub="", *,
+         edge=BORDER, fill=SURFACE, lw=1.25, dashed=False):
+    ls = (0, (5, 3)) if dashed else "solid"
+    ax.add_patch(FancyBboxPatch(
+        (cx - w / 2, cy - h / 2), w, h,
+        boxstyle="round,pad=0.05,rounding_size=0.13",
+        facecolor=fill, edgecolor=edge, linewidth=lw, linestyle=ls, zorder=3,
+    ))
+    label_y = cy + h * 0.12 if sub else cy
+    ax.text(cx, label_y, label, ha="center", va="center",
+            fontsize=9.5, fontweight="600", color=TEXT, zorder=4)
+    if sub:
+        ax.text(cx, cy - h * 0.29, sub, ha="center", va="center",
+                fontsize=7, color=MUTED, zorder=4)
 
 
-def _arrow_labeled(ax, x1, y1, x2, y2, label, *, color=LINE, dashed=False, lw=1.15):
-    ls = "--" if dashed else "-"
-    arr = FancyArrowPatch(
-        (x1, y1),
-        (x2, y2),
-        arrowstyle="-|>",
-        mutation_scale=8,
-        linewidth=lw,
-        color=color,
-        linestyle=ls,
-        connectionstyle="arc3,rad=0",
-        shrinkA=2,
-        shrinkB=2,
-    )
-    ax.add_patch(arr)
-    mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-    ax.text(mx, my + 0.16, label, ha="center", fontsize=6.7, color=TEXT_MUTED)
+def _arrow(ax, x1, y1, x2, y2, label="", *,
+           color=ACCENT, dashed=False, lw=1.2, rad=0.0, lp=None):
+    ax.add_patch(FancyArrowPatch(
+        (x1, y1), (x2, y2),
+        arrowstyle="-|>", mutation_scale=8,
+        linewidth=lw, color=color,
+        linestyle="--" if dashed else "solid",
+        connectionstyle=f"arc3,rad={rad}",
+        shrinkA=3, shrinkB=3, zorder=5,
+    ))
+    if label:
+        if lp is None:
+            lp = ((x1 + x2) / 2, (y1 + y2) / 2 + 0.18)
+        ax.text(lp[0], lp[1], label, ha="center", va="center",
+                fontsize=7, color=MUTED, zorder=6)
 
 
-def _seg_arrow(ax, points, color=LINE, dashed=False, lw=1.15):
-    xs = [p[0] for p in points]
-    ys = [p[1] for p in points]
-    ax.plot(
-        xs,
-        ys,
-        color=color,
-        linewidth=lw,
-        linestyle="--" if dashed else "-",
-        solid_capstyle="round",
-        zorder=3,
-    )
+def _seg(ax, pts, label="", *, color=ACCENT, dashed=False, lw=1.15, lp=None):
+    """Multi-point path with arrowhead at the final segment."""
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    ax.plot(xs, ys, color=color, lw=lw,
+            linestyle="--" if dashed else "solid",
+            solid_capstyle="round", zorder=4)
     ax.annotate(
-        "",
-        xy=(points[-1][0], points[-1][1]),
-        xytext=(points[-2][0], points[-2][1]),
+        "", xy=pts[-1], xytext=pts[-2],
         arrowprops=dict(arrowstyle="-|>", color=color, lw=lw, mutation_scale=7),
-        zorder=4,
+        zorder=5,
     )
+    if label and lp:
+        ax.text(lp[0], lp[1], label, ha="center", va="center",
+                fontsize=7, color=MUTED, zorder=6)
 
+
+def _lane(ax, y_lo, y_hi):
+    ax.axhspan(y_lo, y_hi, facecolor=LANE, alpha=0.5, zorder=0)
+
+
+# ── 1. System Architecture ────────────────────────────────────────────────────
+#
+#  Grid (3 columns × 3 rows):
+#    Col A x=4.5   Col B x=9.5   Col C x=14.5
+#    ─────────────────────────────────────────
+#    Telegram       [gap]         OpenClaw      ← Clients  y=8.3
+#    FastAPI        TaskManager   APScheduler   ← Backend  y=5.3
+#    SQLite         Redis         Notion        ← Storage  y=2.0
+#
+#  Arrows (solid = runtime call, dashed = background):
+#    1  Telegram    → OpenClaw     user message
+#    2  OpenClaw    → FastAPI      HTTP /v1  (orthogonal: down → left → down)
+#    3  FastAPI     → TaskManager  service calls
+#    4  TaskManager → SQLite       SQLAlchemy  (fan-out left)
+#    5  TaskManager → Redis        redis-py    (straight down)
+#    6  TaskManager → Notion       HTTPS       (fan-out right)
+#    7  APScheduler → Notion       retry sync  (straight down, dashed)
 
 def draw_architecture() -> None:
-    """
-    Flat v1-style: 3 horizontal swimlanes, no nested group boxes.
-    Row 2 = FastAPI + TaskManager + APScheduler only; row 3 = SQLite + Redis + Notion.
-    Every edge has a label.
-    """
-    fig, ax = plt.subplots(figsize=(15.5, 8.4), dpi=DPI, facecolor=BG)
-    ax.set_xlim(0, 15.5)
-    ax.set_ylim(0, 8.4)
+    W, H = 17.5, 10.0
+    fig, ax = plt.subplots(figsize=(W, H), dpi=DPI, facecolor=BG)
+    ax.set_xlim(0, W)
+    ax.set_ylim(0, H)
     ax.axis("off")
 
-    ax.text(7.75, 8.1, "System architecture", ha="center", va="top", fontsize=17, fontweight="700", color=TEXT)
+    ax.text(W / 2, H - 0.30, "System Architecture",
+            ha="center", va="top", fontsize=18, fontweight="700", color=TEXT)
 
-    for y_lo, y_hi in [(6.25, 8.0), (3.55, 6.05), (0.85, 3.25)]:
-        ax.axhspan(y_lo, y_hi, facecolor=LANE_BG, alpha=0.5, zorder=0)
-    ax.text(0.45, 7.12, "Clients", ha="left", va="center", fontsize=8.5, fontweight="600", color=TEXT_MUTED)
-    ax.text(0.45, 4.85, "Backend", ha="left", va="center", fontsize=8.5, fontweight="600", color=TEXT_MUTED)
-    ax.text(0.45, 2.05, "Data & external", ha="left", va="center", fontsize=8.5, fontweight="600", color=TEXT_MUTED)
+    # Swimlane bands
+    _lane(ax, 7.0, 9.3)   # Clients
+    _lane(ax, 3.8, 6.7)   # Backend
+    _lane(ax, 0.5, 3.5)   # Storage
+    for y_mid, lbl in [(8.15, "Clients"), (5.25, "Backend"), (2.0, "Storage & External")]:
+        ax.text(0.22, y_mid, lbl, ha="left", va="center",
+                fontsize=8, fontweight="600", color=MUTED, rotation=90)
 
-    _node(ax, 2.0, 6.45, 2.1, 0.92, "Telegram", "User chat", edge=CYAN, fill="#0e1820")
-    _node(ax, 4.75, 6.45, 2.1, 0.92, "OpenClaw", "Agent / skills", edge=VIOLET, fill="#151020")
-    _node(ax, 1.55, 3.95, 2.45, 0.92, "FastAPI", "REST /v1", edge=AMBER, fill="#1c1610")
-    _node(ax, 4.45, 3.95, 2.55, 0.92, "TaskManager", "Domain writes", edge=AMBER, fill="#1c1610")
-    _node(ax, 7.55, 3.95, 2.75, 0.92, "APScheduler", "Background jobs", edge=AMBER, fill="#1c1610")
-    _node(ax, 2.0, 1.05, 2.2, 0.88, "SQLite", "Persistence", edge=GREEN, fill="#0e1814")
-    _node(ax, 4.85, 1.05, 2.2, 0.88, "Redis", "Ephemeral state", edge="#45b586", fill="#0e1814")
-    _node(ax, 7.75, 1.05, 2.35, 0.88, "Notion", "Calendar DB", edge=ROSE, fill="#1a1018")
+    # ── Nodes ─────────────────────────────────────────────────────────────────
+    # row: Clients  (cy = 8.3)
+    _box(ax,  4.5, 8.3, 2.2, 0.85, "Telegram",    "user chat",         edge=CYAN,   fill="#0c1e24")
+    _box(ax, 14.5, 8.3, 2.4, 0.85, "OpenClaw",    "agent / skills",    edge=VIOLET, fill="#17121f")
+    # row: Backend  (cy = 5.3)
+    _box(ax,  4.5, 5.3, 2.2, 0.85, "FastAPI",     "REST /v1",          edge=AMBER,  fill="#1e1b0c")
+    _box(ax,  9.5, 5.3, 2.6, 0.85, "TaskManager", "domain logic",      edge=ACCENT, fill="#0d1822")
+    _box(ax, 14.5, 5.3, 2.4, 0.85, "APScheduler", "background jobs",   edge=BORDER, fill=SURFACE)
+    # row: Storage  (cy = 2.0)
+    _box(ax,  4.5, 2.0, 2.2, 0.85, "SQLite",      "persistence",       edge=GREEN,  fill="#0d1f12")
+    _box(ax,  9.5, 2.0, 2.2, 0.85, "Redis",       "ephemeral state",   edge=GREEN,  fill="#0d1f12")
+    _box(ax, 14.5, 2.0, 2.2, 0.85, "Notion",      "calendar database", edge=ROSE,   fill="#1f0d0d")
 
-    y_c = 6.91
-    _arrow_labeled(ax, 4.1, y_c, 4.75, y_c, "chat")
-    # OpenClaw → FastAPI (orthogonal, single label)
-    _seg_arrow(ax, [(6.85, y_c), (6.85, 5.35), (2.75, 5.35), (2.75, 4.87)], color=ACCENT)
-    ax.text(5.0, 5.5, "HTTP /v1", ha="center", fontsize=6.8, color=TEXT_MUTED)
-    _arrow_labeled(ax, 4.0, 4.45, 4.45, 4.45, "calls")
-    _arrow_labeled(ax, 7.0, 4.45, 7.55, 4.45, "in-process")
+    # ── Arrows ─────────────────────────────────────────────────────────────────
+    # 1. Telegram → OpenClaw
+    _arrow(ax, 5.6, 8.3, 13.3, 8.3,
+           "user message", color=CYAN, lw=1.1, lp=(9.45, 8.52))
 
-    tcx = 5.72
-    y_bus = 2.48
-    _seg_arrow(ax, [(tcx, 3.95), (tcx, y_bus)], color=LINE)
-    ax.text(tcx + 0.28, 3.2, "read/write", fontsize=6.7, color=TEXT_MUTED, rotation=90, va="center")
-    for tx, lab in [(3.1, "SQLAlchemy"), (5.95, "redis-py"), (8.92, "HTTPS")]:
-        _seg_arrow(ax, [(tcx, y_bus), (tx, y_bus), (tx, 1.93)], color=LINE)
-        ax.text((tcx + tx) / 2, y_bus + 0.12, lab, ha="center", fontsize=6.7, color=TEXT_MUTED)
+    # 2. OpenClaw → FastAPI — orthogonal: drop to inter-lane gap, run left, drop to FastAPI
+    #    Gap between Backend-top (6.7) and Clients-bottom (7.0) sits at y ≈ 6.85
+    _seg(ax,
+         [(14.5, 7.875), (14.5, 6.85), (4.5, 6.85), (4.5, 5.725)],
+         "HTTP /v1", color=ACCENT, lp=(9.5, 7.03))
 
-    # APScheduler: own bus below TaskManager (dashed = jobs read/retry, not owning data)
-    scx = 8.92
-    sch_y = 2.22
-    _seg_arrow(ax, [(scx, 3.95), (scx, sch_y)], color=ACCENT_SOFT, dashed=True, lw=1.05)
-    for tx, lab in [(3.1, "SQL query"), (5.95, "key scan"), (8.92, "retry sync")]:
-        _seg_arrow(ax, [(scx, sch_y), (tx, sch_y), (tx, 1.93)], color=ACCENT_SOFT, dashed=True, lw=1.05)
-        ax.text((scx + tx) / 2, sch_y + 0.11, lab, ha="center", fontsize=6.5, color=TEXT_MUTED)
+    # 3. FastAPI → TaskManager
+    _arrow(ax, 5.6, 5.3, 8.2, 5.3,
+           "service calls", color=ACCENT, lw=1.15, lp=(6.9, 5.52))
 
-    # Agent ↔ API: poll and response (dashed, labels)
-    _seg_arrow(ax, [(5.35, 6.35), (5.35, 5.5), (2.75, 5.5), (2.75, 4.87)], color=ACCENT_SOFT, dashed=True, lw=1.0)
-    ax.text(3.85, 5.65, "GET /notifications/pending", ha="center", fontsize=6.5, color=TEXT_MUTED)
-    _seg_arrow(ax, [(2.75, 4.5), (2.75, 5.65), (5.5, 5.65), (5.5, 6.35)], color=ACCENT_SOFT, dashed=True, lw=1.0)
-    ax.text(4.0, 5.95, "JSON responses", ha="center", fontsize=6.5, color=TEXT_MUTED)
+    # 4–6. TaskManager fan-out to storage (three arrows from bottom of TaskManager)
+    #      Spread start points slightly so arrowheads don't pile up.
+    _arrow(ax, 8.3, 4.875, 5.1, 2.425,   # left fan → SQLite
+           "SQLAlchemy", color=GREEN, lw=1.1, lp=(6.35, 3.87))
+    _arrow(ax, 9.5, 4.875, 9.5, 2.425,   # center fan → Redis
+           "redis-py",   color=GREEN, lw=1.1, lp=(10.18, 3.65))
+    _arrow(ax, 10.7, 4.875, 13.9, 2.425, # right fan → Notion
+           "HTTPS",      color=GREEN, lw=1.1, lp=(12.65, 3.87))
+
+    # 7. APScheduler → Notion (dashed — retry sync background job)
+    _arrow(ax, 14.5, 4.875, 14.5, 2.425,
+           "retry sync", color=MUTED, dashed=True, lw=1.05, lp=(15.35, 3.65))
 
     _save(fig, "architecture.png")
 
 
+# ── 2. Task State Machine ─────────────────────────────────────────────────────
+#
+#  Flow band (horizontal, left→right):
+#    ●  →  PLANNED  →  EXECUTING  ⇄  PAUSED  →  EXECUTED
+#                   ↘ (mark-abandoned)  ↙
+#  Terminal band (below):
+#    SKIPPED   DELETED
+#
+#  EXECUTING ⇄ PAUSED: two offset horizontal arrows
+#    pause():  lower track, AMBER, EXECUTING → PAUSED
+#    resume(): upper track, GREEN, PAUSED → EXECUTING
+#  EXECUTING → EXECUTED: arc over PAUSED, ACCENT
+#  PLANNED → DELETED: short drop, T_BDR
+#  PLANNED, EXECUTING, PAUSED → SKIPPED: converging arrows, ROSE / T_BDR
+
 def draw_state_machine() -> None:
-    """
-    Full state machine with PAUSED in the flow band.
-    Flow (horizontal): PLANNED → EXECUTING ⇄ PAUSED → EXECUTED
-    Terminal band: SKIPPED (from PLANNED/EXECUTING/PAUSED), DELETED (from PLANNED)
-    """
-    fig, ax = plt.subplots(figsize=(14.5, 6.8), dpi=DPI, facecolor=BG)
-    ax.set_xlim(0, 14.5)
-    ax.set_ylim(0.3, 6.2)
+    W, H = 16.5, 8.2
+    fig, ax = plt.subplots(figsize=(W, H), dpi=DPI, facecolor=BG)
+    ax.set_xlim(0, W)
+    ax.set_ylim(0, H)
     ax.axis("off")
 
-    ax.text(7.25, 6.0, "Task state machine", ha="center", va="top", fontsize=16, fontweight="700", color=TEXT)
-    ax.text(
-        7.25, 5.45,
-        "PAUSED is non-terminal — must resolve to EXECUTED (auto-resume on stop) or SKIPPED (mark-abandoned).",
-        ha="center", va="top", fontsize=8.8, color=TEXT_MUTED,
-    )
+    ax.text(W / 2, H - 0.28, "Task State Machine",
+            ha="center", va="top", fontsize=18, fontweight="700", color=TEXT)
+    ax.text(W / 2, H - 0.80,
+            "PAUSED is non-terminal — resolves to EXECUTED (auto-resume on stop) "
+            "or SKIPPED (mark-abandoned)",
+            ha="center", va="top", fontsize=8.5, color=MUTED)
 
-    # Flow band
-    ax.axhspan(3.1, 4.9, facecolor=LANE_BG, alpha=0.6, zorder=0)
-    ax.text(0.35, 4.0, "Flow\n(mutable)", ha="left", va="center", fontsize=8, fontweight="600", color=TEXT_MUTED)
+    # ── Swimlane bands ─────────────────────────────────────────────────────────
+    _lane(ax, 3.6, 5.9)   # flow band
+    _lane(ax, 0.4, 3.1)   # terminal band
 
-    SW = 2.0   # state box width
-    SH = 0.88  # state box height
-    SY = 3.5   # y baseline
+    ax.text(0.22, 4.75, "Flow\n(mutable)", ha="left", va="center",
+            fontsize=8, fontweight="600", color=MUTED)
+    ax.text(0.22, 1.75, "Terminal\n(immutable)", ha="left", va="center",
+            fontsize=8, fontweight="600", color=MUTED)
 
-    def st(x, name, *, terminal=False):
-        ed = TERMINAL_BORDER if terminal else MUTABLE_BORDER
-        fill = "#151a22" if terminal else SURFACE
+    # ── State box geometry ─────────────────────────────────────────────────────
+    BW, BH = 2.2, 0.9   # box width, height
+    CY = 4.75            # flow row y-centre
+
+    # Column centres (enough gap between each pair for arrow labels)
+    PX  = 2.2    # PLANNED
+    EX  = 5.5    # EXECUTING
+    PAX = 8.8    # PAUSED
+    EDX = 12.2   # EXECUTED
+
+    def _state(cx, label, terminal=False):
+        edge = T_BDR if terminal else M_BDR
+        fill = "#12161c" if terminal else SURFACE
+        ls   = (0, (5, 3)) if terminal else "solid"
         ax.add_patch(FancyBboxPatch(
-            (x, SY), SW, SH,
-            boxstyle="round,pad=0.03,rounding_size=0.14",
-            facecolor=fill, edgecolor=ed, linewidth=1.15,
-            linestyle="--" if terminal else "-",
+            (cx - BW / 2, CY - BH / 2), BW, BH,
+            boxstyle="round,pad=0.05,rounding_size=0.13",
+            facecolor=fill, edgecolor=edge, linewidth=1.25, linestyle=ls, zorder=3,
         ))
-        ax.text(x + SW / 2, SY + SH * 0.58, name, ha="center", va="center",
-                fontsize=10, fontweight="600", color=TEXT)
-        ax.text(x + SW / 2, SY + SH * 0.25, "terminal" if terminal else "mutable",
-                ha="center", fontsize=7, color=TEXT_MUTED, style="italic")
+        ax.text(cx, CY + BH * 0.12, label, ha="center", va="center",
+                fontsize=10, fontweight="700", color=TEXT, zorder=4)
+        sub = "terminal" if terminal else "mutable"
+        ax.text(cx, CY - BH * 0.29, sub, ha="center", va="center",
+                fontsize=7, color=MUTED, style="italic", zorder=4)
 
-    # State x positions
-    PX, EX, PAX, EXDX = 1.1, 3.8, 6.5, 9.8
+    # Start node (filled circle)
+    start_x = 0.75
+    ax.add_patch(Circle((start_x, CY), 0.13, facecolor=TEXT, edgecolor=TEXT, zorder=5))
 
-    init_x, init_y = 0.65, SY + SH / 2
-    ax.add_patch(Circle((init_x, init_y), 0.1, facecolor=TEXT, edgecolor=TEXT, zorder=5))
-    st(PX, "PLANNED")
-    st(EX, "EXECUTING")
-    st(PAX, "PAUSED")
-    st(EXDX, "EXECUTED", terminal=True)
+    _state(PX,  "PLANNED")
+    _state(EX,  "EXECUTING")
+    _state(PAX, "PAUSED")
+    _state(EDX, "EXECUTED", terminal=True)
 
+    # ── Flow arrows ────────────────────────────────────────────────────────────
     # ● → PLANNED
-    _arrow_labeled(ax, init_x + 0.1, init_y, PX, init_y, "")
+    _arrow(ax, start_x + 0.14, CY, PX - BW / 2, CY, color=TEXT, lw=1.1)
 
     # PLANNED → EXECUTING
-    _arrow_labeled(ax, PX + SW, SY + 0.44, EX, SY + 0.44, "start_task()")
+    _arrow(ax, PX + BW / 2, CY, EX - BW / 2, CY,
+           "start_task()", color=ACCENT, lw=1.2, lp=((PX + BW/2 + EX - BW/2)/2, CY + 0.22))
 
-    # EXECUTING → PAUSED (lower arrow)
-    ax.annotate("", xy=(PAX, SY + 0.3), xytext=(EX + SW, SY + 0.3),
-                arrowprops=dict(arrowstyle="-|>", color=AMBER, lw=1.1, mutation_scale=8))
-    ax.text((EX + SW + PAX) / 2, SY + 0.14, "pause()", ha="center", fontsize=6.7, color=TEXT_MUTED)
+    # EXECUTING → PAUSED  (lower track, AMBER)
+    y_pause  = CY - 0.2
+    _arrow(ax, EX + BW / 2, y_pause, PAX - BW / 2, y_pause,
+           "pause()", color=AMBER, lw=1.15, lp=((EX + BW/2 + PAX - BW/2)/2, y_pause - 0.18))
 
-    # PAUSED → EXECUTING (upper arrow)
-    ax.annotate("", xy=(EX + SW, SY + 0.62), xytext=(PAX, SY + 0.62),
-                arrowprops=dict(arrowstyle="-|>", color=GREEN, lw=1.1, mutation_scale=8))
-    ax.text((EX + SW + PAX) / 2, SY + 0.76, "resume()", ha="center", fontsize=6.7, color=TEXT_MUTED)
+    # PAUSED → EXECUTING  (upper track, GREEN)
+    y_resume = CY + 0.2
+    _arrow(ax, PAX - BW / 2, y_resume, EX + BW / 2, y_resume,
+           "resume()", color=GREEN, lw=1.15, lp=((EX + BW/2 + PAX - BW/2)/2, y_resume + 0.18))
 
-    # EXECUTING → EXECUTED (arc over PAUSED)
-    ax.annotate("", xy=(EXDX, SY + 0.8), xytext=(EX + SW, SY + 0.8),
-                arrowprops=dict(arrowstyle="-|>", color=ACCENT, lw=1.15, mutation_scale=9,
-                                connectionstyle="arc3,rad=-0.28"))
-    ax.text((EX + SW + EXDX) / 2, SY + 1.38, "complete_task()", ha="center", fontsize=6.8, color=TEXT_MUTED)
+    # EXECUTING → EXECUTED  (arc over PAUSED; rad>0 bows upward for left→right arrow)
+    _arrow(ax, EX + BW / 2, CY + 0.15, EDX - BW / 2, CY + 0.15,
+           "complete_task()", color=ACCENT, lw=1.2, rad=0.40,
+           lp=((EX + BW/2 + EDX - BW/2)/2, CY + 1.15))
 
-    # Terminal band
-    ax.axhspan(0.5, 2.3, facecolor=LANE_BG, alpha=0.75, zorder=0)
-    ax.text(0.35, 1.4, "Terminal\n(immutable)", ha="left", va="center", fontsize=8, fontweight="600", color=TEXT_MUTED)
-    ax.add_patch(FancyBboxPatch(
-        (1.0, 0.65), 8.5, 1.5,
-        boxstyle="round,pad=0.02,rounding_size=0.2",
-        facecolor="none", edgecolor=LINE, linewidth=1, linestyle=(0, (5, 3)),
-    ))
-    ax.text(5.25, 1.93, "immutable once reached — excluded from future mutations", ha="center", fontsize=7.5, color=TEXT_MUTED)
+    # ── Terminal states ────────────────────────────────────────────────────────
+    TY = 1.75          # terminal row y-centre
+    DEL_X = 3.2        # DELETED (only from PLANNED)
+    SKP_X = 8.5        # SKIPPED (from PLANNED, EXECUTING, PAUSED)
 
-    TX_SK, TX_DEL = 2.2, 5.8
-    st(TX_SK, "SKIPPED", terminal=True)
-    st(TX_DEL, "DELETED", terminal=True)
+    def _terminal(cx, label):
+        ax.add_patch(FancyBboxPatch(
+            (cx - BW / 2, TY - BH / 2), BW, BH,
+            boxstyle="round,pad=0.05,rounding_size=0.13",
+            facecolor="#12161c", edgecolor=T_BDR, linewidth=1.25,
+            linestyle=(0, (5, 3)), zorder=3,
+        ))
+        ax.text(cx, TY + BH * 0.12, label, ha="center", va="center",
+                fontsize=10, fontweight="700", color=TEXT, zorder=4)
+        ax.text(cx, TY - BH * 0.29, "terminal", ha="center", va="center",
+                fontsize=7, color=MUTED, style="italic", zorder=4)
 
-    # PLANNED → SKIPPED
-    ax.annotate("", xy=(TX_SK + 1.0, 2.15), xytext=(PX + 0.6, SY),
-                arrowprops=dict(arrowstyle="-|>", color=TERMINAL_BORDER, lw=1.0, mutation_scale=7,
-                                connectionstyle="arc3,rad=0.0"))
-    ax.text(PX + 0.5, 2.7, "skip_task()", ha="left", fontsize=6.5, color=TEXT_MUTED)
+    _terminal(DEL_X, "DELETED")
+    _terminal(SKP_X, "SKIPPED")
 
     # PLANNED → DELETED
-    ax.annotate("", xy=(TX_DEL + 1.0, 2.15), xytext=(PX + 1.5, SY),
-                arrowprops=dict(arrowstyle="-|>", color=TERMINAL_BORDER, lw=1.0, mutation_scale=7,
-                                connectionstyle="arc3,rad=0.2"))
-    ax.text(PX + 1.4, 2.5, "delete_task()", ha="left", fontsize=6.5, color=TEXT_MUTED)
+    _arrow(ax, PX - 0.3, CY - BH / 2, DEL_X - 0.3, TY + BH / 2,
+           "delete_task()", color=T_BDR, lw=1.05, lp=(DEL_X - 1.2, 3.0))
 
-    # EXECUTING → SKIPPED (mark-abandoned)
-    ax.annotate("", xy=(TX_SK + SW * 0.6, 2.15), xytext=(EX + SW * 0.5, SY),
-                arrowprops=dict(arrowstyle="-|>", color=ROSE, lw=1.0, mutation_scale=7,
-                                connectionstyle="arc3,rad=-0.15"))
-    ax.text(EX + 0.2, 2.85, "mark-abandoned", ha="left", fontsize=6.2, color=ROSE)
+    # PLANNED → SKIPPED
+    _arrow(ax, PX + 0.3, CY - BH / 2, SKP_X - 0.8, TY + BH / 2,
+           "skip_task()", color=T_BDR, lw=1.05, lp=(4.8, 2.85))
 
-    # PAUSED → SKIPPED (mark-abandoned)
-    ax.annotate("", xy=(TX_SK + SW * 0.9, 2.15), xytext=(PAX + SW * 0.2, SY),
-                arrowprops=dict(arrowstyle="-|>", color=ROSE, lw=1.0, mutation_scale=7,
-                                connectionstyle="arc3,rad=-0.22"))
-    ax.text(PAX + 0.0, 2.85, "mark-abandoned", ha="left", fontsize=6.2, color=ROSE)
+    # EXECUTING → SKIPPED  (mark-abandoned)
+    _arrow(ax, EX + 0.1, CY - BH / 2, SKP_X - 0.3, TY + BH / 2,
+           "mark-abandoned", color=ROSE, lw=1.1, lp=(7.2, 2.9))
+
+    # PAUSED → SKIPPED  (mark-abandoned — label omitted to avoid clutter; same color signals intent)
+    _arrow(ax, PAX - 0.3, CY - BH / 2, SKP_X + 0.3, TY + BH / 2,
+           "", color=ROSE, lw=1.1)
+
+    # Small legend
+    legend = [
+        Line2D([0], [0], color=ACCENT,  lw=1.8, label="normal transition"),
+        Line2D([0], [0], color=AMBER,   lw=1.8, label="pause()"),
+        Line2D([0], [0], color=GREEN,   lw=1.8, label="resume()"),
+        Line2D([0], [0], color=ROSE,    lw=1.8, label="mark-abandoned"),
+        Line2D([0], [0], color=T_BDR,   lw=1.8, label="delete / skip from PLANNED"),
+    ]
+    ax.legend(handles=legend, loc="lower right", bbox_to_anchor=(0.99, 0.02),
+              ncol=1, frameon=True, facecolor=SURFACE, edgecolor=BORDER,
+              fontsize=7.5, labelcolor=MUTED)
 
     _save(fig, "state-machine.png")
 
 
-def draw_sequence_main() -> None:
-    """Main lifecycle: exactly 15 steps, tight vertical spacing."""
-    fig, ax = plt.subplots(figsize=(17.5, 9.2), dpi=DPI, facecolor=BG)
-    ax.set_xlim(-0.5, 17.8)
-    ax.set_ylim(0, 9.2)
-    ax.axis("off")
+# ── 3 & 4. Sequence diagram helpers ──────────────────────────────────────────
 
-    ax.text(8.75, 8.75, "Task lifecycle — main path", ha="center", va="top", fontsize=16, fontweight="700", color=TEXT)
-    ax.text(
-        8.75,
-        8.25,
-        "Create → start stopwatch → stop (≤15 steps)",
-        ha="center",
-        va="top",
-        fontsize=9.5,
-        color=TEXT_MUTED,
-    )
+def _sequence_setup(ax, W, H, title, subtitle, actors, xs):
+    """Draw title, actor boxes, and lifelines. Returns (y_top, y_bot)."""
+    ax.text(W / 2, H - 0.30, title, ha="center", va="top",
+            fontsize=18, fontweight="700", color=TEXT)
+    if subtitle:
+        ax.text(W / 2, H - 0.80, subtitle, ha="center", va="top",
+                fontsize=9, color=MUTED)
 
-    actors = ["User", "OpenClaw", "FastAPI", "SQLite", "Redis", "Notion"]
-    xs = [2.0, 3.85, 5.75, 8.35, 10.75, 13.25]
-    y_top, y_bot = 7.85, 0.95
+    y_actor = H - 1.45
+    y_lifeline_top = y_actor - 0.23
+    y_lifeline_bot = 1.0
 
     for x, name in zip(xs, actors):
-        ax.add_patch(
-            FancyBboxPatch(
-                (x - 0.75, y_top + 0.05),
-                1.5,
-                0.48,
-                boxstyle="round,pad=0.02,rounding_size=0.2",
-                facecolor=SURFACE,
-                edgecolor="#2a3342",
-                linewidth=1,
-            )
-        )
-        ax.text(x, y_top + 0.29, name, ha="center", va="center", fontsize=9, fontweight="600", color=TEXT)
-        ax.plot([x, x], [y_top, y_bot], color="#2a3342", lw=1.05)
+        _box(ax, x, y_actor, 2.1, 0.44, name)
+        ax.plot([x, x], [y_lifeline_top, y_lifeline_bot],
+                color=BORDER, lw=1.0, linestyle="--", zorder=1)
 
-    for y_hi, y_lo in [(7.65, 5.85), (5.65, 3.25), (3.05, 1.05)]:
-        ax.axhspan(y_lo, y_hi, facecolor=LANE_BG, alpha=0.35, zorder=0)
+    return y_lifeline_top, y_lifeline_bot
 
-    # Main path: ≤15 steps (indices 0=User 1=OC 2=F 3=S 4=R 5=N)
-    steps = [
-        (0, 1, "message", False),
-        (1, 2, "POST /v1/create", False),
-        (2, 3, "INSERT task", False),
-        (2, 5, "sync_task() create", False),
-        (2, 1, "TaskCreateResponse → User", True),
-        (1, 2, "POST /v1/stopwatch/start", False),
-        (2, 3, "start_task + INSERT session", False),
-        (2, 4, "SET stopwatch:active", False),
-        (2, 5, "sync_task() update", False),
-        (2, 1, "StopwatchStartResponse", True),
-        (1, 2, "POST /v1/stopwatch/stop", False),
-        (2, 4, "GET active + complete + DEL key", False),
-        (2, 5, "sync_task() update", False),
-        (2, 1, "StopwatchStopResponse → User", True),
+
+def _step(ax, i, a, b, msg, is_ret, xs, y, num_x=0.6):
+    x1, x2 = xs[a], xs[b]
+    col = MUTED if is_ret else ACCENT
+    lw  = 0.9 if is_ret else 1.15
+
+    ax.add_patch(FancyArrowPatch(
+        (x1, y), (x2, y),
+        arrowstyle="-|>", mutation_scale=8,
+        linewidth=lw, color=col,
+        linestyle="--" if is_ret else "solid",
+        shrinkA=4, shrinkB=4, zorder=5,
+    ))
+    # Step badge
+    ax.text(num_x, y, str(i + 1), ha="center", va="center",
+            fontsize=7, fontweight="700", color=TEXT, zorder=6,
+            bbox=dict(boxstyle="round,pad=0.26", facecolor="#1a2330",
+                      edgecolor="#3a5070", linewidth=0.7))
+    # Message
+    mx = (x1 + x2) / 2
+    ax.text(mx, y + 0.16, msg, ha="center", va="center",
+            fontsize=7.2, color=TEXT if not is_ret else MUTED, zorder=6)
+
+
+def _phase_band(ax, y_hi, y_lo, label, W):
+    ax.axhspan(y_lo, y_hi, facecolor=LANE, alpha=0.45, zorder=0)
+    ax.text(W - 0.35, (y_hi + y_lo) / 2, label, ha="right", va="center",
+            fontsize=7.5, fontweight="600", color=MUTED, style="italic")
+
+
+# ── 3. Task Lifecycle — Main Path ─────────────────────────────────────────────
+#
+#  14 steps across 3 phases:
+#    SCHEDULE (1–5):  create task, Notion sync, confirm task_id
+#    START    (6–9):  start stopwatch, mark EXECUTING, cache session
+#    STOP    (10–14): stop stopwatch, mark EXECUTED, Notion sync, confirm
+
+def draw_sequence_main() -> None:
+    W, H = 20.0, 11.0
+    fig, ax = plt.subplots(figsize=(W, H), dpi=DPI, facecolor=BG)
+    ax.set_xlim(0, W)
+    ax.set_ylim(0, H)
+    ax.axis("off")
+
+    actors = ["User", "OpenClaw", "FastAPI", "SQLite", "Redis", "Notion"]
+    xs     = [2.0, 4.5, 7.0, 10.0, 13.0, 16.0]
+
+    _sequence_setup(ax, W, H, "Task Lifecycle — Main Path",
+                    "create  ·  start stopwatch  ·  stop", actors, xs)
+
+    y0 = H - 2.1
+    dy = 0.50
+
+    steps = [                                                      # (from, to, label, return?)
+        (0, 1, "schedule task",                               False),  # 1
+        (1, 2, "POST /v1/create",                             False),  # 2
+        (2, 3, "INSERT task  ·  state: PLANNED",              False),  # 3
+        (2, 5, "sync_task()  (create)",                       False),  # 4
+        (2, 1, "{ task_id }",                                 True),   # 5
+        (1, 2, "POST /v1/stopwatch/start",                    False),  # 6
+        (2, 3, "PLANNED → EXECUTING  ·  INSERT session",      False),  # 7
+        (2, 4, "SET stopwatch:active:{id}",                   False),  # 8
+        (2, 1, "{ session_id }",                              True),   # 9
+        (1, 2, "POST /v1/stopwatch/stop",                     False),  # 10
+        (2, 4, "GET + DEL stopwatch:active",                  False),  # 11
+        (2, 3, "EXECUTING → EXECUTED  ·  UPDATE session",     False),  # 12
+        (2, 5, "sync_task()  (complete)",                     False),  # 13
+        (2, 1, "{ duration_minutes, delta_minutes }",         True),   # 14
     ]
     assert len(steps) <= 15
 
-    y0 = 7.55
-    dy = 0.38
-    step_x = 0.95
+    # Phase bands
+    #   SCHEDULE: steps 1–5  →  y = y0 down to y0-4*dy
+    #   START:    steps 6–9  →  y = y0-5*dy down to y0-8*dy
+    #   STOP:     steps 10–14 → y = y0-9*dy down to y0-13*dy
+    s_hi = y0 + dy * 0.6
+    s_lo = y0 - 4 * dy - dy * 0.4
+    t_hi = y0 - 5 * dy + dy * 0.4
+    t_lo = y0 - 8 * dy - dy * 0.4
+    p_hi = y0 - 9 * dy + dy * 0.4
+    p_lo = y0 - 13 * dy - dy * 0.4
+
+    _phase_band(ax, s_hi, s_lo, "SCHEDULE", W)
+    _phase_band(ax, t_hi, t_lo, "START", W)
+    _phase_band(ax, p_hi, p_lo, "STOP", W)
+
     for i, (a, b, msg, is_ret) in enumerate(steps):
-        ya = y0 - i * dy
-        x1, x2 = xs[a], xs[b]
-        col = TEXT_MUTED if is_ret else ACCENT
-        arr = FancyArrowPatch(
-            (x1, ya),
-            (x2, ya),
-            arrowstyle="-|>",
-            mutation_scale=9,
-            linewidth=1.15 if not is_ret else 0.95,
-            color=col,
-            linestyle="--" if is_ret else "-",
-            shrinkA=4,
-            shrinkB=4,
-        )
-        ax.add_patch(arr)
-        ax.text(
-            step_x,
-            ya,
-            str(i + 1),
-            ha="center",
-            va="center",
-            fontsize=7.5,
-            fontweight="700",
-            color=TEXT,
-            bbox=dict(boxstyle="round,pad=0.28", facecolor="#1a2330", edgecolor=ACCENT_SOFT, linewidth=0.7),
-        )
-        ax.text((x1 + x2) / 2, ya + 0.13, msg, ha="center", fontsize=7.3, color=TEXT if not is_ret else TEXT_MUTED)
+        _step(ax, i, a, b, msg, is_ret, xs, y0 - i * dy)
 
-    custom = [Line2D([0], [0], color=ACCENT, lw=2, label="Call"), Line2D([0], [0], color=TEXT_MUTED, lw=1.4, linestyle="--", label="Return")]
-    ax.legend(handles=custom, loc="lower center", bbox_to_anchor=(0.5, 0.02), ncol=2, frameon=True, facecolor=SURFACE, edgecolor="#2a3342", fontsize=7.5, labelcolor=TEXT_MUTED)
-
-    ax.text(8.75, 0.55, "Undo path → see data-flow-undo.png", ha="center", fontsize=7.8, color=TEXT_MUTED)
+    legend = [
+        Line2D([0], [0], color=ACCENT, lw=1.5, label="call"),
+        Line2D([0], [0], color=MUTED,  lw=1.2, linestyle="--", label="return"),
+    ]
+    ax.legend(handles=legend, loc="lower center", bbox_to_anchor=(0.5, 0.01),
+              ncol=2, frameon=True, facecolor=SURFACE, edgecolor=BORDER,
+              fontsize=8, labelcolor=TEXT)
 
     _save(fig, "data-flow.png")
 
 
+# ── 4. Undo Path ──────────────────────────────────────────────────────────────
+
 def draw_sequence_undo() -> None:
-    """POST /v1/undo — separate diagram."""
-    fig, ax = plt.subplots(figsize=(17.5, 6.8), dpi=DPI, facecolor=BG)
-    ax.set_xlim(-0.5, 17.8)
-    ax.set_ylim(0, 6.8)
+    W, H = 20.0, 8.2
+    fig, ax = plt.subplots(figsize=(W, H), dpi=DPI, facecolor=BG)
+    ax.set_xlim(0, W)
+    ax.set_ylim(0, H)
     ax.axis("off")
 
-    ax.text(8.75, 6.4, "Undo path (30s window)", ha="center", va="top", fontsize=16, fontweight="700", color=TEXT)
-    ax.text(8.75, 5.9, "undo.py · Redis undo:{task_id} · TaskManager / Notion", ha="center", fontsize=9, color=TEXT_MUTED)
-
     actors = ["User", "OpenClaw", "FastAPI", "SQLite", "Redis", "Notion"]
-    xs = [2.0, 3.85, 5.75, 8.35, 10.75, 13.25]
-    y_top, y_bot = 5.35, 0.85
+    xs     = [2.0, 4.5, 7.0, 10.0, 13.0, 16.0]
 
-    for x, name in zip(xs, actors):
-        ax.add_patch(
-            FancyBboxPatch(
-                (x - 0.75, y_top + 0.05),
-                1.5,
-                0.48,
-                boxstyle="round,pad=0.02,rounding_size=0.2",
-                facecolor=SURFACE,
-                edgecolor="#2a3342",
-                linewidth=1,
-            )
-        )
-        ax.text(x, y_top + 0.29, name, ha="center", va="center", fontsize=9, fontweight="600", color=TEXT)
-        ax.plot([x, x], [y_top, y_bot], color="#2a3342", lw=1.05)
+    _sequence_setup(ax, W, H, "Undo Path  (30-second window)",
+                    "POST /v1/undo  ·  reverts last create or delete", actors, xs)
+
+    y0 = H - 2.1
+    dy = 0.60
 
     steps = [
-        (0, 1, '"undo"', False),
-        (1, 2, "POST /v1/undo", False),
-        (2, 4, "GET undo payload", False),
-        (2, 3, "delete_task or restore row", False),
-        (2, 5, "archive / un-archive + sync_task", False),
-        (2, 4, "DEL undo key", False),
-        (2, 1, "UndoResponse", True),
-        (1, 0, "confirm", True),
+        (0, 1, '"undo"',                            False),  # 1
+        (1, 2, "POST /v1/undo",                     False),  # 2
+        (2, 4, "GET undo:{task_id}",                False),  # 3
+        (2, 3, "restore task row / soft-delete",    False),  # 4
+        (2, 5, "archive or un-archive page",        False),  # 5
+        (2, 4, "DEL undo key",                      False),  # 6
+        (2, 1, "{ undone: true, task_id }",         True),   # 7
+        (1, 0, "confirmed",                         True),   # 8
     ]
-    y0 = 5.05
-    dy = 0.42
-    step_x = 0.95
+
+    y_hi = y0 + dy * 0.6
+    y_lo = y0 - (len(steps) - 1) * dy - dy * 0.4
+    _phase_band(ax, y_hi, y_lo, "UNDO", W)
+
     for i, (a, b, msg, is_ret) in enumerate(steps):
-        ya = y0 - i * dy
-        x1, x2 = xs[a], xs[b]
-        col = TEXT_MUTED if is_ret else ACCENT
-        arr = FancyArrowPatch(
-            (x1, ya),
-            (x2, ya),
-            arrowstyle="-|>",
-            mutation_scale=9,
-            linewidth=1.1 if not is_ret else 0.9,
-            color=col,
-            linestyle="--" if is_ret else "-",
-            shrinkA=4,
-            shrinkB=4,
-        )
-        ax.add_patch(arr)
-        ax.text(
-            step_x,
-            ya,
-            str(i + 1),
-            ha="center",
-            va="center",
-            fontsize=7.5,
-            fontweight="700",
-            color=TEXT,
-            bbox=dict(boxstyle="round,pad=0.28", facecolor="#1a2330", edgecolor=ACCENT_SOFT, linewidth=0.7),
-        )
-        ax.text((x1 + x2) / 2, ya + 0.13, msg, ha="center", fontsize=7.3, color=TEXT if not is_ret else TEXT_MUTED)
+        _step(ax, i, a, b, msg, is_ret, xs, y0 - i * dy)
+
+    legend = [
+        Line2D([0], [0], color=ACCENT, lw=1.5, label="call"),
+        Line2D([0], [0], color=MUTED,  lw=1.2, linestyle="--", label="return"),
+    ]
+    ax.legend(handles=legend, loc="lower center", bbox_to_anchor=(0.5, 0.01),
+              ncol=2, frameon=True, facecolor=SURFACE, edgecolor=BORDER,
+              fontsize=8, labelcolor=TEXT)
 
     _save(fig, "data-flow-undo.png")
 
+
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
