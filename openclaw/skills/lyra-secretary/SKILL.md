@@ -27,7 +27,7 @@ Never mention UTC offset. Never add +02:00. Never calculate "Cairo = UTC+2".
 These patterns map directly to endpoints — execute immediately, no analysis:
 - "start timer"/"start stopwatch" → POST /v1/stopwatch/start (ask readiness first)
 - "stop timer"/"stop stopwatch" → POST /v1/stopwatch/stop (ask reflection after)
-- "resume"/"resume timer" → POST /v1/stopwatch/resume (relay paused_minutes)
+- "resume"/"resume timer" → GET /v1/stopwatch/status → POST /v1/stopwatch/resume → relay task title + paused_minutes
 - "status"/"what's running" → GET /v1/stopwatch/status (relay active task)
 - "ping"/"are you there" → GET /v1/skill/ping (relay status)
 For these exact phrases: call endpoint → relay response → done. No planning, no analysis.
@@ -80,7 +80,7 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 
 Category is auto-inferred by backend from title keywords. Include `category` in POST /v1/create if you know it — backend fills it if not.
 
-**On session start (/new or /reset):** Call GET /v1/skill/ping. If it fails: "Backend is unreachable, commands will not work."
+**On session start (/new or /reset):** Call GET /v1/skill/ping + GET /v1/stopwatch/status. If ping fails: "Backend is unreachable, commands will not work." If stopwatch active/paused: surface it immediately ("⏸ [task] is paused" or "▶️ [task] running").
 
 **Schedule request:**
 - POST /v1/create → get `task_id` → confirm to user
