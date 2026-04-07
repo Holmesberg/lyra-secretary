@@ -17,7 +17,14 @@ class StateMachine:
             # EXECUTED only from EXECUTING (e.g. StopwatchManager.stop → complete_task)
         },
         TaskState.EXECUTING: {
-            TaskState.EXECUTED
+            TaskState.PAUSED,
+            TaskState.EXECUTED,
+            TaskState.SKIPPED,  # mark-abandoned while EXECUTING
+        },
+        TaskState.PAUSED: {
+            TaskState.EXECUTING,  # resume
+            TaskState.SKIPPED,    # mark-abandoned while PAUSED
+            # PAUSED → EXECUTED goes via EXECUTING (auto-resume in stop())
         },
         TaskState.EXECUTED: set(),  # Immutable
         TaskState.SKIPPED: set(),   # Immutable

@@ -25,6 +25,7 @@ class TaskState(str, Enum):
     """Task state machine states."""
     PLANNED = "PLANNED"
     EXECUTING = "EXECUTING"
+    PAUSED = "PAUSED"
     EXECUTED = "EXECUTED"
     SKIPPED = "SKIPPED"
     DELETED = "DELETED"
@@ -135,7 +136,7 @@ class Task(Base):
     # Constraints
     __table_args__ = (
         CheckConstraint(
-            "state IN ('PLANNED', 'EXECUTING', 'EXECUTED', 'SKIPPED', 'DELETED')",
+            "state IN ('PLANNED', 'EXECUTING', 'PAUSED', 'EXECUTED', 'SKIPPED', 'DELETED')",
             name="check_state"
         ),
         CheckConstraint(

@@ -230,6 +230,15 @@ class StopwatchManager:
         session.pause_initiator = pause_initiator or "self"
         self.db.commit()
 
+        # Transition task state EXECUTING → PAUSED + Notion sync
+        task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
+        if task and task.state == TaskState.EXECUTING:
+            self.task_manager.state_machine.transition(task, TaskState.PAUSED)
+            try:
+                self.task_manager.notion.sync_task(task, db=self.db)
+            except Exception as e:
+                logger.error(f"Notion sync failed on pause: {e}", exc_info=True)
+
         self.redis.set_pause_state(user_id, session.session_id, now.isoformat())
 
         return {
@@ -262,6 +271,15 @@ class StopwatchManager:
         task.pause_count = (task.pause_count or 0) + 1
 
         self.db.commit()
+
+        # Transition task state PAUSED → EXECUTING + Notion sync
+        if task.state == TaskState.PAUSED:
+            self.task_manager.state_machine.transition(task, TaskState.EXECUTING)
+            try:
+                self.task_manager.notion.sync_task(task, db=self.db)
+            except Exception as e:
+                logger.error(f"Notion sync failed on resume: {e}", exc_info=True)
+
         self.redis.clear_pause_state(user_id)
 
         return {
@@ -331,6 +349,11 @@ class StopwatchManager:
             session.paused_at_utc = None
             task.pause_count = (task.pause_count or 0) + 1
             self.redis.clear_pause_state(user_id)
+
+        # If task is PAUSED in state machine, force-resume to EXECUTING before complete_task
+        # (complete_task transitions EXECUTING → EXECUTED)
+        if task.state == TaskState.PAUSED:
+            self.task_manager.state_machine.transition(task, TaskState.EXECUTING)
 
         # Capture total_paused before complete_task() overwrites task
         total_paused = session.total_paused_minutes
