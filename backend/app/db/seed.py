@@ -63,6 +63,22 @@ def seed():
         # other
         {"keyword": "lunch", "category": "personal"},
         {"keyword": "dinner", "category": "personal"},
+        # health (operator vocabulary additions, Apr 8)
+        {"keyword": "sleep", "category": "health"},
+        # planning merged into self_reflection (Apr 8 — taxonomy freeze, see docs/category_taxonomy.md)
+        {"keyword": "calibration", "category": "self_reflection"},
+        {"keyword": "plan", "category": "self_reflection"},
+        {"keyword": "friction", "category": "self_reflection"},
+        # self_reflection extensions (Apr 8)
+        {"keyword": "idea", "category": "self_reflection"},
+        {"keyword": "refinement", "category": "self_reflection"},
+        {"keyword": "brainstorm", "category": "self_reflection"},
+        # development extensions (Apr 8)
+        {"keyword": "swe", "category": "development"},
+        {"keyword": "debugging", "category": "development"},
+        # work fallback (Apr 8)
+        {"keyword": "quick", "category": "work"},
+        {"keyword": "unplanned", "category": "work"},
     ]
     
     try:

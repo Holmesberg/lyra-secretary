@@ -538,3 +538,61 @@ The experiment has started. Stay in measurement mode.
 
 *Lyra Secretary v1.4 — April 5, 2026*
 *Manifesto v1.2 — revised April 5, 2026 (cascade failure discovery added)*
+
+---
+
+## Kill Criterion — H1 (Discrepancy → Delta)
+
+*Committed: April 8, 2026. Day 4 of the discrepancy experiment.*
+*This is a pre-registered falsification rule, fixed before the analysis. It is not interim analysis. It is the rule the analysis must obey.*
+
+### Hypothesis under test (H1, signed form)
+
+> Operator overconfidence — captured as a negative `signed_discrepancy` (`post_task_reflection − pre_task_readiness < 0`, i.e. felt ready but performed below expectation) — systematically predicts execution overrun (`duration_delta_minutes < 0`, i.e. executed longer than planned, per the manifesto's delta sign convention).
+>
+> Operationally: across paired sessions, `signed_discrepancy` and `duration_delta_minutes` should be **positively** correlated (both move negative together when overconfidence produces overrun, both move positive together when underconfidence accompanies underrun).
+
+This is the signed reformulation of the original `|pre − post| → |delta|` hypothesis. It is more falsifiable (predicts a *direction*, not just a magnitude) and more actionable (overconfidence and underconfidence require opposite corrections — see VT-3).
+
+### Falsification rule
+
+At the close of the experiment, H1 is **falsified** if **all three** of the following hold on the analysis-eligible session set (EXECUTED, `initiation_status != "system_error"`, both `pre_task_readiness` and `post_task_reflection` populated):
+
+1. **n ≥ 60 paired sessions** are available. (Hard floor. Not lowered under any circumstance. If the experiment ends with fewer than 60 pairs, H1 is neither confirmed nor falsified — the experiment is inconclusive and must be extended or rerun.)
+
+2. **Spearman ρ between `signed_discrepancy` and `duration_delta_minutes` is < 0.20**, AND the 95% bootstrap CI for that ρ includes zero.
+
+3. **No learning improvement**: the same correlation computed on the second half of the data (later sessions, ordered by `planned_start_utc`) is not larger than on the first half. This protects against killing a hypothesis that is sharpening as the operator becomes more practiced at self-rating.
+
+All three must hold. Failing any one of them leaves H1 alive (TRENDING or CONFIRMED depending on effect size and CI).
+
+### Why ρ < 0.20
+
+Below this threshold the signal would be weaker than known noise sources in single-item Likert self-report (test-retest reliability typically ~0.5–0.7), meaning the construct could not survive its own measurement error even if real. The threshold was set conservatively *before* the post-April-15 literature review and may be tightened — but never loosened — once the lit review is complete.
+
+### Pivot consequence (if H1 is falsified)
+
+- `pre_task_readiness` and `post_task_reflection` capture move to **optional / research-only mode**. They are no longer prompted in the default flow.
+- The system continues tracking `duration_delta_minutes`, `cascade_score`, `unplanned_execution_rate`, and `initiation_delay_minutes` as primary signals.
+- Phase 1A of the Phase Map is entered: delta becomes the sole primary variable, the metacognitive layer is deprecated as a default capture, and Paper 2 (cascade failure) becomes the primary research output.
+- The bias_factor model is rebuilt without the readiness inputs and tested for whether delta history alone carries enough signal to drive scheduling adjustments.
+
+This is a real consequence with real code changes attached, not a rhetorical commitment. If the criterion fires, the capture flow changes within one week of the result.
+
+### Sign convention note
+
+The manifesto defines `delta = planned_duration − executed_duration`, so **overrun = delta < 0** and **underrun = delta > 0**. Under the H1 hypothesis stated above, overconfidence (signed_discrepancy < 0) should co-occur with overrun (delta < 0), which produces a **positive** Spearman ρ between the two signed variables. The criterion uses ρ as defined under this convention. Any future sign flip in the delta definition must trigger a corresponding rewrite of this section.
+
+### What is NOT in scope of this criterion
+
+- The cascade hypothesis is independent and has its own (forthcoming) criterion. H1 falsification does not falsify cascade.
+- The bias_factor magnitude claim (`1.5–2.0` for high readiness) is a separate, downstream question. H1 only concerns whether *any* directional signal exists.
+- Sleep as a leading indicator is explicitly out of scope for the April 15 analysis. It is Paper 2 territory and requires schema changes that will not be made mid-experiment.
+
+### Pre-registered analysis rules (committed before April 15 analysis is run)
+
+These rules are fixed in advance to remove analyst degrees of freedom on the day of analysis. Any deviation must be explicitly justified in the writeup.
+
+1. **Exclude retroactive sessions from the H1 test set.** Rows with `initiation_status = 'retroactive'` are excluded from the Spearman ρ computation. Reason: retroactive sessions have `planned_duration` set equal to `executed_duration` by definitional construction (see FEATURES.md, retroactive endpoint behavior — "Sets planned = executed (delta = 0 by definition)"). Their delta is 0 by fiat, not by measurement, and they would pull the H1 correlation toward zero in a way that looks like a null result but is actually an artifact of how the data was logged. Retroactive sessions remain valid for cascade analysis (Paper 2), which uses state transitions rather than delta.
+
+2. **Category taxonomy is frozen for the Apr 4–15 window.** The set of valid categories is fixed (see `docs/category_taxonomy.md`). New keywords mapping into existing categories may be added at any time. New *categories* may not be created until after the window closes. Reason: per-(category, time_of_day) bias-factor estimation requires monotonic bucket counts; introducing a new category mid-window redistributes mass and produces false-negative bias estimates. The Apr 8 merge of `planning` → `self_reflection` is the last taxonomy edit of the window and was performed because the two categories were semantically identical (meta-work *about* the system) and one was an accidental seed-time fork.
