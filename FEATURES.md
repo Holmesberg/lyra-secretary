@@ -1,5 +1,5 @@
 # Lyra Secretary — Feature Backlog
-*Last updated: April 6, 2026 — cognitive friction reducers added*
+*Last updated: April 8, 2026 — feedback loop closure and friction reduction features added (F6–F15)*
 
 Priority: 🔴 critical | 🟡 important | 🟢 nice-to-have
 Status: 📋 backlog | 🔨 in progress | ✅ done
@@ -371,6 +371,152 @@ Combine into `daily_friction_score` (0-10, lower = less friction).
 - Add to `GET /v1/analytics/discrepancy` summary
 - Add to weekly insights: "Your planning friction dropped X% this week."
 - **This makes the system self-aware** — quantifies the friction reduction features' actual impact
+
+---
+
+## v1.8 — Feedback Loop Closure & Friction Reduction
+
+*Added April 8, 2026 — from research session on EMA compliance, reference class forecasting, and adaptive scheduling.*
+
+**Numbering note:** Features in this section use F6–F15. F1–F5 are not defined in this file; this batch was numbered relative to an external session index. Features J–P (v1.6) use a separate alphabetical scheme for cognitive friction reducers — the two systems are independent.
+
+**Overlap declarations:**
+- F6 and F7 share the same underlying data as v1.5 "Estimate adjustment in task creation" (bias_factor per category+time). Trigger points differ: v1.5 fires at single-task creation, F6 fires at session stop, F7 fires at full-week commit. All three are additive.
+- F10 (execution probability) is orthogonal to v1.4 bias_factor (duration accuracy). Bias_factor answers "how long will this actually take?" F10 answers "will I do it at all?" Different metrics, different interventions.
+- F13 (optimal window) is a higher-order synthesis of F10 + F7 + discrepancy data. Should not be built before F10 and bias_factor are stable.
+- F14 (honest schedule) depends on F7 + F10. Cannot generate predicted schedule without both duration (F7) and execution probability (F10).
+
+---
+
+### 📋 F6 — Calibration nudge at moment of reflection
+
+After every session stop, if the user has ≥5 sessions in that category: surface the running calibration alongside the delta. Do not wait for a dashboard — deliver at the exact moment the experience is fresh.
+
+Example output on stop: *"Ran 22 min over plan. Your avg delta for development: +19 min. You've underestimated this category 7/9 times. Consider scheduling 20% more next time."*
+
+- **Data threshold:** 5 sessions per category
+- **Schema changes:** None — consumes existing `delta_minutes`, `executed_duration_minutes`, `category`
+- **Research layer:** delta, bias_factor (closes the loop from existing computed data)
+- **Depends on:** v1.4 bias_factor computation endpoint
+- **Note:** Distinct from v1.5 estimate adjustment, which fires at scheduling time. This fires at stop time — different psychology, different intervention window.
+
+---
+
+### 📋 F7 — Shadow schedule — planned vs predicted at scheduling time
+
+When the user is about to commit a weekly or daily plan, show two versions side by side: the aspirational schedule (what they entered) and the predicted schedule (bias_factor-adjusted durations + execution probability per slot). Show the gap and any downstream conflicts created by realistic estimates.
+
+Example: *"Your plan: 14 tasks, 11.5 hrs. Predicted: 9 tasks, ~7 hrs active. The 5 most likely to slip: [list]. Adjust?"*
+
+- **Data threshold:** 5 sessions per category (bias_factor threshold); F10 execution probability needed for full version — partial version (duration-only shadow) usable earlier
+- **Schema changes:** None — computed on demand from bias_factor endpoint + F10 data
+- **Research layer:** delta, bias_factor
+- **Depends on:** v1.4 bias_factor endpoint; full version also depends on F10
+
+---
+
+### 📋 F8 — Cascade interrupt prevention — real-time warning before skip confirms
+
+When user confirms a skip, before writing to DB: query cascade history for that task's category and time-of-day. If skip → cascade has occurred in ≥50% of historical instances, surface a warning before finalizing.
+
+Example: *"Skipping morning fitness has cascaded to your afternoon session 4/6 times. Still skip? [Yes] [Reschedule instead]"*
+
+- **Data threshold:** 3 cascade events per category (low threshold — cascade signal is strong even at small n)
+- **Schema changes:** None — reads existing cascade analytics from `GET /v1/analytics/cascade`
+- **Research layer:** cascade
+- **Depends on:** v1.4 cascade analytics endpoint
+
+---
+
+### 📋 F9 — Resistance signature per category — surface avg initiation delay, ask user why, replay their answer next time
+
+Once avg `initiation_delay_minutes` for a category exceeds a threshold (e.g., consistently >15 min), surface it once and ask: *"You consistently start writing tasks 23 min late. What makes starting harder? [answer]"* Store the answer. Next time that category is scheduled, prepend the user's own answer to the start notification.
+
+The system uses its own delay measurement to prompt a self-authored intervention, then replays it back at the moment of friction.
+
+- **Data threshold:** 5 sessions per category with `initiation_delay_minutes` populated
+- **Schema changes:** New field `initiation_resistance_note` (text, nullable) on `CategoryMapping` table — or a new `user_category_notes` table keyed by category. One-time per category.
+- **Research layer:** new (`resistance_signature` — derived from initiation_delay, not currently surfaced as a named metric)
+
+---
+
+### 📋 F10 — Execution probability matrix — P(execute | category × time_of_day)
+
+Compute a 2D probability table: given a task of category X scheduled in time-of-day bucket Y, what is the historical execution rate? Expose as `GET /v1/analytics/execution_probability`.
+
+Distinct from bias_factor: bias_factor is *how long* when executed; execution probability is *whether* execution happens at all. Together they answer both planning questions.
+
+Example finding: gym tasks before 8am execute at 12%, gym tasks at 7pm at 71% — directly actionable scheduling guidance.
+
+- **Data threshold:** 3 sessions per (category × time_of_day) bucket — minimum; 10+ per bucket for meaningful signal
+- **Schema changes:** None at capture level — all fields (`category`, `planned_start_utc`, `state`) already exist. New analytics endpoint needed.
+- **Research layer:** new (`execution_probability` — orthogonal to bias_factor and discrepancy)
+
+---
+
+### 📋 F11 — Planning hangover detection — test whether large planning sessions correlate with lower execution rate same/next day
+
+Hypothesis: creating many tasks in a single planning session produces an illusion-of-progress effect that reduces execution drive on the same or following day. Measure: count tasks created per day (`source=MANUAL`, grouped by `created_at` date) vs execution rate for that day's tasks. Compute correlation.
+
+If correlation is significant and negative, this contradicts standard productivity advice ("plan your week Sunday") and is the kind of finding that constitutes the "surprising result" needed for research validity.
+
+- **Data threshold:** 10+ days with ≥1 multi-task planning session; meaningful signal at 20+ days
+- **Schema changes:** None — `created_at` and `state` already exist. Planning intensity is computable as count of tasks created within a short window. If explicit planning session tagging needed: add `planning_session_id` (nullable UUID) to Task.
+- **Research layer:** new (`planning_hangover_coefficient` — correlation between tasks_created_per_day and execution_rate_same_or_next_day)
+
+---
+
+### 📋 F12 — "Done but differently" capture — scope_changed field on stop with enum
+
+A critical data gap: tasks completed in a different form than planned are currently forced into EXECUTED (misleading) or SKIPPED (inaccurate). On session stop, optional question: *"Did you do what you planned, or something adjacent?"* If adjacent: classify the deviation.
+
+Enum values: `scope_expanded` | `approach_changed` | `merged_with_other` | `interrupted_by_dependency`
+
+This adds an entire analytical dimension: tasks with `scope_changed` have structurally different delta distributions than clean executions — lumping them together contaminates the discrepancy signal.
+
+- **Data threshold:** 0 — enriches data from day 1; analysis meaningful at 10+ scope_changed events
+- **Schema changes:** New `scope_changed` boolean field + `scope_change_type` enum field on Task (nullable, set only on stop if user selects "adjacent"). Migration required.
+- **Research layer:** new (`scope_change_rate` per category; also filters delta and discrepancy analyses for execution purity)
+
+---
+
+### 📋 F13 — Optimal window detection — behavioral fingerprint: (time_of_day × category × prior_task_state × day_of_week) combination with lowest delta + highest focus
+
+After sufficient data: identify the multi-dimensional combination of contextual factors that produces the lowest duration delta, highest post_task_reflection, and fewest pauses for each user. Present as a single personalized insight.
+
+Example: *"Your clearest execution window: Tue/Thu 10am–12pm, after a reading session, for development tasks. Your data, not generic advice."*
+
+This is personally calibrated and unreachable via external sources. It also directly validates the core research hypothesis: that measuring these dimensions produces actionable, individual-specific signal.
+
+- **Data threshold:** 20+ sessions distributed across multiple time-of-day and day-of-week combinations; earlier runs will find local optima only
+- **Schema changes:** None — synthesizes `planned_start_utc`, `category`, `post_task_reflection`, `executed_duration_minutes`, `delta_minutes`, `pause_count`. No new fields needed.
+- **Research layer:** new (`optimal_window_signature` — aggregates delta + discrepancy + execution_probability)
+- **Depends on:** F10 for execution probability component; v1.4 bias_factor for duration component
+
+---
+
+### 📋 F14 — The honest schedule — aspirational vs predicted side-by-side before week commits
+
+Before the user finalizes a week's plan: generate two parallel schedules. Aspirational: what they entered. Predicted: bias_factor-adjusted durations + F10 execution probabilities applied to each slot. Show the gap. Flag tasks most likely to slip. Ask: adjust now, or proceed with the aspirational plan?
+
+Does not block commitment — user can override. The goal is to make the implicit explicit at the moment of commitment, not after failure.
+
+- **Data threshold:** 5+ sessions per category (bias_factor minimum); F10 execution probability meaningful at 3+ sessions per bucket
+- **Schema changes:** None — computed on demand; no persistence required
+- **Research layer:** delta, bias_factor, execution_probability
+- **Depends on:** F7 (shadow schedule per task), F10 (execution probability matrix); F14 is the week-scope composition of both
+
+---
+
+### 📋 F15 — Intention stability tracking — track gap between created_at and planned_start_utc + reschedule history as proxy for commitment quality
+
+A task created 5 minutes before its start time differs from one created 3 days in advance. Tasks repeatedly rescheduled represent a third failure mode distinct from execution failure or skip: *intention instability* — you keep intending to do it but keep deciding not to at the last moment.
+
+Compute per task: `planning_horizon = (planned_start_utc - created_at).minutes`. Track `reschedule_count`. Hypothesis: low execution rate correlates with high reschedule_count, not low planning_horizon — the rescheduling behavior is the signal, not the initial lead time.
+
+- **Data threshold:** 0 — `planning_horizon` is computable from existing fields immediately. `reschedule_count` requires schema change — currently rescheduling updates `planned_start_utc` without incrementing a counter.
+- **Schema changes:** New `reschedule_count` integer field (default 0) on Task, incremented in `reschedule_task()`. Alternatively: task history/audit table if full reschedule timestamps are needed. Minimum viable: counter only.
+- **Research layer:** new (`intention_stability_score` — combined planning_horizon + reschedule_count; feeds into execution prediction model as input feature)
 
 ---
 
