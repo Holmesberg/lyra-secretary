@@ -121,6 +121,9 @@ class Task(Base):
     replaced_by_task_id: Mapped[Optional[str]] = mapped_column(String(36))
     replaces_task_id: Mapped[Optional[str]] = mapped_column(String(36))
 
+    # Reschedule tracking
+    reschedule_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     # Unplanned execution tracking
     unplanned_reason: Mapped[Optional[str]] = mapped_column(String(30))
 

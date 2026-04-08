@@ -491,6 +491,7 @@ class TaskManager:
         task.planned_start_utc = new_start
         task.planned_end_utc = new_end
         task.planned_duration_minutes = int((new_end - new_start).total_seconds() / 60)
+        task.reschedule_count = (task.reschedule_count or 0) + 1
         task.last_modified_at = now_utc()
         self.db.commit()
         self.db.refresh(task)
