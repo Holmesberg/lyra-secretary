@@ -62,16 +62,7 @@ async def query_tasks(
         # Order by start time
         tasks = query.order_by(Task.planned_start_utc).all()
 
-        # Compute session_index_in_day per task
-        day_counters = {}
-        task_indices = {}
-        for t in tasks:
-            if t.planned_start_utc:
-                d = to_local(t.planned_start_utc).date()
-                idx = day_counters.get(d, 0)
-                task_indices[t.task_id] = idx
-                day_counters[d] = idx + 1
-
+        # Read immutable stored session_index_in_day (alembic 012).
         task_list = [
             {
                 "task_id": t.task_id,
@@ -81,7 +72,7 @@ async def query_tasks(
                 "state": t.state.value if hasattr(t.state, 'value') else str(t.state),
                 "category": t.category,
                 "initiation_status": t.initiation_status,
-                "session_index_in_day": task_indices.get(t.task_id, 0),
+                "session_index_in_day": t.session_index_in_day if t.session_index_in_day is not None else 0,
             }
             for t in tasks
         ]

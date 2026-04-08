@@ -124,6 +124,11 @@ class Task(Base):
     # Reschedule tracking
     reschedule_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # Cascade chain position — immutable, set at creation time only.
+    # Resets per local-tz date. Voided (system_error) rows excluded from chain.
+    # See alembic 012, MANIFESTO.md cascade section.
+    session_index_in_day: Mapped[Optional[int]] = mapped_column(Integer)
+
     # Unplanned execution tracking
     unplanned_reason: Mapped[Optional[str]] = mapped_column(String(30))
 

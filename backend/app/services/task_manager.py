@@ -37,6 +37,53 @@ class TaskManager:
         self.notion = NotionClient()
         self.redis = RedisClient()
     
+    def _compute_session_index(
+        self, planned_start_utc: datetime, created_at: datetime
+    ) -> int:
+        """Compute immutable session_index_in_day for a new task.
+
+        Resets per local-tz date (Cairo). Counts existing non-system_error
+        tasks on the same local date that are strictly earlier in
+        (planned_start_utc, created_at) ordering. Called from every Task
+        creation site. Set once, never recomputed — the cascade chain
+        (Paper 2) depends on this being immutable.
+        """
+        from zoneinfo import ZoneInfo
+        from app.core.config import settings
+
+        tz = ZoneInfo(settings.USER_TIMEZONE)
+        utc = ZoneInfo("UTC")
+
+        # Local Cairo date for the new task
+        ps_aware = planned_start_utc.replace(tzinfo=utc) if planned_start_utc.tzinfo is None else planned_start_utc
+        local_date = ps_aware.astimezone(tz).date()
+
+        # Cairo midnight → UTC range for the same local date
+        day_start_local = datetime.combine(local_date, datetime.min.time(), tzinfo=tz)
+        day_end_local = day_start_local + timedelta(days=1)
+        day_start_utc = day_start_local.astimezone(utc).replace(tzinfo=None)
+        day_end_utc = day_end_local.astimezone(utc).replace(tzinfo=None)
+
+        # Count tasks on the same local day that are strictly earlier.
+        # Tiebreaker: created_at ASC for identical planned_start_utc.
+        from sqlalchemy import or_, and_
+        count = self.db.query(Task).filter(
+            Task.planned_start_utc >= day_start_utc,
+            Task.planned_start_utc < day_end_utc,
+            or_(
+                Task.initiation_status != "system_error",
+                Task.initiation_status.is_(None),
+            ),
+            or_(
+                Task.planned_start_utc < planned_start_utc,
+                and_(
+                    Task.planned_start_utc == planned_start_utc,
+                    Task.created_at < created_at,
+                ),
+            ),
+        ).count()
+        return count
+
     def _infer_category(self, title: str) -> Optional[str]:
         """Infer category from title using CategoryMapping table.
 
@@ -107,6 +154,7 @@ class TaskManager:
         duration_minutes = int((end - start).total_seconds() / 60)
         
         # Create task (transaction safety)
+        created_at_ts = now_utc()
         task = Task(
             title=title,
             planned_start_utc=start,
@@ -116,8 +164,9 @@ class TaskManager:
             state=state,
             source=source,
             confidence_score=confidence_score,
-            created_at=now_utc(),
-            last_modified_at=now_utc()
+            created_at=created_at_ts,
+            last_modified_at=created_at_ts,
+            session_index_in_day=self._compute_session_index(start, created_at_ts),
         )
         
         self.db.add(task)
@@ -209,6 +258,7 @@ class TaskManager:
             planned_dur = executed_duration
             planned_end_utc = end_utc
 
+        created_at_ts = now_utc()
         task = Task(
             title=title,
             category=category,
@@ -224,8 +274,9 @@ class TaskManager:
             pre_task_readiness=pre_task_readiness,
             post_task_reflection=post_task_reflection,
             unplanned_reason=unplanned_reason,
-            created_at=now_utc(),
-            last_modified_at=now_utc(),
+            created_at=created_at_ts,
+            last_modified_at=created_at_ts,
+            session_index_in_day=self._compute_session_index(start_utc, created_at_ts),
         )
 
         self.db.add(task)
