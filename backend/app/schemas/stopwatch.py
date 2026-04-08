@@ -13,6 +13,7 @@ class StopwatchStartRequest(BaseModel):
 
 class StopwatchStopRequest(BaseModel):
     post_task_reflection: Optional[int] = Field(None, ge=1, le=5)
+    task_completion_percentage: Optional[int] = Field(None, ge=0, le=100)
 
 
 class StopwatchStartResponse(BaseModel):
@@ -51,6 +52,7 @@ class StopwatchStopResponse(BaseModel):
     skipped: bool = False
     skip_reason: Optional[str] = None
     calibration_nudge: Optional[str] = None
+    task_completion_percentage: Optional[int] = None
 
 
 PAUSE_REASONS = {"mental_fatigue", "distraction", "task_difficulty", "external_interruption", "intentional_break", "prayer"}

@@ -221,6 +221,7 @@ class StopwatchSession(Base):
     pause_reason: Mapped[Optional[str]] = mapped_column(String(50))
     pause_initiator: Mapped[Optional[str]] = mapped_column(String(20))
     original_pre_task_readiness: Mapped[Optional[int]] = mapped_column(Integer)
+    task_completion_percentage: Mapped[Optional[int]] = mapped_column(Integer)
 
     # Relationship
     task: Mapped["Task"] = relationship(back_populates="stopwatch_sessions")

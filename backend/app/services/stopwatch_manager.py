@@ -292,6 +292,7 @@ class StopwatchManager:
         self,
         user_id: str = "user_primary",
         post_task_reflection: Optional[int] = None,
+        task_completion_percentage: Optional[int] = None,
     ) -> tuple[StopwatchSession, Task, bool, bool]:
         """
         Stop active stopwatch. Returns (session, task, is_early_stop, notion_synced).
@@ -406,6 +407,11 @@ class StopwatchManager:
             task.post_task_reflection = post_task_reflection
             self.db.commit()
             self.db.refresh(task)
+
+        if task_completion_percentage is not None:
+            session.task_completion_percentage = task_completion_percentage
+            self.db.commit()
+            self.db.refresh(session)
 
         # Micro-mirror: one-line behavioral observation (priority: initiation > delta > pauses)
         micro_mirror = None
