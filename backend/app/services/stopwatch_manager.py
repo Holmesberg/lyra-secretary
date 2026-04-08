@@ -326,7 +326,7 @@ class StopwatchManager:
                         .order_by(StopwatchSession.end_time_utc.desc())
                         .first()
                     )
-                    return session, task, False, True, None, None
+                    return session, task, False, True, None, None, None
                 raise NoActiveStopwatchError(
                     "No active stopwatch and no recent task to update reflection"
                 )
@@ -382,7 +382,7 @@ class StopwatchManager:
                 notion_synced_zero = True
             except Exception as e:
                 logger.error(f"Notion sync failed on zero-duration skip: {e}", exc_info=True)
-            return session, task, True, notion_synced_zero, None, None
+            return session, task, True, notion_synced_zero, None, None, None
 
         session.end_time_utc = stop_time
         self.db.add(session)
@@ -427,6 +427,31 @@ class StopwatchManager:
         elif pauses >= 3:
             micro_mirror = f"{pauses} pauses — fragmented session."
 
+        # Calibration nudge: reference class forecasting for same category (F6)
+        calibration_nudge = None
+        if task.category and delta is not None:
+            history = (
+                self.db.query(Task)
+                .filter(
+                    Task.category == task.category,
+                    Task.state == TaskState.EXECUTED,
+                    Task.initiation_status != "system_error",
+                    Task.duration_delta_minutes != None,
+                    Task.task_id != task.task_id,
+                )
+                .all()
+            )
+            n = len(history)
+            if n >= 3:
+                avg_delta = sum(t.duration_delta_minutes for t in history) / n
+                underestimate_count = sum(1 for t in history if t.duration_delta_minutes < 0)
+                direction = "over" if delta < 0 else "under"
+                calibration_nudge = (
+                    f"Ran {abs(delta)} min {direction} plan. "
+                    f"Your {task.category} avg: {avg_delta:+.0f} min ({n} sessions). "
+                    f"You've underestimated this category {underestimate_count}/{n} times."
+                )
+
         self.redis.clear_active_stopwatch(user_id)
 
         # Check for any paused parent session still open
@@ -451,7 +476,7 @@ class StopwatchManager:
                     "paused_minutes": paused_mins,
                 }
 
-        return session, task, is_early_stop, notion_synced, paused_parent, micro_mirror
+        return session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge
 
     def correct_readiness(
         self,

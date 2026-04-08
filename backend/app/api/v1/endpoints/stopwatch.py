@@ -157,7 +157,7 @@ async def stop_stopwatch(
                 ),
             )
 
-        session, task, is_early_stop, notion_synced, paused_parent, micro_mirror = manager.stop(
+        session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge = manager.stop(
             post_task_reflection=request.post_task_reflection,
         )
         zero_duration_skip = task.state == TaskState.SKIPPED and task.executed_duration_minutes in (None, 0)
@@ -176,6 +176,7 @@ async def stop_stopwatch(
             micro_mirror=micro_mirror,
             skipped=zero_duration_skip,
             skip_reason="zero_duration" if zero_duration_skip else None,
+            calibration_nudge=calibration_nudge,
         )
 
     except NoActiveStopwatchError as e:

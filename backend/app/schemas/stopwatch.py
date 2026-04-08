@@ -50,6 +50,7 @@ class StopwatchStopResponse(BaseModel):
     micro_mirror: Optional[str] = None
     skipped: bool = False
     skip_reason: Optional[str] = None
+    calibration_nudge: Optional[str] = None
 
 
 PAUSE_REASONS = {"mental_fatigue", "distraction", "task_difficulty", "external_interruption", "intentional_break", "prayer"}
