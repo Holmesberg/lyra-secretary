@@ -48,21 +48,15 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
         .all()
     )
 
-    # Build local-date → task_id list for session index calculation
-    day_index: dict[date, list[str]] = {}
-    for t in tasks:
-        local_start = to_local(t.planned_start_utc)
-        d = local_start.date()
-        day_index.setdefault(d, []).append(t.task_id)
-
     research_sessions = []
     product_sessions = []
 
     for t in tasks:
         local_start = to_local(t.planned_start_utc)
         d = local_start.date()
-        day_tasks = day_index.get(d, [])
-        session_idx = day_tasks.index(t.task_id) if t.task_id in day_tasks else 0
+        # Read the immutable stored index (alembic 012). Fallback to 0 only
+        # if the column is null, which should not happen post-backfill.
+        session_idx = t.session_index_in_day if t.session_index_in_day is not None else 0
 
         # Shared identity fields
         common = {
@@ -213,13 +207,23 @@ def _confidence(n: int) -> str:
     return "low"
 
 
-def _insight(id: str, observation: str, data_points: int) -> dict:
+def _insight(id: str, observation: str, data_points: int, strength: float = 0.0) -> dict:
     return {
         "id": id,
         "observation": observation,
         "data_points": data_points,
         "confidence": _confidence(data_points),
+        "strength": round(strength, 3),
     }
+
+
+def _median(vals: list[float]) -> float:
+    if not vals:
+        return 0.0
+    s = sorted(vals)
+    n = len(s)
+    mid = n // 2
+    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2
 
 
 # ---------------------------------------------------------------------------
@@ -227,127 +231,130 @@ def _insight(id: str, observation: str, data_points: int) -> dict:
 # ---------------------------------------------------------------------------
 
 def _insight_time_of_day(tasks: list) -> Optional[dict]:
-    """Insight 1: time-of-day bias in delta_minutes."""
+    """Time-of-day bias in delta_minutes. Picks the TOD with max |avg delta|."""
     buckets: dict[str, list[int]] = defaultdict(list)
     for t in tasks:
         if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None:
             tod = _time_of_day(to_local(t.planned_start_utc))
             buckets[tod].append(t.duration_delta_minutes)
 
-    best_over, best_under = None, None
+    best = None  # (tod, avg, n)
     for tod, deltas in buckets.items():
         if len(deltas) < 3:
             continue
         avg = _avg(deltas)
-        n = len(deltas)
-        if avg > 15:
-            if best_over is None or avg > best_over[1]:
-                best_over = (tod, avg, n)
-        if avg < -10:
-            if best_under is None or avg < best_under[1]:
-                best_under = (tod, avg, n)
+        if best is None or abs(avg) > abs(best[1]):
+            best = (tod, avg, len(deltas))
 
-    if best_over:
-        tod, avg, n = best_over
-        return _insight(
-            "time_of_day_bias",
-            f"Your {tod} tasks run an average of {round(avg)} minutes over plan.",
-            n,
-        )
-    if best_under:
-        tod, avg, n = best_under
-        return _insight(
-            "time_of_day_bias",
-            f"You consistently finish {tod} tasks early — you may be underplanning them.",
-            n,
-        )
-    return None
+    if best is None or abs(best[1]) < 8:
+        return None
+    tod, avg, n = best
+    if avg > 0:  # delta = planned - executed; positive avg = finished early
+        obs = f"You consistently finish {tod} tasks {round(avg)} min early — you may be overplanning them."
+    else:
+        obs = f"Your {tod} tasks run an average of {round(abs(avg))} min over plan."
+    return _insight("time_of_day_bias", obs, n, strength=abs(avg))
 
 
 def _insight_readiness(tasks: list) -> Optional[dict]:
-    """Insight 2: pre-task readiness predicts delta outcome."""
-    low, high = [], []
-    for t in tasks:
-        if t.pre_task_readiness is None or t.duration_delta_minutes is None:
-            continue
-        if t.pre_task_readiness <= 2:
-            low.append(t.duration_delta_minutes)
-        elif t.pre_task_readiness >= 4:
-            high.append(t.duration_delta_minutes)
+    """Pre-task readiness vs delta — median split, always emits when computable."""
+    pairs = [
+        (t.pre_task_readiness, t.duration_delta_minutes)
+        for t in tasks
+        if t.pre_task_readiness is not None and t.duration_delta_minutes is not None
+    ]
+    if len(pairs) < 6:
+        return None
 
+    med = _median([p[0] for p in pairs])
+    low = [d for r, d in pairs if r < med]
+    high = [d for r, d in pairs if r > med]
     if len(low) < 3 or len(high) < 3:
         return None
 
     avg_low = _avg(low)
     avg_high = _avg(high)
-    diff = avg_low - avg_high  # positive = low readiness runs longer over plan
+    diff = avg_low - avg_high  # positive = low-readiness sessions overrun more (delta smaller)
     n = len(low) + len(high)
 
-    if diff > 15:
-        return _insight(
-            "readiness_predicts_outcome",
-            f"When you start sharp (4-5), you finish {round(diff)} min closer to plan than when drained (1-2).",
-            n,
-        )
     if abs(diff) < 5:
         return _insight(
             "readiness_predicts_outcome",
-            "Your readiness rating doesn't seem to affect your execution time yet — interesting.",
+            "Your readiness rating doesn't track execution time — your starting state isn't predicting outcomes.",
             n,
+            strength=abs(diff),
         )
-    return None
+    if diff > 0:
+        return _insight(
+            "readiness_predicts_outcome",
+            f"When you start sharp, you finish {round(abs(diff))} min closer to plan than when drained.",
+            n,
+            strength=abs(diff),
+        )
+    return _insight(
+        "readiness_predicts_outcome",
+        f"When you start drained, you actually finish {round(abs(diff))} min closer to plan — your low-readiness sessions outperform your sharp ones.",
+        n,
+        strength=abs(diff),
+    )
 
 
 def _insight_abandonment(tasks: list) -> Optional[dict]:
-    """Insight 3: abandonment rate by time-of-day and category."""
+    """Abandonment rate by TOD and category. Threshold 20%."""
     tod_total: dict[str, int] = defaultdict(int)
-    tod_abandoned: dict[str, int] = defaultdict(int)
+    tod_ab: dict[str, int] = defaultdict(int)
     cat_total: dict[str, int] = defaultdict(int)
-    cat_abandoned: dict[str, int] = defaultdict(int)
+    cat_ab: dict[str, int] = defaultdict(int)
 
     for t in tasks:
         tod = _time_of_day(to_local(t.planned_start_utc))
         tod_total[tod] += 1
         if t.initiation_status == "abandoned":
-            tod_abandoned[tod] += 1
+            tod_ab[tod] += 1
         if t.category:
             cat_total[t.category] += 1
             if t.initiation_status == "abandoned":
-                cat_abandoned[t.category] += 1
+                cat_ab[t.category] += 1
 
-    # Check time-of-day abandonment
-    for tod, total in tod_total.items():
-        if total < 3:
+    best_tod = None
+    for tod, tot in tod_total.items():
+        if tot < 5:
             continue
-        rate = tod_abandoned.get(tod, 0) / total
-        if rate > 0.40:
-            pct = round(rate * 100)
-            return _insight(
-                "abandonment_pattern",
-                f"You abandon {pct}% of your {tod} tasks before starting them.",
-                total,
-            )
+        rate = tod_ab.get(tod, 0) / tot
+        if rate >= 0.20 and (best_tod is None or rate > best_tod[1]):
+            best_tod = (tod, rate, tot)
 
-    # Check category abandonment
-    worst_cat, worst_rate, worst_n = None, 0.0, 0
-    for cat, total in cat_total.items():
-        if total < 3:
+    best_cat = None
+    for cat, tot in cat_total.items():
+        if tot < 3:
             continue
-        rate = cat_abandoned.get(cat, 0) / total
-        if rate > worst_rate:
-            worst_cat, worst_rate, worst_n = cat, rate, total
+        rate = cat_ab.get(cat, 0) / tot
+        if rate >= 0.25 and (best_cat is None or rate > best_cat[1]):
+            best_cat = (cat, rate, tot)
 
-    if worst_cat and worst_rate > 0.40:
-        return _insight(
-            "abandonment_pattern",
-            f"Your {worst_cat} tasks are your most abandoned.",
-            worst_n,
-        )
-    return None
+    pick = None
+    if best_tod and best_cat:
+        pick = best_tod if best_tod[1] >= best_cat[1] else best_cat
+        kind = "tod" if pick is best_tod else "cat"
+    elif best_tod:
+        pick, kind = best_tod, "tod"
+    elif best_cat:
+        pick, kind = best_cat, "cat"
+    else:
+        return None
+
+    label, rate, n = pick
+    pct = round(rate * 100)
+    obs = (
+        f"You abandon {pct}% of your {label} tasks before starting them."
+        if kind == "tod"
+        else f"Your {label} tasks are your most abandoned — {pct}% never start."
+    )
+    return _insight("abandonment_pattern", obs, n, strength=rate * 100)
 
 
 def _insight_estimation_trend(tasks: list) -> Optional[dict]:
-    """Insight 4: estimation accuracy improving or worsening over last 10 sessions."""
+    """Estimation accuracy trend over last 10 sessions."""
     executed = sorted(
         [t for t in tasks if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None and t.executed_end_utc],
         key=lambda t: t.executed_end_utc,
@@ -356,30 +363,23 @@ def _insight_estimation_trend(tasks: list) -> Optional[dict]:
     if len(executed) < 10:
         return None
 
-    recent = executed[:5]   # newest 5
-    older = executed[5:10]  # next 5
-
+    recent = executed[:5]
+    older = executed[5:10]
     avg_recent = _avg([abs(t.duration_delta_minutes) for t in recent])
     avg_older = _avg([abs(t.duration_delta_minutes) for t in older])
     improvement = round(avg_older - avg_recent, 1)
 
-    if improvement > 3:
-        return _insight(
-            "estimation_accuracy_trend",
-            f"Your time estimates are getting more accurate — down {improvement} min average error over your last 10 sessions.",
-            10,
-        )
-    if improvement < -3:
-        return _insight(
-            "estimation_accuracy_trend",
-            "Your estimation error has increased over your last 10 sessions. You may be fatigued or rushing your planning.",
-            10,
-        )
-    return None
+    if abs(improvement) < 3:
+        return None
+    if improvement > 0:
+        obs = f"Your time estimates are getting more accurate — down {improvement} min avg error over your last 10 sessions."
+    else:
+        obs = f"Your estimation error has grown by {abs(improvement)} min over your last 10 sessions. You may be fatigued or rushing your planning."
+    return _insight("estimation_accuracy_trend", obs, 10, strength=abs(improvement))
 
 
 def _insight_best_category(tasks: list) -> Optional[dict]:
-    """Insight 5: most predictable task category."""
+    """Most predictable task category."""
     cat_errors: dict[str, list[int]] = defaultdict(list)
     for t in tasks:
         if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None and t.category:
@@ -393,41 +393,168 @@ def _insight_best_category(tasks: list) -> Optional[dict]:
         if avg < best_avg:
             best_cat, best_avg, best_n = cat, avg, len(errors)
 
-    if best_cat:
-        return _insight(
-            "best_category",
-            f"Your {best_cat} tasks are your most predictable — avg {round(best_avg)} min from plan.",
-            best_n,
-        )
-    return None
+    if best_cat is None:
+        return None
+    return _insight(
+        "best_category",
+        f"Your {best_cat} tasks are your most predictable — avg {round(best_avg)} min from plan.",
+        best_n,
+        strength=max(0.0, 60.0 - best_avg),  # closer to plan = stronger insight
+    )
+
+
+def _insight_worst_category(tasks: list) -> Optional[dict]:
+    """Least predictable task category — the bucket pulling estimation accuracy down."""
+    cat_errors: dict[str, list[int]] = defaultdict(list)
+    for t in tasks:
+        if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None and t.category:
+            cat_errors[t.category].append(abs(t.duration_delta_minutes))
+
+    worst_cat, worst_avg, worst_n = None, 0.0, 0
+    for cat, errors in cat_errors.items():
+        if len(errors) < 3:
+            continue
+        avg = _avg(errors)
+        if avg > worst_avg:
+            worst_cat, worst_avg, worst_n = cat, avg, len(errors)
+
+    if worst_cat is None or worst_avg < 20:
+        return None
+    return _insight(
+        "worst_category",
+        f"Your {worst_cat} tasks are your least predictable — avg {round(worst_avg)} min from plan.",
+        worst_n,
+        strength=worst_avg,
+    )
 
 
 def _insight_discrepancy_signal(tasks: list) -> Optional[dict]:
-    """Insight 6: link between cognitive shift and execution error."""
-    high_disc, low_disc = [], []
-    for t in tasks:
-        if t.discrepancy_score is None or t.duration_delta_minutes is None:
-            continue
-        if t.discrepancy_score >= 3:
-            high_disc.append(abs(t.duration_delta_minutes))
-        else:
-            low_disc.append(abs(t.duration_delta_minutes))
-
-    if len(high_disc) < 3 or len(low_disc) < 3:
+    """Cognitive shift vs execution error — median split."""
+    pairs = [
+        (t.discrepancy_score, abs(t.duration_delta_minutes))
+        for t in tasks
+        if t.discrepancy_score is not None and t.duration_delta_minutes is not None
+    ]
+    if len(pairs) < 6:
         return None
 
-    avg_high = _avg(high_disc)
-    avg_low = _avg(low_disc)
-    n = len(high_disc) + len(low_disc)
+    med = _median([p[0] for p in pairs])
+    high = [e for d, e in pairs if d > med]
+    low = [e for d, e in pairs if d <= med]
+    if len(high) < 3 or len(low) < 3:
+        return None
 
-    if avg_low > 0 and avg_high > avg_low * 1.2:
-        pct = round((avg_high / avg_low - 1) * 100)
-        return _insight(
-            "discrepancy_signal",
-            f"On sessions where your cognitive state shifted most, your execution error was {pct}% higher.",
-            n,
-        )
-    return None
+    avg_high = _avg(high)
+    avg_low = _avg(low)
+    n = len(high) + len(low)
+    if avg_low <= 0:
+        return None
+
+    ratio = avg_high / avg_low
+    if abs(ratio - 1) < 0.15:
+        return None
+    pct = round((ratio - 1) * 100)
+    if pct > 0:
+        obs = f"On sessions where your cognitive state shifted most, your execution error was {pct}% higher."
+    else:
+        obs = f"On sessions where your cognitive state shifted most, your execution error was actually {abs(pct)}% lower — interesting."
+    return _insight("discrepancy_signal", obs, n, strength=abs(pct))
+
+
+def _insight_pause_pattern(tasks: list) -> Optional[dict]:
+    """Pause behavior across executed sessions."""
+    executed = [t for t in tasks if t.state == TaskState.EXECUTED]
+    if len(executed) < 5:
+        return None
+    paused = [t for t in executed if (t.pause_count or 0) > 0]
+    rate = len(paused) / len(executed)
+    if rate < 0.25:
+        return None
+    avg_pauses = _avg([t.pause_count for t in paused])
+    pct = round(rate * 100)
+    return _insight(
+        "pause_pattern",
+        f"You pause on {pct}% of your sessions — averaging {avg_pauses} interruptions when you do.",
+        len(executed),
+        strength=rate * 100,
+    )
+
+
+def _insight_morning_anchor(tasks: list) -> Optional[dict]:
+    """Cascade signal: does skipping the morning anchor predict the rest of the day?"""
+    days_map: dict = defaultdict(list)
+    for t in tasks:
+        if t.state == TaskState.DELETED:
+            continue
+        d = to_local(t.planned_start_utc).date()
+        days_map[d].append(t)
+
+    days_with_morning = 0
+    morning_skipped_days = 0
+    morning_skip_cascade = 0
+    for d, day_tasks in days_map.items():
+        day_tasks_sorted = sorted(day_tasks, key=lambda x: x.planned_start_utc)
+        first = day_tasks_sorted[0]
+        if to_local(first.planned_start_utc).hour >= 9:
+            continue
+        days_with_morning += 1
+        is_skip = first.state == TaskState.SKIPPED or first.initiation_status == "abandoned"
+        if is_skip:
+            morning_skipped_days += 1
+            rest = day_tasks_sorted[1:]
+            if rest:
+                rest_skips = sum(1 for x in rest if x.state == TaskState.SKIPPED or x.initiation_status == "abandoned")
+                if rest_skips / len(rest) > 0.5:
+                    morning_skip_cascade += 1
+
+    if days_with_morning < 3 or morning_skipped_days < 2:
+        return None
+    cascade_rate = morning_skip_cascade / morning_skipped_days
+    if cascade_rate < 0.5:
+        return None
+    pct = round(cascade_rate * 100)
+    return _insight(
+        "morning_anchor_cascade",
+        f"When you skip your first morning task, {pct}% of the rest of that day collapses with it.",
+        days_with_morning,
+        strength=cascade_rate * 100,
+    )
+
+
+def _insight_retroactive_rate(tasks: list) -> Optional[dict]:
+    """How much of execution is logged retroactively rather than planned-then-executed."""
+    if len(tasks) < 10:
+        return None
+    retro = sum(1 for t in tasks if t.initiation_status == "retroactive")
+    rate = retro / len(tasks)
+    if rate < 0.20:
+        return None
+    pct = round(rate * 100)
+    return _insight(
+        "retroactive_rate",
+        f"{pct}% of your sessions are logged after the fact rather than planned ahead — your day is being narrated, not steered.",
+        len(tasks),
+        strength=rate * 100,
+    )
+
+
+def _insight_initiation_delay(tasks: list) -> Optional[dict]:
+    """Average minutes between scheduled start and actual start."""
+    delays = [
+        t.initiation_delay_minutes
+        for t in tasks
+        if t.initiation_delay_minutes is not None and t.state == TaskState.EXECUTED
+    ]
+    if len(delays) < 5:
+        return None
+    avg = _avg(delays)
+    if abs(avg) < 5:
+        return None
+    if avg > 0:
+        obs = f"On average you start tasks {round(avg)} min after their scheduled time."
+    else:
+        obs = f"On average you start tasks {round(abs(avg))} min before their scheduled time — your plan is lagging behind your reality."
+    return _insight("initiation_delay", obs, len(delays), strength=abs(avg))
 
 
 # ---------------------------------------------------------------------------
@@ -440,12 +567,14 @@ async def get_insights(
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Generate up to 3 plain-language behavioral observations from task history.
+    Generate up to 5 plain-language behavioral observations from task history,
+    sorted by strength (largest signal first).
 
     Rule-based only — no ML. Requires >= 3 completed sessions with delta data.
     Pass ?auto_mark=true to suppress already-shown insights (24h cooldown per insight_id).
     """
     MIN_SESSIONS = 3
+    MAX_INSIGHTS = 5
 
     all_tasks = (
         db.query(Task)
@@ -478,34 +607,36 @@ async def get_insights(
         _insight_abandonment,
         _insight_estimation_trend,
         _insight_best_category,
+        _insight_worst_category,
         _insight_discrepancy_signal,
+        _insight_pause_pattern,
+        _insight_morning_anchor,
+        _insight_retroactive_rate,
+        _insight_initiation_delay,
     ]
 
     redis = RedisClient()
-    insights = []
-
+    candidates = []
     for gen in generators:
-        if len(insights) >= 3:
-            break
         result = gen(all_tasks)
-        if result is None:
-            continue
+        if result is not None:
+            candidates.append(result)
 
+    # Sort by strength (largest signal first), then by data_points
+    candidates.sort(key=lambda r: (r.get("strength", 0.0), r.get("data_points", 0)), reverse=True)
+
+    insights = []
+    for result in candidates:
+        if len(insights) >= MAX_INSIGHTS:
+            break
         insight_id = result["id"]
         redis_key = f"insight_shown:{insight_id}"
-
-        # Mark seen status from Redis
         result["seen"] = bool(redis.client.exists(redis_key))
-
-        # If auto_mark: skip already-seen insights entirely
         if auto_mark and result["seen"]:
             continue
-
-        # Mark as seen in Redis with 24h TTL
         if auto_mark:
             redis.client.setex(redis_key, 86400, "1")
             result["seen"] = True
-
         insights.append(result)
 
     return {
@@ -719,59 +850,124 @@ async def get_cascade(
 # Bias Factor
 # ---------------------------------------------------------------------------
 
+def _bias_cell(rows: list[tuple[int, int]], min_n: int) -> Optional[dict]:
+    """
+    Build a bias-factor cell from a list of (planned, executed) integer pairs.
+
+    Returns None if rows < min_n. Otherwise returns:
+        bias_factor       — sum(executed) / sum(planned)        (PRIMARY, weighted)
+        bias_factor_mean  — mean(executed_i / planned_i)         (per-session mean)
+
+    Sum-ratio is the primary because it weights longer tasks proportionally and
+    is what a scheduler should consume to size the next slot. Mean-ratio is
+    reported alongside as a sanity check — divergence between the two reveals a
+    bucket dominated by a small number of long sessions.
+
+    interpretation thresholds apply to the primary (sum-ratio).
+    """
+    if len(rows) < min_n:
+        return None
+    sum_p = sum(p for p, _ in rows)
+    sum_e = sum(e for _, e in rows)
+    if sum_p <= 0:
+        return None
+    sum_ratio = round(sum_e / sum_p, 3)
+    mean_ratio = round(sum(e / p for p, e in rows) / len(rows), 3)
+    return {
+        "bias_factor": sum_ratio,
+        "bias_factor_mean": mean_ratio,
+        "sessions": len(rows),
+        "confidence": _confidence(len(rows)),
+        "interpretation": (
+            "on target" if 0.9 <= sum_ratio <= 1.1
+            else "underestimates" if sum_ratio > 1.1
+            else "overestimates"
+        ),
+    }
+
+
 @router.get("/analytics/bias_factor")
 async def get_bias_factor(
-    min_sessions: int = Query(5, ge=2, le=50, description="Minimum sessions per bucket"),
+    min_sessions: int = Query(3, ge=2, le=50, description="Minimum sessions per bucket"),
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Per category+time_of_day estimation bias factor.
+    Per (category, time_of_day) estimation bias factor with fallback aggregations.
 
-    bias_factor = avg(executed_duration / planned_duration) per bucket.
-    > 1.0 means tasks consistently take longer than planned.
-    < 1.0 means tasks finish early.
+    Returns the primary cells (category × time_of_day) plus three fallback layers
+    (category-only, time_of_day-only, global) that a scheduler can fall back through
+    when a specific cell lacks data. Also returns the list of insufficient cells so
+    the operator can see what is data-starved.
 
-    Only buckets with >= min_sessions are returned.
+    Both ratios are returned per cell:
+        bias_factor       — sum(executed) / sum(planned)        — PRIMARY
+        bias_factor_mean  — mean(executed_i / planned_i)        — sanity check
+
+    bias_factor > 1.0 → tasks run longer than planned (underestimates).
+    Excludes retroactive sessions (delta=0 by construction; would corrupt the ratio).
     """
     tasks = (
         db.query(Task)
         .filter(
             Task.state == TaskState.EXECUTED,
             Task.initiation_status != "system_error",
+            Task.initiation_status != "retroactive",
             Task.executed_duration_minutes != None,
             Task.planned_duration_minutes > 0,
         )
         .all()
     )
 
-    buckets: dict[str, list[float]] = defaultdict(list)
+    cell_buckets: dict[tuple[str, str], list[tuple[int, int]]] = defaultdict(list)
+    cat_buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    tod_buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    global_rows: list[tuple[int, int]] = []
+
     for t in tasks:
         cat = t.category or "uncategorized"
         tod = _time_of_day(to_local(t.planned_start_utc))
-        key = f"{cat}|{tod}"
-        ratio = t.executed_duration_minutes / t.planned_duration_minutes
-        buckets[key].append(ratio)
+        pair = (t.planned_duration_minutes, t.executed_duration_minutes)
+        cell_buckets[(cat, tod)].append(pair)
+        cat_buckets[cat].append(pair)
+        tod_buckets[tod].append(pair)
+        global_rows.append(pair)
 
-    results = []
-    for key, ratios in sorted(buckets.items()):
-        if len(ratios) < min_sessions:
+    cells = []
+    insufficient = []
+    for (cat, tod), rows in sorted(cell_buckets.items()):
+        cell = _bias_cell(rows, min_sessions)
+        if cell is None:
+            insufficient.append({"category": cat, "time_of_day": tod, "sessions": len(rows)})
             continue
-        cat, tod = key.split("|", 1)
-        avg_ratio = round(sum(ratios) / len(ratios), 3)
-        results.append({
-            "category": cat,
-            "time_of_day": tod,
-            "bias_factor": avg_ratio,
-            "sessions": len(ratios),
-            "interpretation": (
-                "on target" if 0.9 <= avg_ratio <= 1.1
-                else "underestimates" if avg_ratio > 1.1
-                else "overestimates"
-            ),
-        })
+        cell["category"] = cat
+        cell["time_of_day"] = tod
+        cells.append(cell)
+
+    category_only = []
+    for cat, rows in sorted(cat_buckets.items()):
+        cell = _bias_cell(rows, min_sessions)
+        if cell is None:
+            continue
+        cell["category"] = cat
+        category_only.append(cell)
+
+    time_of_day_only = []
+    for tod, rows in sorted(tod_buckets.items()):
+        cell = _bias_cell(rows, min_sessions)
+        if cell is None:
+            continue
+        cell["time_of_day"] = tod
+        time_of_day_only.append(cell)
+
+    global_cell = _bias_cell(global_rows, min_sessions)
 
     return {
-        "buckets": results,
+        "cells": cells,
+        "category_only": category_only,
+        "time_of_day_only": time_of_day_only,
+        "global": global_cell,
+        "insufficient_cells": insufficient,
         "min_sessions": min_sessions,
         "total_executed": len(tasks),
+        "primary_metric": "bias_factor (sum-ratio)",
     }

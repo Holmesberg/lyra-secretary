@@ -53,24 +53,14 @@ Correlate against:
 
 ---
 
-### 🟡 Bias factor computation endpoint
-`GET /v1/analytics/bias_factor`
+### ✅ Bias factor computation endpoint
+`GET /v1/analytics/bias_factor?min_sessions=3`
 
-Returns per-category, per-time-of-day multipliers:
-```json
-{
-  "bias_factors": {
-    "development_morning": 1.8,
-    "development_afternoon": 1.4,
-    "study_morning": 1.2,
-    "fitness_any": 1.1
-  },
-  "sessions_required": 5,
-  "ready": true
-}
-```
+Returns per (category, time_of_day) cells with fallback aggregations. Each cell exposes both metrics:
+- `bias_factor` — sum(executed) / sum(planned). **PRIMARY** (weighted, scheduler-consumable).
+- `bias_factor_mean` — mean(executed_i / planned_i). Sanity check; divergence reveals long-session dominance.
 
-Used by: adaptive planning feature (v1.5).
+Response shape: `{ cells, category_only, time_of_day_only, global, insufficient_cells, min_sessions, total_executed, primary_metric }`. Excludes retroactive sessions per MANIFESTO Pre-registered Rule #1. `> 1.0` = underestimates, `< 1.0` = overestimates, `0.9–1.1` = on target. Used by adaptive planning (v1.5).
 
 ---
 

@@ -589,6 +589,10 @@ The manifesto defines `delta = planned_duration − executed_duration`, so **ove
 - The bias_factor magnitude claim (`1.5–2.0` for high readiness) is a separate, downstream question. H1 only concerns whether *any* directional signal exists.
 - Sleep as a leading indicator is explicitly out of scope for the April 15 analysis. It is Paper 2 territory and requires schema changes that will not be made mid-experiment.
 
+### Day 4 anomaly note (Apr 8 diagnostic)
+
+A median-split of `pre_task_readiness` against `duration_delta_minutes` on the n=18 paired sessions available on Day 4 showed that **low-readiness sessions outperformed sharp ones by 58 minutes** on average — the opposite of the naive planning-fallacy prediction. This is *not* H1 itself (H1 uses `signed_discrepancy = post − pre`, not `pre` alone) and does not constitute evidence for or against H1. Possible explanation: conservative planning under low readiness rather than better execution — i.e. when the operator feels drained, plans are scaled down, so the resulting delta is smaller. Examine in the April 15 analysis by comparing the distribution of `planned_duration_minutes` across low- vs high-readiness sessions before drawing any execution-side conclusions.
+
 ### Pre-registered analysis rules (committed before April 15 analysis is run)
 
 These rules are fixed in advance to remove analyst degrees of freedom on the day of analysis. Any deviation must be explicitly justified in the writeup.
