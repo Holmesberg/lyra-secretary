@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     # Telegram (Optional — direct reminder delivery)
     TELEGRAM_BOT_TOKEN: Optional[str] = Field(None, env="TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID: Optional[str] = Field(None, env="TELEGRAM_CHAT_ID")
+
+    # Auth (Phase 2). JWT_SECRET is shared with the Next.js frontend's
+    # NEXTAUTH_SECRET — both must be identical or token validation fails.
+    JWT_SECRET: str = "dev-only-replace-me-with-32-byte-urlsafe-secret"
+    JWT_ALGORITHM: str = "HS256"
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    FRONTEND_URL: str = "http://localhost:3000"
     
     class Config:
         env_file = ".env"
