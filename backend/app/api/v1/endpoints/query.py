@@ -73,6 +73,11 @@ async def query_tasks(
                 "category": t.category,
                 "initiation_status": t.initiation_status,
                 "session_index_in_day": t.session_index_in_day if t.session_index_in_day is not None else 0,
+                "pre_task_readiness": t.pre_task_readiness,
+                "post_task_reflection": t.post_task_reflection,
+                "planned_duration_minutes": t.planned_duration_minutes,
+                "executed_duration_minutes": t.executed_duration_minutes,
+                "duration_delta_minutes": t.duration_delta_minutes,
             }
             for t in tasks
         ]

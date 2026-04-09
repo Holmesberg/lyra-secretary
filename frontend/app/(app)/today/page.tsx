@@ -57,6 +57,31 @@ export default function TodayPage() {
   const activeTaskId = status?.active ? status.task_id : undefined;
   const timerBusy = !!status?.active;
 
+  // P1-3 sort: EXECUTING top, PLANNED asc by start, PAUSED, EXECUTED desc by
+  // end, SKIPPED bottom desc by start.
+  const STATE_ORDER: Record<string, number> = {
+    EXECUTING: 0,
+    PLANNED: 1,
+    PAUSED: 2,
+    EXECUTED: 3,
+    SKIPPED: 4,
+    DELETED: 5,
+  };
+  const sortedTasks = tasksQ.data
+    ? [...tasksQ.data].sort((a, b) => {
+        const sa = STATE_ORDER[a.state] ?? 9;
+        const sb = STATE_ORDER[b.state] ?? 9;
+        if (sa !== sb) return sa - sb;
+        const at = a.start ? new Date(a.start).getTime() : 0;
+        const bt = b.start ? new Date(b.start).getTime() : 0;
+        const ae = a.end ? new Date(a.end).getTime() : at;
+        const be = b.end ? new Date(b.end).getTime() : bt;
+        if (a.state === "EXECUTED") return be - ae; // desc by end
+        if (a.state === "SKIPPED") return bt - at; // desc by start
+        return at - bt; // asc
+      })
+    : [];
+
   async function handleStart(task: TaskRowType, readiness: number) {
     setErrorMsg(null);
     try {
@@ -134,9 +159,9 @@ export default function TodayPage() {
         </div>
       )}
 
-      {tasksQ.data && tasksQ.data.length > 0 && (
+      {sortedTasks.length > 0 && (
         <div className="flex flex-col gap-2">
-          {tasksQ.data.map((t) => (
+          {sortedTasks.map((t) => (
             <TaskRow
               key={t.task_id}
               task={t}

@@ -6,12 +6,15 @@ import { CATEGORY_COLORS, type Category } from "@/lib/categories";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+// P1-2 convention: PLANNED gray, EXECUTING blue, PAUSED amber,
+// EXECUTED green, SKIPPED red, DELETED dimmed gray.
 const STATE_STYLES: Record<string, string> = {
   PLANNED: "bg-white/10 text-white/70 border-white/15",
-  EXECUTING: "bg-green-500/20 text-green-300 border-green-500/30",
+  EXECUTING: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   PAUSED: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-  EXECUTED: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  EXECUTED: "bg-green-500/20 text-green-300 border-green-500/30",
   SKIPPED: "bg-red-500/15 text-red-300 border-red-500/25",
+  DELETED: "bg-white/[0.03] text-white/30 border-white/10",
 };
 
 interface Props {
@@ -22,9 +25,48 @@ interface Props {
   onSkip: (task: TaskRowType) => void;
 }
 
+// Research layer: readiness X → focus Y ±Nmin
+// Typography kept subordinate to title (text-[11px] white/40).
+function ResearchLayer({ task }: { task: TaskRowType }) {
+  const { state, pre_task_readiness, post_task_reflection, duration_delta_minutes } = task;
+
+  if (state === "SKIPPED") {
+    return <span className="font-mono text-[11px] text-white/30">—</span>;
+  }
+  if (state === "PLANNED") return null;
+
+  if (state === "EXECUTING" || state === "PAUSED") {
+    if (pre_task_readiness == null) return null;
+    return (
+      <span className="font-mono text-[11px] text-white/40">
+        ready {pre_task_readiness} →
+      </span>
+    );
+  }
+
+  // EXECUTED
+  if (pre_task_readiness == null && post_task_reflection == null) return null;
+  const delta = duration_delta_minutes;
+  const deltaStr =
+    delta == null
+      ? ""
+      : delta === 0
+      ? " ±0min"
+      : delta > 0
+      ? ` −${delta}min`
+      : ` +${Math.abs(delta)}min`;
+  return (
+    <span className="font-mono text-[11px] text-white/40">
+      {pre_task_readiness ?? "?"} → {post_task_reflection ?? "?"}
+      {deltaStr}
+    </span>
+  );
+}
+
 export function TaskRow({ task, disableStart, onStart, onStop, onSkip }: Props) {
-  const start = task.start ? format(new Date(task.start), "HH:mm") : "—";
-  const end = task.end ? format(new Date(task.end), "HH:mm") : "—";
+  // P1-1: 12-hour format.
+  const start = task.start ? format(new Date(task.start), "h:mm a") : "—";
+  const end = task.end ? format(new Date(task.end), "h:mm a") : "—";
   const cat = task.category as Category | null;
   const state = task.state;
   const isLive = state === "EXECUTING" || state === "PAUSED";
@@ -32,12 +74,13 @@ export function TaskRow({ task, disableStart, onStart, onStop, onSkip }: Props) 
 
   return (
     <div className="flex items-center gap-4 rounded-md border border-white/5 bg-white/[0.02] px-4 py-3">
-      <div className="w-20 font-mono text-xs text-white/50">
+      <div className="w-28 font-mono text-xs text-white/50">
         {start}–{end}
       </div>
-      <div className="flex-1 truncate">
+      <div className="min-w-0 flex-1">
         <div className="truncate text-sm">{task.title}</div>
       </div>
+      <ResearchLayer task={task} />
       {cat && CATEGORY_COLORS[cat] && (
         <span
           className={cn(

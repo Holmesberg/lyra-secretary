@@ -35,6 +35,7 @@ class TaskSource(str, Enum):
     """How the task was created."""
     MANUAL = "manual"
     VOICE = "voice"
+    WEB = "web"
 
 
 # Models
@@ -151,7 +152,7 @@ class Task(Base):
             name="check_state"
         ),
         CheckConstraint(
-            "source IN ('manual', 'voice')",
+            "source IN ('manual', 'voice', 'web')",
             name="check_source"
         ),
         CheckConstraint(

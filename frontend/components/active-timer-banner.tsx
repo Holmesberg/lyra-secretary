@@ -1,6 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { StopwatchStatus } from "@/lib/tasks";
+import { useQueryClient } from "@tanstack/react-query";
+import { Pause, Play } from "lucide-react";
+import {
+  pauseStopwatch,
+  resumeStopwatch,
+  type StopwatchStatus,
+} from "@/lib/tasks";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 function formatElapsed(start: string, paused: boolean, totalPaused: number) {
   const startMs = new Date(start).getTime();
@@ -17,30 +25,91 @@ function formatElapsed(start: string, paused: boolean, totalPaused: number) {
 }
 
 export function ActiveTimerBanner({ status }: { status: StopwatchStatus }) {
+  const qc = useQueryClient();
   const [tick, setTick] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
   useEffect(() => {
+    if (status.paused) return; // freeze clock when paused
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [status.paused]);
 
   if (!status.active || !status.start_time) return null;
+  const paused = !!status.paused;
   const elapsed = formatElapsed(
     status.start_time,
-    !!status.paused,
+    paused,
     status.total_paused_minutes ?? 0
   );
+
+  async function toggle() {
+    setErr(null);
+    setBusy(true);
+    try {
+      if (paused) await resumeStopwatch();
+      else await pauseStopwatch();
+      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="mb-6 flex items-center justify-between rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3">
-      <div>
-        <div className="text-[10px] uppercase tracking-wide text-green-300/80">
-          Active {status.paused ? "(paused)" : "timer"}
+    <div
+      className={cn(
+        "mb-6 flex items-center justify-between rounded-lg border px-4 py-3",
+        paused
+          ? "border-yellow-500/30 bg-yellow-500/10"
+          : "border-green-500/30 bg-green-500/10"
+      )}
+    >
+      <div className="min-w-0">
+        <div
+          className={cn(
+            "text-[10px] uppercase tracking-wide",
+            paused ? "text-yellow-300/80" : "text-green-300/80"
+          )}
+        >
+          {paused ? "Paused" : "Active timer"}
         </div>
         <div className="mt-0.5 truncate text-sm font-medium text-white">
           {status.task_title || status.task_id}
         </div>
+        {err && <div className="mt-1 text-[11px] text-red-300">{err}</div>}
       </div>
-      <div className="font-mono text-lg tabular-nums text-green-200" data-tick={tick}>
-        {elapsed}
+      <div className="flex items-center gap-3">
+        <div
+          className={cn(
+            "font-mono text-lg tabular-nums",
+            paused ? "text-yellow-200" : "text-green-200"
+          )}
+          data-tick={tick}
+        >
+          {elapsed}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={toggle}
+          disabled={busy}
+          title={paused ? "Resume" : "Pause"}
+        >
+          {paused ? (
+            <>
+              <Play className="mr-1 h-3.5 w-3.5" />
+              Resume
+            </>
+          ) : (
+            <>
+              <Pause className="mr-1 h-3.5 w-3.5" />
+              Pause
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );
