@@ -1,67 +1,64 @@
-"""Pre-task reminder job."""
+"""Pre-task reminder job (per-user)."""
 from datetime import timedelta
 import logging
 import httpx
 
-from app.db.session import SessionLocal
-from app.db.models import Task, TaskState
+from app.db.models import Task, TaskState, User
 from app.utils.time_utils import now_utc, to_local
 from app.utils.redis_client import RedisClient
 from app.services.telegram_notifier import send_telegram_message_sync
+from app.workers.jobs._per_user import for_each_user
 
 logger = logging.getLogger(__name__)
 
 
 def check_upcoming_tasks():
-    """Check for tasks starting in 15 minutes."""
-    db = SessionLocal()
-    try:
-        now = now_utc()
-        reminder_time = now + timedelta(minutes=15)
+    for_each_user(_run_for_one_user)
 
-        tasks = db.query(Task).filter(
-            Task.state == TaskState.PLANNED,
-            Task.planned_start_utc >= now,
-            Task.planned_start_utc <= reminder_time
-        ).all()
 
-        redis = RedisClient()
+def _run_for_one_user(db, user: User):
+    """Per-user reminder check. Auto-scoped by the before_compile hook."""
+    now = now_utc()
+    reminder_time = now + timedelta(minutes=15)
 
-        for task in tasks:
-            notified_key = f"reminder_sent:{task.task_id}"
-            if redis.client.exists(notified_key):
-                continue
+    tasks = db.query(Task).filter(
+        Task.state == TaskState.PLANNED,
+        Task.planned_start_utc >= now,
+        Task.planned_start_utc <= reminder_time,
+    ).all()
 
-            minutes_left = max(0, int((task.planned_start_utc - now).total_seconds() / 60))
-            start_local = to_local(task.planned_start_utc).strftime("%H:%M")
-            planned_duration = task.planned_duration_minutes or 0
+    redis = RedisClient()
 
-            message = (
-                f"⏰ *Reminder: {task.title}*\n"
-                f"Starting in {minutes_left} minutes ({start_local} Cairo)\n"
-                f"Planned duration: {planned_duration} min"
-            )
+    for task in tasks:
+        notified_key = f"reminder_sent:{user.user_id}:{task.task_id}"
+        if redis.client.exists(notified_key):
+            continue
 
-            # 1. Try direct Telegram delivery
+        minutes_left = max(0, int((task.planned_start_utc - now).total_seconds() / 60))
+        start_local = to_local(task.planned_start_utc).strftime("%H:%M")
+        planned_duration = task.planned_duration_minutes or 0
+
+        message = (
+            f"⏰ *Reminder: {task.title}*\n"
+            f"Starting in {minutes_left} minutes ({start_local} Cairo)\n"
+            f"Planned duration: {planned_duration} min"
+        )
+
+        # Direct Telegram delivery is operator-only (single shared bot/chat).
+        if user.is_operator:
             sent_direct = send_telegram_message_sync(message)
             if sent_direct:
-                logger.info(f"Reminder for task {task.task_id} sent via direct Telegram")
+                logger.info(f"Reminder for task {task.task_id} sent via direct Telegram (user {user.user_id})")
 
-            # 2. Also push to Redis queue as fallback for OpenClaw
             try:
                 httpx.post(
                     "http://localhost:8000/v1/notifications/push",
                     json={"type": "reminder", "message": message},
-                    timeout=5.0
+                    timeout=5.0,
+                    headers={"X-User-Id": str(user.user_id)},
                 )
-                logger.info(f"Reminder for task {task.task_id} also queued in Redis (fallback)")
             except Exception as e:
                 logger.warning(f"Redis queue fallback failed for task {task.task_id}: {e}")
 
-            # Mark as notified regardless of delivery path to avoid repeat spam
-            redis.client.setex(notified_key, 7200, "1")
-
-    except Exception as e:
-        logger.error(f"Error in reminders job: {e}", exc_info=True)
-    finally:
-        db.close()
+        # Mark notified per-user so two users can't suppress each other's reminders
+        redis.client.setex(notified_key, 7200, "1")
