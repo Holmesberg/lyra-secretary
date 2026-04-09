@@ -134,6 +134,9 @@ class Task(Base):
 
     # Notion sync
     notion_page_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
+
+    # Multi-user ownership (alembic 014)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     
     # Relationships
     stopwatch_sessions: Mapped[list["StopwatchSession"]] = relationship(
@@ -228,6 +231,9 @@ class StopwatchSession(Base):
     original_pre_task_readiness: Mapped[Optional[int]] = mapped_column(Integer)
     task_completion_percentage: Mapped[Optional[int]] = mapped_column(Integer)
 
+    # Multi-user ownership (alembic 014)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
     # Relationship
     task: Mapped["Task"] = relationship(back_populates="stopwatch_sessions")
     
@@ -279,3 +285,49 @@ class CategoryMapping(Base):
     __table_args__ = (
         Index("idx_category_confidence", "category", "confidence"),
     )
+
+
+class User(Base):
+    """Multi-user pivot — one row per account. Operator is user_id=1."""
+
+    __tablename__ = "user"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    google_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Africa/Cairo")
+    is_operator: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notion_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    archetype_id: Mapped[Optional[str]] = mapped_column(String(40), ForeignKey("archetype.archetype_id"))
+    terms_accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    research_consent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class Archetype(Base):
+    """Behavioral archetype lookup. Seeded from clustering_spec.md §4."""
+
+    __tablename__ = "archetype"
+
+    archetype_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    prior_bias_factor: Mapped[float] = mapped_column(Float, nullable=False)
+    prior_sigma: Mapped[float] = mapped_column(Float, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class ArchetypeAssignment(Base):
+    """Per-user archetype assignment + raw instrument scores for re-bucketing."""
+
+    __tablename__ = "archetype_assignment"
+
+    assignment_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.user_id"), nullable=False)
+    archetype_id: Mapped[str] = mapped_column(String(40), ForeignKey("archetype.archetype_id"), nullable=False)
+    meq_score: Mapped[Optional[int]] = mapped_column(Integer)
+    bfi_c_score: Mapped[Optional[int]] = mapped_column(Integer)
+    bscs_score: Mapped[Optional[int]] = mapped_column(Integer)
+    gp_score: Mapped[Optional[int]] = mapped_column(Integer)
+    chronotype: Mapped[Optional[str]] = mapped_column(String(20))
+    discipline_z: Mapped[Optional[float]] = mapped_column(Float)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
