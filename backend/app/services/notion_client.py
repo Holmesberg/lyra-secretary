@@ -39,15 +39,23 @@ class NotionClient:
             Notion page ID
         """
         # Multi-user gate (Phase 2): skip for users without notion_enabled.
+        # Use the caller's session when provided so tests with :memory: DBs
+        # don't fall through to the real DATABASE_URL-bound engine (which may
+        # not exist in CI — sqlite3 OperationalError: unable to open database).
         from app.db.models import User
-        from app.db.session import SessionLocal
-        _s = SessionLocal()
+        _s = db
+        _owned = False
+        if _s is None:
+            from app.db.session import SessionLocal
+            _s = SessionLocal()
+            _owned = True
         try:
             owner = _s.query(User).filter(User.user_id == getattr(task, "user_id", 1)).first()
             if owner is None or not owner.notion_enabled:
                 return None
         finally:
-            _s.close()
+            if _owned:
+                _s.close()
         # If no Notion creds are passed, gracefully allow it to fail or skip
         if not self.database_id or not settings.NOTION_API_KEY:
             return None

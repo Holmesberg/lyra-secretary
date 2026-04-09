@@ -451,7 +451,10 @@ def _insight_discrepancy_signal(tasks: list) -> Optional[dict]:
         return None
 
     ratio = avg_high / avg_low
-    if abs(ratio - 1) < 0.15:
+    # LYR-061: require ≥20% spread — 15% fired on pairs like (10, 12) which
+    # is 17% but clinically meaningless (2-minute delta). Matches the gate in
+    # test_discrepancy_signal_returns_none_when_no_signal.
+    if abs(ratio - 1) < 0.20:
         return None
     pct = round((ratio - 1) * 100)
     if pct > 0:
