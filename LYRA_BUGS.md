@@ -59,6 +59,8 @@ Last updated: April 7, 2026 — v1.5. 37 open, 53 fixed.
 | LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Pause A → start B → stop B → resume A: Redis loses task A's active session reference. User continues work untracked. |
 | ~~LYR-089~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Reflection not asked when early stop confirmed~~ | Fixed: SKILL.md stop flow updated — reflection collected before `?confirmed=true` call, not as a separate 3rd call. |
 | ~~LYR-090~~ | ~~🔴 high~~ | ~~backend~~ | ~~0-minute active session marked EXECUTED instead of SKIPPED~~ | Fixed: `StopwatchManager.stop()` checks `active_elapsed == 0` before `complete_task()` — transitions directly to SKIPPED with `initiation_status='abandoned'`. Stop response includes `skip_reason: 'zero_duration'`. |
+| LYR-091 | 🟢 low | backend | `resolve_user_from_token` matches by email only | `google_id` stays as `simulated-google-sub` placeholder after real sign-in. Upsert real `google_id` from JWT `sub` claim on first real sign-in. Phase 9 fix. |
+| LYR-092 | 🟡 medium | notion | notion_sync retry loop infinitely retries archived pages | Should detect "Can't edit block that is archived" error and drop from Redis queue instead of retrying every 5 min. |
 
 ---
 
