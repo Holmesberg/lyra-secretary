@@ -31,6 +31,9 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         from app.core.security import resolve_user_from_token
 
+        from fastapi.responses import JSONResponse
+        from fastapi import HTTPException
+
         user_id = 1
         resolved = False
         auth = request.headers.get("Authorization") or request.headers.get("authorization")
@@ -40,10 +43,19 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
                 user = resolve_user_from_token(token)
                 user_id = user.user_id
                 resolved = True
-            except Exception:
-                # Bad token: fall through to header / default. Endpoints
-                # that strictly need auth can re-validate via deps.
-                pass
+            except HTTPException as e:
+                # Malformed / expired / unknown-user Bearer must NOT
+                # silently fall through to user_id=1. That's a footgun
+                # even with the scoping hook in place — explicit 401.
+                return JSONResponse(
+                    status_code=e.status_code,
+                    content={"detail": e.detail},
+                )
+            except Exception as e:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": f"bearer auth failed: {e}"},
+                )
 
         if not resolved:
             raw = request.headers.get("X-User-Id")
