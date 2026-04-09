@@ -76,6 +76,18 @@ def adv_users(db):
     set_current_user_id(None)
 
 
+def _redis_available() -> bool:
+    try:
+        from app.utils.redis_client import RedisClient
+        RedisClient().client.ping()
+        return True
+    except Exception:
+        return False
+
+
+needs_redis = pytest.mark.skipif(not _redis_available(), reason="redis not reachable in this env")
+
+
 def _h(uid: int) -> dict:
     return {"X-User-Id": str(uid)}
 
@@ -139,6 +151,7 @@ def test_same_user_overlap_blocks(adv_users, client):
 
 
 # 5. Start stopwatch as 99 on 99's own task — succeeds
+@needs_redis
 def test_stopwatch_own_task(adv_users, client):
     tid = _create(client, 99, "work", 90).json()["task_id"]
     # Start requires the task to be currently runnable; endpoint is /v1/stopwatch/start.
@@ -147,6 +160,7 @@ def test_stopwatch_own_task(adv_users, client):
 
 
 # 6. Start stopwatch as 99 on 98's task_id — must 404 (scoped lookup fails)
+@needs_redis
 def test_stopwatch_cross_user_blocked(adv_users, client):
     tid = _create(client, 98, "eve work", 95).json()["task_id"]
     r = client.post("/v1/stopwatch/start", json={"task_id": tid}, headers=_h(99))
