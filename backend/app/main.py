@@ -5,8 +5,10 @@ logging.basicConfig(level=logging.INFO)
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.workers.scheduler import start_scheduler, shutdown_scheduler
+from app.core.config import settings
 from app.db.base import Base
 from app.db import models  # noqa: F401 — register mappers before scoping install
 from app.db.scoping import install_scoping
@@ -86,6 +88,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# CORS first (dev only — prod is single-origin via nginx in Phase 8).
+# Must be declared BEFORE UserScopeMiddleware so the preflight OPTIONS
+# path is handled without interacting with the Bearer auth logic.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["Authorization", "Content-Type", "X-User-Id"],
+    expose_headers=["*"],
+)
 app.add_middleware(UserScopeMiddleware)
 app.include_router(api_router, prefix="/v1")
 
