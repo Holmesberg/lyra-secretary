@@ -188,38 +188,46 @@ async def delete_task(
 @router.post("/tasks/{task_id}/void", response_model=TaskVoidResponse)
 async def void_task(
     task_id: str,
-    request: TaskVoidRequest = None,
+    request: TaskVoidRequest,
     db: Session = Depends(get_db),
 ) -> TaskVoidResponse:
     """
-    Void an EXECUTED task — marks initiation_status='system_error'.
-    Task stays EXECUTED (immutable history preserved) but is excluded
-    from all analytics queries. Use for sessions corrupted by agent
-    or testing errors.
-    """
-    if request is None:
-        request = TaskVoidRequest()
+    Void a task (any non-DELETED state) — Phase 3.2 redesign.
 
+    The row is preserved (immutable history) but `voided_at` is stamped
+    and analytics queries exclude it. `voided_reason` must be one of the
+    VOID_REASONS enum; `void_reason_detail` is required when
+    voided_reason='other'. EXECUTED tasks still get
+    initiation_status='system_error' for backward compatibility with
+    existing analytics filters.
+    """
     task = db.query(Task).filter(Task.task_id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.state != TaskState.EXECUTED:
+    if task.state == TaskState.DELETED:
         raise HTTPException(
             status_code=400,
-            detail=f"Only EXECUTED tasks can be voided (current state: {task.state})",
+            detail="Cannot void a DELETED task",
         )
-    previous = task.initiation_status
-    task.initiation_status = "system_error"
+    previous_state = task.state.value if hasattr(task.state, "value") else str(task.state)
+    previous_status = task.initiation_status
     task.voided_at = _now_utc()
     task.voided_reason = request.voided_reason
+    task.void_reason_detail = request.void_reason_detail
+    # Preserve legacy EXECUTED→system_error mapping so old analytics
+    # filters that test initiation_status still exclude the row.
+    if task.state == TaskState.EXECUTED:
+        task.initiation_status = "system_error"
     db.commit()
     db.refresh(task)
     return TaskVoidResponse(
         task_id=task.task_id,
         voided=True,
-        previous_initiation_status=previous,
+        previous_state=previous_state,
+        previous_initiation_status=previous_status,
         voided_at=to_local(task.voided_at),
         voided_reason=task.voided_reason,
+        void_reason_detail=task.void_reason_detail,
     )
 
 

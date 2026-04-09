@@ -52,15 +52,20 @@ class StopwatchManager:
         return session
 
     def _active_elapsed(self, session: StopwatchSession, pause_state: Optional[dict]) -> int:
-        """Elapsed minutes of active work (excludes all paused time)."""
+        """Elapsed minutes of active work (excludes all paused time).
+
+        Float-seconds arithmetic then convert to int minutes at the end so
+        sub-minute pauses don't truncate to zero (LYR-094). The integer
+        return preserves the existing early-stop gate and status payload.
+        """
         now = now_utc()
-        total = int((now - session.start_time_utc).total_seconds() / 60)
-        total -= session.total_paused_minutes
+        total_seconds = (now - session.start_time_utc).total_seconds()
+        paused_seconds = (session.total_paused_minutes or 0.0) * 60.0
         if pause_state:
             paused_at = datetime.fromisoformat(pause_state["paused_at"])
-            current_pause = int((now - paused_at).total_seconds() / 60)
-            total -= current_pause
-        return max(0, total)
+            paused_seconds += (now - paused_at).total_seconds()
+        active_seconds = max(0.0, total_seconds - paused_seconds)
+        return int(active_seconds // 60)
 
     def check_early_stop(self, user_id: str = "user_primary") -> tuple[bool, int, int]:
         """
@@ -174,11 +179,18 @@ class StopwatchManager:
                 is_future_task = True
 
         actual_start = now_utc()
+        from app.db.scoping import get_current_user_id
+        uid = get_current_user_id()
+        if uid is None:
+            raise RuntimeError(
+                "stopwatch.start: no current_user_id in ContextVar — refusing to write."
+            )
         session = StopwatchSession(
             task_id=task.task_id,
             start_time_utc=actual_start,
             auto_closed=False,
             total_paused_minutes=0,
+            user_id=uid,
         )
         self.db.add(session)
         self.db.flush()
@@ -261,7 +273,8 @@ class StopwatchManager:
 
         now = now_utc()
         paused_at = datetime.fromisoformat(pause_state["paused_at"])
-        pause_duration = int((now - paused_at).total_seconds() / 60)
+        # Float minutes — no sub-minute truncation (LYR-094).
+        pause_duration = (now - paused_at).total_seconds() / 60.0
 
         session = self._get_session(active["session_id"])
         task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
@@ -345,7 +358,7 @@ class StopwatchManager:
         pause_state = self.redis.get_pause_state(user_id)
         if pause_state:
             paused_at = datetime.fromisoformat(pause_state["paused_at"])
-            final_pause = int((stop_time - paused_at).total_seconds() / 60)
+            final_pause = (stop_time - paused_at).total_seconds() / 60.0  # float
             session.total_paused_minutes += final_pause
             session.paused_at_utc = None
             task.pause_count = (task.pause_count or 0) + 1
@@ -395,10 +408,11 @@ class StopwatchManager:
             executed_end=stop_time,
         )
 
-        # Deduct paused time so delta reflects only active work
+        # Deduct paused time so delta reflects only active work. Round here
+        # — duration_delta_minutes downstream is an int column.
         if total_paused > 0:
             task.executed_duration_minutes = max(
-                0, (task.executed_duration_minutes or 0) - total_paused
+                0, (task.executed_duration_minutes or 0) - int(round(total_paused))
             )
             self.db.commit()
             self.db.refresh(task)
@@ -442,6 +456,7 @@ class StopwatchManager:
                     Task.category == task.category,
                     Task.state == TaskState.EXECUTED,
                     Task.initiation_status != "system_error",
+                    Task.voided_at.is_(None),
                     Task.duration_delta_minutes != None,
                     Task.task_id != task.task_id,
                 )

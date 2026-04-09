@@ -23,6 +23,7 @@ def _seed_task(task_id, state, hour_offset=1):
         source=TaskSource.MANUAL,
         initiation_status="abandoned" if state == TaskState.SKIPPED else "not_started",
         category="fitness",
+        user_id=1,
     )
     db.add(t)
     db.commit()

@@ -78,6 +78,8 @@ async def query_tasks(
                 "planned_duration_minutes": t.planned_duration_minutes,
                 "executed_duration_minutes": t.executed_duration_minutes,
                 "duration_delta_minutes": t.duration_delta_minutes,
+                "executed_start": to_local(t.executed_start_utc).isoformat() if t.executed_start_utc else None,
+                "executed_end": to_local(t.executed_end_utc).isoformat() if t.executed_end_utc else None,
             }
             for t in tasks
         ]

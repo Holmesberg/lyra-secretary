@@ -112,7 +112,10 @@ class Task(Base):
 
     # Void tracking (system_error sessions excluded from analytics)
     voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Enum string (test_contamination|duplicate|system_error|data_quality|other)
     voided_reason: Mapped[Optional[str]] = mapped_column(String(200))
+    # Free text — required only when voided_reason='other'.
+    void_reason_detail: Mapped[Optional[str]] = mapped_column(String(500))
 
     # Interruption tracking
     parent_task_id: Mapped[Optional[str]] = mapped_column(String(36))
@@ -137,7 +140,9 @@ class Task(Base):
     notion_page_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
 
     # Multi-user ownership (alembic 014)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # NO default — writes MUST pass user_id explicitly. The prior default=1
+    # silently funneled every cross-tenant write to the operator (LYR-093).
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
     
     # Relationships
     stopwatch_sessions: Mapped[list["StopwatchSession"]] = relationship(
@@ -226,14 +231,17 @@ class StopwatchSession(Base):
     end_time_utc: Mapped[Optional[datetime]] = mapped_column(DateTime)
     auto_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     paused_at_utc: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    total_paused_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    # Float so sub-minute pauses don't truncate to zero (LYR-094).
+    total_paused_minutes: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     pause_reason: Mapped[Optional[str]] = mapped_column(String(50))
     pause_initiator: Mapped[Optional[str]] = mapped_column(String(20))
     original_pre_task_readiness: Mapped[Optional[int]] = mapped_column(Integer)
     task_completion_percentage: Mapped[Optional[int]] = mapped_column(Integer)
 
     # Multi-user ownership (alembic 014)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # NO default — writes MUST pass user_id explicitly. The prior default=1
+    # silently funneled every cross-tenant write to the operator (LYR-093).
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Relationship
     task: Mapped["Task"] = relationship(back_populates="stopwatch_sessions")

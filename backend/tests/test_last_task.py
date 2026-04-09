@@ -29,6 +29,7 @@ def test_last_task_returns_task_info():
         planned_duration_minutes=60,
         state=TaskState.PLANNED,
         source=TaskSource.MANUAL,
+        user_id=1,
     )
     db.add(task)
     db.commit()

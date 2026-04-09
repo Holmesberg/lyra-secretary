@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 import logging
 
 from app.db.models import Task, TaskState, TaskSource, CategoryMapping
+from app.db.scoping import get_current_user_id
 from app.services.parser import TaskParser
 from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector
@@ -20,6 +21,23 @@ from app.utils.time_utils import to_utc, now_utc
 from app.core.exceptions import ImmutableTaskError
 
 logger = logging.getLogger(__name__)
+
+
+def _require_current_user(op: str) -> int:
+    """Resolve the acting user_id from the request-scoped ContextVar.
+
+    Fails closed with an explicit error instead of silently defaulting to
+    operator (user_id=1), which was the LYR-093 cross-tenant write leak.
+    Background jobs MUST call set_current_user_id(...) before invoking
+    TaskManager — see workers/jobs/_per_user.py.
+    """
+    uid = get_current_user_id()
+    if uid is None:
+        raise RuntimeError(
+            f"{op}: no current_user_id in ContextVar — refusing to write. "
+            "Set it via middleware (HTTP) or _per_user.py (worker)."
+        )
+    return uid
 
 
 class TaskManager:
@@ -74,6 +92,7 @@ class TaskManager:
                 Task.initiation_status != "system_error",
                 Task.initiation_status.is_(None),
             ),
+            Task.voided_at.is_(None),
             or_(
                 Task.planned_start_utc < planned_start_utc,
                 and_(
@@ -155,6 +174,7 @@ class TaskManager:
         
         # Create task (transaction safety)
         created_at_ts = now_utc()
+        uid = _require_current_user("create_task")
         task = Task(
             title=title,
             planned_start_utc=start,
@@ -167,6 +187,7 @@ class TaskManager:
             created_at=created_at_ts,
             last_modified_at=created_at_ts,
             session_index_in_day=self._compute_session_index(start, created_at_ts),
+            user_id=uid,
         )
         
         self.db.add(task)
@@ -259,6 +280,7 @@ class TaskManager:
             planned_end_utc = end_utc
 
         created_at_ts = now_utc()
+        uid = _require_current_user("create_retroactive_task")
         task = Task(
             title=title,
             category=category,
@@ -277,6 +299,7 @@ class TaskManager:
             created_at=created_at_ts,
             last_modified_at=created_at_ts,
             session_index_in_day=self._compute_session_index(start_utc, created_at_ts),
+            user_id=uid,
         )
 
         self.db.add(task)

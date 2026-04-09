@@ -27,6 +27,8 @@ export interface TaskRow {
   planned_duration_minutes: number | null;
   executed_duration_minutes: number | null;
   duration_delta_minutes: number | null;
+  executed_start: string | null;
+  executed_end: string | null;
 }
 
 export interface QueryResponse {

@@ -27,6 +27,7 @@ def _seed(state: TaskState, task_id: str):
         planned_duration_minutes=60,
         state=state,
         source=TaskSource.MANUAL,
+        user_id=1,
     )
     db.add(t)
     db.commit()

@@ -24,6 +24,7 @@ def _seed(task_id: str, state: TaskState, hours_from_now: int = 1):
         planned_duration_minutes=60,
         state=state,
         source=TaskSource.MANUAL,
+        user_id=1,
     )
     db.add(t)
     db.commit()
@@ -96,6 +97,7 @@ def test_swap_reactivated_clears_execution_data():
         source=TaskSource.MANUAL,
         executed_duration_minutes=5,
         initiation_status="abandoned",
+        user_id=1,
     )
     db.add(t)
     db.commit()
@@ -154,6 +156,7 @@ def test_executed_task_cannot_be_mark_abandoned():
         planned_duration_minutes=60,
         state=TaskState.EXECUTED,
         source=TaskSource.MANUAL,
+        user_id=1,
     )
     db.add(t)
     db.commit()

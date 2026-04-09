@@ -145,18 +145,49 @@ class TaskDeleteResponse(BaseModel):
     deleted: bool
 
 
+VOID_REASONS = {
+    "test_contamination",
+    "duplicate",
+    "system_error",
+    "data_quality",
+    "other",
+}
+
+
 class TaskVoidRequest(BaseModel):
-    """Request to void an EXECUTED task."""
-    voided_reason: Optional[str] = Field(None, max_length=200)
+    """Request to void a task.
+
+    Allowed on any non-DELETED task (Phase 3.2 redesign). `voided_reason`
+    is now a constrained enum; `void_reason_detail` is required iff
+    voided_reason == 'other'.
+    """
+    voided_reason: str = Field(..., description="Enum", max_length=40)
+    void_reason_detail: Optional[str] = Field(None, max_length=500)
+
+    @validator("voided_reason")
+    def _reason_must_be_enum(cls, v: str) -> str:
+        if v not in VOID_REASONS:
+            raise ValueError(
+                f"voided_reason must be one of {sorted(VOID_REASONS)}"
+            )
+        return v
+
+    @validator("void_reason_detail", always=True)
+    def _detail_required_for_other(cls, v: Optional[str], values: dict) -> Optional[str]:
+        if values.get("voided_reason") == "other" and not (v and v.strip()):
+            raise ValueError("void_reason_detail is required when voided_reason='other'")
+        return v
 
 
 class TaskVoidResponse(BaseModel):
     """Response from voiding a task."""
     task_id: str
     voided: bool
+    previous_state: str
     previous_initiation_status: str
     voided_at: datetime
-    voided_reason: Optional[str] = None
+    voided_reason: str
+    void_reason_detail: Optional[str] = None
 
 
 class MarkAbandonedRequest(BaseModel):

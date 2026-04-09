@@ -47,11 +47,22 @@ export function ActiveTimerBanner({ status }: { status: StopwatchStatus }) {
   async function toggle() {
     setErr(null);
     setBusy(true);
+    // Snapshot for rollback before we optimistically mutate.
+    const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    // Optimistic flip so the banner doesn't wait for the 10 s poll.
+    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) =>
+      old ? { ...old, paused: !paused } : old
+    );
     try {
       if (paused) await resumeStopwatch();
       else await pauseStopwatch();
+      // Authoritative refetch so total_paused_minutes is accurate.
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
     } catch (e) {
+      // Rollback on failure.
+      if (snapshot !== undefined) {
+        qc.setQueryData(["stopwatch-status"], snapshot);
+      }
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);

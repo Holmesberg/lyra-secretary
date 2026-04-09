@@ -102,11 +102,24 @@ export function ReflectionModal({
             disabled={value === null || submitting}
             onClick={async () => {
               if (value === null) return;
+              // Clamp completion % to [0,100]. HTML min/max only constrains
+              // the spinner, not pasted/typed values — the backend enforces
+              // ge/le at the Pydantic layer but we reject early so the user
+              // sees the clamp instead of a 422.
+              let clampedPct: number | undefined;
+              if (pct !== "") {
+                const n = Number(pct);
+                if (!Number.isFinite(n)) {
+                  clampedPct = undefined;
+                } else {
+                  clampedPct = Math.max(0, Math.min(100, Math.round(n)));
+                }
+              }
               setSubmitting(true);
               try {
                 await onConfirm(value, {
                   confirmed: !!earlyStop,
-                  completionPct: pct ? Number(pct) : undefined,
+                  completionPct: clampedPct,
                 });
               } finally {
                 setSubmitting(false);

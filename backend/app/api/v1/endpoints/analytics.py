@@ -43,7 +43,7 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
             (Task.state == TaskState.EXECUTED) |
             (Task.initiation_status.in_(["initiated", "abandoned"]))
         )
-        .filter(Task.initiation_status != "system_error")
+        .filter(Task.initiation_status != "system_error", Task.voided_at.is_(None))
         .order_by(Task.planned_start_utc)
         .all()
     )
@@ -581,7 +581,7 @@ async def get_insights(
 
     all_tasks = (
         db.query(Task)
-        .filter(Task.initiation_status != "system_error")
+        .filter(Task.initiation_status != "system_error", Task.voided_at.is_(None))
         .order_by(Task.planned_start_utc)
         .all()
     )
@@ -673,6 +673,7 @@ async def get_cascade(
         .filter(
             Task.planned_start_utc >= cutoff,
             Task.initiation_status != "system_error",
+            Task.voided_at.is_(None),
         )
         .order_by(Task.planned_start_utc)
         .all()
@@ -914,6 +915,7 @@ async def get_bias_factor(
         .filter(
             Task.state == TaskState.EXECUTED,
             Task.initiation_status != "system_error",
+            Task.voided_at.is_(None),
             Task.initiation_status != "retroactive",
             Task.executed_duration_minutes != None,
             Task.planned_duration_minutes > 0,
