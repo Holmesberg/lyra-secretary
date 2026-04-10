@@ -84,16 +84,16 @@ export function ReflectionModal({
             <label htmlFor="pct">Completion %</label>
             <input
               id="pct"
-              type="number"
-              min={0}
-              max={100}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="0–100"
               value={pct}
               onChange={(e) => {
-                const raw = e.target.value;
-                if (raw === "" || raw === "-") { setPct(raw); return; }
-                const n = Number(raw);
-                if (!Number.isFinite(n)) return;
-                setPct(String(Math.max(0, Math.min(100, Math.round(n)))));
+                const raw = e.target.value.replace(/[^0-9]/g, "");
+                if (raw === "") { setPct(""); return; }
+                const n = parseInt(raw, 10);
+                setPct(String(Math.min(100, n)));
               }}
               className="h-8 w-20 rounded-md border border-white/15 bg-transparent px-2 text-sm"
             />
