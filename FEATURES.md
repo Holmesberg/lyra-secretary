@@ -114,8 +114,8 @@ Global gate: MIN_SESSIONS=3 enforced. `_insight_discrepancy_signal()` now return
 
 ---
 
-### 🟢 Unplanned reason capture
-Add optional `unplanned_reason` enum to retroactive endpoint: `unexpected_task` / `forgot_to_log` / `planning_friction` / `spontaneous_decision`.
+### ✅ Unplanned reason capture
+`unplanned_reason` enum on retroactive endpoint: `unexpected_task` / `forgot_to_log` / `planning_friction` / `spontaneous_decision`. Implemented in v1.4 (migration 008).
 
 Different reasons need different interventions:
 - friction → simplify input
@@ -573,10 +573,12 @@ Each cluster gets different intervention strategy.
 Accepts EEG state snapshot during task execution.
 
 **Validity gate before implementation:**
-- Run simultaneous EEG + self-report sessions
-- Compute correlation between EEG markers and pre/post scores
-- If r > 0.6: proceed
-- If r < 0.4: BCI is parallel signal only, not replacement
+- Run simultaneous EEG + self-report sessions (minimum 20 per subject)
+- Estimate per-source SNR: test-retest reliability of EEG markers vs self-report scores
+- Combine via Bayesian weighting proportional to individual signal-to-noise ratios
+- High correlation → BCI confirms self-report (validation, less new info)
+- Low correlation → BCI captures different construct (interesting, more total info)
+- Both outcomes are useful. Neither replaces the other.
 
 ---
 
@@ -629,9 +631,8 @@ Fix: add curl to exec-approvals.json allowlist permanently. See current workarou
 Root cause: OpenClaw HTTP tool not reliable for Haiku. curl fallback triggers approvals.
 Fix: either force HTTP tool usage in SKILL.md or ensure curl always allowlisted.
 
-### 🟡 LYR-061 — Insights fire before min_sessions_required
-Threshold check not enforced. Single-session "insights" are noise.
-Fix: enforce min_sessions check in insights engine.
+### ✅ LYR-061 — Insights fire before min_sessions_required
+Fixed: MIN_SESSIONS=3 gate enforced. `_insight_discrepancy_signal()` returns None instead of noise message.
 
 ### 🟡 LYR-056 — Multi-task chaining not supported
 "Schedule X then Y" creates only first task.

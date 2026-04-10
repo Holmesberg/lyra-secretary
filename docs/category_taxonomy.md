@@ -30,6 +30,8 @@ Adding categories mid-experiment redistributes sessions across buckets and break
 
 ## Category type field (design — Phase 4)
 
+> **Status: design only, implementation deferred to Phase 4.** The `category_type` column does not exist in the database as of v1.5. The design below is approved; the migration has not been written.
+
 Each category will carry a `category_type` enum with two values:
 
 | Type | Meaning | Examples | Analytics treatment |

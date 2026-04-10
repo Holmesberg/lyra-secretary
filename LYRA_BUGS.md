@@ -1,70 +1,30 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 7, 2026 — v1.5. 37 open, 53 fixed.
+Last updated: April 10, 2026 — v1.5. 13 open, 26 deferred (OpenClaw), 62 fixed.
 
 ---
 
-## Open (43 bugs)
+## Open (13 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
-| LYR-007 | 🟡 medium | openclaw | OpenClaw memory vs actual state | Hard constraint in SKILL.md not fully validated. If task deleted via Swagger, OpenClaw may still believe it exists. |
-| ~~LYR-015~~ | ~~🟡 medium~~ | ~~notion~~ | ~~No backfill for pre-fix tasks~~ | Fixed: `POST /v1/tasks/{task_id}/sync` implemented. |
 | LYR-018 | 🟢 low | notion | Orphaned SQLite records in conflict messages | Old tasks in SQLite but not in Notion appear in conflict detection. Same class as LYR-015. |
-| LYR-019 | 🟡 medium | skill | Day-of-week label mismatch | Lyra labeled Friday Mar 27 as "Thursday Mar 27". Day label wrong in weekly view. |
 | LYR-020 | 🟢 low | notion | Test tasks polluting schedule | Smoke test tasks still visible in Notion. Need cleanup. |
-| LYR-035 | 🟡 medium | skill | Task ID retrieved from memory not backend | On delete/start, Lyra uses conversation memory for task ID instead of querying backend. Hard Rule #6 added but not fully validated. |
-| ~~LYR-036~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Context lost on follow-up corrections~~ | Fixed: `GET /v1/tasks/last` returns most recently operated task (1-hr TTL). SKILL.md rule added. |
-| LYR-037 | 🟡 medium | skill | False conflict between tasks on different days | Hallucinated conflict between Monday and Tuesday tasks. Likely ghost records from bad-UTC era. Retest on clean database. |
-| ~~LYR-042~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Clear schedule leaves EXECUTING tasks~~ | Fixed: `POST /v1/schedule/clear` atomically stops timer + abandons EXECUTING + deletes PLANNED. |
-| LYR-043 | 🔴 high | skill | Duplicate task created instead of using existing | When starting timer, Lyra creates new task from memory instead of querying backend for existing PLANNED task. Hard Rule #6 should fix — not yet fully validated. |
-| LYR-045 | 🟡 medium | notion | Duplicate EXECUTING tasks in Notion | Ghost tasks from memory leaked into Notion. Downstream of LYR-043. |
-| ~~LYR-046~~ | ~~🟡 medium~~ | ~~notion~~ | ~~Category field null in Notion after task executes~~ | Fixed: `_build_properties()` always includes Category (empty array if null, preventing drift). |
 | LYR-047 | 🟢 low | notion | "Past Due" showing on EXECUTED tasks | Status groups correctly configured (EXECUTED in Complete). Notion platform limitation — no programmatic fix available. Document only. |
-| LYR-048 | 🔴 high | skill | Early-stop gate bypassed — model calls `?confirmed=true` directly | GLM skips `/stop` entirely and calls `/stop?confirmed=true` without user input. Confirmed via logs. Hard Rule #5 strengthened but not yet re-validated. |
-| LYR-049 | 🔴 high | skill | Reschedule used as proxy for stopwatch/start on model switch | Sonnet without SKILL.md context improvises wrong endpoints — uses `/v1/reschedule` instead of `/v1/stopwatch/start`. Happens when model switches mid-session and new model has no skill context. Root cause same as LYR-051. |
 | LYR-050 | 🟡 medium | data | `initiation_status` stuck on `not_started` for historical EXECUTED tasks | Tasks created before discrepancy fields existed completed successfully but never had `initiation_status` set. Backfill script needed: set `initiated` on all EXECUTED tasks where `initiation_status = 'not_started'`. |
-| LYR-051 | 🔴 high | openclaw | Tasks confirmed to user but never POSTed to backend | Lyra says "scheduled" without a `task_id`. Hard Rule #7 added. Root cause: model loses SKILL.md context on rate-limit fallback and improvises confirmation without calling the API. Needs validation after rate-limit recovery. |
-| LYR-052 | 🟡 medium | openclaw | Reminder cron fires during active session → `LiveSessionModelSwitchError` | Isolated cron session clashes with live session's model state; delivery silently dropped. Partially addressed by backend-direct Telegram delivery (no longer OpenClaw-dependent). Needs validation that direct path fires reliably. |
-| LYR-053 | 🟡 medium | openclaw | Exec approval not enabled on Telegram — blocks autonomous skill execution | Every HTTP tool call requires Web UI approval rather than auto-approving on Telegram. Must enable exec approvals for Telegram channel in `openclaw.json` `gateway.nodes` or exec-approvals config. |
 | LYR-054 | 🟢 low | data | `category` null on tasks without explicit category context | Parser not inferring category from task title when user omits it (e.g. "lec 2 AI" → `category: null`). `category_mapping` keyword lookup not applied during task creation via OpenClaw. |
 | LYR-056 | 🟡 medium | parser | Multi-task chaining via "then" keyword not supported | Only first task in a compound request gets created. Second task silently dropped, no error returned. Fix: `TaskParser.parse_chained()` added — splits on "then", chains end→start for tasks without explicit time. `/v1/parse` endpoint updated to return `{ tasks: [...], compound: bool }`. |
-| LYR-057 | 🔴 high | skill | Stopwatch called with `title` instead of `task_id` → 404 | Model calls `/v1/stopwatch/start` with `{"title": "..."}` instead of querying first for `task_id`. Returns 404, timer never starts. Hard Rule #8 added to SKILL.md. Needs validation. |
-
 | LYR-058 | 🟢 low | backend | Stopwatch API returns UTC datetimes to agent | `start_time`, `executed_at`, `paused_at` in stopwatch responses were raw UTC. Agent sees wrong times. Fixed: all datetime fields now pass through `to_local()`. |
-| LYR-059 | 🟡 medium | openclaw | Haiku 4.5 uses curl shell commands instead of HTTP tool | Triggers exec approval on every backend call. SKILL.md rule updated to allow curl as fallback. |
 | LYR-060 | 🟢 low | backend | 5-minute task overflow notification didn't fire | APScheduler may not catch short-duration tasks that complete before the 2-min poll interval. |
-| ~~LYR-061~~ | ~~🟡 medium~~ | ~~backend~~ | ~~Insight fires after 1 session with noise data~~ | Fixed: MIN_SESSIONS=3 gate enforced. `_insight_discrepancy_signal()` returns None instead of noise message. |
-| LYR-062 | 🟡 medium | openclaw | Lyra approves its own exec requests | `/approve` sent by agent not user — approval loop bypasses security intent. |
-| LYR-063 | 🔴 high | openclaw | auth-profiles.json caches billing failure from old API key | New key never picked up without manual edit of `~/.openclaw/agents/main/agent/auth-profiles.json`. OpenClaw doesn't re-read env vars into cached credential store. |
-| LYR-064 | 🟡 medium | docker | ANTHROPIC_API_KEY not passed to OpenClaw Docker container | Requires manual `docker-compose.yml` env entry. Key in `.env` but not mapped in compose environment block. |
-| LYR-065 | 🟡 medium | openclaw | Qwen3.5:9b assumes readiness 5/5 without asking | Hard Rules ignored by local model. Readiness/reflection capture skipped entirely. |
-| LYR-066 | 🔴 high | openclaw | Qwen3.5:9b deletes tasks without user confirmation to resolve conflicts | Violates Hard Rule #1 and #2. Local model doesn't follow SKILL.md constraints. |
-| LYR-067 | 🟡 medium | openclaw | Qwen3.5:9b gets stuck replaying cached response in loop under GPU load | Model repeats same output indefinitely when Ollama is under memory pressure. |
 | LYR-068 | 🟡 medium | notion | Notion date property timezone confusion | UTC offset in payload causes double conversion depending on property timezone setting. |
-| LYR-069 | 🟢 low | openclaw | Claude 3 Haiku too old to load skill system | Ignores SKILL.md entirely, uses built-in cron instead of Lyra endpoints. |
-| LYR-071 | 🔴 high | openclaw | Approval requests still firing despite exec-approvals fix | `ask:"never"` + wildcard `"*"` not fully suppressing prompts. Haiku still triggers approval on every curl call. |
-| LYR-072 | 🟡 medium | skill | Must delete conflicting task to schedule replacement | No "replace" or "skip and reschedule" flow. User said "skip CO review and schedule debugging" which required a delete + create. Should be atomic. |
-| LYR-077 | 🟢 low | skill | Readiness assumed 5 without asking | Debugging session started with `pre_task_readiness:5` without Lyra asking the question first. Hard Rule violation again. |
-| LYR-078 | 🔴 high | openclaw | Agent autonomously executed Lyra build during testing | Claude Code agent started and stopped the Lyra build task during testing — zero-duration session, bypassed early-stop gate with `?confirmed=true`, pre/post self-filled. Session voided via `POST /v1/tasks/{id}/void`. |
-| ~~LYR-079~~ | ~~🟡 medium~~ | ~~backend~~ | ~~`session_index_in_day` not exposed in task query responses~~ | Fixed: already present in `GET /v1/tasks/query` response. |
 | LYR-080 | 🔴 high | backend | Backend rebuild during active paused session corrupts task/session references | Desync recovery restores pause time but loses task linkage. Delta not computed. stop response returns wrong task_id. |
-| LYR-081 | 🔴 high | skill | Agent auto-forces conflict override without asking user | Hard Rule #1 violation. During batch scheduling, agent resolved conflict silently instead of showing conflict list and waiting for explicit yes/no. |
-| LYR-082 | 🟡 medium | skill | Agent uses planned_duration to compute end_time when explicit end_time provided | "Debugging from 2:37pm to 4pm, planned 54 mins" → end_time computed as 15:31 (2:37 + 54min) instead of 16:00. `planned_duration_minutes` should only affect delta, never override explicit end_time. |
-| ~~LYR-083~~ | ~~🟡 medium~~ | ~~backend~~ | ~~Category inference returns "work" for "debug session"~~ | Fixed: `task_manager._infer_category` now uses word-boundary matching; "debug" → development. |
-| ~~LYR-084~~ | ~~🟡 medium~~ | ~~backend~~ | ~~`unplanned_reason` skipped when `planned_duration_minutes` provided~~ | Fixed: bypass removed — `unplanned_reason` always required on retroactive endpoint. |
-| ~~LYR-085~~ | ~~🔴 high~~ | ~~backend~~ | ~~`POST /v1/schedule/clear` auto-stopped timer and deleted 4 PLANNED tasks without confirmation~~ | Fixed: now blocks with 400 `active_timer` if stopwatch running. Deletes PLANNED only when no active timer. |
-| ~~LYR-086~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Agent answers timer status from memory instead of calling backend~~ | Fixed: Hard Rule #9 added — never answer live state from memory, always call `GET /v1/stopwatch/status` or `GET /v1/tasks/query`. |
-| ~~LYR-087~~ | ~~🟡 medium~~ | ~~backend~~ | ~~DELETED tasks counted as skips in cascade analytics~~ | Fixed: `_is_skip()` now only checks `SKIPPED` state; DELETED tasks filtered from cascade chain entirely. |
 | LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Pause A → start B → stop B → resume A: Redis loses task A's active session reference. User continues work untracked. |
-| ~~LYR-089~~ | ~~🟡 medium~~ | ~~skill~~ | ~~Reflection not asked when early stop confirmed~~ | Fixed: SKILL.md stop flow updated — reflection collected before `?confirmed=true` call, not as a separate 3rd call. |
-| ~~LYR-090~~ | ~~🔴 high~~ | ~~backend~~ | ~~0-minute active session marked EXECUTED instead of SKIPPED~~ | Fixed: `StopwatchManager.stop()` checks `active_elapsed == 0` before `complete_task()` — transitions directly to SKIPPED with `initiation_status='abandoned'`. Stop response includes `skip_reason: 'zero_duration'`. |
 | LYR-091 | 🟢 low | backend | `resolve_user_from_token` matches by email only | `google_id` stays as `simulated-google-sub` placeholder after real sign-in. Upsert real `google_id` from JWT `sub` claim on first real sign-in. Phase 9 fix. |
 | LYR-092 | 🟡 medium | notion | notion_sync retry loop infinitely retries archived pages | Should detect "Can't edit block that is archived" error and drop from Redis queue instead of retrying every 5 min. |
 
 ---
 
-## Fixed (49 bugs)
+## Fixed (62 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
@@ -81,6 +41,7 @@ Last updated: April 7, 2026 — v1.5. 37 open, 53 fixed.
 | LYR-012 | 🟡 medium | backend | No duplicate request protection | Redis idempotency via `X-Idempotency-Key` header, 30s TTL. |
 | LYR-013 | 🔴 high | skill | Query endpoint not called — memory used | Hard constraint added to SKILL.md. Confirmed working. |
 | LYR-014 | 🔴 high | skill | Wrong time reported on query | Fixed by SKILL.md Hard Rule #4. |
+| LYR-015 | 🟡 medium | notion | No backfill for pre-fix tasks | Fixed: `POST /v1/tasks/{task_id}/sync` implemented. |
 | LYR-016 | 🔴 high | skill | Wrong time reported on create | Fixed by SKILL.md Hard Rule #4. |
 | LYR-017 | 🟡 medium | backend | Meeting created in the past | Fixed by LYR-001 past-time validation. |
 | LYR-021 | 🟡 medium | skill | Timer started for future task without warning | `stopwatch_manager.start()` returns `is_future_task: bool`. SKILL.md requires yes/no confirmation. Confirmed working via Telegram. |
@@ -95,16 +56,14 @@ Last updated: April 7, 2026 — v1.5. 37 open, 53 fixed.
 | LYR-030 | 🟡 medium | skill | Generic task names created | SKILL.md Hard Rule #3: never use generic names like "Task 1". |
 | LYR-032 | 🔴 high | notion | Bulk reschedule creates duplicates | Fixed by LYR-023. |
 | LYR-033 | 🔴 high | notion | State split between SQLite and Notion | Fixed by LYR-022. |
+| LYR-036 | 🟡 medium | skill | Context lost on follow-up corrections | Fixed: `GET /v1/tasks/last` returns most recently operated task (1-hr TTL). SKILL.md rule added. |
 | LYR-040 | 🔴 high | backend | `'str' object has no attribute 'value'` in state machine | `state_machine.py` normalizes `task.state` to `TaskState` enum. All `.value` calls guarded with `hasattr()`. Confirmed: clean 400 on immutable delete. |
 | LYR-041 | 🔴 high | backend | Stopwatch/Redis desync | `_recover_from_db()` added to `StopwatchManager`. Restores Redis from SQLite on desync. Fixed 3-tuple unpack in unplanned task creation. |
+| LYR-042 | 🟡 medium | skill | Clear schedule leaves EXECUTING tasks | Fixed: `POST /v1/schedule/clear` atomically stops timer + abandons EXECUTING + deletes PLANNED. |
 | LYR-044 | 🔴 high | notion | Notion sync fails on stopwatch stop | Removed invalid `Duration` property from `_build_properties()`. Notion sync now succeeds on task completion. Confirmed `Notion synced: ✅` via Telegram. |
-| LYR-GET | 🟡 medium | backend | Missing single task fetch endpoint | `GET /v1/tasks/{task_id}` implemented. Returns full TaskDetail. Router reordered to prevent `/query` collision. Enables Hard Rule #6 verification flow. |
-| LYR-UNDO | 🟡 medium | backend | Missing undo endpoint | `POST /v1/undo` implemented. 30-second TTL via Redis. Reverts `create_task` (soft-delete) and `delete_task` (restore to PLANNED). Confirmed working via curl and Telegram. |
-| LYR-SCHED | 🟡 medium | backend | Missing APScheduler background workers | `scheduler.py` + 4 jobs: reminders (1min), Notion retry (5min), timer overflow (2min). Hooked into FastAPI lifespan. Confirmed firing via logs. |
-| LYR-NOTIF | 🟡 medium | backend | No notification delivery to Telegram | Polling system implemented. Backend pushes to `POST /v1/notifications/push`. OpenClaw polls `GET /v1/notifications/pending` every 30s. Verified queue push/pop working. |
-| LYR-RULE6 | 🟡 medium | skill | No backend verification before mutations | Hard Rule #6 added to SKILL.md: always call query + single fetch before any timer start, delete, or reschedule. |
-| LYR-DISC | 🟡 medium | backend | No cognitive measurement data captured | Discrepancy measurement layer implemented: `pre_task_readiness`, `post_task_reflection`, `initiation_status`, `initiation_delay_minutes` on Task model. `discrepancy_score` property. Abandoned task detection job (30 min). `GET /v1/analytics/discrepancy` endpoint. Readiness/reflection capture workflow added to SKILL.md. Migration 002 applied. |
+| LYR-046 | 🟡 medium | notion | Category field null in Notion after task executes | Fixed: `_build_properties()` always includes Category (empty array if null, preventing drift). |
 | LYR-055 | 🟢 low | docker | `version` attribute in docker-compose.yml generates warning | `version: "3.8"` is obsolete in Docker Compose v2+; generates warning on every command. Removed. |
+| LYR-061 | 🟡 medium | backend | Insight fires after 1 session with noise data | Fixed: MIN_SESSIONS=3 gate enforced. `_insight_discrepancy_signal()` returns None instead of noise message. |
 | LYR-070 | 🟡 medium | backend | Conflict detection fires on EXECUTED tasks | Fixed: filter to `state IN ('PLANNED', 'EXECUTING')` only. Also fixed `is_mutable` to include SKIPPED. |
 | LYR-073 | 🟡 medium | backend | Conflict detected with DELETED task | Fixed by LYR-070 — DELETED excluded from conflict detection. |
 | LYR-074 | 🔴 high | backend | Undo window too short for readiness correction | Fixed: `POST /v1/stopwatch/correct-readiness` — no time limit, works during active session. Logs original value. |
@@ -118,6 +77,12 @@ Last updated: April 7, 2026 — v1.5. 37 open, 53 fixed.
 | LYR-087 | 🟡 medium | backend | DELETED tasks inflated cascade_score as false skips | Fixed: `_is_skip()` now only treats `SKIPPED` state as a skip; DELETED tasks filtered from each day's chain before cascade scoring. |
 | LYR-089 | 🟡 medium | skill | Reflection not asked when early stop confirmed | Fixed: SKILL.md stop flow — ask reflection BEFORE `?confirmed=true` call. Eliminated the erroneous 3-call pattern. |
 | LYR-090 | 🔴 high | backend | 0-minute active session marked EXECUTED instead of SKIPPED | Fixed: `StopwatchManager.stop()` early-exits with SKIPPED transition when `active_elapsed == 0`. Stop response includes `skipped: true, skip_reason: 'zero_duration'`. |
+| LYR-GET | 🟡 medium | backend | Missing single task fetch endpoint | `GET /v1/tasks/{task_id}` implemented. Returns full TaskDetail. Router reordered to prevent `/query` collision. Enables Hard Rule #6 verification flow. |
+| LYR-UNDO | 🟡 medium | backend | Missing undo endpoint | `POST /v1/undo` implemented. 30-second TTL via Redis. Reverts `create_task` (soft-delete) and `delete_task` (restore to PLANNED). Confirmed working via curl and Telegram. |
+| LYR-SCHED | 🟡 medium | backend | Missing APScheduler background workers | `scheduler.py` + 4 jobs: reminders (1min), Notion retry (5min), timer overflow (2min), overdue (30min). Hooked into FastAPI lifespan. Confirmed firing via logs. |
+| LYR-NOTIF | 🟡 medium | backend | No notification delivery to Telegram | Polling system implemented. Backend pushes to `POST /v1/notifications/push`. OpenClaw polls `GET /v1/notifications/pending` every 30s. Verified queue push/pop working. |
+| LYR-RULE6 | 🟡 medium | skill | No backend verification before mutations | Hard Rule #6 added to SKILL.md: always call query + single fetch before any timer start, delete, or reschedule. |
+| LYR-DISC | 🟡 medium | backend | No cognitive measurement data captured | Discrepancy measurement layer implemented: `pre_task_readiness`, `post_task_reflection`, `initiation_status`, `initiation_delay_minutes` on Task model. `discrepancy_score` property. Abandoned task detection job (30 min). `GET /v1/analytics/discrepancy` endpoint. Readiness/reflection capture workflow added to SKILL.md. Migration 002 applied. |
 
 ---
 
@@ -125,42 +90,52 @@ Last updated: April 7, 2026 — v1.5. 37 open, 53 fixed.
 
 ### Critical (🔴)
 1. LYR-080 — Backend rebuild during active paused session corrupts task/session linkage; delta not computed
-2. LYR-081 — Agent auto-forces conflict override without asking user (Hard Rule #1 violation)
-3. LYR-078 — Agent autonomously executed Lyra build during testing; zero-duration, bypassed early-stop
-4. LYR-071 — exec-approvals `ask:"never"` + `"*"` not suppressing Haiku approval prompts
-5. LYR-063 — OpenClaw caches stale API keys in auth-profiles.json; billing failures block model permanently
-6. LYR-066 — Qwen3.5:9b deletes tasks without confirmation; local models ignore Hard Rules
-7. LYR-051 — validate Hard Rule #7 stops "scheduled without task_id" pattern
-8. LYR-048 — validate Hard Rule #5 fix with Haiku (GLM bypass confirmed)
-9. LYR-049 — skill context loss on model switch; model improvises wrong endpoints
 
 ### Medium (🟡)
-10. LYR-088 — resume() loses Redis session reference after another stopwatch runs in between
-11. LYR-082 — Agent computes end_time from planned_duration when explicit end_time provided
-12. LYR-072 — No atomic "skip and reschedule" flow; requires manual delete + create
-13. LYR-064 — ANTHROPIC_API_KEY not in docker-compose.yml env block (fixed locally, needs upstream)
-14. LYR-059 — Haiku uses curl instead of HTTP tool; SKILL.md rule softened
-15. LYR-065 — Qwen3.5:9b skips readiness/reflection capture
-16. LYR-062 — agent approves its own exec requests
-17. LYR-061 — insights fire after 1 session, should require 3
-18. LYR-053 — enable exec approvals on Telegram
-19. LYR-057 — validate Hard Rule #8 fix; stopwatch/start with task_id only
-20. LYR-043 — validate Hard Rule #6 fixes duplicate task creation
-21. LYR-052 — validate backend-direct Telegram reminders
-22. LYR-067 — Qwen3.5:9b loops under GPU load
-23. LYR-068 — Notion date timezone double conversion
-24. LYR-056 — validate "then" chaining in parse_chained()
-25. LYR-050 — backfill initiation_status on historical tasks
-26. LYR-035 — validate Hard Rule #6 covers memory ID issue
-27. LYR-036 — context lost on follow-up corrections
+2. LYR-088 — resume() loses Redis session reference after another stopwatch runs in between
+3. LYR-068 — Notion date timezone double conversion
+4. LYR-056 — validate "then" chaining in parse_chained()
+5. LYR-050 — backfill initiation_status on historical tasks
+6. LYR-092 — notion_sync retry on archived pages
 
 ### Low (🟢)
-28. LYR-077 — Readiness assumed 5 without asking; Hard Rule violation
-29. LYR-060 — overflow notification misses short tasks
-30. LYR-069 — Claude 3 Haiku too old for skill system
-31. LYR-054 — category_mapping inference at creation time
-32. LYR-037 — retest false conflict on clean database
-33. LYR-015 + LYR-018 + LYR-020 — backfill sync, clean test data
-34. LYR-019 — day-of-week label fix
-35. LYR-007 — validate memory constraint
-36. LYR-047 — document as Notion limitation
+7. LYR-060 — overflow notification misses short tasks
+8. LYR-054 — category_mapping inference at creation time
+9. LYR-018 + LYR-020 — backfill sync, clean test data
+10. LYR-047 — document as Notion limitation
+11. LYR-091 — resolve_user_from_token Phase 9 fix
+
+---
+
+## Deferred — OpenClaw interface (operator-only)
+
+OpenClaw remains the operator's primary interface via Telegram. These bugs affect agent behavior (model compliance with SKILL.md, exec-approval enforcement, model-specific quirks) but do not block web UI alpha users. They retain their original IDs and will be addressed when OpenClaw integration is the active workstream.
+
+| ID | Priority | Tag | Title | Notes |
+|----|----------|-----|-------|-------|
+| LYR-007 | 🟡 medium | openclaw | OpenClaw memory vs actual state | Hard constraint in SKILL.md not fully validated. If task deleted via Swagger, OpenClaw may still believe it exists. |
+| LYR-019 | 🟡 medium | skill | Day-of-week label mismatch | Lyra labeled Friday Mar 27 as "Thursday Mar 27". Day label wrong in weekly view. |
+| LYR-035 | 🟡 medium | skill | Task ID retrieved from memory not backend | On delete/start, Lyra uses conversation memory for task ID instead of querying backend. Hard Rule #6 added but not fully validated. |
+| LYR-037 | 🟡 medium | skill | False conflict between tasks on different days | Hallucinated conflict between Monday and Tuesday tasks. Likely ghost records from bad-UTC era. Retest on clean database. |
+| LYR-043 | 🔴 high | skill | Duplicate task created instead of using existing | When starting timer, Lyra creates new task from memory instead of querying backend for existing PLANNED task. Hard Rule #6 should fix — not yet fully validated. |
+| LYR-045 | 🟡 medium | notion | Duplicate EXECUTING tasks in Notion | Ghost tasks from memory leaked into Notion. Downstream of LYR-043. |
+| LYR-048 | 🔴 high | skill | Early-stop gate bypassed — model calls `?confirmed=true` directly | GLM skips `/stop` entirely and calls `/stop?confirmed=true` without user input. Confirmed via logs. Hard Rule #5 strengthened but not yet re-validated. |
+| LYR-049 | 🔴 high | skill | Reschedule used as proxy for stopwatch/start on model switch | Sonnet without SKILL.md context improvises wrong endpoints — uses `/v1/reschedule` instead of `/v1/stopwatch/start`. Happens when model switches mid-session and new model has no skill context. Root cause same as LYR-051. |
+| LYR-051 | 🔴 high | openclaw | Tasks confirmed to user but never POSTed to backend | Lyra says "scheduled" without a `task_id`. Hard Rule #7 added. Root cause: model loses SKILL.md context on rate-limit fallback and improvises confirmation without calling the API. Needs validation after rate-limit recovery. |
+| LYR-052 | 🟡 medium | openclaw | Reminder cron fires during active session → `LiveSessionModelSwitchError` | Isolated cron session clashes with live session's model state; delivery silently dropped. Partially addressed by backend-direct Telegram delivery (no longer OpenClaw-dependent). Needs validation that direct path fires reliably. |
+| LYR-053 | 🟡 medium | openclaw | Exec approval not enabled on Telegram — blocks autonomous skill execution | Every HTTP tool call requires Web UI approval rather than auto-approving on Telegram. Must enable exec approvals for Telegram channel in `openclaw.json` `gateway.nodes` or exec-approvals config. |
+| LYR-057 | 🔴 high | skill | Stopwatch called with `title` instead of `task_id` → 404 | Model calls `/v1/stopwatch/start` with `{"title": "..."}` instead of querying first for `task_id`. Returns 404, timer never starts. Hard Rule #8 added to SKILL.md. Needs validation. |
+| LYR-059 | 🟡 medium | openclaw | Haiku 4.5 uses curl shell commands instead of HTTP tool | Triggers exec approval on every backend call. SKILL.md rule updated to allow curl as fallback. |
+| LYR-062 | 🟡 medium | openclaw | Lyra approves its own exec requests | `/approve` sent by agent not user — approval loop bypasses security intent. |
+| LYR-063 | 🔴 high | openclaw | auth-profiles.json caches billing failure from old API key | New key never picked up without manual edit of `~/.openclaw/agents/main/agent/auth-profiles.json`. OpenClaw doesn't re-read env vars into cached credential store. |
+| LYR-064 | 🟡 medium | docker | ANTHROPIC_API_KEY not passed to OpenClaw Docker container | Requires manual `docker-compose.yml` env entry. Key in `.env` but not mapped in compose environment block. |
+| LYR-065 | 🟡 medium | openclaw | Qwen3.5:9b assumes readiness 5/5 without asking | Hard Rules ignored by local model. Readiness/reflection capture skipped entirely. |
+| LYR-066 | 🔴 high | openclaw | Qwen3.5:9b deletes tasks without user confirmation to resolve conflicts | Violates Hard Rule #1 and #2. Local model doesn't follow SKILL.md constraints. |
+| LYR-067 | 🟡 medium | openclaw | Qwen3.5:9b gets stuck replaying cached response in loop under GPU load | Model repeats same output indefinitely when Ollama is under memory pressure. |
+| LYR-069 | 🟢 low | openclaw | Claude 3 Haiku too old to load skill system | Ignores SKILL.md entirely, uses built-in cron instead of Lyra endpoints. |
+| LYR-071 | 🔴 high | openclaw | Approval requests still firing despite exec-approvals fix | `ask:"never"` + wildcard `"*"` not fully suppressing prompts. Haiku still triggers approval on every curl call. |
+| LYR-072 | 🟡 medium | skill | Must delete conflicting task to schedule replacement | No "replace" or "skip and reschedule" flow. User said "skip CO review and schedule debugging" which required a delete + create. Should be atomic. |
+| LYR-077 | 🟢 low | skill | Readiness assumed 5 without asking | Debugging session started with `pre_task_readiness:5` without Lyra asking the question first. Hard Rule violation again. |
+| LYR-078 | 🔴 high | openclaw | Agent autonomously executed Lyra build during testing | Claude Code agent started and stopped the Lyra build task during testing — zero-duration session, bypassed early-stop gate with `?confirmed=true`, pre/post self-filled. Session voided via `POST /v1/tasks/{id}/void`. |
+| LYR-081 | 🔴 high | skill | Agent auto-forces conflict override without asking user | Hard Rule #1 violation. During batch scheduling, agent resolved conflict silently instead of showing conflict list and waiting for explicit yes/no. |
+| LYR-082 | 🟡 medium | skill | Agent uses planned_duration to compute end_time when explicit end_time provided | "Debugging from 2:37pm to 4pm, planned 54 mins" → end_time computed as 15:31 (2:37 + 54min) instead of 16:00. `planned_duration_minutes` should only affect delta, never override explicit end_time. |

@@ -6,16 +6,16 @@
 
 ## What This Is
 
-Lyra Secretary is not a productivity app.
+Lyra Secretary is a measurement-backed productivity tool. Most productivity tools assume their insights are accurate. Lyra tests its own.
 
-It is a measurement instrument for human self-perception and its relationship to execution. The scheduling is a delivery mechanism. The data is the product.
+The tool layer delivers scheduling, timer management, and behavioral feedback. The research layer validates whether those insights actually predict anything. Neither is primary. The tool fails if the research is invalid — you are acting on noise. The research is academic if the tool is not used — you have no data.
 
 The central question: **Are humans wrong about themselves in a structured way that predicts failure?**
 
 If yes — the error is modelable, correctable, and eventually preventable.
 If no — the data tells us that too, and we pivot.
 
-Everything in this system exists to answer that question cleanly.
+Everything in this system exists to answer that question cleanly, while delivering enough value that the operator keeps using it long enough to generate the data.
 
 ---
 
@@ -116,7 +116,7 @@ The forward prediction comes from the model, not from a single session's discrep
 - A gamified habit app
 - A calendar
 
-We are building a system that learns how a specific human is wrong about themselves and uses that to make them more accurate over time.
+We are building a system that learns how a specific human is wrong about themselves and uses that to make them more accurate over time. The product value is the accuracy improvement. The research value is proving whether the accuracy improvement is real.
 
 We are not building a planning tool that requires planning effort. The system should make planning nearly invisible by Day 14. Friction score is the product metric that proves this.
 
@@ -125,11 +125,12 @@ We are not building a planning tool that requires planning effort. The system sh
 ## System Architecture
 
 ```
-Telegram → OpenClaw (AI agent) → FastAPI Backend → TaskManager → SQLite + Redis → Notion
-                                        ↕
-                                   APScheduler
-                          (reminders, overflow, sync retry,
-                           abandoned task detection)
+Web UI (Next.js)            ─┐
+Telegram → OpenClaw (agent)  ├→ FastAPI Backend → TaskManager → SQLite + Redis → Notion
+                             ─┘        ↕
+                                  APScheduler
+                         (reminders, overflow, sync retry,
+                          overdue task detection)
 ```
 
 **Key design decisions:**
@@ -206,6 +207,8 @@ The third pattern is where most people actually live. Lyra is the first system t
 - No other system distinguishes this from genuine productivity.
 
 Each profile needs a different intervention. Lyra must detect which profile applies before offering corrections — giving a Reactive Executor estimation feedback is useless; giving an Overplanner more planning tools is harmful.
+
+The 3 behavioral profiles are the research typology — they describe the phenomenon being studied. The 5 operational archetypes (see `docs/methodology.md §1`) are the product clustering — they describe how the product assigns priors to specific users. These are different abstraction levels, not different counts of the same thing.
 
 This taxonomy deserves its own paper independent of the discrepancy hypothesis.
 
@@ -370,12 +373,17 @@ Adaptive planning engine. Auto-calibrate estimates based on historical bias per 
 **Phase 3 — BCI integration (conditional)**
 Entry point: BR41N.IO hackathon, April 2026.
 
-Critical validity gate before BCI replaces post-task reflection:
-EEG cognitive state ≠ self-reported readiness. They may correlate strongly, weakly, or not at all. Required validation:
-- Simultaneous EEG + self-report sessions
+BCI and self-report are two noisy estimators of an underlying cognitive state. Neither is ground truth. The integration model combines them with Bayesian weighting proportional to each source's individual signal-to-noise ratio — estimated per user from simultaneous EEG + self-report sessions.
+
+Required validation before integration:
+- Simultaneous EEG + self-report sessions (minimum 20 per subject)
+- Per-source SNR estimation: test-retest reliability of EEG markers vs self-report scores
 - Correlation analysis between EEG markers and pre/post scores
-- If r > 0.6: BCI enhances the model
-- If r < 0.4: BCI is a parallel signal, not a replacement
+
+Interpretation of correlation outcomes:
+- **High correlation:** BCI confirms self-report. Validating, but BCI adds less new information — the combination improves precision through averaging, not through capturing a new construct.
+- **Low correlation:** BCI and self-report capture different constructs. This is *interesting*, not bad — the combination carries more total information than either source alone, and the Bayesian weights will reflect which source is more predictive of delta for each user.
+- **Both outcomes are useful.** Neither replaces the other. The question is not "does BCI replace self-report" but "what is the optimal weighting of two imperfect signals for predicting delta."
 
 BCI is not rhetorical vision. It is a testable hypothesis that requires its own experimental validation before integration.
 
@@ -469,6 +477,8 @@ The bias_factor is no longer personal — it's a distribution. Some people consi
 
 **Status:** `parent_session_id` not implemented. 90-minute cap is protocol-level, not system-enforced.
 
+**Decision (Apr 10, 2026):** Mitigation (parent_session_id column + tagged split sessions) not implemented as of v1.5. Decision deferred to Paper 1 analysis phase: either implement the mitigation before running the H1 correlation, or acknowledge the session-independence limitation in the paper's limitations section. Current default: acknowledge rather than fix, because the 90-minute cap has been protocol-enforced by the operator since Day 1 and real splitting has been rare in practice.
+
 ### VT-6: No Control for External Interruptions
 **Threat:** Delta measures planned vs actual, but "actual" includes interruptions (Slack, phone calls, unplanned meetings). A 30-minute interruption during a 60-minute task looks like a 90-minute execution — a 30-minute delta that has nothing to do with estimation accuracy.
 
@@ -526,7 +536,7 @@ Not "can I build a startup."
 
 If discrepancy predicts delta — the product, the paper, the BCI, the startup are all downstream.
 If cascade failure is real — Paper 2 ships first, independent of whether discrepancy pans out.
-If neither — you still have a working adaptive scheduler, 62 commits of solid engineering, an international hackathon entry, and the clearest possible signal to pivot before overinvesting.
+If neither — you still have a working adaptive scheduler, 118+ commits of solid engineering, an international hackathon entry, and the clearest possible signal to pivot before overinvesting.
 
 Either way, you win.
 
@@ -534,7 +544,7 @@ The experiment has started. Stay in measurement mode.
 
 ---
 
-*"The system is not trying to make you productive. It's trying to make you accurate."*
+*"The system makes you productive by making you accurate — and it proves its accuracy claims with data, not marketing."*
 
 *Lyra Secretary v1.4 — April 5, 2026*
 *Manifesto v1.2 — revised April 5, 2026 (cascade failure discovery added)*
@@ -599,7 +609,7 @@ These rules are fixed in advance to remove analyst degrees of freedom on the day
 
 1. **Exclude retroactive sessions from the H1 test set.** Rows with `initiation_status = 'retroactive'` are excluded from the Spearman ρ computation. Reason: retroactive sessions have `planned_duration` set equal to `executed_duration` by definitional construction (see FEATURES.md, retroactive endpoint behavior — "Sets planned = executed (delta = 0 by definition)"). Their delta is 0 by fiat, not by measurement, and they would pull the H1 correlation toward zero in a way that looks like a null result but is actually an artifact of how the data was logged. Retroactive sessions remain valid for cascade analysis (Paper 2), which uses state transitions rather than delta.
 
-2. **Category taxonomy is frozen for the Apr 4–15 window.** The set of valid categories is fixed (see `docs/category_taxonomy.md`). New keywords mapping into existing categories may be added at any time. New *categories* may not be created until after the window closes. Reason: per-(category, time_of_day) bias-factor estimation requires monotonic bucket counts; introducing a new category mid-window redistributes mass and produces false-negative bias estimates. The Apr 8 merge of `planning` → `self_reflection` is the last taxonomy edit of the window and was performed because the two categories were semantically identical (meta-work *about* the system) and one was an accidental seed-time fork.
+2. **Category taxonomy is frozen for the Apr 4–15 window.** The set of valid categories is fixed (see `docs/product.md §1`). New keywords mapping into existing categories may be added at any time. New *categories* may not be created until after the window closes. Reason: per-(category, time_of_day) bias-factor estimation requires monotonic bucket counts; introducing a new category mid-window redistributes mass and produces false-negative bias estimates. The Apr 8 merge of `planning` → `self_reflection` is the last taxonomy edit of the window and was performed because the two categories were semantically identical (meta-work *about* the system) and one was an accidental seed-time fork.
 
 3. **Exclude voided sessions.** Rows with `voided_at IS NOT NULL` are excluded from the H1 test set. Voided sessions are operator-flagged data quality rejects (duplicates, test entries, data_quality issues). Including them would inject known-bad data into the correlation. This exclusion was added on Apr 9, 2026, after the void mechanism was implemented in Phase 3.2.
 

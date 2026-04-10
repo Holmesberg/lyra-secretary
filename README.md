@@ -12,11 +12,11 @@ Lyra Secretary is a FastAPI backend that manages your daily schedule by tracking
 
 As of v1.2, Lyra also captures a **discrepancy measurement layer**: self-rated readiness before each task (`pre_task_readiness`) and focus quality after (`post_task_reflection`), plus `initiation_delay_minutes` and `initiation_status` (initiated / abandoned / not_started). These feed the `GET /v1/analytics/discrepancy` endpoint and are the core instrument for the cognitive research layer.
 
-The long-term vision: integrate with **LYRA BCI** (EEG-based cognitive state detection) to close the loop — the scheduler adapts not just to what you *did*, but to how you *felt* while doing it.
+The long-term vision: integrate with **LYRA BCI** (EEG-based cognitive state detection) as a complementary signal — BCI and self-report are two noisy estimators of cognitive state, combined via Bayesian weighting proportional to each source's signal-to-noise ratio.
 
 ## Architecture
 
-At a glance: **Telegram** → **OpenClaw** (AI agent) → **FastAPI** → **TaskManager** → **SQLite**, **Redis**, **Notion**; **APScheduler** runs in-process for reminders, timer overflow, and Notion retry. Details below.
+At a glance: **Web UI** (Next.js) and **Telegram** → **OpenClaw** (AI agent) → **FastAPI** → **TaskManager** → **SQLite**, **Redis**, **Notion**; **APScheduler** runs in-process for reminders, timer overflow, overdue detection, and Notion retry. Details below.
 
 ## System Design
 
@@ -122,7 +122,7 @@ OpenClaw runs as a **separate Docker stack**. To connect it to the Lyra backend:
    ```bash
    docker network connect lyrasecretaryv01_default <openclaw-container-name>
    ```
-   Or add `lyrasecretaryv01_default` as an external network in OpenClaw's `docker-compose.yml`. See [DOCKER.md](DOCKER.md) for details.
+   Or add `lyrasecretaryv01_default` as an external network in OpenClaw's `docker-compose.yml`. See [docs/architecture.md §3](docs/architecture.md) for details.
 
 2. **Install the skill:**
    Copy `openclaw/skills/lyra-secretary/SKILL.md` into your OpenClaw skills directory:
@@ -240,22 +240,19 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 
 ## Known Issues
 
-See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (39 open, 42 fixed). Key active issues:
+See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (13 open, 26 deferred OpenClaw, 62 fixed). Key active issues:
 
-- **LYR-078** 🔴 Agent autonomously executed Lyra task — zero-duration session, bypassed early-stop gate
-- **LYR-071** 🔴 Exec-approval `ask:"never"` not suppressing Haiku approval prompts
-- **LYR-063** 🔴 OpenClaw caches stale API keys — new keys not picked up without manual fix
-- **LYR-066** 🔴 Local models (Qwen3.5:9b) ignore Hard Rules — delete without confirmation
-- **LYR-051** 🔴 Agent confirms tasks without backend response on rate-limit fallback
-- **LYR-061** 🟡 Behavioral insights fire prematurely (threshold check not enforced)
+- **LYR-080** 🔴 Backend rebuild during active paused session corrupts task/session linkage
+- **LYR-088** 🟡 resume() loses Redis session reference after interleaved stopwatch
 - **LYR-068** 🟡 Notion date timezone double conversion on certain property settings
+- **LYR-092** 🟡 notion_sync retry loop infinitely retries archived pages
 
 ## Roadmap
 
 - [ ] OpenClaw tool schema (structured tool definitions)
 - [ ] BCI cognitive session logging (EEG state during tasks)
 - [ ] Weekly/monthly analytics and pattern reports
-- [ ] `POST /v1/tasks/{task_id}/sync` — backfill Notion for pre-fix tasks (LYR-015)
+- [x] `POST /v1/tasks/{task_id}/sync` — backfill Notion for pre-fix tasks (LYR-015)
 - [ ] Per-model timeout in OpenClaw config (blocked on upstream: openclaw/openclaw#43946)
 - [x] `POST /v1/stopwatch/retroactive` — log completed sessions after the fact with full timestamp control (for untracked sessions)
 - [x] Pause reason classification — `pause_reason` + `pause_initiator` on pause endpoint

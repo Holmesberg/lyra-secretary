@@ -29,12 +29,12 @@ python docs/diagrams/generate_diagrams.py
 
 ## Architecture
 
-Lyra Secretary is a single-user adaptive task scheduler. It records **planned vs. executed duration** per task to learn behavioral patterns. The `duration_delta_minutes` field (planned − executed) is the core metric.
+Lyra Secretary is a measurement-backed adaptive task scheduler. It records **planned vs. executed duration** per task to learn behavioral patterns, with a research layer that validates whether its own insights actually predict anything. The `duration_delta_minutes` field (planned − executed) is the core metric.
 
 ### Layers
 
 ```
-Client (Telegram / OpenClaw agent)
+Client (Web UI / Telegram / OpenClaw agent)
   ↓ HTTP
 API (FastAPI) — backend/app/api/v1/endpoints/
   ↓ DI via get_db() / get_redis()
@@ -43,7 +43,7 @@ Services — backend/app/services/
 SQLite (SQLAlchemy + Alembic) + Redis + Notion API
 ```
 
-Background jobs (APScheduler) run inside the FastAPI process: reminders every 1 min, Notion sync retries every 5 min, timer overflow alerts every 2 min.
+Background jobs (APScheduler) run inside the FastAPI process: reminders every 1 min, Notion sync retries every 5 min, timer overflow alerts every 2 min, overdue task detection every 30 min.
 
 ### Single Mutation Authority
 
@@ -85,7 +85,7 @@ Transitions are enforced by `services/state_machine.py`. Completed/skipped/delet
 - **category_mapping** — static keyword→category lookup seeded at init (not learned)
 
 ### OpenClaw integration
-OpenClaw runs in a separate Docker Compose stack. Connect the two via Docker network bridge (see `DOCKER.md`). The agent skill definition lives at `openclaw/skills/lyra-secretary/SKILL.md` and must be copied to `~/.openclaw/skills/lyra-secretary/`. The backend pushes notifications to `http://openclaw-gateway:18789/api/notify`; the agent polls `GET /v1/notifications/pending` every 30 s.
+OpenClaw runs in a separate Docker Compose stack. Connect the two via Docker network bridge (see `docs/architecture.md §3`). The agent skill definition lives at `openclaw/skills/lyra-secretary/SKILL.md` and must be copied to `~/.openclaw/skills/lyra-secretary/`. The backend pushes notifications to `http://openclaw-gateway:18789/api/notify`; the agent polls `GET /v1/notifications/pending` every 30 s.
 
 ## Configuration
 
