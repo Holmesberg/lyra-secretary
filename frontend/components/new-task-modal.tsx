@@ -32,6 +32,7 @@ function formatLocal(d: Date) {
 interface PausedConflict {
   taskId: string;
   title: string;
+  blockingTitles: string[];
 }
 
 interface Props {
@@ -78,11 +79,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }
       });
       if (!res.created) {
         if (res.conflicts.length > 0) {
-          const allPaused = res.conflicts.every((c) => c.state === "PAUSED");
-          if (allPaused && onInterruptionCreated) {
+          const paused = res.conflicts.filter((c) => c.state === "PAUSED");
+          const blocking = res.conflicts.filter((c) => c.state !== "PAUSED");
+          if (paused.length > 0 && onInterruptionCreated) {
             setPausedConflict({
-              taskId: res.conflicts[0].task_id,
-              title: res.conflicts[0].title,
+              taskId: paused[0].task_id,
+              title: paused[0].title,
+              blockingTitles: blocking.map((c) => c.title),
             });
             return;
           }
@@ -196,14 +199,31 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }
           </div>
 
           {pausedConflict && (
-            <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
-              <span className="font-medium text-white">{pausedConflict.title}</span>{" "}
-              is paused in this window. Start{" "}
-              <span className="font-medium text-white">{title.trim()}</span>{" "}
-              as an interruption? It will be linked — you can resume{" "}
-              <span className="font-medium text-white">{pausedConflict.title}</span>{" "}
-              after.
-            </div>
+            <>
+              <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+                <span className="font-medium text-white">{pausedConflict.title}</span>{" "}
+                is paused in this window.{" "}
+                {pausedConflict.blockingTitles.length === 0 ? (
+                  <>
+                    Start{" "}
+                    <span className="font-medium text-white">{title.trim()}</span>{" "}
+                    as an interruption? It will be linked — you can resume{" "}
+                    <span className="font-medium text-white">{pausedConflict.title}</span>{" "}
+                    after.
+                  </>
+                ) : (
+                  <>
+                    To interrupt it, adjust the time to avoid the blocking conflict
+                    {pausedConflict.blockingTitles.length > 1 ? "s" : ""} below.
+                  </>
+                )}
+              </div>
+              {pausedConflict.blockingTitles.length > 0 && (
+                <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+                  Also conflicts with: {pausedConflict.blockingTitles.join(", ")}
+                </div>
+              )}
+            </>
           )}
 
           {error && (
@@ -220,7 +240,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }
           {pausedConflict ? (
             <Button
               onClick={submitAsInterruption}
-              disabled={submitting}
+              disabled={submitting || pausedConflict.blockingTitles.length > 0}
             >
               Start as interruption
             </Button>
