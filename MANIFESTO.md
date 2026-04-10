@@ -1,6 +1,8 @@
-# Lyra Secretary — Manifesto v1.2
+# Lyra Secretary — Manifesto v1.3
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
-*Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats updated, repo alignment pass.*
+*Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
+*Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
+*Revised: April 10, 2026. Day 7 — duality reframe, BCI complementary-signal model, VT-5 decision.*
 
 ---
 
@@ -546,8 +548,8 @@ The experiment has started. Stay in measurement mode.
 
 *"The system makes you productive by making you accurate — and it proves its accuracy claims with data, not marketing."*
 
-*Lyra Secretary v1.4 — April 5, 2026*
-*Manifesto v1.2 — revised April 5, 2026 (cascade failure discovery added)*
+*Lyra Secretary v1.5 — April 10, 2026*
+*Manifesto v1.3 — revised April 10, 2026*
 
 ---
 

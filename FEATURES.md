@@ -1,5 +1,5 @@
 # Lyra Secretary — Feature Backlog
-*Last updated: April 8, 2026 — feedback loop closure and friction reduction features added (F6–F15)*
+*Last updated: April 10, 2026 — BCI reframe, LYR-061/unplanned_reason status corrected*
 
 Priority: 🔴 critical | 🟡 important | 🟢 nice-to-have
 Status: 📋 backlog | 🔨 in progress | ✅ done
