@@ -167,6 +167,13 @@ export function markAbandoned(task_id: string, reason?: string) {
   });
 }
 
+export function deleteTask(task_id: string) {
+  return api<{ task_id: string; deleted: boolean }>("/v1/delete", {
+    method: "POST",
+    body: JSON.stringify({ task_id }),
+  });
+}
+
 export function voidTask(
   task_id: string,
   voided_reason: string,

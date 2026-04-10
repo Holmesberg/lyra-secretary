@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { Play, Square, Ban } from "lucide-react";
+import { Play, Square, Ban, Trash2 } from "lucide-react";
 import type { TaskRow as TaskRowType } from "@/lib/tasks";
 import { CATEGORY_COLORS, type Category } from "@/lib/categories";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ interface Props {
   onStart: (task: TaskRowType) => void;
   onStop: () => void;
   onSkip: (task: TaskRowType) => void;
+  onDelete?: (task: TaskRowType) => void;
 }
 
 // Research layer: readiness X → focus Y ±Nmin
@@ -63,7 +64,7 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
   );
 }
 
-export function TaskRow({ task, disableStart, onStart, onStop, onSkip }: Props) {
+export function TaskRow({ task, disableStart, onStart, onStop, onSkip, onDelete }: Props) {
   // P1-1: 12-hour format.
   const start = task.start ? format(new Date(task.start), "h:mm a") : "—";
   const end = task.end ? format(new Date(task.end), "h:mm a") : "—";
@@ -119,6 +120,17 @@ export function TaskRow({ task, disableStart, onStart, onStop, onSkip }: Props) 
             >
               <Ban className="h-3.5 w-3.5" />
             </Button>
+            {onDelete && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onDelete(task)}
+                title="Delete task"
+                className="text-white/30 hover:text-red-300"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </>
         )}
         {isLive && (

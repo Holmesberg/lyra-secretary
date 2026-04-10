@@ -9,6 +9,7 @@ import {
   startStopwatch,
   stopStopwatch,
   markAbandoned,
+  deleteTask,
   type TaskRow as TaskRowType,
   type StopResponse,
 } from "@/lib/tasks";
@@ -173,6 +174,17 @@ export default function TodayPage() {
     }
   }
 
+  async function handleDelete(task: TaskRowType) {
+    if (!window.confirm("Delete this task? Cancelled plans are recorded as a behavioral signal.")) return;
+    setErrorMsg(null);
+    try {
+      await deleteTask(task.task_id);
+      refresh();
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Failed to delete task");
+    }
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -223,6 +235,7 @@ export default function TodayPage() {
               onStart={(task) => setReadinessFor(task)}
               onStop={() => setReflectionOpen(true)}
               onSkip={handleSkip}
+              onDelete={handleDelete}
             />
           ))}
         </div>
