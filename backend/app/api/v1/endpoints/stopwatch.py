@@ -30,6 +30,7 @@ from app.services.stopwatch_manager import (
     NoActiveStopwatchError,
 )
 from app.services.task_manager import TaskManager
+from app.core.exceptions import InvalidStateTransitionError
 from app.utils.time_utils import to_local
 
 router = APIRouter()
@@ -62,6 +63,20 @@ async def start_stopwatch(
             interruption_type=task.interruption_type,
         )
     except StopwatchAlreadyRunningError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except InvalidStateTransitionError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_state_transition",
+                "message": (
+                    "This task is no longer startable. It may have been "
+                    "auto-skipped, completed, or cancelled. Create a new "
+                    "task with the same title to continue."
+                ),
+            },
+        )
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Stopwatch start error: {e}", exc_info=True)
