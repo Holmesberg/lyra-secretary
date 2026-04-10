@@ -48,6 +48,7 @@ export default function TodayPage() {
     message: string;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["tasks", date] });
@@ -119,6 +120,11 @@ export default function TodayPage() {
       }
       setReflectionOpen(false);
       setEarlyStop(null);
+      if (res.paused_parent) {
+        setInfoMsg(
+          `${res.paused_parent.title} is still paused (${res.paused_parent.paused_minutes} min). Resume when ready.`
+        );
+      }
       refresh();
     } catch (e: any) {
       setErrorMsg(e?.message ?? "Failed to stop timer");
@@ -133,6 +139,31 @@ export default function TodayPage() {
     } catch (e: any) {
       setErrorMsg(e?.message ?? "Failed to void task");
     }
+  }
+
+  function handleInterruptionCreated(taskId: string, taskTitle: string) {
+    refresh();
+    // Open readiness modal for the newly created interruption task.
+    // Build a minimal TaskRowType — only task_id and title are used by
+    // ReadinessModal and handleStart.
+    setReadinessFor({
+      task_id: taskId,
+      title: taskTitle,
+      start: null,
+      end: null,
+      state: "PLANNED",
+      category: null,
+      initiation_status: null,
+      session_index_in_day: 0,
+      pre_task_readiness: null,
+      post_task_reflection: null,
+      planned_duration_minutes: null,
+      executed_duration_minutes: null,
+      duration_delta_minutes: null,
+      executed_start: null,
+      executed_end: null,
+      voided_at: null,
+    });
   }
 
   async function handleSkip(task: TaskRowType) {
@@ -165,6 +196,13 @@ export default function TodayPage() {
       {errorMsg && (
         <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
           {errorMsg}
+        </div>
+      )}
+
+      {infoMsg && (
+        <div className="mb-4 flex items-center justify-between rounded border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+          <span>{infoMsg}</span>
+          <button onClick={() => setInfoMsg(null)} className="ml-2 text-white/40 hover:text-white/70">&times;</button>
         </div>
       )}
 
@@ -218,6 +256,7 @@ export default function TodayPage() {
         open={newTaskOpen}
         onClose={() => setNewTaskOpen(false)}
         onCreated={refresh}
+        onInterruptionCreated={handleInterruptionCreated}
       />
     </div>
   );

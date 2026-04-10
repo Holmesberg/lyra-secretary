@@ -128,6 +128,11 @@ export interface StopResponse {
   discrepancy_score?: number | null;
   micro_mirror?: string | null;
   calibration_nudge?: string | null;
+  paused_parent?: {
+    task_id: string;
+    title: string;
+    paused_minutes: number;
+  } | null;
 }
 
 export function stopStopwatch(

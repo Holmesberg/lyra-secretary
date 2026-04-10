@@ -254,3 +254,41 @@ def test_stopwatch_status_isolated(adv_users, client):
     assert r98.status_code == 200
     body = r98.json()
     assert body["active"] is False, f"cross-user timer leak: {body}"
+
+
+# 14. Cross-user interruption: 99 starts+pauses a task, 98 creates an
+#     overlapping task with force=true and tries to start it — must NOT
+#     link to 99's paused task as parent. The parent_task_id auto-linking
+#     in StopwatchManager must be scoped to the calling user.
+@needs_redis
+def test_cross_user_interruption_blocked(adv_users, client):
+    # 99 creates and starts a task, then pauses it
+    tid_99 = _create(client, 99, "mallory deep work", 150).json()["task_id"]
+    r = client.post("/v1/stopwatch/start", json={"task_id": tid_99}, headers=_h(99))
+    assert r.status_code in (200, 201), r.text
+    r = client.post("/v1/stopwatch/pause", json={}, headers=_h(99))
+    assert r.status_code == 200, r.text
+
+    # 98 creates an overlapping task with force=true (simulating
+    # the interruption flow, but cross-tenant)
+    tid_98 = _create(client, 98, "eve interruption", 150, force=True).json()["task_id"]
+    assert tid_98, "force-create for 98 should succeed (no conflict with 99)"
+
+    # 98 starts their own task — the backend should NOT detect 99's
+    # paused session as the parent (different user scope)
+    r = client.post(
+        "/v1/stopwatch/start",
+        json={"task_id": tid_98},
+        headers=_h(98),
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    # parent_task_id must be None — 99's paused task is not 98's parent
+    assert body.get("parent_task_id") is None, (
+        f"cross-user parent leak: 98's task got parent_task_id={body.get('parent_task_id')}"
+    )
+
+    # Verify 99's task is still PAUSED and untouched
+    row_99 = _fresh_query_task(tid_99)
+    assert row_99 is not None
+    assert row_99.state == TaskState.PAUSED, f"99's task state changed to {row_99.state}"

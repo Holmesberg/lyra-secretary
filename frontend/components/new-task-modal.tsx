@@ -29,26 +29,47 @@ function formatLocal(d: Date) {
   )}:${pad(d.getMinutes())}`;
 }
 
+interface PausedConflict {
+  taskId: string;
+  title: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  onInterruptionCreated?: (taskId: string, taskTitle: string) => void;
 }
 
-export function NewTaskModal({ open, onClose, onCreated }: Props) {
+export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }: Props) {
   const [title, setTitle] = useState("");
   const [start, setStart] = useState(defaultStart());
   const [duration, setDuration] = useState(30);
   const [category, setCategory] = useState<Category>("work");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
+
+  function resetForm() {
+    setTitle("");
+    setDuration(30);
+    setStart(defaultStart());
+    setError(null);
+    setPausedConflict(null);
+  }
+
+  function buildDates() {
+    const startDate = new Date(start);
+    const endDate = new Date(startDate.getTime() + duration * 60_000);
+    return { startDate, endDate };
+  }
 
   async function submit() {
     setError(null);
+    setPausedConflict(null);
     setSubmitting(true);
     try {
-      const startDate = new Date(start);
-      const endDate = new Date(startDate.getTime() + duration * 60_000);
+      const { startDate, endDate } = buildDates();
       const res = await createTask({
         title: title.trim(),
         start: startDate.toISOString(),
@@ -57,6 +78,14 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
       });
       if (!res.created) {
         if (res.conflicts.length > 0) {
+          const allPaused = res.conflicts.every((c) => c.state === "PAUSED");
+          if (allPaused && onInterruptionCreated) {
+            setPausedConflict({
+              taskId: res.conflicts[0].task_id,
+              title: res.conflicts[0].title,
+            });
+            return;
+          }
           setError(
             `Conflicts with: ${res.conflicts
               .map((c) => c.title)
@@ -67,13 +96,39 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
         setError("Task was not created.");
         return;
       }
-      setTitle("");
-      setDuration(30);
-      setStart(defaultStart());
+      resetForm();
       onCreated();
       onClose();
     } catch (e: any) {
       setError(e?.message ?? "Failed to create task");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitAsInterruption() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { startDate, endDate } = buildDates();
+      const res = await createTask({
+        title: title.trim(),
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        category,
+        force: true,
+      });
+      if (!res.created || !res.task_id) {
+        setError("Failed to create interruption task.");
+        return;
+      }
+      const createdTitle = title.trim();
+      const createdId = res.task_id;
+      resetForm();
+      onClose();
+      onInterruptionCreated?.(createdId, createdTitle);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to create interruption task");
     } finally {
       setSubmitting(false);
     }
@@ -140,6 +195,17 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
             </select>
           </div>
 
+          {pausedConflict && (
+            <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+              <span className="font-medium text-white">{pausedConflict.title}</span>{" "}
+              is paused in this window. Start{" "}
+              <span className="font-medium text-white">{title.trim()}</span>{" "}
+              as an interruption? It will be linked — you can resume{" "}
+              <span className="font-medium text-white">{pausedConflict.title}</span>{" "}
+              after.
+            </div>
+          )}
+
           {error && (
             <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
               {error}
@@ -148,15 +214,24 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+          <Button variant="ghost" onClick={() => { setPausedConflict(null); onClose(); }} disabled={submitting}>
             Cancel
           </Button>
-          <Button
-            onClick={submit}
-            disabled={submitting || !title.trim()}
-          >
-            Create
-          </Button>
+          {pausedConflict ? (
+            <Button
+              onClick={submitAsInterruption}
+              disabled={submitting}
+            >
+              Start as interruption
+            </Button>
+          ) : (
+            <Button
+              onClick={submit}
+              disabled={submitting || !title.trim()}
+            >
+              Create
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
