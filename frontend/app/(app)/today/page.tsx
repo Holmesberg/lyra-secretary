@@ -105,11 +105,14 @@ export default function TodayPage() {
 
   async function handleStop(
     reflection: number,
-    opts: { confirmed?: boolean } = {}
+    opts: { confirmed?: boolean; completionPct?: number } = {}
   ) {
     setErrorMsg(null);
     try {
-      const res: StopResponse = await stopStopwatch(reflection, opts);
+      const res: StopResponse = await stopStopwatch(reflection, {
+        confirmed: opts.confirmed,
+        task_completion_percentage: opts.completionPct,
+      });
       if (res.requires_confirmation) {
         setEarlyStop({
           elapsed: res.duration_minutes,
@@ -249,7 +252,7 @@ export default function TodayPage() {
           setReflectionOpen(false);
           setEarlyStop(null);
         }}
-        onConfirm={(r, opts) => handleStop(r, { confirmed: opts?.confirmed })}
+        onConfirm={(r, opts) => handleStop(r, { confirmed: opts?.confirmed, completionPct: opts?.completionPct })}
       />
 
       <NewTaskModal
