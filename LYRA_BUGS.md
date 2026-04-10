@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 10, 2026 — v1.5. 13 open, 26 deferred (OpenClaw), 62 fixed.
+Last updated: April 11, 2026 — v1.5. 18 open, 26 deferred (OpenClaw), 62 fixed.
 
 ---
 
@@ -21,6 +21,11 @@ Last updated: April 10, 2026 — v1.5. 13 open, 26 deferred (OpenClaw), 62 fixed
 | LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Pause A → start B → stop B → resume A: Redis loses task A's active session reference. User continues work untracked. |
 | LYR-091 | 🟢 low | backend | `resolve_user_from_token` matches by email only | `google_id` stays as `simulated-google-sub` placeholder after real sign-in. Upsert real `google_id` from JWT `sub` claim on first real sign-in. Phase 9 fix. |
 | LYR-092 | 🟡 medium | notion | notion_sync retry loop infinitely retries archived pages | Should detect "Can't edit block that is archived" error and drop from Redis queue instead of retrying every 5 min. |
+| LYR-095 | 🔴 high | backend | `get_status()` skips `_recover_from_db()` — banner disappears on Redis loss | `stopwatch_manager.py:550` calls `redis.get_active_stopwatch()` directly without fallback to `_recover_from_db()`. Banner disappears after long pause if Redis loses key (restart/rebuild). |
+| LYR-096 | 🟡 medium | frontend | `task_completion_percentage` dropped between ReflectionModal and stopStopwatch | `today/page.tsx:112` passes `{ confirmed }` but not `task_completion_percentage`. Value from modal never reaches backend. |
+| LYR-097 | 🟡 medium | frontend | `is_future_task` warning from start endpoint not shown in UI | Backend returns `is_future_task: true` but frontend ignores it. No warning when starting timer for future task. |
+| LYR-098 | 🟡 medium | frontend | `micro_mirror` and `calibration_nudge` not displayed after stop | Backend computes and returns both strings but frontend discards them. Research signal lost. |
+| LYR-099 | 🟢 low | frontend | New task modal start time stale after idle | `defaultStart()` called once on mount. Reopening modal after 30min shows stale default time. |
 
 ---
 
@@ -90,20 +95,25 @@ Last updated: April 10, 2026 — v1.5. 13 open, 26 deferred (OpenClaw), 62 fixed
 
 ### Critical (🔴)
 1. LYR-080 — Backend rebuild during active paused session corrupts task/session linkage; delta not computed
+2. LYR-095 — `get_status()` skips `_recover_from_db()` — banner disappears on Redis loss
 
 ### Medium (🟡)
-2. LYR-088 — resume() loses Redis session reference after another stopwatch runs in between
-3. LYR-068 — Notion date timezone double conversion
-4. LYR-056 — validate "then" chaining in parse_chained()
-5. LYR-050 — backfill initiation_status on historical tasks
-6. LYR-092 — notion_sync retry on archived pages
+3. LYR-096 — `task_completion_percentage` dropped in frontend stop flow
+4. LYR-097 — `is_future_task` warning not shown in UI
+5. LYR-098 — `micro_mirror` and `calibration_nudge` not displayed
+6. LYR-088 — resume() loses Redis session reference after another stopwatch runs in between
+7. LYR-068 — Notion date timezone double conversion
+8. LYR-056 — validate "then" chaining in parse_chained()
+9. LYR-050 — backfill initiation_status on historical tasks
+10. LYR-092 — notion_sync retry on archived pages
 
 ### Low (🟢)
-7. LYR-060 — overflow notification misses short tasks
-8. LYR-054 — category_mapping inference at creation time
-9. LYR-018 + LYR-020 — backfill sync, clean test data
-10. LYR-047 — document as Notion limitation
-11. LYR-091 — resolve_user_from_token Phase 9 fix
+11. LYR-099 — New task modal start time stale after idle
+12. LYR-060 — overflow notification misses short tasks
+13. LYR-054 — category_mapping inference at creation time
+14. LYR-018 + LYR-020 — backfill sync, clean test data
+15. LYR-047 — document as Notion limitation
+16. LYR-091 — resolve_user_from_token Phase 9 fix
 
 ---
 

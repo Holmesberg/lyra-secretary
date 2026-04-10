@@ -104,7 +104,7 @@ No tool closes the **metacognitive loop** between planning and execution:
 
 Deferred deliberately. Not blocking alpha or the research-layer goal of v0.1.
 
-- **LLM-powered task creation** — natural-language -> structured task via LLM call. Optional, paid, solves a problem alpha users don't have.
+- **LLM-powered task creation** — Phase 6 candidate, not deferred indefinitely. Cost is much lower than originally estimated because OpenClaw infrastructure already exists and just needs to be exposed as a web client. Implementation sketch: text input field on web UI → POSTs to OpenClaw gateway → existing SKILL.md workflow → backend calls.
 - **Email notifications** — reminders, daily summaries. Requires SMTP/SES infra + user preferences.
 - **Browser push notifications** — Web Push + VAPID. Polling at 10s is good enough for Phase 3/4.
 - **Per-user category visibility flags** — hide categories per user without removing from frozen taxonomy. Needed once non-Cairo users arrive.
