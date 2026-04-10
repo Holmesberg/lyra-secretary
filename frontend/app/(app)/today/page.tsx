@@ -10,6 +10,7 @@ import {
   stopStopwatch,
   markAbandoned,
   deleteTask,
+  voidTask,
   type TaskRow as TaskRowType,
   type StopResponse,
 } from "@/lib/tasks";
@@ -19,6 +20,8 @@ import { ActiveTimerBanner } from "@/components/active-timer-banner";
 import { ReadinessModal } from "@/components/readiness-modal";
 import { ReflectionModal } from "@/components/reflection-modal";
 import { NewTaskModal } from "@/components/new-task-modal";
+import { SelectionActionBar } from "@/components/selection-action-bar";
+import { VoidModal } from "@/components/void-modal";
 
 function todayLocal() {
   const d = new Date();
@@ -50,6 +53,8 @@ export default function TodayPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [voidModalOpen, setVoidModalOpen] = useState(false);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["tasks", date] });
@@ -186,6 +191,27 @@ export default function TodayPage() {
     }
   }
 
+  function toggleSelect(taskId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkVoid(reason: string, detail?: string) {
+    const ids = Array.from(selectedIds);
+    await Promise.all(ids.map((id) => voidTask(id, reason, detail)));
+    clearSelection();
+    setVoidModalOpen(false);
+    refresh();
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -226,6 +252,12 @@ export default function TodayPage() {
         </div>
       )}
 
+      <SelectionActionBar
+        count={selectedIds.size}
+        onVoid={() => setVoidModalOpen(true)}
+        onCancel={clearSelection}
+      />
+
       {sortedTasks.length > 0 && (
         <div className="flex flex-col gap-2">
           {sortedTasks.map((t) => (
@@ -238,6 +270,9 @@ export default function TodayPage() {
               onSkip={handleSkip}
               onDelete={handleDelete}
               onEdit={(task) => setEditingTask(task)}
+              selected={selectedIds.has(t.task_id)}
+              showCheckbox={selectedIds.size > 0}
+              onToggleSelect={toggleSelect}
             />
           ))}
         </div>
@@ -269,6 +304,13 @@ export default function TodayPage() {
         onCreated={refresh}
         onInterruptionCreated={handleInterruptionCreated}
         editingTask={editingTask}
+      />
+
+      <VoidModal
+        open={voidModalOpen}
+        taskCount={selectedIds.size}
+        onConfirm={handleBulkVoid}
+        onCancel={() => setVoidModalOpen(false)}
       />
     </div>
   );

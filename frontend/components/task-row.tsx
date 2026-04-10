@@ -25,6 +25,9 @@ interface Props {
   onSkip: (task: TaskRowType) => void;
   onDelete?: (task: TaskRowType) => void;
   onEdit?: (task: TaskRowType) => void;
+  selected?: boolean;
+  showCheckbox?: boolean;
+  onToggleSelect?: (taskId: string) => void;
 }
 
 // Research layer: readiness X → focus Y ±Nmin
@@ -65,7 +68,10 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
   );
 }
 
-export function TaskRow({ task, disableStart, onStart, onStop, onSkip, onDelete, onEdit }: Props) {
+export function TaskRow({
+  task, disableStart, onStart, onStop, onSkip, onDelete, onEdit,
+  selected, showCheckbox, onToggleSelect,
+}: Props) {
   // P1-1: 12-hour format.
   const start = task.start ? format(new Date(task.start), "h:mm a") : "—";
   const end = task.end ? format(new Date(task.end), "h:mm a") : "—";
@@ -75,7 +81,24 @@ export function TaskRow({ task, disableStart, onStart, onStop, onSkip, onDelete,
   const isTerminal = state === "EXECUTED" || state === "SKIPPED";
 
   return (
-    <div className="flex items-center gap-4 rounded-md border border-white/5 bg-white/[0.02] px-4 py-3">
+    <div
+      className={cn(
+        "group flex items-center gap-4 rounded-md border border-white/5 bg-white/[0.02] px-4 py-3",
+        selected && "bg-blue-500/5 border-blue-500/20"
+      )}
+    >
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={() => onToggleSelect(task.task_id)}
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 accent-blue-500 cursor-pointer",
+            showCheckbox ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
+          onClick={(e) => e.stopPropagation()}
+        />
+      )}
       <div className="w-28 font-mono text-xs text-white/50">
         {start}–{end}
       </div>
