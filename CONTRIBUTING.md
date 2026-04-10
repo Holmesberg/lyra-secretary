@@ -16,12 +16,12 @@ Thanks for your interest in [Lyra Secretary](https://github.com/Holmesberg/lyra-
 
    CI uses **Python 3.11** (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
-3. For Docker-based development, see [`DOCKER.md`](DOCKER.md).
+3. For Docker-based development, see the commands in [`CLAUDE.md`](CLAUDE.md) and networking details in [`docs/architecture.md §3`](docs/architecture.md).
 
 ## Pull requests
 
 - Keep changes focused; match existing naming and structure in touched files.
-- Update user-facing docs ([`README.md`](README.md), [`docs/README.md`](docs/README.md), or [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md)) when behavior or endpoints change.
+- Update user-facing docs ([`README.md`](README.md) or [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md)) when behavior or endpoints change.
 
 ## Multi-user isolation testing
 

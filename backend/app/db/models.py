@@ -314,7 +314,7 @@ class User(Base):
 
 
 class Archetype(Base):
-    """Behavioral archetype lookup. Seeded from clustering_spec.md §4."""
+    """Behavioral archetype lookup. Seeded from docs/methodology.md §1."""
 
     __tablename__ = "archetype"
 

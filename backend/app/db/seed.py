@@ -65,7 +65,7 @@ def seed():
         {"keyword": "dinner", "category": "personal"},
         # health (operator vocabulary additions, Apr 8)
         {"keyword": "sleep", "category": "health"},
-        # planning merged into self_reflection (Apr 8 — taxonomy freeze, see docs/category_taxonomy.md)
+        # planning merged into self_reflection (Apr 8 — taxonomy freeze, see docs/product.md §1)
         {"keyword": "calibration", "category": "self_reflection"},
         {"keyword": "plan", "category": "self_reflection"},
         {"keyword": "friction", "category": "self_reflection"},

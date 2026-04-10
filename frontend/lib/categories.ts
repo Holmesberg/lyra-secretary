@@ -1,5 +1,5 @@
 /**
- * Frozen category taxonomy — source of truth: docs/category_taxonomy.md.
+ * Frozen category taxonomy — source of truth: docs/product.md §1.
  * DO NOT add categories without updating the doc and the experiment plan.
  * Adding a new category mid-experiment redistributes buckets and breaks
  * the per-(category, time_of_day) bias-factor model.

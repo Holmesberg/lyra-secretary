@@ -1,4 +1,4 @@
-> ⚠️ This document is deprecated as of v1.4. See MANIFESTO.md for current system philosophy, FEATURES.md for roadmap, and README.md for technical documentation.
+> **HISTORICAL — superseded by MANIFESTO.md + FEATURES.md + README.md as of v1.4.** Preserved as a research record of the original system design. Do not update this document.
 
 # Lyra Secretary v1.3
 ## Complete Implementation Specification

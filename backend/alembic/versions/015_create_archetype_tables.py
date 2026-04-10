@@ -4,7 +4,7 @@ Revision ID: 015
 Revises: 014
 Create Date: 2026-04-09
 
-Multi-user pivot Phase 1. Implements clustering_spec.md §4 and §7:
+Multi-user pivot Phase 1. Implements docs/methodology.md §1:
 - archetype lookup (5 hand-seeded rows from the literature priors)
 - archetype_assignment per-user (raw instrument scores + assigned slug)
 
