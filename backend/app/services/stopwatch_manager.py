@@ -545,9 +545,14 @@ class StopwatchManager:
         return {"corrected": True, "original": original, "new": pre_task_readiness}
 
     def get_status(self) -> Optional[dict]:
-        """Get current stopwatch status including pause state."""
+        """Get current stopwatch status including pause state.
+
+        Uses _get_active() so Redis loss (restart, eviction) falls through
+        to _recover_from_db() — prevents the banner-disappears-during-pause
+        bug (LYR-095).
+        """
         user_id = self._user_key()
-        active = self.redis.get_active_stopwatch(user_id)
+        active = self._get_active(user_id)
         if not active:
             return None
 
