@@ -19,7 +19,15 @@ export async function api<T = unknown>(
 
   const res = await fetch(`${BASE}${path}`, { ...init, headers });
   if (!res.ok) {
-    throw new Error(`api ${path} → ${res.status} ${await res.text()}`);
+    const text = await res.text();
+    let msg = `${res.status}: ${text}`;
+    try {
+      const body = JSON.parse(text);
+      const detail = body?.detail;
+      if (typeof detail === "string") msg = detail;
+      else if (detail?.message) msg = detail.message;
+    } catch {}
+    throw new Error(msg);
   }
   return (await res.json()) as T;
 }

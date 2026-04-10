@@ -29,6 +29,7 @@ export interface TaskRow {
   duration_delta_minutes: number | null;
   executed_start: string | null;
   executed_end: string | null;
+  voided_at: string | null;
 }
 
 export interface QueryResponse {
@@ -158,5 +159,16 @@ export function markAbandoned(task_id: string, reason?: string) {
   return api<unknown>(`/v1/tasks/${task_id}/mark-abandoned`, {
     method: "POST",
     body: JSON.stringify({ reason }),
+  });
+}
+
+export function voidTask(
+  task_id: string,
+  voided_reason: string,
+  void_reason_detail?: string
+) {
+  return api<unknown>(`/v1/tasks/${task_id}/void`, {
+    method: "POST",
+    body: JSON.stringify({ voided_reason, void_reason_detail }),
   });
 }

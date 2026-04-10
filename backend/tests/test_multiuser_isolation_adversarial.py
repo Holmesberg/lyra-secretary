@@ -241,3 +241,16 @@ def test_cross_user_reschedule_blocked(adv_users, client):
     # And importantly: 98's row is untouched
     row = _fresh_query_task(tid)
     assert row is not None and row.user_id == 98
+
+
+# 13. Stopwatch status isolation: 99 starts timer, 98 sees active=False
+@needs_redis
+def test_stopwatch_status_isolated(adv_users, client):
+    tid = _create(client, 99, "mallory timer", 140).json()["task_id"]
+    r = client.post("/v1/stopwatch/start", json={"task_id": tid}, headers=_h(99))
+    assert r.status_code in (200, 201), r.text
+    # User 98 must NOT see 99's active timer
+    r98 = client.get("/v1/stopwatch/status", headers=_h(98))
+    assert r98.status_code == 200
+    body = r98.json()
+    assert body["active"] is False, f"cross-user timer leak: {body}"

@@ -33,6 +33,24 @@ class StopwatchManager:
         self.redis = RedisClient()
         self.task_manager = TaskManager(db)
 
+    @staticmethod
+    def _user_key() -> str:
+        """Redis namespace key derived from the authenticated user.
+
+        Phase 3.2 discovered that using a static "user_primary" key for
+        all users leaked one user's active timer into another's status
+        response. Now every Redis stopwatch key is namespaced to the
+        numeric user_id from the scoping ContextVar.
+        """
+        from app.db.scoping import get_current_user_id
+        uid = get_current_user_id()
+        if uid is None:
+            raise RuntimeError(
+                "StopwatchManager._user_key: no current_user_id — "
+                "refusing redis lookup without tenant context."
+            )
+        return str(uid)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -67,13 +85,14 @@ class StopwatchManager:
         active_seconds = max(0.0, total_seconds - paused_seconds)
         return int(active_seconds // 60)
 
-    def check_early_stop(self, user_id: str = "user_primary") -> tuple[bool, int, int]:
+    def check_early_stop(self) -> tuple[bool, int, int]:
         """
         Check if stopping now would be an early stop (< 50% of planned).
 
         Returns (is_early_stop, active_elapsed_minutes, planned_minutes).
         Does NOT stop the timer.
         """
+        user_id = self._user_key()
         active = self._get_active(user_id)
         if not active:
             return False, 0, 0
@@ -130,7 +149,6 @@ class StopwatchManager:
         self,
         task_id: Optional[str] = None,
         title: Optional[str] = None,
-        user_id: str = "user_primary",
         pre_task_readiness: Optional[int] = None,
         interruption_type: Optional[str] = None,
     ) -> tuple[StopwatchSession, Task, bool]:
@@ -140,6 +158,7 @@ class StopwatchManager:
         interruption via parent_task_id. The paused session stays in DB
         (unclosed) and can be resumed later.
         """
+        user_id = self._user_key()
         active = self._get_active(user_id)
         paused_task_id = None
 
@@ -221,11 +240,11 @@ class StopwatchManager:
 
     def pause(
         self,
-        user_id: str = "user_primary",
         pause_reason: Optional[str] = None,
         pause_initiator: Optional[str] = None,
     ) -> dict:
         """Pause the active stopwatch. Stores pause timestamp in DB and Redis."""
+        user_id = self._user_key()
         active = self._get_active(user_id)
         if not active:
             raise NoActiveStopwatchError("No active stopwatch")
@@ -261,8 +280,9 @@ class StopwatchManager:
             "pause_initiator": session.pause_initiator,
         }
 
-    def resume(self, user_id: str = "user_primary") -> dict:
+    def resume(self) -> dict:
         """Resume a paused stopwatch. Accumulates paused duration."""
+        user_id = self._user_key()
         active = self._get_active(user_id)
         if not active:
             raise NoActiveStopwatchError("No active stopwatch")
@@ -303,7 +323,6 @@ class StopwatchManager:
 
     def stop(
         self,
-        user_id: str = "user_primary",
         post_task_reflection: Optional[int] = None,
         task_completion_percentage: Optional[int] = None,
     ) -> tuple[StopwatchSession, Task, bool, bool]:
@@ -317,6 +336,7 @@ class StopwatchManager:
         If no active stopwatch but post_task_reflection is provided, updates the
         most recently completed task (within 10 min) — supports the two-call pattern.
         """
+        user_id = self._user_key()
         active = self.redis.get_active_stopwatch(user_id)
         if not active:
             recovered = self._recover_from_db(user_id)
@@ -502,9 +522,9 @@ class StopwatchManager:
     def correct_readiness(
         self,
         pre_task_readiness: int,
-        user_id: str = "user_primary",
     ) -> dict:
         """Correct pre_task_readiness on the active session. No time limit."""
+        user_id = self._user_key()
         active = self._get_active(user_id)
         if not active:
             raise NoActiveStopwatchError("No active stopwatch")
@@ -524,8 +544,9 @@ class StopwatchManager:
 
         return {"corrected": True, "original": original, "new": pre_task_readiness}
 
-    def get_status(self, user_id: str = "user_primary") -> Optional[dict]:
+    def get_status(self) -> Optional[dict]:
         """Get current stopwatch status including pause state."""
+        user_id = self._user_key()
         active = self.redis.get_active_stopwatch(user_id)
         if not active:
             return None

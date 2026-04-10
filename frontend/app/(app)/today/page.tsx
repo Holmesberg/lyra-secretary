@@ -9,6 +9,7 @@ import {
   startStopwatch,
   stopStopwatch,
   markAbandoned,
+  voidTask,
   type TaskRow as TaskRowType,
   type StopResponse,
 } from "@/lib/tasks";
@@ -85,7 +86,9 @@ export default function TodayPage() {
     }
   }
   const sortedTasks = tasksQ.data
-    ? [...tasksQ.data].sort((a, b) => sortKey(a) - sortKey(b))
+    ? [...tasksQ.data]
+        .filter((t) => !t.voided_at)
+        .sort((a, b) => sortKey(b) - sortKey(a))
     : [];
 
   async function handleStart(task: TaskRowType, readiness: number) {
@@ -119,6 +122,16 @@ export default function TodayPage() {
       refresh();
     } catch (e: any) {
       setErrorMsg(e?.message ?? "Failed to stop timer");
+    }
+  }
+
+  async function handleVoid(task: TaskRowType) {
+    setErrorMsg(null);
+    try {
+      await voidTask(task.task_id, "data_quality");
+      refresh();
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Failed to void task");
     }
   }
 
@@ -175,6 +188,7 @@ export default function TodayPage() {
               onStart={(task) => setReadinessFor(task)}
               onStop={() => setReflectionOpen(true)}
               onSkip={handleSkip}
+              onVoid={handleVoid}
             />
           ))}
         </div>

@@ -74,8 +74,8 @@ class StopwatchPauseResponse(BaseModel):
 
 class StopwatchResumeResponse(BaseModel):
     resumed: bool
-    paused_minutes: int
-    total_paused_minutes: int
+    paused_minutes: float
+    total_paused_minutes: float
 
 
 class StopwatchStatusResponse(BaseModel):
@@ -86,7 +86,7 @@ class StopwatchStatusResponse(BaseModel):
     start_time: Optional[datetime] = None
     elapsed_minutes: Optional[int] = None
     paused: bool = False
-    total_paused_minutes: int = 0
+    total_paused_minutes: float = 0
 
 
 class ReadinessCorrectionRequest(BaseModel):

@@ -88,7 +88,13 @@ export function ReflectionModal({
               min={0}
               max={100}
               value={pct}
-              onChange={(e) => setPct(e.target.value)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === "" || raw === "-") { setPct(raw); return; }
+                const n = Number(raw);
+                if (!Number.isFinite(n)) return;
+                setPct(String(Math.max(0, Math.min(100, Math.round(n)))));
+              }}
               className="h-8 w-20 rounded-md border border-white/15 bg-transparent px-2 text-sm"
             />
           </div>
