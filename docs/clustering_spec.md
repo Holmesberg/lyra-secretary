@@ -218,6 +218,41 @@ Test: re-administer instruments at 90 days for ≥ 100 users. ≥ 70% should lan
 
 ---
 
+## 9. Validation gates
+
+Five gates that must be passed **in order** before the clustering model moves from design to production. Each gate has a trigger condition and a fail-action. Gates are evaluated at fixed milestones, not continuously.
+
+### Gate 1 — Instrument reliability (before launch)
+- **Trigger:** First 20 users complete the onboarding survey.
+- **Check:** Cronbach's α ≥ 0.65 on each instrument subscale (MEQ-5, BFI-10 C, BSCS, GP-Short). If any subscale falls below, inspect item-total correlations for the offending items.
+- **Fail-action:** Drop or replace the unreliable subscale. If BSCS fails, fall back to GP-only discipline axis (single instrument, simpler but less robust). If MEQ-5 fails, collapse chronotype to a single self-report item ("Are you a morning or evening person?").
+
+### Gate 2 — Archetype separability (n ≥ 50 per archetype)
+- **Trigger:** 250+ users assigned (≥ 50 per archetype on average; tolerate one archetype at 30 if the rest are at 50+).
+- **Check:** Silhouette score ≥ 0.3 on the (chronotype, discipline_z) space. This is the Claim 1 test from §8.
+- **Fail-action:** If silhouette < 0.3, merge adjacent archetypes (e.g., Disciplined Lark + Disciplined Owl → "Disciplined", dropping the chronotype axis). Rerun with 3 archetypes instead of 5. If still < 0.3, abandon archetypes entirely and use a single population prior.
+
+### Gate 3 — Prior beats flat (n ≥ 10 sessions per new user, ≥ 100 users)
+- **Trigger:** 100+ users with ≥ 10 executed sessions each.
+- **Check:** Hold-out MAE comparison from Claim 2 (§8). Archetype prior must beat flat 1.0 by ≥ 15% MAE reduction on the first 10 sessions.
+- **Fail-action:** If the improvement is < 15%, the archetype priors are not earning their complexity. Fall back to a single population prior (the Diffuse Average prior applied to everyone). Keep the instrument data for research but remove archetype assignment from the user-facing flow.
+
+### Gate 4 — Shrinkage curve calibration (n ≥ 200 users, 90+ days each)
+- **Trigger:** 200+ users with 90+ days of data.
+- **Check:** Fit optimal blend curve (linear, exponential, sigmoid) and compare to the hardcoded linear-to-30 from §5. Claim 3 test.
+- **Fail-action:** If the empirical optimum differs from n=30 by more than ±10 sessions, update the threshold. If a non-linear curve reduces prediction error by > 10% over linear, switch to it. Document the change in the changelog.
+
+### Gate 5 — Assignment stability (90-day retest, n ≥ 100 users)
+- **Trigger:** 100+ users reach their 90-day re-assessment window.
+- **Check:** ≥ 70% land in the same archetype on retest. Claim 4 test.
+- **Fail-action:** If < 60%, the instruments or bucketing thresholds are too noisy. Revisit discipline_z weights, consider widening the "mid" band to absorb borderline cases, or switch to a continuous discipline score instead of discrete buckets. If 60–70%, flag as "marginal" and retest at 180 days with a larger sample before making changes.
+
+### Gate sequencing
+
+Gates 1 and 2 are **blocking** — the system must not assign archetypes to production users until both pass. Gates 3–5 are **corrective** — the system launches with hardcoded priors from §4 and the gates trigger improvements or fallbacks as data accumulates. No gate requires stopping the system; all fail-actions degrade gracefully to simpler models.
+
+---
+
 ## Open questions for post-Apr 15 review
 
 1. Should `category` be in the prior table at all, or only `time_of_day`? The category dimension may be too sparse to support per-archetype priors and may need to be folded into a single global prior per (archetype, time_of_day).
