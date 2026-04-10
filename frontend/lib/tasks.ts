@@ -167,6 +167,21 @@ export function markAbandoned(task_id: string, reason?: string) {
   });
 }
 
+export interface RescheduleInput {
+  task_id: string;
+  new_start: string;
+  new_end: string;
+  title?: string;
+  category?: string;
+}
+
+export function rescheduleTask(input: RescheduleInput) {
+  return api<{ task_id: string; rescheduled: boolean }>("/v1/reschedule", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function deleteTask(task_id: string) {
   return api<{ task_id: string; deleted: boolean }>("/v1/delete", {
     method: "POST",

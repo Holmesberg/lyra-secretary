@@ -525,7 +525,9 @@ class TaskManager:
         self,
         task_id: str,
         new_start: datetime,
-        new_end: Optional[datetime] = None
+        new_end: Optional[datetime] = None,
+        title: Optional[str] = None,
+        category: Optional[str] = None,
     ) -> tuple[Task, list[Task]]:
         """
         Reschedule a task (preserves TaskID).
@@ -565,6 +567,10 @@ class TaskManager:
         task.planned_start_utc = new_start
         task.planned_end_utc = new_end
         task.planned_duration_minutes = int((new_end - new_start).total_seconds() / 60)
+        if title is not None:
+            task.title = title
+        if category is not None:
+            task.category = category
         task.reschedule_count = (task.reschedule_count or 0) + 1
         task.last_modified_at = now_utc()
         self.db.commit()

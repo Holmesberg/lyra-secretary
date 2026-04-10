@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CATEGORIES, type Category } from "@/lib/categories";
-import { createTask } from "@/lib/tasks";
+import { createTask, rescheduleTask, type TaskRow } from "@/lib/tasks";
 
 function defaultStart() {
   const d = new Date();
@@ -40,9 +40,18 @@ interface Props {
   onClose: () => void;
   onCreated: () => void;
   onInterruptionCreated?: (taskId: string, taskTitle: string) => void;
+  editingTask?: TaskRow | null;
 }
 
-export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }: Props) {
+function editDefaults(task: TaskRow) {
+  const startDate = task.start ? new Date(task.start) : new Date();
+  const endDate = task.end ? new Date(task.end) : new Date();
+  const dur = Math.max(5, Math.round((endDate.getTime() - startDate.getTime()) / 60_000));
+  return { start: formatLocal(startDate), duration: dur };
+}
+
+export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, editingTask }: Props) {
+  const isEdit = !!editingTask;
   const [title, setTitle] = useState("");
   const [start, setStart] = useState(defaultStart());
   const [duration, setDuration] = useState(30);
@@ -50,6 +59,19 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
+  const [lastEditId, setLastEditId] = useState<string | null>(null);
+
+  // Sync form fields when editingTask changes
+  if (editingTask && editingTask.task_id !== lastEditId) {
+    const defs = editDefaults(editingTask);
+    setTitle(editingTask.title);
+    setStart(defs.start);
+    setDuration(defs.duration);
+    setCategory((editingTask.category as Category) || "work");
+    setError(null);
+    setPausedConflict(null);
+    setLastEditId(editingTask.task_id);
+  }
 
   function resetForm() {
     setTitle("");
@@ -57,6 +79,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }
     setStart(defaultStart());
     setError(null);
     setPausedConflict(null);
+    setLastEditId(null);
   }
 
   function buildDates() {
@@ -71,6 +94,22 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }
     setSubmitting(true);
     try {
       const { startDate, endDate } = buildDates();
+
+      // Edit mode: reschedule instead of create
+      if (isEdit && editingTask) {
+        await rescheduleTask({
+          task_id: editingTask.task_id,
+          new_start: startDate.toISOString(),
+          new_end: endDate.toISOString(),
+          title: title.trim(),
+          category,
+        });
+        resetForm();
+        onCreated();
+        onClose();
+        return;
+      }
+
       const res = await createTask({
         title: title.trim(),
         start: startDate.toISOString(),
@@ -141,9 +180,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New task</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
           <DialogDescription>
-            Set the plan. You can always reschedule later.
+            {isEdit ? "Update the plan for this task." : "Set the plan. You can always reschedule later."}
           </DialogDescription>
         </DialogHeader>
 
@@ -249,7 +288,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated }
               onClick={submit}
               disabled={submitting || !title.trim()}
             >
-              Create
+              {isEdit ? "Save" : "Create"}
             </Button>
           )}
         </DialogFooter>

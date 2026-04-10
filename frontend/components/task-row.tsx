@@ -24,6 +24,7 @@ interface Props {
   onStop: () => void;
   onSkip: (task: TaskRowType) => void;
   onDelete?: (task: TaskRowType) => void;
+  onEdit?: (task: TaskRowType) => void;
 }
 
 // Research layer: readiness X → focus Y ±Nmin
@@ -64,7 +65,7 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
   );
 }
 
-export function TaskRow({ task, disableStart, onStart, onStop, onSkip, onDelete }: Props) {
+export function TaskRow({ task, disableStart, onStart, onStop, onSkip, onDelete, onEdit }: Props) {
   // P1-1: 12-hour format.
   const start = task.start ? format(new Date(task.start), "h:mm a") : "—";
   const end = task.end ? format(new Date(task.end), "h:mm a") : "—";
@@ -78,7 +79,10 @@ export function TaskRow({ task, disableStart, onStart, onStop, onSkip, onDelete 
       <div className="w-28 font-mono text-xs text-white/50">
         {start}–{end}
       </div>
-      <div className="min-w-0 flex-1">
+      <div
+        className={cn("min-w-0 flex-1", state === "PLANNED" && onEdit && "cursor-pointer")}
+        onClick={() => state === "PLANNED" && onEdit?.(task)}
+      >
         <div className="truncate text-sm">{task.title}</div>
       </div>
       <ResearchLayer task={task} />

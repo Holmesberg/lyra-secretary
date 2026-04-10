@@ -134,7 +134,9 @@ async def reschedule_task(
         task, conflicts = manager.reschedule_task(
             task_id=request.task_id,
             new_start=request.new_start,
-            new_end=request.new_end
+            new_end=request.new_end,
+            title=request.title,
+            category=request.category,
         )
         
         conflict_info = [

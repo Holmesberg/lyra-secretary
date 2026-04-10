@@ -34,7 +34,9 @@ class TaskRescheduleRequest(BaseModel):
     task_id: str = Field(..., min_length=36, max_length=36)
     new_start: datetime
     new_end: Optional[datetime] = None  # If None, preserves duration
-    
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    category: Optional[str] = Field(None, max_length=100)
+
     @validator('new_end')
     def end_after_start(cls, v, values):
         if v is not None and 'new_start' in values and v <= values['new_start']:

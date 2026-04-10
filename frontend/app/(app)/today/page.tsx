@@ -49,6 +49,7 @@ export default function TodayPage() {
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["tasks", date] });
@@ -236,6 +237,7 @@ export default function TodayPage() {
               onStop={() => setReflectionOpen(true)}
               onSkip={handleSkip}
               onDelete={handleDelete}
+              onEdit={(task) => setEditingTask(task)}
             />
           ))}
         </div>
@@ -262,10 +264,11 @@ export default function TodayPage() {
       />
 
       <NewTaskModal
-        open={newTaskOpen}
-        onClose={() => setNewTaskOpen(false)}
+        open={newTaskOpen || !!editingTask}
+        onClose={() => { setNewTaskOpen(false); setEditingTask(null); }}
         onCreated={refresh}
         onInterruptionCreated={handleInterruptionCreated}
+        editingTask={editingTask}
       />
     </div>
   );
