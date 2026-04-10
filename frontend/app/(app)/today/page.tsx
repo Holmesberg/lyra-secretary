@@ -159,9 +159,14 @@ export default function TodayPage() {
   }
 
   async function handleSkip(task: TaskRowType) {
+    const isLive = task.state === "EXECUTING" || task.state === "PAUSED";
+    const msg = isLive
+      ? "Stop and skip this task? Your progress will be saved as data."
+      : "Skip this task?";
+    if (!window.confirm(msg)) return;
     setErrorMsg(null);
     try {
-      await markAbandoned(task.task_id, "user_skipped from Today view");
+      await markAbandoned(task.task_id, isLive ? "abandoned mid-session from Today view" : "user_skipped from Today view");
       refresh();
     } catch (e: any) {
       setErrorMsg(e?.message ?? "Failed to skip task");

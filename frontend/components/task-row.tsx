@@ -122,9 +122,19 @@ export function TaskRow({ task, disableStart, onStart, onStop, onSkip }: Props) 
           </>
         )}
         {isLive && (
-          <Button size="sm" variant="secondary" onClick={onStop} title="Stop timer">
-            <Square className="h-3.5 w-3.5" />
-          </Button>
+          <>
+            <Button size="sm" variant="secondary" onClick={onStop} title="Stop timer">
+              <Square className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onSkip(task)}
+              title="Stop and skip"
+            >
+              <Ban className="h-3.5 w-3.5" />
+            </Button>
+          </>
         )}
         {isTerminal && <div className="w-8" />}
       </div>
