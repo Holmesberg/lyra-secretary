@@ -9,7 +9,6 @@ import {
   startStopwatch,
   stopStopwatch,
   markAbandoned,
-  voidTask,
   type TaskRow as TaskRowType,
   type StopResponse,
 } from "@/lib/tasks";
@@ -134,16 +133,6 @@ export default function TodayPage() {
     }
   }
 
-  async function handleVoid(task: TaskRowType) {
-    setErrorMsg(null);
-    try {
-      await voidTask(task.task_id, "data_quality");
-      refresh();
-    } catch (e: any) {
-      setErrorMsg(e?.message ?? "Failed to void task");
-    }
-  }
-
   function handleInterruptionCreated(taskId: string, taskTitle: string) {
     refresh();
     // Open readiness modal for the newly created interruption task.
@@ -229,7 +218,6 @@ export default function TodayPage() {
               onStart={(task) => setReadinessFor(task)}
               onStop={() => setReflectionOpen(true)}
               onSkip={handleSkip}
-              onVoid={handleVoid}
             />
           ))}
         </div>
