@@ -61,7 +61,7 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 **GET /v1/tasks/{task_id}** — returns: full task detail
 **GET /v1/tasks/last** — most recently operated task (1-hr window) — returns: `task_id`, `title`, `state` — 404 if expired
 **POST /v1/tasks/{task_id}/sync** — force Notion backfill — returns: `synced`, `notion_page_id`
-**POST /v1/tasks/{task_id}/void** — body (optional): `voided_reason` — marks EXECUTED as system_error, excluded from analytics
+**POST /v1/tasks/{task_id}/void** — body: `voided_reason`* (test_contamination|duplicate|system_error|data_quality|other), `void_reason_detail`* if reason=other — voids any non-DELETED task, excluded from analytics, auto-clears stopwatch banner
 **POST /v1/tasks/{task_id}/mark-abandoned** — body (optional): `reason` — EXECUTING|PAUSED|PLANNED → SKIPPED (PLANNED sets initiation_status=user_skipped)
 **POST /v1/tasks/swap** — body: `task_a_id`*, `task_b_id`* — swaps SKIPPED↔PLANNED: reactivates SKIPPED at the PLANNED task's slot, marks PLANNED as user_skipped — returns: `reactivated_task_id`, `skipped_task_id`
 **POST /v1/schedule/clear** — stops active timer + abandons EXECUTING + deletes PLANNED — returns: `cleared`, `executing_abandoned`, `planned_deleted`
@@ -131,9 +131,11 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 
 **Clear schedule:** POST /v1/schedule/clear → handles active timer + EXECUTING + PLANNED atomically.
 
-**Void session:**
-- GET /v1/tasks/query → GET /v1/tasks/{id} → confirm EXECUTED → ask reason
-- POST /v1/tasks/{task_id}/void with voided_reason → "Session voided — excluded from analytics."
+**Void session (any non-DELETED state — EXECUTED, PAUSED, EXECUTING, PLANNED):**
+- GET /v1/tasks/{id} → confirm target task with user
+- ALWAYS ASK REASON — send "Void reason? 1. test_contamination  2. duplicate  3. system_error  4. data_quality  5. other" — WAIT for reply — NEVER pick a reason yourself, NEVER default to system_error
+- If user picks 5 (other): ask "Describe:" — WAIT → set `void_reason_detail`
+- POST /v1/tasks/{task_id}/void with `voided_reason` (+ `void_reason_detail` if other) → "Session voided — excluded from analytics."
 - NEVER delete EXECUTED tasks — always void instead.
 
 **Undo:** POST /v1/undo immediately after create or delete.
