@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 11, 2026 (evening — stale session recovery shipped)
+**Last updated:** April 11, 2026 (evening — stale session recovery + PLANNED asc sort shipped)
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -43,8 +43,6 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
-- **Sort PLANNED tasks ascending (next-up first).** Currently descending. Operator confirmed asc. Trivial flip. *Apr 10.*
-
 - **useCurrentTime hook missing.** New task modal default start time stale after page idle. "Today" date doesn't refresh past midnight without manual reload (mostly works via 10s polling but edge case exists). Bundles LYR-099 (defaultStart stale on modal reopen). *Apr 10 + Apr 11 audit.*
 
 - **Frontend backend-unreachable graceful retry UI.** "Failed to fetch" raw error shown on transient backend issues (host sleep, WSL port forward stabilization). Should be friendly retry banner with auto-retry every 5s. *Apr 11.*
@@ -65,7 +63,8 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### FIXED (recent — prune in 2 weeks)
 
-- Sort direction (newest top) — Phase 3.3 partial fix; still needs another flip per operator (tracked in P1 OPEN above)
+- PLANNED rows sort ascending (next-up first) — partitioned from the execution-axis block so PLANNED-PLANNED comparisons go asc while everything else stays desc; avoids the non-transitive mixed-comparator failure mode for stale PLANNED rows with past planned_start (this commit)
+- Sort direction (newest top) — Phase 3.3 partial fix; superseded by the ascending-PLANNED partition above
 
 ---
 

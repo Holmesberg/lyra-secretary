@@ -92,10 +92,24 @@ export default function TodayPage() {
         return pStart ?? 0;
     }
   }
+  // PLANNED rows sort ascending (next-up first, earliest at top) so the
+  // operator's attention anchors to the task they should start next.
+  // Everything else stays descending (most-recently-touched first)
+  // because for EXECUTED/SKIPPED the relevant question is "what did I
+  // just finish," not "what's the oldest thing on record." Partition
+  // rather than one mixed comparator — mixed comparators aren't
+  // transitive when a stale PLANNED row has a past planned_start.
   const sortedTasks = tasksQ.data
-    ? [...tasksQ.data]
-        .filter((t) => !t.voided_at)
-        .sort((a, b) => sortKey(b) - sortKey(a))
+    ? (() => {
+        const visible = tasksQ.data.filter((t) => !t.voided_at);
+        const planned = visible
+          .filter((t) => t.state === "PLANNED")
+          .sort((a, b) => sortKey(a) - sortKey(b));
+        const rest = visible
+          .filter((t) => t.state !== "PLANNED")
+          .sort((a, b) => sortKey(b) - sortKey(a));
+        return [...planned, ...rest];
+      })()
     : [];
 
   async function handleStart(task: TaskRowType, readiness: number) {
