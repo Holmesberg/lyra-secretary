@@ -182,6 +182,12 @@ class StopwatchManager:
         task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
         if not task:
             return None
+        # Defense-in-depth: a voided task must never rehydrate into the
+        # banner. void_cleanup() closes the session at void-time (commit
+        # 59ca80d), but any orphan rows left over from before that fix
+        # shipped would otherwise resurface on the next Redis-loss event.
+        if task.voided_at is not None:
+            return None
 
         self.redis.set_active_stopwatch(
             user_id=user_id,

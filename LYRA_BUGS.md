@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 11, 2026 — v1.5. 18 open, 26 deferred (OpenClaw), 62 fixed.
+Last updated: April 11, 2026 — v1.6. 18 open, 26 deferred (OpenClaw), 64 fixed.
 
 ---
 
-## Open (13 bugs)
+## Open (18 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -21,11 +21,11 @@ Last updated: April 11, 2026 — v1.5. 18 open, 26 deferred (OpenClaw), 62 fixed
 | LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Pause A → start B → stop B → resume A: Redis loses task A's active session reference. User continues work untracked. |
 | LYR-091 | 🟢 low | backend | `resolve_user_from_token` matches by email only | `google_id` stays as `simulated-google-sub` placeholder after real sign-in. Upsert real `google_id` from JWT `sub` claim on first real sign-in. Phase 9 fix. |
 | LYR-092 | 🟡 medium | notion | notion_sync retry loop infinitely retries archived pages | Should detect "Can't edit block that is archived" error and drop from Redis queue instead of retrying every 5 min. |
-| LYR-095 | 🔴 high | backend | `get_status()` skips `_recover_from_db()` — banner disappears on Redis loss | `stopwatch_manager.py:550` calls `redis.get_active_stopwatch()` directly without fallback to `_recover_from_db()`. Banner disappears after long pause if Redis loses key (restart/rebuild). |
 | LYR-096 | 🟡 medium | frontend | `task_completion_percentage` dropped between ReflectionModal and stopStopwatch | `today/page.tsx:112` passes `{ confirmed }` but not `task_completion_percentage`. Value from modal never reaches backend. |
 | LYR-097 | 🟡 medium | frontend | `is_future_task` warning from start endpoint not shown in UI | Backend returns `is_future_task: true` but frontend ignores it. No warning when starting timer for future task. |
 | LYR-098 | 🟡 medium | frontend | `micro_mirror` and `calibration_nudge` not displayed after stop | Backend computes and returns both strings but frontend discards them. Research signal lost. |
 | LYR-099 | 🟢 low | frontend | New task modal start time stale after idle | `defaultStart()` called once on mount. Reopening modal after 30min shows stale default time. |
+| LYR-103 | 🔴 high | backend | Missing `stale_session_recovery` APScheduler job | Orphaned unclosed `StopwatchSession` rows never swept. Produced the 65h CO-block ghost on Apr 11 (paused browser crashed, container restarted). Required sweeper: 24h threshold, auto-close with `auto_closed=True`, clear matching Redis keys. |
 
 ---
 
@@ -82,6 +82,9 @@ Last updated: April 11, 2026 — v1.5. 18 open, 26 deferred (OpenClaw), 62 fixed
 | LYR-087 | 🟡 medium | backend | DELETED tasks inflated cascade_score as false skips | Fixed: `_is_skip()` now only treats `SKIPPED` state as a skip; DELETED tasks filtered from each day's chain before cascade scoring. |
 | LYR-089 | 🟡 medium | skill | Reflection not asked when early stop confirmed | Fixed: SKILL.md stop flow — ask reflection BEFORE `?confirmed=true` call. Eliminated the erroneous 3-call pattern. |
 | LYR-090 | 🔴 high | backend | 0-minute active session marked EXECUTED instead of SKIPPED | Fixed: `StopwatchManager.stop()` early-exits with SKIPPED transition when `active_elapsed == 0`. Stop response includes `skipped: true, skip_reason: 'zero_duration'`. |
+| LYR-095 | 🔴 high | backend | `get_status()` skips `_recover_from_db()` — banner disappears on Redis loss | Fixed: `get_status()` now falls through to `_get_active()`, which internally recovers from the DB when Redis is empty. Defense-in-depth `voided_at` filter added to `_recover_from_db()` so orphan voided sessions never rehydrate. Commits 9b7756f + this batch. |
+| LYR-101 | 🔴 high | backend | Voided task still shows paused timer banner | Fixed: `void_task` endpoint now calls `StopwatchManager.void_cleanup()` atomically after stamping `voided_at`. Closes any unclosed `StopwatchSession` for the task and clears the user's Redis `active_stopwatch` + `pause_state` keys. Surfaced as 65h CO-block ghost on Apr 11. Commit 59ca80d. |
+| LYR-102 | 🔴 high | skill | OpenClaw void failed with 422 on missing `voided_reason` | Fixed: SKILL.md endpoint line marks `voided_reason`* as required with full enum listed; workflow section adds "ALWAYS ASK REASON" rule with explicit "never pick a reason yourself, never default to system_error". Commit e57aa7e. |
 | LYR-GET | 🟡 medium | backend | Missing single task fetch endpoint | `GET /v1/tasks/{task_id}` implemented. Returns full TaskDetail. Router reordered to prevent `/query` collision. Enables Hard Rule #6 verification flow. |
 | LYR-UNDO | 🟡 medium | backend | Missing undo endpoint | `POST /v1/undo` implemented. 30-second TTL via Redis. Reverts `create_task` (soft-delete) and `delete_task` (restore to PLANNED). Confirmed working via curl and Telegram. |
 | LYR-SCHED | 🟡 medium | backend | Missing APScheduler background workers | `scheduler.py` + 4 jobs: reminders (1min), Notion retry (5min), timer overflow (2min), overdue (30min). Hooked into FastAPI lifespan. Confirmed firing via logs. |
@@ -94,8 +97,8 @@ Last updated: April 11, 2026 — v1.5. 18 open, 26 deferred (OpenClaw), 62 fixed
 ## Priority Order for Next Session
 
 ### Critical (🔴)
-1. LYR-080 — Backend rebuild during active paused session corrupts task/session linkage; delta not computed
-2. LYR-095 — `get_status()` skips `_recover_from_db()` — banner disappears on Redis loss
+1. LYR-103 — Missing `stale_session_recovery` APScheduler job; orphan sessions never swept (produced 65h CO-block ghost)
+2. LYR-080 — Backend rebuild during active paused session corrupts task/session linkage; delta not computed
 
 ### Medium (🟡)
 3. LYR-096 — `task_completion_percentage` dropped in frontend stop flow
