@@ -88,9 +88,16 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS first (dev only — prod is single-origin via nginx in Phase 8).
-# Must be declared BEFORE UserScopeMiddleware so the preflight OPTIONS
-# path is handled without interacting with the Bearer auth logic.
+# Middleware ordering: Starlette applies middleware in REVERSE of
+# add_middleware order — the last-added wrapper becomes the outermost.
+#
+# CORS must be the OUTER layer so that short-circuit 401 responses
+# from UserScopeMiddleware (e.g. on expired JWTs) still carry
+# Access-Control-Allow-Origin headers. Otherwise the browser sees a
+# bare 401 from the cross-origin request and reports it as a CORS
+# policy failure, masking the real auth error. CORS also handles the
+# preflight OPTIONS path itself without ever calling the inner layer.
+app.add_middleware(UserScopeMiddleware)  # inner — added first
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL],
@@ -98,8 +105,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "X-User-Id"],
     expose_headers=["*"],
-)
-app.add_middleware(UserScopeMiddleware)
+)  # outer — added last, runs first
 app.include_router(api_router, prefix="/v1")
 
 @app.get("/")
