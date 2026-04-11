@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,10 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CATEGORIES, type Category } from "@/lib/categories";
+import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import { createTask, rescheduleTask, type TaskRow } from "@/lib/tasks";
 
-function defaultStart() {
-  const d = new Date();
+function defaultStart(from: Date = new Date()) {
+  const d = new Date(from);
   d.setMinutes(d.getMinutes() + 5 - (d.getMinutes() % 5));
   d.setSeconds(0);
   d.setMilliseconds(0);
@@ -52,14 +53,27 @@ function editDefaults(task: TaskRow) {
 
 export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, editingTask }: Props) {
   const isEdit = !!editingTask;
+  const now = useCurrentTime();
   const [title, setTitle] = useState("");
-  const [start, setStart] = useState(defaultStart());
+  const [start, setStart] = useState(() => defaultStart());
   const [duration, setDuration] = useState(30);
   const [category, setCategory] = useState<Category>("work");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
   const [lastEditId, setLastEditId] = useState<string | null>(null);
+
+  // Refresh the start default every time the modal opens for a new task
+  // (not edit). Using `open` as the only dep intentionally — we don't
+  // want the 60s `now` tick to clobber the user's in-progress typing
+  // mid-edit. The `now` value read here is whichever tick was latest at
+  // the moment `open` flipped to true, which is at worst 60s stale.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (open && !editingTask) {
+      setStart(defaultStart(now));
+    }
+  }, [open, editingTask]);
 
   // Sync form fields when editingTask changes
   if (editingTask && editingTask.task_id !== lastEditId) {
@@ -76,7 +90,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   function resetForm() {
     setTitle("");
     setDuration(30);
-    setStart(defaultStart());
+    setStart(defaultStart(now));
     setError(null);
     setPausedConflict(null);
     setLastEditId(null);

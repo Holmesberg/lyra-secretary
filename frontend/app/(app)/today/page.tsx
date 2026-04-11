@@ -14,6 +14,7 @@ import {
   type TaskRow as TaskRowType,
   type StopResponse,
 } from "@/lib/tasks";
+import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import { Button } from "@/components/ui/button";
 import { TaskRow } from "@/components/task-row";
 import { ActiveTimerBanner } from "@/components/active-timer-banner";
@@ -23,15 +24,15 @@ import { NewTaskModal } from "@/components/new-task-modal";
 import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 
-function todayLocal() {
-  const d = new Date();
+function localDateKey(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export default function TodayPage() {
   const qc = useQueryClient();
-  const date = todayLocal();
+  const now = useCurrentTime();
+  const date = localDateKey(now);
 
   const tasksQ = useQuery({
     queryKey: ["tasks", date],
