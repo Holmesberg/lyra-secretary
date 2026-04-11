@@ -42,10 +42,17 @@ export interface QueryResponse {
  * `state="all"` makes backend's `TaskState()` ValueError branch skip the
  * filter entirely, so every non-`state`-matching row comes back. We then
  * drop DELETED client-side — still visible in audit flows elsewhere.
+ *
+ * `days` widens the window to `[date, date+days)` — default 1 preserves the
+ * single-day Today view; the calendar view passes a larger value to pull a
+ * week or month in one round trip.
  */
-export async function queryTasks(date: string): Promise<TaskRow[]> {
+export async function queryTasks(
+  date: string,
+  days: number = 1
+): Promise<TaskRow[]> {
   const res = await api<QueryResponse>(
-    `/v1/tasks/query?date=${encodeURIComponent(date)}&state=all`
+    `/v1/tasks/query?date=${encodeURIComponent(date)}&days=${days}&state=all`
   );
   return res.tasks.filter((t) => t.state !== "DELETED");
 }

@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 11, 2026 — v1.7. 17 open, 26 deferred (OpenClaw), 65 fixed.
+Last updated: April 11, 2026 — v1.7. 17 open, 26 deferred (OpenClaw), 59 fixed.
 
 ---
 
@@ -28,7 +28,7 @@ Last updated: April 11, 2026 — v1.7. 17 open, 26 deferred (OpenClaw), 65 fixed
 
 ---
 
-## Fixed (62 bugs)
+## Fixed (59 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|

@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @router.get("/tasks/query")
 async def query_tasks(
     date: Optional[str] = Query(None, description="Filter by date (YYYY-MM-DD)"),
+    days: int = Query(1, ge=1, le=62, description="Number of days starting at `date` to include (default 1). 62 cap = ~2 months, enough for the calendar month view."),
     category: Optional[str] = Query(None, description="Filter by category"),
     state: Optional[str] = Query("planned", description="Filter by state"),
     initiation_status: Optional[str] = Query(None, description="Filter by initiation_status (e.g. system_error, retroactive)"),
@@ -24,12 +25,12 @@ async def query_tasks(
 ):
     """
     Query tasks with optional filters.
-    
+
     Returns tasks matching filters, ordered by start time.
     """
     try:
         query = db.query(Task)
-        
+
         # Filter by state
         if state:
             try:
@@ -37,13 +38,15 @@ async def query_tasks(
                 query = query.filter(Task.state == task_state)
             except ValueError:
                 pass  # Invalid state, skip filter
-        
-        # Filter by date
+
+        # Filter by date window. `days=1` preserves the original single-day
+        # behaviour that Today view depends on; larger values open a range
+        # so the calendar view can fetch a week/month in one call.
         if date:
             try:
                 target_date = datetime.strptime(date, "%Y-%m-%d")
                 day_start = to_utc(target_date)  # midnight Cairo → UTC
-                day_end = to_utc(target_date + timedelta(days=1))
+                day_end = to_utc(target_date + timedelta(days=days))
                 query = query.filter(
                     Task.planned_start_utc >= day_start,
                     Task.planned_start_utc < day_end
