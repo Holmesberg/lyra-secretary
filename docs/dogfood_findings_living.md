@@ -34,8 +34,8 @@ This document is edited continuously as new findings emerge. Sections of this do
 - LYR-100 CORS middleware ordering (commit 625bf87)
 - LYR-091 Notion archived-page detection (commit 951160e)
 - AppLayout 401 auto-signOut + always-rendered Sign Out button (commit 7c9f33e)
-- Cross-tenant write leak structural fix (Phase 3.2)
-- Cross-tenant read leak per-user Redis keys (Phase 3.3 P0-A)
+- Cross-tenant write leak structural fix (Phase 3.2, commits 4cf2168 + 430f120)
+- Cross-tenant read leak per-user Redis keys — operator saw a second user's active timer (Phase 3.3 P0-A)
 - Pause/resume 500 from int/float type mismatch (Phase 3.3 P0-B)
 - completion_pct accepted 500% validation (Phase 3.3 P0-C)
 
@@ -61,9 +61,13 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **Density and typography polish on Today view.** Half-page empty, text could be denser. Reference: Linear, Vercel, Cron, Raycast. *Apr 9.*
 
-- **No swap-tasks affordance.** Existed in OpenClaw, missing in web UI. *Apr 9.*
+- **No swap-tasks affordance.** Existed in OpenClaw, missing in web UI. v2 backlog or Phase 4.5. *Apr 9.*
 
 - **Active timer banner display when paused very long.** Currently shows large hour count past 12h. May want different presentation. *Apr 11.*
+
+### FIXED (recent — prune in 2 weeks)
+
+- Sort direction (newest top) — Phase 3.3 partial fix; still needs another flip per operator (tracked in P1 OPEN above)
 
 ---
 
@@ -100,6 +104,20 @@ This document is edited continuously as new findings emerge. Sections of this do
 - **Host sleep breaks WSL port forwarding intermittently.** Symptoms: "Failed to fetch" or net::ERR_FAILED on localhost:8000 from browser, while WSL curl to same endpoint succeeds. Workaround: docker restart backend, or wsl --shutdown + Docker Desktop restart in worst case. *Apr 11.*
 
 - **Middleware ordering rule documented in CONTRIBUTING.md** (LYR-100 lesson): response-modifying middleware must be added LAST to end up outermost. Short-circuiting middleware (auth, rate limit) goes inner. *Apr 11.*
+
+---
+
+## Architecture findings (long-term)
+
+- **The clustering layer has 4 stacked unvalidated assumptions.** Documented in `clustering_spec.md` validation gates section. Re-fit after Phase 6+ data. *Audit.*
+
+- **H1 kill criterion was tightened** to require statistically significant + predicted-direction learning improvement. Pre-registration block added. *Audit.*
+
+- **3 behavioral profiles vs 5 operational archetypes** are different abstraction levels, now documented. *Audit.*
+
+- **BCI reframed from replacement-or-parallel to complementary signal** with Bayesian weighting. *Audit.*
+
+- **Single-mutation-authority pattern protects writes but every new read endpoint is a leak surface.** CONTRIBUTING.md isolation test rule added. *Audit.*
 
 ---
 
