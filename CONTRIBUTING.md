@@ -82,6 +82,52 @@ The test pattern:
 
 PRs that modify only read paths, documentation, or frontend-only code are exempt.
 
+## Frontend dev restart rule (WSL)
+
+**Every Next.js dev-server restart in WSL MUST kill zombie `next-server` and
+`next dev` processes BEFORE cleaning `.next`. Never run `rm -rf .next` on its
+own.**
+
+The correct sequence:
+
+```bash
+pkill -9 -f "next-server" 2>/dev/null
+pkill -9 -f "next dev"    2>/dev/null
+sleep 2                                 # let WSL release file locks
+rm -rf frontend/.next
+cd frontend && npm run dev
+```
+
+Example of the bug class (**recurring Apr 9-11 2026**):
+
+- Operator hit a dev-server issue (HMR runtime error, stale bundle, port 3000
+  zombie). Ran `rm -rf .next` to clean the cache.
+- `rm -rf` failed with `Directory not empty` because a zombie `next-server`
+  worker still held open file descriptors on `.next/cache/webpack/*.pack`.
+- Operator ran `rm -rf .next` a second time — this time it partially succeeded,
+  leaving a corrupted half-deleted cache.
+- `npm run dev` on top of the corrupted cache produced a "works on my laptop
+  but the old bug still appears in the browser" state that wasted ~30 min
+  before we realised the bundle was stale.
+- Root cause: WSL's 9P filesystem bridge is slower than native Linux at
+  releasing file locks, so zombie node processes can hold `.next/*` open for
+  seconds after the parent shell closes. Native Linux rarely hits this; macOS
+  never hits it.
+
+The `sleep 2` in the sequence above is load-bearing — without it, `rm -rf`
+races the OS and fails intermittently. 2 seconds is empirically enough for
+WSL2 + Node 20.
+
+**Operator has the sequence wired as the `lyra-dev` shell alias.** Anyone else
+working in WSL should either alias it the same way or paste the block above.
+CI doesn't hit this because CI runs on native Linux, not WSL, so this rule is
+**developer-workflow only** — do not add it to any CI step.
+
+Diagnostic smell: if `rm -rf .next` ever prints `Directory not empty`, or if
+Fast Refresh shows "had to perform a full reload due to a runtime error" more
+than once per session, stop typing and run the full kill+clean+restart
+sequence.
+
 ## Diagrams
 
 Regenerate PNGs after editing [`docs/diagrams/generate_diagrams.py`](docs/diagrams/generate_diagrams.py):
