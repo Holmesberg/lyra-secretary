@@ -89,6 +89,21 @@ class NotionClient:
             return response["id"]
             
         except APIResponseError as e:
+            # LYR-091: An archived Notion page is a permanent state — the page
+            # stays archived until someone manually unarchives it in Notion.
+            # Re-raising here feeds it back into @retry_with_backoff and the
+            # Redis retry queue, producing pure log noise every 5 minutes
+            # forever. Return None instead: the retry worker treats a
+            # no-exception return as success and drops the item from the
+            # queue head via its success_count / ltrim path.
+            if "archived" in str(e).lower():
+                logger.warning(
+                    f"Notion page archived for task {task.task_id} "
+                    f"(page_id={task.notion_page_id}); dropping from retry "
+                    f"queue permanently. Unarchive the page in Notion to "
+                    f"re-enable sync."
+                )
+                return None
             logger.error(f"Notion API error: {e}", exc_info=True)
             raise
     
