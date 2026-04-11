@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 11, 2026 (mid-morning)
+**Last updated:** April 11, 2026 (afternoon)
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -13,16 +13,14 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
-- **Voided task still shows paused timer banner.** After voiding CO block via OpenClaw, frontend banner kept showing "PAUSED · CO block 65:09:22". Possible causes: (a) frontend doesn't refetch /v1/stopwatch/status after void, (b) get_status doesn't filter voided_at IS NOT NULL sessions, (c) Redis active-stopwatch key still references the voided task. Investigate all three. *Found Apr 11.*
-
-- **OpenClaw void endpoint hardcodes or skips voided_reason.** Operator voided CO block via OpenClaw with `void CO block ghost task paused for 65:17:59`. Lyra confirmed without asking for reason. Either SKILL.md hardcodes a reason or backend isn't enforcing the enum on the OpenClaw code path. Audit both. Backend Pydantic should reject any void without a valid voided_reason on every endpoint, not just web UI. *Found Apr 11.*
-
 - **Stale session recovery job missing.** CO block was paused for ~65 hours before manual void. stale_session_recovery.py was designed in audit but never built. Required: PAUSED >12h auto-abandon, EXECUTING >planned×5 auto-abandon, notify operator on auto-action. *Found Apr 11.*
 
 - **Edit click vs multi-select checkbox conflict on PLANNED rows.** Phase 4 added click-row-to-edit and checkbox-for-multi-select-void on the same row. Operator hasn't browser-verified that clicking the checkbox doesn't also trigger the edit modal, or vice versa. Needs verification. *Found Apr 11, untested.*
 
 ### FIXED (recent — prune in 2 weeks)
 
+- Voided task still shows paused timer banner — void_task now closes orphan StopwatchSession and clears Redis active/pause keys; _get_active self-heals historic stale state on next poll (commit 59ca80d)
+- OpenClaw void without voided_reason — SKILL.md now mandates "ALWAYS ASK REASON" on any non-DELETED void, endpoint line marks voided_reason as required with enum values listed (commit e57aa7e)
 - PLANNED edit affordance via prefilled modal (commit 8eb4ac7)
 - PLANNED delete affordance with confirmation (commit afcf868)
 - EXECUTING/PAUSED skip affordance (commit 1d85b84)
