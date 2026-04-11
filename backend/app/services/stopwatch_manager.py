@@ -59,7 +59,63 @@ class StopwatchManager:
         active = self.redis.get_active_stopwatch(user_id)
         if not active:
             active = self._recover_from_db(user_id)
+        if active:
+            # Self-heal: if the bound task has been voided since the session
+            # started, close the orphan session and clear Redis so the next
+            # status poll returns None. Without this the frontend banner
+            # keeps showing a PAUSED timer for a voided task forever (the
+            # CO-block 65h incident). This also catches historic stale
+            # state from voids that ran before void_cleanup existed.
+            task = self.db.query(Task).filter(
+                Task.task_id == active["task_id"]
+            ).first()
+            if task is None or task.voided_at is not None:
+                self._close_orphan_session(active["session_id"])
+                self.redis.clear_active_stopwatch(user_id)
+                self.redis.clear_pause_state(user_id)
+                return None
         return active
+
+    def _close_orphan_session(self, session_id: str) -> None:
+        """Close an unclosed StopwatchSession without touching task metrics.
+
+        Used when a task was voided out from under an active session — we
+        just want the row marked closed so _recover_from_db stops finding
+        it. No duration/delta math, no micro-mirror, no Notion sync.
+        """
+        session = self.db.query(StopwatchSession).filter(
+            StopwatchSession.session_id == session_id
+        ).first()
+        if session and session.end_time_utc is None:
+            session.end_time_utc = now_utc()
+            session.auto_closed = True
+            session.paused_at_utc = None
+            self.db.commit()
+
+    def void_cleanup(self, task_id: str) -> None:
+        """Clear stopwatch state bound to a task that is being voided.
+
+        Called by the /v1/tasks/{id}/void endpoint so the frontend banner
+        disappears on the next status poll instead of waiting for the
+        _get_active self-heal path. Closes any unclosed StopwatchSession
+        bound to this task_id and clears Redis active/pause state if it
+        points at this task.
+        """
+        user_id = self._user_key()
+        session = (
+            self.db.query(StopwatchSession)
+            .filter(
+                StopwatchSession.task_id == task_id,
+                StopwatchSession.end_time_utc.is_(None),
+            )
+            .first()
+        )
+        if session:
+            self._close_orphan_session(session.session_id)
+        active = self.redis.get_active_stopwatch(user_id)
+        if active and active.get("task_id") == task_id:
+            self.redis.clear_active_stopwatch(user_id)
+            self.redis.clear_pause_state(user_id)
 
     def _get_session(self, session_id: str) -> StopwatchSession:
         session = self.db.query(StopwatchSession).filter(

@@ -222,6 +222,21 @@ async def void_task(
         task.initiation_status = "system_error"
     db.commit()
     db.refresh(task)
+
+    # Close any unclosed stopwatch session bound to this task and clear
+    # the user's Redis active/pause keys. Without this, the frontend
+    # /stopwatch/status banner keeps showing a PAUSED timer for the
+    # voided task indefinitely (CO-block 65h incident, Apr 11). If the
+    # cleanup itself errors we still return success — _get_active has a
+    # defensive self-heal that will catch it on the next poll.
+    try:
+        StopwatchManager(db).void_cleanup(task.task_id)
+    except Exception as e:
+        logger.warning(
+            f"void_cleanup failed for {task.task_id}: {e}. The _get_active "
+            f"self-heal will recover on the next status poll."
+        )
+
     return TaskVoidResponse(
         task_id=task.task_id,
         voided=True,
