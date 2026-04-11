@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 11, 2026 (afternoon)
+**Last updated:** April 11, 2026 (evening — stale session recovery shipped)
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -13,12 +13,12 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
-- **Stale session recovery job missing.** CO block was paused for ~65 hours before manual void. stale_session_recovery.py was designed in audit but never built. Required: PAUSED >12h auto-abandon, EXECUTING >planned×5 auto-abandon, notify operator on auto-action. *Found Apr 11.*
-
 - **Edit click vs multi-select checkbox conflict on PLANNED rows.** Phase 4 added click-row-to-edit and checkbox-for-multi-select-void on the same row. Operator hasn't browser-verified that clicking the checkbox doesn't also trigger the edit modal, or vice versa. Needs verification. *Found Apr 11, untested.*
 
 ### FIXED (recent — prune in 2 weeks)
 
+- Stale session recovery job — APScheduler sweeper every 15 min, closes unclosed StopwatchSession rows older than 24h with auto_closed=True, clears matching Redis keys, per-user iteration (LYR-103, this commit)
+- Defense-in-depth voided_at filter in _recover_from_db so legacy orphan voided sessions never rehydrate into the banner on Redis-loss events (LYR-095, commit d5da23d)
 - Voided task still shows paused timer banner — void_task now closes orphan StopwatchSession and clears Redis active/pause keys; _get_active self-heals historic stale state on next poll (commit 59ca80d)
 - OpenClaw void without voided_reason — SKILL.md now mandates "ALWAYS ASK REASON" on any non-DELETED void, endpoint line marks voided_reason as required with enum values listed (commit e57aa7e)
 - PLANNED edit affordance via prefilled modal (commit 8eb4ac7)

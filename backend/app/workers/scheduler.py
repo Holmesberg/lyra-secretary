@@ -7,6 +7,7 @@ from app.workers.jobs.reminders import check_upcoming_tasks
 from app.workers.jobs.notion_sync import retry_failed_syncs
 from app.workers.jobs.timer_overflow import check_timer_overflow
 from app.workers.jobs.overdue_tasks import detect_and_skip_overdue_tasks
+from app.workers.jobs.stale_session_recovery import run_stale_session_recovery
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -46,6 +47,18 @@ def start_scheduler():
         trigger=IntervalTrigger(minutes=30),
         id="overdue_tasks",
         name="Detect and skip overdue unstarted tasks",
+        replace_existing=True
+    )
+
+    # Stale session recovery (check every 15 minutes)
+    # Sweeps unclosed StopwatchSession rows older than 24h that never
+    # got stopped (browser crash mid-pause, container restart, voided
+    # task leftovers). LYR-103.
+    scheduler.add_job(
+        run_stale_session_recovery,
+        trigger=IntervalTrigger(minutes=15),
+        id="stale_session_recovery",
+        name="Auto-close orphan stopwatch sessions older than 24h",
         replace_existing=True
     )
 
