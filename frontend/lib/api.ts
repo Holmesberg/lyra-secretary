@@ -6,6 +6,20 @@ import { getSession } from "next-auth/react";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/**
+ * Error thrown by the api() helper for non-2xx responses. Carries the
+ * HTTP status so callers can distinguish e.g. a 401 expired session
+ * from a genuine network failure (which throws a plain TypeError).
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export async function api<T = unknown>(
   path: string,
   init: RequestInit = {}
@@ -27,7 +41,7 @@ export async function api<T = unknown>(
       if (typeof detail === "string") msg = detail;
       else if (detail?.message) msg = detail.message;
     } catch {}
-    throw new Error(msg);
+    throw new ApiError(msg, res.status);
   }
   return (await res.json()) as T;
 }
