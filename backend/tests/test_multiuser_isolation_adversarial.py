@@ -256,6 +256,95 @@ def test_stopwatch_status_isolated(adv_users, client):
     assert body["active"] is False, f"cross-user timer leak: {body}"
 
 
+# 14b. Multi-day range query isolation (Schedule-X calendar read surface)
+#      Calendar view at /calendar pulls a 62-day window in a single GET
+#      /v1/tasks/query?date=X&days=N round trip. `days=N` is a new read
+#      surface since the Schedule-X build — regression-guard that the
+#      before_compile scoping hook rewrites the range query the same way
+#      it rewrites single-day queries. Without this test the calendar
+#      could silently render cross-tenant rows the moment the hook, the
+#      models, or the endpoint shape changes.
+#
+#      User ids 98/99 follow CONTRIBUTING.md §"Multi-user isolation
+#      testing" — never user_id=1 (that's the historical default-leak
+#      sink). If a forgotten default=1 ever returns, neither 98 nor 99
+#      would silently inherit rows from it, so the assertions below
+#      would visibly fail on the count mismatch.
+def test_query_days_window_scoped(adv_users, client):
+    from datetime import datetime as _dt
+
+    # 98 gets 5 tasks spread across 30 days; offsets chosen so none
+    # overlap within the same user (30-min durations, 6+ days apart).
+    offsets_98 = [1, 7, 14, 21, 28]
+    for i, day in enumerate(offsets_98):
+        r = _create(client, 98, f"eve-{i}", day * 1440 + 60)
+        assert r.status_code == 200, r.text
+        assert r.json()["created"] is True, r.json()
+
+    # 99 gets 3 tasks on different days from 98's — cross-user same-slot
+    # is already covered by test_cross_user_same_slot_no_conflict; here
+    # we just want disjoint calendars so title assertions are crisp.
+    offsets_99 = [2, 10, 20]
+    for i, day in enumerate(offsets_99):
+        r = _create(client, 99, f"mallory-{i}", day * 1440 + 120)
+        assert r.status_code == 200, r.text
+        assert r.json()["created"] is True, r.json()
+
+    # Pivot one day before UTC-now and widen to days=32 so a UTC/Cairo
+    # midnight race (window cuts day=28 on a late-night test run)
+    # cannot cause a flaky count mismatch. The hook under test is
+    # orthogonal to the window — we just need both users' tasks fully
+    # inside whichever window we pick.
+    pivot = (_dt.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # 98 pulls the 32-day window: must see exactly 5 tasks, all 98's.
+    r98 = client.get(
+        f"/v1/tasks/query?date={pivot}&days=32&state=all",
+        headers=_h(98),
+    )
+    assert r98.status_code == 200, r98.text
+    body_98 = r98.json()
+    titles_98 = sorted(t["title"] for t in body_98["tasks"])
+    assert titles_98 == sorted(f"eve-{i}" for i in range(len(offsets_98))), (
+        f"user 98 saw wrong tasks: {titles_98}"
+    )
+    # Endpoint response hides user_id, so verify ownership via an
+    # unscoped fresh session per row. Any row owned by ≠ 98 is a leak.
+    for t in body_98["tasks"]:
+        row = _fresh_query_task(t["task_id"])
+        assert row is not None, f"task {t['task_id']} vanished"
+        assert row.user_id == 98, (
+            f"leak: user 98's range query returned task "
+            f"{t['task_id']} owned by user_id={row.user_id}"
+        )
+
+    # 99 pulls the same 32-day window: must see exactly 3 tasks, all 99's.
+    r99 = client.get(
+        f"/v1/tasks/query?date={pivot}&days=32&state=all",
+        headers=_h(99),
+    )
+    assert r99.status_code == 200, r99.text
+    body_99 = r99.json()
+    titles_99 = sorted(t["title"] for t in body_99["tasks"])
+    assert titles_99 == sorted(f"mallory-{i}" for i in range(len(offsets_99))), (
+        f"user 99 saw wrong tasks: {titles_99}"
+    )
+    for t in body_99["tasks"]:
+        row = _fresh_query_task(t["task_id"])
+        assert row is not None, f"task {t['task_id']} vanished"
+        assert row.user_id == 99, (
+            f"leak: user 99's range query returned task "
+            f"{t['task_id']} owned by user_id={row.user_id}"
+        )
+
+    # Cross-check: the union of IDs 98 and 99 saw must not intersect.
+    ids_98 = {t["task_id"] for t in body_98["tasks"]}
+    ids_99 = {t["task_id"] for t in body_99["tasks"]}
+    assert ids_98.isdisjoint(ids_99), (
+        f"cross-tenant row bleed in range query: {ids_98 & ids_99}"
+    )
+
+
 # 14. Cross-user interruption: 99 starts+pauses a task, 98 creates an
 #     overlapping task with force=true and tries to start it — must NOT
 #     link to 99's paused task as parent. The parent_task_id auto-linking

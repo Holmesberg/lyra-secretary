@@ -13,6 +13,10 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
+- **New task modal stale defaults (state leak).** Title, duration, and category fields default to the last-created task's values instead of resetting when the modal reopens. Component state is not cleared on modal close. Phase 4.5 fix: reset `useState` fields in the `onClose` handler (or key the modal on `open` so React remounts it). Found during calendar dogfood Apr 11. *Found Apr 11, reproducible.*
+
+- **Cannot start a PLANNED task while another task is PAUSED.** Backend treats any PAUSED session as a blocking active session on the generic `/v1/tasks/{id}/start` path, so the start attempt rejects. The interruption flow we shipped in commit 705b9d0 handles the conflict case explicitly but the plain start path does not distinguish "paused parent" (legal — should trigger interruption flow) from "actively executing" (illegal). Fix: treat PAUSED as non-blocking on start, routing the start through the interruption flow implicitly, OR have the generic start path detect PAUSED conflicts and invoke the interruption resolver. Phase 4.5 — blocks normal usage when a task has been paused and forgotten. *Found Apr 11, reproducible.*
+
 - **Edit click vs multi-select checkbox conflict on PLANNED rows.** Phase 4 added click-row-to-edit and checkbox-for-multi-select-void on the same row. Operator hasn't browser-verified that clicking the checkbox doesn't also trigger the edit modal, or vice versa. Needs verification. *Found Apr 11, untested.*
 
 ### FIXED (recent — prune in 2 weeks)
@@ -43,6 +47,10 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
+- **New task modal: end-time picker as alternative to duration.** Power-user request from calendar dogfood. Toggle between "duration" mode (current default, keep as default) and "end time" mode — in end-time mode the user picks a wall-clock end instead of a minutes count, and duration is derived on submit. Useful when scheduling around fixed anchors (meeting at 3 PM that ends at 4 PM). *Apr 11.*
+
+- **Task swap feature (planned time exchange).** Multi-select with EXACTLY 2 tasks → new "Swap times" button appears next to "Void" → swaps `planned_start_utc` and `planned_end_utc` between the two task rows (durations preserved only if both sides have the same duration; otherwise each task's duration moves with its new start). New backend endpoint `POST /v1/tasks/swap-times` accepting `{task_id_a, task_id_b}`. Matches OpenClaw parity. Conflict detection must still run on both tasks at their new times. *Apr 11.*
+
 - **Frontend backend-unreachable graceful retry UI.** "Failed to fetch" raw error shown on transient backend issues (host sleep, WSL port forward stabilization). Should be friendly retry banner with auto-retry every 5s. *Apr 11.*
 
 - **Tooltips on `4 → 2 +29min` row arrow.** Only operator knows what readiness/focus/delta arrow means. Add hover tooltip or inline label for new users. *Apr 10.*
@@ -71,9 +79,9 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
-- **category_type field (estimable vs time_anchored).** Designed in audit, deferred to Phase 4. Required before H1 analysis runs. Prayer/sleep/meals contaminate bias_factor. *Apr 10.*
+- **category_type field (estimable vs time_anchored).** Designed in audit, deferred to Phase 4. Required before H1 analysis runs. Prayer/sleep/meals contaminate bias_factor. Bundle this with the `self_reflection → planning` rename below so the category schema migration lands in one shot. **Design note (Apr 11):** prayer is NOT a bug to remove — it stays as a category and will be flagged `time_anchored` via this field, which excludes it from bias_factor analysis while preserving it as behavioral data. Same treatment applies to sleep/meals. *Apr 10.*
 
-- **self_reflection → planning rename.** Cosmetic only, deferred. *Apr 10.*
+- **self_reflection → planning rename.** Cosmetic only, deferred. Bundle with the `category_type` field migration above so the category table gets one coordinated migration instead of two. *Apr 10.*
 
 - **Users 98/99 have Redis `stopwatch:active:*` keys with no corresponding unclosed SQLite session.** Caught during the d5da23d/a67c769/57839d5 verification sweep on Apr 11 — 3 Redis active-stopwatch keys vs 1 unclosed session in SQLite. Not a voided-task leak (tasks exist and aren't voided) so outside LYR-103's scope, but it is a Redis ↔ SQLite drift that stale_session_recovery won't clean up because it sweeps SQLite, not Redis. Most likely cause: test fixture pollution from `test_multiuser_isolation_adversarial.py` or similar that creates Redis state under synthetic user_ids (98, 99) without the matching SQLite rows. Investigate post-Phase 4.5 — possible fixes: (a) add per-test teardown that flushes `stopwatch:active:{user_id}` for the synthetic users, (b) extend `stale_session_recovery` to also reconcile Redis keys whose session_id isn't in SQLite at all. *Apr 11.*
 
@@ -88,6 +96,18 @@ This document is edited continuously as new findings emerge. Sections of this do
 - **LLM-powered task creation via OpenClaw bridge.** Reframed from "v2 defer indefinitely" to Phase 6 candidate after dogfood data. Operator overruled "scope creep" framing — it's the differentiator, low cost since OpenClaw infrastructure exists. *Apr 10.*
 
 - **PWA support.** iOS/Android home-screen install, offline mode, basic push notifications. ~4 hours of work for 80% of "feels like a real app." Phase 7. *Apr 11.*
+
+---
+
+## P3 — post-retention architecture
+
+### OPEN
+
+- **Calendar dense-cluster readability.** With `eventOverlap: false` (current) and 5+ overlapping events in one time slot, each event becomes too narrow to read the title. Schedule-X v4.4.0 has no built-in collapse or truncate option. Investigate Phase 5+: custom event renderer with cluster fallback (e.g. show 3 + "+2 more" badge), or detect dense days and switch to month-style agenda layout for that day. Not blocking — typical Lyra day has 1-3 concurrent events in any slot. *Apr 11.*
+
+- **Schedule-X drag-and-drop plugin shim removal (housekeeping).** `@schedule-x/drag-and-drop@3.7.3` (the latest published version on npm) doesn't match `@schedule-x/calendar@4.4.0`'s renamed plugin method contract — calendar 4.x calls `startTimeGridDrag` / `startDateGridDrag` / `startMonthGridDrag` but the plugin still exposes `createTimeGridDragHandler` / `createDateGridDragHandler` / `createMonthGridDragHandler`. We ship a runtime alias shim in `frontend/app/(app)/calendar/page.tsx:252` that binds the old methods under the new names (signatures are byte-identical, confirmed via source dive). Watch upstream npm for a `@schedule-x/drag-and-drop@4.x` release; when it lands, delete the shim block, bump the dep, and browser-verify drag still works. Resize does NOT need a matching shim — its method name was not renamed in the 4.x refactor. Source-dive evidence lives in the commit message body for the Phase 4 calendar close. *Apr 11, housekeeping.*
+
+- **Multi-timezone API contract refactor.** Currently single-timezone (Cairo). Backend sends and accepts naked Cairo-local ISO strings ("2026-04-05T06:00:00"); frontend parses as `Temporal.PlainDateTime` and attaches `Africa/Cairo` to produce the display `ZonedDateTime`. When the second timezone joins alpha, refactor: backend serializes UTC with Z suffix, frontend converts via new `user.timezone` field, Notion sync path remains naked Cairo local (LYR-019 contract preserved). Estimated 3–5 days work + 2–3 weeks bug hunt. Trigger: first non-Cairo user signup OR explicit request. Single-point-of-truth wire format means `toZdt`/`zdtToIso` in `calendar/page.tsx` change in the same commit as the API serializer — do NOT patch one side in isolation. The `TIMEZONE CONTRACT` comment block at the top of that file exists to stop future contributors from "fixing" it piecemeal. *Apr 11, deferred until post-retention.*
 
 ---
 

@@ -1,4 +1,16 @@
 "use client";
+// Install Temporal on globalThis BEFORE any Schedule-X import. Schedule-X's
+// bundle has ~124 bare `Temporal.PlainDate` / `Temporal.ZonedDateTime`
+// references and declares `temporal-polyfill` as a peerDependency, leaving
+// the global install to the consumer. Without this side-effect import,
+// `globalThis.Temporal` is undefined AND — critically — any Temporal
+// instances we create with our own `import { Temporal } from "temporal-polyfill"`
+// live in a different realm than whatever Schedule-X resolves at runtime, so
+// its `instanceof Temporal.PlainDate` check fails and throws the misleading
+// "[Schedule-X error]: selectedDate must have the format YYYY-MM-DD" message.
+// The global import MUST precede every @schedule-x/* import below because
+// Schedule-X touches Temporal during its own module initialization.
+import "temporal-polyfill/global";
 import "@schedule-x/theme-shadcn/dist/index.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,9 +43,18 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-// All display lives in the user's timezone. Kept hardcoded to match
-// backend USER_TIMEZONE default; if we ever go multi-tenant we'll
-// thread this through session or a server endpoint.
+// TIMEZONE CONTRACT (Apr 11 2026, single-timezone alpha):
+// Backend sends and accepts naked Cairo-local ISO strings
+// ("2026-04-05T06:00:00"). Frontend treats them as wall-clock times in
+// Africa/Cairo. When alpha proves retention and we add a second timezone,
+// this contract changes to UTC-with-Z over the wire and per-user timezone
+// conversion at display. See dogfood_findings_living.md P3 architecture
+// entry for the deferred refactor.
+//
+// DO NOT "fix" this by adding a Z suffix or calling .toInstant() on the
+// wire — backend and frontend must stay symmetric. The refactor is one
+// commit that changes API serializer + frontend parser + user.timezone
+// field together, not a piecemeal edit to this file.
 const TIMEZONE = "Africa/Cairo";
 
 // Five state-colored calendars — mirror the palette in task-row.tsx:11
@@ -104,14 +125,14 @@ function calendarIdForState(state: TaskRowType["state"]): string {
   }
 }
 
-// ISO-with-offset/Z → ZonedDateTime in the user's timezone. Using
-// Instant.from then toZonedDateTimeISO is the bulletproof route: it
-// parses any ISO variant the backend emits and only *then* attaches the
-// zone. Appending "[Africa/Cairo]" directly to the raw ISO string
-// rejects when the string contains both an offset AND the bracketed
-// zone under certain polyfill versions, so avoid that shortcut.
+// Backend returns Cairo-local naive ISO per project rule ("2026-04-05T06:00:00"
+// — no Z, no offset). Parse as PlainDateTime (wall-clock, zoneless) and
+// attach the Cairo zone to produce a ZonedDateTime. Single-timezone alpha
+// — multi-timezone refactor deferred until post-retention. When that
+// ships, this function changes alongside the API serializer in the same
+// commit. See TIMEZONE CONTRACT above.
 function toZdt(iso: string): Temporal.ZonedDateTime {
-  return Temporal.Instant.from(iso).toZonedDateTimeISO(TIMEZONE);
+  return Temporal.PlainDateTime.from(iso).toZonedDateTime(TIMEZONE);
 }
 
 function taskToEvent(task: TaskRowType): CalendarEventExternal | null {
@@ -139,19 +160,22 @@ function taskToEvent(task: TaskRowType): CalendarEventExternal | null {
   } as CalendarEventExternal & { _task: TaskRowType };
 }
 
-// Convert a ZonedDateTime back to an ISO string that the backend can
-// parse. Schedule-X hands us ZonedDateTime instances after drag/resize.
+// Inverse of toZdt — Schedule-X hands us ZonedDateTime after drag/resize;
+// emit naked Cairo-local PlainDateTime ISO ("2026-04-05T06:00:00") so the
+// backend round-trip is symmetric. See TIMEZONE CONTRACT above. DO NOT
+// replace with toInstant()/toString() — that produces a Z-suffixed UTC
+// string the backend will interpret as UTC, shifting every drag by the
+// Cairo offset.
 function zdtToIso(zdt: Temporal.ZonedDateTime | Temporal.PlainDate): string {
-  // Narrow — after a drag/resize on a timed event we always get
-  // ZonedDateTime; PlainDate would come from all-day views we don't use.
-  if ("toInstant" in zdt) {
-    return zdt.toInstant().toString();
+  // Lyra events are always timed; PlainDate only appears for all-day
+  // views, which we don't use. Defensive narrow so a future all-day
+  // experiment doesn't silently corrupt reschedule payloads.
+  if (!(zdt instanceof Temporal.ZonedDateTime)) {
+    throw new Error(
+      "zdtToIso: unexpected PlainDate — Lyra events are always timed"
+    );
   }
-  // Fallback for PlainDate: treat as midnight in TIMEZONE.
-  return (zdt as Temporal.PlainDate)
-    .toZonedDateTime(TIMEZONE)
-    .toInstant()
-    .toString();
+  return zdt.toPlainDateTime().toString();
 }
 
 export default function CalendarPage() {
@@ -225,7 +249,51 @@ export default function CalendarPage() {
   }, [errorMsg]);
 
   const eventsService = useMemo(() => createEventsServicePlugin(), []);
-  const dragAndDropService = useMemo(() => createDragAndDropPlugin(15), []);
+  const dragAndDropService = useMemo(() => {
+    const plugin = createDragAndDropPlugin(15);
+    // Schedule-X 4.4.0 release coordination bug: @schedule-x/calendar@4.4.0
+    // renamed the dragAndDrop plugin method contract from
+    // createTimeGridDragHandler / createDateGridDragHandler /
+    // createMonthGridDragHandler → startTimeGridDrag / startDateGridDrag /
+    // startMonthGridDrag at core.cjs.js:1578, 2280, 6178. But
+    // @schedule-x/drag-and-drop@3.7.3 is the LATEST published version on
+    // npm (verified: `npm view @schedule-x/drag-and-drop versions` tops out
+    // at 3.7.3, no 4.x line exists yet) and still exposes only the v3 names
+    // at core.cjs.js:1116, 1136, 1139. Without this shim, dragging any event
+    // throws `TypeError: $app.config.plugins.dragAndDrop.startTimeGridDrag is
+    // not a function` at first mousedown.
+    //
+    // Signatures are byte-identical — confirmed by reading both packages'
+    // sources end-to-end: both accept the same `{$app, eventCoordinates,
+    // eventCopy, updateCopy}` dependency object + optional dayBoundaries
+    // positional arg, and both new up the same `*DragHandlerImpl` class
+    // whose constructor is the actual side-effect (binds mousemove/mouseup/
+    // touch listeners to document). Return value is discarded by the caller
+    // in both versions, so aliasing the old methods under the new names is
+    // semantically indistinguishable from a real plugin 4.x release.
+    //
+    // Resize does NOT have this mismatch: calendar 4.4.0 still calls
+    // `plugins.resize.createTimeGridEventResizer(...)` at core.cjs.js:1643,
+    // matching resize 3.7.3's exposed name. Pure coincidence of incomplete
+    // rename — only drag was renamed in the 4.x refactor. Do not add a
+    // "matching" resize shim; it would be dead code.
+    //
+    // TODO(remove): When @schedule-x/drag-and-drop@4.x publishes on npm
+    // with the renamed methods, delete this shim block, bump the dep,
+    // verify drag still works.
+    const p = plugin as unknown as {
+      createTimeGridDragHandler: (...args: unknown[]) => unknown;
+      createDateGridDragHandler: (...args: unknown[]) => unknown;
+      createMonthGridDragHandler: (...args: unknown[]) => unknown;
+      startTimeGridDrag?: (...args: unknown[]) => unknown;
+      startDateGridDrag?: (...args: unknown[]) => unknown;
+      startMonthGridDrag?: (...args: unknown[]) => unknown;
+    };
+    p.startTimeGridDrag = p.createTimeGridDragHandler.bind(plugin);
+    p.startDateGridDrag = p.createDateGridDragHandler.bind(plugin);
+    p.startMonthGridDrag = p.createMonthGridDragHandler.bind(plugin);
+    return plugin;
+  }, []);
   const resizeService = useMemo(() => createResizePlugin(15), []);
 
   const calendar = useNextCalendarApp(
@@ -236,6 +304,26 @@ export default function CalendarPage() {
       calendars: STATE_CALENDARS,
       isDark: true,
       timezone: TIMEZONE,
+      // Schedule-X default (eventOverlap: true) cascades overlapping events
+      // at horizontal offsets but extends each to the right edge — titles
+      // obscured by neighbors. false makes them split into equal sub-columns,
+      // matching Google/Outlook/Apple convention. Trade-off: 5+ concurrent
+      // events in one slot get unreadably narrow. v4.4.0 has no
+      // collapse/truncate option. See dogfood_findings_living.md P3 for the
+      // polish item.
+      weekOptions: {
+        eventOverlap: false,
+      },
+      // `selectedDate` must be a `Temporal.PlainDate` instance, NOT a string —
+      // Schedule-X runs `config.selectedDate instanceof Temporal.PlainDate`
+      // and throws "[Schedule-X error]: selectedDate must have the format
+      // YYYY-MM-DD" on failure. The error message is misleading: it does not
+      // check string format, it checks nominal class identity. A plain
+      // "yyyy-MM-dd" string fails this check. A Temporal.PlainDate from the
+      // WRONG realm also fails this check — which is why the global import
+      // on line 1 is load-bearing: it guarantees Schedule-X's bundle and our
+      // local `import { Temporal } from "temporal-polyfill"` resolve to the
+      // same Temporal class.
       selectedDate: Temporal.Now.plainDateISO(TIMEZONE),
       callbacks: {
         onEventClick(evt) {
@@ -310,7 +398,30 @@ export default function CalendarPage() {
         <div className="text-sm text-white/50">Loading calendar…</div>
       )}
 
-      <div className="sx-react-calendar-wrapper h-[720px] overflow-hidden rounded-lg border border-white/10">
+      {/*
+        Schedule-X 4.x renders the 24-hour time grid as a single tall
+        static element (~1200–1500px) and does NOT own its own internal
+        scroll context for it — contrary to what I initially assumed
+        when I wrote the 720px + overflow-hidden wrapper. Empirical
+        proof from operator's DevTools session (Apr 11 2026): at 100%
+        zoom only midnight → ~7 AM was visible with no scroll
+        affordance; at 50% zoom the full 24-hour grid fit into the
+        same box, confirming events render at correct positions but
+        are clipped by the wrapper's overflow mode.
+        Correct setup: wrapper owns the scroll. Viewport-relative
+        height fills the available space (220px buffer ≈ AppLayout
+        header ~64px + page title + subtitle + top/bottom padding —
+        tune if future layout changes clip or add whitespace), and
+        overflow-y-auto gives the user a vertical scrollbar for
+        hours below the fold. Schedule-X's sticky day-header row
+        anchors to the nearest scroll ancestor, which is now this
+        wrapper, so the header stays put while the hour rows scroll
+        underneath it.
+        DO NOT revert to overflow-hidden on this wrapper — doing so
+        silently re-clips the grid. If you need to remove the border
+        or rounding, keep `overflow-y-auto` in place.
+      */}
+      <div className="sx-react-calendar-wrapper h-[calc(100vh-220px)] overflow-y-auto rounded-lg border border-white/10">
         {calendar && <ScheduleXCalendar calendarApp={calendar} />}
       </div>
 
