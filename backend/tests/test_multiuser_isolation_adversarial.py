@@ -460,6 +460,7 @@ def test_cross_user_interruption_blocked(adv_users, client):
 # GAP-1 regression: notifications:pending is per-user
 # ---------------------------------------------------------------
 
+@needs_redis
 def test_notifications_per_user_isolated(adv_users, client):
     """Push a notification as user 98 → user 99 must NOT receive it."""
     # Push as user 98
@@ -485,6 +486,7 @@ def test_notifications_per_user_isolated(adv_users, client):
 # GAP-2 regression: last_operated_task is per-user
 # ---------------------------------------------------------------
 
+@needs_redis
 def test_last_task_per_user_isolated(adv_users, client):
     """User 98 creates a task → user 99's /tasks/last must NOT return it."""
     # 98 creates a task (sets last_operated_task for user 98)
