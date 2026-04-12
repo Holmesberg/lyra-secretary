@@ -26,7 +26,7 @@ def _run_for_one_user(db, user: User):
 
     for session in sessions:
         task = db.query(Task).filter(Task.task_id == session.task_id).first()
-        if not task or not task.planned_duration_minutes:
+        if not task or not task.planned_duration_minutes or task.voided_at is not None:
             continue
 
         elapsed_minutes = int((now - session.start_time_utc).total_seconds() / 60)

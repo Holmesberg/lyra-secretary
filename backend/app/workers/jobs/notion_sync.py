@@ -30,8 +30,8 @@ def _run_for_one_user(db, user: User):
         for item in items:
             task_id = item["task_id"]
             task = db.query(Task).filter(Task.task_id == task_id).first()
-            if not task:
-                # Belongs to a different user, or deleted — drop from queue.
+            if not task or task.voided_at is not None:
+                # Belongs to a different user, deleted, or voided — drop from queue.
                 success_count += 1
                 continue
             try:

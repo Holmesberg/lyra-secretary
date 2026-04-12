@@ -23,6 +23,7 @@ def _run_for_one_user(db, user: User):
 
     tasks = db.query(Task).filter(
         Task.state == TaskState.PLANNED,
+        Task.voided_at.is_(None),
         Task.planned_start_utc >= now,
         Task.planned_start_utc <= reminder_time,
     ).all()

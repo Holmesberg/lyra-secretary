@@ -50,6 +50,8 @@ def _run_for_one_user(db, user: User):
     for session in stale:
         try:
             task = db.query(Task).filter(Task.task_id == session.task_id).first()
+            if task and task.voided_at is not None:
+                continue
             planned = max((task.planned_duration_minutes if task else None) or 60, 1)
             session.end_time_utc = session.start_time_utc + timedelta(minutes=planned)
             session.auto_closed = True

@@ -21,6 +21,7 @@ def _run_for_one_user(db, user: User):
     now = now_utc()
     tasks = db.query(Task).filter(
         Task.state == TaskState.PLANNED,
+        Task.voided_at.is_(None),
         Task.planned_end_utc < now,
         Task.initiation_status == "not_started",
     ).all()
