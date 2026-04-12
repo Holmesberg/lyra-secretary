@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 11, 2026 (late evening — Phase 4 batch: useCurrentTime hook, pause reason picker, Schedule-X calendar view shipped + browser-verified final)
+**Last updated:** April 12, 2026 (Phase 4.5 triage batch: hook order P0 fix, stale session + ghost banner P0s opened, day navigation P1, research-adjacent P2 backlog, alpha launch date confirmed April 30)
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -18,6 +18,10 @@ This document is edited continuously as new findings emerge. Sections of this do
 - **Cannot start a PLANNED task while another task is PAUSED.** Backend treats any PAUSED session as a blocking active session on the generic `/v1/tasks/{id}/start` path, so the start attempt rejects. The interruption flow we shipped in commit 705b9d0 handles the conflict case explicitly but the plain start path does not distinguish "paused parent" (legal — should trigger interruption flow) from "actively executing" (illegal). Fix: treat PAUSED as non-blocking on start, routing the start through the interruption flow implicitly, OR have the generic start path detect PAUSED conflicts and invoke the interruption resolver. Phase 4.5 — blocks normal usage when a task has been paused and forgotten. *Found Apr 11, reproducible.*
 
 - **Edit click vs multi-select checkbox conflict on PLANNED rows.** Phase 4 added click-row-to-edit and checkbox-for-multi-select-void on the same row. Operator hasn't browser-verified that clicking the checkbox doesn't also trigger the edit modal, or vice versa. Needs verification. *Found Apr 11, untested.*
+
+- **Stale session recovery job not firing as designed.** CO review paused 16h 41m with no auto-abandon action — operator had to manually mark-abandoned via OpenClaw. Investigate: is the 15-min APScheduler job running? Is the threshold 12h as designed or 24h as initially scoped? Are Redis keys clearing on auto-abandon? Does the log show the job executing without finding stale sessions, or not executing at all? *Found Apr 12, reproducible.*
+
+- **Ghost timer banner persists after OpenClaw mark-abandoned.** Operator marked CO review abandoned via OpenClaw → task correctly shows SKIPPED in calendar, but PAUSED timer banner still renders on `/today` showing "CO review 16:41:31 paused." Stale active stopwatch state on the SKIPPED path. Two likely root causes: (a) OpenClaw mark-abandoned endpoint doesn't clear Redis `stopwatch:active` + `stopwatch:paused` keys, (b) `_get_active` doesn't check `task.state == SKIPPED` as an auto-heal condition (only checks `voided_at`). Probably both — the void path already has self-heal (commit 59ca80d), the skip path doesn't. Fix: same self-heal pattern in `_get_active` for SKIPPED tasks, plus mark-abandoned must clear Redis keys like void does. *Found Apr 12, reproducible.*
 
 ### FIXED (recent — prune in 2 weeks)
 
@@ -40,6 +44,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 - Cross-tenant read leak per-user Redis keys — operator saw a second user's active timer (Phase 3.3 P0-A)
 - Pause/resume 500 from int/float type mismatch (Phase 3.3 P0-B)
 - completion_pct accepted 500% validation (Phase 3.3 P0-C)
+- ActiveTimerBanner hook order violation — click-outside useEffect from f3af1df (pause reason picker) was placed below early return at line 57, causing "Rendered fewer hooks than expected" crash when stopwatch stopped and `status.active` flipped false. Moved effect above early return. (fix applied Apr 12, commit pending)
 
 ---
 
@@ -63,7 +68,9 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **No swap-tasks affordance.** Existed in OpenClaw, missing in web UI. v2 backlog or Phase 4.5. *Apr 9.*
 
-- **Active timer banner display when paused very long.** Currently shows large hour count past 12h. May want different presentation. *Apr 11.*
+- **Active timer banner display when paused very long.** Currently shows full HH:MM:SS counter which becomes absurd at 16+ hours. Cap display at "12h+ paused — auto-abandoning soon" once stale_session_recovery threshold is approached. *Apr 11.*
+
+- **Today view forward/backward day navigation.** Arrow buttons left of "Sunday April 12" header, navigate prev/next day. Past days are read-only (no start/stop), PLANNED tasks on future days remain editable. Unblocks yesterday-review workflows for reflection — operator and alpha users will both hit this by week 2. *Apr 12.*
 
 ### FIXED (recent — prune in 2 weeks)
 
@@ -72,6 +79,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 - **Pause reason picker on web UI** — `ActiveTimerBanner` Pause button now opens an inline dropdown with the 6 PAUSE_REASONS enum values (mental_fatigue, distraction, task_difficulty, external_interruption, intentional_break, prayer); click-outside dismisses and pauses with `external_interruption` as the least-wrong default (commit f3af1df)
 - PLANNED rows sort ascending (next-up first) — partitioned from the execution-axis block so PLANNED-PLANNED comparisons go asc while everything else stays desc; avoids the non-transitive mixed-comparator failure mode for stale PLANNED rows with past planned_start (commit 57839d5)
 - Sort direction (newest top) — Phase 3.3 partial fix; superseded by the ascending-PLANNED partition above
+- WSL stale-cache cold-restart rule documented in CONTRIBUTING.md — HMR unreliable on WSL + Next.js 15 + Schedule-X, full cold restart (pkill + rm -rf .next + npm run dev) required before every browser-verify (commit ed2f4a8)
 
 ---
 
@@ -97,6 +105,34 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **PWA support.** iOS/Android home-screen install, offline mode, basic push notifications. ~4 hours of work for 80% of "feels like a real app." Phase 7. *Apr 11.*
 
+- **pre_task_readiness as reactive measure acknowledgment in MANIFESTO.** The 1-5 scale is constructed at prompt time, not retrieved from a stable internal state (Schwarz 1999, simulation heuristic literature). One-paragraph limitation note in MANIFESTO methodology section and Paper 1 methods section. Does not change the measurement — changes how we frame what it means. *Apr 12.*
+
+- **is_anchor boolean column on Task model for prayer/sleep.** Alembic migration, backfill existing prayer rows. Exclude `is_anchor=true` from bias_factor / discrepancy / cascade analytics. Calendar renders anchor events with distinct styling (lighter color, dashed border). Unblocks H1 analysis currently blocked on category_type field (same architectural concern, simpler mechanism). Bundles with `self_reflection → planning` rename in the same migration. *Apr 12.*
+
+- **Metacognitive reliability score per user (Dunning-Kruger stratification).** Latent variable derived from correlation between predicted improvement and actual improvement across calibration attempts. Users with low score won't improve via feedback alone — flag them for different intervention strategy. Requires 30+ sessions per user to compute meaningfully. Phase 6 analysis. *Apr 12.*
+
+- **Prediction-first logging schema.** New `intervention_log` table: `intervention_type`, `context`, `predicted_effect`, `actual_outcome`, `delta_change`. Enables intervention effectiveness ranking. Phase 6 architecture. *Apr 12.*
+
+- **Falsification engine background process.** Continuous computation of H1 correlation, variance reduction, kill-criterion status. Outputs `current_correlation`, `required_threshold`, `confidence_interval`, AT_RISK/PASS/FAIL status. Prevents "feels like it's working" drift. Phase 6 architecture. *Apr 12.*
+
+- **Layered adaptation with different time constants.** Fixed layer (raw signals, hypotheses, kill criteria) must not adapt. Semi-adaptive layer (thresholds, clustering, bias smoothing) adapts only on scheduled re-fit cycles (every 30 sessions or 14 days). Fully adaptive layer (insight wording, intervention timing, prompt selection) adapts fast. Phase 6 architecture. *Apr 12.*
+
+- **Intervention effectiveness tracking.** Log predicted vs actual effect for every intervention (early_stop gate, readiness_prompt, calibration_nudge, etc.). Rank interventions by delta variance reduction. Underutilized ones get deprecated. Phase 6. *Apr 12.*
+
+- **Trigger field for implementation intentions.** Three trigger classes: clock (current default), after_task (task surfaces when `trigger_after_task_id` transitions to EXECUTED), contextual (task sits in Waiting bucket until user taps "start now"). Schema: `trigger_type` enum + `trigger_detail` text. Completion rate uplift 2-3x per Gollwitzer 1999. Significant UX change, test on dogfood operator first. Phase 6+. *Apr 12.*
+
+- **Residue-based cascade model vs probability-based.** Current `cascade_score = P(skip_{N+1} | skip_N)` is stateless. Residue model: `load(t) = sum of decaying context_switch costs within tau window`. New `context_switches` table schema: `from_task_id`, `to_task_id`, `timestamp`, `switch_type`, `category_distance`. Fit both models against alpha data week 10+, ship the one with better predictive validity. Phase 6 analysis. *Apr 12.*
+
+- **Post-novelty retention metric.** Week 3 retention can be novelty-driven false positive per QS literature post-2017. Add week 6-8 retention checkpoint to alpha evaluation. If week 3 green but week 6 red, that's hedonic adaptation, not product-market fit. *Apr 12.*
+
+- **Middle-phase retention mechanism design.** Three candidate paths: (a) insight tiering — new analytical layers unlock at session thresholds keeping "what will I learn today" alive, (b) lightweight social accountability — weekly summary shareable to one partner, (c) predictive intervention replacing descriptive insight — product transitions from mirror to advisor as data accumulates. Phase 7+. *Apr 12.*
+
+- **Archetype re-fit cycle to handle end-of-history illusion.** People change; static archetype assignments progressively misclassify. Either periodic Bayesian update from new data or `archetype(t)` function instead of archetype constant. Implementation decision at Phase 6 after first alpha cohort produces data. *Apr 12.*
+
+- **"Do not add" list.** Explicitly document what is NOT allowed to ship in current phase. Prevents silent complexity creep. Current no-list: no new metrics without prediction, no new archetypes until anomaly threshold hit, no new UI surfaces before retention validated. Living doc. *Apr 12.*
+
+- **Compression cycles every ~10 days.** Force review of signals: which actually changed decisions vs which just felt insightful. Delete or merge 20-30% of signals per cycle. Operator discipline check. *Apr 12.*
+
 ---
 
 ## P3 — post-retention architecture
@@ -120,6 +156,10 @@ This document is edited continuously as new findings emerge. Sections of this do
 - **Host sleep breaks WSL port forwarding intermittently.** Symptoms: "Failed to fetch" or net::ERR_FAILED on localhost:8000 from browser, while WSL curl to same endpoint succeeds. Workaround: docker restart backend, or wsl --shutdown + Docker Desktop restart in worst case. *Apr 11.*
 
 - **Middleware ordering rule documented in CONTRIBUTING.md** (LYR-100 lesson): response-modifying middleware must be added LAST to end up outermost. Short-circuiting middleware (auth, rate limit) goes inner. *Apr 11.*
+
+- **Durable verification gate suite formalized (10 gates).** tsc, container health, APScheduler job count, `_recover_from_db` filter inspect, Redis/SQLite consistency, git state snapshot, dev server compile, dev-log static-paths clean check, browser-verify HARD GATE, multi-tenant isolation gate for new read endpoints. Cross-component cross-route verification gap identified in Phase 4 close emergency — shared components must be state-transition tested on every route that uses them, not just the changed route. *Apr 12.*
+
+- **Phase 6 architecture backlog document recommended.** Create `docs/phase_6_architecture_backlog.md` with schemas and acceptance criteria for all Phase 6 P2 items (prediction-first logging, falsification engine, layered adaptation, intervention tracking, cascade model, metacognitive reliability, archetype re-fit, trigger field). 20 minutes one-time work, prevents rediscovering design decisions next month. *Apr 12.*
 
 ---
 
@@ -148,3 +188,12 @@ This document is edited continuously as new findings emerge. Sections of this do
 P0 = blocks alpha launch
 P1 = ships before alpha but doesn't block
 P2 = post-alpha, v2, or research-phase work
+
+---
+
+## Alpha launch timeline
+
+- **Confirmed pause April 19-29** for Spring School. Pre-pause hardening target: April 18.
+- **Alpha launches April 30** (NOT April 16-17 — retention needs full attention during first-week fragility window).
+- **Retention answer projected** May 21 ±3 days.
+- **BCI integration decision** June. Path B (October hackathon) preferred for research clarity.
