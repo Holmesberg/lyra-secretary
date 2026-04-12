@@ -30,11 +30,21 @@ export interface TaskRow {
   executed_start: string | null;
   executed_end: string | null;
   voided_at: string | null;
+  // Extended fields (populated by date_from/date_to range queries)
+  discrepancy_score: number | null;
+  signed_discrepancy: number | null;
+  initiation_delay_minutes: number | null;
+  total_paused_minutes: number;
+  pause_count: number;
+  task_completion_percentage: number | null;
+  voided_reason: string | null;
+  notion_page_id: string | null;
 }
 
 export interface QueryResponse {
   tasks: TaskRow[];
   total: number;
+  truncated?: boolean;
 }
 
 /**
@@ -55,6 +65,19 @@ export async function queryTasks(
     `/v1/tasks/query?date=${encodeURIComponent(date)}&days=${days}&state=all`
   );
   return res.tasks.filter((t) => t.state !== "DELETED");
+}
+
+/**
+ * Fetch tasks across a date range. Used by the Table view.
+ * Returns all states (including DELETED for audit). Caller filters client-side.
+ */
+export async function queryTasksRange(
+  dateFrom: string,
+  dateTo: string
+): Promise<QueryResponse> {
+  return api<QueryResponse>(
+    `/v1/tasks/query?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&state=all`
+  );
 }
 
 export interface CreateTaskInput {

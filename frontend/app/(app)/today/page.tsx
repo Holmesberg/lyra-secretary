@@ -177,6 +177,14 @@ export default function TodayPage() {
       executed_start: null,
       executed_end: null,
       voided_at: null,
+      discrepancy_score: null,
+      signed_discrepancy: null,
+      initiation_delay_minutes: null,
+      total_paused_minutes: 0,
+      pause_count: 0,
+      task_completion_percentage: null,
+      voided_reason: null,
+      notion_page_id: null,
     });
   }
 
