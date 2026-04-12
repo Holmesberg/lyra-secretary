@@ -19,7 +19,8 @@ def _run_for_one_user(db, user: User):
         return
 
     redis = RedisClient()
-    items = redis.get_notion_sync_queue(limit=10)
+    uid = str(user.user_id)
+    items = redis.get_notion_sync_queue(user_id=uid, limit=10)
     if not items:
         return
 
@@ -43,4 +44,4 @@ def _run_for_one_user(db, user: User):
     finally:
         if success_count > 0:
             db.commit()
-            redis.remove_from_notion_queue(success_count)
+            redis.remove_from_notion_queue(user_id=uid, count=success_count)

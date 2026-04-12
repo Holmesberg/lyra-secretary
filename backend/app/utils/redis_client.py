@@ -111,32 +111,36 @@ class RedisClient:
         self.client.setex(redis_key, ttl_seconds, response_json)
 
     # Notion sync queue
-    def queue_notion_sync(self, task_id: str, task_data: Dict[str, Any]):
-        """Queue task for Notion sync (if API down)."""
-        key = "notion:sync_queue"
+    def queue_notion_sync(self, task_id: str, task_data: Dict[str, Any], user_id: str = "1"):
+        """Queue task for Notion sync (if API down). Per-user namespaced."""
+        key = f"notion:sync_queue:{user_id}"
         self.client.rpush(key, json.dumps({"task_id": task_id, "data": task_data}))
-    
-    def get_notion_sync_queue(self, limit: int = 10) -> list:
-        """Get pending Notion sync items."""
-        key = "notion:sync_queue"
+
+    def get_notion_sync_queue(self, user_id: str = "1", limit: int = 10) -> list:
+        """Get pending Notion sync items for a user."""
+        key = f"notion:sync_queue:{user_id}"
         items = self.client.lrange(key, 0, limit - 1)
         return [json.loads(item) for item in items]
-    
-    def remove_from_notion_queue(self, count: int):
-        """Remove synced items from queue."""
-        key = "notion:sync_queue"
+
+    def remove_from_notion_queue(self, user_id: str = "1", count: int = 0):
+        """Remove synced items from a user's queue."""
+        key = f"notion:sync_queue:{user_id}"
         self.client.ltrim(key, count, -1)
 
     # Last-operated task (context for follow-up corrections)
-    def set_last_task(self, task_id: str, title: str, state: str, ttl_seconds: int = 3600):
-        """Store the most recently operated task for 1 hour (follow-up context)."""
+    def set_last_task(self, task_id: str, title: str, state: str, user_id: str = "1", ttl_seconds: int = 3600):
+        """Store the most recently operated task for 1 hour (follow-up context).
+
+        Per-user namespaced so user A's "actually, make that next week"
+        can't target user B's most recent task.
+        """
         self.client.setex(
-            "last_operated_task",
+            f"last_operated_task:{user_id}",
             ttl_seconds,
             json.dumps({"task_id": task_id, "title": title, "state": state}),
         )
 
-    def get_last_task(self) -> Optional[Dict[str, Any]]:
+    def get_last_task(self, user_id: str = "1") -> Optional[Dict[str, Any]]:
         """Return the most recently operated task, or None if window expired."""
-        data = self.client.get("last_operated_task")
+        data = self.client.get(f"last_operated_task:{user_id}")
         return json.loads(data) if data else None

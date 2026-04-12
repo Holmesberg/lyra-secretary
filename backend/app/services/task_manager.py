@@ -203,7 +203,7 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during create_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
         
         # Substitution detection: link to recently DELETED task in overlapping slot
         try:
@@ -228,7 +228,7 @@ class TaskManager:
                 "task_id": task.task_id,
                 "title": task.title
             })
-            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
+            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
         except Exception:
             pass
         return task, [], notion_synced
@@ -314,7 +314,7 @@ class TaskManager:
             notion_synced = True
         except Exception as e:
             logger.error(f"Notion sync failed during create_retroactive_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
 
         return task, notion_synced
 
@@ -340,7 +340,7 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during start_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
         
         return task
     
@@ -380,12 +380,12 @@ class TaskManager:
         except Exception as e:
             logger.error(f"Notion sync failed during complete_task: {e}", exc_info=True)
             try:
-                self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+                self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
             except Exception:
                 pass
 
         try:
-            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
+            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
         except Exception:
             pass
         return task, notion_synced
@@ -413,7 +413,7 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during skip_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
         
         return task
     
@@ -443,7 +443,7 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion archive failed during delete_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "archive"})
+            self.redis.queue_notion_sync(task.task_id, {"action": "archive"}, user_id=str(get_current_user_id() or 1))
         
         # Cache for undo — best-effort, Redis may be unavailable in some environments
         try:
@@ -515,7 +515,7 @@ class TaskManager:
             except Exception as e:
                 logger.error(f"Notion sync failed on swap for {t.task_id}: {e}", exc_info=True)
                 try:
-                    self.redis.queue_notion_sync(t.task_id, {"action": "sync"})
+                    self.redis.queue_notion_sync(t.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
                 except Exception:
                     pass
 
@@ -583,12 +583,12 @@ class TaskManager:
             import logging
             logging.getLogger(__name__).error(f"Notion sync failed during reschedule_task: {e}", exc_info=True)
             try:
-                self.redis.queue_notion_sync(task.task_id, {"action": "sync"})
+                self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
             except Exception:
                 pass
 
         try:
-            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state))
+            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
         except Exception:
             pass
         return task, conflicts

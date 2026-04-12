@@ -345,6 +345,79 @@ def test_query_days_window_scoped(adv_users, client):
     )
 
 
+# 14a. date_from/date_to range query isolation (Table view read surface)
+#      The Table view uses date_from/date_to params instead of date/days.
+#      This is a separate code path in query.py that must be equally scoped.
+def test_query_range_scoped(adv_users, client):
+    from datetime import datetime as _dt
+
+    # 98 gets 5 tasks spread across 30 days
+    offsets_98 = [1, 7, 14, 21, 28]
+    for i, day in enumerate(offsets_98):
+        r = _create(client, 98, f"eve-range-{i}", day * 1440 + 60)
+        assert r.status_code == 200, r.text
+        assert r.json()["created"] is True, r.json()
+
+    # 99 gets 3 tasks on different days
+    offsets_99 = [2, 10, 20]
+    for i, day in enumerate(offsets_99):
+        r = _create(client, 99, f"mallory-range-{i}", day * 1440 + 120)
+        assert r.status_code == 200, r.text
+        assert r.json()["created"] is True, r.json()
+
+    date_from = (_dt.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    date_to = (_dt.utcnow() + timedelta(days=32)).strftime("%Y-%m-%d")
+
+    # 98 queries the range: must see only their own tasks.
+    r98 = client.get(
+        f"/v1/tasks/query?date_from={date_from}&date_to={date_to}&state=all",
+        headers=_h(98),
+    )
+    assert r98.status_code == 200, r98.text
+    body_98 = r98.json()
+    titles_98 = [t["title"] for t in body_98["tasks"]]
+    for title in titles_98:
+        assert title.startswith("eve-range-"), f"user 98 saw non-own task: {title}"
+    assert len(titles_98) == len(offsets_98), (
+        f"user 98 expected {len(offsets_98)} tasks, got {len(titles_98)}"
+    )
+    # Verify extended fields are present (batch-loaded session aggregates)
+    for t in body_98["tasks"]:
+        assert "discrepancy_score" in t
+        assert "total_paused_minutes" in t
+        assert "truncated" in body_98
+
+    # Verify ownership via unscoped session
+    for t in body_98["tasks"]:
+        row = _fresh_query_task(t["task_id"])
+        assert row is not None
+        assert row.user_id == 98, (
+            f"leak: user 98's range query returned task "
+            f"{t['task_id']} owned by user_id={row.user_id}"
+        )
+
+    # 99 queries same range: must see only their own tasks.
+    r99 = client.get(
+        f"/v1/tasks/query?date_from={date_from}&date_to={date_to}&state=all",
+        headers=_h(99),
+    )
+    assert r99.status_code == 200, r99.text
+    body_99 = r99.json()
+    titles_99 = [t["title"] for t in body_99["tasks"]]
+    for title in titles_99:
+        assert title.startswith("mallory-range-"), f"user 99 saw non-own task: {title}"
+    assert len(titles_99) == len(offsets_99), (
+        f"user 99 expected {len(offsets_99)} tasks, got {len(titles_99)}"
+    )
+
+    # Cross-check: no task_id overlap
+    ids_98 = {t["task_id"] for t in body_98["tasks"]}
+    ids_99 = {t["task_id"] for t in body_99["tasks"]}
+    assert ids_98.isdisjoint(ids_99), (
+        f"cross-tenant row bleed in date_from/date_to range: {ids_98 & ids_99}"
+    )
+
+
 # 14. Cross-user interruption: 99 starts+pauses a task, 98 creates an
 #     overlapping task with force=true and tries to start it — must NOT
 #     link to 99's paused task as parent. The parent_task_id auto-linking
@@ -381,3 +454,51 @@ def test_cross_user_interruption_blocked(adv_users, client):
     row_99 = _fresh_query_task(tid_99)
     assert row_99 is not None
     assert row_99.state == TaskState.PAUSED, f"99's task state changed to {row_99.state}"
+
+
+# ---------------------------------------------------------------
+# GAP-1 regression: notifications:pending is per-user
+# ---------------------------------------------------------------
+
+def test_notifications_per_user_isolated(adv_users, client):
+    """Push a notification as user 98 → user 99 must NOT receive it."""
+    # Push as user 98
+    client.post(
+        "/v1/notifications/push",
+        json={"type": "reminder", "message": "eve's reminder"},
+        headers=_h(98),
+    )
+    # Poll as user 99 — must get nothing
+    r99 = client.get("/v1/notifications/pending", headers=_h(99))
+    assert r99.status_code == 200
+    assert r99.json()["count"] == 0, (
+        f"user 99 received user 98's notification: {r99.json()}"
+    )
+    # Poll as user 98 — must get the notification
+    r98 = client.get("/v1/notifications/pending", headers=_h(98))
+    assert r98.status_code == 200
+    assert r98.json()["count"] == 1
+    assert r98.json()["notifications"][0]["message"] == "eve's reminder"
+
+
+# ---------------------------------------------------------------
+# GAP-2 regression: last_operated_task is per-user
+# ---------------------------------------------------------------
+
+def test_last_task_per_user_isolated(adv_users, client):
+    """User 98 creates a task → user 99's /tasks/last must NOT return it."""
+    # 98 creates a task (sets last_operated_task for user 98)
+    r = _create(client, 98, "eve's last task", 200)
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] is True
+
+    # 99's /tasks/last must be 404 — they haven't done anything
+    r99 = client.get("/v1/tasks/last", headers=_h(99))
+    assert r99.status_code == 404, (
+        f"user 99 got user 98's last task: {r99.json()}"
+    )
+
+    # 98's /tasks/last returns the correct task
+    r98 = client.get("/v1/tasks/last", headers=_h(98))
+    assert r98.status_code == 200
+    assert r98.json()["title"] == "eve's last task"
