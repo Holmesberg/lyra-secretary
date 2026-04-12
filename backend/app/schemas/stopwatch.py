@@ -53,6 +53,7 @@ class StopwatchStopResponse(BaseModel):
     skip_reason: Optional[str] = None
     calibration_nudge: Optional[str] = None
     task_completion_percentage: Optional[int] = None
+    mid_task_completion_pct: Optional[int] = None
 
 
 PAUSE_REASONS = {"mental_fatigue", "distraction", "task_difficulty", "external_interruption", "intentional_break", "prayer"}

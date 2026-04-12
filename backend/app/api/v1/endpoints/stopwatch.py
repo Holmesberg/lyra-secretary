@@ -174,7 +174,7 @@ async def stop_stopwatch(
                 ),
             )
 
-        session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge = manager.stop(
+        session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct = manager.stop(
             post_task_reflection=request.post_task_reflection,
             task_completion_percentage=request.task_completion_percentage,
         )
@@ -196,6 +196,7 @@ async def stop_stopwatch(
             skip_reason="zero_duration" if zero_duration_skip else None,
             calibration_nudge=calibration_nudge,
             task_completion_percentage=session.task_completion_percentage,
+            mid_task_completion_pct=pre_existing_pct if pre_existing_pct is not None else None,
         )
 
     except NoActiveStopwatchError as e:

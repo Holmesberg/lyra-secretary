@@ -393,9 +393,13 @@ class StopwatchManager:
         self,
         post_task_reflection: Optional[int] = None,
         task_completion_percentage: Optional[int] = None,
-    ) -> tuple[StopwatchSession, Task, bool, bool]:
+    ) -> tuple:
         """
-        Stop active stopwatch. Returns (session, task, is_early_stop, notion_synced).
+        Stop active stopwatch. Returns (session, task, is_early_stop, notion_synced,
+        paused_parent, micro_mirror, calibration_nudge, mid_task_completion_pct).
+
+        mid_task_completion_pct is the pre-existing completion % on the session
+        (set during an overrun check-in via update-completion), or None if not set.
 
         If paused when stop is called, auto-resumes first (final pause counted).
         Subtracts total_paused_minutes from executed_duration so delta only
@@ -428,7 +432,11 @@ class StopwatchManager:
                         .order_by(StopwatchSession.end_time_utc.desc())
                         .first()
                     )
-                    return session, task, False, True, None, None, None
+                    if session and task_completion_percentage is not None:
+                        session.task_completion_percentage = task_completion_percentage
+                        self.db.commit()
+                        self.db.refresh(session)
+                    return session, task, False, True, None, None, None, None
                 raise NoActiveStopwatchError(
                     "No active stopwatch and no recent task to update reflection"
                 )
@@ -479,6 +487,7 @@ class StopwatchManager:
             task_completion_percentage is not None
             and task_completion_percentage >= 80
         ):
+            pre_existing_pct = session.task_completion_percentage
             session.end_time_utc = stop_time
             if task_completion_percentage is not None:
                 session.task_completion_percentage = task_completion_percentage
@@ -496,7 +505,7 @@ class StopwatchManager:
                 notion_synced_zero = True
             except Exception as e:
                 logger.error(f"Notion sync failed on zero-duration skip: {e}", exc_info=True)
-            return session, task, True, notion_synced_zero, None, None, None
+            return session, task, True, notion_synced_zero, None, None, None, pre_existing_pct
 
         session.end_time_utc = stop_time
         self.db.add(session)
@@ -522,6 +531,7 @@ class StopwatchManager:
             self.db.commit()
             self.db.refresh(task)
 
+        pre_existing_pct = session.task_completion_percentage
         if task_completion_percentage is not None:
             session.task_completion_percentage = task_completion_percentage
             self.db.commit()
@@ -597,7 +607,7 @@ class StopwatchManager:
                     "paused_minutes": paused_mins,
                 }
 
-        return session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge
+        return session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct
 
     def correct_readiness(
         self,
