@@ -158,7 +158,7 @@ async def reschedule_task(
             conflicts=conflict_info
         )
         
-    except ImmutableTaskError as e:
+    except (ImmutableTaskError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Reschedule error: {e}", exc_info=True)
@@ -267,6 +267,8 @@ async def mark_abandoned(
     task = db.query(Task).filter(Task.task_id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.voided_at is not None:
+        raise HTTPException(status_code=400, detail="Cannot skip a voided task")
     if task.state not in (TaskState.EXECUTING, TaskState.PAUSED, TaskState.PLANNED):
         raise HTTPException(
             status_code=400,

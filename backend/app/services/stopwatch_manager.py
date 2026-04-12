@@ -247,6 +247,8 @@ class StopwatchManager:
             task = self.db.query(Task).filter(Task.task_id == task_id).first()
             if not task:
                 raise ValueError("Task not found")
+            if task.voided_at is not None:
+                raise ValueError("Cannot start a timer on a voided task")
             task = self.task_manager.start_task(task_id)
         else:
             if not title:
@@ -447,6 +449,14 @@ class StopwatchManager:
         task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
         if not task:
             raise ValueError("Task not found")
+        if task.voided_at is not None:
+            # Task was voided mid-session — clean up stopwatch state, don't complete.
+            self.redis.clear_active_stopwatch(user_id)
+            self.redis.clear_pause_state(user_id)
+            session.end_time_utc = now_utc()
+            session.auto_closed = True
+            self.db.commit()
+            raise ValueError("Task was voided — session auto-closed without completion")
 
         stop_time = now_utc()
 
@@ -647,6 +657,9 @@ class StopwatchManager:
             raise NoActiveStopwatchError("No active stopwatch")
 
         session = self._get_session(active["session_id"])
+        task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
+        if task and task.voided_at is not None:
+            raise ValueError("Cannot update completion on a voided task")
         session.task_completion_percentage = task_completion_percentage
         self.db.commit()
         self.db.refresh(session)

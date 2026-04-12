@@ -364,7 +364,9 @@ class TaskManager:
         task = self.db.query(Task).filter(Task.task_id == task_id).first()
         if not task:
             raise ValueError("Task not found")
-        
+        if task.voided_at is not None:
+            raise ValueError("Cannot complete a voided task")
+
         executed_duration = int((executed_end - executed_start).total_seconds() / 60)
         
         task.executed_start_utc = executed_start
@@ -404,7 +406,9 @@ class TaskManager:
         task = self.db.query(Task).filter(Task.task_id == task_id).first()
         if not task:
             raise ValueError("Task not found")
-        
+        if task.voided_at is not None:
+            raise ValueError("Cannot skip a voided task")
+
         task = self.state_machine.transition(task, TaskState.SKIPPED, notes=reason)
         
         # Sync to Notion
@@ -475,6 +479,11 @@ class TaskManager:
         if not task_b:
             raise ValueError(f"Task {task_b_id} not found")
 
+        if task_a.voided_at is not None:
+            raise ValueError(f"Task {task_a_id} is voided")
+        if task_b.voided_at is not None:
+            raise ValueError(f"Task {task_b_id} is voided")
+
         states = {task_a.state, task_b.state}
         if states != {TaskState.SKIPPED, TaskState.PLANNED}:
             raise ValueError("swap requires exactly one SKIPPED task and one PLANNED task")
@@ -543,7 +552,9 @@ class TaskManager:
         task = self.db.query(Task).filter(Task.task_id == task_id).first()
         if not task:
             raise ValueError("Task not found")
-        
+        if task.voided_at is not None:
+            raise ValueError("Cannot reschedule a voided task")
+
         if not task.is_mutable:
             raise ImmutableTaskError("Cannot reschedule immutable task")
         

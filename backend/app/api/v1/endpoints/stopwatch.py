@@ -201,6 +201,8 @@ async def stop_stopwatch(
 
     except NoActiveStopwatchError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Stopwatch stop error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -240,6 +242,8 @@ async def update_completion(
         )
         return UpdateCompletionResponse(**result)
     except NoActiveStopwatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Update completion error: {e}", exc_info=True)
