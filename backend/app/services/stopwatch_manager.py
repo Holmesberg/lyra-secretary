@@ -467,9 +467,21 @@ class StopwatchManager:
             if active_elapsed < (task.planned_duration_minutes * 0.5):
                 is_early_stop = True
 
-        # Zero-duration guard: no active work → SKIPPED, not EXECUTED
-        if active_elapsed == 0:
+        # Zero-duration guard: no active work → SKIPPED, not EXECUTED.
+        # BUT: if the user reports high completion (>= 80%), the task was
+        # genuinely finished faster than the 60-second floor of
+        # _active_elapsed — route to EXECUTED so delta is captured.
+        # Without this override, every "planned long, executed short,
+        # completed fully" session is miscategorized as SKIPPED and the
+        # negative-delta signal (the most behaviorally interesting) is
+        # silently destroyed. (P0 fix, Apr 12.)
+        if active_elapsed == 0 and not (
+            task_completion_percentage is not None
+            and task_completion_percentage >= 80
+        ):
             session.end_time_utc = stop_time
+            if task_completion_percentage is not None:
+                session.task_completion_percentage = task_completion_percentage
             self.db.add(session)
             task.state = TaskState.SKIPPED
             task.initiation_status = "abandoned"
@@ -611,6 +623,34 @@ class StopwatchManager:
         self.db.refresh(task)
 
         return {"corrected": True, "original": original, "new": pre_task_readiness}
+
+    def update_completion(self, task_completion_percentage: int) -> dict:
+        """Update task_completion_percentage on the active session without stopping.
+
+        Used by the timer overflow check-in flow: user reports progress mid-task
+        without terminating the session. The value is preserved through to the
+        eventual stop() call and recorded on the StopwatchSession row.
+        """
+        user_id = self._user_key()
+        active = self._get_active(user_id)
+        if not active:
+            raise NoActiveStopwatchError("No active stopwatch")
+
+        session = self._get_session(active["session_id"])
+        session.task_completion_percentage = task_completion_percentage
+        self.db.commit()
+        self.db.refresh(session)
+
+        pause_state = self.redis.get_pause_state(user_id)
+        elapsed = self._active_elapsed(session, pause_state)
+
+        return {
+            "updated": True,
+            "task_id": active["task_id"],
+            "task_title": active["title"],
+            "task_completion_percentage": task_completion_percentage,
+            "elapsed_minutes": elapsed,
+        }
 
     def get_status(self) -> Optional[dict]:
         """Get current stopwatch status including pause state.

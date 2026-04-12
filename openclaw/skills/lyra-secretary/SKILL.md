@@ -66,7 +66,8 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 **POST /v1/tasks/swap** — body: `task_a_id`*, `task_b_id`* — swaps SKIPPED↔PLANNED: reactivates SKIPPED at the PLANNED task's slot, marks PLANNED as user_skipped — returns: `reactivated_task_id`, `skipped_task_id`
 **POST /v1/schedule/clear** — stops active timer + abandons EXECUTING + deletes PLANNED — returns: `cleared`, `executing_abandoned`, `planned_deleted`
 **POST /v1/stopwatch/start** — body: `task_id`* (never title), `pre_task_readiness` (1–5) — returns: `session_id`, `task_id`, `is_future_task`
-**POST /v1/stopwatch/stop** — body: `post_task_reflection` (1–5, optional) — query: `?confirmed=true` — returns: `task_id`, `duration_minutes`, `delta_minutes`, `requires_confirmation`
+**POST /v1/stopwatch/stop** — body: `post_task_reflection` (1–5, optional), `task_completion_percentage` (0–100, optional) — query: `?confirmed=true` — returns: `task_id`, `duration_minutes`, `delta_minutes`, `requires_confirmation`
+**POST /v1/stopwatch/update-completion** — body: `task_completion_percentage`* (0–100) — updates completion % mid-task WITHOUT stopping — returns: `updated`, `task_id`, `elapsed_minutes`
 **POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`*, `end_time`*, `post_task_reflection`*, `total_paused_minutes`*, `unplanned_reason`* (unexpected_task|forgot_to_log|planning_friction|spontaneous_decision), `pre_task_readiness`, `category`, `planned_duration_minutes` — returns: `task_id`, `duration_minutes`, `delta_minutes`
 **POST /v1/stopwatch/pause** — body (optional): `pause_reason`, `pause_initiator` (self|external) — returns: `paused`, `elapsed_minutes`, `paused_at`
 **POST /v1/stopwatch/resume** — no body — returns: `resumed`, `paused_minutes`, `total_paused_minutes`
@@ -139,5 +140,11 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - NEVER delete EXECUTED tasks — always void instead.
 
 **Undo:** POST /v1/undo immediately after create or delete.
+
+**Timer overflow check-in (notification type: timer_overflow):**
+- Relay the overflow message to the user
+- If user replies with a percentage (e.g. "80%"): POST /v1/stopwatch/update-completion with `task_completion_percentage` → "Noted, {pct}% — timer still running."
+- If user replies "done" or "stop": follow normal Stop timer flow above
+- NEVER call mark-abandoned on a percentage reply — percentage means progress update, not abandonment
 
 **Notifications:** Poll GET /v1/notifications/pending every 30s. Send pending messages to user.

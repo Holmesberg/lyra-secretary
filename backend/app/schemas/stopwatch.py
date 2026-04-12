@@ -99,6 +99,18 @@ class ReadinessCorrectionResponse(BaseModel):
     new: int
 
 
+class UpdateCompletionRequest(BaseModel):
+    task_completion_percentage: int = Field(..., ge=0, le=100)
+
+
+class UpdateCompletionResponse(BaseModel):
+    updated: bool
+    task_id: str
+    task_title: str
+    task_completion_percentage: int
+    elapsed_minutes: int
+
+
 class RetroactiveRequest(BaseModel):
     title: str
     start_time: datetime

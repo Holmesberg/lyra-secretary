@@ -16,6 +16,8 @@ from app.schemas.stopwatch import (
     StopwatchStatusResponse,
     ReadinessCorrectionRequest,
     ReadinessCorrectionResponse,
+    UpdateCompletionRequest,
+    UpdateCompletionResponse,
     RetroactiveRequest,
     RetroactiveResponse,
     PAUSE_REASONS,
@@ -214,6 +216,32 @@ async def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResp
         return StopwatchStatusResponse(**status) if status else StopwatchStatusResponse(active=False)
     except Exception as e:
         logger.error(f"Stopwatch status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/update-completion", response_model=UpdateCompletionResponse)
+async def update_completion(
+    request: UpdateCompletionRequest,
+    db: Session = Depends(get_db),
+) -> UpdateCompletionResponse:
+    """
+    Update task_completion_percentage on the active session without stopping.
+
+    Used by the timer overflow check-in flow: when the user replies with a
+    percentage (e.g. "80%"), this records the progress mid-task. The value
+    persists on the StopwatchSession and is available when the timer is
+    eventually stopped. Does NOT stop the timer.
+    """
+    try:
+        manager = StopwatchManager(db)
+        result = manager.update_completion(
+            task_completion_percentage=request.task_completion_percentage,
+        )
+        return UpdateCompletionResponse(**result)
+    except NoActiveStopwatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Update completion error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
