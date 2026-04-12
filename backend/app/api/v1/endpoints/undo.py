@@ -5,6 +5,7 @@ import logging
 import json
 
 from app.api.deps import get_db
+from app.db.scoping import get_current_user_id
 from app.utils.redis_client import RedisClient
 from app.services.task_manager import TaskManager
 from app.db.models import TaskState, Task
@@ -27,18 +28,18 @@ async def undo_action(db: Session = Depends(get_db)) -> UndoResponse:
     """
     try:
         redis = RedisClient()
-        
-        # Get all undo keys
-        keys = redis.client.keys("undo:*")
+        user_id = str(get_current_user_id() or 1)
+
+        # Get undo keys scoped to this user
+        keys = redis.client.keys(f"undo:{user_id}:*")
         if not keys:
             raise HTTPException(status_code=400, detail="Nothing to undo or undo window expired")
-            
-        # We take the first one (v1 single user, simple design)
-        # To be robust, we sort by timestamp inside the payload if we had multiple
-        # But we assume the latest action
+
+        # Take the first one; 30s TTL means at most one action per user
         key = keys[0]
-        entity_id = key.split(":")[1]
-        
+        # Key format: undo:{user_id}:{entity_id}
+        entity_id = key.split(":")[2] if isinstance(key, str) else key.decode().split(":")[2]
+
         undo_data_str = redis.client.get(key)
         if not undo_data_str:
             raise HTTPException(status_code=400, detail="Undo data expired")
@@ -88,7 +89,7 @@ async def undo_action(db: Session = Depends(get_db)) -> UndoResponse:
             raise HTTPException(status_code=400, detail=f"Cannot undo action: {action}")
             
         # Clear the undo key
-        redis.clear_undo_data(entity_id)
+        redis.clear_undo_data(entity_id, user_id=user_id)
         
         return UndoResponse(
             success=True,

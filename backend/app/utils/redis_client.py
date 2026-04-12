@@ -70,34 +70,35 @@ class RedisClient:
         """Clear pause state on resume or stop."""
         self.client.delete(f"stopwatch:paused:{user_id}")
     
-    # Undo pattern (30 second TTL)
+    # Undo pattern (30 second TTL, per-user namespaced)
     def cache_undo_action(
         self,
         action_type: str,
         entity_id: str,
         data: Dict[str, Any],
+        user_id: str = "1",
         ttl_seconds: int = 30
     ):
-        """Cache action for undo."""
-        key = f"undo:{entity_id}"
+        """Cache action for undo (per-user)."""
+        key = f"undo:{user_id}:{entity_id}"
         undo_data = {
             "action": action_type,
             "data": data,
             "timestamp": datetime.utcnow().isoformat()
         }
         self.client.setex(key, ttl_seconds, json.dumps(undo_data))
-    
-    def get_undo_data(self, entity_id: str) -> Optional[Dict[str, Any]]:
-        """Get undo data if within TTL."""
-        key = f"undo:{entity_id}"
+
+    def get_undo_data(self, entity_id: str, user_id: str = "1") -> Optional[Dict[str, Any]]:
+        """Get undo data if within TTL (per-user)."""
+        key = f"undo:{user_id}:{entity_id}"
         data = self.client.get(key)
         if data:
             return json.loads(data)
         return None
-    
-    def clear_undo_data(self, entity_id: str):
-        """Clear undo data."""
-        key = f"undo:{entity_id}"
+
+    def clear_undo_data(self, entity_id: str, user_id: str = "1"):
+        """Clear undo data (per-user)."""
+        key = f"undo:{user_id}:{entity_id}"
         self.client.delete(key)
     # Idempotency (duplicate request protection)
     def check_idempotency(self, key: str) -> Optional[str]:

@@ -224,11 +224,12 @@ class TaskManager:
 
         # Cache for undo — best-effort
         try:
+            uid = str(get_current_user_id() or 1)
             self.redis.cache_undo_action("create_task", task.task_id, {
                 "task_id": task.task_id,
                 "title": task.title
-            })
-            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
+            }, user_id=uid)
+            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=uid)
         except Exception:
             pass
         return task, [], notion_synced
@@ -456,7 +457,7 @@ class TaskManager:
                 "task_id": task.task_id,
                 "title": task.title,
                 "previous_state": state_value
-            })
+            }, user_id=str(get_current_user_id() or 1))
         except Exception:
             pass
 

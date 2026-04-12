@@ -179,9 +179,9 @@ async def get_last_task(db: Session = Depends(get_db)):
             status_code=404,
             detail="No task operated in the last hour. Please specify the task.",
         )
-    # Verify task still exists in DB (could have been deleted)
+    # Verify task still exists and isn't voided
     task = db.query(Task).filter(Task.task_id == last["task_id"]).first()
-    if not task:
+    if not task or task.voided_at is not None:
         raise HTTPException(status_code=404, detail="Last task no longer exists.")
     return {
         "task_id": task.task_id,
