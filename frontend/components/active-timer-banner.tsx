@@ -54,6 +54,32 @@ export function ActiveTimerBanner({ status }: { status: StopwatchStatus }) {
     return () => clearInterval(id);
   }, [status.paused]);
 
+  // Click-outside listener for pause reason picker.
+  // MUST be declared before the early return below to
+  // satisfy React's Rules of Hooks. When status.active
+  // flips false, the early return path renders fewer
+  // hooks than the active path — any hook below the
+  // return causes "Rendered fewer hooks than expected"
+  // crash on the transition. The internal showReasonPicker
+  // guard makes this effect a no-op when the banner is
+  // hidden anyway. (Bug introduced f3af1df, fixed today.)
+  useEffect(() => {
+    if (!showReasonPicker) return;
+    function onDown(e: PointerEvent) {
+      if (
+        pickerRef.current &&
+        !pickerRef.current.contains(e.target as Node)
+      ) {
+        applyPause(PAUSE_REASON_DEFAULT);
+      }
+    }
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+    // applyPause is stable enough for this lifecycle; we only want
+    // to re-bind when the picker opens/closes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReasonPicker]);
+
   if (!status.active || !status.start_time) return null;
   const paused = !!status.paused;
   const elapsed = formatElapsed(
@@ -112,29 +138,6 @@ export function ActiveTimerBanner({ status }: { status: StopwatchStatus }) {
       setShowReasonPicker(true);
     }
   }
-
-  // Click-outside handler for the reason picker: any click anywhere
-  // that isn't inside the picker dismisses it, and "dismiss" here
-  // means "pause anyway, with the default reason" rather than
-  // "cancel" — the user already committed to pausing by clicking the
-  // Pause button. Pointerdown so it fires before any click handler
-  // on whatever the user clicked.
-  useEffect(() => {
-    if (!showReasonPicker) return;
-    function onDown(e: PointerEvent) {
-      if (
-        pickerRef.current &&
-        !pickerRef.current.contains(e.target as Node)
-      ) {
-        applyPause(PAUSE_REASON_DEFAULT);
-      }
-    }
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-    // applyPause is stable enough for this lifecycle; we only want
-    // to re-bind when the picker opens/closes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showReasonPicker]);
 
   return (
     <div

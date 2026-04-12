@@ -1,13 +1,16 @@
 """Stale session recovery background job.
 
 Sweeps unclosed StopwatchSession rows whose start_time is more than
-24 hours old and auto-closes them. Prevents the class of incident where
+12 hours old and auto-closes them. Prevents the class of incident where
 a browser crash mid-pause, container restart before resume, or voided
 task leaves an orphan session that the banner surfaces forever (the 65h
 CO-block ghost, Apr 11 — LYR-103).
 
 Conservative by design:
-  * 24h threshold — never touches a legitimate long task
+  * 12h threshold — catches forgotten paused sessions before compounding
+    while producing near-zero false positives for legitimate long tasks.
+    Lowered from 24h after Apr 12 dogfood evidence (16h 41m paused
+    session went undetected by auto-cleanup).
   * end_time_utc = start_time_utc + max(planned_duration, 1) min so the
     row has a defensible duration rather than extending to "now"
   * Redis keys cleared only if they still point at the stale session
@@ -24,7 +27,7 @@ from app.workers.jobs._per_user import for_each_user
 
 logger = logging.getLogger(__name__)
 
-STALE_THRESHOLD_HOURS = 24
+STALE_THRESHOLD_HOURS = 12
 
 
 def run_stale_session_recovery():

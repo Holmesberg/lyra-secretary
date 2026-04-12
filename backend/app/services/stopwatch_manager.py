@@ -60,16 +60,19 @@ class StopwatchManager:
         if not active:
             active = self._recover_from_db(user_id)
         if active:
-            # Self-heal: if the bound task has been voided since the session
-            # started, close the orphan session and clear Redis so the next
-            # status poll returns None. Without this the frontend banner
-            # keeps showing a PAUSED timer for a voided task forever (the
-            # CO-block 65h incident). This also catches historic stale
-            # state from voids that ran before void_cleanup existed.
+            # Self-heal: if the bound task has been voided or reached a
+            # terminal state since the session started, close the orphan
+            # session and clear Redis so the next status poll returns None.
+            # Without this the frontend banner keeps showing a PAUSED timer
+            # for a voided/skipped task forever. Originally only checked
+            # voided_at (CO-block 65h incident); expanded to cover SKIPPED
+            # after mark-abandoned left ghost banners (Apr 12).
             task = self.db.query(Task).filter(
                 Task.task_id == active["task_id"]
             ).first()
-            if task is None or task.voided_at is not None:
+            if task is None or task.voided_at is not None or task.state in (
+                TaskState.SKIPPED, TaskState.EXECUTED, TaskState.DELETED,
+            ):
                 self._close_orphan_session(active["session_id"])
                 self.redis.clear_active_stopwatch(user_id)
                 self.redis.clear_pause_state(user_id)
@@ -182,11 +185,14 @@ class StopwatchManager:
         task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
         if not task:
             return None
-        # Defense-in-depth: a voided task must never rehydrate into the
-        # banner. void_cleanup() closes the session at void-time (commit
-        # 59ca80d), but any orphan rows left over from before that fix
+        # Defense-in-depth: a voided or terminal-state task must never
+        # rehydrate into the banner. void_cleanup() closes the session at
+        # void-time (commit 59ca80d), and mark_abandoned now clears Redis
+        # too, but any orphan rows left over from before those fixes
         # shipped would otherwise resurface on the next Redis-loss event.
-        if task.voided_at is not None:
+        if task.voided_at is not None or task.state in (
+            TaskState.SKIPPED, TaskState.EXECUTED, TaskState.DELETED,
+        ):
             return None
 
         self.redis.set_active_stopwatch(

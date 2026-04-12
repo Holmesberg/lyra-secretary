@@ -274,6 +274,7 @@ async def mark_abandoned(
         )
 
     previous = task.state
+    was_active = task.state in (TaskState.EXECUTING, TaskState.PAUSED)
     is_planned = task.state == TaskState.PLANNED
     default_reason = "user_skipped" if is_planned else "abandoned mid-session"
     try:
@@ -284,6 +285,20 @@ async def mark_abandoned(
         db.refresh(task)
     except ImmutableTaskError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Close any unclosed stopwatch session and clear Redis active/pause
+    # keys for EXECUTING/PAUSED tasks. Without this the frontend banner
+    # keeps showing a PAUSED timer for the now-SKIPPED task (ghost banner
+    # bug, Apr 12). Same pattern as void_task — _get_active self-heal is
+    # the backup if this fails.
+    if was_active:
+        try:
+            StopwatchManager(db).void_cleanup(task.task_id)
+        except Exception as e:
+            logger.warning(
+                f"stopwatch cleanup failed for mark-abandoned {task.task_id}: {e}. "
+                f"_get_active self-heal will recover on next status poll."
+            )
 
     return MarkAbandonedResponse(
         task_id=task.task_id,
