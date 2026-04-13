@@ -36,6 +36,7 @@ class ConflictDetector:
         """
         query = self.db.query(Task).filter(
             Task.state.in_([TaskState.PLANNED, TaskState.EXECUTING, TaskState.PAUSED]),
+            Task.voided_at.is_(None),
             Task.planned_start_utc < end,
             Task.planned_end_utc > start
         )
