@@ -28,7 +28,7 @@ async def skill_ping(db: Session = Depends(get_db)) -> dict:
     today_local = to_local(now).date()
 
     # Count PLANNED tasks whose planned_start falls on today (Cairo local date)
-    planned_tasks = db.query(Task).filter(Task.state == TaskState.PLANNED).all()
+    planned_tasks = db.query(Task).filter(Task.state == TaskState.PLANNED, Task.voided_at.is_(None)).all()
     pending_today = sum(
         1 for t in planned_tasks
         if to_local(t.planned_start_utc).date() == today_local
