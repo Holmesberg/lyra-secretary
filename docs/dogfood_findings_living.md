@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 12, 2026 (Phase 4.5 triage batch: hook order P0 fix, stale session + ghost banner P0s opened, day navigation P1, research-adjacent P2 backlog, alpha launch date confirmed April 30)
+**Last updated:** April 14, 2026 (Phase 4.5: canonical phase docs created, 5 stale OPEN→FIXED items cleaned, anonymized retention + settings page in progress)
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -52,8 +52,6 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
-- **New task modal: end-time picker as alternative to duration.** Power-user request from calendar dogfood. Toggle between "duration" mode (current default, keep as default) and "end time" mode — in end-time mode the user picks a wall-clock end instead of a minutes count, and duration is derived on submit. Useful when scheduling around fixed anchors (meeting at 3 PM that ends at 4 PM). *Apr 11.*
-
 - **Task swap feature (planned time exchange).** Multi-select with EXACTLY 2 tasks → new "Swap times" button appears next to "Void" → swaps `planned_start_utc` and `planned_end_utc` between the two task rows (durations preserved only if both sides have the same duration; otherwise each task's duration moves with its new start). New backend endpoint `POST /v1/tasks/swap-times` accepting `{task_id_a, task_id_b}`. Matches OpenClaw parity. Conflict detection must still run on both tasks at their new times. *Apr 11.*
 
 - **Frontend backend-unreachable graceful retry UI.** "Failed to fetch" raw error shown on transient backend issues (host sleep, WSL port forward stabilization). Should be friendly retry banner with auto-retry every 5s. *Apr 11.*
@@ -70,12 +68,12 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **Active timer banner display when paused very long.** Currently shows full HH:MM:SS counter which becomes absurd at 16+ hours. Cap display at "12h+ paused — auto-abandoning soon" once stale_session_recovery threshold is approached. *Apr 11.*
 
-- **Today view forward/backward day navigation.** Arrow buttons left of "Sunday April 12" header, navigate prev/next day. Past days are read-only (no start/stop), PLANNED tasks on future days remain editable. Unblocks yesterday-review workflows for reflection — operator and alpha users will both hit this by week 2. *Apr 12.*
-
 - **ReflectionModal completion % ungate.** Currently the completion percentage input only renders on early-stop confirmation flow (`earlyStop && ...` guard in `reflection-modal.tsx:82`). Normal and overrun stops never collect it — research signal lost for the "how complete was this task?" dimension on every non-early stop. Remove the `earlyStop &&` gate so the input appears on every stop. Adds ~2s post-task friction per session — dogfood on operator only for 1 day before promoting to main. *Apr 12.*
 
 ### FIXED (recent — prune in 2 weeks)
 
+- End-time picker as alternative to duration on new task modal (commit 948bd2d)
+- Today view forward/backward day navigation with prev/next arrows (commit 948bd2d)
 - **Schedule-X calendar view at `/calendar` (final, browser-verified).** Full day/week/month calendar using `@schedule-x/react@4.1.0` + `@schedule-x/calendar@4.4.0` + drag-and-drop/resize v3.7.3 + `temporal-polyfill@0.3.0`. Five state-colored calendars matching task-row pills. Click PLANNED → edit modal prefilled; click non-PLANNED → readonly details popover (planned/executed times, duration delta, readiness/focus). Drag/resize PLANNED → `POST /v1/reschedule` via `onBeforeEventUpdateAsync`; non-PLANNED drag rejected with auto-dismissing toast. Voided tasks filtered from event list. Backend `/v1/tasks/query` gained optional `days` param (default 1, max 62) so the calendar pulls a 62-day window in one round trip. Stale-closure safety via `useRef<TaskRow[]>` so callbacks see fresh query data after refetch. Cross-view cache sync via predicate-based query invalidation. Initial ship (commit e085671) shipped with four latent runtime issues that required three verification rounds to unblock: (1) Schedule-X `selectedDate` crash from dual-realm `Temporal.PlainDate` — fixed by `temporal-polyfill/global` side-effect import; (2) time grid cropped at ~7 AM — fixed by `h-[calc(100vh-220px)] overflow-y-auto` outer wrapper instead of fixed height + overflow-hidden; (3) overlapping events cascaded with text obscured — fixed by `weekOptions.eventOverlap: false` splitting them into equal sub-columns; (4) drag threw `TypeError: startTimeGridDrag is not a function` due to upstream plugin-vs-core version mismatch (calendar@4.4.0 renamed the method contract but no @schedule-x/drag-and-drop@4.x has been published) — fixed by runtime alias shim binding the 3.x method names under the 4.x expected names. Final commit a1c07a1 closed Phase 4 calendar integration with all browser-verify items green (drag + resize + immutable guard + scroll + overlap split + no console errors).
 - **useCurrentTime hook** — shared `useCurrentTime()` hook ticks every 60s so `today/page.tsx` cross-day key rollover and `new-task-modal` default start no longer freeze on page idle. Bundles LYR-099 fix (modal reopen after 30min idle showed stale default) (commit 2c18be9)
 - **Pause reason picker on web UI** — `ActiveTimerBanner` Pause button now opens an inline dropdown with the 6 PAUSE_REASONS enum values (mental_fatigue, distraction, task_difficulty, external_interruption, intentional_break, prayer); click-outside dismisses and pauses with `external_interruption` as the least-wrong default (commit f3af1df)
@@ -162,6 +160,8 @@ This document is edited continuously as new findings emerge. Sections of this do
 - **Compression cycles — every ~10 days.** Operator reviews the dogfood doc and Phase 6 backlog. Rule: which signals/features actually changed decisions vs which felt insightful but produced no action? Delete or merge 20-30% of items per cycle. Forces discipline against complexity creep. Schedule: end of every two-week sprint. First cycle: April 28 (post-Spring-School return). *Apr 14.*
 
 - **Durable verification gate suite formalized (10 gates).** tsc, container health, APScheduler job count, `_recover_from_db` filter inspect, Redis/SQLite consistency, git state snapshot, dev server compile, dev-log static-paths clean check, browser-verify HARD GATE, multi-tenant isolation gate for new read endpoints. Cross-component cross-route verification gap identified in Phase 4 close emergency — shared components must be state-transition tested on every route that uses them, not just the changed route. *Apr 12.*
+
+- **Canonical phase documentation created (Apr 14).** `docs/project_history.md` (retrospective: what happened) and `docs/building_phases.md` (forward-looking: what remains). Updated at phase boundaries. Items from this dogfood doc graduate to building_phases when they solidify into phase-level commitments. Neither document duplicates dogfood — they reference it.
 
 - **Phase 6 architecture backlog document recommended.** Create `docs/phase_6_architecture_backlog.md` with schemas and acceptance criteria for all Phase 6 P2 items (prediction-first logging, falsification engine, layered adaptation, intervention tracking, cascade model, metacognitive reliability, archetype re-fit, trigger field). 20 minutes one-time work, prevents rediscovering design decisions next month. *Apr 12.*
 
