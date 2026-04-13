@@ -523,6 +523,34 @@ The bias_factor is no longer personal — it's a distribution. Some people consi
 
 **Status:** Void endpoint implemented in v1.4. Prevention depends on OpenClaw exec-approval fixes (LYR-071, LYR-078).
 
+## Cohort start dates and contamination notes
+
+Operator (cohort=operator) data spans Apr 5 — present.
+
+Pre-Apr-13 contamination (4 rows):
+- 3 voided tasks were auto-transitioned to SKIPPED by
+  the overdue_tasks job before the voided_at filter
+  was added (commit 2af80f0). These rows have
+  state=SKIPPED but voided_at IS NOT NULL.
+- 1 voided task had its stopwatch session auto-closed
+  by stale_session_recovery 38 minutes after voiding,
+  producing a 65.5-hour paused-session ghost (LYR-103).
+- All 4 rows are test tasks created during dogfood
+  development. None affect real behavioral analytics.
+
+Analytic exclusion: All queries against operator data
+filter voided_at IS NULL. The contaminated rows are
+naturally excluded by this filter regardless of their
+state value. Pre-registered: cohort=operator clean
+analytics begin Apr 13, 2026 (post-audit-fix date).
+Pre-Apr-13 data is usable for instrument validation
+but not for primary H1 correlation analysis.
+
+VT-14: Pre-fix bug class allowed background jobs to
+mutate voided task state. Mitigated commit batch
+Apr 13 (commits 2af80f0, 2afd063, 7823424, 05d3e0a).
+All known affected rows enumerated above.
+
 ---
 
 ## What This Is Really About
