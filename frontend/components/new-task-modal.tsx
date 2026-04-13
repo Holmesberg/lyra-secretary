@@ -15,19 +15,30 @@ import { CATEGORIES, type Category } from "@/lib/categories";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import { createTask, rescheduleTask, type TaskRow } from "@/lib/tasks";
 
-function defaultStart(from: Date = new Date()) {
-  const d = new Date(from);
-  d.setMinutes(d.getMinutes() + 5 - (d.getMinutes() % 5));
-  d.setSeconds(0);
-  d.setMilliseconds(0);
-  return formatLocal(d);
-}
-
 function formatLocal(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
     d.getHours()
   )}:${pad(d.getMinutes())}`;
+}
+
+/** Round up to next 30-minute boundary. */
+function defaultStart(from: Date = new Date()) {
+  const d = new Date(from);
+  const mins = d.getMinutes();
+  const next30 = mins <= 0 ? 0 : mins <= 30 ? 30 : 60;
+  d.setMinutes(next30, 0, 0);
+  return formatLocal(d);
+}
+
+function addMinutes(localStr: string, mins: number): string {
+  const d = new Date(localStr);
+  d.setMinutes(d.getMinutes() + mins);
+  return formatLocal(d);
+}
+
+function diffMinutes(startStr: string, endStr: string): number {
+  return Math.round((new Date(endStr).getTime() - new Date(startStr).getTime()) / 60_000);
 }
 
 interface PausedConflict {
@@ -44,43 +55,55 @@ interface Props {
   editingTask?: TaskRow | null;
 }
 
-function editDefaults(task: TaskRow) {
-  const startDate = task.start ? new Date(task.start) : new Date();
-  const endDate = task.end ? new Date(task.end) : new Date();
-  const dur = Math.max(5, Math.round((endDate.getTime() - startDate.getTime()) / 60_000));
-  return { start: formatLocal(startDate), duration: dur };
-}
-
 export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, editingTask }: Props) {
   const isEdit = !!editingTask;
   const now = useCurrentTime();
+
   const [title, setTitle] = useState("");
   const [start, setStart] = useState(() => defaultStart());
-  const [duration, setDuration] = useState(30);
+  const [end, setEnd] = useState(() => addMinutes(defaultStart(), 30));
+  const [durHours, setDurHours] = useState(0);
+  const [durMinutes, setDurMinutes] = useState(30);
   const [category, setCategory] = useState<Category>("work");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
   const [lastEditId, setLastEditId] = useState<string | null>(null);
 
-  // Refresh the start default every time the modal opens for a new task
-  // (not edit). Using `open` as the only dep intentionally — we don't
-  // want the 60s `now` tick to clobber the user's in-progress typing
-  // mid-edit. The `now` value read here is whichever tick was latest at
-  // the moment `open` flipped to true, which is at worst 60s stale.
+  const totalMinutes = durHours * 60 + durMinutes;
+  const endBeforeStart = diffMinutes(start, end) <= 0;
+  const canSubmit = !submitting && title.trim().length > 0 && !endBeforeStart && totalMinutes > 0;
+
+  // Fresh defaults every time modal opens for a new task.
+  // Using `open` as only dep intentionally — the 60s `now` tick must
+  // not clobber in-progress typing.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open && !editingTask) {
-      setStart(defaultStart(now));
+      const s = defaultStart(now);
+      const e = addMinutes(s, 30);
+      setStart(s);
+      setEnd(e);
+      setDurHours(0);
+      setDurMinutes(30);
+      setTitle("");
+      setCategory("work");
+      setError(null);
+      setPausedConflict(null);
+      setLastEditId(null);
     }
   }, [open, editingTask]);
 
   // Sync form fields when editingTask changes
   if (editingTask && editingTask.task_id !== lastEditId) {
-    const defs = editDefaults(editingTask);
+    const startDate = editingTask.start ? new Date(editingTask.start) : new Date();
+    const endDate = editingTask.end ? new Date(editingTask.end) : new Date();
+    const dur = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60_000));
     setTitle(editingTask.title);
-    setStart(defs.start);
-    setDuration(defs.duration);
+    setStart(formatLocal(startDate));
+    setEnd(formatLocal(endDate));
+    setDurHours(Math.floor(dur / 60));
+    setDurMinutes(dur % 60);
     setCategory((editingTask.category as Category) || "work");
     setError(null);
     setPausedConflict(null);
@@ -88,28 +111,58 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   }
 
   function resetForm() {
+    const s = defaultStart(now);
     setTitle("");
-    setDuration(30);
-    setStart(defaultStart(now));
+    setStart(s);
+    setEnd(addMinutes(s, 30));
+    setDurHours(0);
+    setDurMinutes(30);
+    setCategory("work");
     setError(null);
     setPausedConflict(null);
     setLastEditId(null);
   }
 
-  function buildDates() {
-    const startDate = new Date(start);
-    const endDate = new Date(startDate.getTime() + duration * 60_000);
-    return { startDate, endDate };
+  // --- Bidirectional binding helpers ---
+
+  function handleStartChange(newStart: string) {
+    // Preserve current duration, shift end
+    const dur = durHours * 60 + durMinutes;
+    setStart(newStart);
+    setEnd(addMinutes(newStart, dur));
   }
+
+  function handleEndChange(newEnd: string) {
+    setEnd(newEnd);
+    const mins = diffMinutes(start, newEnd);
+    if (mins > 0) {
+      setDurHours(Math.floor(mins / 60));
+      setDurMinutes(mins % 60);
+    }
+  }
+
+  function handleDurHoursChange(h: number) {
+    const clamped = Math.max(0, h);
+    setDurHours(clamped);
+    setEnd(addMinutes(start, clamped * 60 + durMinutes));
+  }
+
+  function handleDurMinutesChange(m: number) {
+    const clamped = Math.max(0, m);
+    setDurMinutes(clamped);
+    setEnd(addMinutes(start, durHours * 60 + clamped));
+  }
+
+  // --- Submit ---
 
   async function submit() {
     setError(null);
     setPausedConflict(null);
     setSubmitting(true);
     try {
-      const { startDate, endDate } = buildDates();
+      const startDate = new Date(start);
+      const endDate = new Date(end);
 
-      // Edit mode: reschedule instead of create
       if (isEdit && editingTask) {
         await rescheduleTask({
           task_id: editingTask.task_id,
@@ -166,7 +219,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setError(null);
     setSubmitting(true);
     try {
-      const { startDate, endDate } = buildDates();
+      const startDate = new Date(start);
+      const endDate = new Date(end);
       const res = await createTask({
         title: title.trim(),
         start: startDate.toISOString(),
@@ -191,7 +245,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { resetForm(); onClose(); } }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
@@ -219,19 +273,39 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 id="start"
                 type="datetime-local"
                 value={start}
-                onChange={(e) => setStart(e.target.value)}
+                onChange={(e) => handleStartChange(e.target.value)}
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="duration">Duration (min)</Label>
+              <Label htmlFor="end">End</Label>
               <Input
-                id="duration"
-                type="number"
-                min={5}
-                step={5}
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
+                id="end"
+                type="datetime-local"
+                value={end}
+                onChange={(e) => handleEndChange(e.target.value)}
               />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-white/50">Duration</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                value={durHours}
+                onChange={(e) => handleDurHoursChange(Number(e.target.value))}
+                className="w-20 text-center text-sm text-white/70"
+              />
+              <span className="text-xs text-white/40">h</span>
+              <Input
+                type="number"
+                min={0}
+                value={durMinutes}
+                onChange={(e) => handleDurMinutesChange(Number(e.target.value))}
+                className="w-20 text-center text-sm text-white/70"
+              />
+              <span className="text-xs text-white/40">m</span>
             </div>
           </div>
 
@@ -250,6 +324,12 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               ))}
             </select>
           </div>
+
+          {endBeforeStart && (
+            <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+              End time must be after start
+            </div>
+          )}
 
           {pausedConflict && (
             <>
@@ -287,7 +367,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => { setPausedConflict(null); onClose(); }} disabled={submitting}>
+          <Button variant="ghost" onClick={() => { resetForm(); onClose(); }} disabled={submitting}>
             Cancel
           </Button>
           {pausedConflict ? (
@@ -300,7 +380,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           ) : (
             <Button
               onClick={submit}
-              disabled={submitting || !title.trim()}
+              disabled={!canSubmit}
             >
               {isEdit ? "Save" : "Create"}
             </Button>

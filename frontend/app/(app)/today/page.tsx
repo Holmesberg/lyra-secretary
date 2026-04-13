@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { Plus } from "lucide-react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { format, addDays, subDays, isSameDay } from "date-fns";
+import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   queryTasks,
   getStopwatchStatus,
@@ -29,19 +30,58 @@ function localDateKey(d: Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export default function TodayPage() {
+function parseDate(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Inner component that reads search params (requires Suspense boundary). */
+function TodayInner() {
   const qc = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const now = useCurrentTime();
-  const date = localDateKey(now);
+  const today = localDateKey(now);
+
+  // Viewed date: from URL ?date= or default to today
+  const dateParam = searchParams.get("date");
+  const viewedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today;
+  const viewedDateObj = parseDate(viewedDate);
+  const isToday = viewedDate === today;
+  const isPast = viewedDateObj < parseDate(today) && !isToday;
+
+  function navigateTo(dateStr: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (dateStr === today) {
+      params.delete("date");
+    } else {
+      params.set("date", dateStr);
+    }
+    const qs = params.toString();
+    router.push(qs ? `/today?${qs}` : "/today");
+  }
 
   const tasksQ = useQuery({
-    queryKey: ["tasks", date],
-    queryFn: () => queryTasks(date),
+    queryKey: ["tasks", viewedDate],
+    queryFn: () => queryTasks(viewedDate),
   });
   const statusQ = useQuery({
     queryKey: ["stopwatch-status"],
     queryFn: getStopwatchStatus,
   });
+
+  const nextDateStr = localDateKey(addDays(viewedDateObj, 1));
+
+  // Next-day gate: always allowed UNLESS viewing today and tomorrow has no planned tasks.
+  // Use a separate query key prefix to avoid collisions with the main tasks query.
+  const tomorrowQ = useQuery({
+    queryKey: ["next-day-check", nextDateStr],
+    queryFn: () => queryTasks(nextDateStr),
+    enabled: isToday,
+    staleTime: 60_000,
+  });
+  const nextDayBlocked = isToday && tomorrowQ.isFetched &&
+    !tomorrowQ.data?.some((t) => t.state === "PLANNED" && !t.voided_at);
 
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [readinessFor, setReadinessFor] = useState<TaskRowType | null>(null);
@@ -58,7 +98,8 @@ export default function TodayPage() {
   const [voidModalOpen, setVoidModalOpen] = useState(false);
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["tasks", date] });
+    qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });
+    qc.invalidateQueries({ queryKey: ["tasks", nextDateStr] });
     qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
   };
 
@@ -66,15 +107,6 @@ export default function TodayPage() {
   const activeTaskId = status?.active ? status.task_id : undefined;
   const timerBusy = !!status?.active;
 
-  // Phase 3.2: sort by execution-time axis, not by state group. Key:
-  //   EXECUTED  → executed_end  (when it actually finished)
-  //   SKIPPED   → executed_end or planned_start
-  //   EXECUTING → executed_start or planned_start
-  //   PAUSED    → executed_start or planned_start
-  //   PLANNED   → planned_start
-  // This is Notion-like: planned_start is a placeholder that the real
-  // execution time overrides once the task runs. Avoids the visible row
-  // reshuffling that my earlier state-grouped sort caused on pause/resume.
   function sortKey(t: TaskRowType): number {
     const parse = (s: string | null) => (s ? new Date(s).getTime() : null);
     const pStart = parse(t.start);
@@ -93,13 +125,7 @@ export default function TodayPage() {
         return pStart ?? 0;
     }
   }
-  // PLANNED rows sort ascending (next-up first, earliest at top) so the
-  // operator's attention anchors to the task they should start next.
-  // Everything else stays descending (most-recently-touched first)
-  // because for EXECUTED/SKIPPED the relevant question is "what did I
-  // just finish," not "what's the oldest thing on record." Partition
-  // rather than one mixed comparator — mixed comparators aren't
-  // transitive when a stale PLANNED row has a past planned_start.
+
   const sortedTasks = tasksQ.data
     ? (() => {
         const visible = tasksQ.data.filter((t) => !t.voided_at);
@@ -140,7 +166,7 @@ export default function TodayPage() {
           planned: res.planned_duration_minutes,
           message: res.confirmation_message ?? "Early stop",
         });
-        return; // keep modal open, now in early-stop mode
+        return;
       }
       setReflectionOpen(false);
       setEarlyStop(null);
@@ -157,9 +183,6 @@ export default function TodayPage() {
 
   function handleInterruptionCreated(taskId: string, taskTitle: string) {
     refresh();
-    // Open readiness modal for the newly created interruption task.
-    // Build a minimal TaskRowType — only task_id and title are used by
-    // ReadinessModal and handleStart.
     setReadinessFor({
       task_id: taskId,
       title: taskTitle,
@@ -235,21 +258,53 @@ export default function TodayPage() {
     refresh();
   }
 
+  const prevDateStr = localDateKey(subDays(viewedDateObj, 1));
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Today</h1>
-          <p className="text-xs text-white/50">
-            {format(new Date(), "EEEE, MMMM d")}
-          </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigateTo(prevDateStr)}
+            className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white"
+            aria-label="Previous day"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-semibold">
+              {format(viewedDateObj, "EEEE, MMMM d")}
+            </h1>
+            {!isToday && (
+              <button
+                onClick={() => navigateTo(today)}
+                className="text-xs text-blue-400 hover:text-blue-300"
+              >
+                Back to today
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => !nextDayBlocked && navigateTo(nextDateStr)}
+            disabled={nextDayBlocked}
+            className={`rounded p-1 ${
+              !nextDayBlocked
+                ? "text-white/50 hover:bg-white/10 hover:text-white"
+                : "cursor-not-allowed text-white/15"
+            }`}
+            aria-label={!nextDayBlocked ? "Next day" : "No tasks planned tomorrow"}
+            title={!nextDayBlocked ? "Next day" : "No tasks planned tomorrow"}
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
         </div>
-        <Button onClick={() => setNewTaskOpen(true)} disabled={timerBusy && false}>
+        <Button onClick={() => setNewTaskOpen(true)}>
           <Plus className="mr-1 h-4 w-4" />
           New task
         </Button>
       </div>
 
+      {/* Active timer banner: always visible regardless of viewed date */}
       {status && <ActiveTimerBanner status={status} />}
 
       {errorMsg && (
@@ -266,12 +321,12 @@ export default function TodayPage() {
       )}
 
       {tasksQ.isLoading && (
-        <div className="text-sm text-white/50">Loading today's tasks…</div>
+        <div className="text-sm text-white/50">Loading tasks…</div>
       )}
 
       {tasksQ.data && tasksQ.data.length === 0 && (
         <div className="rounded-lg border border-dashed border-white/10 p-10 text-center text-sm text-white/50">
-          Nothing scheduled yet. Create your first task.
+          {isPast ? "No tasks recorded for this day." : "Nothing scheduled yet. Create your first task."}
         </div>
       )}
 
@@ -287,11 +342,11 @@ export default function TodayPage() {
             <TaskRow
               key={t.task_id}
               task={t}
-              disableStart={timerBusy && t.task_id !== activeTaskId}
+              disableStart={isPast || (timerBusy && t.task_id !== activeTaskId)}
               onStart={(task) => setReadinessFor(task)}
               onStop={() => setReflectionOpen(true)}
-              onSkip={handleSkip}
-              onDelete={handleDelete}
+              onSkip={isPast ? undefined : handleSkip}
+              onDelete={isPast ? undefined : handleDelete}
               onEdit={(task) => setEditingTask(task)}
               selected={selectedIds.has(t.task_id)}
               showCheckbox={selectedIds.size > 0}
@@ -336,5 +391,14 @@ export default function TodayPage() {
         onCancel={() => setVoidModalOpen(false)}
       />
     </div>
+  );
+}
+
+/** Page wrapper with Suspense boundary for useSearchParams. */
+export default function TodayPage() {
+  return (
+    <Suspense fallback={<div className="text-sm text-white/50">Loading…</div>}>
+      <TodayInner />
+    </Suspense>
   );
 }
