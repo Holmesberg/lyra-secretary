@@ -131,9 +131,9 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **Archetype re-fit cycle to handle end-of-history illusion.** People change; static archetype assignments progressively misclassify. Either periodic Bayesian update from new data or `archetype(t)` function instead of archetype constant. Implementation decision at Phase 6 after first alpha cohort produces data. *Apr 12.*
 
-- **"Do not add" list.** Explicitly document what is NOT allowed to ship in current phase. Prevents silent complexity creep. Current no-list: no new metrics without prediction, no new archetypes until anomaly threshold hit, no new UI surfaces before retention validated. Living doc. *Apr 12.*
+- **"Do not add" list.** Documented in `docs/do_not_add.md` (April 14). Covers 11 rejected architectural directions with reasoning. *Apr 12, shipped Apr 14.*
 
-- **Compression cycles every ~10 days.** Force review of signals: which actually changed decisions vs which just felt insightful. Delete or merge 20-30% of signals per cycle. Operator discipline check. *Apr 12.*
+- **Compression cycles every ~10 days.** Force review of signals: which actually changed decisions vs which just felt insightful. Delete or merge 20-30% of signals per cycle. Operator discipline check. First cycle April 28. See Process findings section for schedule details. *Apr 12.*
 
 ---
 
@@ -158,6 +158,8 @@ This document is edited continuously as new findings emerge. Sections of this do
 - **Host sleep breaks WSL port forwarding intermittently.** Symptoms: "Failed to fetch" or net::ERR_FAILED on localhost:8000 from browser, while WSL curl to same endpoint succeeds. Workaround: docker restart backend, or wsl --shutdown + Docker Desktop restart in worst case. *Apr 11.*
 
 - **Middleware ordering rule documented in CONTRIBUTING.md** (LYR-100 lesson): response-modifying middleware must be added LAST to end up outermost. Short-circuiting middleware (auth, rate limit) goes inner. *Apr 11.*
+
+- **Compression cycles — every ~10 days.** Operator reviews the dogfood doc and Phase 6 backlog. Rule: which signals/features actually changed decisions vs which felt insightful but produced no action? Delete or merge 20-30% of items per cycle. Forces discipline against complexity creep. Schedule: end of every two-week sprint. First cycle: April 28 (post-Spring-School return). *Apr 14.*
 
 - **Durable verification gate suite formalized (10 gates).** tsc, container health, APScheduler job count, `_recover_from_db` filter inspect, Redis/SQLite consistency, git state snapshot, dev server compile, dev-log static-paths clean check, browser-verify HARD GATE, multi-tenant isolation gate for new read endpoints. Cross-component cross-route verification gap identified in Phase 4 close emergency — shared components must be state-transition tested on every route that uses them, not just the changed route. *Apr 12.*
 

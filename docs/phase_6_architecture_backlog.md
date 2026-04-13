@@ -1,3 +1,21 @@
+# Phase 6 Architecture Backlog
+
+## Orienting Principles (read before designing any Phase 6 component)
+
+### The branch-laying mechanism
+Lyra's output layer is not "system that displays patterns to users." It is "environment that lays branches at appropriate confrontation levels and allows the walker's discernment to choose which to follow." Imperfect-but-honest branches activate the walker's reasoning. Perfect-precise statements produce passive receipt. The mechanism is timing + multiple-distinguishable-precision, not correctness. Designed across April 13 conversation. Calibration architecture implements the timing dimension; output dialect design implements the multiple-precision dimension.
+
+### Custodianship trust frame
+Lyra has crossed from utility to custodianship. Users form personal-history expectations (analogous to Apple Photos, Bear, Day One) rather than productivity-tool expectations (Notion, Linear). UX conventions must follow custodial product references, not productivity ones. This affects backup architecture, destructive UI patterns, error states, data-access surfaces, and trust signals throughout the product. First operationalized in the two-stage major-warning delete account pattern (April 14).
+
+### Data sovereignty surface
+The Settings page is not a junk drawer. It is the named architectural unit where users verify their data exists, extract it, leave the system, and see backup status. New items added to Settings must contribute to data sovereignty coherence. Items that don't fit data sovereignty go elsewhere.
+
+### Architect-side constraints (load-bearing)
+The calibration architecture and any environment-layer feature requires more careful building than other components because the same mechanism that enables guided arrival at honest reasoning could guide arrival at something else if architect-side constraints drift. External human accountability required. Not documented further here. Operator holds the deeper specification.
+
+---
+
 # Error-Rate Gradual Exposure Calibration (Phase 6+)
 
 ## Origin
