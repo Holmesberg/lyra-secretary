@@ -1,15 +1,17 @@
-"""User account endpoints (Phase 2): /me, consent, export, hard delete."""
+"""User account endpoints (Phase 2): /me, consent, export, data-summary, hard delete."""
+import hashlib
 from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.db.models import ArchetypeAssignment, StopwatchSession, Task, User
+from app.db.models import ArchetypeAssignment, StopwatchSession, Task, TaskState, User
 from app.db.scoping import get_current_user_id, set_current_user_id
+from app.utils.time_utils import now_utc
 
 router = APIRouter()
 
@@ -96,14 +98,63 @@ def export_my_data(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/users/me/data-summary")
+def data_summary(db: Session = Depends(get_db)):
+    """Counts for the delete-account comprehension stage. Cheap single-query."""
+    user = _current_user(db)
+
+    # Task counts by state (auto-scoped by user)
+    state_counts = (
+        db.query(Task.state, func.count())
+        .group_by(Task.state)
+        .all()
+    )
+    by_state = {state: count for state, count in state_counts}
+    total_tasks = sum(by_state.values())
+
+    # Session count
+    session_count = db.query(func.count(StopwatchSession.session_id)).scalar() or 0
+
+    # Reflections: tasks with at least one of readiness or reflection set
+    reflection_count = (
+        db.query(func.count(Task.task_id))
+        .filter(
+            (Task.pre_task_readiness.isnot(None)) | (Task.post_task_reflection.isnot(None))
+        )
+        .scalar() or 0
+    )
+
+    return {
+        "total_tasks": total_tasks,
+        "executed_count": by_state.get(TaskState.EXECUTED, 0) + by_state.get("EXECUTED", 0),
+        "skipped_count": by_state.get(TaskState.SKIPPED, 0) + by_state.get("SKIPPED", 0),
+        "planned_count": by_state.get(TaskState.PLANNED, 0) + by_state.get("PLANNED", 0),
+        "session_count": session_count,
+        "reflection_count": reflection_count,
+        "notion_enabled": user.notion_enabled,
+    }
+
+
 class DeleteIn(BaseModel):
     confirm_email: str
+    retain_for_research: bool = True
+
+
+# Stable salt for one-way user-id hashing. Not secret — just prevents trivial
+# reversal of small integer user_ids via rainbow table.
+_HASH_SALT = "lyra-anonymized-retention-2026"
 
 
 @router.delete("/users/me")
 def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
-    """Hard delete the requesting user and all owned rows. Cascade by hand
-    because SQLite FKs aren't enforced uniformly across the legacy tables."""
+    """Delete the requesting user's account.
+
+    If retain_for_research=true (default): anonymize task and session rows,
+    preserving behavioral measurements for product research. Identifying
+    fields (title, notes, notion_page_id) are cleared. User row is deleted.
+
+    If retain_for_research=false: hard delete cascade across all tables.
+    """
     user = _current_user(db)
     if user.is_operator:
         raise HTTPException(status_code=403, detail="operator account cannot self-delete")
@@ -111,15 +162,56 @@ def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="confirm_email does not match")
 
     uid = user.user_id
-    # Drop scope so the cascade DELETEs can run unfiltered (we are
-    # explicitly targeting this user_id and only this user_id).
+    now = now_utc()
+
+    # Drop scope so the cascade DELETEs/UPDATEs can run unfiltered.
     set_current_user_id(None)
     try:
-        db.execute(text("DELETE FROM stopwatch_session WHERE user_id = :u"), {"u": uid})
-        db.execute(text("DELETE FROM task WHERE user_id = :u"), {"u": uid})
-        db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
-        db.execute(text("DELETE FROM user WHERE user_id = :u"), {"u": uid})
-        db.commit()
+        if body.retain_for_research:
+            # One-way hash for grouping this user's retained rows in research queries
+            uid_hash = hashlib.sha256(f"{uid}:{_HASH_SALT}".encode()).hexdigest()
+
+            # Anonymize tasks: clear identifying fields, keep behavioral data
+            db.execute(
+                text("""
+                    UPDATE task SET
+                        title = '[anonymized]',
+                        notes = NULL,
+                        notion_page_id = NULL,
+                        post_deletion_retained_at = :now,
+                        original_user_id_hash = :hash
+                    WHERE user_id = :u
+                """),
+                {"now": now, "hash": uid_hash, "u": uid},
+            )
+
+            # Anonymize sessions: keep timing/behavioral data
+            db.execute(
+                text("""
+                    UPDATE stopwatch_session SET
+                        post_deletion_retained_at = :now,
+                        original_user_id_hash = :hash
+                    WHERE user_id = :u
+                """),
+                {"now": now, "hash": uid_hash, "u": uid},
+            )
+
+            # Delete non-behavioral rows
+            db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
+            db.execute(text("DELETE FROM user WHERE user_id = :u"), {"u": uid})
+            db.commit()
+        else:
+            # Hard delete cascade — all data permanently removed
+            db.execute(text("DELETE FROM stopwatch_session WHERE user_id = :u"), {"u": uid})
+            db.execute(text("DELETE FROM task WHERE user_id = :u"), {"u": uid})
+            db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
+            db.execute(text("DELETE FROM user WHERE user_id = :u"), {"u": uid})
+            db.commit()
     finally:
         set_current_user_id(uid)
-    return {"ok": True, "deleted_user_id": uid}
+
+    return {
+        "ok": True,
+        "deleted_user_id": uid,
+        "data_retained_for_research": body.retain_for_research,
+    }

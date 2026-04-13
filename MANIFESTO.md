@@ -551,6 +551,41 @@ mutate voided task state. Mitigated commit batch
 Apr 13 (commits 2af80f0, 2afd063, 7823424, 05d3e0a).
 All known affected rows enumerated above.
 
+### VT-15: Anonymized Retention Trust-Correlated Bias
+**Threat:** Users who opt out of anonymized research retention on account deletion may differ systematically from users who accept retention. Users with lower trust in the system are more likely to opt out, removing their behavioral patterns from the product research corpus. The retained dataset is not a representative sample of all users who left.
+
+**Mitigation:** Track opt-out rate as a separate behavioral signal. Report it alongside any product research findings derived from retained data. If opt-out exceeds 30%, flag all retention-based findings as potentially biased.
+
+**Status:** VT-15 documented April 14. Retention checkbox ships with two-stage delete account flow.
+
+### VT-16: Cross-Population Methodology Error
+**Threat:** Lyra produces data for two distinct research populations with different inclusion criteria. Confusing the populations across analyses is a methodology error that invalidates both sets of findings.
+
+**Mitigation:** Pre-register population definitions. Population 1 (hypothesis research): cohort=alpha_v1, 30+ sessions, stable measurement conditions, H1 falsification. Population 2 (product research): all available user behavior including churn patterns and cohort=deleted_anonymized. Tag all analyses with which population they draw from. Code review for cross-population contamination.
+
+**Status:** VT-16 documented April 14. Two-class framing below.
+
+## Anonymized Retention Policy
+
+Anonymized retention serves product research only:
+- Retention/churn pattern analysis
+- Phase 6 user-typology classification (Calibrator / Acknowledger / Illusion Preserver / Overcorrector)
+- Identifying which features fail for users who leave
+
+Pre-registered exclusion: cohort=deleted_anonymized rows are excluded from H1 primary correlation analysis. The H1 dataset consists of users who completed at least 30 sessions under stable measurement conditions (cohort=alpha_v1, post-retention-validation period). Churned-user data informs product design but does not contribute to hypothesis testing.
+
+Future publication of any findings derived from retained data would require separate re-consent from affected users and is not covered by this policy.
+
+## Two-Class Research Framing
+
+Lyra produces data for two distinct research uses:
+
+1. **Hypothesis research** (Paper 1, H1 falsification): requires stable measurement conditions, 30+ sessions per user, cohort=alpha_v1 exclusively. Churned-user data excluded by pre-registration.
+
+2. **Product research** (retention management, Phase 6 design): includes all available user behavior including churn patterns. Anonymized retention of deleted-account data permitted with user consent to enable this work.
+
+Different data populations serve different research questions. Confusing the populations across analyses is a methodology error and is documented as VT-16.
+
 ---
 
 ## What This Is Really About

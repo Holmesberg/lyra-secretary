@@ -128,6 +128,12 @@ class Task(Base):
     # Reschedule tracking
     reschedule_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # Anonymized retention (alembic 019) — set when user deletes account with
+    # retain_for_research=true. Rows with post_deletion_retained_at != NULL are
+    # the logical "cohort=deleted_anonymized" in research queries.
+    post_deletion_retained_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    original_user_id_hash: Mapped[Optional[str]] = mapped_column(String(64))
+
     # Cascade chain position — immutable, set at creation time only.
     # Resets per local-tz date. Voided (system_error) rows excluded from chain.
     # See alembic 012, MANIFESTO.md cascade section.
@@ -243,9 +249,13 @@ class StopwatchSession(Base):
     # silently funneled every cross-tenant write to the operator (LYR-093).
     user_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # Anonymized retention (alembic 019)
+    post_deletion_retained_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    original_user_id_hash: Mapped[Optional[str]] = mapped_column(String(64))
+
     # Relationship
     task: Mapped["Task"] = relationship(back_populates="stopwatch_sessions")
-    
+
     # Indexes
     __table_args__ = (
         Index("idx_stopwatch_task", "task_id"),
