@@ -75,9 +75,16 @@ Never write to the live DB from the notebook. Treat it as read-only.
 | E | `plot_over_time(df, column, window, agg_func)` |
 | F | `category_time_heatmap(df, metric)` |
 | G | `plot_cascade_chains(df, date_range)` |
+| VT-load | `load_pause_predictions(cohort)` + `load_pause_events(cohort)` — VT-17 data |
+| VT-17a | Anchor drift — per-user Spearman ρ, ρ ≤ −0.40 trip |
+| VT-17b | Induced pause rate — paired Wilcoxon pre/post first firing, +50% trip |
+| VT-17c | Natural vs prompted — Mann-Whitney U on first-pause times, 5-min trip |
 
 Day 10 question cells follow the helpers. Each runs against the dataframe
-produced by Cell B with minimal modification.
+produced by Cell B with minimal modification. VT-17 cells are the
+pre-registered integrity suite from `MANIFESTO.md §VT-17` and must be run
+at the end of each user's 7-day acceptance window, independent of the
+Day-10/30/60/90 schedule.
 
 ## Why hybrid properties are computed in the notebook
 
