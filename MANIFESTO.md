@@ -606,6 +606,37 @@ All known affected rows enumerated above.
 
 **Status:** VT-16 documented April 14. Two-class framing below.
 
+### VT-17: Instrument-Intervention Threat (Pause Prediction)
+**Threat:** Lyra's Phase 4.5 Tier 1.5 pause-prediction notifications fire predicted pause times back to the user as a behavioral suggestion ("you usually pause around 8:15 AM — on break?"). If the notification itself changes pause behavior — by anchoring pause timing to the prediction, or by inducing pauses that would not otherwise occur — then the pause data collected during the notification window is no longer an observation of natural pause behavior. It is partly a measurement of the instrument measuring itself.
+
+**Distinguishing analyses** (pre-registered before feature activation — to be run at the end of the 7-day acceptance window per user):
+- **VT-17a — Pause-time anchor drift.** For each user with a notification window ≥ 7 days, compute Spearman ρ between day-index-within-window and `|actual_pause_time − predicted_pause_time|`. Negative ρ = pause time is drifting toward the prediction (suggestion anchoring). Report ρ with n and p. Threshold for "anchoring detected": ρ ≤ −0.40 with p < 0.05 and n ≥ 20 pause events.
+- **VT-17b — Induced pause rate.** Paired comparison per user of pauses-per-active-session in the baseline window (pre-notification, ≥ 7 days) vs. the notification window. Wilcoxon signed-rank. Threshold for "induced pauses detected": pause rate increase ≥ 50% with p < 0.05.
+- **VT-17c — Natural-vs-prompted split.** For users who have both notified and un-notified mornings within the notification window (prediction gated ≥ 3 pauses on ≥ 3 distinct days per hour-cell, so some mornings won't fire), compare the distribution of first-pause-of-day times between the two subsets. Mann-Whitney U. Threshold for "prompted behavior detected": shift in median ≥ 5 minutes toward prediction time with p < 0.05.
+
+**Mitigation:**
+- Feature is gated by the Tier 1.5 kill criterion (acceptance rate < 0.20 after 7 days kills the feature per-user). VT-17a/b/c findings can independently trigger a kill even if acceptance rate is within range.
+- If VT-17a or VT-17c trips, pause-time predictions are reported in Phase 6 analysis as "conditional on no-notification baseline" only — predictions fired during the notification window are excluded from bias_factor inputs for pause-timing categories.
+- Pre-registered acceptance_rate formula (below) is frozen at feature launch; no post-hoc redefinition.
+
+**Pre-registered acceptance-rate formula (pause prediction kill criterion):**
+```
+acceptance_count(user, window=7d)
+  := count of pause_prediction_log rows where
+       fired_at ∈ window
+       AND EXISTS a pause_event with paused_at_utc
+           ∈ [predicted_at − 1 min, predicted_at + lead_minutes + 5 min]
+       AND user_id matches
+total_fires(user, window=7d)
+  := count of pause_prediction_log rows where
+       fired_at ∈ window AND parent_firing_id IS NULL
+       (snoozes excluded from denominator — re-fires are new events)
+acceptance_rate := acceptance_count / total_fires
+```
+Thresholds (per-user, not aggregate): acceptance_rate ≥ 0.40 = ship; < 0.20 = kill. Window starts at each user's first pause_prediction_log row. Formula is frozen at launch; any change is a new pre-registration with its own window start.
+
+**Status:** VT-17 documented April 14, 2026. Pre-registered before any pause_prediction_log data lands. Distinguishing analyses and acceptance-rate formula are immutable.
+
 ## Anonymized Retention Policy
 
 Anonymized retention serves product research only:

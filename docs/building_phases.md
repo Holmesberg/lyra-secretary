@@ -93,6 +93,16 @@ The feedback/output surfaces that make Lyra feel like a mirror rather than a log
 - **is_future_task warning surface** — LYR-097. Backend already returns the warning; frontend must render an inline warning banner (see notification_patterns.md §inline-warning) and require confirmation before the timer starts on a future-dated task.
 - **Fixture tests for retention signals** — backend tests that the three surfaces above receive the expected fields from `/v1/stopwatch/stop`, `/v1/create`, and `/v1/analytics/insights`. Prevents future backend refactors from silently breaking the feedback loop.
 
+#### Tier 1.5 — Experimental retention mechanisms (ship during trusted-user window with kill criteria)
+
+User-facing retention features that are NOT blockers for the April 18 trusted-user launch but SHIP before the May 1 alpha. Each item lands with a pre-registered kill criterion and a VT candidate. Per-user threshold, 7-day review window — if the kill threshold trips, the feature is pulled before alpha; if the ship threshold holds, it graduates. This tier is distinguished from Tier 1 by *falsifiability at launch* — Tier 1 items are architectural commitments; Tier 1.5 items are hypotheses about what helps retention.
+
+- **Pause-prediction notifications** — Telegram-delivered predictions that fire 2–3 min before a user's expected pause time, derived from their historical pause patterns (clock-anchor mechanism) and current-task work rhythm (work-rhythm mechanism). Predictions self-activate per user at ≥ 7 days of `pause_event` history. Pause-now action routes through the existing OpenClaw agent flow — the notification instructs the user to reply `pause` to the agent; no callback-button infrastructure is built (text-reply path preserves full pause_reason + pause_initiator data capture via the canonical agent dialog, see SKILL.md §Pause). Acceptance/dismissal inferred post-hoc from pause_event timing.
+  - **Kill criterion:** pre-registered in MANIFESTO VT-17 — acceptance_rate ≥ 0.40 ships per-user; < 0.20 kills. Formula frozen at feature launch.
+  - **Validity threat:** VT-17 (Instrument-Intervention Threat) — three distinguishing analyses (17a/b/c) run at end of 7-day acceptance window; any one can independently trigger a kill.
+  - **Motivating incident:** April 14, 2026 — operator forgot to pause during breakfast, contaminating Dev session duration. Feature aims to preempt missed-pause data contamination, not to drive engagement.
+  - **Structural investigation outcome:** spec initially assumed pause-event history existed in schema; it did not (schema retained only the most-recent pause per session, cleared on resume). Feature ships with a new `pause_event` table + dual-write from pause()/resume() + elimination of silent defaults at stopwatch_manager.py:330-331 that were a latent `do_not_add.md` violation. See `docs/design_patterns/structural_investigation_rule.md` for the rule that surfaced this.
+
 #### Tier 2 — Operator-verifiable correctness (ship after Tier 1)
 
 Bugs the operator has hit during dogfood. Blocks daily use but not retention architecture.

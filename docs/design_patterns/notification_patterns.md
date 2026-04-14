@@ -93,6 +93,25 @@ If any answer is unclear, the surface is not ready to be designed. Write the fee
 
 ---
 
+## Predictive Notifications — Measurement Instrument Implications
+
+Predictive notifications are a special case that appeared after the four canonical surface types were defined. They are notifications fired *before* a predicted behavior, inviting the user to take an action the instrument believes they are about to take anyway. The Phase 4.5 Tier 1.5 pause-prediction feature is the first example.
+
+Predictive notifications must conform to all four principles (non-blocking, dismissible, saved-to-history, no guilt) — but they also introduce a measurement risk that the canonical four surfaces do not: the instrument's own output can change the behavior it is measuring (VT-17 in `MANIFESTO.md`).
+
+Rules for predictive notifications:
+
+1. **Surface type.** Use toast if the notification is informational ("you usually pause now"). Use modal-equivalent (Telegram message with explicit action-choice text) if the notification is decisional. Never use banner or inline-warning for predictions — banners are for insights (past-tense), inline warnings are for correctness-critical state errors.
+2. **Research-relevant fields MUST NOT be defaulted by the notification's action path.** If the user taps "accept," the resulting state change must still route through whatever flow normally captures research-relevant fields. For pause prediction: accepting the prediction must still result in the OpenClaw agent asking `pause_initiator` and `pause_reason` — the notification does NOT supply defaults for those fields. See `docs/do_not_add.md §Predictive notifications must not default research-relevant fields`.
+3. **Pre-register a Validity Threat.** Every predictive notification is a VT candidate by construction (it intervenes in the measurement). The VT entry must define distinguishing analyses that answer "did the notification change the behavior?" — not just "did users accept the notification?"
+4. **Pre-register the kill criterion at launch.** Acceptance-rate formula, threshold, window start, per-user vs aggregate — written down before any data lands. Changing the formula after data lands is indistinguishable from p-hacking.
+5. **Self-activation gate.** Predictions must not fire until the user has a minimum history depth (for pause prediction: ≥ 7 days of `pause_event` rows). Firing predictions on under-powered history produces noise that the user perceives as annoyance, tripping the kill threshold on a non-representative window.
+6. **Rate-limit across mechanisms.** One notification per user per 30 minutes across all prediction mechanisms. Two predictors firing in the same minute is a worse user experience than one predictor firing confidently.
+7. **Suppress during the predicted state.** Don't fire a "you usually pause now" while the user is already paused. Don't fire a "task will finish soon" while the task is already stopped.
+8. **Post-hoc acceptance inference is acceptable.** Explicit user callback buttons are not required if the raw event (the pause) can be detected in a defined window. This trades infrastructure for inference noise; the Phase 4.5 Tier 1.5 design chose inference to preserve pause_reason data capture via the existing agent flow.
+
+Predictive notifications live in the same `reflection_view_log` (or equivalent) as other surfaces, PLUS a dedicated `pause_prediction_log` that captures what the instrument predicted and what it observed. The prediction log is a research artifact; the notification render is a user interaction.
+
 ## References
 
 - `docs/building_phases.md` §Phase 4.5 Tier 1 — shipping gate for retention architecture
