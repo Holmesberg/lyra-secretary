@@ -21,6 +21,30 @@ Everything in this system exists to answer that question cleanly, while deliveri
 
 ---
 
+## Shipping Philosophy — Retention Mechanism First
+
+*Added: April 14, 2026. Locks the pre-alpha shipping order after the feedback/output-loop audit.*
+
+Lyra has two failure modes a pre-alpha can hit:
+
+1. **Correctness failure.** The instrument ships with bugs, edge-case mishandling, or state inconsistency. This is visible, fixable, and ordinary engineering.
+2. **Retention-mechanism failure.** The instrument ships correct but invisible. Users are told "we are measuring you" but never see the measurement come back. The feedback/output loop that makes Lyra feel like a *mirror* rather than a *logger* is what closes the Error → Exposure → Adjustment triplet (see `docs/phase_6_architecture_backlog.md` §"Calibration as Learning Velocity, Not Performance"). Without that loop, no correctness work will save retention, because there is nothing to retain to.
+
+**Pre-alpha shipping order is retention mechanism first, correctness polish last.**
+
+What this means operationally:
+
+- Every research-relevant signal the backend already computes — `micro_mirror`, `calibration_nudge`, `duration_delta_minutes`, `signed_discrepancy`, `is_future_task`, `mid_task_completion_pct`, `task_completion_percentage`, `initiation_delay_minutes`, `insights[]` — must have a visible user-facing surface before the alpha ships. Computed-but-discarded is worse than not computed, because it burns the server work without closing the loop for the user.
+- Correctness fixes (e.g., edit-click vs multi-select checkbox, modal stale-defaults, stale-session-recovery verification) matter, but they do not ship before the surfaces. A polished product with no feedback loop churns faster than a rough product that mirrors back.
+- "Insights unlock in N sessions" framing applies: measurement-state progress is legitimate and desired (see `docs/do_not_add.md` §Gamification — PERMITTED section). It is not a streak, it is not a badge, it is an honest statement of when the instrument has enough data to say something.
+- Onboarding that forces users through the instrument battery *before they see the product* is retention-hostile and is deferred to May 1+. Direct entry to `/today` with progressive instrument capture ships first.
+
+Concretely ordered in `docs/building_phases.md` §Phase 4.5 under Tier 1 (retention architecture), Tier 2 (operator-verifiable bugs), Tier 3 (infrastructure), Tier 4 (onboarding ceremony). Tier 1 is the shipping gate for the alpha. Tiers 2–4 can slip a week; Tier 1 cannot.
+
+This section is load-bearing for the retention outcome. The May 21 retention checkpoint is the test of whether this philosophy survived contact with ten non-operator users. If retention fails *and* Tier 1 shipped completely, the finding is "the feedback loop wasn't enough" and Phase 1A pivot (delta-only) activates. If retention fails *and* Tier 1 slipped, the finding is unreadable — we shipped a logger and measured logger retention.
+
+---
+
 ## The Core Variables
 
 **Delta** — the gap between what you planned and what you executed.
@@ -523,6 +547,23 @@ The bias_factor is no longer personal — it's a distribution. Some people consi
 
 **Status:** Void endpoint implemented in v1.4. Prevention depends on OpenClaw exec-approval fixes (LYR-071, LYR-078).
 
+### VT-12: 5-Point Scale Saturation at the Ceiling
+**Threat:** Related to but distinct from VT-2 (coarse resolution). The 5-point Likert ceiling causes *compression* at the top of the scale: operator rates most sessions 4 or 5 on readiness, collapsing the readiness distribution into a narrow band regardless of true variation in cognitive state. A scale that saturates at the top cannot distinguish "genuinely sharp" from "socially desirable self-presentation" from "rating inflation from measurement fatigue." If most sessions pile up at 4–5, the H1 correlation is being tested on a degenerate predictor — not because discrepancy doesn't predict delta, but because pre_task_readiness has no room left to vary downward as the operator gains practice at self-rating.
+
+**Mitigation (three pre-registered distinguishing analyses for the H1 report, see analysis rule 7 below):**
+1. **Motivated-underestimation correlation (VT-12a).** Report the within-subject correlation between `pre_task_readiness` and `planned_duration_minutes`. If high readiness co-occurs with shorter plans ("I'm sharp, I'll knock this out"), the readiness signal is entangled with planning ambition — not a pure cognitive-state estimate. Report this correlation alongside the H1 ρ.
+2. **Readiness=5 variance analysis (VT-12b).** Among sessions rated readiness=5, report the variance of `duration_delta_minutes`. If delta variance is high at readiness=5, the ceiling is hiding real state variation (the scale can't distinguish "sharp enough to plan accurately" from "overconfident"). If delta variance is low at readiness=5, the ceiling is capturing a genuinely stable sharp state.
+3. **Task category distribution by readiness (VT-12c).** Report the cross-tab of readiness ratings × task category. If readiness=5 concentrates in one or two categories (e.g., familiar dev tasks), the scale is acting as a proxy for task familiarity rather than cognitive state. This distinguishes readiness-as-state from readiness-as-task-stance.
+
+**Status:** VT-12 documented April 14. Scale is not changed (VT-2 already decided against a 1-100 slider). The three distinguishing analyses are committed to the H1 report under analysis rule 7.
+
+### VT-13: Category-Type Semantic Drift
+**Threat:** The `category` field in the Task model blurs two semantically distinct classes: **estimable** tasks (planning meaningfully predicts duration — dev, writing, study) and **time_anchored** tasks (duration is fixed by external schedule — prayer, sleep, meals, meetings). Bias_factor analysis, per-category delta distributions, and the H1 correlation all treat both classes as if their planned_duration was a genuine self-estimate. For time_anchored tasks it is not — it is a clock value. Contaminating the bias_factor corpus with time_anchored rows produces a model that claims to predict estimation bias but is partly fitting clock regularity.
+
+**Mitigation:** Add `category_type` enum to the category_mapping table (values: `estimable`, `time_anchored`) OR an `is_anchor` boolean on Task. Exclude `category_type = 'time_anchored'` (equivalently `is_anchor = true`) rows from bias_factor computation, from the H1 correlation, and from the cascade_score denominator. Retain them as behavioral data (they still inform scheduling, unplanned-execution, and initiation-delay analyses) but tag them at analysis time. This is a schema change, not a philosophical one — prayer, sleep, and meals stay as first-class categories in the product.
+
+**Status:** VT-13 documented April 14. Schema change promoted from Phase 6 to Phase 5 pre-alpha (see `docs/dogfood_findings_living.md` — `category_type` / `is_anchor` bundle). H1 analysis on April 15 runs on a dataset with `is_anchor=true` rows excluded in the query, even if the schema landing slips past the analysis date — the exclusion is applied by title-keyword filter as a fallback (prayer, sleep, meal, eat, lunch, dinner, breakfast).
+
 ## Cohort start dates and contamination notes
 
 Operator (cohort=operator) data spans Apr 5 — present.
@@ -613,6 +654,7 @@ The experiment has started. Stay in measurement mode.
 
 *Lyra Secretary v1.5 — April 10, 2026*
 *Manifesto v1.3 — revised April 10, 2026*
+*Manifesto v1.4 — revised April 14, 2026 (VT-12, VT-13, analysis rule 7, Shipping Philosophy)*
 
 ---
 
@@ -683,3 +725,5 @@ These rules are fixed in advance to remove analyst degrees of freedom on the day
 5. **Prediction direction is pre-registered.** The H1 hypothesis predicts a **positive** Spearman ρ between `signed_discrepancy` and `duration_delta_minutes` (see Sign convention note above). A statistically significant *negative* ρ would be a surprising finding requiring its own explanation, not a confirmation of H1. Analysis must report the observed sign explicitly and not interpret a negative ρ as "the hypothesis works but in the other direction."
 
 6. **No post-hoc subsetting.** The analysis may not split the data by category, time_of_day, or any other covariate and report the best-performing subset as the "real" result. Category-stratified analysis is permitted as an *exploratory* supplement (clearly labeled) but the primary result is the whole-sample ρ. If a category-stratified analysis reveals a strong signal in one category that is absent in others, this is reported as a hypothesis for future testing, not as confirmation of H1.
+
+7. **H1 report must include the three VT-12 distinguishing analyses.** The H1 writeup reports VT-12a (within-subject ρ between `pre_task_readiness` and `planned_duration_minutes`), VT-12b (variance of `duration_delta_minutes` at readiness=5), and VT-12c (cross-tab of readiness × category) alongside the primary Spearman ρ. These are pre-registered companion analyses, not post-hoc supplements. Their purpose is to distinguish "H1 failed because the predictor is null" from "H1 failed because the 5-point scale saturated at the ceiling" from "H1 failed because readiness is a proxy for task familiarity." Without these three analyses, a null result on the primary ρ is under-determined — the experiment cannot be read. A failing primary ρ that also shows VT-12a ≥ 0.3, low VT-12b variance, and concentrated VT-12c distribution means the measurement instrument itself needs redesign before H1 can be tested again; a failing primary ρ with VT-12a near zero, high VT-12b variance, and flat VT-12c means the hypothesis is genuinely unsupported and Phase 1A (delta-only pivot) activates.

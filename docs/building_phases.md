@@ -76,22 +76,57 @@ Active phase. Goal: harden everything shipped so far, close remaining P0/P1 item
 - Alembic 019: anonymized retention columns
 - Canonical project documentation (this document + project_history.md)
 
-### PRE_ALPHA (remaining — see dogfood P0/P1 for details)
+### PRE_ALPHA — reordered by tier (retention architecture first, correctness last)
 
-P0 blockers (5 items):
+Ordering rationale: the pre-alpha ship order follows `MANIFESTO.md §Shipping Philosophy — Retention Mechanism First`. The retention mechanism (feedback/output loop that closes Error → Exposure → Adjustment) must ship before correctness polish, because a correct product with no feedback loop churns faster than a rough product that mirrors back. Tier 1 is the shipping gate for alpha. Tiers 2–4 may slip; Tier 1 may not.
+
+#### Tier 1 — Retention architecture (SHIPPING GATE)
+
+The feedback/output surfaces that make Lyra feel like a mirror rather than a logger. Every backend signal with a user-facing meaning must have a visible surface.
+
+- **micro_mirror surface** — toast-pattern render on stop response (see `docs/design_patterns/notification_patterns.md` §toast). LYR-098.
+- **calibration_nudge surface at stop** — modal with choice affordance (see notification_patterns.md §modal). LYR-098.
+- **calibration_nudge surface at task creation (D3)** — when the user sets a `planned_duration_minutes` that the bias_factor model predicts will overrun, surface a pre-commit nudge with the predicted range. User chooses to accept, adjust, or dismiss. Dismissal logged for V3 engagement analytics. Never auto-corrects the value (see `docs/do_not_add.md` §Auto-suggested task durations — surfacing is informational, not replacing the user's estimate).
+- **/insights tab v1 (D4)** — new top-level route. Renders: (a) "Insights unlock in N sessions" progress framing when the user has < 30 sessions in a category (see G4), (b) the three VT-12 companion charts for users who have crossed 30, (c) the operator's cascade_score trend, (d) a bias_factor-by-category strip, (e) **pause pattern card** — weekly breakdown of `pause_reason` enum counts (mental_fatigue / distraction / task_difficulty / external_interruption / intentional_break / prayer), with per-category split if data supports it. Surfaces the `pause_reason` write-only and `pause_pattern` analytics bundle that the audit flagged as invisible. No confrontation dialect at this tier — metric dialect only (see `docs/phase_6_architecture_backlog.md` §Surface Ordering). Confrontation dialects land post-retention. **Implementation:** use `@tremor/react` (already installed, currently unused) for the chart layer — this is exactly the library this tab was latent-for.
+- **"Insights unlock in N sessions" framing (G4)** — measurement-state progress, legitimate per `docs/do_not_add.md` §Gamification PERMITTED section. Applies everywhere Lyra has sub-30-session data for a category: "2 more sessions in dev to unlock bias_factor" is a truthful statement about when the instrument can speak. NOT a streak, NOT a badge, NOT a point total.
+- **completion_pct ungate** — remove `earlyStop &&` guard in `reflection-modal.tsx:82` so the completion input appears on every stop (normal, early, overrun). Research signal currently lost on all non-early stops.
+- **is_future_task warning surface** — LYR-097. Backend already returns the warning; frontend must render an inline warning banner (see notification_patterns.md §inline-warning) and require confirmation before the timer starts on a future-dated task.
+- **Fixture tests for retention signals** — backend tests that the three surfaces above receive the expected fields from `/v1/stopwatch/stop`, `/v1/create`, and `/v1/analytics/insights`. Prevents future backend refactors from silently breaking the feedback loop.
+
+#### Tier 2 — Operator-verifiable correctness (ship after Tier 1)
+
+Bugs the operator has hit during dogfood. Blocks daily use but not retention architecture.
+
 - New task modal stale defaults (component state leak on reopen)
 - Cannot start PLANNED task while another task is PAUSED (start path doesn't distinguish paused-parent from active-executing)
 - Edit click vs multi-select checkbox conflict on PLANNED rows (unverified)
 - Stale session recovery job not firing as designed (APScheduler verification needed)
 - Ghost timer banner persists after OpenClaw mark-abandoned (Redis key cleanup on skip path)
-
-P1 pre-alpha (selected — see dogfood P1 for full list):
 - Backend-unreachable graceful retry UI
-- micro_mirror and calibration_nudge display after stop
-- ReflectionModal completion % ungate (remove earlyStop guard)
-- Tooltips on readiness/focus/delta arrow
-- is_future_task warning surfaced in UI
 - Active timer banner "12h+ paused" cap
+- Tooltips on readiness/focus/delta arrow — include `discrepancy_score` inline on the row arrow as well ("4→2 +29min | discrepancy: 2"). Low-effort surfacing of the partially-invisible signal the audit flagged.
+- CSV export cleanup — remove `session_index_in_day` from the /table CSV columns. Field is deliberately analytics-only (used internally for cascade analysis), not a user-facing signal. Removing from export reduces column clutter without losing any surfacing (it was never displayed in the table view either).
+- Delete account browser-verify (see `docs/post_launch_verification_queue.md`)
+- Export JSON browser-verify (see `docs/post_launch_verification_queue.md`)
+
+#### Tier 3 — Infrastructure (ship with Tier 2 or defer into Phase 5)
+
+Not user-facing. Can slip a week without visible alpha impact.
+
+- Backup infrastructure (nightly SQLite snapshot + 7-day retention)
+- DBGuard (readiness-gate checks before destructive migrations)
+- Race condition fix in `stopwatch_manager.stop()` (documented, low-frequency)
+- Postgres migration — deferred, no alpha-user signal yet
+- `cohort` field on user table (defaults to `alpha_v1`; retention analysis needs it labeled before data lands)
+
+#### Tier 4 — Onboarding ceremony (deferred past April 18)
+
+The instrument-battery-before-product flow is retention-hostile. Direct entry to `/today` is the alpha entry path.
+
+- Consent modal (research-consent, separate from TOS)
+- `/privacy` and `/terms` placeholder pages (legal links exist, content fills in later)
+- Direct entry to `/today` after signup (NOT instrument battery first)
+- Full MEQ-5/BFI-10/BSCS/GP-Short instrument battery — ships in Phase 5 during the May 1+ soft-onboarding window, captured progressively over the first week rather than at signup
 
 ---
 
@@ -99,7 +134,9 @@ P1 pre-alpha (selected — see dogfood P1 for full list):
 
 **Goal:** Ship the alpha to 10-30 trusted users. Instrument collection, consent flow, first-run experience.
 
-**Entry gate:** All P0 dogfood items FIXED. Operator browser-verified.
+**Entry gate:** All Phase 4.5 Tier 1 items SHIPPED and browser-verified. Tier 2 correctness fixes shipped or explicitly deferred.
+
+**Onboarding timing correction (April 14):** Full instrument battery + consent ceremony ships on or after **May 1**, NOT before April 18. The pre-alpha trusted-user path (if any alpha users onboard before May 1) enters `/today` directly with progressive instrument capture over the first week. Reason: the instrument-battery-before-product flow is retention-hostile for users who have not yet seen Lyra's feedback loop. Ceremony without context produces drop-off.
 
 ### Onboarding Instrument Battery
 
@@ -165,15 +202,25 @@ The system must not push non-planners toward planning (that's intervention, not 
 
 ### Kill/Pivot Decision (May 21 ± 3 days)
 
-**If retention validates (users return after week 3):**
+**Explicit decision-gate criteria.** The May 21 review evaluates three measurable conditions. At least two must hold for retention to count as validated.
+
+**(a) Week-3 session frequency.** ≥ 50% of users from the alpha cohort recorded at least one `stopwatch_session` in the calendar week containing May 14–20 (week 3 of their signup cohort). Computed as `distinct(user_id) with ≥1 session in week_3 / total alpha_v1 users onboarded by May 7`. If < 50%, treat as red — drop-off during the fragility window.
+
+**(b) Week-3 planning engagement.** Among users who are week-3 active per (a), ≥ 40% have a `pre_task_readiness` populated on ≥ 5 sessions across their tenure. Planning engagement is the measurement-instrument signal; users who log sessions but never rate readiness are effectively in Phase 1A mode and do not contribute to H1. If < 40%, the metacognitive layer is being skipped and the retention we're seeing is logger-retention, not instrument-retention.
+
+**(c) Qualitative signal from operator weekly review.** Operator reads every alpha user's exposure distribution and flags users whose interaction pattern matches "engaged with mirror" vs "logged and dropped off before surfacing caught up." If ≥ 6 of the alpha cohort (from 10 minimum) show mirror-engaged behavior (reading micro_mirror / calibration_nudge, dwell time > 2s on notifications, at least one completion-percentage adjustment after mid-task check-in), this passes. If fewer, the feedback loop is not closing for most users.
+
+**If retention validates (two of three criteria pass):**
 - Proceed to Phase 6 (calibration)
 - Begin Paper 1 data collection (H1 requires 30-60 days, 60+ paired sessions)
 - Paper 2 (cascade failure) may be publishable by June if signal holds
 
-**If retention fails:**
+**If retention fails (two of three criteria fail):**
 - Diagnose: is it the measurement friction? The UX? The value proposition?
 - Middle-phase retention mechanism candidates (see dogfood P2): insight tiering, lightweight social accountability, predictive intervention
 - May pivot to Phase 1A (delta-only, productivity-first) if the metacognitive layer is the friction source
+
+**If exactly one criterion passes:** extend the checkpoint by 14 days to capture the week-6 data point. Week-3 novelty false positives are a known QS-literature phenomenon (see `docs/dogfood_findings_living.md` §Post-novelty retention metric).
 
 ---
 
@@ -225,12 +272,14 @@ Four types classified from behavioral data (not self-report):
 
 ### Additional Feature Surfaces
 
-- category_type field (estimable vs time_anchored) — required before H1 analysis
-- is_anchor boolean on prayer/sleep tasks
+- category_type field (estimable vs time_anchored) — **promoted to Phase 4.5 Tier 1** per VT-13 (`MANIFESTO.md`); retained here as summary reference
+- is_anchor boolean on prayer/sleep tasks — same promotion
 - Trigger field for implementation intentions (clock / after_task / contextual)
 - LLM-powered task creation via OpenClaw bridge (secondary path, always showing parsed result for confirmation)
 - Residue-based cascade model evaluation against probability-based (fit both, ship better one)
 - Archetype re-fit cycle (periodic Bayesian update vs archetype(t) function)
+- **Interruption chain visualization.** Backend already tracks `parent_task_id` and `interruption_type` on tasks started as interruptions (commit 2f4abed). Currently no UI. Phase 6 surface: on `/insights` or a dedicated detail view, render parent→child chains so the user can see "this week you interrupted dev work 4 times with admin tasks averaging 18 minutes." Requires real design — rough rendering for trusted alpha users is worse than no rendering. Deferred from Phase 4.5 per audit disposition.
+- **Readiness-drift signal from `original_pre_task_readiness`.** Audit column currently written on `/v1/stopwatch/correct-readiness` calls and never read. Phase 6 use: feeds a "readiness drift" signal into the calibration layer — users who frequently correct their readiness post-hoc have a different metacognitive pattern than users who don't. Adds a V1 (measurement-trust velocity) component. See `docs/phase_6_architecture_backlog.md` for the full design.
 
 See `docs/phase_6_architecture_backlog.md` for full schemas, acceptance criteria, implementation sequence, and orienting principles.
 

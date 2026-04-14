@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 14, 2026 (Phase 4.5: canonical phase docs created, 5 stale OPEN→FIXED items cleaned, anonymized retention + settings page in progress)
+**Last updated:** April 14, 2026 (Phase 4.5: feedback/output-loop audit landed D1–D6 + G1–G4; retention mechanism reordered ahead of correctness polish; category_type promoted to pre-alpha per VT-13)
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -11,7 +11,27 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ## P0 — must fix before alpha launch
 
-### OPEN
+*Ordering follows `docs/building_phases.md` §Phase 4.5 tier structure: Tier 1 retention architecture first (shipping gate), Tier 2 correctness fixes second. The order below reflects that prioritization.*
+
+### OPEN — Tier 1 retention architecture (shipping gate)
+
+- **micro_mirror and calibration_nudge not surfaced after stop (LYR-098).** Backend computes both on every stop, frontend never displays them. Feedback/output loop is broken — Lyra feels like a logger instead of a mirror. Fix: render `micro_mirror` as toast (8s auto-dismiss) and `calibration_nudge` as modal with keep/adjust/dismiss affordance. See `docs/design_patterns/notification_patterns.md`. Promoted from P1 to P0 Tier 1 per feedback/output audit April 14 — this is the retention mechanism itself, not polish. *Audit Apr 14.*
+
+- **calibration_nudge at task creation (D3 seed).** When user sets `planned_duration_minutes` that predicts ≥25% overrun, surface pre-commit nudge with three affordances (keep / adjust to prediction / dismiss). Gated: (user × category) session count ≥ 10 before firing; "Insights unlock in N sessions" progress framing shown otherwise. Design spec: `docs/phase_6_architecture_backlog.md` §"Calibration Nudge at Task Creation (D3)". *Locked Apr 14.*
+
+- **/insights tab v1 (D4).** New top-level route. Renders "Insights unlock in N sessions" progress framing for cold-start users, VT-12 companion charts for users with ≥30 sessions in a category, operator's cascade_score trend, bias_factor-by-category strip, and **pause pattern card** (weekly counts across the 6 `pause_reason` enum values + per-category breakdown if data supports — surfaces the `pause_reason` write-only and `pause_pattern` analytics bundle that the audit flagged). Metric dialect only — no confrontation dialects pre-retention. **Implementation:** `@tremor/react` (already installed, latent in `package.json`) is the chart layer — the library was installed for exactly this surface; confirms the D4 implementation path. *Locked Apr 14.*
+
+- **"Insights unlock in N sessions" progress framing (G4).** Applies everywhere Lyra has sub-threshold data — new task modal, /insights tab, /today empty state, Settings. Legitimate per `docs/do_not_add.md` §Gamification PERMITTED. Not a streak, not a badge. Truthful statement about the measurement state. *Locked Apr 14.*
+
+- **is_future_task warning surfaced (LYR-097).** Backend returns warning when starting timer for task >5min in future; frontend must render inline warning banner and require confirmation before timer starts. Currently silently discarded. *Audit Apr 11, promoted to P0 Tier 1 Apr 14.*
+
+- **ReflectionModal completion % ungate.** Remove `earlyStop &&` guard in `reflection-modal.tsx:82` so the completion input appears on every stop (normal, early, overrun). Research signal currently lost for `task_completion_percentage` on all non-early stops. Promoted from P1 to P0 Tier 1 per audit April 14. *Apr 12, promoted Apr 14.*
+
+- **Fixture tests for retention-critical signals.** Backend tests that `/v1/stopwatch/stop` returns `micro_mirror` and `calibration_nudge` in expected shape; that `/v1/create` echoes the bias_factor prediction when session count is ≥10; that `/v1/analytics/insights` returns non-empty array after the 30-session gate. Prevents future refactors from silently breaking the feedback loop. *Audit Apr 14.*
+
+- **category_type / is_anchor (VT-13, promoted from P2).** Alembic migration adding `category_type` enum (`estimable` | `time_anchored`) to `category_mapping` OR an `is_anchor` boolean on `Task`. Backfill: prayer, sleep, meals, breakfast, lunch, dinner, eat → `time_anchored` / `is_anchor=true`. Exclude from bias_factor computation, H1 correlation, cascade_score denominator. H1 analysis on Apr 15 must run with these rows excluded even if the schema slips — fallback is title-keyword filter. Bundle with `self_reflection → planning` rename (same migration). *Promoted Apr 14 per MANIFESTO §VT-13.*
+
+### OPEN — Tier 2 operator-verifiable correctness (ship after Tier 1)
 
 - **New task modal stale defaults (state leak).** Title, duration, and category fields default to the last-created task's values instead of resetting when the modal reopens. Component state is not cleared on modal close. Phase 4.5 fix: reset `useState` fields in the `onClose` handler (or key the modal on `open` so React remounts it). Found during calendar dogfood Apr 11. *Found Apr 11, reproducible.*
 
@@ -52,11 +72,15 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
+- **CSV export column cleanup — remove `session_index_in_day`.** Audit disposition (Apr 14): `session_index_in_day` is deliberate-analytics-only (used internally for cascade sequencing). Never user-facing. Currently appears as a column in the /table CSV export, adding clutter. Remove from the CSV serializer; keep as a JSON response field for analytics consumers. One-line frontend change in the CSV column list. *Audit Apr 14.*
+
+- **G3: `reschedule_count` wire-up on `/v1/reschedule`.** The `Task.reschedule_count` column exists (migration 8a60403) but is never incremented by the reschedule endpoint. The value is always 0 in the database, which silently kills any analysis that would surface "tasks that get moved repeatedly" as a Phase 6 insight. Fix: increment `task.reschedule_count` in `task_manager.reschedule()` on every successful reschedule. Surface in `/v1/tasks/query` response (already a column, needs inclusion in the serializer). Phase 6 insight candidate: "tasks rescheduled ≥3 times have 2.4× the skip rate" — requires the counter to actually count first. Tests: unit test asserting counter increments, regression test that bulk-reschedule loops increment correctly without write-amplification. *Audit Apr 14.*
+
 - **Task swap feature (planned time exchange).** Multi-select with EXACTLY 2 tasks → new "Swap times" button appears next to "Void" → swaps `planned_start_utc` and `planned_end_utc` between the two task rows (durations preserved only if both sides have the same duration; otherwise each task's duration moves with its new start). New backend endpoint `POST /v1/tasks/swap-times` accepting `{task_id_a, task_id_b}`. Matches OpenClaw parity. Conflict detection must still run on both tasks at their new times. *Apr 11.*
 
 - **Frontend backend-unreachable graceful retry UI.** "Failed to fetch" raw error shown on transient backend issues (host sleep, WSL port forward stabilization). Should be friendly retry banner with auto-retry every 5s. *Apr 11.*
 
-- **Tooltips on `4 → 2 +29min` row arrow.** Only operator knows what readiness/focus/delta arrow means. Add hover tooltip or inline label for new users. *Apr 10.*
+- **Tooltips on `4 → 2 +29min` row arrow + inline `discrepancy_score`.** Only operator knows what readiness/focus/delta arrow means. Add hover tooltip or inline label for new users. **Disposition Apr 14:** also add `discrepancy_score` inline next to the arrow ("4→2 +29min | discrepancy: 2") — low-effort surfacing of the signal that currently only appears in the /table CSV export. Makes the row more informative for the operator and trusted users without a new UI element. Tier 2 priority (ship after Tier 1 retention surfaces). *Apr 10, extended Apr 14.*
 
 - **LYR-097 is_future_task warning ignored.** Backend returns warning when starting timer for task >5min in future, frontend silently discards. *Apr 11 audit.*
 
@@ -87,7 +111,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
-- **category_type field (estimable vs time_anchored).** Designed in audit, deferred to Phase 6 (see `docs/building_phases.md §Phase 6 — Additional Feature Surfaces`). Required before H1 analysis runs. Prayer/sleep/meals contaminate bias_factor. Bundle this with the `self_reflection → planning` rename below so the category schema migration lands in one shot. **Design note (Apr 11):** prayer is NOT a bug to remove — it stays as a category and will be flagged `time_anchored` via this field, which excludes it from bias_factor analysis while preserving it as behavioral data. Same treatment applies to sleep/meals. *Apr 10.*
+- **category_type field (estimable vs time_anchored).** **Promoted from P2 to P0 Tier 1 pre-alpha on Apr 14** per `MANIFESTO.md §VT-13 Category-Type Semantic Drift`. See below under P0 Tier 1 for the active entry. *Promoted Apr 14.*
 
 - **self_reflection → planning rename.** Cosmetic only, deferred. Bundle with the `category_type` field migration above so the category table gets one coordinated migration instead of two. *Apr 10.*
 
@@ -178,6 +202,12 @@ This document is edited continuously as new findings emerge. Sections of this do
 - **BCI reframed from replacement-or-parallel to complementary signal** with Bayesian weighting. *Audit.*
 
 - **Single-mutation-authority pattern protects writes but every new read endpoint is a leak surface.** CONTRIBUTING.md isolation test rule added. *Audit.*
+
+- **`session_index_in_day` is deliberate-analytics-only.** Used internally for cascade sequencing and debugging. Never surfaced in the UI. Removed from CSV export as of Phase 4.5 Tier 2 (clutter reduction, no signal loss — was not displayed in the table view either). Retained as a JSON response field on `/v1/tasks/query` for analytics consumers. *Disposition Apr 14.*
+
+- **`original_pre_task_readiness` is deliberate-audit-only for v1.** Written on `POST /v1/stopwatch/correct-readiness` when a user corrects a readiness rating post-hoc. Currently never read. Retained for audit trail (so operator can see when a rating was changed) and for future Phase 6 use as a **readiness-drift signal** feeding the calibration layer's V1 (measurement-trust velocity) component — users who frequently correct their readiness have a different metacognitive pattern than users who don't. Design: `docs/phase_6_architecture_backlog.md` §"Readiness-Drift Signal (Phase 6)". *Disposition Apr 14.*
+
+- **Interruption chain visualization deferred to Phase 6.** Backend stores `parent_task_id` and `interruption_type` (commit 2f4abed); frontend never renders the graph. Phase 6 ships a designed visualization (`/insights` card or subroute) once the view has real layout thought behind it — a flat-list v1 for trusted alpha users would prime users to read "Lyra notices interruptions" without delivering enough payoff to influence behavior. Design spec: `docs/phase_6_architecture_backlog.md` §"Interruption Chain Visualization (Phase 6)". *Disposition Apr 14.*
 
 ---
 
