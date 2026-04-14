@@ -31,6 +31,7 @@ import httpx
 
 from app.db.models import PausePredictionLog, Task, TaskState, User
 from app.services.pause_predictor import PausePredictor
+from app.services.telegram_notifier import send_telegram_message_sync
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
@@ -113,10 +114,12 @@ def _run_for_one_user(db, user: User):
         f"lead_minutes={prediction.lead_minutes} confidence={prediction.confidence}"
     )
 
-    # Queue a structured notification payload. 5b replaces this with a
-    # Telegram-shaped message; keeping the shape stable here lets 5b's
-    # formatter read from one place.
+    # Queue a structured payload for the OpenClaw agent polling loop
+    # (/v1/notifications/pending) AND send the operator-facing text via
+    # Telegram. Both are best-effort — neither failure rolls back the
+    # already-committed research row.
     _enqueue_notification(user, row)
+    _deliver_telegram(row)
 
 
 def _resolve_active_task(db, user: User):
@@ -184,4 +187,37 @@ def _enqueue_notification(user: User, row: PausePredictionLog) -> None:
         logger.warning(
             f"pause_prediction: notification enqueue failed for "
             f"firing_id={row.firing_id} user_id={user.user_id}: {e}"
+        )
+
+
+def _format_telegram_text(row: PausePredictionLog) -> str:
+    """Short operator-facing text — tuned for a Telegram push.
+
+    Lead-minutes first so the attention-grab is up top. `firing_id` is
+    truncated to 8 chars in the visible text because the full UUID is
+    noisy to read; the full id is what the agent uses to call
+    /v1/pause_predictions/{firing_id}/respond from the queued payload.
+    """
+    mechanism_label = row.mechanism.replace("_", " ")
+    return (
+        f"*Pause predicted in ~{row.lead_minutes} min* "
+        f"({mechanism_label}, {int(row.confidence * 100)}% confidence)\n\n"
+        f"Reply: `pause`, `dismiss`, or `snooze`."
+    )
+
+
+def _deliver_telegram(row: PausePredictionLog) -> None:
+    """Send the pause-prediction text via the Telegram bot.
+
+    Non-fatal: a missing TELEGRAM_BOT_TOKEN / network glitch logs a
+    warning and returns. The research row + agent-queue payload are
+    already committed, so research integrity is preserved even when
+    direct delivery fails.
+    """
+    try:
+        send_telegram_message_sync(_format_telegram_text(row))
+    except Exception as e:
+        logger.warning(
+            f"pause_prediction: telegram delivery failed for "
+            f"firing_id={row.firing_id}: {e}"
         )

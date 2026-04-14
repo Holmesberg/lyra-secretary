@@ -32,7 +32,6 @@ These patterns map directly to endpoints — execute immediately, no analysis:
 - "resume"/"resume timer" → GET /v1/stopwatch/status → POST /v1/stopwatch/resume → relay task title + paused_minutes
 - "status"/"what's running" → GET /v1/stopwatch/status (relay active task)
 - "ping"/"are you there" → GET /v1/skill/ping (relay status)
-For these exact phrases: call endpoint → relay response → done. No planning, no analysis.
 
 ## Hard Rules (NEVER violate)
 The 7 rules above are the minimum. These provide detailed enforcement:
@@ -76,6 +75,7 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 **POST /v1/undo** — no body — reverts last create or delete
 **GET /v1/analytics/insights?auto_mark=true** — returns: `insights[]` with `observation`, `ready`
 **GET /v1/analytics/cascade?days=7** — cascade analysis: `cascade_score`, `morning_anchor_execution_rate`, `most_cascade_prone_category` per day
+**POST /v1/pause_predictions/{firing_id}/respond** — body: `user_response`* (pause_now|dismiss|snooze) — returns: `firing_id`, `user_response`, `response_at` — 404 unknown/other-user, 409 already reconciled
 **POST /v1/parse** — DEPRECATED — body: `text`* — use only for ambiguous time expressions
 
 ---
@@ -146,5 +146,5 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - If user replies with a percentage (e.g. "80%"): POST /v1/stopwatch/update-completion with `task_completion_percentage` → "Noted, {pct}% — timer still running."
 - If user replies "done"/"stop": follow normal Stop timer flow. NEVER call mark-abandoned on a percentage reply.
 
-**Notifications:** Poll GET /v1/notifications/pending every 30s. Send pending messages to user.
+**Notifications:** Poll GET /v1/notifications/pending every 30s. Dispatch on `type`: `timer_overflow` → see overflow flow above. `pause_prediction` → relay "Pause predicted in ~{lead_minutes} min ({mechanism}) — reply pause, dismiss, or snooze" → WAIT → POST /v1/pause_predictions/{firing_id}/respond with `user_response` (pause_now|dismiss|snooze). If `pause_now`: follow Pause flow. NEVER infer from silence.
 <!-- Excluded (operator/web-UI, not agent): /v1/users/me +{/export,/data-summary,/consent,DELETE}, /v1/analytics/{bias_factor,insights,discrepancy}. Do not add without operator approval — 150-line total is a HARD GATE. -->
