@@ -438,7 +438,12 @@ def test_update_completion_keeps_timer_running(state_env, client):
 # ---------------------------------------------------------------
 
 def test_apscheduler_job_count():
-    """All 5 background jobs must be registered in scheduler.py."""
+    """All 7 background jobs must be registered in scheduler.py.
+
+    Count: reminders, notion_sync, timer_overflow, overdue_tasks,
+    stale_session_recovery, pause_prediction, reconcile_responses.
+    Update this when adding/removing a job — this is the gate.
+    """
     import importlib
     import ast
 
@@ -455,8 +460,8 @@ def test_apscheduler_job_count():
         and isinstance(getattr(node, "func", None), ast.Attribute)
         and getattr(node.func, "attr", "") == "add_job"
     )
-    assert add_job_calls == 5, (
-        f"Expected 5 add_job calls in scheduler.py, found {add_job_calls}. "
+    assert add_job_calls == 7, (
+        f"Expected 7 add_job calls in scheduler.py, found {add_job_calls}. "
         f"A background job may have been added or removed without updating "
         f"the state consistency gate."
     )

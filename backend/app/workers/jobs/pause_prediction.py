@@ -1,0 +1,187 @@
+"""Pause prediction background job (per-user, every 1 minute).
+
+Runs PausePredictor for each user on each tick. If a prediction passes all
+gates, writes one row to pause_prediction_log (the pre-registered research
+artifact) and enqueues a notification payload onto the per-user Redis
+queue. A firing cooldown prevents re-firing for the same user within
+FIRING_COOLDOWN_MINUTES.
+
+No Telegram delivery here — that is commit 5b. The queued payload is a
+structured dict with firing_id + mechanism + predicted_at + lead_minutes;
+5b will shape the text template and route via telegram_notifier.
+
+Determining the active task:
+  * Prefer the Redis active_stopwatch key — it is the source of truth
+    during a live session and distinguishes EXECUTING from PAUSED without
+    a Task.state roundtrip.
+  * Fall back to a direct Task.state == EXECUTING query (auto-scoped via
+    the ContextVar) so a Redis-loss edge case still produces predictions.
+  * If neither produces a task, active_task is None and the predictor
+    runs with clock_anchor only.
+
+Mutations are committed on successful prediction; on exception we swallow
+and log — one user's failure must not poison the job for others
+(_per_user.for_each_user already enforces this, but we also catch locally
+so a partial write does not leak into the next user's scope).
+"""
+import json
+import logging
+
+import httpx
+
+from app.db.models import PausePredictionLog, Task, TaskState, User
+from app.services.pause_predictor import PausePredictor
+from app.utils.redis_client import RedisClient
+from app.utils.time_utils import now_utc
+from app.workers.jobs._per_user import for_each_user
+
+logger = logging.getLogger(__name__)
+
+# Don't re-fire for the same user within this window. Predictor already
+# enforces a lead window of 2-3 min, but the job runs every minute — without
+# a cooldown, a user with a rock-solid 10:48 clock_anchor bucket would get
+# three firings across 10:45, 10:46, 10:47. 10 min cooldown means the window
+# between 10:45 and the natural cooldown expiry (10:55) cleanly contains the
+# single predicted pause at ~10:48.
+FIRING_COOLDOWN_MINUTES = 10
+
+
+def run_pause_prediction():
+    for_each_user(_run_for_one_user)
+
+
+def _run_for_one_user(db, user: User):
+    now = now_utc()
+
+    # Cooldown: skip if we already fired recently for this user.
+    recent = (
+        db.query(PausePredictionLog)
+        .filter(PausePredictionLog.user_id == user.user_id)
+        .order_by(PausePredictionLog.fired_at.desc())
+        .first()
+    )
+    if recent is not None:
+        cooldown_elapsed = (now - recent.fired_at).total_seconds() / 60.0
+        if cooldown_elapsed < FIRING_COOLDOWN_MINUTES:
+            return
+
+    active_task = _resolve_active_task(db, user)
+
+    try:
+        prediction = PausePredictor(db).predict(
+            user_id=user.user_id,
+            active_task=active_task,
+            now=now,
+        )
+    except Exception as e:
+        logger.error(
+            f"pause_prediction: predictor raised for user_id={user.user_id}: {e}",
+            exc_info=True,
+        )
+        return
+
+    if prediction is None:
+        return
+
+    # Persist the firing. user_response + response_at remain NULL until the
+    # reconcile job closes the acceptance window.
+    row = PausePredictionLog(
+        user_id=prediction.user_id,
+        fired_at=prediction.fired_at,
+        predicted_at=prediction.predicted_at,
+        mechanism=prediction.mechanism,
+        confidence=prediction.confidence,
+        lead_minutes=prediction.lead_minutes,
+        sample_size=prediction.sample_size,
+        active_task_id=prediction.active_task_id,
+    )
+    db.add(row)
+    try:
+        db.commit()
+        db.refresh(row)
+    except Exception as e:
+        logger.error(
+            f"pause_prediction: DB commit failed for user_id={user.user_id}: {e}",
+            exc_info=True,
+        )
+        db.rollback()
+        return
+
+    logger.info(
+        f"pause_prediction: fired firing_id={row.firing_id} "
+        f"user_id={user.user_id} mechanism={prediction.mechanism} "
+        f"lead_minutes={prediction.lead_minutes} confidence={prediction.confidence}"
+    )
+
+    # Queue a structured notification payload. 5b replaces this with a
+    # Telegram-shaped message; keeping the shape stable here lets 5b's
+    # formatter read from one place.
+    _enqueue_notification(user, row)
+
+
+def _resolve_active_task(db, user: User):
+    """Return the user's currently EXECUTING Task, or None.
+
+    Prefer the Redis active_stopwatch key as source of truth (it matches
+    the StopwatchManager invariant). Fall back to a Task.state query scoped
+    via the ContextVar when Redis is unavailable or empty.
+    """
+    try:
+        redis = RedisClient()
+        active = redis.get_active_stopwatch(str(user.user_id))
+        if active:
+            task = (
+                db.query(Task)
+                .filter(Task.task_id == active.get("task_id"))
+                .first()
+            )
+            if task is not None and task.voided_at is None:
+                # Only feed EXECUTING tasks to work_rhythm — a PAUSED task
+                # already shipped its first pause and shouldn't generate a
+                # second prediction in the same session.
+                if task.state == TaskState.EXECUTING:
+                    return task
+                return None
+    except Exception as e:
+        logger.warning(
+            f"pause_prediction: redis lookup failed for user_id={user.user_id}: {e}"
+        )
+
+    return (
+        db.query(Task)
+        .filter(
+            Task.state == TaskState.EXECUTING,
+            Task.voided_at.is_(None),
+        )
+        .first()
+    )
+
+
+def _enqueue_notification(user: User, row: PausePredictionLog) -> None:
+    """Push a pause_prediction notification onto the per-user Redis queue.
+
+    Non-fatal: if the push endpoint is unreachable we log and continue —
+    the research row is already committed, which is what VT-17 measurement
+    depends on. The delivered-to-user path is ancillary in 5a.
+    """
+    payload = {
+        "type": "pause_prediction",
+        "firing_id": row.firing_id,
+        "mechanism": row.mechanism,
+        "predicted_at": row.predicted_at.isoformat(),
+        "lead_minutes": row.lead_minutes,
+        "confidence": row.confidence,
+        "active_task_id": row.active_task_id,
+    }
+    try:
+        httpx.post(
+            "http://localhost:8000/v1/notifications/push",
+            json=payload,
+            timeout=5.0,
+            headers={"X-User-Id": str(user.user_id)},
+        )
+    except Exception as e:
+        logger.warning(
+            f"pause_prediction: notification enqueue failed for "
+            f"firing_id={row.firing_id} user_id={user.user_id}: {e}"
+        )

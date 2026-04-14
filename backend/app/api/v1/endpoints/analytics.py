@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 
 from app.api.deps import get_db
-from app.db.models import Task, TaskState, StopwatchSession
+from app.db.models import Task, TaskState, StopwatchSession, PausePredictionLog
 from app.utils.time_utils import to_local, now_utc
 from app.utils.redis_client import RedisClient
 
@@ -985,4 +985,75 @@ async def get_bias_factor(
         "min_sessions": min_sessions,
         "total_executed": len(tasks),
         "primary_metric": "bias_factor (sum-ratio)",
+    }
+
+
+@router.get("/analytics/pause_prediction")
+async def get_pause_prediction(db: Session = Depends(get_db)) -> dict:
+    """VT-17 pause-prediction dashboard (scoped to the requesting user).
+
+    Reports firing volume, acceptance_rate, and per-mechanism breakdown
+    over the user's full pause_prediction_log history. Unreconciled
+    rows (user_response IS NULL) are reported separately — they are
+    neither counted in acceptance_rate numerator nor denominator.
+
+    Acceptance-rate formula (MANIFESTO §VT-17, pre-registered, frozen at
+    launch):
+
+        acceptance_rate = acceptance_count / total_fires
+
+    where total_fires EXCLUDES re-fires from snooze chains
+    (parent_firing_id IS NOT NULL). VT-17 kill criterion is per-user —
+    this endpoint IS that per-user view (auto-scoped by X-User-Id).
+    Operator cross-user analysis runs in the Commit 5c notebook via
+    direct DB reads, bypassing the scoping hook.
+
+    Response shape is flat + nested dicts so the notebook can read it
+    without field-name gymnastics; any change to shape is a breaking
+    change because cells VT-17a/b/c read specific keys.
+    """
+    all_rows = db.query(PausePredictionLog).all()
+
+    # Snooze re-fires are excluded from denominator per pre-registration.
+    primary = [r for r in all_rows if r.parent_firing_id is None]
+    reconciled = [r for r in primary if r.user_response is not None]
+    unreconciled = [r for r in primary if r.user_response is None]
+    accepted = [r for r in reconciled if r.user_response == "pause_now"]
+    no_response = [r for r in reconciled if r.user_response == "no_response"]
+    dismissed = [r for r in reconciled if r.user_response == "dismiss"]
+
+    def _rate(num: list, denom: list) -> float:
+        return round(len(num) / len(denom), 3) if denom else 0.0
+
+    summary = {
+        "total_fires": len(primary),
+        "total_reconciled": len(reconciled),
+        "total_unreconciled": len(unreconciled),
+        "accepted": len(accepted),
+        "no_response": len(no_response),
+        "dismissed": len(dismissed),
+        # Denominator is reconciled-only so an open window doesn't drag
+        # the rate toward zero. Kill criterion is pre-registered against
+        # this number (MANIFESTO §VT-17).
+        "acceptance_rate": _rate(accepted, reconciled),
+        "snooze_refires_excluded": len(all_rows) - len(primary),
+    }
+
+    by_mechanism = []
+    for mechanism in ("clock_anchor", "work_rhythm"):
+        mech_rows = [r for r in primary if r.mechanism == mechanism]
+        mech_reconciled = [r for r in mech_rows if r.user_response is not None]
+        mech_accepted = [r for r in mech_reconciled if r.user_response == "pause_now"]
+        by_mechanism.append({
+            "mechanism": mechanism,
+            "fires": len(mech_rows),
+            "reconciled": len(mech_reconciled),
+            "accepted": len(mech_accepted),
+            "acceptance_rate": _rate(mech_accepted, mech_reconciled),
+        })
+
+    return {
+        "summary": summary,
+        "by_mechanism": by_mechanism,
+        "primary_metric": "acceptance_rate (MANIFESTO §VT-17, pre-registered)",
     }

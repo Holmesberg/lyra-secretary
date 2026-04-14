@@ -8,6 +8,8 @@ from app.workers.jobs.notion_sync import retry_failed_syncs
 from app.workers.jobs.timer_overflow import check_timer_overflow
 from app.workers.jobs.overdue_tasks import detect_and_skip_overdue_tasks
 from app.workers.jobs.stale_session_recovery import run_stale_session_recovery
+from app.workers.jobs.pause_prediction import run_pause_prediction
+from app.workers.jobs.reconcile_responses import run_reconcile_responses
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -59,6 +61,28 @@ def start_scheduler():
         trigger=IntervalTrigger(minutes=15),
         id="stale_session_recovery",
         name="Auto-close orphan stopwatch sessions older than 12h",
+        replace_existing=True
+    )
+
+    # VT-17 pause prediction (every 1 minute)
+    # Lead window is 2-3 min, so check every minute to catch the boundary.
+    # In-job FIRING_COOLDOWN_MINUTES prevents re-fires for the same user.
+    scheduler.add_job(
+        run_pause_prediction,
+        trigger=IntervalTrigger(minutes=1),
+        id="pause_prediction",
+        name="VT-17 pause prediction — fire + log + queue notification",
+        replace_existing=True
+    )
+
+    # Reconcile pause_prediction_log outcomes (every 5 minutes)
+    # Closes the acceptance window and sets user_response for rows whose
+    # predicted_at + ACCEPTANCE_WINDOW_MINUTES has passed without a response.
+    scheduler.add_job(
+        run_reconcile_responses,
+        trigger=IntervalTrigger(minutes=5),
+        id="reconcile_responses",
+        name="VT-17 outcome reconciliation — close acceptance window",
         replace_existing=True
     )
 
