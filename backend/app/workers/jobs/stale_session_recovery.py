@@ -20,7 +20,7 @@ Conservative by design:
 import logging
 from datetime import timedelta
 
-from app.db.models import StopwatchSession, Task, User
+from app.db.models import PauseEvent, StopwatchSession, Task, User
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
@@ -53,9 +53,28 @@ def _run_for_one_user(db, user: User):
             if task and task.voided_at is not None:
                 continue
             planned = max((task.planned_duration_minutes if task else None) or 60, 1)
-            session.end_time_utc = session.start_time_utc + timedelta(minutes=planned)
+            end_time = session.start_time_utc + timedelta(minutes=planned)
+            session.end_time_utc = end_time
             session.auto_closed = True
             session.paused_at_utc = None
+
+            # Close any open pause_event rows for this session so pause-history
+            # analytics don't carry dangling opens. Clean-data filters still key
+            # off stopwatch_session.auto_closed (see _close_orphan_session in
+            # stopwatch_manager.py for the reasoning).
+            open_events = (
+                db.query(PauseEvent)
+                .filter(
+                    PauseEvent.session_id == session.session_id,
+                    PauseEvent.resumed_at_utc.is_(None),
+                )
+                .all()
+            )
+            for evt in open_events:
+                evt.resumed_at_utc = end_time
+                evt.duration_minutes = (
+                    (end_time - evt.paused_at_utc).total_seconds() / 60.0
+                )
 
             active = redis.get_active_stopwatch(user.user_id)
             if active and active.get("session_id") == session.session_id:

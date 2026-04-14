@@ -87,23 +87,22 @@ async def start_stopwatch(
 
 @router.post("/pause", response_model=StopwatchPauseResponse)
 async def pause_stopwatch(
-    request: StopwatchPauseRequest = None,
+    request: StopwatchPauseRequest,
     db: Session = Depends(get_db),
 ) -> StopwatchPauseResponse:
     """
     Pause the active stopwatch. Use during prayer, breaks, or interruptions.
     Paused time is excluded from executed_duration and delta on stop.
 
-    Optional body: pause_reason (mental_fatigue|distraction|task_difficulty|
+    Required body: pause_reason (mental_fatigue|distraction|task_difficulty|
     external_interruption|intentional_break|prayer), pause_initiator (self|external).
+    Both are required — silent defaults were removed in migration 020's commit
+    to prevent pre-registered research fields from being filled without user input.
     """
-    if request is None:
-        request = StopwatchPauseRequest()
-
-    # Validate enums if provided
-    if request.pause_reason and request.pause_reason not in PAUSE_REASONS:
+    # Enum validation — request fields are required by schema, so both are present here.
+    if request.pause_reason not in PAUSE_REASONS:
         raise HTTPException(status_code=400, detail=f"Invalid pause_reason. Must be one of: {', '.join(sorted(PAUSE_REASONS))}")
-    if request.pause_initiator and request.pause_initiator not in PAUSE_INITIATORS:
+    if request.pause_initiator not in PAUSE_INITIATORS:
         raise HTTPException(status_code=400, detail=f"Invalid pause_initiator. Must be one of: {', '.join(sorted(PAUSE_INITIATORS))}")
 
     try:

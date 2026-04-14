@@ -428,7 +428,11 @@ def test_cross_user_interruption_blocked(adv_users, client):
     tid_99 = _create(client, 99, "mallory deep work", 150).json()["task_id"]
     r = client.post("/v1/stopwatch/start", json={"task_id": tid_99}, headers=_h(99))
     assert r.status_code in (200, 201), r.text
-    r = client.post("/v1/stopwatch/pause", json={}, headers=_h(99))
+    r = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(99),
+    )
     assert r.status_code == 200, r.text
 
     # 98 creates an overlapping task with force=true (simulating

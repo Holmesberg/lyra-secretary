@@ -92,7 +92,11 @@ def test_single_paused_conflict_returns_paused_state(interrupt_user, client):
     # Start and pause task A
     r = client.post("/v1/stopwatch/start", json={"task_id": tid_a, "pre_task_readiness": 3}, headers=_h())
     assert r.status_code == 200
-    r = client.post("/v1/stopwatch/pause", json={}, headers=_h())
+    r = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
     assert r.status_code == 200
 
     # Try to create task B overlapping A's time slot
@@ -127,7 +131,11 @@ def test_mixed_paused_and_planned_conflicts(interrupt_user, client):
     # Start and pause task A
     r = client.post("/v1/stopwatch/start", json={"task_id": tid_a, "pre_task_readiness": 3}, headers=_h())
     assert r.status_code == 200
-    r = client.post("/v1/stopwatch/pause", json={}, headers=_h())
+    r = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
     assert r.status_code == 200
 
     # Try to create task C overlapping both A (PAUSED) and B (PLANNED)

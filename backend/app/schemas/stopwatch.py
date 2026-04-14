@@ -61,16 +61,19 @@ PAUSE_INITIATORS = {"self", "external"}
 
 
 class StopwatchPauseRequest(BaseModel):
-    pause_reason: Optional[str] = Field(None, description="One of: mental_fatigue, distraction, task_difficulty, external_interruption, intentional_break, prayer")
-    pause_initiator: Optional[str] = Field(None, description="self or external")
+    # Required — no silent defaults permitted on research-relevant fields.
+    # See do_not_add.md §Hardcoded default values. The endpoint MUST reject
+    # pauses without both fields supplied.
+    pause_reason: str = Field(..., description="Required. One of: mental_fatigue, distraction, task_difficulty, external_interruption, intentional_break, prayer")
+    pause_initiator: str = Field(..., description="Required. self or external")
 
 
 class StopwatchPauseResponse(BaseModel):
     paused: bool
     elapsed_minutes: int
     paused_at: datetime
-    pause_reason: Optional[str] = None
-    pause_initiator: Optional[str] = None
+    pause_reason: str
+    pause_initiator: str
 
 
 class StopwatchResumeResponse(BaseModel):

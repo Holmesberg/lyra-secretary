@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 import logging
 
-from app.db.models import StopwatchSession, Task, TaskState
+import uuid
+
+from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
 from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, to_local
@@ -85,15 +87,44 @@ class StopwatchManager:
         Used when a task was voided out from under an active session — we
         just want the row marked closed so _recover_from_db stops finding
         it. No duration/delta math, no micro-mirror, no Notion sync.
+
+        Also closes any open pause_event rows for this session (resumed_at_utc
+        IS NULL) so pause-history analytics don't see dangling opens. The
+        session's auto_closed=True flag on the parent row is the data-quality
+        signal — analytics filtering on clean data should exclude auto-closed
+        sessions rather than filtering open/closed pause_events directly.
         """
         session = self.db.query(StopwatchSession).filter(
             StopwatchSession.session_id == session_id
         ).first()
         if session and session.end_time_utc is None:
-            session.end_time_utc = now_utc()
+            end = now_utc()
+            session.end_time_utc = end
             session.auto_closed = True
             session.paused_at_utc = None
+            self._close_open_pause_events(session_id, end)
             self.db.commit()
+
+    def _close_open_pause_events(self, session_id: str, closed_at: datetime) -> None:
+        """Close any PauseEvent rows for this session that are still open.
+
+        Called from orphan/stale cleanup paths. Sets resumed_at_utc=closed_at
+        and computes duration_minutes from paused_at_utc. Does not commit —
+        caller owns the transaction.
+        """
+        open_events = (
+            self.db.query(PauseEvent)
+            .filter(
+                PauseEvent.session_id == session_id,
+                PauseEvent.resumed_at_utc.is_(None),
+            )
+            .all()
+        )
+        for evt in open_events:
+            evt.resumed_at_utc = closed_at
+            evt.duration_minutes = (
+                (closed_at - evt.paused_at_utc).total_seconds() / 60.0
+            )
 
     def void_cleanup(self, task_id: str) -> None:
         """Clear stopwatch state bound to a task that is being voided.
@@ -310,10 +341,26 @@ class StopwatchManager:
 
     def pause(
         self,
-        pause_reason: Optional[str] = None,
-        pause_initiator: Optional[str] = None,
+        pause_reason: str,
+        pause_initiator: str,
     ) -> dict:
-        """Pause the active stopwatch. Stores pause timestamp in DB and Redis."""
+        """Pause the active stopwatch. Stores pause timestamp in DB and Redis.
+
+        Both pause_reason and pause_initiator are required — no silent
+        defaults. The stopwatch_session columns are preserved (latest-
+        pause-wins behavior, used by overflow-check pathways), but the
+        authoritative per-pause record is the pause_event row inserted
+        here. Multi-pause sessions keep all their history in pause_event.
+        """
+        if not pause_reason or not pause_initiator:
+            # Defense-in-depth: the API schema already enforces this, but a
+            # direct caller must not slip a silent default past the service
+            # boundary. Hard Rules 3/4/5.
+            raise ValueError(
+                "pause_reason and pause_initiator are required; "
+                "silent defaults removed per do_not_add.md §Hardcoded default values"
+            )
+
         user_id = self._user_key()
         active = self._get_active(user_id)
         if not active:
@@ -327,8 +374,20 @@ class StopwatchManager:
         elapsed = self._active_elapsed(session, None)
 
         session.paused_at_utc = now
-        session.pause_reason = pause_reason or "intentional_break"
-        session.pause_initiator = pause_initiator or "self"
+        session.pause_reason = pause_reason
+        session.pause_initiator = pause_initiator
+
+        # Per-pause immutable history — replaces the overwrite-on-second-pause
+        # data loss in the legacy schema (see migration 020 docstring).
+        pause_event = PauseEvent(
+            pause_event_id=str(uuid.uuid4()),
+            session_id=session.session_id,
+            user_id=session.user_id,
+            paused_at_utc=now,
+            pause_reason=pause_reason,
+            pause_initiator=pause_initiator,
+        )
+        self.db.add(pause_event)
         self.db.commit()
 
         # Transition task state EXECUTING → PAUSED + Notion sync
@@ -372,6 +431,22 @@ class StopwatchManager:
         session.total_paused_minutes += pause_duration
         session.paused_at_utc = None
         task.pause_count = (task.pause_count or 0) + 1
+
+        # Close the open pause_event row for this pause. Matches on the most
+        # recent paused_at_utc to handle legacy rows or clock-skew edge cases
+        # where paused_at_utc on the session drifted from the pause_event.
+        open_event = (
+            self.db.query(PauseEvent)
+            .filter(
+                PauseEvent.session_id == session.session_id,
+                PauseEvent.resumed_at_utc.is_(None),
+            )
+            .order_by(PauseEvent.paused_at_utc.desc())
+            .first()
+        )
+        if open_event:
+            open_event.resumed_at_utc = now
+            open_event.duration_minutes = pause_duration
 
         self.db.commit()
 
