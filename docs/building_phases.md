@@ -118,6 +118,7 @@ Not user-facing. Can slip a week without visible alpha impact.
 - Race condition fix in `stopwatch_manager.stop()` (documented, low-frequency)
 - Postgres migration — deferred, no alpha-user signal yet
 - `cohort` field on user table (defaults to `alpha_v1`; retention analysis needs it labeled before data lands)
+- **Operator analytics notebook** (`notebooks/operator_analytics.ipynb`) + systematic interrogation checklist (`docs/operator_interrogation_checklist.md`) + findings log template (`docs/operator_findings_log.md`). Private operator tooling, not a product feature. Seven helper cells (DB loader, distribution, stratified correlation, time series, category×time heatmap, cascade visualizer) plus Day 10 / 30 / 60 / 90 question cells. Ships before Spring School so operator can use it during the trusted-user monitoring window. Replaces ad-hoc CSV review, which causes silent signal loss.
 
 #### Tier 4 — Onboarding ceremony (deferred past April 18)
 

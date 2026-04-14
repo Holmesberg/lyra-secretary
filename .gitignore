@@ -55,3 +55,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 *.log
+
+# Operator notebooks — working copies carry live user data, committed file is clean template
+notebooks/*.local.ipynb
+notebooks/.ipynb_checkpoints/
+notebooks/.venv/
