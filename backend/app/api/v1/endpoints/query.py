@@ -112,7 +112,7 @@ async def query_tasks(
                     StopwatchSession.task_id,
                     func.sum(StopwatchSession.total_paused_minutes).label("total_paused"),
                     func.count(StopwatchSession.session_id).label("session_count"),
-                    func.max(StopwatchSession.task_completion_percentage).label("completion_pct"),
+                    func.max(StopwatchSession.task_completion_percentage).label("task_completion_percentage"),
                 )
                 .filter(StopwatchSession.task_id.in_(task_ids))
                 .group_by(StopwatchSession.task_id)
@@ -122,7 +122,7 @@ async def query_tasks(
                 session_agg[row.task_id] = {
                     "total_paused_minutes": round(row.total_paused or 0, 1),
                     "pause_count": row.session_count or 0,
-                    "task_completion_percentage": row.completion_pct,
+                    "task_completion_percentage": row.task_completion_percentage,
                 }
 
         task_list = []

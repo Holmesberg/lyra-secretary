@@ -36,6 +36,16 @@ async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
 
     - research_layer: time/behavioral signals (delta, initiation, abandonment)
     - product_layer: cognitive signals (readiness shift, depletion rate)
+
+    Metric semantics (per product_sessions entry):
+      - ``discrepancy_score`` = ``abs(pre_task_readiness - post_task_reflection)``
+        — unsigned magnitude of the metacognitive gap. Bigger = worse calibration
+        regardless of direction. This is the field the falsification engine
+        correlates against ``duration_delta_minutes`` for H1.
+      - ``signed_discrepancy`` = ``post_task_reflection - pre_task_readiness``
+        — direction of the miss. Positive = felt better than expected;
+        negative = felt worse. Used for typology classification (Phase 6),
+        NOT for H1 (abs magnitude is the pre-registered predictor).
     """
     tasks = (
         db.query(Task)
