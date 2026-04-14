@@ -89,6 +89,28 @@ integrity checks.
 - [ ] Are any tasks in `PAUSED` state older than 12h? Stale-session sweeper
       should have closed them.
 
+### Notification and override patterns
+
+- [ ] Conflict detection override rate per gate (Gate 1 active overlap,
+      Gate 2 non-voided overlap, Gate 3 duplicate-title soft warning).
+      → per-user per-week `overrides / (overrides + cancels)`. Flag any
+      gate exceeding 0.5.
+- [ ] Distribution of override reasons logged — are reasons clustering
+      (e.g. "intentional overlap for split focus") or heterogeneous?
+- [ ] Pause-prediction response rate — `pause_now` / `snooze` / `dismiss`
+      / no-response breakdown per user per mechanism (clock-anchor vs
+      work-rhythm). VT-17 kill criterion runs at end-of-week-1 per user.
+- [ ] Micro_mirror dismissal rate — fraction of stops where the toast
+      fired and was dismissed vs allowed to auto-expire (proxy for
+      attention).
+- [ ] Calibration-nudge accept vs dismiss ratio (per gate: creation-time
+      nudge vs stop-time nudge).
+- [ ] Cold-start engagement curve — for each user, locate the first >24h
+      gap in session logging. Record session count at gap and classify
+      app-facing vs life-facing cause. Cross-refs
+      `docs/dogfood_findings_living.md §Cold-start engagement decay
+      analysis`.
+
 **Exit criterion for Day 10:** every question above has been answered in
 the findings log. Answers may be "no signal yet" — that is still a logged
 answer, not a skipped question.
@@ -115,6 +137,18 @@ still not the question. Archetype fit and readiness-scale behavior are.
 - [ ] Has any user reached ≥10 sessions in a category with
       `|bias_factor - 1| ≥ 0.25`? That is the calibration_nudge trigger
       threshold — check whether the nudge fired and how the user responded.
+
+### Progressive revelation engagement
+
+- [ ] Archetype reveal timing — did users engage with the reveal when
+      archetype surfaced at session 5–7 (Phase 5 pre-alpha)? Dwell time
+      on the reveal banner, whether they opened `/insights` after.
+- [ ] Reclassification frequency — how often does the session-15–20
+      check result in a reclassification prompt firing? For users who
+      saw the prompt: accept / reject / dismiss breakdown.
+- [ ] Confidence-tier transition engagement — when bias_factor moves
+      low → medium or medium → published, does the surfacing attract
+      engagement (dwell, follow-through click to `/insights`)?
 
 ---
 

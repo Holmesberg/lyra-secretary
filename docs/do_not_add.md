@@ -21,6 +21,12 @@ This file lists architectural directions explicitly considered and rejected. New
 
 The test that distinguishes permitted from rejected: *does this surface make a true statement about what the instrument can do right now?* If yes, it is progress framing (permitted). If instead it tells the user something about themselves ("You've logged 7 days in a row!", "You earned 120 XP this week!"), it is gamification (rejected). Progress framing is not optional polish — it is the mechanism by which Lyra tells users *why* they can't see insights yet, which is what prevents them from concluding the product is empty during the cold-start window. See `docs/phase_6_architecture_backlog.md` §"Measurement-state progress is not gamification (D2)" for the full distinction and application rule.
 
+**PERMITTED: progressive revelation as measurement-state milestone.** When the instrument accumulates enough data to produce a trustworthy claim, revealing that claim to the user IS the reward. Example: archetype assignment unlocked at session 5-7 with medium confidence, reclassification shown at session 15-20 if behavior diverges. The user is rewarded with increasing precision about themselves, not with artificial milestones.
+
+Distinguishing test: does the reward require the user to do something (behavior-reinforcement gamification, rejected) or does the reward deliver information about the user's own behavior (progressive revelation, permitted)?
+
+See `docs/design_patterns/notification_patterns.md §Progressive Revelation Pattern` for the notification-surface characteristics (threshold-triggered, one-time/rare, honestly-framed confidence tier, optional dismissal without data loss).
+
 ## Social feeds, sharing
 **Rejected.** Lyra is a single-user research instrument. Social features change the incentive structure from honest self-measurement to performance for an audience. The discrepancy hypothesis (H1) requires that self-reports reflect genuine self-assessment, not socially desirable reporting. Even optional sharing changes how users fill in readiness/reflection scores (Hawthorne effect, already documented as VT-1 in MANIFESTO).
 

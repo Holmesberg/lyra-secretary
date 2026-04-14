@@ -112,6 +112,38 @@ Rules for predictive notifications:
 
 Predictive notifications live in the same `reflection_view_log` (or equivalent) as other surfaces, PLUS a dedicated `pause_prediction_log` that captures what the instrument predicted and what it observed. The prediction log is a research artifact; the notification render is a user interaction.
 
+---
+
+## Progressive Revelation Pattern
+
+Progressive revelation is the notification pattern for **measurement-state milestones**. Unlike event notifications (pause prediction, timer overflow) which fire on external triggers, progressive revelation fires when the instrument has accumulated enough data to produce a trustworthy claim *about the user*. The reward is information transfer, not behavior reinforcement — which is why it is permitted under `docs/do_not_add.md §Gamification` where streaks/badges/XP are rejected.
+
+Characteristics:
+
+- **Threshold-triggered** — session count, confidence score, or similar data-depth metric crosses a pre-defined threshold.
+- **One-time or rare** — fires once per milestone, not recurringly. Re-fires only when a meaningfully new claim becomes available (e.g. reclassification at session 15–20 if behavior diverges from the session-5–7 archetype).
+- **Information transfer as reward** — the user learns something about themselves ("your archetype is X with medium confidence") rather than earning something for behavior.
+- **Optional dismissal without data loss** — user can acknowledge, dismiss, or engage. Never required to act. Dismissed reveals are saved to `reflection_view_log` and remain retrievable in `/insights` history.
+
+Examples in the current / planned system:
+
+- "Insights unlock in N more sessions" progress framing at cold-start (Tier 1, `/today` empty state).
+- Archetype reveal at session 5–7 (Phase 5 pre-alpha — see `docs/building_phases.md §Pre-alpha ship list`).
+- Reclassification prompt at session 15–20 if behavior diverges from the initial archetype (Phase 5 pre-alpha).
+- Confidence-tier transitions on `bias_factor` ("low confidence: 8/30 sessions" → "medium: 18/30" → "published: 30+").
+- Pattern-specific reveals (cascade-risk detection, optimal time-of-day detected) — Phase 6 candidates.
+
+Guidelines for designing a progressive-revelation surface:
+
+- **Honest framing about data depth.** "Medium confidence" or "based on N sessions" — never "you are an X-type." The reveal describes the measurement state, not a fixed user identity.
+- **Three affordances, never required action.** Acknowledge / dismiss / engage (e.g. open `/insights` for the underlying data). No modal lock-in.
+- **Show progression toward next milestone.** "Next pattern unlocks at session X" — extends the progressive-revelation chain and prevents dead-end framing.
+- **Surface-type fit.** Banner is the default surface for milestone reveals (persistent, dismissible, saved-to-history — see §Banner above). Toast is acceptable for minor confidence-tier upticks. Modal is reserved for reveals that require a next-action choice (e.g. reclassification needs explicit accept/reject), never for informational ones.
+
+This pattern is compatible with the four-principle contract (non-blocking, dismissible, saved-to-history, no guilt) and with the measurement-instrument constraint that no research-relevant field gets defaulted by the notification's action path. Because the reveal *describes* what the instrument already measured rather than *causing* a new measurement, the VT pre-registration requirements that apply to predictive notifications do not apply here — the reveal is downstream of measurement, not upstream.
+
+---
+
 ## References
 
 - `docs/building_phases.md` §Phase 4.5 Tier 1 — shipping gate for retention architecture
