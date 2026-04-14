@@ -1,8 +1,20 @@
-# Lyra Secretary — Manifesto v1.3
+# Lyra Secretary — Manifesto v1.4
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
 *Revised: April 10, 2026. Day 7 — duality reframe, BCI complementary-signal model, VT-5 decision.*
+*Revised: April 14, 2026. Day 11 — framing clarification (research as QC infrastructure); VT-19 & VT-20; Rules 8 & 9; profile taxonomy methodological note; retention-before-polish scope clarification.*
+
+---
+
+## Framing: Research as Quality-Control Infrastructure
+*Added: April 14, 2026.*
+
+Lyra's core thesis is behavioral correction at scale. Measurement discipline, pre-registered hypotheses, validity threats, and eventual research publication serve this thesis by producing product accuracy users can trust. Research outputs are not Lyra's primary deliverable — they are quality-control and credibility infrastructure for the product.
+
+This distinction matters for strategic decisions. "Kill H1 if correlation fails" is not abandoning the project; it is identifying that a specific cold-start prediction mechanism didn't work and iterating to the next candidate. "Publish Paper 1" is not the goal; it is a side-effect that simultaneously sharpens the measurement instrument and builds user trust in the product's claims.
+
+All subsequent sections should be read through this framing.
 
 ---
 
@@ -42,6 +54,23 @@ What this means operationally:
 Concretely ordered in `docs/building_phases.md` §Phase 4.5 under Tier 1 (retention architecture), Tier 2 (operator-verifiable bugs), Tier 3 (infrastructure), Tier 4 (onboarding ceremony). Tier 1 is the shipping gate for the alpha. Tiers 2–4 can slip a week; Tier 1 cannot.
 
 This section is load-bearing for the retention outcome. The May 21 retention checkpoint is the test of whether this philosophy survived contact with ten non-operator users. If retention fails *and* Tier 1 shipped completely, the finding is "the feedback loop wasn't enough" and Phase 1A pivot (delta-only) activates. If retention fails *and* Tier 1 slipped, the finding is unreadable — we shipped a logger and measured logger retention.
+
+### Scope of the retention-before-polish principle
+*Added: April 14, 2026.*
+
+The retention-before-polish ordering **applies to**:
+- UI bugs (timer glitches, rendering issues, slow loads)
+- State-machine edge cases that users can notice and report
+- Feature completeness (non-critical affordances)
+
+It **does NOT apply to**:
+- Correctness of computations users attribute to the product's understanding of them (`bias_factor` calculations, `calibration_nudge` output, insights)
+- Data cleanliness underlying those computations
+- Measurement pipeline integrity
+
+Research basis: Li et al. 2010 and Epstein et al. 2015 show personal informatics users disengage rapidly when early insights appear inaccurate, before habit forms. Wrong insights in a self-tracking context produce trust collapse that bugs do not.
+
+Practical implication: clean the data pipeline before routing `micro_mirror`, `calibration_nudge`, or insights to users. Tests that assert current computation outputs on fixture data must exist before UI surfacing. This is a **precondition** for Tier 1 retention shipping, not a parallel activity.
 
 ---
 
@@ -237,6 +266,8 @@ Each profile needs a different intervention. Lyra must detect which profile appl
 The 3 behavioral profiles are the research typology — they describe the phenomenon being studied. The 5 operational archetypes (see `docs/methodology.md §1`) are the product clustering — they describe how the product assigns priors to specific users. These are different abstraction levels, not different counts of the same thing.
 
 This taxonomy deserves its own paper independent of the discrepancy hypothesis.
+
+**Methodological note on profile taxonomy** *(added April 14, 2026)*: The three profiles (Calibrated Executor, Reactive Executor, Overplanner) are currently descriptive heuristics derived from operator dogfood data. They are not validated clusters. Formal clustering validation (Gaussian mixture model, stability analysis, silhouette scores per Jain 2010; model-based clustering per Murphy 2004) requires n ≥ 50 users minimum and is deferred to Phase 5.5 post-alpha. Until validated, profiles should be treated as a communication tool for describing observed patterns, not as research findings about user types.
 
 ---
 
@@ -637,6 +668,20 @@ Thresholds (per-user, not aggregate): acceptance_rate ≥ 0.40 = ship; < 0.20 = 
 
 **Status:** VT-17 documented April 14, 2026. Pre-registered before any pause_prediction_log data lands. Distinguishing analyses and acceptance-rate formula are immutable.
 
+### VT-19: Post-task endogeneity in `signed_discrepancy`
+**Threat:** `post_task_reflection` is captured after the user observes session outcome. Outcome knowledge contaminates post-ratings through hindsight bias (Fischhoff 1975), effort heuristic (Kahneman), and reconstructive memory (Koriat 1997). Because `signed_discrepancy = post_task_reflection − pre_task_readiness` includes `post_task_reflection`, correlations between `signed_discrepancy` and `duration_delta_minutes` may reflect mechanical coupling rather than psychological prediction. Related to common-method bias (Podsakoff et al. 2003) but with additional temporal information leakage.
+
+**Mitigation:** Secondary H1 test using `pre_task_readiness` alone vs. `duration_delta_minutes` (pre-registered in Rule 8). If the pre-only correlation is meaningfully weaker than the signed-discrepancy correlation, interpret with caution. Phase 3 BCI markers provide eventual independent validation of pre-state reliability.
+
+**Status:** VT-19 documented April 14, 2026. Secondary analysis pre-registered (Rule 8). Phase 3 BCI markers provide eventual independent validation of pre-state reliability.
+
+### VT-20: Cascade hypothesis confounded by structural task dependency
+**Threat:** The observed cascade pattern `P(skip N+1 | skip N)` may reflect task graph dependency rather than psychological cascade. Tasks that logically depend on each other (gym → post-workout breakfast), share time blocks, or share context naturally co-skip without requiring a psychological mechanism. Ego depletion — the implicit psychological model underlying cascade — failed replication (Hagger et al. 2016; Carter et al. 2015).
+
+**Mitigation:** Structural dependency analysis. For each cascade event, compute whether task N and task N+1 share category, share time block, or share keyword overlap in titles. Report the cascade effect **with and without** structural controls. If the effect substantially attenuates under controls, the cascade is primarily structural. If the effect survives, a psychological mechanism is supported — not ego depletion per se, but schedule disruption + re-planning cost (González & Mark 2004).
+
+**Status:** VT-20 documented April 14, 2026. Structural analysis added as a pre-registered rule for Paper 2. The cascade cell in `notebooks/operator_analytics.ipynb` is annotated to require the with-and-without-controls report at Paper 2 analysis time.
+
 ## Anonymized Retention Policy
 
 Anonymized retention serves product research only:
@@ -758,3 +803,7 @@ These rules are fixed in advance to remove analyst degrees of freedom on the day
 6. **No post-hoc subsetting.** The analysis may not split the data by category, time_of_day, or any other covariate and report the best-performing subset as the "real" result. Category-stratified analysis is permitted as an *exploratory* supplement (clearly labeled) but the primary result is the whole-sample ρ. If a category-stratified analysis reveals a strong signal in one category that is absent in others, this is reported as a hypothesis for future testing, not as confirmation of H1.
 
 7. **H1 report must include the three VT-12 distinguishing analyses.** The H1 writeup reports VT-12a (within-subject ρ between `pre_task_readiness` and `planned_duration_minutes`), VT-12b (variance of `duration_delta_minutes` at readiness=5), and VT-12c (cross-tab of readiness × category) alongside the primary Spearman ρ. These are pre-registered companion analyses, not post-hoc supplements. Their purpose is to distinguish "H1 failed because the predictor is null" from "H1 failed because the 5-point scale saturated at the ceiling" from "H1 failed because readiness is a proxy for task familiarity." Without these three analyses, a null result on the primary ρ is under-determined — the experiment cannot be read. A failing primary ρ that also shows VT-12a ≥ 0.3, low VT-12b variance, and concentrated VT-12c distribution means the measurement instrument itself needs redesign before H1 can be tested again; a failing primary ρ with VT-12a near zero, high VT-12b variance, and flat VT-12c means the hypothesis is genuinely unsupported and Phase 1A (delta-only pivot) activates.
+
+8. **Report the secondary pre-only H1 test alongside the primary.** *(Added April 14, 2026.)* In addition to the primary H1 test (Spearman ρ between `signed_discrepancy` and `duration_delta_minutes`), report the secondary test of `pre_task_readiness` alone vs. `duration_delta_minutes`. If the pre-only correlation is substantially weaker than the signed-discrepancy correlation, interpret the signed-discrepancy result with caution per VT-19 (post-task endogeneity): the stronger signed-discrepancy correlation may reflect mechanical coupling between `post_task_reflection` and session outcome rather than psychological prediction.
+
+9. **Report the disattenuated correlation estimate alongside the observed ρ.** *(Added April 14, 2026.)* In addition to the observed Spearman ρ used for the kill criterion decision, report the disattenuated correlation estimate per classical test theory (Spearman 1904), using test-retest reliability estimates for `pre_task_readiness` and `post_task_reflection`. Explicitly acknowledge that disattenuation requires reliability estimates not directly measured in this protocol — published single-item Likert reliability ranges will be used as proxies. The disattenuated value is interpretive context for the primary result, **not a basis for changing the kill criterion post-hoc**. The kill criterion decision is made on the observed ρ.
