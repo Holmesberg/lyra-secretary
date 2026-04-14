@@ -91,6 +91,10 @@ Transitions are enforced by `services/state_machine.py`. Completed/skipped/delet
 ### OpenClaw integration
 OpenClaw runs in a separate Docker Compose stack. Connect the two via Docker network bridge (see `docs/architecture.md §3`). The agent skill definition lives at `openclaw/skills/lyra-secretary/SKILL.md` and must be copied to `~/.openclaw/skills/lyra-secretary/`. Notification delivery is poll-based: the backend enqueues payloads into Redis via `POST /v1/notifications/push` (scheduler-internal) and the agent drains `GET /v1/notifications/pending` every 30 s. No direct push channel to the OpenClaw gateway is used.
 
+## Structural Investigation Rule
+
+Before implementing any feature that touches measurement, data flow, or research-relevant fields, read `docs/design_patterns/structural_investigation_rule.md`. The short version: scan the data domain, the implementation domain, and the research-integrity domain; surface findings (spec-vs-reality gaps, design tensions, VT/Hard Rule adjacencies, reusable infrastructure); propose 2–3 options with pro/con including rejected options; pre-register measurement and kill criteria; halt for operator review before writing code. The full rule — including what triggers it, what exceptions exist, and the motivating incident — is in that doc. Non-optional for any feature with measurement implications.
+
 ## Configuration
 
 Copy `.env.example` to `.env`. Required vars: `DATABASE_URL`, `REDIS_URL`, `NOTION_API_KEY`, `NOTION_DATABASE_ID`, `USER_TIMEZONE` (IANA, e.g. `Africa/Cairo`). `SECRET_KEY` must be ≥ 32 chars. All times are stored as UTC internally; `USER_TIMEZONE` controls display conversion via `utils/time_utils.py`.
