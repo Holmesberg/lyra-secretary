@@ -88,7 +88,6 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 
 **Schedule request:**
 - POST /v1/create → get `task_id` → confirm to user
-- If ambiguous time → POST /v1/parse first, use returned `start`/`end`
 - If conflicts → show list → ask to force
 
 **Start timer:**
@@ -148,3 +147,4 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - If user replies "done"/"stop": follow normal Stop timer flow. NEVER call mark-abandoned on a percentage reply.
 
 **Notifications:** Poll GET /v1/notifications/pending every 30s. Send pending messages to user.
+<!-- Excluded (operator/web-UI, not agent): /v1/users/me +{/export,/data-summary,/consent,DELETE}, /v1/analytics/{bias_factor,insights,discrepancy}. Do not add without operator approval — 150-line total is a HARD GATE. -->

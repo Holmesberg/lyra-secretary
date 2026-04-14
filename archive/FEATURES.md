@@ -1,5 +1,10 @@
-# Lyra Secretary — Feature Backlog
-*Last updated: April 10, 2026 — BCI reframe, LYR-061/unplanned_reason status corrected*
+# Lyra Secretary — Feature Backlog  (ARCHIVED)
+
+> **This document is archived and no longer canonical.**
+>
+> Forward-looking phase planning has moved to [`docs/building_phases.md`](../docs/building_phases.md); retrospective history lives in [`docs/project_history.md`](../docs/project_history.md); tactical dogfood items live in [`docs/dogfood_findings_living.md`](../docs/dogfood_findings_living.md). Items below are kept for historical context only — do not edit; do not use to plan work.
+
+*Frozen April 14, 2026. Last pre-archive update: April 10, 2026 — BCI reframe, LYR-061/unplanned_reason status corrected.*
 
 Priority: 🔴 critical | 🟡 important | 🟢 nice-to-have
 Status: 📋 backlog | 🔨 in progress | ✅ done
