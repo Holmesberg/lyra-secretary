@@ -253,6 +253,15 @@ class StopwatchSession(Base):
     post_deletion_retained_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     original_user_id_hash: Mapped[Optional[str]] = mapped_column(String(64))
 
+    # Data-quality retrofit flag (alembic 020). NULL = clean.
+    # 'possibly_default_pause_metadata' = pre-April-15 rows where pause_reason
+    # + pause_initiator may have been silently defaulted by the removed defaults
+    # at stopwatch_manager.py:330-331.
+    # 'pause_reason_lost_to_overwrite' = sessions whose task has pause_count > 1
+    # and the earlier pause's metadata was overwritten before pause_event existed.
+    # Analytics MUST exclude non-NULL rows when analyzing pause metadata.
+    data_quality_flag: Mapped[Optional[str]] = mapped_column(String(50))
+
     # Relationship
     task: Mapped["Task"] = relationship(back_populates="stopwatch_sessions")
 
@@ -350,3 +359,87 @@ class ArchetypeAssignment(Base):
     chronotype: Mapped[Optional[str]] = mapped_column(String(20))
     discipline_z: Mapped[Optional[float]] = mapped_column(Float)
     assigned_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class PauseEvent(Base):
+    """One row per pause, created on pause() and closed on resume().
+
+    Replaces the silent-overwrite pattern that was losing earlier pause metadata
+    when a session had more than one pause (alembic 020). Source of truth for
+    pause-prediction clock-anchor and work-rhythm algorithms.
+
+    pause_reason and pause_initiator are NOT NULL — callers must supply both
+    explicitly. The silent defaults at stopwatch_manager.py:330-331 were removed
+    in the same commit batch that introduced this table; any omission is now a
+    400 at the API boundary rather than contaminated research data.
+    """
+
+    __tablename__ = "pause_event"
+
+    pause_event_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("stopwatch_session.session_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    paused_at_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    resumed_at_utc: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    duration_minutes: Mapped[Optional[float]] = mapped_column(Float)
+    pause_reason: Mapped[str] = mapped_column(String(50), nullable=False)
+    pause_initiator: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_pause_event_user_paused_at", "user_id", "paused_at_utc"),
+        Index("idx_pause_event_session", "session_id"),
+    )
+
+
+class PausePredictionLog(Base):
+    """Pre-registered research artifact for VT-17 analyses (MANIFESTO.md).
+
+    One row per prediction firing. user_response and response_at are NULL at
+    fire time and filled by the reconciliation job: 'pause_now' if a pause_event
+    landed in the acceptance window, 'dismiss' for explicit dismissal signals,
+    'snooze' for snooze-and-refire (with parent_firing_id linking the chain),
+    'no_response' if the acceptance window closed with no pause.
+
+    Acceptance-rate formula is pre-registered and frozen at feature launch —
+    see MANIFESTO.md §VT-17. Snoozes are excluded from the kill-criterion
+    denominator (parent_firing_id IS NOT NULL marks re-fires).
+    """
+
+    __tablename__ = "pause_prediction_log"
+
+    firing_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    fired_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    predicted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # 'clock_anchor' | 'work_rhythm' — enforced in services/pause_predictor.py
+    mechanism: Mapped[str] = mapped_column(String(20), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    lead_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    active_task_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("task.task_id", ondelete="SET NULL")
+    )
+    # NULL at fire time. 'pause_now' | 'dismiss' | 'snooze' | 'no_response'.
+    user_response: Mapped[Optional[str]] = mapped_column(String(20))
+    response_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    parent_firing_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("pause_prediction_log.firing_id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_pause_pred_user_fired_at", "user_id", "fired_at"),
+    )
