@@ -43,7 +43,7 @@ Services — backend/app/services/
 SQLite (SQLAlchemy + Alembic) + Redis + Notion API
 ```
 
-Background jobs (APScheduler) run inside the FastAPI process: reminders every 1 min, Notion sync retries every 5 min, timer overflow alerts every 2 min, overdue task detection every 30 min.
+Background jobs (APScheduler) run inside the FastAPI process: reminders every 1 min, Notion sync retries every 5 min, timer overflow alerts every 2 min, overdue task detection every 30 min, stale session recovery every 15 min (sweeps unclosed sessions older than 12h).
 
 ### Single Mutation Authority
 
@@ -77,15 +77,19 @@ Transitions are enforced by `services/state_machine.py`. Completed/skipped/delet
 | `services/stopwatch_manager.py` | Timer lifecycle: start, stop, pause/resume; early-stop gate at <50% planned duration |
 | `services/parser.py` | NLP (dateparser) → structured task fields. `parse_chained(text)` handles "then"-separated compound requests. |
 | `services/notion_client.py` | Notion API sync; failures enqueued in Redis |
+| `services/telegram_notifier.py` | Telegram bot delivery for reminders and overflow alerts |
 | `workers/scheduler.py` | APScheduler setup wired into FastAPI lifespan |
 
-### Database schema (3 tables)
+### Database schema (6 tables)
 - **task** — core entity with planned/executed time pairs, state, Notion page ID
 - **stopwatch_session** — one-to-many with task; tracks individual timer runs
 - **category_mapping** — static keyword→category lookup seeded at init (not learned)
+- **user** — authenticated users; retention cohort, consent, anonymized-deletion fields
+- **archetype** — static chronotype × discipline profile with prior bias_factor
+- **archetype_assignment** — per-user archetype snapshot at onboarding (re-fit later)
 
 ### OpenClaw integration
-OpenClaw runs in a separate Docker Compose stack. Connect the two via Docker network bridge (see `docs/architecture.md §3`). The agent skill definition lives at `openclaw/skills/lyra-secretary/SKILL.md` and must be copied to `~/.openclaw/skills/lyra-secretary/`. The backend pushes notifications to `http://openclaw-gateway:18789/api/notify`; the agent polls `GET /v1/notifications/pending` every 30 s.
+OpenClaw runs in a separate Docker Compose stack. Connect the two via Docker network bridge (see `docs/architecture.md §3`). The agent skill definition lives at `openclaw/skills/lyra-secretary/SKILL.md` and must be copied to `~/.openclaw/skills/lyra-secretary/`. Notification delivery is poll-based: the backend enqueues payloads into Redis via `POST /v1/notifications/push` (scheduler-internal) and the agent drains `GET /v1/notifications/pending` every 30 s. No direct push channel to the OpenClaw gateway is used.
 
 ## Configuration
 
@@ -119,4 +123,4 @@ Copy `.env.example` to `.env`. Required vars: `DATABASE_URL`, `REDIS_URL`, `NOTI
 
 ## Known issues
 
-See `LYRA_BUGS.md` for active bugs. See `lyra_final_spec.md` for the full product spec.
+See `LYRA_BUGS.md` for active bugs. See `archive/lyra_final_spec.md` for the historical product spec (superseded by `docs/building_phases.md` and `docs/project_history.md` as canonical forward/backward-looking documents).

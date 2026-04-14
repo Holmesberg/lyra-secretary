@@ -144,26 +144,39 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/v1/parse` | Parse natural language → structured task |
+| POST | `/v1/parse` | Parse natural language → structured task (deprecated; prefer `/v1/create`) |
 | POST | `/v1/create` | Create a task |
 | POST | `/v1/reschedule` | Reschedule an existing task |
 | POST | `/v1/delete` | Soft-delete a task |
+| POST | `/v1/tasks/{task_id}/void` | Mark corrupted EXECUTED task as system_error — excluded from analytics |
+| POST | `/v1/tasks/{task_id}/mark-abandoned` | Transition PAUSED/EXECUTING task to SKIPPED; clears Redis timer state |
+| POST | `/v1/tasks/swap` | Swap two tasks' time slots atomically |
+| POST | `/v1/schedule/clear` | Clear all PLANNED tasks in a date range |
+| POST | `/v1/tasks/{task_id}/sync` | Backfill a task into Notion (repair path for pre-fix rows) |
+| GET | `/v1/tasks/{task_id}` | Fetch single task with full detail |
+| GET | `/v1/tasks/query` | Query tasks by date range, category, state |
+| GET | `/v1/tasks/last` | Last-operated task for the current user (per-user scoped) |
 | POST | `/v1/stopwatch/start` | Start stopwatch; accepts `pre_task_readiness` (1–5) |
 | POST | `/v1/stopwatch/stop` | Stop stopwatch; accepts `post_task_reflection` (1–5); `?confirmed=true` if early stop |
 | POST | `/v1/stopwatch/pause` | Pause active stopwatch; accepts `pause_reason` and `pause_initiator` |
 | POST | `/v1/stopwatch/resume` | Resume paused stopwatch |
+| POST | `/v1/stopwatch/update-completion` | Mid-session completion % check-in (overrun loop) |
 | POST | `/v1/stopwatch/correct-readiness` | Correct pre_task_readiness during active session |
+| POST | `/v1/stopwatch/retroactive` | Log completed session after the fact — creates EXECUTED task from timestamps |
 | GET | `/v1/stopwatch/status` | Get stopwatch status |
-| GET | `/v1/health` | Health check |
-| GET | `/v1/tasks/query` | Query tasks by date, category, state |
-| GET | `/v1/tasks/{task_id}` | Fetch single task with full detail |
+| GET | `/v1/users/me` | Current user profile (consent, retention cohort, timezone) |
+| POST | `/v1/users/me/consent` | Accept terms + research consent |
+| GET | `/v1/users/me/export` | Export all user data as JSON (tasks, sessions, reflections) |
+| GET | `/v1/users/me/data-summary` | Pre-deletion summary (counts by state for confirmation modal) |
+| DELETE | `/v1/users/me` | Delete account; `retain_for_research` flag controls anonymized retention |
 | POST | `/v1/undo` | Undo last create or delete (30s window) |
-| POST | `/v1/notifications/push` | Push notification to queue |
-| GET | `/v1/notifications/pending` | Poll and drain notification queue |
+| POST | `/v1/notifications/push` | Enqueue notification into per-user Redis queue (scheduler-internal) |
+| GET | `/v1/notifications/pending` | Poll and drain notification queue (agent-facing) |
 | GET | `/v1/analytics/discrepancy` | Discrepancy measurement data — readiness, reflection, initiation stats |
 | GET | `/v1/analytics/insights` | Behavioral insights — pattern detection after sufficient sessions |
-| POST | `/v1/stopwatch/retroactive` | Log completed session after the fact — creates EXECUTED task from timestamps |
-| POST | `/v1/tasks/{task_id}/void` | Mark corrupted EXECUTED task as system_error — excluded from analytics |
+| GET | `/v1/analytics/cascade` | Cascade failure analysis — sequential abandonment patterns |
+| GET | `/v1/analytics/bias_factor` | Per-category bias_factor with Bayesian shrinkage (Phase 6 surface) |
+| GET | `/v1/health` | Health check |
 | GET | `/v1/skill/ping` | Skill health check — active stopwatch, pending tasks today |
 
 Full request/response schemas are documented in [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md) and in Swagger UI at `/docs`.
@@ -205,6 +218,7 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ Timer overflow notification — alerts when session exceeds planned duration + 5 min
 - ✅ Notion sync retry queue — failed syncs retried every 5 minutes
 - ✅ Abandoned task detection — marks unstarted past-due tasks every 30 minutes
+- ✅ Stale session recovery — auto-closes unclosed stopwatch sessions older than 12h, every 15 minutes (LYR-103)
 
 **Integrations**
 - ✅ Notion calendar sync — create, update, archive pages
@@ -240,7 +254,7 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 
 ## Known Issues
 
-See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (13 open, 26 deferred OpenClaw, 62 fixed). Key active issues:
+See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (17 open, 26 deferred OpenClaw, 59 fixed). Key active issues:
 
 - **LYR-080** 🔴 Backend rebuild during active paused session corrupts task/session linkage
 - **LYR-088** 🟡 resume() loses Redis session reference after interleaved stopwatch

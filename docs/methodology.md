@@ -1,7 +1,7 @@
 # Research Methodology
 
-*Consolidated from: `clustering_spec.md`, `hypotheses.md`.*
-*Last updated: April 10, 2026.*
+*Canonical research-layer document. Consolidates earlier drafts of clustering and hypothesis notes (never committed as standalone files); those names are historical.*
+*Last updated: April 14, 2026.*
 
 This document covers the research layer: clustering model, validation gates, and working hypotheses beyond H1. The primary hypothesis (H1: signed_discrepancy -> delta) and its pre-registered kill criterion live in `MANIFESTO.md §Kill Criterion — H1` and are not duplicated here.
 

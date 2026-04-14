@@ -373,7 +373,7 @@ Scale to 10-30 users. Deliberately recruit subjects unlike the primary researche
 Adaptive planning engine. Auto-calibrate estimates based on historical bias per user per task category. No ML needed yet — pure behavioral.
 
 **Phase 3 — BCI integration (conditional)**
-Entry point: BR41N.IO hackathon, April 2026.
+Entry point: BR41N.IO hackathon, October 2026 (Path B in `docs/building_phases.md` — preferred for research clarity over the earlier April slot).
 
 BCI and self-report are two noisy estimators of an underlying cognitive state. Neither is ground truth. The integration model combines them with Bayesian weighting proportional to each source's individual signal-to-noise ratio — estimated per user from simultaneous EEG + self-report sessions.
 

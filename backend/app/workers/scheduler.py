@@ -51,14 +51,14 @@ def start_scheduler():
     )
 
     # Stale session recovery (check every 15 minutes)
-    # Sweeps unclosed StopwatchSession rows older than 24h that never
-    # got stopped (browser crash mid-pause, container restart, voided
-    # task leftovers). LYR-103.
+    # Sweeps unclosed StopwatchSession rows older than STALE_THRESHOLD_HOURS
+    # (12h) that never got stopped (browser crash mid-pause, container restart,
+    # voided task leftovers). LYR-103.
     scheduler.add_job(
         run_stale_session_recovery,
         trigger=IntervalTrigger(minutes=15),
         id="stale_session_recovery",
-        name="Auto-close orphan stopwatch sessions older than 24h",
+        name="Auto-close orphan stopwatch sessions older than 12h",
         replace_existing=True
     )
 

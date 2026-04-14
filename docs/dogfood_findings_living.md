@@ -25,7 +25,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### FIXED (recent — prune in 2 weeks)
 
-- Stale session recovery job — APScheduler sweeper every 15 min, closes unclosed StopwatchSession rows older than 24h with auto_closed=True, clears matching Redis keys, per-user iteration (LYR-103, this commit)
+- Stale session recovery job — APScheduler sweeper every 15 min, closes unclosed StopwatchSession rows older than 12h (`STALE_THRESHOLD_HOURS` in `stale_session_recovery.py`) with auto_closed=True, clears matching Redis keys, per-user iteration (LYR-103, commit 2accd65)
 - Defense-in-depth voided_at filter in _recover_from_db so legacy orphan voided sessions never rehydrate into the banner on Redis-loss events (LYR-095, commit d5da23d)
 - Voided task still shows paused timer banner — void_task now closes orphan StopwatchSession and clears Redis active/pause keys; _get_active self-heals historic stale state on next poll (commit 59ca80d)
 - OpenClaw void without voided_reason — SKILL.md now mandates "ALWAYS ASK REASON" on any non-DELETED void, endpoint line marks voided_reason as required with enum values listed (commit e57aa7e)
@@ -87,7 +87,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
-- **category_type field (estimable vs time_anchored).** Designed in audit, deferred to Phase 4. Required before H1 analysis runs. Prayer/sleep/meals contaminate bias_factor. Bundle this with the `self_reflection → planning` rename below so the category schema migration lands in one shot. **Design note (Apr 11):** prayer is NOT a bug to remove — it stays as a category and will be flagged `time_anchored` via this field, which excludes it from bias_factor analysis while preserving it as behavioral data. Same treatment applies to sleep/meals. *Apr 10.*
+- **category_type field (estimable vs time_anchored).** Designed in audit, deferred to Phase 6 (see `docs/building_phases.md §Phase 6 — Additional Feature Surfaces`). Required before H1 analysis runs. Prayer/sleep/meals contaminate bias_factor. Bundle this with the `self_reflection → planning` rename below so the category schema migration lands in one shot. **Design note (Apr 11):** prayer is NOT a bug to remove — it stays as a category and will be flagged `time_anchored` via this field, which excludes it from bias_factor analysis while preserving it as behavioral data. Same treatment applies to sleep/meals. *Apr 10.*
 
 - **self_reflection → planning rename.** Cosmetic only, deferred. Bundle with the `category_type` field migration above so the category table gets one coordinated migration instead of two. *Apr 10.*
 
@@ -169,7 +169,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ## Architecture findings (long-term)
 
-- **The clustering layer has 4 stacked unvalidated assumptions.** Documented in `clustering_spec.md` validation gates section. Re-fit after Phase 6+ data. *Audit.*
+- **The clustering layer has 4 stacked unvalidated assumptions.** Historical detail lived in the deprecated `clustering_spec.md` (never committed as a standalone file — rolled into `docs/methodology.md` during consolidation). Re-fit after Phase 6+ data; see `docs/methodology.md` for the current archetype grid and Bayesian shrinkage model. *Audit.*
 
 - **H1 kill criterion was tightened** to require statistically significant + predicted-direction learning improvement. Pre-registration block added. *Audit.*
 
