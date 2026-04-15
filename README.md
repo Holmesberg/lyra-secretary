@@ -164,6 +164,8 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | POST | `/v1/stopwatch/correct-readiness` | Correct pre_task_readiness during active session |
 | POST | `/v1/stopwatch/retroactive` | Log completed session after the fact — creates EXECUTED task from timestamps |
 | GET | `/v1/stopwatch/status` | Get stopwatch status |
+| POST | `/v1/reflection_view/{view_id}/viewed` | Stamp viewed_at on a fired reflection surface (LYR-098); idempotent |
+| POST | `/v1/reflection_view/{view_id}/dismissed` | Stamp dismissed_at + compute dwell_seconds; idempotent |
 | GET | `/v1/users/me` | Current user profile (consent, retention cohort, timezone) |
 | POST | `/v1/users/me/consent` | Accept terms + research consent |
 | GET | `/v1/users/me/export` | Export all user data as JSON (tasks, sessions, reflections) |

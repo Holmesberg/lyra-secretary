@@ -1,5 +1,7 @@
 """Stopwatch endpoints."""
 from datetime import datetime
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 import logging
@@ -23,7 +25,8 @@ from app.schemas.stopwatch import (
     PAUSE_REASONS,
     PAUSE_INITIATORS,
 )
-from app.db.models import TaskState
+from app.db.models import ReflectionViewLog, TaskState
+from app.db.scoping import get_current_user_id
 from app.services.stopwatch_manager import (
     StopwatchManager,
     StopwatchAlreadyRunningError,
@@ -33,7 +36,7 @@ from app.services.stopwatch_manager import (
 )
 from app.services.task_manager import TaskManager
 from app.core.exceptions import InvalidStateTransitionError
-from app.utils.time_utils import to_local
+from app.utils.time_utils import now_utc, to_local
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -178,6 +181,40 @@ async def stop_stopwatch(
             task_completion_percentage=request.task_completion_percentage,
         )
         zero_duration_skip = task.state == TaskState.SKIPPED and task.executed_duration_minutes in (None, 0)
+
+        # LYR-098 Commit 2b: write-on-fire to reflection_view_log so the
+        # client can stamp viewed/dismissed (notification_patterns.md
+        # §Saved-to-history). user_id is set by the scoping hook for the
+        # request — guaranteed non-None once manager.stop() has returned
+        # (stop() would have raised otherwise).
+        user_id = get_current_user_id()
+        micro_mirror_view_id = None
+        calibration_nudge_view_id = None
+        if micro_mirror:
+            row = ReflectionViewLog(
+                view_id=str(uuid4()),
+                user_id=user_id,
+                reflection_type="micro_mirror",
+                task_id=task.task_id,
+                payload=micro_mirror,
+                fired_at=now_utc(),
+            )
+            db.add(row)
+            micro_mirror_view_id = row.view_id
+        if calibration_nudge:
+            row = ReflectionViewLog(
+                view_id=str(uuid4()),
+                user_id=user_id,
+                reflection_type="calibration_nudge",
+                task_id=task.task_id,
+                payload=calibration_nudge,
+                fired_at=now_utc(),
+            )
+            db.add(row)
+            calibration_nudge_view_id = row.view_id
+        if micro_mirror or calibration_nudge:
+            db.commit()
+
         return StopwatchStopResponse(
             task_id=task.task_id,
             session_id=session.session_id,
@@ -191,9 +228,11 @@ async def stop_stopwatch(
             discrepancy_score=task.discrepancy_score,
             paused_parent=paused_parent,
             micro_mirror=micro_mirror,
+            micro_mirror_view_id=micro_mirror_view_id,
             skipped=zero_duration_skip,
             skip_reason="zero_duration" if zero_duration_skip else None,
             calibration_nudge=calibration_nudge,
+            calibration_nudge_view_id=calibration_nudge_view_id,
             task_completion_percentage=session.task_completion_percentage,
             mid_task_completion_pct=pre_existing_pct if pre_existing_pct is not None else None,
         )

@@ -157,7 +157,12 @@ export interface StopResponse {
   notion_synced?: boolean;
   discrepancy_score?: number | null;
   micro_mirror?: string | null;
+  // LYR-098 Commit 2b: reflection_view_log row id — null when the
+  // corresponding signal did not fire. Consumed by Commit 3 toast stack
+  // to stamp viewed/dismissed via /v1/reflection_view/{view_id}/*.
+  micro_mirror_view_id?: string | null;
   calibration_nudge?: string | null;
+  calibration_nudge_view_id?: string | null;
   paused_parent?: {
     task_id: string;
     title: string;

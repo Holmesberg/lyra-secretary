@@ -508,3 +508,68 @@ def test_last_task_per_user_isolated(adv_users, client):
     r98 = client.get("/v1/tasks/last", headers=_h(98))
     assert r98.status_code == 200
     assert r98.json()["title"] == "eve's last task"
+
+
+# ---------------------------------------------------------------------------
+# LYR-098 Commit 2b: reflection_view_log scoping gate
+# ---------------------------------------------------------------------------
+# Per-gate #10: every new read/mutate surface that can enumerate rows by
+# id must survive an adversarial cross-tenant probe. View/dismiss endpoints
+# look rows up by view_id (uuid), so a leaked/guessed view_id must NOT
+# permit stamping someone else's row. The scoping hook in app/db/scoping.py
+# auto-scopes ORM queries against any model with a user_id column; the
+# test below proves ReflectionViewLog is covered.
+def test_reflection_view_viewed_cross_tenant_blocked(adv_users, client):
+    """User 98 owns a reflection_view_log row; user 99 must get 404 on
+    both /viewed and /dismissed even with the exact view_id."""
+    from app.db.models import ReflectionViewLog
+    from app.utils.time_utils import now_utc
+
+    s = TestingSession()
+    try:
+        row = ReflectionViewLog(
+            view_id="leaked-view-id-xyz",
+            user_id=98,
+            reflection_type="micro_mirror",
+            task_id=None,
+            payload="eve's observation",
+            fired_at=now_utc(),
+        )
+        s.add(row)
+        s.commit()
+    finally:
+        s.close()
+
+    # Owner (user 98) succeeds.
+    r_own = client.post(
+        "/v1/reflection_view/leaked-view-id-xyz/viewed",
+        headers=_h(98),
+    )
+    assert r_own.status_code == 200, r_own.text
+
+    # Attacker (user 99) must get 404 — the scoping hook filters by user_id
+    # so ReflectionViewLog.query returns no match for 99 even with the
+    # correct view_id. Treat as unknown row.
+    r_attacker = client.post(
+        "/v1/reflection_view/leaked-view-id-xyz/dismissed",
+        headers=_h(99),
+    )
+    assert r_attacker.status_code == 404, (
+        f"cross-tenant leak — user 99 successfully stamped user 98's row: "
+        f"{r_attacker.status_code} {r_attacker.text}"
+    )
+
+    # Verify owner's row was NOT mutated by the attacker attempt.
+    set_current_user_id(None)
+    check = TestingSession()
+    try:
+        row = (
+            check.query(ReflectionViewLog)
+            .filter(ReflectionViewLog.view_id == "leaked-view-id-xyz")
+            .first()
+        )
+        assert row is not None
+        assert row.user_id == 98
+        assert row.dismissed_at is None  # attacker didn't stamp
+    finally:
+        check.close()

@@ -49,9 +49,14 @@ class StopwatchStopResponse(BaseModel):
     discrepancy_score: Optional[int] = None
     paused_parent: Optional[PausedParentInfo] = None
     micro_mirror: Optional[str] = None
+    # LYR-098 Commit 2b: reflection_view_log row id for this firing.
+    # Client stamps viewed_at/dismissed_at against it. NULL when the
+    # corresponding signal did not fire.
+    micro_mirror_view_id: Optional[str] = None
     skipped: bool = False
     skip_reason: Optional[str] = None
     calibration_nudge: Optional[str] = None
+    calibration_nudge_view_id: Optional[str] = None
     task_completion_percentage: Optional[int] = None
     mid_task_completion_pct: Optional[int] = None
 

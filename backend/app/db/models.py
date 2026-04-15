@@ -443,3 +443,49 @@ class PausePredictionLog(Base):
     __table_args__ = (
         Index("idx_pause_pred_user_fired_at", "user_id", "fired_at"),
     )
+
+
+class ReflectionViewLog(Base):
+    """Per-fired reflection-surface impression record (LYR-098 Commit 2b).
+
+    Every micro_mirror / calibration_nudge / (future) archetype reveal /
+    milestone banner writes a row here when the backend renders it. The
+    client stamps `viewed_at` on impression and `dismissed_at` on
+    dismissal; the server computes `dwell_seconds` on dismiss.
+
+    Used by /insights history (so a dismissed reflection is retrievable
+    later — see notification_patterns.md §Saved-to-history) and by
+    VT-21 stratified analysis (surface-exposed vs surface-naive
+    sessions — see MANIFESTO.md §VT-21 candidate).
+
+    `task_id` is nullable: task-bound reflections link back for context;
+    non-task reflections (archetype reveal, milestone banner) use NULL.
+
+    `payload` stores the rendered string verbatim — helper text changes
+    between releases (e.g., April 15 neutralization), historical rows
+    must not be rewritten by later-version helpers.
+    """
+
+    __tablename__ = "reflection_view_log"
+
+    view_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 'micro_mirror' | 'calibration_nudge' — enforced at application layer.
+    reflection_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    task_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("task.task_id", ondelete="SET NULL")
+    )
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    fired_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    viewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    dwell_seconds: Mapped[Optional[int]] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_reflection_view_user_fired_at", "user_id", "fired_at"),
+    )
