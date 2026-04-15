@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams, useRouter } from "next/navigation";
 import { format, addDays, subDays, isSameDay } from "date-fns";
@@ -24,6 +24,14 @@ import { ReflectionModal } from "@/components/reflection-modal";
 import { NewTaskModal } from "@/components/new-task-modal";
 import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
+import { Toast } from "@/components/toast";
+
+interface ToastEntry {
+  id: string;
+  message: string;
+  viewId: string | null;
+  lifespan: "auto" | "pin";
+}
 
 function localDateKey(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -96,6 +104,19 @@ function TodayInner() {
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [voidModalOpen, setVoidModalOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastEntry[]>([]);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  function pushToast(message: string, viewId: string | null, lifespan: "auto" | "pin") {
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setToasts((prev) => [...prev, { id, message, viewId, lifespan }]);
+  }
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });
@@ -174,6 +195,16 @@ function TodayInner() {
         setInfoMsg(
           `${res.paused_parent.title} is still paused (${res.paused_parent.paused_minutes} min). Resume when ready.`
         );
+      }
+      // LYR-098: surface retention signals as toasts per
+      // notification_patterns.md §Toast. micro_mirror auto-dismisses
+      // in 8s; calibration_nudge is pinned until dismissed since the
+      // reference-class summary needs dwell time to read.
+      if (res.micro_mirror) {
+        pushToast(res.micro_mirror, res.micro_mirror_view_id ?? null, "auto");
+      }
+      if (res.calibration_nudge) {
+        pushToast(res.calibration_nudge, res.calibration_nudge_view_id ?? null, "pin");
       }
       refresh();
     } catch (e: any) {
@@ -390,6 +421,22 @@ function TodayInner() {
         onConfirm={handleBulkVoid}
         onCancel={() => setVoidModalOpen(false)}
       />
+
+      {/* LYR-098 toast stack — bottom-right, fixed, pointer-events-none
+          container so clicks fall through except on the toast surfaces
+          themselves (which re-enable pointer events). */}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        {toasts.map((t) => (
+          <Toast
+            key={t.id}
+            id={t.id}
+            message={t.message}
+            viewId={t.viewId}
+            lifespan={t.lifespan}
+            onDismiss={removeToast}
+          />
+        ))}
+      </div>
     </div>
   );
 }
