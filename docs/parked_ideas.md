@@ -78,3 +78,54 @@ drifting toward platform-product defensiveness.
   accumulation, switching-cost design) before the primary scenario is named
 - Let moat framing enter Phase 4.5 / Phase 5 / Phase 5.5 design decisions —
   those remain research-driven
+
+---
+
+## Multi-task logging with cognitive bandwidth allocation
+*Captured: April 15, 2026 (recurrent idea, third+ mention)*
+
+**Pain:** Knowledge workers operate in concurrent modes. Operator examples:
+vibecoding while studying, conversation while attending lecture, coding
+while in async meeting. Current sequential-task execution model
+misrepresents these patterns. Sessions get logged as one task or another,
+never the actual blended attention state.
+
+**Proposed mechanism:** Concurrent task groups where multiple tasks can be
+EXECUTING simultaneously, each with declared cognitive bandwidth
+allocation (e.g., 70% lecture, 30% conversation). delta computed against
+bandwidth-weighted planned duration.
+
+**Key open questions:**
+- State machine: how do EXECUTING states stack? How does pause work for
+  one task in a group?
+- Measurement semantics: is "actual" duration wall-clock or bandwidth-
+  weighted?
+- Self-report validity: bandwidth allocation as Likert-style rating has
+  same scale-saturation risk as readiness (VT-12 class).
+- Interaction effects: does measuring multi-task state make users do more
+  multi-tasking (instrument-intervention class, VT-17/VT-21 adjacent)?
+- New validity threats around concurrent execution measurement.
+- UI complexity: how do you show 2-3 active timers without cognitive
+  overhead?
+- Aggregation: how do bias_factor and other per-task metrics combine
+  across concurrent groups?
+
+**Revisit conditions:**
+- Post-alpha (post-May 21)
+- Post-H1-validation (because if signed_discrepancy doesn't predict delta
+  in single-task mode, it certainly won't in multi-task mode)
+- When Phase 6 calibration architecture is in active build
+- After observing alpha users for evidence of whether multi-task patterns
+  are common enough to warrant the model expansion
+
+**Do not:**
+- Build mid-experiment (would invalidate single-task baseline data)
+- Build before validating it's a common pattern, not just
+  operator-specific
+- Build before designing the validity threat framework for concurrent
+  measurement
+
+**Related:**
+- Offline mode (different problem, also recurrent)
+- VT-12, VT-17, VT-21 (similar measurement-intervention concerns)
+- Phase 6 calibration architecture
