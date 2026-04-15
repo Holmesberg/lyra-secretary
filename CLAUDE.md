@@ -80,9 +80,11 @@ Transitions are enforced by `services/state_machine.py`. Completed/skipped/delet
 | `services/telegram_notifier.py` | Telegram bot delivery for reminders and overflow alerts |
 | `workers/scheduler.py` | APScheduler setup wired into FastAPI lifespan |
 
-### Database schema (6 tables)
+### Database schema (8 tables)
 - **task** — core entity with planned/executed time pairs, state, Notion page ID
 - **stopwatch_session** — one-to-many with task; tracks individual timer runs
+- **pause_event** — one-to-many with stopwatch_session; full pause/resume history (VT-17 pause-prediction data source)
+- **pause_prediction_log** — fired pause predictions + inferred user responses (VT-17 acceptance-rate analysis)
 - **category_mapping** — static keyword→category lookup seeded at init (not learned)
 - **user** — authenticated users; retention cohort, consent, anonymized-deletion fields
 - **archetype** — static chronotype × discipline profile with prior bias_factor

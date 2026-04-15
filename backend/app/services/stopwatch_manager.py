@@ -28,7 +28,13 @@ class StopwatchNotPausedError(Exception):
 
 
 def _compute_micro_mirror(task: Task) -> Optional[str]:
-    """One-line behavioral observation on stop. Priority: initiation > delta > pauses."""
+    """One-line behavioral observation on stop. Priority: initiation > delta > pauses.
+
+    Text is deliberately neutral — no evaluative framing ("strong focus",
+    "fragmented"). Mirror-not-judge per docs/design_patterns/notification_patterns.md
+    §No guilt and MANIFESTO.md §Shipping Philosophy (narrative layer must not
+    become a judgment layer; VT-21 candidate).
+    """
     delay = task.initiation_delay_minutes
     delta = task.duration_delta_minutes
     duration = task.executed_duration_minutes or 0
@@ -43,14 +49,34 @@ def _compute_micro_mirror(task: Task) -> Optional[str]:
     if delta is not None and delta > 20:
         return f"Finished {delta} min early."
     if pauses == 0 and duration > 30:
-        return "No pauses — strong focus block."
+        return "0 pauses this session."
     if pauses >= 3:
-        return f"{pauses} pauses — fragmented session."
+        return f"{pauses} pauses this session."
     return None
 
 
 def _compute_calibration_nudge(task: Task, db: Session) -> Optional[str]:
-    """Reference-class forecast for same-category EXECUTED history (fires at n >= 3)."""
+    """Reference-class forecast for same-category EXECUTED history.
+
+    Fires at n >= 3. This threshold is Phase 4.5's pre-registered floor —
+    chosen over n >= 5 to give trusted users usable feedback during the
+    cold-start window (3-7 day trusted-user engagement loop). Reconsider
+    at alpha based on observed signal stability. Any change is a new
+    pre-registration with its own window start.
+
+    Filter notes:
+      - `Task.executed_duration_minutes.is_not(None)` stands in for the
+        delta filter: `Task.duration_delta_minutes` is a Python `@property`
+        computed from planned/executed, not a mapped column, so it cannot
+        be used in a SQL WHERE clause (SQLAlchemy silently resolves it to
+        a Python bool, producing a no-op filter). The property returns
+        None iff executed_duration_minutes is None, so filtering on the
+        underlying column is semantically equivalent.
+      - `Task.initiation_status != "system_error"` drops NULL rows under
+        SQL tri-value logic. Verified safe 2026-04-15: zero production
+        rows have NULL initiation_status (0/118). Production values are
+        'initiated' and 'retroactive'; all non-system_error.
+    """
     if not task.category:
         return None
     delta = task.duration_delta_minutes
@@ -63,7 +89,7 @@ def _compute_calibration_nudge(task: Task, db: Session) -> Optional[str]:
             Task.state == TaskState.EXECUTED,
             Task.initiation_status != "system_error",
             Task.voided_at.is_(None),
-            Task.duration_delta_minutes != None,
+            Task.executed_duration_minutes.is_not(None),
             Task.task_id != task.task_id,
         )
         .all()

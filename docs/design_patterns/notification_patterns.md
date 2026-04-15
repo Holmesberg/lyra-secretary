@@ -27,8 +27,8 @@ Lyra has exactly four notification surface types. New notification categories mu
 
 ### 1. Toast — transient informational
 
-- **Used for:** `micro_mirror` (one-line behavioral observation surfaced on stop), session milestone notices ("session 10 in dev logged"), successful action confirmations where the change is not visually obvious.
-- **Lifespan:** 8 seconds auto-dismiss. User can pin to stay visible.
+- **Used for:** `micro_mirror` (one-line behavioral observation surfaced on stop), `calibration_nudge` at stop (reference-class summary — post-hoc informational, not decisional), session milestone notices ("session 10 in dev logged"), successful action confirmations where the change is not visually obvious.
+- **Lifespan:** 8 seconds auto-dismiss by default. User can pin to stay visible. Exception: `calibration_nudge` at stop renders as pinned-by-default (until-dismiss) since the reference-class summary is multi-sentence and a brief auto-dismiss would not give the user time to read it.
 - **Position:** Bottom-right of the viewport. Stacks vertically if multiple fire in quick succession (max 3 visible, older ones collapse into a "+2 more" indicator that opens `/insights` history).
 - **Affordances:** Dismiss button (×), optional "see more" link that opens the full observation in `/insights`.
 - **State:** Saved to `reflection_view_log` with `reflection_type = 'micro_mirror'`, `viewed_at`, `dismissed_at`, `dwell_seconds`.
@@ -36,7 +36,7 @@ Lyra has exactly four notification surface types. New notification categories mu
 
 ### 2. Modal — decisional
 
-- **Used for:** `calibration_nudge` at task creation (keep/adjust/dismiss), `calibration_nudge` at stop with adjustable completion percentage, early-stop confirmation gate (existing).
+- **Used for:** `calibration_nudge` at task creation (keep/adjust/dismiss — decisional, surfaces the predicted overrun before commit), early-stop confirmation gate (existing). Stop-time `calibration_nudge` was previously listed here; moved to §Toast (2026-04-15) because its content is post-hoc informational, not decisional — surfacing it as a modal would violate the "reserved for user-choice moments" rule.
 - **Lifespan:** Until user action. No auto-dismiss.
 - **Position:** Center, with dimmed backdrop.
 - **Affordances:** At least two choices (never just "OK"). Choice labels describe consequences, not system state ("Keep 40 min plan" not "Confirm"; "Adjust to 72 min" not "Accept"). Always has a visible dismiss / cancel button.
@@ -71,7 +71,7 @@ The full Phase 6 mapping of notification timing to user confrontation-readiness 
 |---|---|---|
 | Toast — `micro_mirror` | Fires every stop. 8s dismiss. Dwell logged. | Extend to 12s for Type 2; suppress-on-repeated-dismiss for Type 3. |
 | Modal — `calibration_nudge` (creation) | Fires at bias_factor ≥ 1.25 with ≥10 sessions in category. | Escalate dialect for Calibrators post-30-sessions; suppress for Type 3. |
-| Modal — `calibration_nudge` (stop) | Fires at signed_discrepancy threshold. | Type 2 receives "you've seen this N times" variant. |
+| Toast — `calibration_nudge` (stop) | Fires at n ≥ 3 same-category EXECUTED history (Phase 4.5 pre-registered threshold, see `backend/app/services/stopwatch_manager.py::_compute_calibration_nudge`). Until-dismiss (pinned by default). Dwell logged to `reflection_view_log`. | Type 2 receives "you've seen this N times" variant. |
 | Inline warning — `is_future_task`, state errors | Always on. Never suppressed. | No routing. Correctness-critical. |
 | Banner — insight / milestone | Fires once per insight, once per milestone. | Calibrators unlock earlier; Type 3 unlocks with softer framing. |
 

@@ -682,6 +682,13 @@ Thresholds (per-user, not aggregate): acceptance_rate ≥ 0.40 = ship; < 0.20 = 
 
 **Status:** VT-20 documented April 14, 2026. Structural analysis added as a pre-registered rule for Paper 2. The cascade cell in `notebooks/operator_analytics.ipynb` is annotated to require the with-and-without-controls report at Paper 2 analysis time.
 
+### VT-21 candidate: Narrative-layer influence on subsequent measurements
+**Threat:** Surfaced `micro_mirror` and `calibration_nudge` text become part of the user's mental model of the task. Future `planned_duration_minutes` estimates and readiness ratings may be influenced by internalized narrative ("I usually overrun on dev"). The instrument's outputs change the measured behavior — same class as VT-17 (pause prediction intervention) but different mechanism (narrative internalization vs prompted action).
+
+**Mitigation:** Track surface-fired vs surface-not-fired session metadata via `reflection_view_log` (shipping in LYR-098 Commit 2b). Compare subsequent `planned_duration_minutes` distributions and readiness ratings between surface-exposed and surface-naive sessions per category × time_of_day. If post-exposure estimates systematically shift toward bias_factor suggestions, narrative internalization is confirmed and analysis must be stratified.
+
+**Status:** VT-21 candidate documented April 15, 2026. Detection analysis added to operator interrogation checklist Day 30 milestone. Stratified analysis required for any post-surface H1 correlation reporting.
+
 ## Anonymized Retention Policy
 
 Anonymized retention serves product research only:
@@ -731,6 +738,7 @@ The experiment has started. Stay in measurement mode.
 *Lyra Secretary v1.5 — April 10, 2026*
 *Manifesto v1.3 — revised April 10, 2026*
 *Manifesto v1.4 — revised April 14, 2026 (VT-12, VT-13, analysis rule 7, Shipping Philosophy)*
+*Manifesto v1.5 — revised April 15, 2026 (VT-19, VT-20, VT-21 candidate; Rules 8–9; profile taxonomy note; retention-scope clarification)*
 
 ---
 

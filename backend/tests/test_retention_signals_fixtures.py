@@ -84,7 +84,8 @@ def test_mm_delta_boundary_at_20_does_not_fire():
 
 
 def test_mm_zero_pauses_long_session():
-    assert _compute_micro_mirror(_mm(pauses=0, duration=45)) == "No pauses — strong focus block."
+    # Neutralized text per notification_patterns.md §No guilt.
+    assert _compute_micro_mirror(_mm(pauses=0, duration=45)) == "0 pauses this session."
 
 
 def test_mm_zero_pauses_short_session_does_not_fire():
@@ -94,8 +95,9 @@ def test_mm_zero_pauses_short_session_does_not_fire():
 
 
 def test_mm_many_pauses():
-    assert _compute_micro_mirror(_mm(pauses=3)) == "3 pauses — fragmented session."
-    assert _compute_micro_mirror(_mm(pauses=7)) == "7 pauses — fragmented session."
+    # Neutralized text — no "fragmented" framing.
+    assert _compute_micro_mirror(_mm(pauses=3)) == "3 pauses this session."
+    assert _compute_micro_mirror(_mm(pauses=7)) == "7 pauses this session."
 
 
 def test_mm_all_null_returns_none():
@@ -121,7 +123,7 @@ def test_mm_priority_delta_beats_pauses():
 def test_mm_priority_zero_pauses_long_session_beats_many_pauses_branch():
     # pauses==0 and duration>30 fires BEFORE the pauses>=3 check
     # (both branches can't fire simultaneously but confirms ordering)
-    assert _compute_micro_mirror(_mm(pauses=0, duration=60)) == "No pauses — strong focus block."
+    assert _compute_micro_mirror(_mm(pauses=0, duration=60)) == "0 pauses this session."
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +268,24 @@ def test_cn_null_delta_on_current_returns_none(db):
     current = _seed(db, null_delta=True)
     for d in [-10, -5, -8]:
         _seed(db, delta=d)
+    assert _compute_calibration_nudge(current, db) is None
+
+
+def test_cn_filter_excludes_history_rows_with_null_executed_duration(db):
+    """Regression: the SQL filter must exclude history rows where
+    executed_duration_minutes is NULL. Before the filter fix (Commit 2a),
+    the filter `Task.duration_delta_minutes != None` was a no-op on a
+    Python @property — leaked rows would then crash `sum(...)` on None.
+    After fix: filter uses the real column `executed_duration_minutes`.
+    """
+    current = _seed(db, delta=-15)
+    # Two valid history rows — below threshold by themselves
+    for d in [-10, -5]:
+        _seed(db, delta=d)
+    # One leaky row: state=EXECUTED but no executed_duration → delta None.
+    # With the fix, it's filtered out → n=2 → None returned.
+    # Without the fix, it would leak in → n=3 → crash in sum().
+    _seed(db, null_delta=True)
     assert _compute_calibration_nudge(current, db) is None
 
 
