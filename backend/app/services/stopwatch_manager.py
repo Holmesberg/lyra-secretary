@@ -27,6 +27,60 @@ class StopwatchNotPausedError(Exception):
     pass
 
 
+def _compute_micro_mirror(task: Task) -> Optional[str]:
+    """One-line behavioral observation on stop. Priority: initiation > delta > pauses."""
+    delay = task.initiation_delay_minutes
+    delta = task.duration_delta_minutes
+    duration = task.executed_duration_minutes or 0
+    pauses = task.pause_count or 0
+
+    if delay is not None and delay > 10:
+        return f"Started {delay} min late."
+    if delay is not None and delay <= 0:
+        return "Started on time."
+    if delta is not None and delta < -20:
+        return f"Ran {abs(delta)} min over plan."
+    if delta is not None and delta > 20:
+        return f"Finished {delta} min early."
+    if pauses == 0 and duration > 30:
+        return "No pauses — strong focus block."
+    if pauses >= 3:
+        return f"{pauses} pauses — fragmented session."
+    return None
+
+
+def _compute_calibration_nudge(task: Task, db: Session) -> Optional[str]:
+    """Reference-class forecast for same-category EXECUTED history (fires at n >= 3)."""
+    if not task.category:
+        return None
+    delta = task.duration_delta_minutes
+    if delta is None:
+        return None
+    history = (
+        db.query(Task)
+        .filter(
+            Task.category == task.category,
+            Task.state == TaskState.EXECUTED,
+            Task.initiation_status != "system_error",
+            Task.voided_at.is_(None),
+            Task.duration_delta_minutes != None,
+            Task.task_id != task.task_id,
+        )
+        .all()
+    )
+    n = len(history)
+    if n < 3:
+        return None
+    avg_delta = sum(t.duration_delta_minutes for t in history) / n
+    underestimate_count = sum(1 for t in history if t.duration_delta_minutes < 0)
+    direction = "over" if delta < 0 else "under"
+    return (
+        f"Ran {abs(delta)} min {direction} plan. "
+        f"Your {task.category} avg: {avg_delta:+.0f} min ({n} sessions). "
+        f"You've underestimated this category {underestimate_count}/{n} times."
+    )
+
+
 class StopwatchManager:
     """Manage stopwatch sessions with Redis persistence."""
 
@@ -622,51 +676,8 @@ class StopwatchManager:
             self.db.commit()
             self.db.refresh(session)
 
-        # Micro-mirror: one-line behavioral observation (priority: initiation > delta > pauses)
-        micro_mirror = None
-        delay = task.initiation_delay_minutes
-        delta = task.duration_delta_minutes
-        duration = task.executed_duration_minutes or 0
-        pauses = task.pause_count or 0
-
-        if delay is not None and delay > 10:
-            micro_mirror = f"Started {delay} min late."
-        elif delay is not None and delay <= 0:
-            micro_mirror = "Started on time."
-        elif delta is not None and delta < -20:
-            micro_mirror = f"Ran {abs(delta)} min over plan."
-        elif delta is not None and delta > 20:
-            micro_mirror = f"Finished {delta} min early."
-        elif pauses == 0 and duration > 30:
-            micro_mirror = "No pauses — strong focus block."
-        elif pauses >= 3:
-            micro_mirror = f"{pauses} pauses — fragmented session."
-
-        # Calibration nudge: reference class forecasting for same category (F6)
-        calibration_nudge = None
-        if task.category and delta is not None:
-            history = (
-                self.db.query(Task)
-                .filter(
-                    Task.category == task.category,
-                    Task.state == TaskState.EXECUTED,
-                    Task.initiation_status != "system_error",
-                    Task.voided_at.is_(None),
-                    Task.duration_delta_minutes != None,
-                    Task.task_id != task.task_id,
-                )
-                .all()
-            )
-            n = len(history)
-            if n >= 3:
-                avg_delta = sum(t.duration_delta_minutes for t in history) / n
-                underestimate_count = sum(1 for t in history if t.duration_delta_minutes < 0)
-                direction = "over" if delta < 0 else "under"
-                calibration_nudge = (
-                    f"Ran {abs(delta)} min {direction} plan. "
-                    f"Your {task.category} avg: {avg_delta:+.0f} min ({n} sessions). "
-                    f"You've underestimated this category {underestimate_count}/{n} times."
-                )
+        micro_mirror = _compute_micro_mirror(task)
+        calibration_nudge = _compute_calibration_nudge(task, self.db)
 
         self.redis.clear_active_stopwatch(user_id)
 
