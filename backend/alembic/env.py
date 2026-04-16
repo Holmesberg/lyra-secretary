@@ -21,7 +21,10 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def get_url():
-    return settings.DATABASE_URL.replace("sqlite:///", "sqlite:///") # ensure format
+    # Returns DATABASE_URL as-is. SQLAlchemy infers dialect from the URL
+    # prefix (sqlite:// vs postgresql://), so both local dev and the
+    # Supabase-backed lyraos.org deployment work without a code branch.
+    return settings.DATABASE_URL
 
 def run_migrations_offline() -> None:
     url = get_url()

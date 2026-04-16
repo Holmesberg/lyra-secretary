@@ -9,13 +9,19 @@ services:
       - ./backend:/app
       - lyra_data:/app/data
     environment:
-      - DATABASE_URL=sqlite:////app/data/lyra.db
+      # DATABASE_URL reads from repo-root .env. Operator's lyraos.org
+      # deployment (Apr 16 2026) sets Supabase Postgres there; other
+      # environments fall back to SQLite at /app/data/lyra.db. Revert
+      # the operator setup by restoring .env from .env.backup-sqlite-
+      # 2026-04-16 and restarting backend.
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/lyra.db}
       - REDIS_URL=redis://redis:6379/0
       - NOTION_API_KEY=${NOTION_API_KEY:-}
       - NOTION_DATABASE_ID=${NOTION_DATABASE_ID:-}
       - USER_TIMEZONE=Africa/Cairo
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

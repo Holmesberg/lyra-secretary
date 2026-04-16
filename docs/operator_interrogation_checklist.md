@@ -73,6 +73,15 @@ integrity checks.
 - [ ] How many `parent_task_id` chains exist, and how deep? (Interruption
       visualization ships Phase 6 — this is an early count.)
 
+### Production monitoring (added Apr 16 with lyraos.org deployment)
+
+- [ ] `cloudflared tunnel info lyra-prod` — is the tunnel showing 4 active edge connectors? If fewer, quic/network issue on laptop.
+- [ ] `curl https://api.lyraos.org/v1/health` returns `{"status":"ok"}` in <2s? Latency baseline for the tunnel path.
+- [ ] Supabase dashboard (https://supabase.com/dashboard/project/xrrboaxptttdzednaxwk): any connection errors, storage >400 MB (80% of 500 MB free tier), or slow queries?
+- [ ] Laptop uptime during peak trusted-user hours — any sleep events during the day? (Check Windows Event Viewer Power events.) The tunnel + backend don't auto-recover from sleep yet.
+- [ ] Cloudflare Registrar: `lyraos.org` expires April 16, 2027 — auto-renew on, verify payment method still valid 30 days before expiry.
+- [ ] `oslyra.com` watch — domain expires Nov 10, 2026; decide on brand swap before then.
+
 ### Data quality
 
 - [ ] For every research-relevant field (`pre_task_readiness`,

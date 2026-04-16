@@ -16,7 +16,13 @@ The long-term vision: integrate with **LYRA BCI** (EEG-based cognitive state det
 
 ## Architecture
 
-At a glance: **Web UI** (Next.js) and **Telegram** → **OpenClaw** (AI agent) → **FastAPI** → **TaskManager** → **SQLite**, **Redis**, **Notion**; **APScheduler** runs in-process for reminders, timer overflow, overdue detection, and Notion retry. Details below.
+At a glance: **Web UI** (Next.js) and **Telegram** → **OpenClaw** (AI agent) → **FastAPI** → **TaskManager** → **Supabase Postgres** (prod) or **SQLite** (dev), **Redis**, **Notion**; **APScheduler** runs in-process for reminders, timer overflow, overdue detection, Notion retry, pause prediction (VT-17), and reflection-signal reconciliation. Details below.
+
+## Deployment (production)
+
+As of April 16, 2026 the alpha stack ships at **`https://lyraos.org`** (frontend) and **`https://api.lyraos.org`** (backend). Architecture: Cloudflare Tunnel from operator's laptop → Next.js `:3000` and FastAPI `:8000` Docker container; primary data in Supabase Postgres (eu-west-1 pooler). Full diagram, failure modes, and recovery playbook in [`docs/deployment_architecture.md`](docs/deployment_architecture.md).
+
+For local development the stack is unchanged: `docker compose up -d` + `cd frontend && npm run dev` → `http://localhost:3000`. The `.env` decides Postgres vs SQLite on a per-environment basis via `DATABASE_URL`.
 
 ## System Design
 

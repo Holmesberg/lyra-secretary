@@ -35,13 +35,15 @@ Lyra Secretary is a measurement-backed adaptive task scheduler. It records **pla
 
 ```
 Client (Web UI / Telegram / OpenClaw agent)
-  ↓ HTTP
+  ↓ HTTPS (lyraos.org + api.lyraos.org via Cloudflare Tunnel) / localhost in dev
 API (FastAPI) — backend/app/api/v1/endpoints/
   ↓ DI via get_db() / get_redis()
 Services — backend/app/services/
   ↓
-SQLite (SQLAlchemy + Alembic) + Redis + Notion API
+Postgres (Supabase eu-west-1, prod) | SQLite (local dev) + Redis + Notion API
 ```
+
+**Production deployment** (from April 16, 2026): `https://lyraos.org` (frontend) and `https://api.lyraos.org` (backend) served via Cloudflare Tunnel from the operator's laptop. Primary DB is Supabase Postgres (`xrrboaxptttdzednaxwk`, eu-west-1 pooler on port 6543, sslmode=require). SQLite fallback kept at `.env.backup-sqlite-2026-04-16` for fast revert. Full architecture + recovery playbook in `docs/deployment_architecture.md`.
 
 Background jobs (APScheduler) run inside the FastAPI process: reminders every 1 min, Notion sync retries every 5 min, timer overflow alerts every 2 min, overdue task detection every 30 min, stale session recovery every 15 min (sweeps unclosed sessions older than 12h).
 

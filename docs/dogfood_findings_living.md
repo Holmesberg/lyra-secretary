@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 16, 2026 (pause-anywhere + can't-start-while-paused FIXED in Apr 16 batch; Apr 11 superseded-wrongly entry revived + retroactively FIXED; remaining Apr 15 findings: EXECUTED immutability UX [P2])
+**Last updated:** April 16, 2026 (deployment live on lyraos.org via Cloudflare Tunnel + Supabase Postgres; 2 new P2 entries added: pause/resume residual delay (frontend), oslyra.com domain watch)
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -130,6 +130,10 @@ This document is edited continuously as new findings emerge. Sections of this do
   **Meta-lesson:** this bug was marked "SUPERSEDED Apr 15 → reframed as Phase 5 design refinement" earlier today. That supersession was premature. The Apr 11 P0 Tier 2 entry's *observation* (start blocked when paused) was accurate; its *proposed fix* (route through interruption flow implicitly) was already what the backend did. The actual block was a 1-LOC frontend boolean, not a structural issue requiring a new modal contract. **Verify diagnosis complexity before deferring — "Phase 5 design work" was a misdiagnosis that nearly shipped a week of UX friction into the trusted-user launch window.**
 
 - **EXECUTED task immutability not visually communicated.** Current row design treats EXECUTED similarly to PLANNED — only the status tag indicates state. Users may attempt to edit and hit walls without understanding why. Recommend implicit affordance: reduce opacity, hide edit action, keep void action, surface the immutability explanation only when the user attempts to edit. Avoids front-loading complexity at onboarding. Connects to onboarding design (Phase 5). *Apr 15.*
+
+- **Pause/resume state-switch delay (residual).** After Apr 16 backend Notion-queue fix (`f4b3f60` / `9381703`) and cancelQueries race guard, server-side pause/resume rounds in ~20 ms (measured live). Operator still reports ~3-4 s perceived delay on paused → running transition — remaining latency is frontend: React re-render cascade across `/today` (TaskRows, ReflectionModal mount, overlapping query-cache propagation) + WSL↔Windows browser forwarding overhead. Investigate post-Apr-18 trusted-user launch. Likely wins: memoize TaskRow, selective query invalidation, ReflectionModal mount optimization, consider dropping the 10 s poll interval to 30 s on the status query. *Apr 16.*
+
+- **Monitor `oslyra.com` domain expiration (Nov 10, 2026).** Current production domain is `lyraos.org` (purchased Apr 16 via Cloudflare Registrar). If `oslyra.com` becomes available at its expiration, evaluate a name swap for brand preference (.com > .org conventionally). Not urgent — lyraos.org is fine for the pre-alpha + alpha window. Swap would require: (a) purchase .com, (b) update all NEXTAUTH_URL / NEXT_PUBLIC_API_URL / Google OAuth console / docs references, (c) 301 redirect from lyraos.org to the new domain for a grace window, (d) eventually drop the .org renewal. Non-trivial cutover work; only worth doing if brand value clear. *Apr 16.*
 
 - **category_type field (estimable vs time_anchored).** **Promoted from P2 to P0 Tier 1 pre-alpha on Apr 14** per `MANIFESTO.md §VT-13 Category-Type Semantic Drift`. See below under P0 Tier 1 for the active entry. *Promoted Apr 14.*
 

@@ -29,8 +29,12 @@ def upgrade():
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("google_id", sa.String(64), nullable=True),
         sa.Column("timezone", sa.String(64), nullable=False, server_default="Africa/Cairo"),
-        sa.Column("is_operator", sa.Boolean(), nullable=False, server_default=sa.text("0")),
-        sa.Column("notion_enabled", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        # sa.text("false") is portable: SQLite accepts and coerces to 0;
+        # Postgres requires a boolean literal (it rejects integer 0 as a
+        # BOOLEAN default). Previous value sa.text("0") broke the lyraos
+        # deployment migration on Apr 16 2026 with DatatypeMismatch.
+        sa.Column("is_operator", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("notion_enabled", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("archetype_id", sa.String(40), nullable=True),
         sa.Column("terms_accepted_at", sa.DateTime(), nullable=True),
         sa.Column("research_consent_at", sa.DateTime(), nullable=True),
@@ -39,18 +43,29 @@ def upgrade():
     op.create_index("idx_user_email", "user", ["email"], unique=True)
     op.create_index("idx_user_google_id", "user", ["google_id"], unique=True)
 
-    # Operator backfill — user_id = 1
+    # Operator backfill — user_id = 1. Portable across SQLite + Postgres:
+    #   * "user" quoted because `user` is a Postgres reserved word.
+    #   * Booleans as `true`/`false` literals (integer 0/1 is rejected by
+    #     Postgres as a BOOLEAN default/value).
+    #   * Existence check before insert so the migration is idempotent
+    #     when replayed over a DB that already has the seed row (needed
+    #     by the lyraos.org Supabase migration Apr 16, where this is
+    #     followed by a data-copy step from the operator's SQLite).
     conn = op.get_bind()
     now = datetime.utcnow()
-    conn.execute(
-        sa.text(
-            "INSERT INTO user (user_id, email, google_id, timezone, is_operator, "
-            "notion_enabled, archetype_id, terms_accepted_at, research_consent_at, created_at) "
-            "VALUES (1, 'alinassersabry@gmail.com', NULL, 'Africa/Cairo', 1, 1, NULL, "
-            ":now, :now, :now)"
-        ),
-        {"now": now},
-    )
+    already = conn.execute(
+        sa.text('SELECT 1 FROM "user" WHERE user_id = 1')
+    ).fetchone()
+    if not already:
+        conn.execute(
+            sa.text(
+                'INSERT INTO "user" (user_id, email, google_id, timezone, is_operator, '
+                "notion_enabled, archetype_id, terms_accepted_at, research_consent_at, created_at) "
+                "VALUES (1, 'alinassersabry@gmail.com', NULL, 'Africa/Cairo', true, true, NULL, "
+                ":now, :now, :now)"
+            ),
+            {"now": now},
+        )
 
 
 def downgrade():

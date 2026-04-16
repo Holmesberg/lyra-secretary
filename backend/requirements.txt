@@ -11,3 +11,6 @@ dateparser==1.2.0
 apscheduler==3.10.4
 python-multipart==0.0.6
 PyJWT==2.9.0
+# Postgres driver — lyraos.org deployment (Apr 16 2026). Pinned 2.9.10
+# (stable, precompiled wheel — no libpq-dev needed at image build time).
+psycopg2-binary==2.9.10
