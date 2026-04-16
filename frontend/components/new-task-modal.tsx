@@ -194,26 +194,46 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         end: endDate.toISOString(),
         category,
       });
+      // Debug aid (Apr 16): dogfood diagnostic for severity-render
+      // bug. If operator sees the wrong UI (red when expecting yellow
+      // or vice versa), the response shape is logged so we can
+      // verify severity + gate_ids match expectations.
+      if (!res.created) {
+        // eslint-disable-next-line no-console
+        console.debug("[create] conflict response:", res);
+      }
       if (!res.created) {
         if (res.conflicts.length > 0) {
           const paused = res.conflicts.filter((c) => c.state === "PAUSED");
-          const blocking = res.conflicts.filter((c) => c.state !== "PAUSED");
           if (paused.length > 0 && onInterruptionCreated) {
             setPausedConflict({
               taskId: paused[0].task_id,
               title: paused[0].title,
-              blockingTitles: blocking.map((c) => c.title),
+              blockingTitles: res.conflicts
+                .filter((c) => c.state !== "PAUSED")
+                .map((c) => c.title),
             });
             return;
           }
           // Path A (Apr 16): branch on severity. HARD = active-timer
-          // overlap, no override. SOFT = planned overlap or duplicate
-          // title, override-able.
+          // overlap (never force-overridable). SOFT = planned overlap
+          // or duplicate title (force-overridable).
           if (res.severity === "hard") {
-            const titles = res.conflicts.map((c) => c.title).join(", ");
-            setError(
-              `Conflicts with active timer (${titles}). Stop the active timer first.`
-            );
+            // Discriminate the HARD conflict (the actual blocker) from
+            // any soft ones that also fired — common case when a new
+            // task sits inside an active-timer window that itself
+            // overlaps an existing planned task.
+            const hardTitles = res.conflicts
+              .filter((c) => c.gate_id === "active_overlap")
+              .map((c) => c.title);
+            const softTitles = res.conflicts
+              .filter((c) => c.gate_id !== "active_overlap")
+              .map((c) => c.title);
+            let msg = `Active timer is running: ${hardTitles.join(", ") || res.conflicts[0].title}. Stop it first, then retry.`;
+            if (softTitles.length > 0) {
+              msg += ` (Also overlaps planned: ${softTitles.join(", ")}.)`;
+            }
+            setError(msg);
             return;
           }
           if (res.severity === "soft") {
