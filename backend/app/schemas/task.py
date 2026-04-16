@@ -66,12 +66,19 @@ class TaskQueryRequest(BaseModel):
 
 # Response schemas
 class ConflictInfo(BaseModel):
-    """Information about a conflicting task."""
+    """Information about a conflicting task.
+
+    `gate_id` (Path A, Apr 16 2026): which gate fired for this conflict —
+    `"active_overlap"` (HARD), `"planned_overlap"` (SOFT), or
+    `"duplicate_title"` (SOFT). Lets the dogfood override-rate analytics
+    monitoring (Day 10 interrogation item) attribute overrides per gate.
+    """
     task_id: str
     title: str
     start: datetime
     end: datetime
     state: TaskState
+    gate_id: Optional[str] = None
 
 
 class TaskParseResponse(BaseModel):
@@ -86,12 +93,26 @@ class TaskParseResponse(BaseModel):
 
 
 class TaskCreateResponse(BaseModel):
-    """Response from creating a task."""
+    """Response from creating a task.
+
+    Severity model (Path A, Apr 16 2026):
+      - `severity = "hard"` + `can_proceed = False`: EXECUTING-overlap conflict.
+        Single-mutation-authority is structural; no force-override available.
+        Frontend must surface error without an override button.
+      - `severity = "soft"` + `can_proceed = True`: PLANNED/PAUSED overlap or
+        duplicate title. Frontend can offer `force=true` retry.
+      - `severity = None` + `can_proceed = True`: no conflict, normal create.
+
+    `soft_reasons` lists which soft gates fired: `"overlap"` and/or
+    `"duplicate_title"` — drives the warning copy on the frontend.
+    """
     task_id: Optional[str]
     created: bool
     notion_synced: bool = False
     conflicts: list[ConflictInfo] = Field(default_factory=list)
     can_proceed: bool = True
+    severity: Optional[str] = None
+    soft_reasons: list[str] = Field(default_factory=list)
 
 
 class TaskDetail(BaseModel):

@@ -47,6 +47,13 @@ interface PausedConflict {
   blockingTitles: string[];
 }
 
+interface SoftConflict {
+  // "overlap" + "duplicate_title" possible combinations from soft_reasons
+  reasons: string[];
+  overlapTitles: string[];
+  duplicateTitle: string | null;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -68,6 +75,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
+  const [softConflict, setSoftConflict] = useState<SoftConflict | null>(null);
   const [lastEditId, setLastEditId] = useState<string | null>(null);
 
   const totalMinutes = durHours * 60 + durMinutes;
@@ -107,6 +115,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setCategory((editingTask.category as Category) || "work");
     setError(null);
     setPausedConflict(null);
+    setSoftConflict(null);
     setLastEditId(editingTask.task_id);
   }
 
@@ -120,6 +129,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setCategory("work");
     setError(null);
     setPausedConflict(null);
+    setSoftConflict(null);
     setLastEditId(null);
   }
 
@@ -158,6 +168,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   async function submit() {
     setError(null);
     setPausedConflict(null);
+    setSoftConflict(null);
     setSubmitting(true);
     try {
       const startDate = new Date(start);
@@ -195,6 +206,31 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             });
             return;
           }
+          // Path A (Apr 16): branch on severity. HARD = active-timer
+          // overlap, no override. SOFT = planned overlap or duplicate
+          // title, override-able.
+          if (res.severity === "hard") {
+            const titles = res.conflicts.map((c) => c.title).join(", ");
+            setError(
+              `Conflicts with active timer (${titles}). Stop the active timer first.`
+            );
+            return;
+          }
+          if (res.severity === "soft") {
+            const overlaps = res.conflicts
+              .filter((c) => c.gate_id === "planned_overlap")
+              .map((c) => c.title);
+            const dups = res.conflicts
+              .filter((c) => c.gate_id === "duplicate_title")
+              .map((c) => c.title);
+            setSoftConflict({
+              reasons: res.soft_reasons ?? [],
+              overlapTitles: overlaps,
+              duplicateTitle: dups[0] ?? null,
+            });
+            return;
+          }
+          // Fallback for older backends without severity field.
           setError(
             `Conflicts with: ${res.conflicts
               .map((c) => c.title)
@@ -203,6 +239,41 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           return;
         }
         setError("Task was not created.");
+        return;
+      }
+      resetForm();
+      onCreated();
+      onClose();
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to create task");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitWithForce() {
+    // Path A: soft-conflict override. Calls /v1/create with force=true.
+    // Backend rejects HARD conflicts even with force, so a 200 with
+    // created=false here means the conflict tightened mid-flight (e.g.,
+    // a task transitioned to EXECUTING) — surface as a fresh warning.
+    setError(null);
+    setSubmitting(true);
+    try {
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+      const res = await createTask({
+        title: title.trim(),
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        category,
+        force: true,
+      });
+      if (!res.created) {
+        setError(
+          res.severity === "hard"
+            ? "Override rejected — an active timer now overlaps. Stop it first."
+            : "Override failed."
+        );
         return;
       }
       resetForm();
@@ -359,6 +430,28 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             </>
           )}
 
+          {softConflict && (
+            <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+              {softConflict.reasons.includes("overlap") && softConflict.overlapTitles.length > 0 && (
+                <div>
+                  Overlaps with{" "}
+                  <span className="font-medium text-white">
+                    {softConflict.overlapTitles.join(", ")}
+                  </span>
+                  .
+                </div>
+              )}
+              {softConflict.reasons.includes("duplicate_title") && softConflict.duplicateTitle && (
+                <div>
+                  Already have{" "}
+                  <span className="font-medium text-white">{softConflict.duplicateTitle}</span>{" "}
+                  today.
+                </div>
+              )}
+              <div className="mt-1 text-white/60">Create anyway?</div>
+            </div>
+          )}
+
           {error && (
             <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
               {error}
@@ -376,6 +469,10 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               disabled={submitting || pausedConflict.blockingTitles.length > 0}
             >
               Start as interruption
+            </Button>
+          ) : softConflict ? (
+            <Button onClick={submitWithForce} disabled={submitting}>
+              Create anyway
             </Button>
           ) : (
             <Button

@@ -88,16 +88,34 @@ export interface CreateTaskInput {
   force?: boolean;
 }
 
+export interface ConflictSummary {
+  task_id: string;
+  title: string;
+  start: string;
+  end: string;
+  state: string;
+  // Path A (Apr 16): which gate fired — drives override-rate analytics
+  // and the warning copy on the modal. "active_overlap" = HARD,
+  // "planned_overlap" / "duplicate_title" = SOFT.
+  gate_id?: string | null;
+}
+
 export interface CreateTaskResponse {
   task_id: string | null;
   created: boolean;
   notion_synced: boolean;
+  // Path A: severity gates whether the modal shows an override button.
+  // "hard" → no override (single-mutation authority). "soft" → can force.
+  severity?: "hard" | "soft" | null;
+  // "overlap" and/or "duplicate_title" — drives the warning copy.
+  soft_reasons?: string[];
   conflicts: Array<{
     task_id: string;
     title: string;
     start: string;
     end: string;
     state: TaskState;
+    gate_id?: string | null;
   }>;
   can_proceed: boolean;
 }

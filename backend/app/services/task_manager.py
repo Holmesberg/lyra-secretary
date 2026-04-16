@@ -14,7 +14,7 @@ from app.db.models import Task, TaskState, TaskSource, CategoryMapping
 from app.db.scoping import get_current_user_id
 from app.services.parser import TaskParser
 from app.services.state_machine import StateMachine
-from app.services.conflict_detector import ConflictDetector
+from app.services.conflict_detector import ConflictDetector, ConflictResult
 from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import to_utc, now_utc
@@ -133,23 +133,19 @@ class TaskManager:
         source: TaskSource = TaskSource.MANUAL,
         confidence_score: Optional[float] = None,
         force_conflicts: bool = False
-    ) -> tuple[Optional[Task], list[Task], bool]:
+    ) -> tuple[Optional[Task], ConflictResult, bool]:
         """
         Create a new task.
-        
-        Args:
-            title: Task title
-            start: Start time (UTC)
-            end: End time (UTC)
-            category: Optional category
-            state: Initial state (default PLANNED)
-            source: How task was created
-            confidence_score: Parser confidence
-            force_conflicts: Ignore conflicts if True
-            
+
         Returns:
-            (created_task, conflicts)
-            If conflicts exist and not forced: (None, conflicts)
+            (created_task | None, ConflictResult, notion_synced)
+
+        Severity contract (Path A, Apr 16 2026):
+          - HARD conflicts (overlap with EXECUTING) ALWAYS reject regardless
+            of force_conflicts. Single-mutation-authority is structural.
+          - SOFT conflicts (PLANNED/PAUSED overlap, duplicate title same UTC
+            day) reject when force_conflicts=False, accept when True.
+          - No conflicts → create normally.
         """
         # Convert naive local times (Cairo) to UTC before storing
         start = to_utc(start)
@@ -159,11 +155,14 @@ class TaskManager:
         if start < now_utc() - timedelta(minutes=5):
             raise ValueError("start_in_past: Task start time is in the past. Did you mean tomorrow?")
 
-        # Detect conflicts
-        conflicts = self.conflict_detector.detect(start, end)
-        
-        if conflicts and not force_conflicts:
-            return None, conflicts, False
+        # Classified detection (overlap + same-UTC-day duplicate title)
+        result = self.conflict_detector.detect(start, end, title=title)
+
+        # HARD always wins — force cannot override single-mutation authority
+        if result.has_hard():
+            return None, result, False
+        if result.has_soft() and not force_conflicts:
+            return None, result, False
         
         # Auto-infer category from title if not provided
         if not category:
@@ -568,12 +567,16 @@ class TaskManager:
         else:
             new_end = to_utc(new_end)
 
-        # Check for conflicts (excluding current task)
+        # Check for conflicts (excluding current task). Reschedule keeps its
+        # legacy permissive behavior — conflicts are reported but the move
+        # proceeds. Severity-based gating is /v1/create scope per Path A;
+        # adding it to /v1/reschedule would also tighten calendar drag/resize
+        # in ways that need their own browser-verify pass.
         conflicts = self.conflict_detector.detect(
             new_start,
             new_end,
-            exclude_task_id=task.task_id
-        )
+            exclude_task_id=task.task_id,
+        ).all_conflicts()
         
         # Update task
         task.planned_start_utc = new_start

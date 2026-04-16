@@ -62,7 +62,7 @@ async def create_task(
 
         manager = TaskManager(db)
         
-        task, conflicts, notion_synced = manager.create_task(
+        task, result, notion_synced = manager.create_task(
             title=request.title,
             start=request.start,
             end=request.end,
@@ -72,35 +72,56 @@ async def create_task(
             confidence_score=request.confidence_score,
             force_conflicts=request.force
         )
-        
+
         if task is None:
-            # Conflicts exist, not forced
-            conflict_info = [
-                ConflictInfo(
-                    task_id=c.task_id,
-                    title=c.title,
+            # Conflicts exist (HARD always rejects; SOFT rejects when
+            # force=False). Serialize per-conflict gate_id so the frontend
+            # can render hard vs soft + the analytics layer can attribute
+            # override rates per gate.
+            conflict_info: list[ConflictInfo] = []
+            for c in result.hard:
+                conflict_info.append(ConflictInfo(
+                    task_id=c.task_id, title=c.title,
                     start=to_local(c.planned_start_utc),
                     end=to_local(c.planned_end_utc),
-                    state=c.state
-                )
-                for c in conflicts
-            ]
+                    state=c.state, gate_id="active_overlap",
+                ))
+            for c in result.soft_overlap:
+                conflict_info.append(ConflictInfo(
+                    task_id=c.task_id, title=c.title,
+                    start=to_local(c.planned_start_utc),
+                    end=to_local(c.planned_end_utc),
+                    state=c.state, gate_id="planned_overlap",
+                ))
+            for c in result.soft_duplicate:
+                conflict_info.append(ConflictInfo(
+                    task_id=c.task_id, title=c.title,
+                    start=to_local(c.planned_start_utc),
+                    end=to_local(c.planned_end_utc),
+                    state=c.state, gate_id="duplicate_title",
+                ))
 
+            severity = result.severity()
             return TaskCreateResponse(
                 task_id=None,
                 created=False,
                 notion_synced=False,
                 conflicts=conflict_info,
-                can_proceed=True
+                # HARD never overridable; SOFT is.
+                can_proceed=(severity == "soft"),
+                severity=severity,
+                soft_reasons=result.soft_reasons(),
             )
-        
+
         assert task is not None  # guaranteed by the None check above
         response = TaskCreateResponse(
             task_id=task.task_id,
             created=True,
             notion_synced=notion_synced,
             conflicts=[],
-            can_proceed=True
+            can_proceed=True,
+            severity=None,
+            soft_reasons=[],
         )
 
         # FIX 4: Cache response for idempotency
