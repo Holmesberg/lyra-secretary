@@ -27,14 +27,24 @@ const PAUSE_REASON_OPTIONS: Array<{ value: string; label: string }> = [
 // Invariants). Click-outside now just dismisses the picker; the user
 // must explicitly pick a reason to pause.
 
-function formatElapsed(start: string, paused: boolean, totalPaused: number) {
-  const startMs = new Date(start).getTime();
-  const now = Date.now();
-  const activeMs = now - startMs - totalPaused * 60_000;
-  const secs = Math.max(0, Math.floor(activeMs / 1000));
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
+// Display timing — the old formula `now - start - total_paused_minutes`
+// ignored in-progress pauses (total_paused_minutes only accumulates
+// after a resume fires, so the active pause isn't in it), which made
+// the clock visibly jump forward on every 10 s poll while paused and
+// snap back on resume when the delta finally landed. Current approach:
+//   • Maintain a local {sec, ts} anchor with sub-minute precision.
+//   • While running, display = anchor.sec + (now − anchor.ts)/1000.
+//   • On each poll, advance anchor to server `elapsed_minutes` only if
+//     server > local (polls never rewind — server truncates to int min).
+//   • On pause → freeze current display as `frozenSec`.
+//   • On resume → rebase anchor to `frozenSec` so the clock continues
+//     from where the user saw it paused, not from minute-truncated
+//     server truth (which would backward-jump the sub-minute remainder).
+function formatHHMMSS(secs: number, paused: boolean) {
+  const safe = Math.max(0, Math.floor(secs));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
   const hh = h > 0 ? `${String(h).padStart(2, "0")}:` : "";
   return `${hh}${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}${
     paused ? " · paused" : ""
@@ -59,8 +69,49 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   const [showReasonPicker, setShowReasonPicker] = useState(false);
   const pickerRef = useRef<HTMLDivElement | null>(null);
 
+  const [anchor, setAnchor] = useState<{ sec: number; ts: number }>(() => ({
+    sec: (status.elapsed_minutes ?? 0) * 60,
+    ts: Date.now(),
+  }));
+  const [frozenSec, setFrozenSec] = useState<number | null>(
+    status.paused ? (status.elapsed_minutes ?? 0) * 60 : null
+  );
+  const prevPausedRef = useRef<boolean>(!!status.paused);
+
+  // Pause-transition effect — freezes on pause, rebases anchor on resume.
+  // anchor/frozenSec are intentionally NOT in deps: setting them inside
+  // the effect would re-fire it with wasPaused === isPaused and drop
+  // state. The effect only reacts to paused true↔false transitions.
   useEffect(() => {
-    if (status.paused) return; // freeze clock when paused
+    const wasPaused = prevPausedRef.current;
+    const isPaused = !!status.paused;
+    if (!wasPaused && isPaused) {
+      setFrozenSec(anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000));
+    } else if (wasPaused && !isPaused) {
+      if (frozenSec !== null) {
+        setAnchor({ sec: frozenSec, ts: Date.now() });
+      }
+      setFrozenSec(null);
+    }
+    prevPausedRef.current = isPaused;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.paused]);
+
+  // Server catch-up — advance to server `elapsed_minutes` only if it
+  // passes the local tick. Strict `>` so polls never rewind the display.
+  useEffect(() => {
+    if (status.paused) return;
+    const serverSec = (status.elapsed_minutes ?? 0) * 60;
+    const localSec = anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
+    if (serverSec > localSec) {
+      setAnchor({ sec: serverSec, ts: Date.now() });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.elapsed_minutes]);
+
+  // 1-Hz local tick for visual refresh; stopped while paused.
+  useEffect(() => {
+    if (status.paused) return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, [status.paused]);
@@ -92,11 +143,10 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
   if (!status.active || !status.start_time) return null;
   const paused = !!status.paused;
-  const elapsed = formatElapsed(
-    status.start_time,
-    paused,
-    status.total_paused_minutes ?? 0
-  );
+  const displaySec = frozenSec !== null
+    ? frozenSec
+    : anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
+  const elapsed = formatHHMMSS(displaySec, paused);
 
   async function applyPause(reason: string | undefined) {
     setShowReasonPicker(false);

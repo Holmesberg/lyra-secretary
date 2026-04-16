@@ -14,6 +14,7 @@ import {
   voidTask,
   type TaskRow as TaskRowType,
   type StopResponse,
+  type StopwatchStatus,
 } from "@/lib/tasks";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import { Button } from "@/components/ui/button";
@@ -187,11 +188,31 @@ function TodayInner() {
 
   async function handleStart(task: TaskRowType, readiness: number) {
     setErrorMsg(null);
+    // Optimistic flip — the API call is ~1.5s over the Supabase pooler,
+    // so close the readiness modal and flip status immediately. Snapshot
+    // for rollback if the server rejects (e.g., task already EXECUTING
+    // in another tab). Mirrors the cancelQueries pattern in
+    // active-timer-banner.tsx §applyPause.
+    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
+    const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], {
+      active: true,
+      task_id: task.task_id,
+      task_title: task.title,
+      paused: false,
+      start_time: new Date().toISOString(),
+      elapsed_minutes: 0,
+      planned_duration_minutes: task.planned_duration_minutes ?? 0,
+      total_paused_minutes: 0,
+    });
+    setReadinessFor(null);
     try {
       await startStopwatch(task.task_id, readiness);
-      setReadinessFor(null);
       refresh();
     } catch (e: any) {
+      if (snapshot !== undefined) {
+        qc.setQueryData(["stopwatch-status"], snapshot);
+      }
       setErrorMsg(e?.message ?? "Failed to start timer");
     }
   }
@@ -201,12 +222,22 @@ function TodayInner() {
     opts: { confirmed?: boolean; completionPct?: number } = {}
   ) {
     setErrorMsg(null);
+    // Optimistic flip — same cancelQueries pattern as handleStart. Clears
+    // the active banner + unlocks Start buttons on sibling tasks instantly.
+    // If the backend responds with requires_confirmation (early-stop gate),
+    // we roll back so the banner stays visible for the confirmation modal.
+    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
+    const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], { active: false });
     try {
       const res: StopResponse = await stopStopwatch(reflection, {
         confirmed: opts.confirmed,
         task_completion_percentage: opts.completionPct,
       });
       if (res.requires_confirmation) {
+        if (snapshot !== undefined) {
+          qc.setQueryData(["stopwatch-status"], snapshot);
+        }
         setEarlyStop({
           elapsed: res.duration_minutes,
           planned: res.planned_duration_minutes,
@@ -233,6 +264,9 @@ function TodayInner() {
       }
       refresh();
     } catch (e: any) {
+      if (snapshot !== undefined) {
+        qc.setQueryData(["stopwatch-status"], snapshot);
+      }
       setErrorMsg(e?.message ?? "Failed to stop timer");
     }
   }
