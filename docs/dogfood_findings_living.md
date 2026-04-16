@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 14, 2026 (Phase 4.5: feedback/output-loop audit landed D1–D6 + G1–G4; retention mechanism reordered ahead of correctness polish; category_type promoted to pre-alpha per VT-13)
+**Last updated:** April 16, 2026 (four post-LYR-098 dogfood findings logged from Apr 15 operator session: pause-click bug [P1], conflict-detection strictness [P1], can't-start-while-paused Phase 5 design refinement [P2], EXECUTED immutability UX [P2]; Apr 11 P0 Tier 2 "paused-start" entry retired as superseded)
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -39,7 +39,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **New task modal stale defaults (state leak).** Title, duration, and category fields default to the last-created task's values instead of resetting when the modal reopens. Component state is not cleared on modal close. Phase 4.5 fix: reset `useState` fields in the `onClose` handler (or key the modal on `open` so React remounts it). Found during calendar dogfood Apr 11. *Found Apr 11, reproducible.*
 
-- **Cannot start a PLANNED task while another task is PAUSED.** Backend treats any PAUSED session as a blocking active session on the generic `/v1/tasks/{id}/start` path, so the start attempt rejects. The interruption flow we shipped in commit 705b9d0 handles the conflict case explicitly but the plain start path does not distinguish "paused parent" (legal — should trigger interruption flow) from "actively executing" (illegal). Fix: treat PAUSED as non-blocking on start, routing the start through the interruption flow implicitly, OR have the generic start path detect PAUSED conflicts and invoke the interruption resolver. Phase 4.5 — blocks normal usage when a task has been paused and forgotten. *Found Apr 11, reproducible.*
+- **~~Cannot start a PLANNED task while another task is PAUSED.~~** **SUPERSEDED Apr 15** → reframed as Phase 5 design refinement with explicit modal options (a/b/c). See the P2 entry "Cannot start new task while another is paused (Phase 5 design refinement)". The Apr 11 pragmatic fix (route through interruption flow implicitly) is retired in favor of the Phase 5 modal following `notification_patterns.md §Modal — decisional` contract. *Found Apr 11, retired Apr 15.*
 
 - **Edit click vs multi-select checkbox conflict on PLANNED rows.** Phase 4 added click-row-to-edit and checkbox-for-multi-select-void on the same row. Operator hasn't browser-verified that clicking the checkbox doesn't also trigger the edit modal, or vice versa. Needs verification. *Found Apr 11, untested.*
 
@@ -75,6 +75,10 @@ This document is edited continuously as new findings emerge. Sections of this do
 ## P1 — fix during Phase 4.5, before alpha
 
 ### OPEN
+
+- **Pause triggered by clicks outside pause button.** Reproduction unclear — operator reports clicking "anywhere on the screen" auto-pauses the active timer without reason capture. Measurement-integrity threat: corrupts `pause_count` and `pause_reason` data, affects VT-17 pause-prediction reliability and the downstream micro_mirror pause-count text ("N pauses this session"). Likely a stray click-outside handler in `ActiveTimerBanner` or the pause-reason picker overlay — investigate event-handler scope. Found post-LYR-098 dogfood. *Apr 15, reproduction pending.*
+
+- **Conflict detection too strict for planned tasks.** Gate B (shipped per `strategic_decisions_april_14.md §3`) hard-blocks non-voided task overlap, but planned-task overlap is a legitimate use case — context-switching, contingent tasks, multi-task scenarios (see `parked_ideas.md §Multi-task logging with cognitive bandwidth allocation`). Relax to: **hard block** for EXECUTING-vs-anything; **soft warning** for PLANNED-vs-PLANNED overlap + duplicate title, with force-override. Connects to multi-task logging investigation — allowing planned overlap is a precondition for honest multi-task data collection. Targeted fix before April 18 trusted-user launch (1–2 hour implementation). *Apr 15.*
 
 - **Conflict detection override rate monitoring.** Track `override_rate` per gate (Gate 1 active overlap / Gate 2 non-voided overlap / Gate 3 duplicate-title soft warning) per user per week. If `override_rate > 0.5` at any gate, tune thresholds or messaging. Add to operator analytics notebook as a Day 10 interrogation question. Depends on the Phase 4.5 Tier 1 conflict-override affordance landing — override actions must log reason + gate_id for this to analyze. *Locked Apr 14.*
 
@@ -120,6 +124,10 @@ This document is edited continuously as new findings emerge. Sections of this do
 ## P2 — defer to v2 backlog or post-alpha
 
 ### OPEN
+
+- **Cannot start new task while another is paused (Phase 5 design refinement).** State machine treats PAUSED as an active session, blocking new EXECUTING per the single-mutation-authority rule. UX gap: user can't switch tasks without first explicitly ending the paused session. Proposed solutions: **(a)** auto-mark paused as abandoned on new-start, **(b)** auto-resume + EXECUTED on new-start, **(c)** explicit prompt modal letting user choose. Recommend **(c)** as Phase 5 design work — needs a proper modal following `notification_patterns.md §Modal — decisional` contract (labels describe consequences, not system state). Related to multi-task logging investigation (`parked_ideas.md`). **Supersedes** the Apr 11 P0 Tier 2 entry on the same problem (that entry's proposed fix — routing through the interruption flow — is reframed here with explicit design options); operator to decide whether to retire the older entry during next triage. *Apr 15.*
+
+- **EXECUTED task immutability not visually communicated.** Current row design treats EXECUTED similarly to PLANNED — only the status tag indicates state. Users may attempt to edit and hit walls without understanding why. Recommend implicit affordance: reduce opacity, hide edit action, keep void action, surface the immutability explanation only when the user attempts to edit. Avoids front-loading complexity at onboarding. Connects to onboarding design (Phase 5). *Apr 15.*
 
 - **category_type field (estimable vs time_anchored).** **Promoted from P2 to P0 Tier 1 pre-alpha on Apr 14** per `MANIFESTO.md §VT-13 Category-Type Semantic Drift`. See below under P0 Tier 1 for the active entry. *Promoted Apr 14.*
 
