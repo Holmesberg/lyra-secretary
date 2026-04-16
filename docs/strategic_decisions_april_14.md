@@ -56,9 +56,21 @@ Override is a logged user action, preserving research integrity while
 respecting user authority. Override rate becomes a signal for tuning gate
 thresholds rather than a rule violation.
 
+**April 16, 2026 refinement (Path A — shipped `bb5d5d9`):** the Apr 14
+"hard block on any non-voided overlap" was too strict for legitimate
+PLANNED-vs-PLANNED use cases (context-switching, contingent tasks,
+multi-task scenarios — see `parked_ideas.md §Multi-task logging`).
+Hard-block scope tightened to **EXECUTING-vs-anything** only;
+PLANNED-vs-PLANNED demoted to soft warning with `force=true` override.
+Duplicate-title (same UTC date) added as a third soft gate. Single
+mutation authority is preserved structurally — HARD conflicts cannot
+be force-overridden even with `force=true`. Surfaced by Apr 15 dogfood
+finding "Conflict detection too strict for planned tasks" after the
+LYR-098 toast-surfacing browser-verify session.
+
 **Documented in:**
-- `docs/building_phases.md §Phase 4.5 Tier 1 — Conflict detection with forced override affordance`
-- `docs/dogfood_findings_living.md §Conflict detection override rate monitoring`
+- `docs/building_phases.md §Phase 4.5 Tier 1 — Conflict detection with forced override affordance` (updated Apr 16 with relaxed model)
+- `docs/dogfood_findings_living.md §Conflict detection override rate monitoring` and §FIXED list (Apr 15 finding closed by `bb5d5d9`)
 - `docs/operator_interrogation_checklist.md §Notification and override patterns` (Day 10)
 
 ---

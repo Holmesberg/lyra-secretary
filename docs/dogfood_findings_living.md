@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 16, 2026 (four post-LYR-098 dogfood findings logged from Apr 15 operator session: pause-click bug [P1], conflict-detection strictness [P1], can't-start-while-paused Phase 5 design refinement [P2], EXECUTED immutability UX [P2]; Apr 11 P0 Tier 2 "paused-start" entry retired as superseded)
+**Last updated:** April 16, 2026 (Path A shipped — Conflict detection relaxation closed by commit `bb5d5d9`; remaining Apr 15 findings: pause-anywhere [P1], can't-start-while-paused Phase 5 design [P2], EXECUTED immutability UX [P2])
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -78,7 +78,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **Pause triggered by clicks outside pause button.** Reproduction unclear — operator reports clicking "anywhere on the screen" auto-pauses the active timer without reason capture. Measurement-integrity threat: corrupts `pause_count` and `pause_reason` data, affects VT-17 pause-prediction reliability and the downstream micro_mirror pause-count text ("N pauses this session"). Likely a stray click-outside handler in `ActiveTimerBanner` or the pause-reason picker overlay — investigate event-handler scope. Found post-LYR-098 dogfood. *Apr 15, reproduction pending.*
 
-- **Conflict detection too strict for planned tasks.** Gate B (shipped per `strategic_decisions_april_14.md §3`) hard-blocks non-voided task overlap, but planned-task overlap is a legitimate use case — context-switching, contingent tasks, multi-task scenarios (see `parked_ideas.md §Multi-task logging with cognitive bandwidth allocation`). Relax to: **hard block** for EXECUTING-vs-anything; **soft warning** for PLANNED-vs-PLANNED overlap + duplicate title, with force-override. Connects to multi-task logging investigation — allowing planned overlap is a precondition for honest multi-task data collection. Targeted fix before April 18 trusted-user launch (1–2 hour implementation). *Apr 15.*
+- **~~Conflict detection too strict for planned tasks.~~** **FIXED** by Path A — hard-block scope tightened to EXECUTING-vs-anything; PLANNED-vs-PLANNED + duplicate-title (same UTC day) now soft warnings with `force=true` override. Per-conflict `gate_id` exposed for override-rate analytics. Single-mutation authority preserved (HARD cannot be force-overridden). Shipped commit `bb5d5d9` (Apr 16). *Apr 15, FIXED Apr 16.*
 
 - **Conflict detection override rate monitoring.** Track `override_rate` per gate (Gate 1 active overlap / Gate 2 non-voided overlap / Gate 3 duplicate-title soft warning) per user per week. If `override_rate > 0.5` at any gate, tune thresholds or messaging. Add to operator analytics notebook as a Day 10 interrogation question. Depends on the Phase 4.5 Tier 1 conflict-override affordance landing — override actions must log reason + gate_id for this to analyze. *Locked Apr 14.*
 
