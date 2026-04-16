@@ -45,7 +45,7 @@ Postgres (Supabase eu-west-1, prod) | SQLite (local dev) + Redis + Notion API
 
 **Production deployment** (from April 16, 2026): `https://lyraos.org` (frontend) and `https://api.lyraos.org` (backend) served via Cloudflare Tunnel from the operator's laptop. Primary DB is Supabase Postgres (`xrrboaxptttdzednaxwk`, eu-west-1 pooler on port 6543, sslmode=require). SQLite fallback kept at `.env.backup-sqlite-2026-04-16` for fast revert. Full architecture + recovery playbook in `docs/deployment_architecture.md`.
 
-Background jobs (APScheduler) run inside the FastAPI process: reminders every 1 min, Notion sync retries every 5 min, timer overflow alerts every 2 min, overdue task detection every 30 min, stale session recovery every 15 min (sweeps unclosed sessions older than 12h).
+Background jobs (APScheduler — 7 jobs) run inside the FastAPI process: reminders every 1 min, Notion sync retries every 5 min, timer overflow alerts every 2 min, overdue task detection every 30 min, stale session recovery every 15 min (sweeps unclosed sessions older than 12h), VT-17 pause prediction every 1 min per-user (fires + logs + enqueues notification), VT-17 outcome reconciliation every 1 min (closes pause_prediction_log acceptance windows).
 
 ### Single Mutation Authority
 
@@ -55,8 +55,9 @@ Background jobs (APScheduler) run inside the FastAPI process: reminders every 1 
 
 ```
 PLANNED → EXECUTING ⇄ PAUSED → EXECUTED (immutable)
-        ↘ SKIPPED  (immutable, from PLANNED|EXECUTING|PAUSED)
+        ↘ SKIPPED  (immutable terminal, from PLANNED|EXECUTING|PAUSED)
 PLANNED → DELETED   (soft delete, immutable)
+SKIPPED → DELETED   (soft-delete cleanup only)
 ```
 
 PAUSED is non-terminal: it must resolve to EXECUTED (via auto-resume on stop)

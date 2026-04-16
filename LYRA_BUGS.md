@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 11, 2026 — v1.7. 17 open, 26 deferred (OpenClaw), 59 fixed.
+Last updated: April 16, 2026 — v1.8 (alignment audit pre-launch). 16 open, 26 deferred (OpenClaw), 86 fixed.
 
 ---
 
-## Open (17 bugs)
+## Open (16 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -23,15 +23,15 @@ Last updated: April 11, 2026 — v1.7. 17 open, 26 deferred (OpenClaw), 59 fixed
 | LYR-092 | 🟡 medium | notion | notion_sync retry loop infinitely retries archived pages | Should detect "Can't edit block that is archived" error and drop from Redis queue instead of retrying every 5 min. |
 | LYR-096 | 🟡 medium | frontend | `task_completion_percentage` dropped between ReflectionModal and stopStopwatch | `today/page.tsx:112` passes `{ confirmed }` but not `task_completion_percentage`. Value from modal never reaches backend. |
 | LYR-097 | 🟡 medium | frontend | `is_future_task` warning from start endpoint not shown in UI | Backend returns `is_future_task: true` but frontend ignores it. No warning when starting timer for future task. |
-| LYR-098 | 🟡 medium | frontend | `micro_mirror` and `calibration_nudge` not displayed after stop | Backend computes and returns both strings but frontend discards them. Research signal lost. |
 | LYR-099 | 🟢 low | frontend | New task modal start time stale after idle | `defaultStart()` called once on mount. Reopening modal after 30min shows stale default time. |
 
 ---
 
-## Fixed (59 bugs)
+## Fixed (86 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
+| LYR-098 | 🟡 medium | frontend | `micro_mirror` and `calibration_nudge` not displayed after stop | Shipped Apr 16 as 4 commits (fixture tests `553d7b0` → text neutralization + filter fix `a8aeae0` → `reflection_view_log` persistence + write-on-fire `0593d71` → Toast UI + dismiss callbacks `c8efff2`). Full feedback loop live: micro_mirror auto-dismiss, calibration_nudge pinned, both stamp viewed/dismissed to reflection_view_log. |
 | LYR-001 | 🔴 high | backend | Past time not rejected | `create_task()` rejects start >5min in past. Confirmed working. |
 | LYR-002 | 🔴 high | skill | OpenClaw reports wrong time to user | SKILL.md Hard Rule #4: report `start` from API response, never own extraction. |
 | LYR-003 | 🟡 medium | backend | Stopwatch path inconsistency | Router prefixed with `/stopwatch`. Paths now `/v1/stopwatch/start`, `/v1/stopwatch/stop`, `/v1/stopwatch/status`. Confirmed 404 on old paths. |
@@ -102,12 +102,11 @@ Last updated: April 11, 2026 — v1.7. 17 open, 26 deferred (OpenClaw), 59 fixed
 ### Medium (🟡)
 3. LYR-096 — `task_completion_percentage` dropped in frontend stop flow
 4. LYR-097 — `is_future_task` warning not shown in UI
-5. LYR-098 — `micro_mirror` and `calibration_nudge` not displayed
-6. LYR-088 — resume() loses Redis session reference after another stopwatch runs in between
-7. LYR-068 — Notion date timezone double conversion
-8. LYR-056 — validate "then" chaining in parse_chained()
-9. LYR-050 — backfill initiation_status on historical tasks
-10. LYR-092 — notion_sync retry on archived pages
+5. LYR-088 — resume() loses Redis session reference after another stopwatch runs in between
+6. LYR-068 — Notion date timezone double conversion
+7. LYR-056 — validate "then" chaining in parse_chained()
+8. LYR-050 — backfill initiation_status on historical tasks
+9. LYR-092 — notion_sync retry on archived pages
 
 ### Low (🟢)
 11. LYR-099 — New task modal start time stale after idle

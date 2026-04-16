@@ -184,6 +184,8 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | GET | `/v1/analytics/insights` | Behavioral insights — pattern detection after sufficient sessions |
 | GET | `/v1/analytics/cascade` | Cascade failure analysis — sequential abandonment patterns |
 | GET | `/v1/analytics/bias_factor` | Per-category bias_factor with Bayesian shrinkage (Phase 6 surface) |
+| GET | `/v1/analytics/pause_prediction` | VT-17 pause-prediction dashboard: firing volume, acceptance_rate, per-mechanism breakdown |
+| POST | `/v1/pause_predictions/{firing_id}/respond` | Record user response to a pause_prediction firing: `pause_now` \| `dismiss` \| `snooze` (VT-17) |
 | GET | `/v1/health` | Health check |
 | GET | `/v1/skill/ping` | Skill health check — active stopwatch, pending tasks today |
 

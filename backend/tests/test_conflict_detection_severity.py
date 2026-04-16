@@ -51,11 +51,27 @@ def _clean_env(db):
     set_current_user_id(None)
 
 
+def _same_day_anchor() -> datetime:
+    """Return a future timestamp guaranteed to leave room for +6h probes
+    within the same UTC calendar day — used by duplicate-title tests that
+    would otherwise flake when the suite runs past 18:00 UTC and
+    `now + 6h` crosses midnight into a different date bucket. Picks
+    tomorrow at 09:00 UTC so probes up to +14h stay same-day.
+    """
+    n = now_utc()
+    tomorrow = n + timedelta(days=1)
+    return datetime(tomorrow.year, tomorrow.month, tomorrow.day, 9, 0, 0)
+
+
 def _seed_task(
     db, *, title="t", state=TaskState.PLANNED,
     start_offset_min=60, duration_min=30, voided_at=None,
+    start_time: datetime | None = None,
 ) -> Task:
-    start = now_utc() + timedelta(minutes=start_offset_min)
+    if start_time is not None:
+        start = start_time
+    else:
+        start = now_utc() + timedelta(minutes=start_offset_min)
     end = start + timedelta(minutes=duration_min)
     t = Task(
         title=title,
@@ -129,11 +145,13 @@ def test_soft_conflict_paused_overlap_preserves_pause_state(db):
 
 
 def test_soft_conflict_duplicate_title_same_utc_day(db):
-    # Existing 'Lunch' at +2h
-    _seed_task(db, title="Lunch", state=TaskState.PLANNED, start_offset_min=120)
+    # Anchor-based timestamps — both on tomorrow's UTC day, different hours.
+    # (Was `now_utc() + 6h` which crossed midnight when suite ran after 18 UTC.)
+    anchor = _same_day_anchor()
+    _seed_task(db, title="Lunch", state=TaskState.PLANNED,
+               start_time=anchor + timedelta(hours=2))
     detector = ConflictDetector(db)
-    # New 'Lunch' at +6h — same UTC day, no overlap
-    new_start = now_utc() + timedelta(hours=6)
+    new_start = anchor + timedelta(hours=6)
     new_end = new_start + timedelta(minutes=30)
     result = detector.detect(new_start, new_end, title="Lunch")
     assert result.severity() == "soft"
@@ -143,9 +161,11 @@ def test_soft_conflict_duplicate_title_same_utc_day(db):
 
 
 def test_duplicate_title_case_insensitive(db):
-    _seed_task(db, title="Lunch", state=TaskState.PLANNED, start_offset_min=120)
+    anchor = _same_day_anchor()
+    _seed_task(db, title="Lunch", state=TaskState.PLANNED,
+               start_time=anchor + timedelta(hours=2))
     detector = ConflictDetector(db)
-    new_start = now_utc() + timedelta(hours=6)
+    new_start = anchor + timedelta(hours=6)
     new_end = new_start + timedelta(minutes=30)
     result = detector.detect(new_start, new_end, title="LUNCH")
     assert "duplicate_title" in result.soft_reasons()
@@ -336,8 +356,10 @@ def test_endpoint_hard_force_true_still_blocked(client, db):
 
 
 def test_endpoint_duplicate_title_soft(client, db):
-    _seed_task(db, title="Lunch", state=TaskState.PLANNED, start_offset_min=120)
-    new_start = now_utc() + timedelta(hours=6)
+    anchor = _same_day_anchor()
+    _seed_task(db, title="Lunch", state=TaskState.PLANNED,
+               start_time=anchor + timedelta(hours=2))
+    new_start = anchor + timedelta(hours=6)
     new_end = new_start + timedelta(minutes=30)
     r = client.post("/v1/create", json={
         "title": "Lunch", "start": _iso(new_start), "end": _iso(new_end),

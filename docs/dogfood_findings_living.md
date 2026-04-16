@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 16, 2026 (deployment live on lyraos.org via Cloudflare Tunnel + Supabase Postgres; 2 new P2 entries added: pause/resume residual delay (frontend), oslyra.com domain watch)
+**Last updated:** April 16, 2026 (deployment live on lyraos.org via Cloudflare Tunnel + Supabase Postgres; LYR-098 + ReflectionModal completion % ungate moved to FIXED with commit hashes; calendar-mobile + pause-residual-delay + oslyra.com-watch P2 entries added; alignment audit commit `chore(alignment)` pre-Apr-18 launch cleaned cross-doc drift)
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -15,7 +15,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN — Tier 1 retention architecture (shipping gate)
 
-- **micro_mirror and calibration_nudge not surfaced after stop (LYR-098).** Backend computes both on every stop, frontend never displays them. Feedback/output loop is broken — Lyra feels like a logger instead of a mirror. Fix: render `micro_mirror` as toast (8s auto-dismiss) and `calibration_nudge` as modal with keep/adjust/dismiss affordance. See `docs/design_patterns/notification_patterns.md`. Promoted from P1 to P0 Tier 1 per feedback/output audit April 14 — this is the retention mechanism itself, not polish. *Audit Apr 14.*
+- **~~micro_mirror and calibration_nudge not surfaced after stop (LYR-098).~~** **SHIPPED Apr 16** across 4 commits (`553d7b0` fixture tests precondition → `a8aeae0` text neutralization + filter fix → `0593d71` reflection_view_log persistence + write-on-fire hook → `c8efff2` Toast UI + dismiss callbacks, browser-verified on live operator data). calibration_nudge reclassified Modal → Toast (pinned-by-default) because content is post-hoc informational, not decisional. Feedback loop live end-to-end. *Audit Apr 14, FIXED Apr 16.*
 
 - **calibration_nudge at task creation (D3 seed).** When user sets `planned_duration_minutes` that predicts ≥25% overrun, surface pre-commit nudge with three affordances (keep / adjust to prediction / dismiss). Gated: (user × category) session count ≥ 10 before firing; "Insights unlock in N sessions" progress framing shown otherwise. Design spec: `docs/phase_6_architecture_backlog.md` §"Calibration Nudge at Task Creation (D3)". *Locked Apr 14.*
 
@@ -25,7 +25,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **is_future_task warning surfaced (LYR-097).** Backend returns warning when starting timer for task >5min in future; frontend must render inline warning banner and require confirmation before timer starts. Currently silently discarded. *Audit Apr 11, promoted to P0 Tier 1 Apr 14.*
 
-- **ReflectionModal completion % ungate.** Remove `earlyStop &&` guard in `reflection-modal.tsx:82` so the completion input appears on every stop (normal, early, overrun). Research signal currently lost for `task_completion_percentage` on all non-early stops. Promoted from P1 to P0 Tier 1 per audit April 14. *Apr 12, promoted Apr 14.*
+- **~~ReflectionModal completion % ungate.~~** **SHIPPED Apr 16** (`b0cdda0`). Removed the `earlyStop &&` guard at `reflection-modal.tsx:82`; completion % input now renders on every stop (optional). Closes the 77%-of-EXECUTED-tasks-had-NULL-completion gap surfaced in the Apr 16 data audit. *Apr 12, promoted Apr 14, FIXED Apr 16.*
 
 - **Fixture tests for retention-critical signals.** Backend tests that `/v1/stopwatch/stop` returns `micro_mirror` and `calibration_nudge` in expected shape; that `/v1/create` echoes the bias_factor prediction when session count is ≥10; that `/v1/analytics/insights` returns non-empty array after the 30-session gate. Prevents future refactors from silently breaking the feedback loop. *Audit Apr 14.*
 
@@ -98,7 +98,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **LYR-097 is_future_task warning ignored.** Backend returns warning when starting timer for task >5min in future, frontend silently discards. *Apr 11 audit.*
 
-- **LYR-098 micro_mirror and calibration_nudge ignored on stop.** Backend computes both, frontend never displays. Research signal lost. *Apr 11 audit.*
+- **~~LYR-098 micro_mirror and calibration_nudge ignored on stop.~~** **FIXED Apr 16** (see P0 Tier 1 entry above for shipping sequence; this P1 entry predated the promotion and is retained here as a historical pointer only). *Apr 11 audit, FIXED Apr 16.*
 
 - **Density and typography polish on Today view.** Half-page empty, text could be denser. Reference: Linear, Vercel, Cron, Raycast. *Apr 9.*
 
@@ -106,7 +106,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **Active timer banner display when paused very long.** Currently shows full HH:MM:SS counter which becomes absurd at 16+ hours. Cap display at "12h+ paused — auto-abandoning soon" once stale_session_recovery threshold is approached. *Apr 11.*
 
-- **ReflectionModal completion % ungate.** Currently the completion percentage input only renders on early-stop confirmation flow (`earlyStop && ...` guard in `reflection-modal.tsx:82`). Normal and overrun stops never collect it — research signal lost for the "how complete was this task?" dimension on every non-early stop. Remove the `earlyStop &&` gate so the input appears on every stop. Adds ~2s post-task friction per session — dogfood on operator only for 1 day before promoting to main. *Apr 12.*
+- **~~ReflectionModal completion % ungate.~~** **FIXED Apr 16** (`b0cdda0` — see P0 Tier 1 entry above; this P1 entry predated the promotion and is retained as a historical pointer). *Apr 12, FIXED Apr 16.*
 
 ### FIXED (recent — prune in 2 weeks)
 
