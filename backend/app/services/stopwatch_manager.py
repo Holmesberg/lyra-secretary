@@ -8,6 +8,7 @@ import logging
 import uuid
 
 from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
+from app.db.scoping import get_current_user_id
 from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, to_local
@@ -470,14 +471,23 @@ class StopwatchManager:
         self.db.add(pause_event)
         self.db.commit()
 
-        # Transition task state EXECUTING → PAUSED + Notion sync
+        # Transition task state EXECUTING → PAUSED. Notion sync is queued
+        # for the background notion_retry_job (every 5 min) instead of
+        # blocking the request thread — the inline sync_task() call took
+        # 1-8 s, which the frontend awaited before re-enabling the Pause
+        # button (perceived as "8-10 s state-switch delay" per Apr 16
+        # Investigation 3). Same retry queue used by create_task /
+        # reschedule_task on Notion failure.
         task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
         if task and task.state == TaskState.EXECUTING:
             self.task_manager.state_machine.transition(task, TaskState.PAUSED)
             try:
-                self.task_manager.notion.sync_task(task, db=self.db)
+                self.redis.queue_notion_sync(
+                    task.task_id, {"action": "sync"},
+                    user_id=str(get_current_user_id() or 1),
+                )
             except Exception as e:
-                logger.error(f"Notion sync failed on pause: {e}", exc_info=True)
+                logger.error(f"Notion enqueue failed on pause: {e}", exc_info=True)
 
         self.redis.set_pause_state(user_id, session.session_id, now.isoformat())
 
@@ -530,13 +540,19 @@ class StopwatchManager:
 
         self.db.commit()
 
-        # Transition task state PAUSED → EXECUTING + Notion sync
+        # Transition task state PAUSED → EXECUTING. Notion sync queued
+        # to background (see pause() comment for the same rationale —
+        # decouples the 1-8 s Notion API call from the request thread
+        # so resume feels instant in the UI).
         if task.state == TaskState.PAUSED:
             self.task_manager.state_machine.transition(task, TaskState.EXECUTING)
             try:
-                self.task_manager.notion.sync_task(task, db=self.db)
+                self.redis.queue_notion_sync(
+                    task.task_id, {"action": "sync"},
+                    user_id=str(get_current_user_id() or 1),
+                )
             except Exception as e:
-                logger.error(f"Notion sync failed on resume: {e}", exc_info=True)
+                logger.error(f"Notion enqueue failed on resume: {e}", exc_info=True)
 
         self.redis.clear_pause_state(user_id)
 
