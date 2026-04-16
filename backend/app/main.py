@@ -88,6 +88,22 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+# Per-request backend timing log. Added 2026-04-17 during P0 pause-
+# latency investigation (operator reported 13 s pause; uvicorn access
+# log doesn't record timing). Cost is microseconds per request —
+# cheap enough to leave in place as a standing latency probe.
+@app.middleware("http")
+async def log_request_timing(request, call_next):
+    import time
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logging.getLogger("lyra.perf").info(
+        f"{request.method} {request.url.path} {elapsed_ms:.0f}ms status={response.status_code}"
+    )
+    return response
+
 # Middleware ordering: Starlette applies middleware in REVERSE of
 # add_middleware order — the last-added wrapper becomes the outermost.
 #
