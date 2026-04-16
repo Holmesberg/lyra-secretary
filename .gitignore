@@ -55,7 +55,21 @@ htmlcov/
 # OS / logs
 .DS_Store
 Thumbs.db
+desktop.ini
 *.log
+
+# Editor history / merge artefacts
+.history/
+*.orig
+
+# Claude Code harness — transient runtime state + per-user local overrides
+# (settings.json itself is tracked, shared across contributors)
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+
+# Local operator artefacts — never belong in the public repo
+backups/
+docs/Screenshots/
 
 # Operator notebooks — working copies carry live user data, committed file is clean template
 notebooks/*.local.ipynb

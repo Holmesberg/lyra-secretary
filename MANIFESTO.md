@@ -670,6 +670,8 @@ Thresholds (per-user, not aggregate): acceptance_rate ≥ 0.40 = ship; < 0.20 = 
 
 **Status:** VT-17 documented April 14, 2026. Pre-registered before any pause_prediction_log data lands. Distinguishing analyses and acceptance-rate formula are immutable.
 
+### VT-18: *[Reserved — number skipped during April 14 batch insertion. No validity threat assigned.]*
+
 ### VT-19: Post-task endogeneity in `signed_discrepancy`
 **Threat:** `post_task_reflection` is captured after the user observes session outcome. Outcome knowledge contaminates post-ratings through hindsight bias (Fischhoff 1975), effort heuristic (Kahneman), and reconstructive memory (Koriat 1997). Because `signed_discrepancy = post_task_reflection − pre_task_readiness` includes `post_task_reflection`, correlations between `signed_discrepancy` and `duration_delta_minutes` may reflect mechanical coupling rather than psychological prediction. Related to common-method bias (Podsakoff et al. 2003) but with additional temporal information leakage.
 
