@@ -1,9 +1,10 @@
-# Lyra Secretary — Manifesto v1.4
+# Lyra Secretary — Manifesto v1.6
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
 *Revised: April 10, 2026. Day 7 — duality reframe, BCI complementary-signal model, VT-5 decision.*
 *Revised: April 14, 2026. Day 11 — framing clarification (research as QC infrastructure); VT-19 & VT-20; Rules 8 & 9; profile taxonomy methodological note; retention-before-polish scope clarification.*
+*Revised: April 16, 2026. Day 13 — Rule 11 no-nudge control days (VT-21 detection protocol); Rule 10 reserved.*
 
 ---
 
@@ -691,7 +692,9 @@ Thresholds (per-user, not aggregate): acceptance_rate ≥ 0.40 = ship; < 0.20 = 
 
 **Mitigation:** Track surface-fired vs surface-not-fired session metadata via `reflection_view_log` (shipping in LYR-098 Commit 2b). Compare subsequent `planned_duration_minutes` distributions and readiness ratings between surface-exposed and surface-naive sessions per category × time_of_day. If post-exposure estimates systematically shift toward bias_factor suggestions, narrative internalization is confirmed and analysis must be stratified.
 
-**Status:** VT-21 candidate documented April 15, 2026. Detection analysis added to operator interrogation checklist Day 30 milestone. Stratified analysis required for any post-surface H1 correlation reporting.
+**Detection protocol (formalized April 16, 2026):** pre-registered analysis Rule 11 adds a within-user control condition — randomly suppress `micro_mirror` / `calibration_nudge` / `/insights` on ~1-in-7 days beginning trusted-user week 2 — to generate paired nudge-active vs no-nudge day observations. Rule 11 specifies both the VT-21 detection criterion (systematic shift in `planned_duration_minutes` between nudge-exposed and nudge-suppressed days, controlling for category × time_of_day) and the necessity-of-nudge decision criterion (re-evaluate the mechanism if no-nudge days match or beat nudge-active days on calibration at N ≥ 30 paired days per user).
+
+**Status:** VT-21 candidate documented April 15, 2026. Detection protocol formalized April 16, 2026 via pre-registered analysis Rule 11. Stratified analysis required for any post-surface H1 correlation reporting.
 
 ## Anonymized Retention Policy
 
@@ -743,6 +746,7 @@ The experiment has started. Stay in measurement mode.
 *Manifesto v1.3 — revised April 10, 2026*
 *Manifesto v1.4 — revised April 14, 2026 (VT-12, VT-13, analysis rule 7, Shipping Philosophy)*
 *Manifesto v1.5 — revised April 15, 2026 (VT-19, VT-20, VT-21 candidate; Rules 8–9; profile taxonomy note; retention-scope clarification)*
+*Manifesto v1.6 — revised April 16, 2026 (Rule 11: no-nudge control days — VT-21 detection protocol; Rule 10 reserved)*
 
 ---
 
@@ -819,3 +823,7 @@ These rules are fixed in advance to remove analyst degrees of freedom on the day
 8. **Report the secondary pre-only H1 test alongside the primary.** *(Added April 14, 2026.)* In addition to the primary H1 test (Spearman ρ between `signed_discrepancy` and `duration_delta_minutes`), report the secondary test of `pre_task_readiness` alone vs. `duration_delta_minutes`. If the pre-only correlation is substantially weaker than the signed-discrepancy correlation, interpret the signed-discrepancy result with caution per VT-19 (post-task endogeneity): the stronger signed-discrepancy correlation may reflect mechanical coupling between `post_task_reflection` and session outcome rather than psychological prediction.
 
 9. **Report the disattenuated correlation estimate alongside the observed ρ.** *(Added April 14, 2026.)* In addition to the observed Spearman ρ used for the kill criterion decision, report the disattenuated correlation estimate per classical test theory (Spearman 1904), using test-retest reliability estimates for `pre_task_readiness` and `post_task_reflection`. Explicitly acknowledge that disattenuation requires reliability estimates not directly measured in this protocol — published single-item Likert reliability ranges will be used as proxies. The disattenuated value is interpretive context for the primary result, **not a basis for changing the kill criterion post-hoc**. The kill criterion decision is made on the observed ρ.
+
+10. ***[Reserved — slot left open April 16, 2026. No analysis rule assigned.]***
+
+11. **No-nudge control days (VT-21 detection protocol).** *(Added April 16, 2026.)* Beginning at trusted-user week 2 (after minimum 7 days of nudge-active baseline), suppress all `micro_mirror`, `calibration_nudge`, and `/insights` surfaces on randomly selected days at a 1-in-7 target frequency. Within-user, compare distributions of `duration_delta_minutes`, `skip_rate`, and `initiation_delay_minutes` between nudge-active and no-nudge days. Report paired effect sizes with confidence intervals. **Necessity-of-nudge decision criterion:** at N ≥ 30 paired day-observations per user, if no-nudge days produce statistically equivalent or better calibration, re-evaluate the necessity of the nudge mechanism. **VT-21 detection criterion:** if nudge-active days show systematically different `planned_duration_minutes` distributions than no-nudge days, controlling for category and time_of_day, narrative internalization is confirmed per VT-21. **Stratification requirement:** all post-nudge-deployment H1 analysis is stratified by nudge-exposure status at the session level (surface-fired vs surface-suppressed), using the `reflection_view_log` shipped in LYR-098 Commit 2b as the authoritative exposure flag.

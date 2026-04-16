@@ -129,3 +129,51 @@ bandwidth-weighted planned duration.
 - Offline mode (different problem, also recurrent)
 - VT-12, VT-17, VT-21 (similar measurement-intervention concerns)
 - Phase 6 calibration architecture
+
+---
+
+## Deadline-proximity risk assessment (H2 candidate)
+*Captured: April 16, 2026 (from ChatGPT conversation)*
+
+**Hypothesis:** Users systematically underestimate task duration as deadline
+approaches, producing increasing `duration_delta_minutes` near deadlines.
+Mechanism: temporal discounting × planning-fallacy interaction — imminent
+deadlines compress the mental representation of required work.
+
+**Status:** H2 candidate. Not in H1's kill-criterion chain and does not bear
+on the Apr 15 H1 decision. Documented here so it isn't lost; do not build.
+
+**Prerequisites (all required before any work begins):**
+- H1 validated or falsified first (see `MANIFESTO.md §Kill Criterion — H1`)
+- `deadline_utc` field added to task schema (currently absent — Lyra has no
+  deadline concept; tasks are scheduled, not deadlined)
+- Calendar integration (Google/Outlook) providing deadline data at task
+  creation time, or an in-app deadline-setting UX
+- Minimum 30 days of multi-user data with deadline-tagged tasks so
+  within-user deadline-proximity × delta correlation can be estimated
+  with enough paired observations per category
+
+**Phase:** 6+ (post-calibration-architecture). Deadline data is a new
+measurement axis, not a refinement of the existing discrepancy model.
+
+**Do not:**
+- Build mid-experiment (would add a new input variable to the H1 dataset
+  and invalidate the pre-registered analysis rules in MANIFESTO §801)
+- Ship deadline UI before H1 decision (would contaminate the single-
+  hypothesis window by introducing a competing behavioral signal users
+  will orient to)
+- Treat deadline_utc as equivalent to planned_start_utc / planned_end_utc
+  — they represent distinct constructs (scheduling vs. hard obligation)
+
+**Revisit conditions:**
+- H1 decision complete (validated, falsified, or explicit pivot)
+- Phase 6 calibration architecture is in active build
+- Operator has made an explicit scope call that H2 is the next hypothesis
+  to test (competing candidates exist — cascade hypothesis per MANIFESTO
+  §Paper 2, interruption-recovery cost, others)
+
+**Related:**
+- MANIFESTO §Kill Criterion (H1 pre-registration; H2 is downstream of H1)
+- MANIFESTO §Paper 2 cascade hypothesis (alternative post-H1 direction)
+- VT-7 (anchor-scheduling evidence base) — adjacent concern about the
+  calendar field's behavioral meaning
