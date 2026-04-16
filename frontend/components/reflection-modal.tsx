@@ -79,26 +79,30 @@ export function ReflectionModal({
           ))}
         </div>
 
-        {earlyStop && (
-          <div className="flex items-center gap-2 text-xs text-white/60">
-            <label htmlFor="pct">Completion %</label>
-            <input
-              id="pct"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="0–100"
-              value={pct}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/[^0-9]/g, "");
-                if (raw === "") { setPct(""); return; }
-                const n = parseInt(raw, 10);
-                setPct(String(Math.min(100, n)));
-              }}
-              className="h-8 w-20 rounded-md border border-white/15 bg-transparent px-2 text-sm"
-            />
-          </div>
-        )}
+        {/* LYR-098 sibling (Apr 16 ungate): completion % input is shown on
+            EVERY stop now, not just early-stop confirmations. Was gated on
+            earlyStop && for the pre-4.5 flow; the ungate lets the research
+            layer capture task_completion_percentage across normal/overrun
+            stops too (currently null on 77% of EXECUTED tasks per Apr 16
+            data audit). Input stays optional — user can leave blank. */}
+        <div className="flex items-center gap-2 text-xs text-white/60">
+          <label htmlFor="pct">Completion % (optional)</label>
+          <input
+            id="pct"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="0–100"
+            value={pct}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^0-9]/g, "");
+              if (raw === "") { setPct(""); return; }
+              const n = parseInt(raw, 10);
+              setPct(String(Math.min(100, n)));
+            }}
+            className="h-8 w-20 rounded-md border border-white/15 bg-transparent px-2 text-sm"
+          />
+        </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>
