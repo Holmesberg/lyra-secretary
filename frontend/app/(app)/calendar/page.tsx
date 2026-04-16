@@ -30,6 +30,7 @@ import { createResizePlugin } from "@schedule-x/resize";
 import {
   queryTasks,
   rescheduleTask,
+  getStopwatchStatus,
   type TaskRow as TaskRowType,
 } from "@/lib/tasks";
 import { NewTaskModal } from "@/components/new-task-modal";
@@ -135,18 +136,64 @@ function toZdt(iso: string): Temporal.ZonedDateTime {
   return Temporal.PlainDateTime.from(iso).toZonedDateTime(TIMEZONE);
 }
 
-function taskToEvent(task: TaskRowType): CalendarEventExternal | null {
+function taskToEvent(
+  task: TaskRowType,
+  liveStart?: Temporal.ZonedDateTime | null,
+  liveEnd?: Temporal.ZonedDateTime | null,
+): CalendarEventExternal | null {
   if (!task.start || !task.end) return null;
   const isImmutable =
     task.state === "EXECUTED" ||
     task.state === "SKIPPED" ||
     task.state === "EXECUTING" ||
     task.state === "PAUSED";
+
+  // Calendar truth (Apr 16 2026) — three contracts, one render function:
+  //
+  //   1. EXECUTING (active and not paused): block = status.start_time →
+  //      Temporal.Now. Grows on every 10 s stopwatch-status poll. Block
+  //      start MUST come from status.start_time (passed as liveStart)
+  //      because task.executed_start_utc is only written at stop time,
+  //      not during execution — reading it here returns null and
+  //      silently falls through to the planned block, which was the
+  //      original bug in this feature.
+  //
+  //   2. EXECUTED with actual times populated: block = task.executed_start
+  //      → task.executed_end. Shows what actually happened, not the
+  //      plan. Retroactive logs land here too (they populate both
+  //      executed_start_utc and executed_end_utc).
+  //
+  //   3. Everything else — PLANNED (intent), SKIPPED (unfulfilled
+  //      intent), PAUSED (deliberately out of scope in this pass),
+  //      EXECUTING that doesn't match status.task_id, EXECUTED missing
+  //      either executed time — falls back to planned start/end. The
+  //      pause-periods-rendered-inside-the-block feature is a separate
+  //      follow-up that requires a new pause_event fetch.
+  const isLiveActive =
+    liveStart != null && liveEnd != null && task.state === "EXECUTING";
+  const isHistorical =
+    task.state === "EXECUTED" &&
+    !!task.executed_start &&
+    !!task.executed_end;
+
+  let start: Temporal.ZonedDateTime;
+  let end: Temporal.ZonedDateTime;
+  if (isLiveActive) {
+    start = liveStart;
+    end = liveEnd;
+  } else if (isHistorical) {
+    start = toZdt(task.executed_start as string);
+    end = toZdt(task.executed_end as string);
+  } else {
+    start = toZdt(task.start);
+    end = toZdt(task.end);
+  }
+
   return {
     id: task.task_id,
     title: task.title,
-    start: toZdt(task.start),
-    end: toZdt(task.end),
+    start,
+    end,
     calendarId: calendarIdForState(task.state),
     _options: {
       // Drag and resize only make sense for PLANNED rows — once a
@@ -154,6 +201,10 @@ function taskToEvent(task: TaskRowType): CalendarEventExternal | null {
       disableDND: isImmutable,
       disableResize: isImmutable,
     },
+    // Keep a flag so downstream (e.g., a custom event template) can
+    // style the live-growing block distinctly from static EXECUTED
+    // or PLANNED blocks.
+    _isLive: isLiveActive,
     // Stash the full task row so onEventClick can find it without
     // hitting the cache again.
     _task: task,
@@ -199,17 +250,70 @@ export default function CalendarPage() {
     queryFn: () => queryTasks(pivotKey, RANGE_DAYS),
   });
 
+  // Stopwatch status poll — drives the live EXECUTING block. Inherits the
+  // global 10 s refetchInterval from providers.tsx. When the operator is
+  // actively timing a task, `statusQ.data` reports task_id + active/paused
+  // flags; the events memo below uses that to render the active block
+  // from actual_start → now, growing on every poll. `dataUpdatedAt` is
+  // included as a memo dep so the end-time recomputes every poll tick
+  // even when status payload is byte-identical (elapsed minute hasn't
+  // crossed yet) — without that dep the block would only grow on
+  // minute boundaries, not on every 10 s poll.
+  const statusQ = useQuery({
+    queryKey: ["stopwatch-status"],
+    queryFn: getStopwatchStatus,
+  });
+
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
   const [detailsTask, setDetailsTask] = useState<TaskRowType | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const events = useMemo(() => {
     if (!tasksQ.data) return [];
+    const status = statusQ.data;
+    // liveStart/liveEnd are non-null ONLY when the operator has an
+    // EXECUTING task running (active + not paused). Computed once here
+    // and passed per-task — taskToEvent applies them only to the task
+    // whose id matches status.task_id.
+    //
+    // liveStart comes from status.start_time (the stopwatch-session
+    // start, Cairo-local ISO string from to_local()), NOT from
+    // task.executed_start — the latter is null while a task is still
+    // EXECUTING (see stopwatch_manager.complete_task: executed_start_utc
+    // is only written at stop time). Reading task.executed_start in the
+    // live path was the bug that made the first iteration of this
+    // feature silently render planned times.
+    const activeId =
+      status?.active && !status?.paused ? status?.task_id : undefined;
+    const liveStart =
+      activeId && status?.start_time ? toZdt(status.start_time) : null;
+    const liveEnd = activeId
+      ? Temporal.Now.zonedDateTimeISO(TIMEZONE)
+      : null;
     return tasksQ.data
       .filter((t) => !t.voided_at)
-      .map(taskToEvent)
+      .map((t) => {
+        const isActive = t.task_id === activeId;
+        return taskToEvent(
+          t,
+          isActive ? liveStart : null,
+          isActive ? liveEnd : null,
+        );
+      })
       .filter((e): e is CalendarEventExternal => e !== null);
-  }, [tasksQ.data]);
+    // dataUpdatedAt changes on every poll, guaranteeing a fresh
+    // Temporal.Now on each refresh cycle. Without this dep the block
+    // would only grow when the status payload shape differs — but
+    // elapsed_minutes is int, so two polls 10 s apart often return
+    // identical data by-value.
+  }, [
+    tasksQ.data,
+    statusQ.data?.active,
+    statusQ.data?.task_id,
+    statusQ.data?.paused,
+    statusQ.data?.start_time,
+    statusQ.dataUpdatedAt,
+  ]);
 
   // `useNextCalendarApp` initializes the calendar ONCE on mount and the
   // callbacks inside its config close over whatever state existed at
