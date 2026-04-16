@@ -105,9 +105,19 @@ function TodayInner() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
+  // Orphan warning: shown inside ActiveTimerBanner when the user
+  // hovers/clicks a Start button on another task while paused. Dismiss
+  // persists for the session (one dismissal = no more nagging).
+  const [orphanWarnShown, setOrphanWarnShown] = useState(false);
+  const [orphanWarnDismissed, setOrphanWarnDismissed] = useState(false);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const dismissOrphanWarn = useCallback(() => {
+    setOrphanWarnDismissed(true);
+    setOrphanWarnShown(false);
   }, []);
 
   function pushToast(message: string, viewId: string | null, lifespan: "auto" | "pin") {
@@ -126,7 +136,22 @@ function TodayInner() {
 
   const status = statusQ.data;
   const activeTaskId = status?.active ? status.task_id : undefined;
-  const timerBusy = !!status?.active;
+  // Apr 16 fix: exclude paused from "busy" so users can start another
+  // task while their current one is paused. The backend's interruption
+  // flow handles the handoff (clears Redis for the parent, sets
+  // parent_task_id on the child). Phase 5 will replace the implicit
+  // interruption with an explicit modal (see dogfood: Cannot start new
+  // task while another is paused — Phase 5 design refinement).
+  const timerBusy = !!status?.active && !status?.paused;
+
+  const notifyPotentialStart = useCallback(() => {
+    // Fires on hover/focus/click of a non-active task's Start button.
+    // Only meaningful when a paused timer is present; otherwise the
+    // start will be a clean start. Dismissed-by-user → no-op.
+    if (status?.paused && !orphanWarnDismissed) {
+      setOrphanWarnShown(true);
+    }
+  }, [status?.paused, orphanWarnDismissed]);
 
   function sortKey(t: TaskRowType): number {
     const parse = (s: string | null) => (s ? new Date(s).getTime() : null);
@@ -336,7 +361,13 @@ function TodayInner() {
       </div>
 
       {/* Active timer banner: always visible regardless of viewed date */}
-      {status && <ActiveTimerBanner status={status} />}
+      {status && (
+        <ActiveTimerBanner
+          status={status}
+          showOrphanWarning={orphanWarnShown}
+          onDismissOrphanWarning={dismissOrphanWarn}
+        />
+      )}
 
       {errorMsg && (
         <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
@@ -375,6 +406,9 @@ function TodayInner() {
               task={t}
               disableStart={isPast || (timerBusy && t.task_id !== activeTaskId)}
               onStart={(task) => setReadinessFor(task)}
+              onStartHover={
+                t.task_id !== activeTaskId ? notifyPotentialStart : undefined
+              }
               onStop={() => setReflectionOpen(true)}
               onSkip={isPast ? undefined : handleSkip}
               onDelete={isPast ? undefined : handleDelete}

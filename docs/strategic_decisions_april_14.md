@@ -72,6 +72,7 @@ LYR-098 toast-surfacing browser-verify session.
 - `docs/building_phases.md §Phase 4.5 Tier 1 — Conflict detection with forced override affordance` (updated Apr 16 with relaxed model)
 - `docs/dogfood_findings_living.md §Conflict detection override rate monitoring` and §FIXED list (Apr 15 finding closed by `bb5d5d9`)
 - `docs/operator_interrogation_checklist.md §Notification and override patterns` (Day 10)
+- `docs/design_patterns/rules_vs_agency.md §Structural Invariants vs Behavioral Constraints` — the principle that emerged during this walk-back; any future conflict-gate tightening must first pass the diagnostic test (prevents data corruption, or merely prevents unanticipated user behavior?).
 
 ---
 

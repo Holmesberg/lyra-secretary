@@ -2,7 +2,7 @@
 
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
-**Last updated:** April 16, 2026 (Path A shipped — Conflict detection relaxation closed by commit `bb5d5d9`; remaining Apr 15 findings: pause-anywhere [P1], can't-start-while-paused Phase 5 design [P2], EXECUTED immutability UX [P2])
+**Last updated:** April 16, 2026 (pause-anywhere + can't-start-while-paused FIXED in Apr 16 batch; Apr 11 superseded-wrongly entry revived + retroactively FIXED; remaining Apr 15 findings: EXECUTED immutability UX [P2])
 **Status:** Active dogfood, pre-alpha
 
 This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
@@ -39,7 +39,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 - **New task modal stale defaults (state leak).** Title, duration, and category fields default to the last-created task's values instead of resetting when the modal reopens. Component state is not cleared on modal close. Phase 4.5 fix: reset `useState` fields in the `onClose` handler (or key the modal on `open` so React remounts it). Found during calendar dogfood Apr 11. *Found Apr 11, reproducible.*
 
-- **~~Cannot start a PLANNED task while another task is PAUSED.~~** **SUPERSEDED Apr 15** → reframed as Phase 5 design refinement with explicit modal options (a/b/c). See the P2 entry "Cannot start new task while another is paused (Phase 5 design refinement)". The Apr 11 pragmatic fix (route through interruption flow implicitly) is retired in favor of the Phase 5 modal following `notification_patterns.md §Modal — decisional` contract. *Found Apr 11, retired Apr 15.*
+- **~~Cannot start a PLANNED task while another task is PAUSED.~~** **REVIVED + FIXED Apr 16 batch** — the Apr 11 observation was correct. The Apr 15 reframing as "Phase 5 design refinement" was a misdiagnosis (see meta-lesson in the P2-now-FIXED entry below). Root cause was a 1-LOC frontend boolean in `today/page.tsx:129`, not a missing modal contract. Fix shipped Apr 16 batch alongside pause-anywhere. *Found Apr 11, FIXED Apr 16.*
 
 - **Edit click vs multi-select checkbox conflict on PLANNED rows.** Phase 4 added click-row-to-edit and checkbox-for-multi-select-void on the same row. Operator hasn't browser-verified that clicking the checkbox doesn't also trigger the edit modal, or vice versa. Needs verification. *Found Apr 11, untested.*
 
@@ -76,7 +76,7 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
-- **Pause triggered by clicks outside pause button.** Reproduction unclear — operator reports clicking "anywhere on the screen" auto-pauses the active timer without reason capture. Measurement-integrity threat: corrupts `pause_count` and `pause_reason` data, affects VT-17 pause-prediction reliability and the downstream micro_mirror pause-count text ("N pauses this session"). Likely a stray click-outside handler in `ActiveTimerBanner` or the pause-reason picker overlay — investigate event-handler scope. Found post-LYR-098 dogfood. *Apr 15, reproduction pending.*
+- **~~Pause triggered by clicks outside pause button.~~** **FIXED Apr 16 batch** — root cause: `active-timer-banner.tsx:73` fired `applyPause(PAUSE_REASON_DEFAULT)` on every pointerdown outside the reason picker, silently pausing with `"external_interruption"` as the reason. Violated `do_not_add.md §Hardcoded default values` (pause_reason is a research-relevant field — structural invariant per `rules_vs_agency.md`). Fix: click-outside now dismisses the picker via `setShowReasonPicker(false)`; no pause fires. `PAUSE_REASON_DEFAULT` constant removed. Applied example added to `rules_vs_agency.md §Applied examples`. *Apr 15, FIXED Apr 16.*
 
 - **~~Conflict detection too strict for planned tasks.~~** **FIXED** by Path A — hard-block scope tightened to EXECUTING-vs-anything; PLANNED-vs-PLANNED + duplicate-title (same UTC day) now soft warnings with `force=true` override. Per-conflict `gate_id` exposed for override-rate analytics. Single-mutation authority preserved (HARD cannot be force-overridden). Shipped commit `bb5d5d9` (Apr 16). *Apr 15, FIXED Apr 16.*
 
@@ -125,7 +125,9 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ### OPEN
 
-- **Cannot start new task while another is paused (Phase 5 design refinement).** State machine treats PAUSED as an active session, blocking new EXECUTING per the single-mutation-authority rule. UX gap: user can't switch tasks without first explicitly ending the paused session. Proposed solutions: **(a)** auto-mark paused as abandoned on new-start, **(b)** auto-resume + EXECUTED on new-start, **(c)** explicit prompt modal letting user choose. Recommend **(c)** as Phase 5 design work — needs a proper modal following `notification_patterns.md §Modal — decisional` contract (labels describe consequences, not system state). Related to multi-task logging investigation (`parked_ideas.md`). **Supersedes** the Apr 11 P0 Tier 2 entry on the same problem (that entry's proposed fix — routing through the interruption flow — is reframed here with explicit design options); operator to decide whether to retire the older entry during next triage. *Apr 15.*
+- **~~Cannot start new task while another is paused.~~** **FIXED Apr 16 batch** — root cause was purely frontend. `today/page.tsx:129` set `timerBusy = !!status?.active`, which is `true` during pause (status.active + status.paused are both flagged by design). The `disableStart` prop on every non-active TaskRow was therefore stuck at `true` whenever any timer existed — users literally couldn't click Start to reach the backend interruption flow. Backend was always correct (`stopwatch_manager.start()` handles the paused-parent case). **1-LOC fix**: `timerBusy = !!status?.active && !status?.paused`. Plus an orphan-warning banner inside `ActiveTimerBanner` that surfaces on hover/focus/click of a non-active Start button while paused, warning that the current task will be left orphaned in the background (auto-closes after 12h via stale-session-recovery). Phase 5 will replace the implicit interruption with an explicit modal per the original design brief; until then, the informational warning is the v1 UX. *Apr 15, FIXED Apr 16.*
+
+  **Meta-lesson:** this bug was marked "SUPERSEDED Apr 15 → reframed as Phase 5 design refinement" earlier today. That supersession was premature. The Apr 11 P0 Tier 2 entry's *observation* (start blocked when paused) was accurate; its *proposed fix* (route through interruption flow implicitly) was already what the backend did. The actual block was a 1-LOC frontend boolean, not a structural issue requiring a new modal contract. **Verify diagnosis complexity before deferring — "Phase 5 design work" was a misdiagnosis that nearly shipped a week of UX friction into the trusted-user launch window.**
 
 - **EXECUTED task immutability not visually communicated.** Current row design treats EXECUTED similarly to PLANNED — only the status tag indicates state. Users may attempt to edit and hit walls without understanding why. Recommend implicit affordance: reduce opacity, hide edit action, keep void action, surface the immutability explanation only when the user attempts to edit. Avoids front-loading complexity at onboarding. Connects to onboarding design (Phase 5). *Apr 15.*
 

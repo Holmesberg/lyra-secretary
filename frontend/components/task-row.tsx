@@ -18,6 +18,10 @@ interface Props {
   selected?: boolean;
   showCheckbox?: boolean;
   onToggleSelect?: (taskId: string) => void;
+  // Fires when user hovers or clicks this row's Start button. Page-level
+  // owner uses this to surface a contextual orphan-warning when a paused
+  // timer is present (see ActiveTimerBanner orphan-warning prop).
+  onStartHover?: () => void;
 }
 
 // Research layer: readiness X → focus Y ±Nmin
@@ -60,7 +64,7 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
 
 export function TaskRow({
   task, disableStart, onStart, onStop, onSkip, onDelete, onEdit,
-  selected, showCheckbox, onToggleSelect,
+  selected, showCheckbox, onToggleSelect, onStartHover,
 }: Props) {
   // P1-1: 12-hour format.
   const start = task.start ? format(new Date(task.start), "h:mm a") : "—";
@@ -123,7 +127,9 @@ export function TaskRow({
             <Button
               size="sm"
               variant="secondary"
-              onClick={() => onStart(task)}
+              onMouseEnter={onStartHover}
+              onFocus={onStartHover}
+              onClick={() => { onStartHover?.(); onStart(task); }}
               disabled={disableStart}
               title={disableStart ? "Another timer is active" : "Start timer"}
             >

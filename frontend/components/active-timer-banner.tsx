@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pause, Play } from "lucide-react";
+import { Pause, Play, X } from "lucide-react";
 import {
   pauseStopwatch,
   resumeStopwatch,
@@ -21,10 +21,11 @@ const PAUSE_REASON_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "prayer", label: "Prayer" },
 ];
 
-// Fallback when the user opens the picker and clicks outside without
-// choosing — most commonly they got pulled into something, so
-// external_interruption is the least-wrong assumption.
-const PAUSE_REASON_DEFAULT = "external_interruption";
+// Silent default on click-outside was removed Apr 16 — pause_reason is
+// a structural invariant (research-relevant field per do_not_add.md
+// §Hardcoded default values and rules_vs_agency.md §Structural
+// Invariants). Click-outside now just dismisses the picker; the user
+// must explicitly pick a reason to pause.
 
 function formatElapsed(start: string, paused: boolean, totalPaused: number) {
   const startMs = new Date(start).getTime();
@@ -40,7 +41,17 @@ function formatElapsed(start: string, paused: boolean, totalPaused: number) {
   }`;
 }
 
-export function ActiveTimerBanner({ status }: { status: StopwatchStatus }) {
+interface Props {
+  status: StopwatchStatus;
+  // Set by the page when the user hovers/clicks the Start button on
+  // another PLANNED task while this timer is PAUSED. Used to surface a
+  // contextual orphan warning (the current interruption flow leaves the
+  // paused task resumable only via stale-session recovery after 12h).
+  showOrphanWarning?: boolean;
+  onDismissOrphanWarning?: () => void;
+}
+
+export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWarning }: Props) {
   const qc = useQueryClient();
   const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -55,14 +66,16 @@ export function ActiveTimerBanner({ status }: { status: StopwatchStatus }) {
   }, [status.paused]);
 
   // Click-outside listener for pause reason picker.
-  // MUST be declared before the early return below to
-  // satisfy React's Rules of Hooks. When status.active
-  // flips false, the early return path renders fewer
-  // hooks than the active path — any hook below the
-  // return causes "Rendered fewer hooks than expected"
-  // crash on the transition. The internal showReasonPicker
-  // guard makes this effect a no-op when the banner is
-  // hidden anyway. (Bug introduced f3af1df, fixed today.)
+  // MUST be declared before the early return below to satisfy React's
+  // Rules of Hooks — when status.active flips false, the early return
+  // renders fewer hooks than the active path. The internal
+  // showReasonPicker guard makes this a no-op when the banner is
+  // hidden. (Hook-order bug introduced f3af1df, fixed Apr 12.)
+  //
+  // Apr 16: click-outside no longer triggers a silent pause with a
+  // default reason — that was a do_not_add.md §Hardcoded default
+  // values violation (research-relevant field defaulted silently).
+  // Now it just dismisses the picker; user must explicitly choose.
   useEffect(() => {
     if (!showReasonPicker) return;
     function onDown(e: PointerEvent) {
@@ -70,14 +83,11 @@ export function ActiveTimerBanner({ status }: { status: StopwatchStatus }) {
         pickerRef.current &&
         !pickerRef.current.contains(e.target as Node)
       ) {
-        applyPause(PAUSE_REASON_DEFAULT);
+        setShowReasonPicker(false);
       }
     }
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
-    // applyPause is stable enough for this lifecycle; we only want
-    // to re-bind when the picker opens/closes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showReasonPicker]);
 
   if (!status.active || !status.start_time) return null;
@@ -142,27 +152,28 @@ export function ActiveTimerBanner({ status }: { status: StopwatchStatus }) {
   return (
     <div
       className={cn(
-        "mb-6 flex items-center justify-between rounded-lg border px-4 py-3",
+        "mb-6 rounded-lg border px-4 py-3",
         paused
           ? "border-yellow-500/30 bg-yellow-500/10"
           : "border-green-500/30 bg-green-500/10"
       )}
     >
-      <div className="min-w-0">
-        <div
-          className={cn(
-            "text-[10px] uppercase tracking-wide",
-            paused ? "text-yellow-300/80" : "text-green-300/80"
-          )}
-        >
-          {paused ? "Paused" : "Active timer"}
+      <div className="flex items-center justify-between">
+        <div className="min-w-0">
+          <div
+            className={cn(
+              "text-[10px] uppercase tracking-wide",
+              paused ? "text-yellow-300/80" : "text-green-300/80"
+            )}
+          >
+            {paused ? "Paused" : "Active timer"}
+          </div>
+          <div className="mt-0.5 truncate text-sm font-medium text-white">
+            {status.task_title || status.task_id}
+          </div>
+          {err && <div className="mt-1 text-[11px] text-red-300">{err}</div>}
         </div>
-        <div className="mt-0.5 truncate text-sm font-medium text-white">
-          {status.task_title || status.task_id}
-        </div>
-        {err && <div className="mt-1 text-[11px] text-red-300">{err}</div>}
-      </div>
-      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3">
         <div
           className={cn(
             "font-mono text-lg tabular-nums",
@@ -216,6 +227,24 @@ export function ActiveTimerBanner({ status }: { status: StopwatchStatus }) {
           )}
         </div>
       </div>
+      </div>
+      {paused && showOrphanWarning && (
+        <div className="mt-2 flex items-start justify-between gap-2 border-t border-yellow-500/20 pt-2 text-[11px] text-yellow-200/80">
+          <span>
+            <span className="font-medium text-white">{status.task_title}</span>{" "}
+            will remain paused in the background when you start another task.
+            Resume it from this banner, or it auto-closes after 12 hours.
+          </span>
+          <button
+            type="button"
+            onClick={onDismissOrphanWarning}
+            aria-label="Dismiss"
+            className="shrink-0 text-white/40 transition-colors hover:text-white/70"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

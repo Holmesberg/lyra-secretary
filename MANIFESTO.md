@@ -55,6 +55,8 @@ Concretely ordered in `docs/building_phases.md` §Phase 4.5 under Tier 1 (retent
 
 This section is load-bearing for the retention outcome. The May 21 retention checkpoint is the test of whether this philosophy survived contact with ten non-operator users. If retention fails *and* Tier 1 shipped completely, the finding is "the feedback loop wasn't enough" and Phase 1A pivot (delta-only) activates. If retention fails *and* Tier 1 slipped, the finding is unreadable — we shipped a logger and measured logger retention.
 
+**Companion principle (Apr 16, 2026):** the retention-before-polish ordering is one axis; `docs/design_patterns/rules_vs_agency.md` §Structural Invariants vs Behavioral Constraints is the other. Research discipline stays *invisible* to the user by being expressed as structural invariants the system enforces silently, not as behavioral constraints the user has to work around. Every proposed hard-block rule must pass the diagnostic test in that doc before shipping.
+
 ### Scope of the retention-before-polish principle
 *Added: April 14, 2026.*
 
