@@ -102,9 +102,14 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     setShowReasonPicker(false);
     setErr(null);
     setBusy(true);
+    // Cancel any in-flight stopwatch-status poll so it can't return
+    // stale (pre-pause) data AFTER our optimistic flip and overwrite
+    // it. Without this, the 10 s refetchInterval can fire mid-request
+    // and the response wins the race against our setQueryData,
+    // producing a visible "snap-back to unpaused for ~1 s" flicker.
+    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
     // Snapshot for rollback before we optimistically mutate.
     const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
-    // Optimistic flip so the banner doesn't wait for the 10 s poll.
     qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) =>
       old ? { ...old, paused: true } : old
     );
@@ -124,6 +129,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   async function doResume() {
     setErr(null);
     setBusy(true);
+    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
     const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
     qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) =>
       old ? { ...old, paused: false } : old

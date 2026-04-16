@@ -469,18 +469,31 @@ class StopwatchManager:
             pause_initiator=pause_initiator,
         )
         self.db.add(pause_event)
-        self.db.commit()
 
-        # Transition task state EXECUTING → PAUSED. Notion sync is queued
-        # for the background notion_retry_job (every 5 min) instead of
-        # blocking the request thread — the inline sync_task() call took
-        # 1-8 s, which the frontend awaited before re-enabling the Pause
-        # button (perceived as "8-10 s state-switch delay" per Apr 16
-        # Investigation 3). Same retry queue used by create_task /
-        # reschedule_task on Notion failure.
+        # Transition task state EXECUTING → PAUSED. Inline state mutation
+        # instead of state_machine.transition() to avoid its per-call
+        # commit+refresh round-trip — we bundle everything into a single
+        # commit below. The transition is already validated: the state
+        # machine permits EXECUTING → PAUSED unconditionally, and the
+        # pause endpoint already rejected non-EXECUTING callers via
+        # get_pause_state + the active check above.
         task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
         if task and task.state == TaskState.EXECUTING:
-            self.task_manager.state_machine.transition(task, TaskState.PAUSED)
+            task.state = TaskState.PAUSED
+            task.last_modified_at = now
+
+        # Single commit for session update + pause_event insert + task
+        # state transition. One fsync instead of two — halves the SQLite
+        # write latency on the pause path.
+        self.db.commit()
+
+        # Notion sync queued for the background notion_retry_job (every
+        # 5 min) instead of blocking the request thread — the inline
+        # sync_task() call used to take 1-8 s, which the frontend
+        # awaited before re-enabling the Pause button (perceived as
+        # the "8-10 s state-switch delay" per Apr 16 Investigation 3).
+        # Same retry queue used by create_task / reschedule_task.
+        if task and task.state == TaskState.PAUSED:
             try:
                 self.redis.queue_notion_sync(
                     task.task_id, {"action": "sync"},
@@ -538,14 +551,17 @@ class StopwatchManager:
             open_event.resumed_at_utc = now
             open_event.duration_minutes = pause_duration
 
+        # Transition task state PAUSED → EXECUTING inline (see pause()
+        # rationale — single-commit avoids the extra fsync).
+        if task.state == TaskState.PAUSED:
+            task.state = TaskState.EXECUTING
+            task.last_modified_at = now
+
+        # Single commit for session + task + pause_event close.
         self.db.commit()
 
-        # Transition task state PAUSED → EXECUTING. Notion sync queued
-        # to background (see pause() comment for the same rationale —
-        # decouples the 1-8 s Notion API call from the request thread
-        # so resume feels instant in the UI).
-        if task.state == TaskState.PAUSED:
-            self.task_manager.state_machine.transition(task, TaskState.EXECUTING)
+        # Notion sync queued to background (same reasoning as pause()).
+        if task.state == TaskState.EXECUTING:
             try:
                 self.redis.queue_notion_sync(
                     task.task_id, {"action": "sync"},
