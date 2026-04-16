@@ -696,12 +696,12 @@ class StopwatchManager:
             self.db.refresh(session)
             self.db.refresh(task)
             self.redis.clear_active_stopwatch(user_id)
+            # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
             notion_synced_zero = False
             try:
-                self.task_manager.notion.sync_task(task, db=self.db)
-                notion_synced_zero = True
+                self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=user_id)
             except Exception as e:
-                logger.error(f"Notion sync failed on zero-duration skip: {e}", exc_info=True)
+                logger.error(f"Notion queue failed on zero-duration skip: {e}", exc_info=True)
             return session, task, True, notion_synced_zero, None, None, None, pre_existing_pct
 
         session.end_time_utc = stop_time

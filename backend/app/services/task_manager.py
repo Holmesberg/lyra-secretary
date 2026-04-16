@@ -193,16 +193,15 @@ class TaskManager:
         self.db.flush()  # Get task_id
         self.db.commit()
         self.db.refresh(task)
-        
-        # Sync to Notion (non-blocking)
+
+        # Notion sync deferred to Redis queue — inline call cost user 1-8s per
+        # create on the hot path. Queue drains via APScheduler worker.
         notion_synced = False
         try:
-            self.notion.sync_task(task, db=self.db)
-            notion_synced = True
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Notion sync failed during create_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
+            logging.getLogger(__name__).error(f"Notion queue failed during create_task: {e}", exc_info=True)
         
         # Substitution detection: link to recently DELETED task in overlapping slot
         try:
@@ -333,15 +332,14 @@ class TaskManager:
             raise ValueError("Task not found")
         
         task = self.state_machine.transition(task, TaskState.EXECUTING)
-        
-        # Sync to Notion
+
+        # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
-            self.notion.sync_task(task, db=self.db)
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Notion sync failed during start_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
-        
+            logging.getLogger(__name__).error(f"Notion queue failed during start_task: {e}", exc_info=True)
+
         return task
     
     def complete_task(
@@ -373,18 +371,13 @@ class TaskManager:
         task.executed_end_utc = executed_end
         task.executed_duration_minutes = executed_duration
         task = self.state_machine.transition(task, TaskState.EXECUTED)
-        
-        # Sync to Notion
+
+        # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         notion_synced = False
         try:
-            self.notion.sync_task(task, db=self.db)
-            notion_synced = True
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
         except Exception as e:
-            logger.error(f"Notion sync failed during complete_task: {e}", exc_info=True)
-            try:
-                self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
-            except Exception:
-                pass
+            logger.error(f"Notion queue failed during complete_task: {e}", exc_info=True)
 
         try:
             self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
@@ -410,15 +403,14 @@ class TaskManager:
             raise ValueError("Cannot skip a voided task")
 
         task = self.state_machine.transition(task, TaskState.SKIPPED, notes=reason)
-        
-        # Sync to Notion
+
+        # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
-            self.notion.sync_task(task, db=self.db)
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Notion sync failed during skip_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
-        
+            logging.getLogger(__name__).error(f"Notion queue failed during skip_task: {e}", exc_info=True)
+
         return task
     
     def delete_task(self, task_id: str) -> Task:
@@ -591,16 +583,12 @@ class TaskManager:
         self.db.commit()
         self.db.refresh(task)
         
-        # Sync to Notion
+        # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
-            self.notion.sync_task(task, db=self.db)
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Notion sync failed during reschedule_task: {e}", exc_info=True)
-            try:
-                self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
-            except Exception:
-                pass
+            logging.getLogger(__name__).error(f"Notion queue failed during reschedule_task: {e}", exc_info=True)
 
         try:
             self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
