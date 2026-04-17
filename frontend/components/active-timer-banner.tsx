@@ -69,6 +69,13 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   const [showReasonPicker, setShowReasonPicker] = useState(false);
   const pickerRef = useRef<HTMLDivElement | null>(null);
 
+  // Local pause state, decoupled from React Query poll cycle. Changed
+  // ONLY by applyPause/doResume (immediate, no network wait) and on
+  // mount (from status prop). This prevents the stale-poll race where
+  // refetchInterval fires during the 1.4 s mutation and overwrites
+  // the optimistic flip, causing a visible pause↔unpause flicker.
+  const [localPaused, setLocalPaused] = useState(!!status.paused);
+
   const [anchor, setAnchor] = useState<{ sec: number; ts: number }>(() => ({
     sec: (status.elapsed_minutes ?? 0) * 60,
     ts: Date.now(),
@@ -79,12 +86,11 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   const prevPausedRef = useRef<boolean>(!!status.paused);
 
   // Pause-transition effect — freezes on pause, rebases anchor on resume.
-  // anchor/frozenSec are intentionally NOT in deps: setting them inside
-  // the effect would re-fire it with wasPaused === isPaused and drop
-  // state. The effect only reacts to paused true↔false transitions.
+  // Driven by localPaused (button-click controlled), NOT status.paused
+  // (poll-controlled), so stale polls can't trigger false transitions.
   useEffect(() => {
     const wasPaused = prevPausedRef.current;
-    const isPaused = !!status.paused;
+    const isPaused = localPaused;
     if (!wasPaused && isPaused) {
       setFrozenSec(anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000));
     } else if (wasPaused && !isPaused) {
@@ -95,12 +101,12 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     }
     prevPausedRef.current = isPaused;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status.paused]);
+  }, [localPaused]);
 
   // Server catch-up — advance to server `elapsed_minutes` only if it
   // passes the local tick. Strict `>` so polls never rewind the display.
   useEffect(() => {
-    if (status.paused) return;
+    if (localPaused) return;
     const serverSec = (status.elapsed_minutes ?? 0) * 60;
     const localSec = anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
     if (serverSec > localSec) {
@@ -111,10 +117,10 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
   // 1-Hz local tick for visual refresh; stopped while paused.
   useEffect(() => {
-    if (status.paused) return;
+    if (localPaused) return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [status.paused]);
+  }, [localPaused]);
 
   // Click-outside listener for pause reason picker.
   // MUST be declared before the early return below to satisfy React's
@@ -142,7 +148,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   }, [showReasonPicker]);
 
   if (!status.active || !status.start_time) return null;
-  const paused = !!status.paused;
+  const paused = localPaused;
   const displaySec = frozenSec !== null
     ? frozenSec
     : anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
@@ -151,6 +157,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   async function applyPause(reason: string | undefined) {
     setShowReasonPicker(false);
     setErr(null);
+    setLocalPaused(true);
     setBusy(true);
     // Cancel any in-flight stopwatch-status poll so it can't return
     // stale (pre-pause) data AFTER our optimistic flip and overwrite
@@ -167,6 +174,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
       await pauseStopwatch(reason);
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
     } catch (e) {
+      setLocalPaused(false);
       if (snapshot !== undefined) {
         qc.setQueryData(["stopwatch-status"], snapshot);
       }
@@ -178,6 +186,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
   async function doResume() {
     setErr(null);
+    setLocalPaused(false);
     setBusy(true);
     await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
     const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
@@ -188,6 +197,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
       await resumeStopwatch();
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
     } catch (e) {
+      setLocalPaused(true);
       if (snapshot !== undefined) {
         qc.setQueryData(["stopwatch-status"], snapshot);
       }

@@ -205,6 +205,13 @@ function TodayInner() {
       planned_duration_minutes: task.planned_duration_minutes ?? 0,
       total_paused_minutes: 0,
     });
+    // Optimistic task-state flip — the task card flips from "PLANNED" to
+    // "EXECUTING" immediately instead of waiting 1.4 s for refresh().
+    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+      old?.map((t) =>
+        t.task_id === task.task_id ? { ...t, state: "EXECUTING" } : t
+      )
+    );
     setReadinessFor(null);
     try {
       await startStopwatch(task.task_id, readiness);
@@ -213,6 +220,11 @@ function TodayInner() {
       if (snapshot !== undefined) {
         qc.setQueryData(["stopwatch-status"], snapshot);
       }
+      qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+        old?.map((t) =>
+          t.task_id === task.task_id ? { ...t, state: "PLANNED" } : t
+        )
+      );
       setErrorMsg(e?.message ?? "Failed to start timer");
     }
   }
@@ -228,7 +240,15 @@ function TodayInner() {
     // we roll back so the banner stays visible for the confirmation modal.
     await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
     const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    const stoppedTaskId = snapshot?.task_id;
     qc.setQueryData<StopwatchStatus>(["stopwatch-status"], { active: false });
+    if (stoppedTaskId) {
+      qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+        old?.map((t) =>
+          t.task_id === stoppedTaskId ? { ...t, state: "EXECUTED" } : t
+        )
+      );
+    }
     try {
       const res: StopResponse = await stopStopwatch(reflection, {
         confirmed: opts.confirmed,
@@ -237,6 +257,13 @@ function TodayInner() {
       if (res.requires_confirmation) {
         if (snapshot !== undefined) {
           qc.setQueryData(["stopwatch-status"], snapshot);
+        }
+        if (stoppedTaskId) {
+          qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+            old?.map((t) =>
+              t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
+            )
+          );
         }
         setEarlyStop({
           elapsed: res.duration_minutes,
@@ -266,6 +293,13 @@ function TodayInner() {
     } catch (e: any) {
       if (snapshot !== undefined) {
         qc.setQueryData(["stopwatch-status"], snapshot);
+      }
+      if (stoppedTaskId) {
+        qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+          old?.map((t) =>
+            t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
+          )
+        );
       }
       setErrorMsg(e?.message ?? "Failed to stop timer");
     }
