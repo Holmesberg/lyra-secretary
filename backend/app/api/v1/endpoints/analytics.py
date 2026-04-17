@@ -996,20 +996,147 @@ RESEARCH_PRIORS: dict[str, dict] = {
 RESEARCH_PRIOR_DEFAULT = {"bias_factor": 1.35, "citation": "Kahneman & Tversky 1979 (planning fallacy mean)"}
 
 
+def _adaptive_calibration(
+    tasks: list[Task], category: str, tod: str, planned_minutes: int,
+) -> dict:
+    """Adaptive calibration using a signal cascade.
+
+    Tries progressively broader slices of personal data before falling
+    back to research priors. Each level is more specific but needs more
+    data.  The first level with >= 3 sessions wins.
+
+    Signal cascade (most specific → broadest):
+      1. category × tod × duration_bucket  (short/medium/long)
+      2. category × tod                     (the original lookup)
+      3. category only                      (any time of day)
+      4. research prior                     (cold start only)
+
+    Returns the winning signal with metadata about what contributed.
+    """
+    cat_rows_all = []
+    cat_tod_rows = []
+    cat_tod_dur_rows = []
+
+    dur_bucket = "short" if planned_minutes < 30 else "long" if planned_minutes > 60 else "medium"
+
+    for t in tasks:
+        cat = t.category or "uncategorized"
+        if cat != category:
+            continue
+        pair = (t.planned_duration_minutes, t.executed_duration_minutes)
+        cat_rows_all.append(pair)
+
+        t_tod = _time_of_day(to_local(t.planned_start_utc))
+        if t_tod != tod:
+            continue
+        cat_tod_rows.append(pair)
+
+        t_dur = (
+            "short" if t.planned_duration_minutes < 30
+            else "long" if t.planned_duration_minutes > 60
+            else "medium"
+        )
+        if t_dur == dur_bucket:
+            cat_tod_dur_rows.append(pair)
+
+    signals = []
+
+    # Level 1: category × tod × duration bucket (most specific)
+    cell = _bias_cell(cat_tod_dur_rows, min_n=3)
+    if cell is not None:
+        cell["category"] = category
+        cell["time_of_day"] = tod
+        signals.append({
+            "level": "category_tod_duration",
+            "label": f"{category} / {tod} / {dur_bucket} tasks",
+            "bias_factor": cell["bias_factor"],
+            "sessions": cell["sessions"],
+        })
+        return {
+            "cell": cell, "sessions": cell["sessions"], "min_sessions": 3,
+            "source": "personal", "signal_level": "category_tod_duration",
+            "signals": signals,
+        }
+
+    # Level 2: category × tod
+    cell = _bias_cell(cat_tod_rows, min_n=3)
+    if cell is not None:
+        cell["category"] = category
+        cell["time_of_day"] = tod
+        signals.append({
+            "level": "category_tod",
+            "label": f"{category} / {tod}",
+            "bias_factor": cell["bias_factor"],
+            "sessions": cell["sessions"],
+        })
+        return {
+            "cell": cell, "sessions": cell["sessions"], "min_sessions": 3,
+            "source": "personal", "signal_level": "category_tod",
+            "signals": signals,
+        }
+
+    # Level 3: category only (any time of day)
+    cell = _bias_cell(cat_rows_all, min_n=3)
+    if cell is not None:
+        cell["category"] = category
+        cell["time_of_day"] = "all"
+        signals.append({
+            "level": "category",
+            "label": f"{category} (all times)",
+            "bias_factor": cell["bias_factor"],
+            "sessions": cell["sessions"],
+        })
+        return {
+            "cell": cell, "sessions": cell["sessions"], "min_sessions": 3,
+            "source": "personal", "signal_level": "category",
+            "signals": signals,
+        }
+
+    # Level 4: research prior (cold start)
+    prior = RESEARCH_PRIORS.get(category, RESEARCH_PRIOR_DEFAULT)
+    signals.append({
+        "level": "research",
+        "label": prior["citation"],
+        "bias_factor": prior["bias_factor"],
+        "sessions": 0,
+    })
+    return {
+        "cell": {
+            "bias_factor": prior["bias_factor"],
+            "bias_factor_mean": prior["bias_factor"],
+            "sessions": 0,
+            "confidence": "research",
+            "interpretation": "underestimates",
+            "category": category,
+            "time_of_day": tod,
+            "citation": prior["citation"],
+        },
+        "sessions": len(cat_rows_all),
+        "min_sessions": 3,
+        "source": "research",
+        "signal_level": "research",
+        "signals": signals,
+    }
+
+
 @router.get("/analytics/bias_factor/lookup")
 async def bias_factor_lookup(
     category: str = Query(..., description="Task category"),
     tod: str = Query(..., description="Time-of-day bucket (morning/afternoon/evening/night)"),
+    planned_minutes: int = Query(30, ge=1, description="Planned duration for duration-bucket signal"),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Three-tier bias_factor lookup for the creation-nudge.
+    """Adaptive calibration lookup for the creation-nudge.
 
-    Tier 1 — personal established (≥10 sessions): full-confidence personal data.
-    Tier 2 — personal early (3–9 sessions): real data, lower confidence.
-    Tier 3 — research prior (0–2 sessions): published planning-fallacy estimates.
+    Signal cascade (most specific → broadest personal → research prior):
+      1. category × tod × duration_bucket  (short <30 / medium 30-60 / long >60)
+      2. category × tod
+      3. category only (any time of day)
+      4. research prior (cold start fallback)
 
-    Returns source="personal" for tiers 1–2, source="research" for tier 3.
-    Frontend differentiates tier 1 vs 2 via sessions count.
+    First level with ≥3 sessions wins. Returns signal_level indicating
+    which level fired, plus a signals array showing available data at
+    each level for transparency.
     """
     tasks = (
         db.query(Task)
@@ -1023,35 +1150,7 @@ async def bias_factor_lookup(
         )
         .all()
     )
-    rows = [
-        (t.planned_duration_minutes, t.executed_duration_minutes)
-        for t in tasks
-        if (t.category or "uncategorized") == category
-        and _time_of_day(to_local(t.planned_start_utc)) == tod
-    ]
-
-    cell = _bias_cell(rows, min_n=3)
-    if cell is not None:
-        cell["category"] = category
-        cell["time_of_day"] = tod
-        return {"cell": cell, "sessions": len(rows), "min_sessions": 3, "source": "personal"}
-
-    prior = RESEARCH_PRIORS.get(category, RESEARCH_PRIOR_DEFAULT)
-    return {
-        "cell": {
-            "bias_factor": prior["bias_factor"],
-            "bias_factor_mean": prior["bias_factor"],
-            "sessions": 0,
-            "confidence": "research",
-            "interpretation": "underestimates",
-            "category": category,
-            "time_of_day": tod,
-            "citation": prior["citation"],
-        },
-        "sessions": len(rows),
-        "min_sessions": 3,
-        "source": "research",
-    }
+    return _adaptive_calibration(tasks, category, tod, planned_minutes)
 
 
 @router.get("/analytics/pause_prediction")

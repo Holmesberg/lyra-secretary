@@ -306,6 +306,8 @@ export interface BiasLookupResponse {
   sessions: number;
   min_sessions: number;
   source?: "personal" | "research";
+  signal_level?: string;
+  signals?: Array<{ level: string; label: string; bias_factor: number; sessions: number }>;
 }
 
 export interface Insight {
@@ -328,8 +330,8 @@ export function getInsights() {
   return api<InsightsResponse>("/v1/analytics/insights");
 }
 
-export function lookupBiasFactor(category: string, tod: string) {
+export function lookupBiasFactor(category: string, tod: string, plannedMinutes: number = 30) {
   return api<BiasLookupResponse>(
-    `/v1/analytics/bias_factor/lookup?category=${encodeURIComponent(category)}&tod=${encodeURIComponent(tod)}&min_sessions=10`
+    `/v1/analytics/bias_factor/lookup?category=${encodeURIComponent(category)}&tod=${encodeURIComponent(tod)}&planned_minutes=${plannedMinutes}`
   );
 }

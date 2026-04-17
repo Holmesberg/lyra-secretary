@@ -107,15 +107,15 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   useEffect(() => {
     if (!open || isEdit) { setCalibrationNudge(null); return; }
     const tod = timeOfDay(start);
+    const planned = durHours * 60 + durMinutes;
     const abortCtl = new AbortController();
     const timer = setTimeout(() => {
-      lookupBiasFactor(category, tod)
+      lookupBiasFactor(category, tod, planned || 30)
         .then((res) => {
           if (abortCtl.signal.aborted) return;
           const isResearch = res.source === "research";
           const threshold = isResearch ? 1.20 : 1.25;
           if (res.cell && res.cell.bias_factor >= threshold) {
-            const planned = durHours * 60 + durMinutes;
             setCalibrationNudge({
               cell: res.cell,
               suggestedMin: roundTo5(planned * res.cell.bias_factor),
@@ -130,7 +130,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     }, 400);
     return () => { clearTimeout(timer); abortCtl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, category, start, isEdit]);
+  }, [open, category, start, durHours, durMinutes, isEdit]);
 
   const totalMinutes = durHours * 60 + durMinutes;
   const endBeforeStart = diffMinutes(start, end) <= 0;
@@ -578,19 +578,14 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                       <span className="block mt-0.5 text-[10px] text-blue-300/50">{calibrationNudge.cell.citation}</span>
                     )}
                   </>
-                ) : calibrationNudge.cell.sessions < 10 ? (
-                  <>
-                    Early data ({calibrationNudge.cell.sessions} sessions): your{" "}
-                    <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
-                    in the <span className="font-medium text-white">{calibrationNudge.cell.time_of_day}</span> run{" "}
-                    <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over plan.
-                  </>
                 ) : (
                   <>
-                    Your <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
-                    in the <span className="font-medium text-white">{calibrationNudge.cell.time_of_day}</span> typically
-                    run <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over
-                    plan ({calibrationNudge.cell.sessions} sessions).
+                    {calibrationNudge.cell.sessions < 10 ? "Early data" : "Your data"}
+                    {" "}({calibrationNudge.cell.sessions} sessions): <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
+                    {calibrationNudge.cell.time_of_day !== "all" && (
+                      <> in the <span className="font-medium text-white">{calibrationNudge.cell.time_of_day}</span></>
+                    )}
+                    {" "}run <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over plan.
                   </>
                 )}
                 {" "}Adjust to {calibrationNudge.suggestedMin} min?
