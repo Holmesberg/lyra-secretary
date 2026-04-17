@@ -189,9 +189,9 @@ def test_cn_fires_at_n3_exact_format(db):
         _seed(db, delta=d)
     nudge = _compute_calibration_nudge(current, db)
     assert nudge == (
-        "Ran 15 min over plan. "
-        "Your dev avg: -10 min (3 sessions). "
-        "You've underestimated this category 3/3 times."
+        "t ran 15 min over plan. "
+        "Your 'dev' category avg: -10 min across 3 sessions. "
+        "Underestimated 3/3 times."
     )
 
 
@@ -202,7 +202,7 @@ def test_cn_direction_under_when_delta_positive(db):
         _seed(db, delta=d)
     nudge = _compute_calibration_nudge(current, db)
     assert nudge is not None
-    assert "Ran 20 min under plan." in nudge
+    assert "ran 20 min under plan." in nudge
 
 
 def test_cn_excludes_voided(db):
@@ -243,7 +243,7 @@ def test_cn_isolates_by_category(db):
         _seed(db, category="meetings", delta=d)
     nudge = _compute_calibration_nudge(current, db)
     assert nudge is not None
-    assert "Your dev avg: -10 min (3 sessions)." in nudge
+    assert "Your 'dev' category avg: -10 min across 3 sessions." in nudge
     assert "meetings" not in nudge
 
 
@@ -254,7 +254,7 @@ def test_cn_underestimate_count_mixed(db):
         _seed(db, delta=d)
     nudge = _compute_calibration_nudge(current, db)
     assert nudge is not None
-    assert "You've underestimated this category 3/5 times." in nudge
+    assert "Underestimated 3/5 times." in nudge
 
 
 def test_cn_no_category_returns_none(db):

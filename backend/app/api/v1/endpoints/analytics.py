@@ -540,12 +540,12 @@ def _insight_retroactive_rate(tasks: list) -> Optional[dict]:
         return None
     retro = sum(1 for t in tasks if t.initiation_status == "retroactive")
     rate = retro / len(tasks)
-    if rate < 0.20:
+    if rate < 0.15:
         return None
     pct = round(rate * 100)
     return _insight(
         "retroactive_rate",
-        f"{pct}% of your sessions are logged after the fact rather than planned ahead — your day is being narrated, not steered.",
+        f"{pct}% of your sessions are logged after the fact rather than planned ahead.",
         len(tasks),
         strength=rate * 100,
     )
@@ -587,7 +587,6 @@ async def get_insights(
     Pass ?auto_mark=true to suppress already-shown insights (24h cooldown per insight_id).
     """
     MIN_SESSIONS = 3
-    MAX_INSIGHTS = 5
 
     all_tasks = (
         db.query(Task)
@@ -640,8 +639,6 @@ async def get_insights(
 
     insights = []
     for result in candidates:
-        if len(insights) >= MAX_INSIGHTS:
-            break
         insight_id = result["id"]
         redis_key = f"insight_shown:{insight_id}"
         result["seen"] = bool(redis.client.exists(redis_key))

@@ -4,10 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { getInsights, type Insight } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 
-const CONFIDENCE_STYLE: Record<string, { label: string; color: string }> = {
-  low: { label: "Low confidence", color: "text-white/30" },
-  medium: { label: "Medium confidence", color: "text-yellow-400/60" },
-  high: { label: "High confidence", color: "text-green-400/60" },
+const CONFIDENCE_STYLE: Record<string, { label: string; bg: string; text: string }> = {
+  high: { label: "High confidence", bg: "bg-green-500/10 border-green-500/20", text: "text-green-400/70" },
+  medium: { label: "Medium confidence", bg: "bg-yellow-500/5 border-yellow-500/15", text: "text-yellow-400/60" },
+  low: { label: "Watching this pattern", bg: "bg-white/[0.02] border-white/8", text: "text-white/30" },
 };
 
 const ID_LABELS: Record<string, string> = {
@@ -24,21 +24,61 @@ const ID_LABELS: Record<string, string> = {
   initiation_delay: "Start delay",
 };
 
-function InsightCard({ insight }: { insight: Insight }) {
+function ConfidenceBar({ current, next }: { current: number; next: number }) {
+  const pct = Math.min(100, (current / next) * 100);
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/5">
+        <div className="h-full rounded-full bg-white/20 transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-[9px] text-white/20">{current}/{next}</span>
+    </div>
+  );
+}
+
+const CONFIDENCE_THRESHOLDS: Record<string, number> = { low: 6, medium: 15 };
+
+function FeaturedCard({ insight }: { insight: Insight }) {
+  const label = ID_LABELS[insight.id] ?? insight.id;
+  return (
+    <div className="rounded-xl border border-green-500/20 bg-green-500/[0.06] p-6">
+      <div className="mb-1 flex items-center gap-2">
+        <span className="rounded bg-green-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-green-300/70">
+          {label}
+        </span>
+        <span className="text-[10px] text-green-400/50">
+          High confidence ({insight.data_points} sessions)
+        </span>
+      </div>
+      <p className="mt-3 text-base leading-relaxed text-white/90">{insight.observation}</p>
+    </div>
+  );
+}
+
+function StandardCard({ insight }: { insight: Insight }) {
   const conf = CONFIDENCE_STYLE[insight.confidence] ?? CONFIDENCE_STYLE.low;
   const label = ID_LABELS[insight.id] ?? insight.id;
+  const nextTier = CONFIDENCE_THRESHOLDS[insight.confidence];
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
+    <div className={cn("rounded-lg border p-4", conf.bg)}>
       <div className="mb-2 flex items-center justify-between">
         <span className="rounded bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/50">
           {label}
         </span>
-        <span className={cn("text-[10px]", conf.color)}>
-          {conf.label} ({insight.data_points} sessions)
+        <span className={cn("text-[10px]", conf.text)}>
+          {conf.label}
         </span>
       </div>
-      <p className="text-sm leading-relaxed text-white/80">{insight.observation}</p>
+      <p className={cn(
+        "text-sm leading-relaxed",
+        insight.confidence === "low" ? "text-white/50" : "text-white/80"
+      )}>
+        {insight.observation}
+      </p>
+      {nextTier && (
+        <ConfidenceBar current={insight.data_points} next={nextTier} />
+      )}
     </div>
   );
 }
@@ -98,9 +138,12 @@ export default function InsightsPage() {
   }
 
   const insights = data.insights;
+  const featured = insights.find((i) => i.confidence === "high" && i.data_points >= 15);
+  const standard = insights.filter((i) => i !== featured && i.confidence !== "low");
+  const emerging = insights.filter((i) => i.confidence === "low");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-baseline justify-between">
         <h1 className="text-xl font-semibold text-white/80">Insights</h1>
         <span className="text-xs text-white/30">
@@ -108,16 +151,33 @@ export default function InsightsPage() {
         </span>
       </div>
 
-      {insights.length === 0 ? (
+      {featured && <FeaturedCard insight={featured} />}
+
+      {standard.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
+          {standard.map((insight) => (
+            <StandardCard key={insight.id} insight={insight} />
+          ))}
+        </div>
+      )}
+
+      {emerging.length > 0 && (
+        <div>
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-white/30">
+            Emerging patterns
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-1 lg:grid-cols-2">
+            {emerging.map((insight) => (
+              <StandardCard key={insight.id} insight={insight} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {insights.length === 0 && (
         <p className="text-sm text-white/50">
           Not enough data in any category yet. Keep logging sessions.
         </p>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
-          {insights.map((insight) => (
-            <InsightCard key={insight.id} insight={insight} />
-          ))}
-        </div>
       )}
     </div>
   );
