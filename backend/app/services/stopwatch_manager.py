@@ -460,6 +460,9 @@ class StopwatchManager:
 
         # Per-pause immutable history — replaces the overwrite-on-second-pause
         # data loss in the legacy schema (see migration 020 docstring).
+        total_sec = (now - session.start_time_utc).total_seconds()
+        paused_sec = (session.total_paused_minutes or 0.0) * 60.0
+        active_elapsed_sec = int(max(0.0, total_sec - paused_sec))
         pause_event = PauseEvent(
             pause_event_id=str(uuid.uuid4()),
             session_id=session.session_id,
@@ -467,6 +470,7 @@ class StopwatchManager:
             paused_at_utc=now,
             pause_reason=pause_reason,
             pause_initiator=pause_initiator,
+            active_elapsed_at_pause_seconds=active_elapsed_sec,
         )
         self.db.add(pause_event)
 

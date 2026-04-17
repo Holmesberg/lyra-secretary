@@ -253,6 +253,38 @@ export function voidTask(
   });
 }
 
+// ─── Notifications ────────────────────────────────────────────────────
+
+export interface PausePredictionNotification {
+  type: "pause_prediction";
+  firing_id: string;
+  mechanism: "clock_anchor" | "work_rhythm";
+  predicted_at: string;
+  lead_minutes: number;
+  confidence: number;
+  sample_size: number;
+  active_task_id?: string;
+}
+
+export interface PendingNotificationsResponse {
+  notifications: Array<Record<string, unknown>>;
+  count: number;
+}
+
+export function getPendingNotifications() {
+  return api<PendingNotificationsResponse>("/v1/notifications/pending");
+}
+
+export function respondToPausePrediction(
+  firingId: string,
+  response: "pause_now" | "dismiss" | "snooze"
+) {
+  return api<unknown>(`/v1/pause_predictions/${firingId}/respond`, {
+    method: "POST",
+    body: JSON.stringify({ user_response: response }),
+  });
+}
+
 // ─── Analytics ────────────────────────────────────────────────────────
 
 export interface BiasFactorCell {

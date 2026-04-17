@@ -390,6 +390,7 @@ class PauseEvent(Base):
     duration_minutes: Mapped[Optional[float]] = mapped_column(Float)
     pause_reason: Mapped[str] = mapped_column(String(50), nullable=False)
     pause_initiator: Mapped[str] = mapped_column(String(20), nullable=False)
+    active_elapsed_at_pause_seconds: Mapped[Optional[int]] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )

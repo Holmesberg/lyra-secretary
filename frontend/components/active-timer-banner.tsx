@@ -40,15 +40,13 @@ const PAUSE_REASON_OPTIONS: Array<{ value: string; label: string }> = [
 //   • On resume → rebase anchor to `frozenSec` so the clock continues
 //     from where the user saw it paused, not from minute-truncated
 //     server truth (which would backward-jump the sub-minute remainder).
-function formatHHMMSS(secs: number, paused: boolean) {
+function fmtTime(secs: number) {
   const safe = Math.max(0, Math.floor(secs));
   const h = Math.floor(safe / 3600);
   const m = Math.floor((safe % 3600) / 60);
   const s = safe % 60;
   const hh = h > 0 ? `${String(h).padStart(2, "0")}:` : "";
-  return `${hh}${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}${
-    paused ? " · paused" : ""
-  }`;
+  return `${hh}${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 interface Props {
@@ -84,6 +82,21 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   const prevPausedRef = useRef<boolean>(!!status.paused);
   const lastDisplayedRef = useRef<number>((status.elapsed_minutes ?? 0) * 60);
 
+  // Pause counter: cumulative pause seconds. pauseBaseSec = completed
+  // pauses from server; pauseStartRef = when the current pause began
+  // (local capture, not from server). Display = base + (now - start).
+  const [pauseBaseSec, setPauseBaseSec] = useState(
+    (status.total_paused_minutes ?? 0) * 60
+  );
+  const pauseStartRef = useRef<number | null>(
+    status.paused ? Date.now() : null
+  );
+
+  // Sync pause base from server polls.
+  useEffect(() => {
+    setPauseBaseSec((status.total_paused_minutes ?? 0) * 60);
+  }, [status.total_paused_minutes]);
+
   // Pause-transition effect — freezes on pause, rebases anchor on resume.
   // Uses lastDisplayedRef (the value the user SAW on screen) to avoid a
   // forward-snap when frozenSec would otherwise recompute from anchor+now
@@ -115,16 +128,15 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status.elapsed_minutes]);
 
-  // 1-Hz local tick for visual refresh; stopped while paused OR while
-  // the reason picker is open (pre-freeze: timer appears to stop the
-  // moment the user clicks Pause, not 3-5s later when they finish
-  // choosing a reason). showReasonPicker halts ticks, localPaused
-  // captures the frozenSec on commit.
+  // 1-Hz local tick — always runs unless the reason picker is open
+  // (pre-freeze: timer appears to stop the moment the user clicks
+  // Pause). While paused, the tick drives the pause counter instead
+  // of the active counter.
   useEffect(() => {
-    if (localPaused || showReasonPicker) return;
+    if (showReasonPicker && !localPaused) return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [localPaused, showReasonPicker]);
+  }, [showReasonPicker, localPaused]);
 
   // Click-outside listener for pause reason picker.
   // MUST be declared before the early return below to satisfy React's
@@ -160,16 +172,28 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
   if (!status.active || !status.start_time) return null;
   const paused = localPaused;
-  const displaySec = frozenSec !== null
-    ? frozenSec
-    : anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
-  lastDisplayedRef.current = displaySec;
-  const elapsed = formatHHMMSS(displaySec, paused);
+
+  let elapsed: string;
+  if (paused) {
+    // Pause counter: cumulative pause time
+    const currentPauseSec = pauseStartRef.current
+      ? Math.floor((Date.now() - pauseStartRef.current) / 1000)
+      : 0;
+    elapsed = `paused · ${fmtTime(Math.floor(pauseBaseSec + currentPauseSec))}`;
+  } else {
+    // Active counter: cumulative active work time
+    const activeSec = frozenSec !== null
+      ? frozenSec
+      : anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
+    lastDisplayedRef.current = activeSec;
+    elapsed = fmtTime(activeSec);
+  }
 
   async function applyPause(reason: string | undefined) {
     setShowReasonPicker(false);
     setErr(null);
     setLocalPaused(true);
+    pauseStartRef.current = Date.now();
     setBusy(true);
     // Cancel any in-flight stopwatch-status poll so it can't return
     // stale (pre-pause) data AFTER our optimistic flip and overwrite
@@ -216,6 +240,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   async function doResume() {
     setErr(null);
     setLocalPaused(false);
+    pauseStartRef.current = null;
     setBusy(true);
     await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
     const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
@@ -235,6 +260,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
       qc.invalidateQueries({ queryKey: ["tasks"] });
     } catch (e) {
       setLocalPaused(true);
+      pauseStartRef.current = Date.now();
       if (snapshot !== undefined) {
         qc.setQueryData(["stopwatch-status"], snapshot);
       }

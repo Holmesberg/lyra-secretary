@@ -12,9 +12,11 @@ import {
   markAbandoned,
   deleteTask,
   voidTask,
+  getPendingNotifications,
   type TaskRow as TaskRowType,
   type StopResponse,
   type StopwatchStatus,
+  type PausePredictionNotification,
 } from "@/lib/tasks";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,7 @@ import { NewTaskModal } from "@/components/new-task-modal";
 import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
+import { PausePredictionBanner } from "@/components/pause-prediction-banner";
 
 interface ToastEntry {
   id: string;
@@ -92,6 +95,21 @@ function TodayInner() {
   const nextDayBlocked = isToday && tomorrowQ.isFetched &&
     !tomorrowQ.data?.some((t) => t.state === "PLANNED" && !t.voided_at);
 
+  const notifQ = useQuery({
+    queryKey: ["notifications-pending"],
+    queryFn: getPendingNotifications,
+    refetchInterval: 30_000,
+  });
+  const [dismissedFirings, setDismissedFirings] = useState<Set<string>>(new Set());
+  const pausePrediction: PausePredictionNotification | null = (() => {
+    for (const n of notifQ.data?.notifications ?? []) {
+      if (n.type === "pause_prediction" && typeof n.firing_id === "string" && !dismissedFirings.has(n.firing_id)) {
+        return n as unknown as PausePredictionNotification;
+      }
+    }
+    return null;
+  })();
+
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [readinessFor, setReadinessFor] = useState<TaskRowType | null>(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
@@ -111,6 +129,7 @@ function TodayInner() {
   // persists for the session (one dismissal = no more nagging).
   const [orphanWarnShown, setOrphanWarnShown] = useState(false);
   const [orphanWarnDismissed, setOrphanWarnDismissed] = useState(false);
+  const [requestPause, setRequestPause] = useState(false);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -342,6 +361,12 @@ function TodayInner() {
       : "Skip this task?";
     if (!window.confirm(msg)) return;
     setErrorMsg(null);
+    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+      old?.map((t) => t.task_id === task.task_id ? { ...t, state: "SKIPPED" } : t)
+    );
+    if (isLive) {
+      qc.setQueryData<StopwatchStatus>(["stopwatch-status"], { active: false });
+    }
     try {
       await markAbandoned(task.task_id, isLive ? "abandoned mid-session from Today view" : "user_skipped from Today view");
       refresh();
@@ -353,6 +378,9 @@ function TodayInner() {
   async function handleDelete(task: TaskRowType) {
     if (!window.confirm("Delete this task? Cancelled plans are recorded as a behavioral signal.")) return;
     setErrorMsg(null);
+    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+      old?.filter((t) => t.task_id !== task.task_id)
+    );
     try {
       await deleteTask(task.task_id);
       refresh();
@@ -428,12 +456,28 @@ function TodayInner() {
         </Button>
       </div>
 
+      {/* VT-17 pause prediction banner (above active timer) */}
+      {pausePrediction && status?.active && !status?.paused && (
+        <PausePredictionBanner
+          prediction={pausePrediction}
+          onPauseNow={() => {
+            setDismissedFirings((s) => new Set(s).add(pausePrediction!.firing_id));
+            setRequestPause(true);
+          }}
+          onDismissed={() =>
+            setDismissedFirings((s) => new Set(s).add(pausePrediction!.firing_id))
+          }
+        />
+      )}
+
       {/* Active timer banner: always visible regardless of viewed date */}
       {status && (
         <ActiveTimerBanner
           status={status}
           showOrphanWarning={orphanWarnShown}
           onDismissOrphanWarning={dismissOrphanWarn}
+          requestPause={requestPause}
+          onRequestPauseHandled={useCallback(() => setRequestPause(false), [])}
         />
       )}
 
