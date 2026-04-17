@@ -384,7 +384,7 @@ def _insight_estimation_trend(tasks: list) -> Optional[dict]:
     if improvement > 0:
         obs = f"Your time estimates are getting more accurate — down {improvement} min avg error over your last 10 sessions."
     else:
-        obs = f"Your estimation error has grown by {abs(improvement)} min over your last 10 sessions. You may be fatigued or rushing your planning."
+        obs = f"Your estimation error has increased by {abs(improvement)} min over your last 10 sessions."
     return _insight("estimation_accuracy_trend", obs, 10, strength=abs(improvement))
 
 

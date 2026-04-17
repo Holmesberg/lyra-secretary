@@ -8,6 +8,7 @@ from app.workers.jobs.notion_sync import retry_failed_syncs
 from app.workers.jobs.timer_overflow import check_timer_overflow
 from app.workers.jobs.overdue_tasks import detect_and_skip_overdue_tasks
 from app.workers.jobs.stale_session_recovery import run_stale_session_recovery
+from app.workers.jobs.orphan_task_recovery import run_orphan_task_recovery
 from app.workers.jobs.pause_prediction import run_pause_prediction
 from app.workers.jobs.reconcile_responses import run_reconcile_responses
 
@@ -61,6 +62,18 @@ def start_scheduler():
         trigger=IntervalTrigger(minutes=15),
         id="stale_session_recovery",
         name="Auto-close orphan stopwatch sessions older than 12h",
+        replace_existing=True
+    )
+
+    # Orphan task recovery (every 15 minutes, alongside stale session sweep)
+    # Catches tasks stuck in EXECUTING with no open StopwatchSession row —
+    # the class of orphan that stale_session_recovery misses (session closed
+    # but task state never transitioned). Observed Apr 16-17.
+    scheduler.add_job(
+        run_orphan_task_recovery,
+        trigger=IntervalTrigger(minutes=15),
+        id="orphan_task_recovery",
+        name="Recover EXECUTING tasks with no active session",
         replace_existing=True
     )
 

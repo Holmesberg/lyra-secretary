@@ -118,6 +118,44 @@ Trigger: after Spring School (April 29+), once trusted-user signal confirms rete
 
 Supabase data is unchanged across the swap — same `DATABASE_URL`. Zero data migration.
 
+## Morning Recovery Checklist (laptop-sleep wake)
+
+Run after every overnight sleep or extended laptop suspend. Services that
+survive sleep vs require manual restart:
+
+| Service | Survives sleep? | Recovery |
+|---------|----------------|----------|
+| Docker (backend + Redis) | Usually yes (containers stay up) | `docker-compose ps` → restart if "Exited" |
+| Cloudflared tunnel | **No** (foreground process dies) | `pgrep cloudflared \|\| cloudflared tunnel run lyra-prod &` |
+| Next.js (frontend) | **No** (nohup process may die) | `pgrep -f next-server \|\| (cd frontend && npm start &)` |
+| APScheduler | Yes (restarts with backend) | Automatic — fires missed jobs on wake |
+| Supabase connection pool | Yes (pool_pre_ping reconnects stale conns) | Automatic |
+| Redis data | Yes (persistent volume) | Automatic |
+
+**Quick recovery script (copy-paste):**
+```bash
+# 1. Docker
+docker-compose ps
+docker-compose restart  # if anything shows Exited
+
+# 2. Tunnel
+pgrep cloudflared || (cloudflared tunnel run lyra-prod &)
+sleep 2 && curl -sf https://api.lyraos.org/v1/health || echo "TUNNEL DOWN"
+
+# 3. Frontend
+pgrep -f "next-server" || (cd frontend && nohup npm start &)
+sleep 4 && curl -sf https://lyraos.org/ || echo "FRONTEND DOWN"
+
+# 4. Orphan check
+curl -s -H "X-User-Id: 1" localhost:8000/v1/tasks/query?state=all | \
+  python3 -c "import sys,json; tasks=json.load(sys.stdin).get('tasks',[]); \
+  orphans=[t for t in tasks if t['state']=='EXECUTING']; \
+  print(f'{len(orphans)} EXECUTING tasks') if orphans else print('No orphans')"
+
+# 5. Recent errors
+docker logs lyrasecretaryv01-backend-1 --since 1h 2>&1 | grep -i error | tail -10
+```
+
 ## References
 
 - `CLAUDE.md §Architecture` — layer overview, now pointing at this doc.

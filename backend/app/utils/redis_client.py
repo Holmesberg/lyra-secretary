@@ -30,7 +30,9 @@ class RedisClient:
         title: str,
         start_time: str
     ):
-        """Store active stopwatch session (no TTL - persists until stopped)."""
+        """Store active stopwatch session. 13h TTL as defense-in-depth above
+        the 12h stale_session_recovery DB sweep — if stop/recovery both miss,
+        the key auto-expires rather than persisting indefinitely."""
         key = f"stopwatch:active:{user_id}"
         data = {
             "session_id": session_id,
@@ -38,7 +40,7 @@ class RedisClient:
             "title": title,
             "start_time": start_time
         }
-        self.client.set(key, json.dumps(data))
+        self.client.set(key, json.dumps(data), ex=46800)
         logger.info(f"Stopwatch started: {task_id}")
     
     def get_active_stopwatch(self, user_id: str) -> Optional[Dict[str, Any]]:
@@ -56,9 +58,9 @@ class RedisClient:
         logger.info(f"Stopwatch cleared for user {user_id}")
 
     def set_pause_state(self, user_id: str, session_id: str, paused_at: str):
-        """Store pause state (no TTL — persists until resumed or stopped)."""
+        """Store pause state. 13h TTL matches set_active_stopwatch."""
         key = f"stopwatch:paused:{user_id}"
-        self.client.set(key, json.dumps({"session_id": session_id, "paused_at": paused_at}))
+        self.client.set(key, json.dumps({"session_id": session_id, "paused_at": paused_at}), ex=46800)
 
     def get_pause_state(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get pause state if stopwatch is currently paused."""
