@@ -1,10 +1,11 @@
-# Lyra Secretary — Manifesto v1.6
+# Lyra Secretary — Manifesto v1.7
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
 *Revised: April 10, 2026. Day 7 — duality reframe, BCI complementary-signal model, VT-5 decision.*
 *Revised: April 14, 2026. Day 11 — framing clarification (research as QC infrastructure); VT-19 & VT-20; Rules 8 & 9; profile taxonomy methodological note; retention-before-polish scope clarification.*
 *Revised: April 16, 2026. Day 13 — Rule 11 no-nudge control days (VT-21 detection protocol); Rule 10 reserved.*
+*Revised: April 17, 2026. Day 14 — VT-22 scope inflation hypothesis; Rules 10 & 12 (readiness-direction, mediation test); brain dump field elevated.*
 
 ---
 
@@ -696,6 +697,43 @@ Thresholds (per-user, not aggregate): acceptance_rate ≥ 0.40 = ship; < 0.20 = 
 
 **Status:** VT-21 candidate documented April 15, 2026. Detection protocol formalized April 16, 2026 via pre-registered analysis Rule 11. Stratified analysis required for any post-surface H1 correlation reporting.
 
+### VT-22: Scope Inflation Masquerading as Time Estimation Error
+*Discovered: April 17, 2026. Emerged from readiness-inversion anomaly in operator data.*
+
+**Threat:** The standard planning-fallacy frame (Buehler et al. 1994) interprets `duration_delta_minutes` as time estimation error — the user underestimated how long the task would take. But if `pre_task_readiness` predicts delta in the *inverse* direction (high readiness → larger overrun, low readiness → smaller overrun or underrun), this is a surprising finding that the standard frame does not predict. Several competing hypotheses could explain the readiness inversion:
+
+**Competing hypotheses (none confirmed, all testable):**
+- **(a) Scope inflation (primary candidate):** High readiness doesn't worsen time estimation — it expands the scope attempted within the stated window. Users add features, go deeper, polish. The time estimate was correct for the stated scope; the scope expanded during execution. Low readiness → scoped down → scope matched the estimate.
+- **(b) Task-type confound:** High readiness may correlate with harder/more ambitious task selection. Users choose difficult tasks when feeling sharp, easy tasks when drained. The readiness signal is a proxy for task difficulty, not a causal mechanism.
+- **(c) Time-of-day confound:** High readiness clusters in the morning; morning tasks may systematically differ in overrun characteristics. The readiness signal is a proxy for time-of-day, not independent.
+- **(d) Motivation distortion:** High readiness may correlate with intrinsic motivation. Intrinsically motivated sessions run long because the user *wants* to continue, not because they misjudged. Low-motivation sessions finish early because the user is eager to stop.
+- **(e) Novelty vs maintenance:** High readiness sessions may skew toward novel tasks (building, creating); low readiness toward maintenance (reviewing, fixing). Novel tasks have higher inherent variance.
+- **(f) Domain confound:** High readiness may correlate with ambitious domains (development, building) that independently produce larger deltas. The readiness-delta relationship disappears when stratified by category.
+
+**Status: HYPOTHESIS, not finding.** The readiness inversion is observed in operator (n=1) data. The scope inflation explanation is the most architecturally interesting because it produces a different intervention (scope adjustment vs time adjustment) and elevates the brain dump field to primary measurement status. But competing explanations (b)–(f) must be ruled out before the scope inflation mechanism is treated as confirmed. Rule 10 (readiness-direction analysis) and Rule 12 (mediation test) are designed to distinguish between these hypotheses.
+
+**If scope inflation (a) is confirmed:**
+- `delta` reinterprets as "how much confidence inflated ambition beyond what fits in the allocated window" — a more specific, more actionable claim than the standard planning-fallacy frame
+- H1 reinterprets as: confidence predicts scope inflation rate → time overrun is downstream effect (survives VT-19 better because mechanism operates at planning time)
+- Calibration nudge pivots from time-adjustment ("push 60 to 83 min") to scope-adjustment ("when you feel this sharp, consider smaller scope, not longer time")
+- `task.description` field (Alembic 023) becomes **primary** measurement surface capturing stated scope; `scope_density = description_item_count / planned_minutes` becomes the key metric
+- Archetype taxonomy gains scope-stable vs scope-inflating dimension
+
+**If competing hypotheses (b)–(f) explain the inversion instead:**
+- Standard planning-fallacy frame stands; delta remains a time estimation error signal
+- Calibration nudge continues as time-adjustment
+- Brain dump remains a Phase 5 corpus accumulator without elevated measurement status
+- Readiness signal still useful but as a confounded predictor, not a causal mechanism
+
+**Pre-registered falsification test (Rule 12 below):**
+- Test whether readiness × delta correlation is mediated by implicit scope expansion
+- When brain dump data is available: compute `scope_density` per task, test mediation model `readiness → scope_density → delta`
+- When brain dump data is not available: infer scope expansion from execution pattern complexity (pause count, within-session duration variance)
+- If readiness predicts delta but scope_density accounts for the relationship when controlled for, delta is a scope problem not a time problem
+- If scope_density does NOT mediate the relationship, the standard time-estimation frame stands and VT-22 is falsified
+
+**Status:** VT-22 documented April 17, 2026. Pre-registered before trusted-user data arrives. Falsification test committed as Rule 12. Phase 6+ investigation; no code changes to calibration system until multi-user data confirms the mediation.
+
 ## Anonymized Retention Policy
 
 Anonymized retention serves product research only:
@@ -747,6 +785,7 @@ The experiment has started. Stay in measurement mode.
 *Manifesto v1.4 — revised April 14, 2026 (VT-12, VT-13, analysis rule 7, Shipping Philosophy)*
 *Manifesto v1.5 — revised April 15, 2026 (VT-19, VT-20, VT-21 candidate; Rules 8–9; profile taxonomy note; retention-scope clarification)*
 *Manifesto v1.6 — revised April 16, 2026 (Rule 11: no-nudge control days — VT-21 detection protocol; Rule 10 reserved)*
+*Manifesto v1.7 — revised April 17, 2026 (VT-22: scope inflation hypothesis; Rules 10 + 12: readiness-direction analysis + scope inflation mediation test; brain dump field elevated to potential primary measurement surface)*
 
 ---
 
@@ -824,6 +863,8 @@ These rules are fixed in advance to remove analyst degrees of freedom on the day
 
 9. **Report the disattenuated correlation estimate alongside the observed ρ.** *(Added April 14, 2026.)* In addition to the observed Spearman ρ used for the kill criterion decision, report the disattenuated correlation estimate per classical test theory (Spearman 1904), using test-retest reliability estimates for `pre_task_readiness` and `post_task_reflection`. Explicitly acknowledge that disattenuation requires reliability estimates not directly measured in this protocol — published single-item Likert reliability ranges will be used as proxies. The disattenuated value is interpretive context for the primary result, **not a basis for changing the kill criterion post-hoc**. The kill criterion decision is made on the observed ρ.
 
-10. ***[Reserved — slot left open April 16, 2026. No analysis rule assigned.]***
+10. **Readiness-direction analysis for scope inflation (VT-22).** *(Added April 17, 2026.)* Report the within-user Spearman ρ between `pre_task_readiness` and `duration_delta_minutes` with sign preserved. If the correlation is **negative** (high readiness → more negative delta, i.e. larger overruns), the standard time-estimation-error interpretation of delta is challenged per VT-22 (scope inflation hypothesis). Report this ρ alongside the primary H1 ρ. Additionally report mean `planned_duration_minutes` stratified by readiness quintile — if high-readiness sessions have systematically shorter planned durations than low-readiness sessions for the same category, the readiness signal is modulating planning ambition, not execution quality. This analysis is interpretive context for H1, not a replacement for the kill criterion.
 
 11. **No-nudge control days (VT-21 detection protocol).** *(Added April 16, 2026.)* Beginning at trusted-user week 2 (after minimum 7 days of nudge-active baseline), suppress all `micro_mirror`, `calibration_nudge`, and `/insights` surfaces on randomly selected days at a 1-in-7 target frequency. Within-user, compare distributions of `duration_delta_minutes`, `skip_rate`, and `initiation_delay_minutes` between nudge-active and no-nudge days. Report paired effect sizes with confidence intervals. **Necessity-of-nudge decision criterion:** at N ≥ 30 paired day-observations per user, if no-nudge days produce statistically equivalent or better calibration, re-evaluate the necessity of the nudge mechanism. **VT-21 detection criterion:** if nudge-active days show systematically different `planned_duration_minutes` distributions than no-nudge days, controlling for category and time_of_day, narrative internalization is confirmed per VT-21. **Stratification requirement:** all post-nudge-deployment H1 analysis is stratified by nudge-exposure status at the session level (surface-fired vs surface-suppressed), using the `reflection_view_log` shipped in LYR-098 Commit 2b as the authoritative exposure flag.
+
+12. **Scope inflation mediation test (VT-22 falsification).** *(Added April 17, 2026.)* When `task.description` data is available (≥ 50 tasks with non-empty descriptions per user), compute `scope_density = description_item_count / planned_duration_minutes` for each task. Run a mediation analysis: `pre_task_readiness → scope_density → duration_delta_minutes`. **If scope_density mediates the relationship** (readiness → delta attenuation ≥ 40% when controlling for scope_density, Sobel test p < 0.05): delta is primarily a scope inflation signal, not a time estimation error signal. Calibration nudge architecture pivots from time-adjustment to scope-adjustment in Phase 6+. **If scope_density does NOT mediate** (attenuation < 20%): the standard time-estimation frame stands, VT-22 is falsified, and the description field remains a Phase 5 corpus accumulator without elevated measurement status. **Interim analysis (before brain dump data):** use `pause_count` and within-session duration variance as proxy scope-complexity indicators. Report the readiness → proxy_complexity → delta mediation path as an exploratory supplement. This interim analysis is NOT a basis for the pivot decision — only the brain-dump-based mediation is authoritative.

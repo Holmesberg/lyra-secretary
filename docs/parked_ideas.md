@@ -134,11 +134,21 @@ bandwidth-weighted planned duration.
 
 ## Brain dump → AI subtask decomposition
 *Captured: April 17, 2026. Integration feature, not isolated addition.*
+*Elevated: April 17, 2026. VT-22 (scope inflation hypothesis) identifies
+brain dump as potential PRIMARY measurement surface, not secondary corpus.
+See `MANIFESTO.md` §VT-22 and pre-registered Rule 12.*
 
 **Problem:** Users create macro tasks ("build session", "study subject X",
 "meetings") that hide internal complexity. Measurement at macro level misses
 where time actually goes. Current system measures delta on the whole block
 but cannot identify which subtask caused the overrun.
+
+**Scope inflation connection (VT-22):** If delta measures scope inflation
+rather than time estimation error, the brain dump captures *stated scope* —
+the missing half of the measurement. `scope_density = description_item_count
+/ planned_minutes` becomes the core metric. High scope density + high
+readiness = detectable impossible plan at creation time. See MANIFESTO §VT-22
+for the full hypothesis and §Rule 12 for the pre-registered mediation test.
 
 **Three-phase implementation:**
 
