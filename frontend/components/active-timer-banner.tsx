@@ -97,6 +97,23 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     setPauseBaseSec((status.total_paused_minutes ?? 0) * 60);
   }, [status.total_paused_minutes]);
 
+  // Safety sync: if localPaused disagrees with server AND no mutation is
+  // in-flight, reconcile to server truth. Catches any edge case where
+  // localPaused gets stuck (e.g., task switch via interruption, React
+  // effect ordering, etc.). The !busy guard prevents stale polls from
+  // overwriting optimistic state during a 1.4s mutation.
+  useEffect(() => {
+    if (!busy && localPaused !== !!status.paused) {
+      setLocalPaused(!!status.paused);
+      if (!status.paused) {
+        pauseStartRef.current = null;
+        setFrozenSec(null);
+      } else {
+        pauseStartRef.current = pauseStartRef.current ?? Date.now();
+      }
+    }
+  }, [status.paused, busy, localPaused]);
+
   // Per-session reset: when the active task changes (new start, interruption,
   // etc.), all local timer state must reset to match the new task. Without
   // this, the previous task's pause counter / frozen display leaks into the
