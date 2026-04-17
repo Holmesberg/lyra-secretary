@@ -90,6 +90,7 @@ class Task(Base):
     confidence_score: Mapped[Optional[float]] = mapped_column(Float)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     description: Mapped[Optional[str]] = mapped_column(Text)
+    scope_outcome: Mapped[Optional[str]] = mapped_column(String(20))
     
     # Audit
     created_at: Mapped[datetime] = mapped_column(

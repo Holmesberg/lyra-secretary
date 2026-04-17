@@ -19,6 +19,14 @@ const ANCHORS = [
   { value: 5, label: "Excellent — sharpest I've been all day" },
 ];
 
+type ScopeOutcome = "stuck_to_plan" | "expanded" | "reduced";
+
+const SCOPE_OPTIONS: { value: ScopeOutcome; label: string }[] = [
+  { value: "stuck_to_plan", label: "Stuck to plan" },
+  { value: "expanded", label: "Expanded scope" },
+  { value: "reduced", label: "Reduced scope" },
+];
+
 interface Props {
   open: boolean;
   taskTitle: string;
@@ -29,7 +37,7 @@ interface Props {
   } | null;
   onConfirm: (
     rating: number,
-    opts?: { confirmed?: boolean; completionPct?: number }
+    opts?: { confirmed?: boolean; completionPct?: number; scopeOutcome?: ScopeOutcome }
   ) => Promise<void> | void;
   onCancel: () => void;
 }
@@ -43,6 +51,7 @@ export function ReflectionModal({
 }: Props) {
   const [value, setValue] = useState<number | null>(null);
   const [pct, setPct] = useState<string>("");
+  const [scope, setScope] = useState<ScopeOutcome | null>(null);
   const [submitting, setSubmitting] = useState(false);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
@@ -104,6 +113,27 @@ export function ReflectionModal({
           />
         </div>
 
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-white/60">Scope (optional)</span>
+          <div className="flex gap-2">
+            {SCOPE_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setScope(scope === o.value ? null : o.value)}
+                className={cn(
+                  "rounded-md border px-3 py-1.5 text-xs transition-colors",
+                  scope === o.value
+                    ? "border-white bg-white/10 text-white"
+                    : "border-white/10 text-white/50 hover:border-white/30 hover:text-white/70"
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <DialogFooter>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>
             Cancel
@@ -130,6 +160,7 @@ export function ReflectionModal({
                 await onConfirm(value, {
                   confirmed: !!earlyStop,
                   completionPct: clampedPct,
+                  scopeOutcome: scope ?? undefined,
                 });
               } finally {
                 setSubmitting(false);

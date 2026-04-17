@@ -192,7 +192,7 @@ export interface StopResponse {
 
 export function stopStopwatch(
   post_task_reflection: number,
-  opts: { confirmed?: boolean; task_completion_percentage?: number } = {}
+  opts: { confirmed?: boolean; task_completion_percentage?: number; scope_outcome?: string } = {}
 ) {
   const qs = opts.confirmed ? "?confirmed=true" : "";
   return api<StopResponse>(`/v1/stopwatch/stop${qs}`, {
@@ -200,6 +200,7 @@ export function stopStopwatch(
     body: JSON.stringify({
       post_task_reflection,
       task_completion_percentage: opts.task_completion_percentage,
+      scope_outcome: opts.scope_outcome,
     }),
   });
 }

@@ -251,7 +251,7 @@ function TodayInner() {
 
   async function handleStop(
     reflection: number,
-    opts: { confirmed?: boolean; completionPct?: number } = {}
+    opts: { confirmed?: boolean; completionPct?: number; scopeOutcome?: string } = {}
   ) {
     setErrorMsg(null);
     // Optimistic flip — same cancelQueries pattern as handleStart. Clears
@@ -273,6 +273,7 @@ function TodayInner() {
       const res: StopResponse = await stopStopwatch(reflection, {
         confirmed: opts.confirmed,
         task_completion_percentage: opts.completionPct,
+        scope_outcome: opts.scopeOutcome,
       });
       if (res.requires_confirmation) {
         if (snapshot !== undefined) {
@@ -551,7 +552,7 @@ function TodayInner() {
           setReflectionOpen(false);
           setEarlyStop(null);
         }}
-        onConfirm={(r, opts) => handleStop(r, { confirmed: opts?.confirmed, completionPct: opts?.completionPct })}
+        onConfirm={(r, opts) => handleStop(r, { confirmed: opts?.confirmed, completionPct: opts?.completionPct, scopeOutcome: opts?.scopeOutcome })}
       />
 
       <NewTaskModal

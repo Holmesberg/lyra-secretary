@@ -597,6 +597,7 @@ class StopwatchManager:
         self,
         post_task_reflection: Optional[int] = None,
         task_completion_percentage: Optional[int] = None,
+        scope_outcome: Optional[str] = None,
     ) -> tuple:
         """
         Stop active stopwatch. Returns (session, task, is_early_stop, notion_synced,
@@ -628,6 +629,8 @@ class StopwatchManager:
                 )
                 if task:
                     task.post_task_reflection = post_task_reflection
+                    if scope_outcome is not None:
+                        task.scope_outcome = scope_outcome
                     self.db.commit()
                     self.db.refresh(task)
                     session = (
@@ -740,6 +743,9 @@ class StopwatchManager:
 
         if post_task_reflection is not None:
             task.post_task_reflection = post_task_reflection
+        if scope_outcome is not None:
+            task.scope_outcome = scope_outcome
+        if post_task_reflection is not None or scope_outcome is not None:
             self.db.commit()
             self.db.refresh(task)
 

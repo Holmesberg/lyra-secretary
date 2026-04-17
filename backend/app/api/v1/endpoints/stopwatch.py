@@ -179,6 +179,7 @@ async def stop_stopwatch(
         session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct = manager.stop(
             post_task_reflection=request.post_task_reflection,
             task_completion_percentage=request.task_completion_percentage,
+            scope_outcome=request.scope_outcome,
         )
         zero_duration_skip = task.state == TaskState.SKIPPED and task.executed_duration_minutes in (None, 0)
 

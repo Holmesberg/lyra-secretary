@@ -14,6 +14,7 @@ class StopwatchStartRequest(BaseModel):
 class StopwatchStopRequest(BaseModel):
     post_task_reflection: Optional[int] = Field(None, ge=1, le=5)
     task_completion_percentage: Optional[int] = Field(None, ge=0, le=100)
+    scope_outcome: Optional[str] = Field(None, pattern="^(stuck_to_plan|expanded|reduced)$")
 
 
 class StopwatchStartResponse(BaseModel):
