@@ -53,15 +53,13 @@ function formatHHMMSS(secs: number, paused: boolean) {
 
 interface Props {
   status: StopwatchStatus;
-  // Set by the page when the user hovers/clicks the Start button on
-  // another PLANNED task while this timer is PAUSED. Used to surface a
-  // contextual orphan warning (the current interruption flow leaves the
-  // paused task resumable only via stale-session recovery after 12h).
   showOrphanWarning?: boolean;
   onDismissOrphanWarning?: () => void;
+  requestPause?: boolean;
+  onRequestPauseHandled?: () => void;
 }
 
-export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWarning }: Props) {
+export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWarning, requestPause, onRequestPauseHandled }: Props) {
   const qc = useQueryClient();
   const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -84,15 +82,17 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     status.paused ? (status.elapsed_minutes ?? 0) * 60 : null
   );
   const prevPausedRef = useRef<boolean>(!!status.paused);
+  const lastDisplayedRef = useRef<number>((status.elapsed_minutes ?? 0) * 60);
 
   // Pause-transition effect — freezes on pause, rebases anchor on resume.
-  // Driven by localPaused (button-click controlled), NOT status.paused
-  // (poll-controlled), so stale polls can't trigger false transitions.
+  // Uses lastDisplayedRef (the value the user SAW on screen) to avoid a
+  // forward-snap when frozenSec would otherwise recompute from anchor+now
+  // (which includes time that elapsed while the reason picker was open).
   useEffect(() => {
     const wasPaused = prevPausedRef.current;
     const isPaused = localPaused;
     if (!wasPaused && isPaused) {
-      setFrozenSec(anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000));
+      setFrozenSec(lastDisplayedRef.current);
     } else if (wasPaused && !isPaused) {
       if (frozenSec !== null) {
         setAnchor({ sec: frozenSec, ts: Date.now() });
@@ -115,12 +115,16 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status.elapsed_minutes]);
 
-  // 1-Hz local tick for visual refresh; stopped while paused.
+  // 1-Hz local tick for visual refresh; stopped while paused OR while
+  // the reason picker is open (pre-freeze: timer appears to stop the
+  // moment the user clicks Pause, not 3-5s later when they finish
+  // choosing a reason). showReasonPicker halts ticks, localPaused
+  // captures the frozenSec on commit.
   useEffect(() => {
-    if (localPaused) return;
+    if (localPaused || showReasonPicker) return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [localPaused]);
+  }, [localPaused, showReasonPicker]);
 
   // Click-outside listener for pause reason picker.
   // MUST be declared before the early return below to satisfy React's
@@ -147,11 +151,19 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     return () => document.removeEventListener("pointerdown", onDown);
   }, [showReasonPicker]);
 
+  useEffect(() => {
+    if (requestPause && !localPaused) {
+      setShowReasonPicker(true);
+      onRequestPauseHandled?.();
+    }
+  }, [requestPause, localPaused, onRequestPauseHandled]);
+
   if (!status.active || !status.start_time) return null;
   const paused = localPaused;
   const displaySec = frozenSec !== null
     ? frozenSec
     : anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
+  lastDisplayedRef.current = displaySec;
   const elapsed = formatHHMMSS(displaySec, paused);
 
   async function applyPause(reason: string | undefined) {
@@ -170,14 +182,31 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) =>
       old ? { ...old, paused: true } : old
     );
+    // Optimistic task-state flip — task card shows PAUSED instantly instead
+    // of waiting for the 10s tasks poll to return the new state.
+    qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+      Array.isArray(old)
+        ? old.map((t: Record<string, unknown>) =>
+            t.task_id === status.task_id ? { ...t, state: "PAUSED" } : t
+          )
+        : old
+    );
     try {
       await pauseStopwatch(reason);
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
     } catch (e) {
       setLocalPaused(false);
       if (snapshot !== undefined) {
         qc.setQueryData(["stopwatch-status"], snapshot);
       }
+      qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+        Array.isArray(old)
+          ? old.map((t: Record<string, unknown>) =>
+              t.task_id === status.task_id ? { ...t, state: "EXECUTING" } : t
+            )
+          : old
+      );
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
@@ -193,14 +222,29 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) =>
       old ? { ...old, paused: false } : old
     );
+    qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+      Array.isArray(old)
+        ? old.map((t: Record<string, unknown>) =>
+            t.task_id === status.task_id ? { ...t, state: "EXECUTING" } : t
+          )
+        : old
+    );
     try {
       await resumeStopwatch();
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
     } catch (e) {
       setLocalPaused(true);
       if (snapshot !== undefined) {
         qc.setQueryData(["stopwatch-status"], snapshot);
       }
+      qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+        Array.isArray(old)
+          ? old.map((t: Record<string, unknown>) =>
+              t.task_id === status.task_id ? { ...t, state: "PAUSED" } : t
+            )
+          : old
+      );
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
