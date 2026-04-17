@@ -460,8 +460,8 @@ def test_apscheduler_job_count():
         and isinstance(getattr(node, "func", None), ast.Attribute)
         and getattr(node.func, "attr", "") == "add_job"
     )
-    assert add_job_calls == 7, (
-        f"Expected 7 add_job calls in scheduler.py, found {add_job_calls}. "
+    assert add_job_calls == 8, (
+        f"Expected 8 add_job calls in scheduler.py, found {add_job_calls}. "
         f"A background job may have been added or removed without updating "
         f"the state consistency gate."
     )
