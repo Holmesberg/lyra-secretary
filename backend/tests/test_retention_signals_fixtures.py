@@ -39,12 +39,13 @@ def _clean_tasks(db):
 # micro_mirror — pure function over task field values
 # ---------------------------------------------------------------------------
 
-def _mm(delay=None, delta=None, duration=0, pauses=0):
+def _mm(delay=None, delta=None, duration=0, pauses=0, planned=None):
     t = MagicMock(spec=Task)
     t.initiation_delay_minutes = delay
     t.duration_delta_minutes = delta
     t.executed_duration_minutes = duration
     t.pause_count = pauses
+    t.planned_duration_minutes = planned
     return t
 
 
@@ -101,8 +102,23 @@ def test_mm_many_pauses():
 
 
 def test_mm_all_null_returns_none():
-    t = _mm(delay=None, delta=None, duration=None, pauses=None)
+    t = _mm(delay=None, delta=None, duration=None, pauses=None, planned=None)
     assert _compute_micro_mirror(t) is None
+
+
+def test_mm_fallback_overrun_shows_ratio():
+    t = _mm(delay=5, delta=-10, duration=68, pauses=1, planned=45)
+    assert _compute_micro_mirror(t) == "Planned 45 min, took 68 — 1.51× your estimate."
+
+
+def test_mm_fallback_on_target():
+    t = _mm(delay=5, delta=-3, duration=30, pauses=1, planned=30)
+    assert _compute_micro_mirror(t) == "Planned 30 min, took 30 — right on target."
+
+
+def test_mm_fallback_finished_early():
+    t = _mm(delay=5, delta=10, duration=20, pauses=0, planned=30)
+    assert _compute_micro_mirror(t) == "Planned 30 min, finished in 20."
 
 
 def test_mm_priority_initiation_late_beats_delta():

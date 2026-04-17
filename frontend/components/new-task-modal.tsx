@@ -95,6 +95,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
   const [softConflict, setSoftConflict] = useState<SoftConflict | null>(null);
   const [lastEditId, setLastEditId] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
+  const [showDescription, setShowDescription] = useState(false);
+  const [nudgeSource, setNudgeSource] = useState<"personal" | "research" | null>(null);
   const [calibrationNudge, setCalibrationNudge] = useState<{
     cell: BiasFactorCell;
     suggestedMin: number;
@@ -109,17 +112,23 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       lookupBiasFactor(category, tod)
         .then((res) => {
           if (abortCtl.signal.aborted) return;
-          if (res.cell && res.cell.bias_factor >= 1.25 && res.cell.sessions >= 10) {
+          const isPersonal = res.source === "personal";
+          const isResearch = res.source === "research";
+          const threshold = isPersonal ? 1.25 : 1.20;
+          const minSessions = isPersonal ? 10 : 0;
+          if (res.cell && res.cell.bias_factor >= threshold && res.cell.sessions >= minSessions) {
             const planned = durHours * 60 + durMinutes;
             setCalibrationNudge({
               cell: res.cell,
               suggestedMin: roundTo5(planned * res.cell.bias_factor),
             });
+            setNudgeSource(isResearch ? "research" : "personal");
           } else {
             setCalibrationNudge(null);
+            setNudgeSource(null);
           }
         })
-        .catch(() => { if (!abortCtl.signal.aborted) setCalibrationNudge(null); });
+        .catch(() => { if (!abortCtl.signal.aborted) { setCalibrationNudge(null); setNudgeSource(null); } });
     }, 400);
     return () => { clearTimeout(timer); abortCtl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,6 +152,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       setDurMinutes(30);
       setTitle("");
       setCategory("work");
+      setDescription("");
+      setShowDescription(false);
       setError(null);
       setPausedConflict(null);
       setLastEditId(null);
@@ -174,10 +185,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setDurHours(0);
     setDurMinutes(30);
     setCategory("work");
+    setDescription("");
+    setShowDescription(false);
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
     setCalibrationNudge(null);
+    setNudgeSource(null);
     setLastEditId(null);
   }
 
@@ -241,6 +255,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         start: startDate.toISOString(),
         end: endDate.toISOString(),
         category,
+        description: description.trim() || undefined,
       });
       // Debug aid (Apr 16): dogfood diagnostic for severity-render
       // bug. If operator sees the wrong UI (red when expecting yellow
@@ -448,6 +463,46 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             </select>
           </div>
 
+          {!isEdit && (
+            <div className="flex flex-col gap-1.5">
+              {!showDescription ? (
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs text-white/40 hover:text-white/60"
+                  onClick={() => setShowDescription(true)}
+                >
+                  <span>Add details</span>
+                  <span className="text-[10px]">▾</span>
+                </button>
+              ) : (
+                <>
+                  <Label htmlFor="description">What does this involve? <span className="text-white/30 font-normal">(optional)</span></Label>
+                  <textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="- Step one&#10;- Step two&#10;- Step three"
+                    rows={3}
+                    className="rounded-md border border-white/15 bg-transparent px-3 py-2 text-sm text-white/70 placeholder:text-white/20 resize-none"
+                  />
+                  {(() => {
+                    const items = description.split("\n").filter((l) => /^\s*[-*•]\s|^\s*\d+[.)]\s/.test(l));
+                    const planned = durHours * 60 + durMinutes;
+                    if (items.length >= 2 && planned > 0) {
+                      const perItem = Math.round((planned / items.length) * 10) / 10;
+                      return (
+                        <span className="text-[11px] text-white/30">
+                          {items.length} items, ~{perItem} min each based on your estimate
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+                </>
+              )}
+            </div>
+          )}
+
           {endBeforeStart && (
             <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
               End time must be after start
@@ -516,11 +571,24 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           {calibrationNudge && !softConflict && !pausedConflict && !error && (
             <div className="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-200">
               <div>
-                Your <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
-                in the <span className="font-medium text-white">{calibrationNudge.cell.time_of_day}</span> typically
-                run <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over
-                plan ({calibrationNudge.cell.sessions} sessions).
-                Adjust to {calibrationNudge.suggestedMin} min?
+                {nudgeSource === "research" ? (
+                  <>
+                    Research on <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
+                    shows people underestimate by <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span>.
+                    {" "}Your estimate: {durHours * 60 + durMinutes} min.
+                    {calibrationNudge.cell.citation && (
+                      <span className="block mt-0.5 text-[10px] text-blue-300/50">{calibrationNudge.cell.citation}</span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Your <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
+                    in the <span className="font-medium text-white">{calibrationNudge.cell.time_of_day}</span> typically
+                    run <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over
+                    plan ({calibrationNudge.cell.sessions} sessions).
+                  </>
+                )}
+                {" "}Adjust to {calibrationNudge.suggestedMin} min?
               </div>
               <div className="mt-2 flex gap-2">
                 <button

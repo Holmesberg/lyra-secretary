@@ -17,6 +17,7 @@ class TaskCreateRequest(BaseModel):
     start: datetime
     end: datetime
     category: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = Field(None, max_length=2000)
     state: TaskState = TaskState.PLANNED
     source: TaskSource = TaskSource.MANUAL
     confidence_score: Optional[float] = Field(None, ge=0.0, le=1.0)

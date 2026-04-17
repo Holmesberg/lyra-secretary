@@ -985,6 +985,17 @@ async def get_bias_factor(
     }
 
 
+RESEARCH_PRIORS: dict[str, dict] = {
+    "development": {"bias_factor": 1.50, "citation": "Buehler et al. 1994; Connolly & Dean 1997"},
+    "work":        {"bias_factor": 1.45, "citation": "Buehler et al. 1994"},
+    "study":       {"bias_factor": 1.40, "citation": "Newby-Clark et al. 2000"},
+    "academic":    {"bias_factor": 1.40, "citation": "Newby-Clark et al. 2000"},
+    "exercise":    {"bias_factor": 1.15, "citation": "Roy et al. 2005"},
+    "fitness":     {"bias_factor": 1.15, "citation": "Roy et al. 2005"},
+}
+RESEARCH_PRIOR_DEFAULT = {"bias_factor": 1.35, "citation": "Kahneman & Tversky 1979 (planning fallacy mean)"}
+
+
 @router.get("/analytics/bias_factor/lookup")
 async def bias_factor_lookup(
     category: str = Query(..., description="Task category"),
@@ -992,7 +1003,12 @@ async def bias_factor_lookup(
     min_sessions: int = Query(10, ge=2, le=50),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Single-cell bias_factor lookup for the creation-nudge."""
+    """Single-cell bias_factor lookup for the creation-nudge.
+
+    Returns personal bias_factor when sufficient data exists (source="personal").
+    Falls back to published research priors when personal data is insufficient
+    (source="research"). Research priors from planning-fallacy literature.
+    """
     tasks = (
         db.query(Task)
         .filter(
@@ -1012,11 +1028,27 @@ async def bias_factor_lookup(
         and _time_of_day(to_local(t.planned_start_utc)) == tod
     ]
     cell = _bias_cell(rows, min_sessions)
-    if cell is None:
-        return {"cell": None, "sessions": len(rows), "min_sessions": min_sessions}
-    cell["category"] = category
-    cell["time_of_day"] = tod
-    return {"cell": cell, "sessions": len(rows), "min_sessions": min_sessions}
+    if cell is not None:
+        cell["category"] = category
+        cell["time_of_day"] = tod
+        return {"cell": cell, "sessions": len(rows), "min_sessions": min_sessions, "source": "personal"}
+
+    prior = RESEARCH_PRIORS.get(category, RESEARCH_PRIOR_DEFAULT)
+    return {
+        "cell": {
+            "bias_factor": prior["bias_factor"],
+            "bias_factor_mean": prior["bias_factor"],
+            "sessions": 0,
+            "confidence": "research",
+            "interpretation": "underestimates",
+            "category": category,
+            "time_of_day": tod,
+            "citation": prior["citation"],
+        },
+        "sessions": len(rows),
+        "min_sessions": min_sessions,
+        "source": "research",
+    }
 
 
 @router.get("/analytics/pause_prediction")

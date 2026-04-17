@@ -67,6 +67,7 @@ async def create_task(
             start=request.start,
             end=request.end,
             category=request.category,
+            description=request.description,
             state=request.state,
             source=request.source,
             confidence_score=request.confidence_score,

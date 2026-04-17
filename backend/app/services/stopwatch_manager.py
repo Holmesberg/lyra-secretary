@@ -53,6 +53,17 @@ def _compute_micro_mirror(task: Task) -> Optional[str]:
         return "0 pauses this session."
     if pauses >= 3:
         return f"{pauses} pauses this session."
+
+    planned = task.planned_duration_minutes
+    executed = task.executed_duration_minutes
+    if planned and executed and planned > 0:
+        ratio = round(executed / planned, 2)
+        if ratio >= 1.05:
+            return f"Planned {planned} min, took {executed} — {ratio}× your estimate."
+        elif ratio <= 0.95:
+            return f"Planned {planned} min, finished in {executed}."
+        else:
+            return f"Planned {planned} min, took {executed} — right on target."
     return None
 
 

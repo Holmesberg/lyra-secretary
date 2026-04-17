@@ -85,6 +85,7 @@ export interface CreateTaskInput {
   start: string; // ISO with timezone
   end: string;
   category: Category;
+  description?: string;
   force?: boolean;
 }
 
@@ -128,6 +129,7 @@ export function createTask(input: CreateTaskInput) {
       start: input.start,
       end: input.end,
       category: input.category,
+      description: input.description || undefined,
       source: "web",
       force: input.force ?? false,
     }),
@@ -295,12 +297,14 @@ export interface BiasFactorCell {
   interpretation: string;
   category: string;
   time_of_day: string;
+  citation?: string;
 }
 
 export interface BiasLookupResponse {
   cell: BiasFactorCell | null;
   sessions: number;
   min_sessions: number;
+  source?: "personal" | "research";
 }
 
 export interface Insight {
