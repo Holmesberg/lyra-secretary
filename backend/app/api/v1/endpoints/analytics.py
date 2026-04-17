@@ -1000,14 +1000,16 @@ RESEARCH_PRIOR_DEFAULT = {"bias_factor": 1.35, "citation": "Kahneman & Tversky 1
 async def bias_factor_lookup(
     category: str = Query(..., description="Task category"),
     tod: str = Query(..., description="Time-of-day bucket (morning/afternoon/evening/night)"),
-    min_sessions: int = Query(10, ge=2, le=50),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Single-cell bias_factor lookup for the creation-nudge.
+    """Three-tier bias_factor lookup for the creation-nudge.
 
-    Returns personal bias_factor when sufficient data exists (source="personal").
-    Falls back to published research priors when personal data is insufficient
-    (source="research"). Research priors from planning-fallacy literature.
+    Tier 1 — personal established (≥10 sessions): full-confidence personal data.
+    Tier 2 — personal early (3–9 sessions): real data, lower confidence.
+    Tier 3 — research prior (0–2 sessions): published planning-fallacy estimates.
+
+    Returns source="personal" for tiers 1–2, source="research" for tier 3.
+    Frontend differentiates tier 1 vs 2 via sessions count.
     """
     tasks = (
         db.query(Task)
@@ -1027,11 +1029,12 @@ async def bias_factor_lookup(
         if (t.category or "uncategorized") == category
         and _time_of_day(to_local(t.planned_start_utc)) == tod
     ]
-    cell = _bias_cell(rows, min_sessions)
+
+    cell = _bias_cell(rows, min_n=3)
     if cell is not None:
         cell["category"] = category
         cell["time_of_day"] = tod
-        return {"cell": cell, "sessions": len(rows), "min_sessions": min_sessions, "source": "personal"}
+        return {"cell": cell, "sessions": len(rows), "min_sessions": 3, "source": "personal"}
 
     prior = RESEARCH_PRIORS.get(category, RESEARCH_PRIOR_DEFAULT)
     return {
@@ -1046,7 +1049,7 @@ async def bias_factor_lookup(
             "citation": prior["citation"],
         },
         "sessions": len(rows),
-        "min_sessions": min_sessions,
+        "min_sessions": 3,
         "source": "research",
     }
 

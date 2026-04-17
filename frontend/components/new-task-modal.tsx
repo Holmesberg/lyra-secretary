@@ -112,11 +112,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       lookupBiasFactor(category, tod)
         .then((res) => {
           if (abortCtl.signal.aborted) return;
-          const isPersonal = res.source === "personal";
           const isResearch = res.source === "research";
-          const threshold = isPersonal ? 1.25 : 1.20;
-          const minSessions = isPersonal ? 10 : 0;
-          if (res.cell && res.cell.bias_factor >= threshold && res.cell.sessions >= minSessions) {
+          const threshold = isResearch ? 1.20 : 1.25;
+          if (res.cell && res.cell.bias_factor >= threshold) {
             const planned = durHours * 60 + durMinutes;
             setCalibrationNudge({
               cell: res.cell,
@@ -579,6 +577,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     {calibrationNudge.cell.citation && (
                       <span className="block mt-0.5 text-[10px] text-blue-300/50">{calibrationNudge.cell.citation}</span>
                     )}
+                  </>
+                ) : calibrationNudge.cell.sessions < 10 ? (
+                  <>
+                    Early data ({calibrationNudge.cell.sessions} sessions): your{" "}
+                    <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
+                    in the <span className="font-medium text-white">{calibrationNudge.cell.time_of_day}</span> run{" "}
+                    <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over plan.
                   </>
                 ) : (
                   <>
