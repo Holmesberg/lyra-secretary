@@ -988,6 +988,40 @@ async def get_bias_factor(
     }
 
 
+@router.get("/analytics/bias_factor/lookup")
+async def bias_factor_lookup(
+    category: str = Query(..., description="Task category"),
+    tod: str = Query(..., description="Time-of-day bucket (morning/afternoon/evening/night)"),
+    min_sessions: int = Query(10, ge=2, le=50),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Single-cell bias_factor lookup for the creation-nudge."""
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.state == TaskState.EXECUTED,
+            Task.initiation_status != "system_error",
+            Task.voided_at.is_(None),
+            Task.initiation_status != "retroactive",
+            Task.executed_duration_minutes != None,
+            Task.planned_duration_minutes > 0,
+        )
+        .all()
+    )
+    rows = [
+        (t.planned_duration_minutes, t.executed_duration_minutes)
+        for t in tasks
+        if (t.category or "uncategorized") == category
+        and _time_of_day(to_local(t.planned_start_utc)) == tod
+    ]
+    cell = _bias_cell(rows, min_sessions)
+    if cell is None:
+        return {"cell": None, "sessions": len(rows), "min_sessions": min_sessions}
+    cell["category"] = category
+    cell["time_of_day"] = tod
+    return {"cell": cell, "sessions": len(rows), "min_sessions": min_sessions}
+
+
 @router.get("/analytics/pause_prediction")
 async def get_pause_prediction(db: Session = Depends(get_db)) -> dict:
     """VT-17 pause-prediction dashboard (scoped to the requesting user).

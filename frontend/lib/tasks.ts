@@ -252,3 +252,27 @@ export function voidTask(
     body: JSON.stringify({ voided_reason, void_reason_detail }),
   });
 }
+
+// ─── Analytics ────────────────────────────────────────────────────────
+
+export interface BiasFactorCell {
+  bias_factor: number;
+  bias_factor_mean: number;
+  sessions: number;
+  confidence: string;
+  interpretation: string;
+  category: string;
+  time_of_day: string;
+}
+
+export interface BiasLookupResponse {
+  cell: BiasFactorCell | null;
+  sessions: number;
+  min_sessions: number;
+}
+
+export function lookupBiasFactor(category: string, tod: string) {
+  return api<BiasLookupResponse>(
+    `/v1/analytics/bias_factor/lookup?category=${encodeURIComponent(category)}&tod=${encodeURIComponent(tod)}&min_sessions=10`
+  );
+}

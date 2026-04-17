@@ -13,7 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CATEGORIES, type Category } from "@/lib/categories";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
-import { createTask, rescheduleTask, type TaskRow } from "@/lib/tasks";
+import {
+  createTask,
+  rescheduleTask,
+  lookupBiasFactor,
+  type TaskRow,
+  type BiasFactorCell,
+} from "@/lib/tasks";
 
 function formatLocal(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -39,6 +45,18 @@ function addMinutes(localStr: string, mins: number): string {
 
 function diffMinutes(startStr: string, endStr: string): number {
   return Math.round((new Date(endStr).getTime() - new Date(startStr).getTime()) / 60_000);
+}
+
+function timeOfDay(localStr: string): string {
+  const h = new Date(localStr).getHours();
+  if (h >= 5 && h < 12) return "morning";
+  if (h >= 12 && h < 17) return "afternoon";
+  if (h >= 17 && h < 21) return "evening";
+  return "night";
+}
+
+function roundTo5(n: number): number {
+  return Math.round(n / 5) * 5 || 5;
 }
 
 interface PausedConflict {
@@ -77,6 +95,35 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
   const [softConflict, setSoftConflict] = useState<SoftConflict | null>(null);
   const [lastEditId, setLastEditId] = useState<string | null>(null);
+  const [calibrationNudge, setCalibrationNudge] = useState<{
+    cell: BiasFactorCell;
+    suggestedMin: number;
+  } | null>(null);
+
+  // Fetch bias_factor when category or start time changes (debounced).
+  useEffect(() => {
+    if (!open || isEdit) { setCalibrationNudge(null); return; }
+    const tod = timeOfDay(start);
+    const abortCtl = new AbortController();
+    const timer = setTimeout(() => {
+      lookupBiasFactor(category, tod)
+        .then((res) => {
+          if (abortCtl.signal.aborted) return;
+          if (res.cell && res.cell.bias_factor >= 1.25 && res.cell.sessions >= 10) {
+            const planned = durHours * 60 + durMinutes;
+            setCalibrationNudge({
+              cell: res.cell,
+              suggestedMin: roundTo5(planned * res.cell.bias_factor),
+            });
+          } else {
+            setCalibrationNudge(null);
+          }
+        })
+        .catch(() => { if (!abortCtl.signal.aborted) setCalibrationNudge(null); });
+    }, 400);
+    return () => { clearTimeout(timer); abortCtl.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, category, start, isEdit]);
 
   const totalMinutes = durHours * 60 + durMinutes;
   const endBeforeStart = diffMinutes(start, end) <= 0;
@@ -130,6 +177,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
+    setCalibrationNudge(null);
     setLastEditId(null);
   }
 
@@ -469,6 +517,40 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 </div>
               )}
               <div className="mt-1 text-white/60">Create anyway?</div>
+            </div>
+          )}
+
+          {calibrationNudge && !softConflict && !pausedConflict && !error && (
+            <div className="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-200">
+              <div>
+                Your <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
+                in the <span className="font-medium text-white">{calibrationNudge.cell.time_of_day}</span> typically
+                run <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over
+                plan ({calibrationNudge.cell.sessions} sessions).
+                Adjust to {calibrationNudge.suggestedMin} min?
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  className="rounded bg-blue-500/20 px-2 py-1 text-[11px] font-medium text-blue-100 hover:bg-blue-500/30"
+                  onClick={() => {
+                    const newMin = calibrationNudge.suggestedMin;
+                    setDurHours(Math.floor(newMin / 60));
+                    setDurMinutes(newMin % 60);
+                    setEnd(addMinutes(start, newMin));
+                    setCalibrationNudge(null);
+                  }}
+                >
+                  Use {calibrationNudge.suggestedMin} min
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-white/5 px-2 py-1 text-[11px] text-white/60 hover:bg-white/10"
+                  onClick={() => setCalibrationNudge(null)}
+                >
+                  Keep {durHours * 60 + durMinutes} min
+                </button>
+              </div>
             </div>
           )}
 
