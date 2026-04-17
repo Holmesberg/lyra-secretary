@@ -105,17 +105,18 @@ def test_no_conflicts_returns_empty_result(db):
     assert result.all_conflicts() == []
 
 
-def test_hard_conflict_executing_overlap(db):
+def test_executing_overlap_is_soft(db):
+    """EXECUTING overlap is SOFT (planning during execution is permitted)."""
     existing = _seed_task(db, title="active work", state=TaskState.EXECUTING,
                           start_offset_min=60, duration_min=60)
     detector = ConflictDetector(db)
     new_start = existing.planned_start_utc + timedelta(minutes=15)
     new_end = new_start + timedelta(minutes=20)
     result = detector.detect(new_start, new_end)
-    assert result.severity() == "hard"
-    assert result.has_hard() is True
-    assert existing.task_id in {t.task_id for t in result.hard}
-    assert result.soft_reasons() == []
+    assert result.severity() == "soft"
+    assert result.has_hard() is False
+    assert existing.task_id in {t.task_id for t in result.soft_overlap}
+    assert "overlap" in result.soft_reasons()
 
 
 def test_soft_conflict_planned_overlap(db):
@@ -215,22 +216,19 @@ def test_duplicate_title_deleted_excluded(db):
     assert result.severity() is None
 
 
-def test_mixed_hard_and_soft_hard_wins(db):
-    # Existing EXECUTING task at +1h
+def test_mixed_executing_and_planned_all_soft(db):
+    """EXECUTING + PLANNED overlaps both land in soft — no hard conflicts."""
     executing = _seed_task(db, title="active", state=TaskState.EXECUTING,
                            start_offset_min=60, duration_min=60)
-    # Existing PLANNED with same title at +5h (would soft-trigger duplicate)
     planned = _seed_task(db, title="ambiguous", state=TaskState.PLANNED,
                          start_offset_min=300, duration_min=30)
     detector = ConflictDetector(db)
     new_start = executing.planned_start_utc + timedelta(minutes=10)
     new_end = new_start + timedelta(minutes=15)
-    # Same title as planned + overlapping with executing
     result = detector.detect(new_start, new_end, title="ambiguous")
-    assert result.severity() == "hard"
-    assert result.has_hard() is True
-    # Soft buckets may also have entries — that's fine, severity gates.
-    assert len(result.hard) == 1
+    assert result.severity() == "soft"
+    assert result.has_hard() is False
+    assert len(result.soft_overlap) >= 1
 
 
 def test_voided_overlap_excluded(db):
@@ -322,7 +320,8 @@ def test_endpoint_soft_force_true_creates(client, db):
     assert body["severity"] is None
 
 
-def test_endpoint_hard_executing_blocks_with_can_proceed_false(client, db):
+def test_endpoint_executing_overlap_is_soft_with_can_proceed(client, db):
+    """EXECUTING overlap is soft — planning during execution is permitted."""
     _seed_task(db, title="active", state=TaskState.EXECUTING,
                start_offset_min=120, duration_min=60)
     new_start = now_utc() + timedelta(hours=2, minutes=15)
@@ -333,13 +332,13 @@ def test_endpoint_hard_executing_blocks_with_can_proceed_false(client, db):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["created"] is False
-    assert body["severity"] == "hard"
-    assert body["can_proceed"] is False
-    assert all(c["gate_id"] == "active_overlap" for c in body["conflicts"])
+    assert body["severity"] == "soft"
+    assert body["can_proceed"] is True
+    assert all(c["gate_id"] == "executing_overlap" for c in body["conflicts"])
 
 
-def test_endpoint_hard_force_true_still_blocked(client, db):
-    """force=true cannot override single-mutation-authority."""
+def test_endpoint_executing_overlap_force_true_creates(client, db):
+    """force=true overrides EXECUTING overlap (planning during execution)."""
     _seed_task(db, title="active", state=TaskState.EXECUTING,
                start_offset_min=120, duration_min=60)
     new_start = now_utc() + timedelta(hours=2, minutes=15)
@@ -350,9 +349,7 @@ def test_endpoint_hard_force_true_still_blocked(client, db):
     }, headers=_h())
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["created"] is False
-    assert body["severity"] == "hard"
-    assert body["can_proceed"] is False
+    assert body["created"] is True
 
 
 def test_endpoint_duplicate_title_soft(client, db):

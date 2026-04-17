@@ -1,10 +1,12 @@
 """Time conflict detection — classified severity model (Path A, Apr 16 2026).
 
 Severity rules (per dogfood `Conflict detection too strict for planned tasks`,
-April 15 2026):
+April 15 2026; revised Apr 17 — EXECUTING overlap downgraded to SOFT per
+rules_vs_agency.md §planning during execution is permitted):
 
-  HARD — overlap with state=EXECUTING. Single-mutation-authority is structural;
-         hard rejection cannot be force-overridden.
+  SOFT — `executing_overlap`: overlap with state=EXECUTING. Planning during
+         execution is a legitimate workflow (schedule the next task while the
+         current one is running). User can force-override.
 
   SOFT — `planned_overlap`: overlap with state=PLANNED or PAUSED. Legitimate
          use cases: context-switching, contingent tasks, multi-task scenarios
@@ -15,6 +17,10 @@ April 15 2026):
          Cairo (UTC+2) shifts the boundary by 2h, so an edge-case task at
          Cairo 01:30 vs another at Cairo 03:00 would be on different UTC days.
          Multi-tz refactor lives on its own backlog item.
+
+  No HARD conflicts exist in the current model — all overlaps are
+  force-overridable. The `hard` bucket is kept in ConflictResult for
+  future use (e.g., if immutable-slot constraints are added).
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -110,8 +116,8 @@ class ConflictDetector:
             overlap_q = overlap_q.filter(Task.task_id != exclude_task_id)
         overlapping = overlap_q.all()
 
-        hard = [t for t in overlapping if t.state == TaskState.EXECUTING]
-        soft_overlap = [t for t in overlapping if t.state != TaskState.EXECUTING]
+        hard: list[Task] = []
+        soft_overlap = list(overlapping)
 
         # Duplicate-title same-UTC-day gate.
         soft_duplicate: list[Task] = []

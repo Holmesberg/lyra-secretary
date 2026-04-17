@@ -74,10 +74,6 @@ async def create_task(
         )
 
         if task is None:
-            # Conflicts exist (HARD always rejects; SOFT rejects when
-            # force=False). Serialize per-conflict gate_id so the frontend
-            # can render hard vs soft + the analytics layer can attribute
-            # override rates per gate.
             conflict_info: list[ConflictInfo] = []
             for c in result.hard:
                 conflict_info.append(ConflictInfo(
@@ -87,11 +83,12 @@ async def create_task(
                     state=c.state, gate_id="active_overlap",
                 ))
             for c in result.soft_overlap:
+                gate = "executing_overlap" if c.state == TaskState.EXECUTING else "planned_overlap"
                 conflict_info.append(ConflictInfo(
                     task_id=c.task_id, title=c.title,
                     start=to_local(c.planned_start_utc),
                     end=to_local(c.planned_end_utc),
-                    state=c.state, gate_id="planned_overlap",
+                    state=c.state, gate_id=gate,
                 ))
             for c in result.soft_duplicate:
                 conflict_info.append(ConflictInfo(

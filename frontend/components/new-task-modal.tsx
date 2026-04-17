@@ -66,9 +66,9 @@ interface PausedConflict {
 }
 
 interface SoftConflict {
-  // "overlap" + "duplicate_title" possible combinations from soft_reasons
   reasons: string[];
   overlapTitles: string[];
+  executingTitles: string[];
   duplicateTitle: string | null;
 }
 
@@ -253,7 +253,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       if (!res.created) {
         if (res.conflicts.length > 0) {
           const paused = res.conflicts.filter((c) => c.state === "PAUSED");
-          if (paused.length > 0 && onInterruptionCreated) {
+          const startingSoon = new Date(start).getTime() - Date.now() < 5 * 60_000;
+          if (paused.length > 0 && onInterruptionCreated && startingSoon) {
             setPausedConflict({
               taskId: paused[0].task_id,
               title: paused[0].title,
@@ -263,28 +264,10 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             });
             return;
           }
-          // Path A (Apr 16): branch on severity. HARD = active-timer
-          // overlap (never force-overridable). SOFT = planned overlap
-          // or duplicate title (force-overridable).
-          if (res.severity === "hard") {
-            // Discriminate the HARD conflict (the actual blocker) from
-            // any soft ones that also fired — common case when a new
-            // task sits inside an active-timer window that itself
-            // overlaps an existing planned task.
-            const hardTitles = res.conflicts
-              .filter((c) => c.gate_id === "active_overlap")
+          if (res.severity === "soft" || res.severity === "hard") {
+            const executing = res.conflicts
+              .filter((c) => c.gate_id === "executing_overlap" || c.gate_id === "active_overlap")
               .map((c) => c.title);
-            const softTitles = res.conflicts
-              .filter((c) => c.gate_id !== "active_overlap")
-              .map((c) => c.title);
-            let msg = `Active timer is running: ${hardTitles.join(", ") || res.conflicts[0].title}. Stop it first, then retry.`;
-            if (softTitles.length > 0) {
-              msg += ` (Also overlaps planned: ${softTitles.join(", ")}.)`;
-            }
-            setError(msg);
-            return;
-          }
-          if (res.severity === "soft") {
             const overlaps = res.conflicts
               .filter((c) => c.gate_id === "planned_overlap")
               .map((c) => c.title);
@@ -294,6 +277,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             setSoftConflict({
               reasons: res.soft_reasons ?? [],
               overlapTitles: overlaps,
+              executingTitles: executing,
               duplicateTitle: dups[0] ?? null,
             });
             return;
@@ -500,7 +484,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
 
           {softConflict && (
             <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
-              {softConflict.reasons.includes("overlap") && softConflict.overlapTitles.length > 0 && (
+              {softConflict.executingTitles.length > 0 && (
+                <div>
+                  Timer running on{" "}
+                  <span className="font-medium text-white">
+                    {softConflict.executingTitles.join(", ")}
+                  </span>
+                  .
+                </div>
+              )}
+              {softConflict.overlapTitles.length > 0 && (
                 <div>
                   Overlaps with{" "}
                   <span className="font-medium text-white">
@@ -516,7 +509,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   today.
                 </div>
               )}
-              <div className="mt-1 text-white/60">Create anyway?</div>
+              <div className="mt-1 text-white/60">Create as planned anyway?</div>
             </div>
           )}
 
