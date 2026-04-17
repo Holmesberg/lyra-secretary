@@ -102,9 +102,9 @@ def _compute_calibration_nudge(task: Task, db: Session) -> Optional[str]:
     underestimate_count = sum(1 for t in history if t.duration_delta_minutes < 0)
     direction = "over" if delta < 0 else "under"
     return (
-        f"Ran {abs(delta)} min {direction} plan. "
-        f"Your {task.category} avg: {avg_delta:+.0f} min ({n} sessions). "
-        f"You've underestimated this category {underestimate_count}/{n} times."
+        f"{task.title} ran {abs(delta)} min {direction} plan. "
+        f"Your '{task.category}' category avg: {avg_delta:+.0f} min across {n} sessions. "
+        f"Underestimated {underestimate_count}/{n} times."
     )
 
 
