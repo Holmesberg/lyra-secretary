@@ -130,6 +130,7 @@ function TodayInner() {
   const [orphanWarnShown, setOrphanWarnShown] = useState(false);
   const [orphanWarnDismissed, setOrphanWarnDismissed] = useState(false);
   const [requestPause, setRequestPause] = useState(false);
+  const clearRequestPause = useCallback(() => setRequestPause(false), []);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -477,7 +478,7 @@ function TodayInner() {
           showOrphanWarning={orphanWarnShown}
           onDismissOrphanWarning={dismissOrphanWarn}
           requestPause={requestPause}
-          onRequestPauseHandled={useCallback(() => setRequestPause(false), [])}
+          onRequestPauseHandled={clearRequestPause}
         />
       )}
 
