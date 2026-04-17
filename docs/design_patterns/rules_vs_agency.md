@@ -49,6 +49,30 @@ This principle emerged April 16 during Path A walk-back to Option C. Original Pa
 - `openclaw/skills/lyra-secretary/SKILL.md §Hard Rules` — agent-facing structural invariants (Hard Rules 3–5, 9)
 - `docs/design_patterns/notification_patterns.md §Principles` — the non-blocking / no-guilt principles are behavioral-constraint decisions downstream of this one
 
+## Integration-not-isolation principle
+*Emerged from operator observation April 17, 2026: "we collect a LOT of data but feedback could be utilized MUCH better." The fix is not more data — it is more connections between existing data.*
+
+**Rule:** Every new data source or feature must connect to ≥3 existing computation variables. Isolated additions that create new data streams without feeding existing computations are architectural debt.
+
+**Diagnostic for any proposed feature:**
+"Which existing variables does this touch?"
+- ≥3 variables: integrated addition, proceed
+- <3 variables: redesign to integrate, or park until integration path is clear
+
+**Examples:**
+- Brain dump textarea: isolated if just stored. Integrated when feeding `bias_factor` + `archetype` + `cascade_score` + `category_mapping` + `calibration_nudge` (8 variables).
+- Deadline field: isolated if just displayed. Integrated when cross-referenced against `delta` + `initiation_delay` + `override_rate` + `scheduling_density` + `cascade_score` (5 variables).
+- Mid-session check-in: isolated if just stored. Integrated when feeding `bias_factor` + `micro_mirror` + `insights` + `fragmentation_index` (4 variables).
+
+**This principle does NOT mean:**
+- Build all integrations at once (sequence them by phase)
+- Reject simple fixes (bug fixes are not features)
+- Reject seed-phase additions (Phase 4.5 description field stores data, Phase 6 integrates it — both are valid steps)
+
+**Reference:** See `docs/parked_ideas.md` §Feature integration map for the current connection graph.
+
+---
+
 ## Authority
 
-Designed by operator (Ali Nasser) in conversation with Claude (Anthropic), April 16, 2026. Triggered by the Apr 15 dogfood finding "Conflict detection too strict for planned tasks" and the resulting Path A walk-back of the Apr 14 Gate B spec. Applies to every new user-facing rule from this date forward. Any rule proposed as "hard" must first pass the diagnostic test.
+Designed by operator (Ali Nasser) in conversation with Claude (Anthropic), April 16, 2026. Triggered by the Apr 15 dogfood finding "Conflict detection too strict for planned tasks" and the resulting Path A walk-back of the Apr 14 Gate B spec. Applies to every new user-facing rule from this date forward. Any rule proposed as "hard" must first pass the diagnostic test. Integration-not-isolation principle added April 17, 2026.

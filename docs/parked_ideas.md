@@ -132,26 +132,206 @@ bandwidth-weighted planned duration.
 
 ---
 
-## Deadline-proximity risk assessment (H2 candidate)
-*Captured: April 16, 2026 (from ChatGPT conversation)*
+## Brain dump → AI subtask decomposition
+*Captured: April 17, 2026. Integration feature, not isolated addition.*
 
-**Hypothesis:** Users systematically underestimate task duration as deadline
-approaches, producing increasing `duration_delta_minutes` near deadlines.
-Mechanism: temporal discounting × planning-fallacy interaction — imminent
-deadlines compress the mental representation of required work.
+**Problem:** Users create macro tasks ("build session", "study subject X",
+"meetings") that hide internal complexity. Measurement at macro level misses
+where time actually goes. Current system measures delta on the whole block
+but cannot identify which subtask caused the overrun.
 
-**Status:** H2 candidate. Not in H1's kill-criterion chain and does not bear
-on the Apr 15 H1 decision. Documented here so it isn't lost; do not build.
+**Three-phase implementation:**
 
-**Prerequisites (all required before any work begins):**
-- H1 validated or falsified first (see `MANIFESTO.md §Kill Criterion — H1`)
-- `deadline_utc` field added to task schema (currently absent — Lyra has no
+Phase 4.5 — Seed (trusted-user week, unblocked):
+- Add optional description textarea to task creation modal: "What does this
+  involve? (optional)"
+- Store as `task.description` (TEXT, nullable)
+- New Alembic migration if column does not exist
+- No AI, no inference, no subtasks at this phase
+- Collapsible UI behind "Add details" toggle
+- Purpose: corpus accumulation + archetype signal (detailed dump = planner
+  signal, empty = reactive signal)
+- Zero impact on existing measurement variables
+
+Phase 5 — Inference (post-Spring-School, requires 50+ brain dumps):
+- LLM inference at task creation: brain dump text → structured subtask list
+- Flow: user creates macro task → estimates total duration → brain dumps
+  specifics → AI infers subtasks (1. X, 2. Y, 3. Z) → user
+  confirms/edits/dismisses → confirmed subtasks created as linked tasks
+- Subtask durations inferred from `bias_factor` + historical patterns, NOT
+  user-estimated
+- Requires: LLM API call in creation flow (latency 2-5s), `parent_task_id`
+  FK structure for subtask linking, accumulated corpus
+
+Phase 5 — Sequential execution mode:
+- After subtask inference and user confirmation, app auto-queues subtasks
+- On subtask N stop: immediate single-tap prompt "Start subtask N+1:
+  [name]? [Yes] [Skip]"
+- Execution becomes guided walkthrough of AI-decomposed plan
+- This is a new interaction paradigm — NOT just inference at creation.
+  Design separately.
+
+Phase 6 — Integration (post-alpha):
+- `bias_factor`: per-subtask-type delta granularity — "You underestimate
+  API work 40% but frontend is calibrated"
+- `calibration_nudge`: fires per subtask at creation and stop
+- `cascade_score`: intra-task cascade detection — did subtask 3 fail
+  because subtask 2 ran over?
+- `archetype_classification`: brain dump style as signal (detail level,
+  organization, specificity)
+- `category_auto_creation`: macro task name → new category when repeated
+  >3 times
+- `fragmentation_index`: extends to subtask transitions
+- `micro_mirror`: subtask-specific observation text
+- `insights`: cross-subtask pattern detection
+
+**Connection map (existing variables touched):**
+`bias_factor`, `calibration_nudge`, `cascade_score`, `archetype`,
+`category_mapping`, `fragmentation_index`, `micro_mirror`, `insights` — all
+8 touched.
+
+**UX target state:** user brain dumps once, then manages execution via
+single taps. Planning labor shifts from user to system.
+
+**Key constraint (`rules_vs_agency.md`):** AI-suggested subtasks are
+suggestions, never mandates. User can dismiss, edit, reorder, ignore.
+System measures what actually happens regardless of whether user followed
+the decomposition.
+
+**Validity threats to pre-register before Phase 5:**
+- VT candidate: AI decomposition changes user behavior by framing task
+  differently before execution. Same class as VT-21. Mitigation: compare
+  delta distributions tasks with/without AI decomposition.
+- VT candidate: subtask count as proxy for complexity is noisy. 2-subtask
+  hard problem ≠ 10-subtask easy checklist.
+- VT candidate: LLM inference quality varies. Wrong decomposition → wrong
+  subtask priors → confidently wrong calibration nudges. Guardrail:
+  confidence flag on AI-generated decompositions, explicit "AI suggested"
+  label.
+
+**Do not build Phase 5+ until:**
+- H1 validated or falsified
+- 50+ brain dumps accumulated across users
+- Not mid-experiment
+
+**Related:** H2 deadline proximity, multi-task logging (existing), calendar
+integration (Phase 7)
+
+---
+
+## Mid-session half-time check-in
+*Captured: April 17, 2026.*
+
+**Problem:** Current system knows where a session ended
+(`task_completion_percentage` on stop). It does not know where the user was
+at the midpoint. Execution shape is unmeasured — strong-start/weak-finish
+vs slow-start/strong-finish produce identical final delta but different
+behavioral signals.
+
+**Mechanism:**
+- At 50% of `planned_duration_minutes` elapsed, system surfaces check-in
+- Prompt: "Halfway point — where are you?"
+- `completion_pct` input: 25 / 50 / 75 / 100
+- 100 = early finish path → surfaces "Stop now?" single-tap option
+- <50 = likely overrun path → `calibration_nudge` fires with adjusted
+  estimate
+- Stored as `mid_session_completion_pct` (new field or separate event table)
+
+**New signal unlocked:**
+- Within-session trajectory (execution shape)
+- Early-finish edge case handled proactively instead of reactively
+- Additional `bias_factor` calibration data point
+- "You typically hit 50% completion at the halfway mark on development
+  tasks but only 25% on study tasks" → new insight tier
+
+**Early-finish edge case:**
+- At half-time ping, user reports 100% → single-tap "Stop session?" prompt
+- Replaces current reactive early-stop detection
+- `completion_pct` collected here feeds same `bias_factor` pipeline as
+  existing stop flow
+
+**Phase constraint:**
+- Full push notification version: Phase 7 (requires PWA service worker)
+- In-app toast fallback: Phase 5 (fires only if tab is open, `useEffect`
+  timer or server-sent event)
+- Do not block Phase 5 sequential execution mode on push notification
+  capability
+
+**Connection to existing variables:**
+- `bias_factor` ← mid-session completion adds calibration signal
+- `micro_mirror` ← trajectory-aware observation text possible
+- `insights` ← execution shape patterns (strong-start vs slow-start per
+  category)
+- `fragmentation_index` ← mid-session state extends pause pattern analysis
+
+**Do not build until:**
+- Phase 5 sequential execution mode is designed (avoid conflicting
+  mid-session prompts)
+- Existing `task_completion_percentage` on stop has sufficient data to
+  validate whether mid-session signal adds value
+
+---
+
+## H2: Deadline-proximity risk assessment
+*Captured: April 16, 2026 (from ChatGPT conversation). Expanded April 17
+with integration mapping.*
+
+**Hypothesis:** Users systematically underestimate task duration due to
+distorted risk assessment under deadline proximity, producing increasing
+`duration_delta_minutes` as deadline approaches. Mechanism: temporal
+discounting × planning-fallacy interaction — imminent deadlines compress
+the mental representation of required work.
+
+**Testable predictions:**
+- Case A: delta increases near deadline → classic procrastination +
+  temporal discounting
+- Case B: delta inverts near deadline → anxiety compensation
+  (overestimation)
+- Case C: no correlation → H2 falsified
+- All three outcomes are informative.
+
+**Status:** H2 candidate. Not in H1's kill-criterion chain and does not
+bear on the Apr 15 H1 decision. Documented here so it isn't lost; do not
+build.
+
+**Schema additions required:**
+- `deadline_utc`: nullable column on Task (currently absent — Lyra has no
   deadline concept; tasks are scheduled, not deadlined)
-- Calendar integration (Google/Outlook) providing deadline data at task
-  creation time, or an in-app deadline-setting UX
-- Minimum 30 days of multi-user data with deadline-tagged tasks so
-  within-user deadline-proximity × delta correlation can be estimated
-  with enough paired observations per category
+- `deadline_distance`: computed at creation as
+  `deadline_utc - planned_start_utc`
+- Calendar integration (Phase 7) provides deadline data automatically from
+  Google Calendar events with due dates
+
+**Measurable cross-references:**
+- `bias_factor` × `deadline_distance`
+- `cascade_score` × `deadline_distance`
+- `signed_discrepancy` × `deadline_distance`
+- `initiation_delay` × `deadline_distance`
+- `unplanned_execution_rate` × `deadline_distance`
+- Brain dump complexity × `deadline_distance` (requires brain dump
+  `description` field)
+
+**Connection to brain dump (Feature 1):** Brain dump captures task scope.
+Deadline captures time pressure. Intersection: does the gap between stated
+scope (brain dump complexity) and stated duration widen as deadline
+approaches? A user who brain-dumps 8 bullet points but plans 30 minutes
+with a 2-hour deadline is producing a detectably impossible plan at
+creation time.
+
+**Product endgame:** Predict plan feasibility before user commits. "Given
+your history, this task's scope, and time remaining: this plan has X%
+chance of succeeding." Not a time tracker — a feasibility instrument.
+
+**Intervention (measure first, build second):**
+At task creation when deadline exists: "Deadline in X hours.
+Research-adjusted estimate: +Y%. [Keep] [Adjust]." Track option picked +
+actual outcome. Only build after pattern validated in multi-user data.
+
+**Pre-registration required before data collection:**
+- H2 registered in MANIFESTO before schema addition
+- Kill criterion: `deadline_distance` × `delta` correlation not significant
+  at n≥60 deadline-tagged tasks → H2 falsified
+- Stratify by category
 
 **Phase:** 6+ (post-calibration-architecture). Deadline data is a new
 measurement axis, not a refinement of the existing discrepancy model.
@@ -162,8 +342,9 @@ measurement axis, not a refinement of the existing discrepancy model.
 - Ship deadline UI before H1 decision (would contaminate the single-
   hypothesis window by introducing a competing behavioral signal users
   will orient to)
-- Treat deadline_utc as equivalent to planned_start_utc / planned_end_utc
-  — they represent distinct constructs (scheduling vs. hard obligation)
+- Treat `deadline_utc` as equivalent to `planned_start_utc` /
+  `planned_end_utc` — they represent distinct constructs (scheduling vs.
+  hard obligation)
 
 **Revisit conditions:**
 - H1 decision complete (validated, falsified, or explicit pivot)
@@ -171,9 +352,41 @@ measurement axis, not a refinement of the existing discrepancy model.
 - Operator has made an explicit scope call that H2 is the next hypothesis
   to test (competing candidates exist — cascade hypothesis per MANIFESTO
   §Paper 2, interruption-recovery cost, others)
+- Brain dump field (Feature 1) providing scope signal
 
 **Related:**
 - MANIFESTO §Kill Criterion (H1 pre-registration; H2 is downstream of H1)
 - MANIFESTO §Paper 2 cascade hypothesis (alternative post-H1 direction)
 - VT-7 (anchor-scheduling evidence base) — adjacent concern about the
   calendar field's behavioral meaning
+- Brain dump → AI subtask decomposition (this file)
+
+---
+
+## Feature integration map
+*Maintained as features are parked. Last updated: April 17, 2026.*
+
+Shows how parked features connect to each other and to the shipped
+computation layer.
+
+```
+Brain dump (F1) ←→ H2 deadline proximity (F2)
+       ↕                        ↕
+  bias_factor    ←→    calibration_nudge
+       ↕                        ↕
+  cascade_score  ←→    archetype_classification
+       ↕                        ↕
+fragmentation_index ←→ category_auto_creation
+       ↕
+insights (11 generators, extensible)
+
+Mid-session check-in → bias_factor + micro_mirror
+                     + execution_shape (new)
+Sequential execution → cascade_score (intra-task)
+                     + fragmentation_index
+```
+
+**Diagnostic rule:** if a proposed feature touches fewer than 3 existing
+variables, it is an isolated addition. Redesign to integrate or park until
+integration path is clear. See `docs/design_patterns/rules_vs_agency.md`
+§Integration-not-isolation principle.
