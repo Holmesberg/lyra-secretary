@@ -303,6 +303,26 @@ export interface BiasLookupResponse {
   min_sessions: number;
 }
 
+export interface Insight {
+  id: string;
+  observation: string;
+  data_points: number;
+  confidence: "low" | "medium" | "high";
+  strength: number;
+  seen: boolean;
+}
+
+export interface InsightsResponse {
+  insights: Insight[];
+  sessions_analyzed: number;
+  min_sessions_required: number;
+  ready: boolean;
+}
+
+export function getInsights() {
+  return api<InsightsResponse>("/v1/analytics/insights");
+}
+
 export function lookupBiasFactor(category: string, tod: string) {
   return api<BiasLookupResponse>(
     `/v1/analytics/bias_factor/lookup?category=${encodeURIComponent(category)}&tod=${encodeURIComponent(tod)}&min_sessions=10`
