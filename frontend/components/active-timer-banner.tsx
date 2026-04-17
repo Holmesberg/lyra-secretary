@@ -97,6 +97,23 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     setPauseBaseSec((status.total_paused_minutes ?? 0) * 60);
   }, [status.total_paused_minutes]);
 
+  // Per-session reset: when the active task changes (new start, interruption,
+  // etc.), all local timer state must reset to match the new task. Without
+  // this, the previous task's pause counter / frozen display leaks into the
+  // new session's banner.
+  const prevTaskIdRef = useRef(status.task_id);
+  useEffect(() => {
+    if (status.task_id === prevTaskIdRef.current) return;
+    prevTaskIdRef.current = status.task_id;
+    setLocalPaused(!!status.paused);
+    setAnchor({ sec: (status.elapsed_minutes ?? 0) * 60, ts: Date.now() });
+    setFrozenSec(status.paused ? (status.elapsed_minutes ?? 0) * 60 : null);
+    prevPausedRef.current = !!status.paused;
+    lastDisplayedRef.current = (status.elapsed_minutes ?? 0) * 60;
+    setPauseBaseSec((status.total_paused_minutes ?? 0) * 60);
+    pauseStartRef.current = status.paused ? Date.now() : null;
+  }, [status.task_id, status.paused, status.elapsed_minutes, status.total_paused_minutes]);
+
   // Pause-transition effect — freezes on pause, rebases anchor on resume.
   // Uses lastDisplayedRef (the value the user SAW on screen) to avoid a
   // forward-snap when frozenSec would otherwise recompute from anchor+now
