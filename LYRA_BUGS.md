@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 16, 2026 — v1.8 (alignment audit pre-launch). 16 open, 26 deferred (OpenClaw), 86 fixed.
+Last updated: April 18, 2026 — v1.9 (alignment audit apr18 integrity pass). 13 open, 26 deferred (OpenClaw), 63 fixed. (Prior headers overclaimed the Fixed count by ~26 — corrected after direct row recount on Apr 18.)
 
 ---
 
-## Open (16 bugs)
+## Open (13 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -13,24 +13,24 @@ Last updated: April 16, 2026 — v1.8 (alignment audit pre-launch). 16 open, 26 
 | LYR-047 | 🟢 low | notion | "Past Due" showing on EXECUTED tasks | Status groups correctly configured (EXECUTED in Complete). Notion platform limitation — no programmatic fix available. Document only. |
 | LYR-050 | 🟡 medium | data | `initiation_status` stuck on `not_started` for historical EXECUTED tasks | Tasks created before discrepancy fields existed completed successfully but never had `initiation_status` set. Backfill script needed: set `initiated` on all EXECUTED tasks where `initiation_status = 'not_started'`. |
 | LYR-054 | 🟢 low | data | `category` null on tasks without explicit category context | Parser not inferring category from task title when user omits it (e.g. "lec 2 AI" → `category: null`). `category_mapping` keyword lookup not applied during task creation via OpenClaw. |
-| LYR-056 | 🟡 medium | parser | Multi-task chaining via "then" keyword not supported | Only first task in a compound request gets created. Second task silently dropped, no error returned. Fix: `TaskParser.parse_chained()` added — splits on "then", chains end→start for tasks without explicit time. `/v1/parse` endpoint updated to return `{ tasks: [...], compound: bool }`. |
-| LYR-058 | 🟢 low | backend | Stopwatch API returns UTC datetimes to agent | `start_time`, `executed_at`, `paused_at` in stopwatch responses were raw UTC. Agent sees wrong times. Fixed: all datetime fields now pass through `to_local()`. |
 | LYR-060 | 🟢 low | backend | 5-minute task overflow notification didn't fire | APScheduler may not catch short-duration tasks that complete before the 2-min poll interval. |
 | LYR-068 | 🟡 medium | notion | Notion date property timezone confusion | UTC offset in payload causes double conversion depending on property timezone setting. |
 | LYR-080 | 🔴 high | backend | Backend rebuild during active paused session corrupts task/session references | Desync recovery restores pause time but loses task linkage. Delta not computed. stop response returns wrong task_id. |
 | LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Pause A → start B → stop B → resume A: Redis loses task A's active session reference. User continues work untracked. |
 | LYR-091 | 🟢 low | backend | `resolve_user_from_token` matches by email only | `google_id` stays as `simulated-google-sub` placeholder after real sign-in. Upsert real `google_id` from JWT `sub` claim on first real sign-in. Phase 9 fix. |
-| LYR-092 | 🟡 medium | notion | notion_sync retry loop infinitely retries archived pages | Should detect "Can't edit block that is archived" error and drop from Redis queue instead of retrying every 5 min. |
 | LYR-096 | 🟡 medium | frontend | `task_completion_percentage` dropped between ReflectionModal and stopStopwatch | `today/page.tsx:112` passes `{ confirmed }` but not `task_completion_percentage`. Value from modal never reaches backend. |
 | LYR-097 | 🟡 medium | frontend | `is_future_task` warning from start endpoint not shown in UI | Backend returns `is_future_task: true` but frontend ignores it. No warning when starting timer for future task. |
 | LYR-099 | 🟢 low | frontend | New task modal start time stale after idle | `defaultStart()` called once on mount. Reopening modal after 30min shows stale default time. |
 
 ---
 
-## Fixed (86 bugs)
+## Fixed (63 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
+| LYR-056 | 🟡 medium | parser | Multi-task chaining via "then" keyword not supported | `TaskParser.parse_chained()` added in commit `5fa85d8` — splits on "then", chains end→start for tasks without explicit time. `/v1/parse` endpoint updated to return `{ tasks: [...], compound: bool }`. Apr-18 alignment-audit integrity pass: body already described fix; moved OPEN → FIXED. Multi-user validation pending post-alpha. |
+| LYR-058 | 🟢 low | backend | Stopwatch API returns UTC datetimes to agent | Fixed in commit `9e7c650` — `start_time`, `executed_at`, `paused_at` in stopwatch responses now pass through `to_local()`. Apr-18 alignment-audit integrity pass: body already described fix; moved OPEN → FIXED. |
+| LYR-092 | 🟡 medium | notion | notion_sync retry loop infinitely retries archived pages | Fixed in commit `951160e` — detects "Can't edit block that is archived" error and drops page from Redis retry queue permanently instead of re-queueing every 5 min. Note: commit message labels the fix `LYR-091` but LYR-091 is the unrelated `resolve_user_from_token` Phase-9 bug that remains OPEN; the `951160e` fix is actually for LYR-092. Apr-18 alignment-audit integrity pass resolved the ID collision. |
 | LYR-098 | 🟡 medium | frontend | `micro_mirror` and `calibration_nudge` not displayed after stop | Shipped Apr 16 as 4 commits (fixture tests `553d7b0` → text neutralization + filter fix `a8aeae0` → `reflection_view_log` persistence + write-on-fire `0593d71` → Toast UI + dismiss callbacks `c8efff2`). Full feedback loop live: micro_mirror auto-dismiss, calibration_nudge pinned, both stamp viewed/dismissed to reflection_view_log. |
 | LYR-001 | 🔴 high | backend | Past time not rejected | `create_task()` rejects start >5min in past. Confirmed working. |
 | LYR-002 | 🔴 high | skill | OpenClaw reports wrong time to user | SKILL.md Hard Rule #4: report `start` from API response, never own extraction. |
@@ -104,9 +104,7 @@ Last updated: April 16, 2026 — v1.8 (alignment audit pre-launch). 16 open, 26 
 4. LYR-097 — `is_future_task` warning not shown in UI
 5. LYR-088 — resume() loses Redis session reference after another stopwatch runs in between
 6. LYR-068 — Notion date timezone double conversion
-7. LYR-056 — validate "then" chaining in parse_chained()
 8. LYR-050 — backfill initiation_status on historical tasks
-9. LYR-092 — notion_sync retry on archived pages
 
 ### Low (🟢)
 11. LYR-099 — New task modal start time stale after idle

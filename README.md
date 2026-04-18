@@ -6,6 +6,10 @@
 
 > Adaptive scheduling backend for a personal cognitive operating system
 
+## Built an AI system that discovered I finish closer to plan when starting drained.
+
+![Insights v1 — 45 sessions analyzed, adaptive pattern detection across readiness, time-of-day, abandonment, pause, and category dimensions](docs/screenshots/Screenshot%202026-04-18%20101943.png)
+
 ## What Is This?
 
 Lyra Secretary is a FastAPI backend that manages your daily schedule by tracking **planned vs. executed task duration** — the **delta** — to learn behavioral patterns over time. Every task records how long you *said* it would take and how long it *actually* took, building a quantitative profile of your time usage.
@@ -57,7 +61,7 @@ Create → `POST /v1/create` → start stopwatch → `POST /v1/stopwatch/start` 
 | API         | Python 3.11, FastAPI, Uvicorn       |
 | ORM         | SQLAlchemy 2.0, Alembic             |
 | Cache       | Redis 7                             |
-| Database    | SQLite                              |
+| Database    | SQLite (dev) / Supabase Postgres (prod) |
 | Sync        | Notion API                          |
 | AI Agent    | OpenClaw                            |
 | Container   | Docker, Docker Compose              |
@@ -223,12 +227,15 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 - ✅ `POST /v1/notifications/push` + `GET /v1/notifications/pending` — notification queue
 - ✅ `GET /v1/analytics/discrepancy` — discrepancy experiment data
 
-**Background workers (APScheduler)**
+**Background workers (APScheduler — 8 jobs)**
 - ✅ Pre-task reminders — 15-minute warning, polls every 1 minute
 - ✅ Timer overflow notification — alerts when session exceeds planned duration + 5 min
 - ✅ Notion sync retry queue — failed syncs retried every 5 minutes
 - ✅ Abandoned task detection — marks unstarted past-due tasks every 30 minutes
 - ✅ Stale session recovery — auto-closes unclosed stopwatch sessions older than 12h, every 15 minutes (LYR-103)
+- ✅ Orphan task recovery — catches EXECUTING tasks with no open session → SKIPPED, every 15 minutes
+- ✅ Pause prediction (VT-17) — per-user pause prediction firing + logging + notification enqueue, every 1 minute
+- ✅ Pause-prediction reconciliation (VT-17) — closes acceptance window and sets `user_response` on `pause_prediction_log`, every 5 minutes
 
 **Integrations**
 - ✅ Notion calendar sync — create, update, archive pages
@@ -264,7 +271,7 @@ Full request/response schemas are documented in [`openclaw/skills/lyra-secretary
 
 ## Known Issues
 
-See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (17 open, 26 deferred OpenClaw, 59 fixed). Key active issues:
+See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (13 open, 26 deferred OpenClaw, 63 fixed). Key active issues:
 
 - **LYR-080** 🔴 Backend rebuild during active paused session corrupts task/session linkage
 - **LYR-088** 🟡 resume() loses Redis session reference after interleaved stopwatch

@@ -73,7 +73,6 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 **POST /v1/stopwatch/correct-readiness** — body: `pre_task_readiness`* (1-5) — returns: `corrected`, `original`, `new`
 **GET /v1/stopwatch/status** — returns: `active`, `task_title`, `elapsed_minutes`, `paused`, `total_paused_minutes`
 **POST /v1/undo** — no body — reverts last create or delete
-**GET /v1/analytics/insights?auto_mark=true** — returns: `insights[]` with `observation`, `ready`
 **GET /v1/analytics/cascade?days=7** — cascade analysis: `cascade_score`, `morning_anchor_execution_rate`, `most_cascade_prone_category` per day
 **POST /v1/pause_predictions/{firing_id}/respond** — body: `user_response`* (pause_now|dismiss|snooze) — returns: `firing_id`, `user_response`, `response_at` — 404 unknown/other-user, 409 already reconciled
 **POST /v1/parse** — DEPRECATED — body: `text`* — use only for ambiguous time expressions
@@ -112,7 +111,6 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - If response contains `paused_parent` → tell user: "[title] is still paused ({paused_minutes} min). Resume when ready."
 - If response contains `micro_mirror` → relay it verbatim to user (one-line behavioral observation)
 - If response contains `mid_task_completion_pct` → ask "Earlier you estimated {pct}% — still accurate?" — WAIT → if new number: include `task_completion_percentage` in the reflection stop call; if "same"/"yes": keep as-is. NEVER infer or fabricate a completion percentage yourself.
-- After reflection: GET /v1/analytics/insights?auto_mark=true → if insights non-empty: share first `observation`
 
 **Pause ("pause"/"pause timer"/prayer/break):**
 - Ask "Self-initiated or external? (self/external)" — WAIT → set `pause_initiator`
