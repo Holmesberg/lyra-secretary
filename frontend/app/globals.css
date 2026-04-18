@@ -12,9 +12,66 @@
     --primary: 0 0% 98%;
     --primary-foreground: 240 6% 10%;
   }
-  html, body {
+  html,
+  body {
     background: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+      "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body[data-surface="landing"] {
+    background: #05070c;
+    color: #f0efea;
+  }
+}
+
+@layer utilities {
+  /* LyraOS night-sky background: soft radial glow from top + anchor deep void. */
+  .bg-lyra-night {
+    background:
+      radial-gradient(
+        ellipse 80% 60% at 50% 0%,
+        rgba(77, 212, 232, 0.07),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 100% 100%,
+        rgba(245, 169, 106, 0.03),
+        transparent 60%
+      ),
+      #05070c;
+  }
+  /* Pill button base — used by the CTAs to match the reference composition. */
+  .pill {
+    border-radius: 9999px;
+    padding: 0.875rem 1.75rem;
+    font-family: var(--font-geist-sans);
+    font-weight: 500;
+    font-size: 0.9375rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    transition: transform 200ms ease, background-color 200ms ease,
+      border-color 200ms ease, color 200ms ease;
+  }
+  .pill-primary {
+    background: #4dd4e8;
+    color: #05070c;
+  }
+  .pill-primary:hover {
+    background: #6fe0f1;
+    transform: translateY(-1px);
+  }
+  .pill-outline {
+    background: transparent;
+    color: #f0efea;
+    border: 1px solid rgba(240, 239, 234, 0.2);
+  }
+  .pill-outline:hover {
+    border-color: #4dd4e8;
+    color: #4dd4e8;
+    transform: translateY(-1px);
   }
 }

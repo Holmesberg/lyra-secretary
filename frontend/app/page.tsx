@@ -1,7 +1,18 @@
 "use client";
-import { signIn, useSession } from "next-auth/react";
+
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+
+import { SiteNav } from "@/components/landing/site-nav";
+import { StarField } from "@/components/landing/star-field";
+import { Hero } from "@/components/landing/hero";
+import { ThesisSection } from "@/components/landing/thesis-section";
+import { InstrumentGrid } from "@/components/landing/instrument-grid";
+import { LiveDataStrip } from "@/components/landing/live-data-strip";
+import { ManifestoPreview } from "@/components/landing/manifesto-preview";
+import { DeployCta } from "@/components/landing/deploy-cta";
+import { SiteFooter } from "@/components/landing/site-footer";
 
 export default function LandingPage() {
   const { status } = useSession();
@@ -11,27 +22,30 @@ export default function LandingPage() {
     if (status === "authenticated") router.replace("/today");
   }, [status, router]);
 
+  useEffect(() => {
+    document.body.setAttribute("data-surface", "landing");
+    return () => document.body.removeAttribute("data-surface");
+  }, []);
+
   if (status === "loading" || status === "authenticated") {
     return (
-      <div className="flex min-h-screen items-center justify-center text-white/50">
+      <div className="flex min-h-screen items-center justify-center bg-void text-xs text-dust">
         Loading…
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0a0a0a] p-8 text-white">
-      <h1 className="mb-2 text-3xl font-semibold">Lyra Secretary</h1>
-      <p className="mb-8 max-w-md text-center text-white/60">
-        An adaptive scheduler that learns the gap between what you plan and what
-        you execute.
-      </p>
-      <button
-        onClick={() => signIn("google", { callbackUrl: "/today" })}
-        className="rounded-md bg-white px-4 py-2 font-medium text-black hover:bg-white/90"
-      >
-        Sign in with Google
-      </button>
-    </div>
+    <main className="relative isolate min-h-screen overflow-hidden bg-lyra-night text-parchment">
+      <StarField />
+      <SiteNav />
+      <Hero />
+      <ThesisSection />
+      <InstrumentGrid />
+      <LiveDataStrip />
+      <ManifestoPreview />
+      <DeployCta />
+      <SiteFooter />
+    </main>
   );
 }
