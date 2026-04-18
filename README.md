@@ -8,7 +8,7 @@
 
 ## Built an AI system that discovered I finish closer to plan when starting drained.
 
-![Insights v1 — 45 sessions analyzed, adaptive pattern detection across readiness, time-of-day, abandonment, pause, and category dimensions](docs/screenshots/Screenshot%202026-04-18%20101943.png)
+![Insights v1 — 45 sessions analyzed, adaptive pattern detection across readiness, time-of-day, abandonment, pause, and category dimensions](docs/insights-v1.png)
 
 ## What Is This?
 
