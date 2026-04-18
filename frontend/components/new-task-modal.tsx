@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CATEGORIES, type Category } from "@/lib/categories";
+import { CATEGORIES } from "@/lib/categories";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import {
   createTask,
@@ -85,11 +85,22 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const now = useCurrentTime();
 
   const [title, setTitle] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [start, setStart] = useState(() => defaultStart());
-  const [end, setEnd] = useState(() => addMinutes(defaultStart(), 30));
+  const [end, setEnd] = useState(() => defaultStart());
+  // Default 0h 0m — user must explicitly pick a duration before Create
+  // enables (`canSubmit` already requires totalMinutes > 0).
   const [durHours, setDurHours] = useState(0);
-  const [durMinutes, setDurMinutes] = useState(30);
-  const [category, setCategory] = useState<Category>("work");
+  const [durMinutes, setDurMinutes] = useState(0);
+  // Category: picker mode uses the fixed taxonomy; "custom" mode reveals
+  // a text input for a user-created name. The Apr 4–15 experiment window
+  // has closed, so operator-created categories are research-safe going
+  // forward (fresh buckets start at n=0 until data accrues for
+  // bias_factor analysis).
+  const [category, setCategory] = useState<string>("work");
+  const [categoryMode, setCategoryMode] = useState<"picker" | "custom">(
+    "picker"
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
@@ -143,18 +154,29 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   useEffect(() => {
     if (open && !editingTask) {
       const s = defaultStart(now);
-      const e = addMinutes(s, 30);
       setStart(s);
-      setEnd(e);
+      setEnd(s);
       setDurHours(0);
-      setDurMinutes(30);
+      setDurMinutes(0);
       setTitle("");
       setCategory("work");
+      setCategoryMode("picker");
       setDescription("");
       setShowDescription(false);
       setError(null);
       setPausedConflict(null);
       setLastEditId(null);
+    }
+  }, [open, editingTask]);
+
+  // When opening in edit mode, select all of the title text so the operator
+  // can retype instantly. rAF avoids racing the input mount + autoFocus.
+  useEffect(() => {
+    if (open && editingTask) {
+      const raf = requestAnimationFrame(() => {
+        titleInputRef.current?.select();
+      });
+      return () => cancelAnimationFrame(raf);
     }
   }, [open, editingTask]);
 
@@ -168,7 +190,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setEnd(formatLocal(endDate));
     setDurHours(Math.floor(dur / 60));
     setDurMinutes(dur % 60);
-    setCategory((editingTask.category as Category) || "work");
+    const editCat = editingTask.category || "work";
+    setCategory(editCat);
+    // If the editing task has a custom (non-taxonomy) category, open the
+    // custom input pre-filled so the operator can edit it directly.
+    setCategoryMode(
+      (CATEGORIES as readonly string[]).includes(editCat) ? "picker" : "custom"
+    );
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
@@ -179,10 +207,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     const s = defaultStart(now);
     setTitle("");
     setStart(s);
-    setEnd(addMinutes(s, 30));
+    setEnd(s);
     setDurHours(0);
-    setDurMinutes(30);
+    setDurMinutes(0);
     setCategory("work");
+    setCategoryMode("picker");
     setDescription("");
     setShowDescription(false);
     setError(null);
@@ -395,10 +424,12 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             <Label htmlFor="title">Title</Label>
             <Input
               id="title"
+              ref={titleInputRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="What needs doing"
               autoFocus
+              onFocus={(e) => { if (isEdit) e.currentTarget.select(); }}
             />
           </div>
 
@@ -447,18 +478,60 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="category">Category</Label>
-            <select
-              id="category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value as Category)}
-              className="h-9 rounded-md border border-white/15 bg-transparent px-3 text-sm"
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c} className="bg-[#0a0a0a]">
-                  {c.replace("_", " ")}
+            {categoryMode === "picker" ? (
+              <select
+                id="category"
+                value={category}
+                onChange={(e) => {
+                  if (e.target.value === "__CREATE_NEW__") {
+                    setCategoryMode("custom");
+                    setCategory("");
+                  } else {
+                    setCategory(e.target.value);
+                  }
+                }}
+                className="h-9 rounded-md border border-white/15 bg-transparent px-3 text-sm"
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c} className="bg-[#0a0a0a]">
+                    {c.replace("_", " ")}
+                  </option>
+                ))}
+                <option
+                  value="__CREATE_NEW__"
+                  className="bg-[#0a0a0a] text-blue-300"
+                >
+                  + Create a new category…
                 </option>
-              ))}
-            </select>
+              </select>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Input
+                  id="category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="e.g. research, admin, side_project"
+                  autoComplete="off"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="whitespace-nowrap text-xs text-white/50 hover:text-white"
+                  onClick={() => {
+                    setCategoryMode("picker");
+                    setCategory("work");
+                  }}
+                >
+                  ← Back
+                </button>
+              </div>
+            )}
+            {categoryMode === "custom" && (
+              <p className="text-[11px] text-white/40">
+                New categories start with no history — their patterns accrue
+                as you log.
+              </p>
+            )}
           </div>
 
           {!isEdit && (

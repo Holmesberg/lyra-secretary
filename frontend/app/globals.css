@@ -27,51 +27,184 @@
 }
 
 @layer utilities {
-  /* LyraOS night-sky background: soft radial glow from top + anchor deep void. */
-  .bg-lyra-night {
+  /* Neural-noir backdrop: deep void + two radial lamps (cyan top, amber
+     bottom-right) + an almost-imperceptible vignette at the edges. */
+  .bg-neural-void {
     background:
       radial-gradient(
-        ellipse 80% 60% at 50% 0%,
-        rgba(77, 212, 232, 0.07),
+        ellipse 70% 55% at 50% -5%,
+        rgba(0, 229, 255, 0.09),
         transparent 60%
       ),
       radial-gradient(
-        ellipse 60% 50% at 100% 100%,
-        rgba(245, 169, 106, 0.03),
+        ellipse 55% 45% at 95% 85%,
+        rgba(255, 138, 61, 0.05),
         transparent 60%
+      ),
+      radial-gradient(
+        ellipse 100% 100% at 50% 50%,
+        transparent 55%,
+        rgba(0, 0, 0, 0.55) 100%
       ),
       #05070c;
   }
-  /* Pill button base — used by the CTAs to match the reference composition. */
-  .pill {
-    border-radius: 9999px;
-    padding: 0.875rem 1.75rem;
-    font-family: var(--font-geist-sans);
-    font-weight: 500;
-    font-size: 0.9375rem;
+
+  /* Terminal panel — a sharp-edged card with vestigial corner ticks.
+     Used for system-panel treatments on data cards, manifesto quotes,
+     and featured insights. */
+  .terminal-panel {
+    position: relative;
+    background: linear-gradient(
+      180deg,
+      rgba(20, 27, 42, 0.5) 0%,
+      rgba(10, 14, 24, 0.65) 100%
+    );
+    border: 1px solid rgba(240, 239, 234, 0.08);
+  }
+  .terminal-panel::before,
+  .terminal-panel::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 1px solid #4dd4e8;
+    opacity: 0.55;
+  }
+  .terminal-panel::before {
+    top: -1px;
+    left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+  .terminal-panel::after {
+    bottom: -1px;
+    right: -1px;
+    border-left: none;
+    border-top: none;
+  }
+
+  /* Cyan neon text — used sparingly on key headline accents. */
+  .neon-cyan {
+    color: #4dd4e8;
+    text-shadow:
+      0 0 12px rgba(77, 212, 232, 0.35),
+      0 0 32px rgba(77, 212, 232, 0.18);
+  }
+  .neon-ember {
+    color: #f5a96a;
+    text-shadow:
+      0 0 12px rgba(245, 169, 106, 0.3),
+      0 0 32px rgba(245, 169, 106, 0.15);
+  }
+
+  /* Cyber pill CTAs — replace the generic SaaS pill with something that
+     has presence. Corner ticks via box-shadow tricks, subtle glow on hover. */
+  .cyber-pill {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.625rem;
-    transition: transform 200ms ease, background-color 200ms ease,
-      border-color 200ms ease, color 200ms ease;
+    padding: 0.875rem 1.75rem;
+    font-family: var(--font-display), "Chakra Petch", sans-serif;
+    font-weight: 500;
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-radius: 2px;
+    transition:
+      transform 250ms ease,
+      background-color 250ms ease,
+      color 250ms ease,
+      box-shadow 250ms ease,
+      border-color 250ms ease;
   }
-  .pill-primary {
+  .cyber-pill-primary {
     background: #4dd4e8;
     color: #05070c;
+    box-shadow:
+      0 0 0 1px rgba(77, 212, 232, 0.7),
+      0 0 28px -4px rgba(77, 212, 232, 0.55),
+      0 0 60px -20px rgba(77, 212, 232, 0.4);
   }
-  .pill-primary:hover {
-    background: #6fe0f1;
+  .cyber-pill-primary:hover {
+    background: #6ff0ff;
     transform: translateY(-1px);
+    box-shadow:
+      0 0 0 1px #6ff0ff,
+      0 0 40px -4px rgba(111, 240, 255, 0.75),
+      0 0 90px -20px rgba(111, 240, 255, 0.55);
   }
-  .pill-outline {
-    background: transparent;
+  .cyber-pill-outline {
+    background: rgba(20, 27, 42, 0.4);
     color: #f0efea;
     border: 1px solid rgba(240, 239, 234, 0.2);
+    backdrop-filter: blur(4px);
   }
-  .pill-outline:hover {
+  .cyber-pill-outline:hover {
     border-color: #4dd4e8;
     color: #4dd4e8;
     transform: translateY(-1px);
+    box-shadow: 0 0 24px -8px rgba(77, 212, 232, 0.5);
   }
+
+  /* Terminal prefix treatment — used on eyebrow labels so they read as
+     system readouts instead of SaaS eyebrows. */
+  .terminal-prefix::before {
+    content: ">>";
+    color: #4dd4e8;
+    margin-right: 0.6em;
+    opacity: 0.75;
+  }
+  .data-prefix::before {
+    content: "::";
+    color: #4dd4e8;
+    margin-right: 0.55em;
+    opacity: 0.75;
+  }
+
+  /* Scan lines — CRT-style overlay for screenshots and display panels.
+     Runs diagonally rather than flat horizontal so it reads as craft
+     rather than filter. */
+  .scan-lines {
+    position: relative;
+  }
+  .scan-lines::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 3px,
+      rgba(77, 212, 232, 0.03) 3px,
+      rgba(77, 212, 232, 0.03) 4px
+    );
+    mix-blend-mode: overlay;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Native date/time picker icon — on a dark theme the browser default
+   renders the ::-webkit-calendar-picker-indicator near-black on black,
+   making it invisible. The filter chain tints it cyan-ish to match
+   brand. Chrome/Edge/Safari honor the pseudo; Firefox has no picker
+   indicator to style.
+   ───────────────────────────────────────────────────────────────────── */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="week"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.9;
+  /* Invert the dark icon to light, then shift hue toward cyan. */
+  filter: invert(78%) sepia(55%) saturate(690%) hue-rotate(145deg)
+    brightness(105%) contrast(92%);
+}
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }

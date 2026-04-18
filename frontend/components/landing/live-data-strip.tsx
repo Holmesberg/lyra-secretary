@@ -1,6 +1,7 @@
 "use client";
 
 import { AreaChart, BarChart, DonutChart } from "@tremor/react";
+import { CornerMarks } from "./corner-marks";
 
 const deltaSeries = [
   { session: "s1", "delta (min)": 42 },
@@ -41,19 +42,24 @@ const initiationPattern = [
 
 export function LiveDataStrip() {
   return (
-    <section id="live-data" className="relative py-24 md:py-32">
+    <section id="live-data" className="relative border-y border-hairline bg-void-2/30 py-24 md:py-32">
       <div className="mx-auto max-w-5xl px-6 md:px-10">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-medium leading-[1.1] tracking-tight text-parchment md:text-4xl">
-            Live from the operator
+          <p className="mb-6 font-mono text-[11px] uppercase tracking-widest text-signal">
+            <span className="text-signal/60">//</span> live from operative-001
+          </p>
+          <h2 className="font-display text-4xl font-medium leading-[1.1] tracking-tight text-parchment md:text-5xl">
+            Four patterns, one{" "}
+            <span className="neon-cyan">baseline</span>.
           </h2>
-          <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-dust md:text-base">
-            Real readings from 45 sessions over 14 days. Not a demo.
+          <p className="mx-auto mt-5 max-w-lg text-sm leading-relaxed text-dust md:text-base">
+            Every bar, curve, and slice below is the operator&apos;s real
+            data. No synthetic fixtures. No seed content.
           </p>
         </div>
 
         <div className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <ChartCell label="Delta (planned − executed)" caption="trending toward zero — learning">
+          <ChartCell code="03.1" label="Delta (planned − executed)" caption="trending toward zero — learning">
             <AreaChart
               data={deltaSeries}
               index="session"
@@ -68,7 +74,7 @@ export function LiveDataStrip() {
             />
           </ChartCell>
 
-          <ChartCell label="Bias factor by category" caption="health 2.0× plan · academic ~1.1×">
+          <ChartCell code="03.2" label="Bias factor by category" caption="health 2.0× plan · academic ~1.1×">
             <BarChart
               data={biasByCategory}
               index="category"
@@ -81,7 +87,7 @@ export function LiveDataStrip() {
             />
           </ChartCell>
 
-          <ChartCell label="Pause reason distribution" caption="35% mental fatigue · 25% distraction">
+          <ChartCell code="03.3" label="Pause reason distribution" caption="35% mental fatigue · 25% distraction">
             <DonutChart
               data={pauseDistribution}
               category="value"
@@ -92,7 +98,7 @@ export function LiveDataStrip() {
             />
           </ChartCell>
 
-          <ChartCell label="Initiation status by week" caption="more sessions logged real-time, fewer retroactive">
+          <ChartCell code="03.4" label="Initiation status by week" caption="more sessions logged real-time, fewer retroactive">
             <BarChart
               data={initiationPattern}
               index="window"
@@ -112,19 +118,33 @@ export function LiveDataStrip() {
 }
 
 function ChartCell({
+  code,
   label,
   caption,
   children,
 }: {
+  code: string;
   label: string;
   caption: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-hairline bg-void-2/40 p-6">
-      <p className="text-xs uppercase tracking-wider text-dust">{label}</p>
-      {children}
-      <p className="mt-3 text-xs text-dust-deep">{caption}</p>
+    <div className="relative">
+      <CornerMarks size={8} thickness={1} color="rgba(77, 212, 232, 0.4)" />
+      <div className="terminal-panel h-full p-6">
+        <div className="flex items-baseline justify-between">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-signal">
+            :: {code}
+          </p>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-dust">
+            {label}
+          </p>
+        </div>
+        {children}
+        <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+          {caption}
+        </p>
+      </div>
     </div>
   );
 }

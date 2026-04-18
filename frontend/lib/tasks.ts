@@ -84,7 +84,9 @@ export interface CreateTaskInput {
   title: string;
   start: string; // ISO with timezone
   end: string;
-  category: Category;
+  // Free-text category — frozen taxonomy (lib/categories.ts) serves as
+  // suggestion list, not a closed enum. Backend accepts any string.
+  category: string;
   description?: string;
   force?: boolean;
 }

@@ -8,10 +8,6 @@ const config: Config = {
     "./lib/**/*.{ts,tsx}",
     "./node_modules/@tremor/**/*.{js,ts,jsx,tsx}",
   ],
-  // Tremor v3 generates color classes (e.g. fill-cyan-500, stroke-amber-500)
-  // at runtime from `colors={["cyan"]}` props. Tailwind JIT cannot see those
-  // strings in source files, so they get purged → invisible chart fills/
-  // strokes on dark background. Safelist per official Tremor setup.
   safelist: [
     {
       pattern:
@@ -29,19 +25,23 @@ const config: Config = {
         border: "hsl(var(--border))",
         primary: "hsl(var(--primary))",
         "primary-foreground": "hsl(var(--primary-foreground))",
-        // LyraOS brand palette — matches logo glow exactly.
+        // LyraOS Neural Noir palette
         void: "#05070C",
-        "void-2": "#0A0F1A",
-        ink: "#141926",
+        "void-2": "#0A0E18",
+        ink: "#141B2A",
         signal: "#4DD4E8",
+        "signal-neon": "#00E5FF",
         "signal-muted": "#2A7A87",
         ember: "#F5A96A",
+        "ember-neon": "#FF8A3D",
         parchment: "#F0EFEA",
         dust: "#8A92A3",
         "dust-deep": "#4A5168",
         hairline: "rgba(240, 239, 234, 0.08)",
+        "hairline-signal": "rgba(77, 212, 232, 0.25)",
       },
       fontFamily: {
+        display: ["var(--font-display)", "Chakra Petch", "sans-serif"],
         sans: [
           "var(--font-geist-sans)",
           "ui-sans-serif",
@@ -57,25 +57,38 @@ const config: Config = {
       },
       letterSpacing: {
         micro: "0.14em",
+        macro: "0.22em",
       },
       keyframes: {
         twinkle: {
           "0%, 100%": { opacity: "0.2" },
           "50%": { opacity: "0.7" },
         },
-        "star-drift": {
-          "0%": { transform: "translateY(0)" },
-          "100%": { transform: "translateY(-24px)" },
+        "pulse-glow": {
+          "0%, 100%": { opacity: "0.4", transform: "scale(1)" },
+          "50%": { opacity: "0.7", transform: "scale(1.05)" },
         },
-        "fade-in-up": {
-          "0%": { opacity: "0", transform: "translateY(12px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" },
+        "scan-slide": {
+          "0%": { transform: "translateY(-100%)" },
+          "100%": { transform: "translateY(200%)" },
+        },
+        "slow-rotate": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(360deg)" },
+        },
+        "glow-flicker": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.85" },
+          "52%": { opacity: "0.98" },
+          "54%": { opacity: "0.88" },
         },
       },
       animation: {
         twinkle: "twinkle 4s ease-in-out infinite",
-        "star-drift": "star-drift 60s linear infinite",
-        "fade-in-up": "fade-in-up 800ms ease-out forwards",
+        "pulse-glow": "pulse-glow 5s ease-in-out infinite",
+        "scan-slide": "scan-slide 8s linear infinite",
+        "slow-rotate": "slow-rotate 60s linear infinite",
+        "glow-flicker": "glow-flicker 6s ease-in-out infinite",
       },
     },
   },

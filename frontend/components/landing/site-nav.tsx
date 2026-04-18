@@ -25,42 +25,58 @@ export function SiteNav() {
       className={cn(
         "fixed inset-x-0 top-0 z-30 transition-all duration-300",
         scrolled
-          ? "border-b border-hairline bg-void/85 backdrop-blur-xl"
+          ? "border-b border-hairline-signal bg-void/85 backdrop-blur-xl"
           : "border-b border-transparent"
       )}
     >
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 md:px-8">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-10">
         <a
           href="#top"
-          className="group flex items-center gap-2.5"
-          aria-label="LyraOS — adaptive scheduling instrument"
+          className="group flex items-center gap-3"
+          aria-label="LyraOS — the instrument"
         >
-          <Image
-            src="/lyraos-logo.png"
-            alt=""
-            width={36}
-            height={36}
-            priority
-            className="h-8 w-8"
-          />
-          <span className="text-base font-medium tracking-tight text-parchment">
-            LyraOS
-          </span>
+          <div className="relative h-[72px] w-[72px] overflow-hidden">
+            <div
+              aria-hidden
+              className="absolute inset-0 -z-10 rounded-full bg-signal/30 blur-lg"
+            />
+            <Image
+              src="/lyraos-logo.png"
+              alt=""
+              width={72}
+              height={72}
+              priority
+              className="h-[72px] w-[72px] object-contain"
+            />
+          </div>
+          <div className="flex flex-col leading-none">
+            <span className="font-display text-sm font-medium tracking-wider text-parchment">
+              LyraOS
+            </span>
+            <span className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-signal/80">
+              cognitive os
+            </span>
+          </div>
         </a>
-        <div className="hidden items-center gap-7 md:flex">
+
+        <div className="hidden items-center gap-8 md:flex">
           {LINKS.map((l) => (
             <a
               key={l.label}
               href={l.href}
-              className="text-[13px] text-dust transition-colors hover:text-parchment"
+              className="group relative font-mono text-[11px] uppercase tracking-widest text-dust transition-colors hover:text-parchment"
             >
+              <span className="mr-1 text-signal/60 group-hover:text-signal">
+                //
+              </span>
               {l.label}
             </a>
           ))}
         </div>
+
         <button
           onClick={() => signIn("google", { callbackUrl: "/today" })}
-          className="hidden items-center gap-2 rounded-full bg-signal px-4 py-1.5 text-xs font-medium text-void transition-all hover:bg-[#6fe0f1] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70 md:inline-flex"
+          className="hidden items-center gap-2 border border-signal/60 bg-signal/10 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-signal transition-all hover:bg-signal hover:text-void hover:shadow-[0_0_24px_-4px_rgba(77,212,232,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70 md:inline-flex"
         >
           Sign in
           <span aria-hidden>→</span>

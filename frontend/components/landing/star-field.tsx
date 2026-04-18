@@ -11,7 +11,7 @@ import { useMemo } from "react";
  * motion-safe variant at the consumer.
  */
 export function StarField() {
-  const stars = useMemo(() => generateStars(80), []);
+  const stars = useMemo(() => generateStars(200), []);
   return (
     <div
       aria-hidden
@@ -26,7 +26,7 @@ export function StarField() {
                 ? "h-[1px] w-[1px] opacity-40"
                 : s.size === "sm"
                 ? "h-[2px] w-[2px] opacity-60"
-                : "h-[3px] w-[3px] opacity-80"
+                : "h-[3px] w-[3px] opacity-90"
             } motion-safe:animate-twinkle`}
             style={{
               top: `${s.top}%`,
