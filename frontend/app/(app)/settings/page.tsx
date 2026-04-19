@@ -108,7 +108,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+      <h1 className="text-2xl font-semibold tracking-tight text-parchment">Settings</h1>
 
       {/* --- Export card --- */}
       <Card>
@@ -116,7 +116,7 @@ export default function SettingsPage() {
           <CardTitle>Export your data</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-between gap-4">
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-dust">
             Download every task, session, and reflection tied to your account as
             a single JSON file.
           </p>
@@ -129,17 +129,17 @@ export default function SettingsPage() {
           </Button>
         </CardContent>
         {exportError && (
-          <p className="px-6 pb-4 text-sm text-red-400">{exportError}</p>
+          <p className="px-6 pb-4 text-sm text-ember">{exportError}</p>
         )}
       </Card>
 
       {/* --- Delete account card --- */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-red-300">Delete account</CardTitle>
+          <CardTitle className="text-ember">Delete account</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-between gap-4">
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-dust">
             Permanently delete your account and all associated data. Export your
             data first if you want to keep a record.
           </p>
@@ -153,7 +153,7 @@ export default function SettingsPage() {
       <Dialog open={deleteOpen} onOpenChange={(o) => { if (!o) closeDeleteModal(); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-red-400">
+            <DialogTitle className="text-ember">
               Permanently delete your account
             </DialogTitle>
           </DialogHeader>
@@ -166,16 +166,16 @@ export default function SettingsPage() {
               </DialogDescription>
 
               <div className="space-y-4 text-sm">
-                <p className="text-white/80">
+                <p className="text-parchment">
                   This action will delete all data tied to your account:
                 </p>
 
                 {summary ? (
-                  <ul className="list-disc pl-5 space-y-1 text-white/60">
+                  <ul className="list-disc pl-5 space-y-1 text-dust">
                     <li>
                       {summary.total_tasks} task{summary.total_tasks !== 1 && "s"}
                       {summary.total_tasks > 0 && (
-                        <span className="text-white/40">
+                        <span className="text-dust-deep">
                           {" "}({summary.executed_count} executed, {summary.skipped_count} skipped, {summary.planned_count} planned)
                         </span>
                       )}
@@ -189,19 +189,19 @@ export default function SettingsPage() {
                     {summary.notion_enabled && (
                       <li>
                         All Notion sync state
-                        <span className="text-white/40"> (Notion pages will not be deleted from your workspace)</span>
+                        <span className="text-dust-deep"> (Notion pages will not be deleted from your workspace)</span>
                       </li>
                     )}
                     <li>Account login and preferences</li>
                     <li>Backup snapshots from the last 30 days will be purged within 24 hours</li>
                   </ul>
                 ) : (
-                  <p className="text-white/40 italic">Loading data summary...</p>
+                  <p className="text-dust-deep italic">Loading data summary...</p>
                 )}
 
                 {/* Warning block */}
-                <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2">
-                  <p className="text-red-300 text-sm">
+                <div className="rounded border border-ember/40 bg-ember/5 px-3 py-2">
+                  <p className="text-ember text-sm">
                     This cannot be undone. Lyra does not retain copies of deleted
                     accounts. Export your data first if you want to keep a record.
                   </p>
@@ -212,14 +212,14 @@ export default function SettingsPage() {
                   type="button"
                   onClick={handleExport}
                   disabled={exporting}
-                  className="text-sm text-blue-400 hover:text-blue-300 underline underline-offset-2"
+                  className="text-sm text-signal hover:text-signal-neon underline underline-offset-2"
                 >
                   {exporting ? "Exporting\u2026" : "Export data first \u2192"}
                 </button>
 
                 {/* Research retention section */}
-                <div className="rounded border border-white/10 bg-white/5 px-3 py-2 space-y-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-white/60">
+                <div className="rounded border border-hairline bg-void-2/60 px-3 py-2 space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-dust">
                     Help us improve Lyra
                   </p>
                   <label className="flex items-start gap-2 cursor-pointer">
@@ -227,14 +227,14 @@ export default function SettingsPage() {
                       type="checkbox"
                       checked={retainForResearch}
                       onChange={(e) => setRetainForResearch(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-white/20 bg-transparent accent-blue-500"
+                      className="mt-0.5 h-4 w-4 rounded border-hairline-signal/40 bg-transparent accent-[#4dd4e8]"
                     />
-                    <span className="text-sm text-white/80 leading-tight">
+                    <span className="text-sm text-parchment leading-tight">
                       Allow Lyra to retain my anonymized behavioral data to
                       understand how people leave the system and improve the product
                     </span>
                   </label>
-                  <p className="text-xs text-white/40 leading-relaxed">
+                  <p className="text-xs text-dust-deep leading-relaxed">
                     Without data from people who stop using Lyra, we can&apos;t
                     understand what makes the system fail for them. Retained data
                     has no identifying information and cannot be linked back to
@@ -250,9 +250,9 @@ export default function SettingsPage() {
                     type="checkbox"
                     checked={acknowledged}
                     onChange={(e) => setAcknowledged(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-white/20 bg-transparent accent-red-500"
+                    className="mt-0.5 h-4 w-4 rounded border-hairline-signal/40 bg-transparent accent-[#f5a96a]"
                   />
-                  <span className="text-sm text-white/80 leading-tight">
+                  <span className="text-sm text-parchment leading-tight">
                     I understand this action is permanent and unrecoverable
                   </span>
                 </label>
@@ -280,10 +280,10 @@ export default function SettingsPage() {
               </DialogDescription>
 
               <div className="space-y-4 text-sm">
-                <p className="text-white/80">
+                <p className="text-parchment">
                   To confirm, type your email address:
                 </p>
-                <p className="text-white/40 text-xs font-mono">
+                <p className="text-dust-deep text-xs font-mono">
                   {userEmail
                     ? userEmail.replace(/^(.{2})(.*)(@.*)$/, (_, a, b, c) => a + "*".repeat(b.length) + c)
                     : ""}
@@ -296,7 +296,7 @@ export default function SettingsPage() {
                   autoFocus
                 />
                 {deleteError && (
-                  <p className="text-sm text-red-400">{deleteError}</p>
+                  <p className="text-sm text-ember">{deleteError}</p>
                 )}
               </div>
 
@@ -327,8 +327,8 @@ export default function SettingsPage() {
               </DialogDescription>
 
               <div className="flex flex-col items-center gap-3 py-6">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                <p className="text-sm text-white/60">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-hairline-signal/40 border-t-parchment" />
+                <p className="text-sm text-dust">
                   Deleting your account...
                 </p>
               </div>

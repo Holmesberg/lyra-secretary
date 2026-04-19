@@ -185,14 +185,14 @@ export function RetroactiveModal({
                   onClick={() => setReason(r.value)}
                   className={`rounded-md border px-4 py-3 text-left transition-colors ${
                     reason === r.value
-                      ? "border-blue-500/60 bg-blue-500/10"
-                      : "border-white/10 hover:border-white/30 hover:bg-white/[0.02]"
+                      ? "border-signal/60 bg-signal/10"
+                      : "border-hairline hover:border-signal/40 hover:bg-signal/[0.03]"
                   }`}
                 >
-                  <div className="text-sm font-medium text-white">
+                  <div className="text-sm font-medium text-parchment">
                     {r.label}
                   </div>
-                  <div className="mt-0.5 text-xs text-white/50">{r.hint}</div>
+                  <div className="mt-0.5 text-xs text-dust">{r.hint}</div>
                 </button>
               ))}
             </div>
@@ -215,7 +215,7 @@ export function RetroactiveModal({
               <DialogTitle>Log what happened</DialogTitle>
               <DialogDescription>
                 Reason:{" "}
-                <span className="text-white/70">{prettyReason}</span>
+                <span className="text-parchment">{prettyReason}</span>
               </DialogDescription>
             </DialogHeader>
 
@@ -248,16 +248,16 @@ export function RetroactiveModal({
                         setCategory(e.target.value);
                       }
                     }}
-                    className="h-9 rounded-md border border-white/15 bg-transparent px-3 text-sm"
+                    className="h-9 rounded-sm border border-hairline-signal/30 bg-transparent px-3 text-sm text-parchment"
                   >
                     {CATEGORIES.map((c) => (
-                      <option key={c} value={c} className="bg-[#0a0a0a]">
+                      <option key={c} value={c} className="bg-void">
                         {c.replace("_", " ")}
                       </option>
                     ))}
                     <option
                       value="__CREATE_NEW__"
-                      className="bg-[#0a0a0a] text-blue-300"
+                      className="bg-void text-signal"
                     >
                       + Create a new category…
                     </option>
@@ -274,7 +274,7 @@ export function RetroactiveModal({
                     />
                     <button
                       type="button"
-                      className="whitespace-nowrap text-xs text-white/50 hover:text-white"
+                      className="whitespace-nowrap text-xs text-dust transition-colors hover:text-parchment"
                       onClick={() => {
                         setCategoryMode("picker");
                         setCategory("work");
@@ -285,7 +285,7 @@ export function RetroactiveModal({
                   </div>
                 )}
                 {categoryMode === "custom" && (
-                  <p className="text-[11px] text-white/40">
+                  <p className="text-[11px] text-dust-deep">
                     New categories start with no history — their patterns
                     accrue as you log.
                   </p>
@@ -316,7 +316,7 @@ export function RetroactiveModal({
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="retro-completion">
                   Scope / completion{" "}
-                  <span className="font-normal text-white/40">
+                  <span className="font-normal text-dust-deep">
                     ({completionPct}%)
                   </span>
                 </Label>
@@ -328,9 +328,9 @@ export function RetroactiveModal({
                   step={5}
                   value={completionPct}
                   onChange={(e) => setCompletionPct(Number(e.target.value))}
-                  className="accent-blue-500"
+                  className="accent-[#4dd4e8]"
                 />
-                <div className="flex justify-between text-[10px] uppercase tracking-widest text-white/30">
+                <div className="flex justify-between text-[10px] uppercase tracking-widest text-dust-deep">
                   <span>0%</span>
                   <span>50%</span>
                   <span>100%</span>
@@ -340,7 +340,7 @@ export function RetroactiveModal({
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="retro-reflection">
                   Focus quality{" "}
-                  <span className="font-normal text-white/40">
+                  <span className="font-normal text-dust-deep">
                     (1 = poor, 5 = excellent)
                   </span>
                 </Label>
@@ -350,10 +350,10 @@ export function RetroactiveModal({
                       key={n}
                       type="button"
                       onClick={() => setReflection(n)}
-                      className={`h-9 flex-1 rounded-md border text-sm ${
+                      className={`h-9 flex-1 rounded-sm border text-sm transition-colors ${
                         reflection === n
-                          ? "border-blue-500/60 bg-blue-500/10 text-white"
-                          : "border-white/10 text-white/50 hover:border-white/30"
+                          ? "border-signal/60 bg-signal/10 text-parchment"
+                          : "border-hairline text-dust hover:border-signal/40 hover:text-parchment"
                       }`}
                     >
                       {n}
@@ -363,7 +363,7 @@ export function RetroactiveModal({
               </div>
 
               {error && (
-                <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+                <div className="rounded-sm border border-ember/40 bg-ember/5 p-2 text-xs text-ember">
                   {error}
                 </div>
               )}

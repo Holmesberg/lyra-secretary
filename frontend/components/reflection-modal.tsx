@@ -59,12 +59,12 @@ export function ReflectionModal({
         <DialogHeader>
           <DialogTitle>How was your focus?</DialogTitle>
           <DialogDescription>
-            Reflecting on <span className="text-white">{taskTitle}</span>.
+            Reflecting on <span className="text-parchment">{taskTitle}</span>.
           </DialogDescription>
         </DialogHeader>
 
         {earlyStop && (
-          <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+          <div className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
             Early stop: only {earlyStop.elapsed} of {earlyStop.planned} planned
             minutes. Confirming will close the session as-is.
           </div>
@@ -76,13 +76,13 @@ export function ReflectionModal({
               key={a.value}
               onClick={() => setValue(a.value)}
               className={cn(
-                "flex items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                "flex items-center gap-3 rounded-sm border px-3 py-2 text-left text-sm transition-colors",
                 value === a.value
-                  ? "border-white bg-white/10 text-white"
-                  : "border-white/10 text-white/70 hover:border-white/30 hover:text-white"
+                  ? "border-signal/60 bg-signal/10 text-parchment"
+                  : "border-hairline text-dust hover:border-signal/40 hover:text-parchment"
               )}
             >
-              <span className="w-5 font-mono text-xs text-white/50">{a.value}</span>
+              <span className="w-5 font-mono text-xs text-dust-deep">{a.value}</span>
               <span>{a.label}</span>
             </button>
           ))}
@@ -94,7 +94,7 @@ export function ReflectionModal({
             layer capture task_completion_percentage across normal/overrun
             stops too (currently null on 77% of EXECUTED tasks per Apr 16
             data audit). Input stays optional — user can leave blank. */}
-        <div className="flex items-center gap-2 text-xs text-white/60">
+        <div className="flex items-center gap-2 text-xs text-dust">
           <label htmlFor="pct">Completion % (optional)</label>
           <input
             id="pct"
@@ -109,12 +109,12 @@ export function ReflectionModal({
               const n = parseInt(raw, 10);
               setPct(String(Math.min(100, n)));
             }}
-            className="h-8 w-20 rounded-md border border-white/15 bg-transparent px-2 text-sm"
+            className="h-8 w-20 rounded-sm border border-hairline-signal/30 bg-transparent px-2 text-sm text-parchment"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs text-white/60">Scope (optional)</span>
+          <span className="text-xs text-dust">Scope (optional)</span>
           <div className="flex gap-2">
             {SCOPE_OPTIONS.map((o) => (
               <button
@@ -122,10 +122,10 @@ export function ReflectionModal({
                 type="button"
                 onClick={() => setScope(scope === o.value ? null : o.value)}
                 className={cn(
-                  "rounded-md border px-3 py-1.5 text-xs transition-colors",
+                  "rounded-sm border px-3 py-1.5 text-xs transition-colors",
                   scope === o.value
-                    ? "border-white bg-white/10 text-white"
-                    : "border-white/10 text-white/50 hover:border-white/30 hover:text-white/70"
+                    ? "border-signal/60 bg-signal/10 text-parchment"
+                    : "border-hairline text-dust hover:border-signal/40 hover:text-parchment"
                 )}
               >
                 {o.label}

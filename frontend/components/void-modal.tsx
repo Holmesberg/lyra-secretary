@@ -55,11 +55,11 @@ export function VoidModal({ open, taskCount, onConfirm, onCancel }: Props) {
               id="void-reason"
               value={reason}
               onChange={(e) => { setReason(e.target.value); setError(null); }}
-              className="h-9 rounded-md border border-white/15 bg-transparent px-3 text-sm"
+              className="h-9 rounded-md border border-hairline-signal/30 bg-transparent px-3 text-sm text-parchment"
             >
-              <option value="" className="bg-[#0a0a0a]">Select a reason…</option>
+              <option value="" className="bg-void">Select a reason…</option>
               {VOID_REASONS.map((r) => (
-                <option key={r.value} value={r.value} className="bg-[#0a0a0a]">
+                <option key={r.value} value={r.value} className="bg-void">
                   {r.label}
                 </option>
               ))}
@@ -75,13 +75,13 @@ export function VoidModal({ open, taskCount, onConfirm, onCancel }: Props) {
                 value={detail}
                 onChange={(e) => setDetail(e.target.value)}
                 placeholder="Why are these sessions being voided?"
-                className="h-9 rounded-md border border-white/15 bg-transparent px-3 text-sm"
+                className="h-9 rounded-md border border-hairline-signal/30 bg-transparent px-3 text-sm text-parchment"
               />
             </div>
           )}
 
           {error && (
-            <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+            <div className="rounded-sm border border-ember/40 bg-ember/5 p-2 text-xs text-ember">
               {error}
             </div>
           )}

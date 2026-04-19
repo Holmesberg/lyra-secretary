@@ -66,12 +66,12 @@ export function ConsentModal({ onAccepted }: { onAccepted: () => void }) {
           </span>
         </label>
 
-        {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
+        {error && <p className="text-sm text-ember mb-4">{error}</p>}
 
         <button
           onClick={submit}
           disabled={submitting || !terms}
-          className="w-full px-4 py-2 rounded-md bg-white text-black font-medium hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-full px-4 py-2 rounded-sm bg-parchment text-void font-medium hover:bg-parchment/90 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {submitting ? "Saving…" : "Continue"}
         </button>

@@ -49,7 +49,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (status === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a] text-sm text-white/50">
+      <div className="flex min-h-screen items-center justify-center bg-void text-sm text-dust">
         Loading session…
       </div>
     );
@@ -58,20 +58,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (meError) {
     const isExpiredSession = autoSigningOut;
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a] p-8 text-center text-sm text-red-300">
+      <div className="flex min-h-screen items-center justify-center bg-void p-8 text-center text-sm text-ember">
         <div>
           <div className="mb-2 font-semibold">
             {isExpiredSession
               ? "Session expired"
               : "Backend unreachable"}
           </div>
-          <div className="text-xs text-white/60">
+          <div className="text-xs text-dust">
             {isExpiredSession
               ? "Your sign-in expired. Redirecting to the sign-in page…"
               : meError}
           </div>
           {!isExpiredSession && (
-            <div className="mt-4 text-[11px] text-white/40">
+            <div className="mt-4 text-[11px] text-dust-deep">
               Check that the backend is running at{" "}
               {process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"} and
               reload.
@@ -81,7 +81,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => signOut({ callbackUrl: "/" })}
-              className="rounded border border-white/20 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10"
+              className="rounded-sm border border-hairline-signal/40 bg-void-2/60 px-3 py-1.5 text-xs text-parchment transition-colors hover:bg-signal/10 hover:text-signal"
             >
               Sign out
             </button>

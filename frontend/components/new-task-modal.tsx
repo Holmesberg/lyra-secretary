@@ -483,24 +483,24 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-white/50">Duration</Label>
+            <Label className="text-xs text-dust">Duration</Label>
             <div className="flex items-center gap-2">
               <Input
                 type="number"
                 min={0}
                 value={durHours}
                 onChange={(e) => handleDurHoursChange(Number(e.target.value))}
-                className="w-20 text-center text-sm text-white/70"
+                className="w-20 text-center text-sm text-parchment"
               />
-              <span className="text-xs text-white/40">h</span>
+              <span className="text-xs text-dust-deep">h</span>
               <Input
                 type="number"
                 min={0}
                 value={durMinutes}
                 onChange={(e) => handleDurMinutesChange(Number(e.target.value))}
-                className="w-20 text-center text-sm text-white/70"
+                className="w-20 text-center text-sm text-parchment"
               />
-              <span className="text-xs text-white/40">m</span>
+              <span className="text-xs text-dust-deep">m</span>
             </div>
           </div>
 
@@ -518,16 +518,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     setCategory(e.target.value);
                   }
                 }}
-                className="h-9 rounded-md border border-white/15 bg-transparent px-3 text-sm"
+                className="h-9 rounded-sm border border-hairline-signal/30 bg-transparent px-3 text-sm text-parchment"
               >
                 {CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="bg-[#0a0a0a]">
+                  <option key={c} value={c} className="bg-void">
                     {c.replace("_", " ")}
                   </option>
                 ))}
                 <option
                   value="__CREATE_NEW__"
-                  className="bg-[#0a0a0a] text-blue-300"
+                  className="bg-void text-signal"
                 >
                   + Create a new category…
                 </option>
@@ -544,7 +544,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 />
                 <button
                   type="button"
-                  className="whitespace-nowrap text-xs text-white/50 hover:text-white"
+                  className="whitespace-nowrap text-xs text-dust transition-colors hover:text-parchment"
                   onClick={() => {
                     setCategoryMode("picker");
                     setCategory("work");
@@ -555,7 +555,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               </div>
             )}
             {categoryMode === "custom" && (
-              <p className="text-[11px] text-white/40">
+              <p className="text-[11px] text-dust-deep">
                 New categories start with no history — their patterns accrue
                 as you log.
               </p>
@@ -567,7 +567,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               {!showDescription ? (
                 <button
                   type="button"
-                  className="flex items-center gap-1 text-xs text-white/40 hover:text-white/60"
+                  className="flex items-center gap-1 text-xs text-dust-deep transition-colors hover:text-dust"
                   onClick={() => setShowDescription(true)}
                 >
                   <span>Add details</span>
@@ -575,14 +575,14 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 </button>
               ) : (
                 <>
-                  <Label htmlFor="description">What does this involve? <span className="text-white/30 font-normal">(optional)</span></Label>
+                  <Label htmlFor="description">What does this involve? <span className="text-dust-deep font-normal">(optional)</span></Label>
                   <textarea
                     id="description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="- Step one&#10;- Step two&#10;- Step three"
                     rows={3}
-                    className="rounded-md border border-white/15 bg-transparent px-3 py-2 text-sm text-white/70 placeholder:text-white/20 resize-none"
+                    className="rounded-sm border border-hairline-signal/30 bg-transparent px-3 py-2 text-sm text-parchment placeholder:text-dust-deep resize-none"
                   />
                   {(() => {
                     const items = description.split("\n").filter((l) => /^\s*[-*•]\s|^\s*\d+[.)]\s/.test(l));
@@ -590,7 +590,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     if (items.length >= 2 && planned > 0) {
                       const perItem = Math.round((planned / items.length) * 10) / 10;
                       return (
-                        <span className="text-[11px] text-white/30">
+                        <span className="text-[11px] text-dust-deep">
                           {items.length} items, ~{perItem} min each based on your estimate
                         </span>
                       );
@@ -603,22 +603,22 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           )}
 
           {endBeforeStart && (
-            <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+            <div className="rounded border border-ember/40 bg-ember/5 p-2 text-xs text-ember">
               End time must be after start
             </div>
           )}
 
           {pausedConflict && (
             <>
-              <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
-                <span className="font-medium text-white">{pausedConflict.title}</span>{" "}
+              <div className="rounded-md border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
+                <span className="font-medium text-parchment">{pausedConflict.title}</span>{" "}
                 is paused in this window.{" "}
                 {pausedConflict.blockingTitles.length === 0 ? (
                   <>
                     Start{" "}
-                    <span className="font-medium text-white">{title.trim()}</span>{" "}
+                    <span className="font-medium text-parchment">{title.trim()}</span>{" "}
                     as an interruption? It will be linked — you can resume{" "}
-                    <span className="font-medium text-white">{pausedConflict.title}</span>{" "}
+                    <span className="font-medium text-parchment">{pausedConflict.title}</span>{" "}
                     after.
                   </>
                 ) : (
@@ -629,7 +629,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 )}
               </div>
               {pausedConflict.blockingTitles.length > 0 && (
-                <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+                <div className="rounded border border-ember/40 bg-ember/5 p-2 text-xs text-ember">
                   Also conflicts with: {pausedConflict.blockingTitles.join(", ")}
                 </div>
               )}
@@ -637,11 +637,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           )}
 
           {softConflict && (
-            <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+            <div className="rounded-md border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
               {softConflict.executingTitles.length > 0 && (
                 <div>
                   Timer running on{" "}
-                  <span className="font-medium text-white">
+                  <span className="font-medium text-parchment">
                     {softConflict.executingTitles.join(", ")}
                   </span>
                   .
@@ -650,7 +650,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               {softConflict.overlapTitles.length > 0 && (
                 <div>
                   Overlaps with{" "}
-                  <span className="font-medium text-white">
+                  <span className="font-medium text-parchment">
                     {softConflict.overlapTitles.join(", ")}
                   </span>
                   .
@@ -659,34 +659,34 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               {softConflict.reasons.includes("duplicate_title") && softConflict.duplicateTitle && (
                 <div>
                   Already have{" "}
-                  <span className="font-medium text-white">{softConflict.duplicateTitle}</span>{" "}
+                  <span className="font-medium text-parchment">{softConflict.duplicateTitle}</span>{" "}
                   today.
                 </div>
               )}
-              <div className="mt-1 text-white/60">Create as planned anyway?</div>
+              <div className="mt-1 text-dust">Create as planned anyway?</div>
             </div>
           )}
 
           {calibrationNudge && !softConflict && !pausedConflict && !error && (
-            <div className="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-200">
+            <div className="rounded-sm border border-signal/40 bg-signal/5 p-3 text-xs text-signal">
               <div>
                 {nudgeSource === "research" ? (
                   <>
-                    Research on <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
-                    shows people underestimate by <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span>.
+                    Research on <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
+                    shows people underestimate by <span className="font-medium text-parchment">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span>.
                     {" "}Your estimate: {durHours * 60 + durMinutes} min.
                     {calibrationNudge.cell.citation && (
-                      <span className="block mt-0.5 text-[10px] text-blue-300/50">{calibrationNudge.cell.citation}</span>
+                      <span className="block mt-0.5 text-[10px] text-signal/60">{calibrationNudge.cell.citation}</span>
                     )}
                   </>
                 ) : (
                   <>
                     {calibrationNudge.cell.sessions < 10 ? "Early data" : "Your data"}
-                    {" "}({calibrationNudge.cell.sessions} sessions): <span className="font-medium text-white">{calibrationNudge.cell.category}</span> tasks
+                    {" "}({calibrationNudge.cell.sessions} sessions): <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
                     {calibrationNudge.cell.time_of_day !== "all" && (
-                      <> in the <span className="font-medium text-white">{calibrationNudge.cell.time_of_day}</span></>
+                      <> in the <span className="font-medium text-parchment">{calibrationNudge.cell.time_of_day}</span></>
                     )}
-                    {" "}run <span className="font-medium text-white">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over plan.
+                    {" "}run <span className="font-medium text-parchment">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over plan.
                   </>
                 )}
                 {" "}Adjust to {calibrationNudge.suggestedMin} min?
@@ -694,7 +694,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  className="rounded bg-blue-500/20 px-2 py-1 text-[11px] font-medium text-blue-100 hover:bg-blue-500/30"
+                  className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30"
                   onClick={() => {
                     const newMin = calibrationNudge.suggestedMin;
                     setDurHours(Math.floor(newMin / 60));
@@ -707,7 +707,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 </button>
                 <button
                   type="button"
-                  className="rounded bg-white/5 px-2 py-1 text-[11px] text-white/60 hover:bg-white/10"
+                  className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment"
                   onClick={() => setCalibrationNudge(null)}
                 >
                   Keep {durHours * 60 + durMinutes} min
@@ -717,7 +717,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           )}
 
           {error && (
-            <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+            <div className="rounded border border-ember/40 bg-ember/5 p-2 text-xs text-ember">
               {error}
             </div>
           )}

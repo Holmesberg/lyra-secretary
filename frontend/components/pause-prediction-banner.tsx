@@ -36,12 +36,12 @@ export function PausePredictionBanner({ prediction, onPauseNow, onDismissed }: P
     : "work rhythm";
 
   return (
-    <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+    <div className="mb-4 rounded-sm border border-ember/40 bg-ember/5 px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2">
-          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-          <div className="text-xs text-amber-200">
-            <span className="font-medium text-white">Pause predicted</span>{" "}
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-ember" />
+          <div className="text-xs text-ember">
+            <span className="font-medium text-parchment">Pause predicted</span>{" "}
             in ~{prediction.lead_minutes} min ({mechanism}).
             You usually break around now.
           </div>
@@ -51,7 +51,7 @@ export function PausePredictionBanner({ prediction, onPauseNow, onDismissed }: P
           onClick={() => respond("dismiss")}
           disabled={busy}
           aria-label="Dismiss"
-          className="shrink-0 text-white/40 transition-colors hover:text-white/70"
+          className="shrink-0 text-dust-deep transition-colors hover:text-parchment"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -71,7 +71,7 @@ export function PausePredictionBanner({ prediction, onPauseNow, onDismissed }: P
           size="sm"
           onClick={() => respond("snooze")}
           disabled={busy}
-          className="text-xs text-white/50"
+          className="text-xs text-dust"
         >
           Snooze
         </Button>

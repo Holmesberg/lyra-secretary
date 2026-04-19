@@ -64,14 +64,14 @@ export function Toast({
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-auto flex w-80 items-start gap-2 rounded-md border border-white/10 bg-[#0a0a0a] p-3 text-sm text-white/90 shadow-lg"
+      className="pointer-events-auto flex w-80 items-start gap-2 rounded-sm border border-hairline-signal/40 bg-void p-3 text-sm text-parchment shadow-lg"
     >
       <div className="flex-1 leading-relaxed">{message}</div>
       <button
         type="button"
         onClick={() => latestDismiss.current()}
         aria-label="Dismiss"
-        className="-mt-0.5 shrink-0 text-white/40 transition-colors hover:text-white/80"
+        className="-mt-0.5 shrink-0 text-dust-deep transition-colors hover:text-parchment"
       >
         <X className="h-4 w-4" />
       </button>

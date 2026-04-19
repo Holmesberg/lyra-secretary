@@ -38,8 +38,8 @@ export function ReadinessModal({ open, taskTitle, onConfirm, onCancel }: Props) 
         <DialogHeader>
           <DialogTitle>How ready do you feel?</DialogTitle>
           <DialogDescription>
-            About to start <span className="text-white">{taskTitle}</span>. Pick
-            the line that best fits how you feel right now.
+            About to start <span className="text-parchment">{taskTitle}</span>.
+            Pick the line that best fits how you feel right now.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">
@@ -48,13 +48,13 @@ export function ReadinessModal({ open, taskTitle, onConfirm, onCancel }: Props) 
               key={a.value}
               onClick={() => setValue(a.value)}
               className={cn(
-                "flex items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                "flex items-center gap-3 rounded-sm border px-3 py-2 text-left text-sm transition-colors",
                 value === a.value
-                  ? "border-white bg-white/10 text-white"
-                  : "border-white/10 text-white/70 hover:border-white/30 hover:text-white"
+                  ? "border-signal/60 bg-signal/10 text-parchment"
+                  : "border-hairline text-dust hover:border-signal/40 hover:text-parchment"
               )}
             >
-              <span className="w-5 font-mono text-xs text-white/50">{a.value}</span>
+              <span className="w-5 font-mono text-xs text-dust-deep">{a.value}</span>
               <span>{a.label}</span>
             </button>
           ))}

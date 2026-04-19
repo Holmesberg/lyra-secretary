@@ -94,10 +94,12 @@ function displayDate(iso: string | null): string {
 }
 
 function deltaCls(d: number | null): string {
-  if (d == null) return "text-white/30";
-  if (d > 0) return "text-green-400";
-  if (d < 0) return "text-red-400";
-  return "text-white/50";
+  // Delta polarity still carries meaning: positive = under-estimate (ember
+  // warning), negative = over-estimate (signal calm), null = no data.
+  if (d == null) return "text-dust-deep";
+  if (d > 0) return "text-ember";
+  if (d < 0) return "text-signal";
+  return "text-dust";
 }
 
 function fmtDelta(d: number | null): string {
@@ -311,29 +313,29 @@ function MultiSelect({
         className={cn(
           "flex items-center gap-1 rounded border px-2.5 py-1.5 text-xs",
           selected.length > 0
-            ? "border-blue-500/30 bg-blue-500/10 text-blue-300"
-            : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.05]"
+            ? "border-signal/40 bg-signal/10 text-signal"
+            : "border-hairline bg-void-2/60 text-dust hover:bg-signal/5"
         )}
       >
         {label}
         {selected.length > 0 && (
-          <span className="rounded-full bg-blue-500/20 px-1.5 text-[10px]">
+          <span className="rounded-full bg-signal/20 px-1.5 text-[10px] text-signal">
             {selected.length}
           </span>
         )}
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 max-h-60 w-44 overflow-auto rounded border border-white/10 bg-[#141414] py-1 shadow-xl">
+        <div className="absolute left-0 top-full z-50 mt-1 max-h-60 w-44 overflow-auto rounded border border-hairline bg-void-2 py-1 shadow-xl">
           {options.map((o) => (
             <label
               key={o}
-              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-white/70 hover:bg-white/[0.05]"
+              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-parchment/80 hover:bg-signal/5"
             >
               <input
                 type="checkbox"
                 checked={selected.includes(o)}
                 onChange={() => toggle(o)}
-                className="h-3 w-3 accent-blue-500"
+                className="h-3 w-3 accent-[#4dd4e8]"
               />
               {renderOption ? renderOption(o) : o}
             </label>
@@ -366,8 +368,8 @@ function SortHeader({
     <th
       onClick={() => onSort(col)}
       className={cn(
-        "cursor-pointer select-none px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-white/40 hover:text-white/70",
-        active && "text-white/80",
+        "cursor-pointer select-none px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-dust-deep hover:text-parchment/80",
+        active && "text-parchment",
         className
       )}
     >
@@ -498,7 +500,7 @@ export default function TablePage() {
         <select
           value={filters.dateRange}
           onChange={(e) => updateFilter("dateRange", e.target.value as DateRange)}
-          className="rounded border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs text-white/70 outline-none focus:border-white/20"
+          className="rounded border border-hairline bg-void-2/60 px-2.5 py-1.5 text-xs text-parchment/80 outline-none focus:border-hairline-signal/40"
         >
           <option value="7">Last 7 days</option>
           <option value="30">Last 30 days</option>
@@ -514,7 +516,7 @@ export default function TablePage() {
             <span
               className={cn(
                 "rounded border px-1.5 py-0.5 text-[10px] uppercase",
-                CATEGORY_COLORS[o as Category] ?? "text-white/50"
+                CATEGORY_COLORS[o as Category] ?? "text-dust"
               )}
             >
               {o.replace("_", " ")}
@@ -539,19 +541,19 @@ export default function TablePage() {
           )}
         />
 
-        <label className="flex items-center gap-1.5 text-xs text-white/50 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-xs text-dust cursor-pointer">
           <input
             type="checkbox"
             checked={filters.showVoided}
             onChange={(e) => updateFilter("showVoided", e.target.checked)}
-            className="h-3 w-3 accent-blue-500"
+            className="h-3 w-3 accent-[#4dd4e8]"
           />
           Show voided
         </label>
 
         <div className="flex-1" />
 
-        <span className="text-[11px] text-white/30 font-mono">
+        <span className="text-[11px] text-dust-deep font-mono">
           {filtered.length} tasks
         </span>
 
@@ -559,7 +561,7 @@ export default function TablePage() {
           type="button"
           onClick={() => downloadCsv(sorted)}
           disabled={sorted.length === 0}
-          className="flex items-center gap-1.5 rounded border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs text-white/60 hover:bg-white/[0.06] disabled:opacity-30"
+          className="flex items-center gap-1.5 rounded border border-hairline bg-void-2/60 px-2.5 py-1.5 text-xs text-dust hover:bg-signal/10 disabled:opacity-30"
         >
           <Download className="h-3.5 w-3.5" />
           Export CSV
@@ -575,17 +577,17 @@ export default function TablePage() {
 
       {/* Table */}
       {loading ? (
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-10 text-center text-sm text-white/30">
+        <div className="rounded-lg border border-hairline bg-void-2/40 p-10 text-center text-sm text-dust-deep">
           Loading...
         </div>
       ) : sorted.length === 0 ? (
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-10 text-center text-sm text-white/30">
+        <div className="rounded-lg border border-hairline bg-void-2/40 p-10 text-center text-sm text-dust-deep">
           No tasks match the current filters.
         </div>
       ) : (
-        <div className="overflow-auto rounded-lg border border-white/10 bg-white/[0.02]">
+        <div className="overflow-auto rounded-lg border border-hairline bg-void-2/40">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-[#0e0e0e] border-b border-white/10">
+            <thead className="sticky top-0 z-10 bg-void/95 border-b border-hairline">
               <tr>
                 <SortHeader label="Date" col="date" current={filters.sortColumn} dir={filters.sortDir} onSort={toggleSort} className="w-20" />
                 <SortHeader label="Title" col="title" current={filters.sortColumn} dir={filters.sortDir} onSort={toggleSort} />
@@ -603,19 +605,19 @@ export default function TablePage() {
                 if (row.type === "summary") {
                   const s = row.summary;
                   return (
-                    <tr key={`sum-${row.dk}`} className="border-t border-white/[0.06] bg-white/[0.015]">
-                      <td className="px-3 py-1.5 text-[11px] font-medium text-white/60">
+                    <tr key={`sum-${row.dk}`} className="border-t border-hairline bg-void-2/30">
+                      <td className="px-3 py-1.5 text-[11px] font-medium text-dust">
                         {row.dk !== "unknown" ? format(parseISO(row.dk), "MMM d") : "—"}
                       </td>
-                      <td colSpan={2} className="px-3 py-1.5 text-[11px] text-white/35">
+                      <td colSpan={2} className="px-3 py-1.5 text-[11px] text-dust-deep">
                         {s.executedCount} done, {s.skippedCount} skipped
                         {s.avgDiscrepancy != null && ` · avg disc ${s.avgDiscrepancy}`}
                       </td>
                       <td className="px-3 py-1.5" />
-                      <td className="px-3 py-1.5 text-right font-mono text-[11px] text-white/35">
+                      <td className="px-3 py-1.5 text-right font-mono text-[11px] text-dust-deep">
                         {s.planned}m
                       </td>
-                      <td className="px-3 py-1.5 text-right font-mono text-[11px] text-white/35">
+                      <td className="px-3 py-1.5 text-right font-mono text-[11px] text-dust-deep">
                         {s.executed}m
                       </td>
                       <td className={cn("px-3 py-1.5 text-right font-mono text-[11px]", deltaCls(s.delta))}>
@@ -633,14 +635,14 @@ export default function TablePage() {
                   <tr
                     key={t.task_id}
                     className={cn(
-                      "border-t border-white/[0.04] hover:bg-white/[0.03]",
+                      "border-t border-hairline/50 hover:bg-void-2/60",
                       t.voided_at && "opacity-50"
                     )}
                   >
-                    <td className="px-3 py-2 font-mono text-xs text-white/50">
+                    <td className="px-3 py-2 font-mono text-xs text-dust">
                       {displayDate(t.start)}
                     </td>
-                    <td className="max-w-[280px] truncate px-3 py-2 text-sm text-white/80" title={t.title}>
+                    <td className="max-w-[280px] truncate px-3 py-2 text-sm text-parchment" title={t.title}>
                       {t.title}
                     </td>
                     <td className="px-3 py-2">
@@ -665,19 +667,19 @@ export default function TablePage() {
                         {t.state === "EXECUTED" ? "EXEC" : t.state === "SKIPPED" ? "SKIP" : t.state}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-xs text-white/50">
+                    <td className="px-3 py-2 text-right font-mono text-xs text-dust">
                       {t.planned_duration_minutes != null ? `${t.planned_duration_minutes}m` : "—"}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-xs text-white/50">
+                    <td className="px-3 py-2 text-right font-mono text-xs text-dust">
                       {t.executed_duration_minutes != null ? `${t.executed_duration_minutes}m` : "—"}
                     </td>
                     <td className={cn("px-3 py-2 text-right font-mono text-xs", deltaCls(t.duration_delta_minutes))}>
                       {fmtDelta(t.duration_delta_minutes)}
                     </td>
-                    <td className="px-3 py-2 text-center font-mono text-xs text-white/50">
+                    <td className="px-3 py-2 text-center font-mono text-xs text-dust">
                       {fmtRF(t.pre_task_readiness, t.post_task_reflection)}
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-white/40">
+                    <td className="px-3 py-2 font-mono text-[11px] text-dust-deep">
                       {INIT_ABBREV[t.initiation_status ?? ""] ?? t.initiation_status ?? "—"}
                     </td>
                   </tr>

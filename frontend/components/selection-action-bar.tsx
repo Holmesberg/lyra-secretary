@@ -11,8 +11,8 @@ export function SelectionActionBar({ count, onVoid, onCancel }: Props) {
   if (count === 0) return null;
 
   return (
-    <div className="mb-3 flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-4 py-2">
-      <span className="text-xs text-white/60">
+    <div className="mb-3 flex items-center justify-between rounded-sm border border-signal/30 bg-signal/5 px-4 py-2">
+      <span className="font-mono text-xs uppercase tracking-widest text-signal">
         {count} selected
       </span>
       <div className="flex items-center gap-2">
