@@ -90,11 +90,11 @@ export function SiteNav() {
           <Image
             src="/lyraos-logo.png"
             alt=""
-            width={123}
+            width={143}
             height={130}
             priority
             quality={100}
-            sizes="130px"
+            sizes="143px"
             className="h-[130px] w-auto"
           />
           <span className="font-display text-[2rem] font-medium leading-none tracking-tight text-parchment lg:text-[2.25rem]">
