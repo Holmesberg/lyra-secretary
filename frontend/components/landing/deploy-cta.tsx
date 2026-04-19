@@ -32,6 +32,8 @@ export function DeployCta() {
               alt="LyraOS"
               width={120}
               height={120}
+              quality={100}
+              sizes="120px"
               className="h-24 w-24 motion-safe:animate-glow-flicker md:h-28 md:w-28"
             />
           </div>

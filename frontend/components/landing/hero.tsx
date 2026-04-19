@@ -26,6 +26,8 @@ export function Hero() {
               width={140}
               height={140}
               priority
+              quality={100}
+              sizes="140px"
               className="h-[140px] w-auto"
             />
           </div>
@@ -39,12 +41,14 @@ export function Hero() {
           {/* Left: copy column. Entrance animation uses y-translate only —
              no `opacity:0` on initial state so crawlers + social previews
              see the copy as real text in the SSR HTML (previous opacity-0
-             was getting flagged as hidden content by lightweight bots). */}
+             was getting flagged as hidden content by lightweight bots).
+             lg:col-span-5 (was 6) hands more horizontal space to the
+             insights laptop on the right so it reads as the hero visual. */}
           <motion.div
             initial={{ y: 18 }}
             animate={{ y: 0 }}
             transition={{ duration: 0.95, ease: [0.16, 1, 0.3, 1] }}
-            className="order-1 lg:col-span-6"
+            className="order-1 lg:col-span-5"
           >
             <p className="terminal-prefix font-mono text-[11px] font-medium uppercase tracking-widest text-signal">
               For people who plan well and still fail themselves
@@ -89,6 +93,7 @@ export function Hero() {
           </motion.div>
 
           {/* Right: product chrome (laptop with insights — the hero visual).
+             lg:col-span-7 (was 6) — slightly larger for desktop visibility.
              Scale-only entrance animation; opacity always 1 for SSR. */}
           <motion.div
             initial={{ scale: 0.97 }}
@@ -98,7 +103,7 @@ export function Hero() {
               delay: 0.15,
               ease: [0.16, 1, 0.3, 1],
             }}
-            className="order-2 lg:col-span-6"
+            className="order-2 lg:col-span-7"
           >
             <div className="relative mx-auto max-w-xl lg:max-w-none">
               {/* Atmospheric glow behind the product */}
@@ -137,6 +142,8 @@ export function Hero() {
                     width={1160}
                     height={980}
                     priority
+                    quality={95}
+                    sizes="(max-width: 1024px) 100vw, 56vw"
                     className="block w-full"
                   />
                 </div>

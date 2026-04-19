@@ -88,10 +88,12 @@ export function SiteNav() {
           <Image
             src="/lyraos-logo.png"
             alt=""
-            width={120}
-            height={120}
+            width={126}
+            height={126}
             priority
-            className="h-[120px] w-auto"
+            quality={100}
+            sizes="126px"
+            className="h-[126px] w-auto"
           />
           <span className="font-display text-[2rem] font-medium leading-none tracking-tight text-parchment lg:text-[2.25rem]">
             LyraOS
