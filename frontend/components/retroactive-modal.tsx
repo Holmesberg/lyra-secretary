@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createRetroactive, type UnplannedReason } from "@/lib/tasks";
+import { CATEGORIES } from "@/lib/categories";
 
 function formatLocal(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -72,6 +73,13 @@ export function RetroactiveModal({
   const [title, setTitle] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  // Category: required field per research integrity — without a category
+  // the session can't be placed in a bias_factor cell. Reuses the exact
+  // picker/custom UI pattern from new-task-modal.
+  const [category, setCategory] = useState<string>("work");
+  const [categoryMode, setCategoryMode] = useState<"picker" | "custom">(
+    "picker"
+  );
   // Completion % is captured for operator's own recall / future analytics.
   // Not sent to the backend in this pass — the retroactive endpoint doesn't
   // accept task_completion_percentage. See TODO in handleSubmit.
@@ -86,6 +94,8 @@ export function RetroactiveModal({
     setStep("reason");
     setReason(null);
     setTitle("");
+    setCategory("work");
+    setCategoryMode("picker");
     setCompletionPct(100);
     setReflection(3);
     setError(null);
@@ -110,6 +120,7 @@ export function RetroactiveModal({
   const canSubmit =
     !submitting &&
     title.trim().length > 0 &&
+    category.trim().length > 0 &&
     !!start &&
     !!end &&
     new Date(end).getTime() > new Date(start).getTime() &&
@@ -127,6 +138,7 @@ export function RetroactiveModal({
         post_task_reflection: reflection,
         total_paused_minutes: 0,
         unplanned_reason: reason,
+        category: category.trim(),
       });
       // TODO(completion_pct): the retroactive endpoint doesn't currently
       // accept task_completion_percentage. To round-trip the UI slider,
@@ -217,6 +229,67 @@ export function RetroactiveModal({
                   placeholder="What did you do"
                   autoFocus
                 />
+              </div>
+
+              {/* Category picker — exact same UI pattern as new-task-modal.
+                 Required field: bias_factor analytics can't place a session
+                 in a cell without a category, so no fallback default. */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="retro-category">Category</Label>
+                {categoryMode === "picker" ? (
+                  <select
+                    id="retro-category"
+                    value={category}
+                    onChange={(e) => {
+                      if (e.target.value === "__CREATE_NEW__") {
+                        setCategoryMode("custom");
+                        setCategory("");
+                      } else {
+                        setCategory(e.target.value);
+                      }
+                    }}
+                    className="h-9 rounded-md border border-white/15 bg-transparent px-3 text-sm"
+                  >
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c} className="bg-[#0a0a0a]">
+                        {c.replace("_", " ")}
+                      </option>
+                    ))}
+                    <option
+                      value="__CREATE_NEW__"
+                      className="bg-[#0a0a0a] text-blue-300"
+                    >
+                      + Create a new category…
+                    </option>
+                  </select>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="retro-category"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      placeholder="e.g. research, admin, side_project"
+                      autoComplete="off"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="whitespace-nowrap text-xs text-white/50 hover:text-white"
+                      onClick={() => {
+                        setCategoryMode("picker");
+                        setCategory("work");
+                      }}
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                )}
+                {categoryMode === "custom" && (
+                  <p className="text-[11px] text-white/40">
+                    New categories start with no history — their patterns
+                    accrue as you log.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
