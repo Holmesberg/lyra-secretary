@@ -187,13 +187,22 @@ def test_duplicate_title_different_utc_day_no_conflict(db):
 def test_duplicate_title_skipped_executed_still_match(db):
     """Already-finished or skipped tasks count for duplicate-title — useful
     for "you already had Lunch today" warning."""
-    # Use +1h/+2h offsets so all tasks land on the same UTC day regardless of
-    # current wall-clock time (the old -120/-60 offsets crossed midnight UTC
-    # when run after ~20:00 UTC, making the duplicate-title day check fail).
-    _seed_task(db, title="Lunch", state=TaskState.EXECUTED, start_offset_min=60)
-    _seed_task(db, title="Lunch", state=TaskState.SKIPPED, start_offset_min=120)
+    # Absolute-anchor all three tasks to noon-UTC of the current UTC day.
+    # Earlier offset-based approaches crossed the UTC-day boundary from
+    # both sides — negative offsets (-120/-60) failed near 00:00 UTC,
+    # positive offsets (+60/+120/+180) failed near 24:00 UTC (CI run at
+    # 21:41 UTC landed the +180 candidate on the next UTC day, 9b7afee).
+    # Noon-UTC anchoring keeps the full 3-hour span inside one UTC day
+    # regardless of wall-clock time, which is what "same UTC date"
+    # requires.
+    n = now_utc()
+    noon = datetime(n.year, n.month, n.day, 12, 0, 0)
+    _seed_task(db, title="Lunch", state=TaskState.EXECUTED,
+               start_time=noon)
+    _seed_task(db, title="Lunch", state=TaskState.SKIPPED,
+               start_time=noon + timedelta(hours=1))
     detector = ConflictDetector(db)
-    new_start = now_utc() + timedelta(minutes=180)
+    new_start = noon + timedelta(hours=2)
     new_end = new_start + timedelta(minutes=30)
     result = detector.detect(new_start, new_end, title="Lunch")
     assert result.severity() == "soft"
