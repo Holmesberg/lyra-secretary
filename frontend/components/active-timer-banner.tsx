@@ -320,88 +320,91 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   }
 
   return (
-    <div
-      className={cn(
-        "mb-6 rounded-lg border px-4 py-3",
-        paused
-          ? "border-yellow-500/30 bg-yellow-500/10"
-          : "border-green-500/30 bg-green-500/10"
-      )}
-    >
+    <div className="terminal-panel mb-6 px-4 py-3">
       <div className="flex items-center justify-between">
         <div className="min-w-0">
           <div
             className={cn(
-              "text-[10px] uppercase tracking-wide",
-              paused ? "text-yellow-300/80" : "text-green-300/80"
+              "flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest",
+              paused ? "text-ember" : "text-signal"
             )}
           >
-            {paused ? "Paused" : "Active timer"}
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                paused
+                  ? "bg-ember"
+                  : "bg-signal motion-safe:animate-pulse-glow"
+              )}
+            />
+            <span>{paused ? "Paused" : "Active timer"}</span>
           </div>
-          <div className="mt-0.5 truncate text-sm font-medium text-white">
+          <div className="mt-1 truncate text-sm font-medium text-parchment">
             {status.task_title || status.task_id}
           </div>
-          {err && <div className="mt-1 text-[11px] text-red-300">{err}</div>}
+          {err && <div className="mt-1 text-[11px] text-ember">{err}</div>}
         </div>
         <div className="flex items-center gap-3">
-        <div
-          className={cn(
-            "font-mono text-lg tabular-nums",
-            paused ? "text-yellow-200" : "text-green-200"
-          )}
-          data-tick={tick}
-        >
-          {elapsed}
-        </div>
-        <div className="relative">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onPauseButtonClick}
-            disabled={busy}
-            title={paused ? "Resume" : "Pause"}
-          >
-            {paused ? (
-              <>
-                <Play className="mr-1 h-3.5 w-3.5" />
-                Resume
-              </>
-            ) : (
-              <>
-                <Pause className="mr-1 h-3.5 w-3.5" />
-                Pause
-              </>
+          <div
+            className={cn(
+              "font-mono text-lg tabular-nums",
+              paused ? "neon-ember" : "neon-cyan"
             )}
-          </Button>
-          {showReasonPicker && !paused && (
-            <div
-              ref={pickerRef}
-              className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-md border border-white/15 bg-[#0a0a0a] shadow-lg"
-              role="menu"
+            data-tick={tick}
+          >
+            {elapsed}
+          </div>
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onPauseButtonClick}
+              disabled={busy}
+              title={paused ? "Resume" : "Pause"}
             >
-              <div className="border-b border-white/10 px-3 py-1.5 text-[10px] uppercase tracking-wide text-white/50">
-                Reason
+              {paused ? (
+                <>
+                  <Play className="mr-1 h-3.5 w-3.5" />
+                  Resume
+                </>
+              ) : (
+                <>
+                  <Pause className="mr-1 h-3.5 w-3.5" />
+                  Pause
+                </>
+              )}
+            </Button>
+            {showReasonPicker && !paused && (
+              <div
+                ref={pickerRef}
+                className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-sm border border-hairline-signal bg-void-2 shadow-lg"
+                role="menu"
+              >
+                <div className="border-b border-hairline-signal/40 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-dust">
+                  Reason
+                </div>
+                {PAUSE_REASON_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => applyPause(opt.value)}
+                    className="block w-full px-3 py-2 text-left text-xs text-parchment transition-colors hover:bg-signal/10 hover:text-signal"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
-              {PAUSE_REASON_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => applyPause(opt.value)}
-                  className="block w-full px-3 py-2 text-left text-xs text-white/90 hover:bg-white/10"
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
       </div>
       {paused && showOrphanWarning && (
-        <div className="mt-2 flex items-start justify-between gap-2 border-t border-yellow-500/20 pt-2 text-[11px] text-yellow-200/80">
+        <div className="mt-2 flex items-start justify-between gap-2 border-t border-hairline-signal/40 pt-2 text-[11px] text-dust">
           <span>
-            <span className="font-medium text-white">{status.task_title}</span>{" "}
+            <span className="font-medium text-parchment">
+              {status.task_title}
+            </span>{" "}
             will remain paused in the background when you start another task.
             Resume it from this banner, or it auto-closes after 12 hours.
           </span>
@@ -409,7 +412,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
             type="button"
             onClick={onDismissOrphanWarning}
             aria-label="Dismiss"
-            className="shrink-0 text-white/40 transition-colors hover:text-white/70"
+            className="shrink-0 text-dust-deep transition-colors hover:text-parchment"
           >
             <X className="h-3.5 w-3.5" />
           </button>
