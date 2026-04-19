@@ -36,14 +36,17 @@ export function Hero() {
           </span>
         </div>
 
-        {/* === Hero grid: copy left, product right (matches Landing Page.png) === */}
-        <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-12 lg:gap-12">
+        {/* === Hero grid: copy left, product right.
+           lg:items-start top-aligns the two columns so the insights
+           panel's top edge can be made to match the H1 "Your Cognitive"
+           top (via an invisible eyebrow-height spacer on the right
+           column) and its bottom edge can be made to stop just above
+           the CTA button row (via an explicit lg:h-[400px] on the
+           panel chrome). Mobile (<lg) stacks naturally. === */}
+        <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-12 lg:items-start lg:gap-12">
           {/* Left: copy column. Entrance animation uses y-translate only —
              no `opacity:0` on initial state so crawlers + social previews
-             see the copy as real text in the SSR HTML (previous opacity-0
-             was getting flagged as hidden content by lightweight bots).
-             lg:col-span-5 (was 6) hands more horizontal space to the
-             insights laptop on the right so it reads as the hero visual. */}
+             see the copy as real text in the SSR HTML. */}
           <motion.div
             initial={{ y: 18 }}
             animate={{ y: 0 }}
@@ -93,7 +96,6 @@ export function Hero() {
           </motion.div>
 
           {/* Right: product chrome (laptop with insights — the hero visual).
-             lg:col-span-7 (was 6) — slightly larger for desktop visibility.
              Scale-only entrance animation; opacity always 1 for SSR. */}
           <motion.div
             initial={{ scale: 0.97 }}
@@ -105,7 +107,21 @@ export function Hero() {
             }}
             className="order-2 lg:col-span-7"
           >
-            <div className="relative mx-auto max-w-xl lg:max-w-none">
+            {/* Invisible eyebrow-height spacer — desktop-only. Mirrors the
+               left column's terminal-prefix eyebrow line metric so that,
+               with lg:mt-6 on the panel below, the insights top edge
+               lines up with the H1 "Your Cognitive" top. Kept as a real
+               <p> with identical font classes so line-height stays
+               exactly in sync across md / lg breakpoints without magic
+               pixel values. `invisible` (visibility:hidden) reserves
+               vertical space without rendering glyphs. */}
+            <p
+              aria-hidden
+              className="invisible hidden select-none font-mono text-[11px] font-medium uppercase tracking-widest lg:block"
+            >
+              .
+            </p>
+            <div className="relative mx-auto max-w-xl lg:mt-6 lg:w-full lg:max-w-none">
               {/* Atmospheric glow behind the product */}
               <div
                 aria-hidden
@@ -120,7 +136,13 @@ export function Hero() {
                 thickness={1.5}
                 color="rgba(77, 212, 232, 0.75)"
               />
-              <div className="relative overflow-hidden rounded-sm border border-hairline-signal bg-void-2 shadow-[0_40px_120px_-20px_rgba(77,212,232,0.35)]">
+              {/* Panel chrome — lg:h-[400px] caps total panel height so
+                 its bottom sits just above the CTA button row on desktop.
+                 Mobile has no height cap (natural image aspect shows in
+                 full). The scan-lines region is flex-1 so image stretches
+                 to fill whatever vertical space remains below the header
+                 strip on desktop. */}
+              <div className="relative overflow-hidden rounded-sm border border-hairline-signal bg-void-2 shadow-[0_40px_120px_-20px_rgba(77,212,232,0.35)] lg:flex lg:h-[400px] lg:flex-col">
                 {/* status header chrome */}
                 <div className="flex items-center justify-between border-b border-hairline-signal bg-void/80 px-4 py-2.5">
                   <div className="flex items-center gap-1.5">
@@ -135,7 +157,7 @@ export function Hero() {
                     ●
                   </span>
                 </div>
-                <div className="scan-lines">
+                <div className="scan-lines lg:min-h-0 lg:flex-1 lg:overflow-hidden">
                   <Image
                     src="/insights-v1.png"
                     alt="LyraOS insights dashboard — 45 sessions analyzed across estimation, time-of-day, abandonment, pause pattern, and category dimensions."
@@ -144,7 +166,7 @@ export function Hero() {
                     priority
                     quality={95}
                     sizes="(max-width: 1024px) 100vw, 56vw"
-                    className="block w-full"
+                    className="block w-full lg:h-full lg:object-cover lg:object-top"
                   />
                 </div>
               </div>
