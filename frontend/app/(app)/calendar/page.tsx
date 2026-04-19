@@ -58,54 +58,59 @@ import { Button } from "@/components/ui/button";
 // field together, not a piecemeal edit to this file.
 const TIMEZONE = "Africa/Cairo";
 
-// Five state-colored calendars — mirror the palette in task-row.tsx:11
-// so rows and calendar events carry the same visual vocabulary.
-// lightColors and darkColors use Schedule-X's main/container/onContainer
-// triad; we tune darkColors since the app ships in dark mode.
+// Five state-colored calendars — mapped to the brand palette so calendar
+// blocks and /today's state badges carry the same visual vocabulary:
+// EXECUTING signal, PAUSED ember, PLANNED/EXECUTED dust ramp, SKIPPED
+// dust-deep. Schedule-X's main/container/onContainer triad: main is the
+// block's accent stripe, container is its background fill, onContainer
+// is the title text color on that fill. Values hand-picked to stay in
+// the brand family — signal / ember / dust / dust-deep from
+// tailwind.config.ts are the `main` hues; container + onContainer are
+// darker / lighter brand-family shades rather than Tailwind colors.
 const STATE_CALENDARS: Record<string, CalendarType> = {
   planned: {
     colorName: "planned",
     label: "Planned",
     darkColors: {
-      main: "#9ca3af", // gray-400
-      container: "#1f2937", // gray-800
-      onContainer: "#e5e7eb", // gray-200
+      main: "#8A92A3", // dust
+      container: "#141B2A", // ink (brand)
+      onContainer: "#F0EFEA", // parchment
     },
   },
   executing: {
     colorName: "executing",
     label: "Executing",
     darkColors: {
-      main: "#60a5fa", // blue-400
-      container: "#1e3a8a", // blue-900
-      onContainer: "#dbeafe", // blue-100
+      main: "#4DD4E8", // signal
+      container: "#0F3845", // signal-shadow
+      onContainer: "#E0F7FA", // signal-washed
     },
   },
   paused: {
     colorName: "paused",
     label: "Paused",
     darkColors: {
-      main: "#fbbf24", // amber-400
-      container: "#78350f", // amber-900
-      onContainer: "#fef3c7", // amber-100
+      main: "#F5A96A", // ember
+      container: "#3D2914", // ember-shadow
+      onContainer: "#FDE8D3", // ember-washed
     },
   },
   executed: {
     colorName: "executed",
     label: "Executed",
     darkColors: {
-      main: "#4ade80", // green-400
-      container: "#14532d", // green-900
-      onContainer: "#dcfce7", // green-100
+      main: "#6B7280", // dust-muted (completed/past, greyed)
+      container: "#1F2937", // void-deep
+      onContainer: "#E5E7EB", // dust-light
     },
   },
   skipped: {
     colorName: "skipped",
     label: "Skipped",
     darkColors: {
-      main: "#f87171", // red-400
-      container: "#7f1d1d", // red-900
-      onContainer: "#fee2e2", // red-100
+      main: "#4A5168", // dust-deep
+      container: "#1F2230", // void-deep
+      onContainer: "#9CA3AF", // dust-mid
     },
   },
 };
@@ -479,19 +484,21 @@ export default function CalendarPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Calendar</h1>
-          <p className="text-xs text-white/50">
+          <h1 className="font-display text-2xl font-medium tracking-tight text-parchment">
+            Calendar
+          </h1>
+          <p className="mt-1 text-xs text-dust">
             Drag planned tasks to reschedule. Click to edit.
           </p>
         </div>
       </div>
 
       {errorMsg && (
-        <div className="mb-4 flex items-center justify-between rounded border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+        <div className="mb-4 flex items-center justify-between rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
           <span>{errorMsg}</span>
           <button
             onClick={() => setErrorMsg(null)}
-            className="ml-2 text-white/40 hover:text-white/70"
+            className="ml-2 text-dust-deep transition-colors hover:text-parchment"
           >
             &times;
           </button>
@@ -499,7 +506,7 @@ export default function CalendarPage() {
       )}
 
       {tasksQ.isLoading && (
-        <div className="text-sm text-white/50">Loading calendar…</div>
+        <div className="text-sm text-dust">Loading calendar…</div>
       )}
 
       {/*
@@ -525,7 +532,7 @@ export default function CalendarPage() {
         silently re-clips the grid. If you need to remove the border
         or rounding, keep `overflow-y-auto` in place.
       */}
-      <div className="sx-react-calendar-wrapper h-[calc(100vh-220px)] overflow-y-auto rounded-lg border border-white/10">
+      <div className="sx-react-calendar-wrapper h-[calc(100vh-220px)] overflow-y-auto rounded-sm border border-hairline-signal/30">
         {calendar && <ScheduleXCalendar calendarApp={calendar} />}
       </div>
 
@@ -569,35 +576,35 @@ function TaskDetailsDialog({
           </DialogDescription>
         </DialogHeader>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
-          <dt className="text-white/50">State</dt>
-          <dd className="text-white/90">{task.state.toLowerCase()}</dd>
-          <dt className="text-white/50">Planned</dt>
-          <dd className="text-white/90">
+          <dt className="text-dust">State</dt>
+          <dd className="text-parchment">{task.state.toLowerCase()}</dd>
+          <dt className="text-dust">Planned</dt>
+          <dd className="text-parchment">
             {fmt(task.start)} → {fmt(task.end)}
           </dd>
           {task.executed_start && (
             <>
-              <dt className="text-white/50">Executed</dt>
-              <dd className="text-white/90">
+              <dt className="text-dust">Executed</dt>
+              <dd className="text-parchment">
                 {fmt(task.executed_start)} → {fmt(task.executed_end)}
               </dd>
             </>
           )}
           {task.planned_duration_minutes !== null && (
             <>
-              <dt className="text-white/50">Planned duration</dt>
-              <dd className="text-white/90">
+              <dt className="text-dust">Planned duration</dt>
+              <dd className="text-parchment">
                 {task.planned_duration_minutes} min
               </dd>
             </>
           )}
           {task.executed_duration_minutes !== null && (
             <>
-              <dt className="text-white/50">Actual duration</dt>
-              <dd className="text-white/90">
+              <dt className="text-dust">Actual duration</dt>
+              <dd className="text-parchment">
                 {task.executed_duration_minutes} min
                 {task.duration_delta_minutes !== null && (
-                  <span className="ml-2 text-white/40">
+                  <span className="ml-2 text-dust-deep">
                     (Δ {task.duration_delta_minutes > 0 ? "+" : ""}
                     {task.duration_delta_minutes})
                   </span>
@@ -607,24 +614,24 @@ function TaskDetailsDialog({
           )}
           {task.pre_task_readiness !== null && (
             <>
-              <dt className="text-white/50">Readiness</dt>
-              <dd className="text-white/90">
+              <dt className="text-dust">Readiness</dt>
+              <dd className="text-parchment">
                 {task.pre_task_readiness}/5
               </dd>
             </>
           )}
           {task.post_task_reflection !== null && (
             <>
-              <dt className="text-white/50">Focus</dt>
-              <dd className="text-white/90">
+              <dt className="text-dust">Focus</dt>
+              <dd className="text-parchment">
                 {task.post_task_reflection}/5
               </dd>
             </>
           )}
           {task.category && (
             <>
-              <dt className="text-white/50">Category</dt>
-              <dd className="text-white/90">{task.category}</dd>
+              <dt className="text-dust">Category</dt>
+              <dd className="text-parchment">{task.category}</dd>
             </>
           )}
         </dl>
