@@ -25,6 +25,7 @@ import { ActiveTimerBanner } from "@/components/active-timer-banner";
 import { ReadinessModal } from "@/components/readiness-modal";
 import { ReflectionModal } from "@/components/reflection-modal";
 import { NewTaskModal } from "@/components/new-task-modal";
+import { RetroactiveModal } from "@/components/retroactive-modal";
 import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
@@ -83,17 +84,9 @@ function TodayInner() {
   });
 
   const nextDateStr = localDateKey(addDays(viewedDateObj, 1));
-
-  // Next-day gate: always allowed UNLESS viewing today and tomorrow has no planned tasks.
-  // Use a separate query key prefix to avoid collisions with the main tasks query.
-  const tomorrowQ = useQuery({
-    queryKey: ["next-day-check", nextDateStr],
-    queryFn: () => queryTasks(nextDateStr),
-    enabled: isToday,
-    staleTime: 60_000,
-  });
-  const nextDayBlocked = isToday && tomorrowQ.isFetched &&
-    !tomorrowQ.data?.some((t) => t.state === "PLANNED" && !t.voided_at);
+  // Forward-nav is always enabled — the operator can open any future day
+  // and plan tasks there. (Previously gated on whether tomorrow had any
+  // PLANNED tasks, which made cold-start forward navigation impossible.)
 
   const notifQ = useQuery({
     queryKey: ["notifications-pending"],
@@ -111,6 +104,7 @@ function TodayInner() {
   })();
 
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [retroOpen, setRetroOpen] = useState(false);
   const [readinessFor, setReadinessFor] = useState<TaskRowType | null>(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [earlyStop, setEarlyStop] = useState<{
@@ -439,23 +433,27 @@ function TodayInner() {
             )}
           </div>
           <button
-            onClick={() => !nextDayBlocked && navigateTo(nextDateStr)}
-            disabled={nextDayBlocked}
-            className={`rounded p-1 ${
-              !nextDayBlocked
-                ? "text-white/50 hover:bg-white/10 hover:text-white"
-                : "cursor-not-allowed text-white/15"
-            }`}
-            aria-label={!nextDayBlocked ? "Next day" : "No tasks planned tomorrow"}
-            title={!nextDayBlocked ? "Next day" : "No tasks planned tomorrow"}
+            onClick={() => navigateTo(nextDateStr)}
+            className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white"
+            aria-label="Next day"
+            title="Next day"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
-        <Button onClick={() => setNewTaskOpen(true)}>
-          <Plus className="mr-1 h-4 w-4" />
-          New task
-        </Button>
+        <div className="flex flex-col items-end gap-1.5">
+          <Button onClick={() => setNewTaskOpen(true)}>
+            <Plus className="mr-1 h-4 w-4" />
+            New task
+          </Button>
+          <button
+            onClick={() => setRetroOpen(true)}
+            className="text-[11px] text-white/50 transition-colors hover:text-white"
+            title="Log a past session that wasn't tracked live"
+          >
+            Retroactive ↓
+          </button>
+        </div>
       </div>
 
       {/* VT-17 pause prediction banner (above active timer) */}
@@ -561,6 +559,14 @@ function TodayInner() {
         onCreated={refresh}
         onInterruptionCreated={handleInterruptionCreated}
         editingTask={editingTask}
+        defaultDate={editingTask ? undefined : viewedDate}
+      />
+
+      <RetroactiveModal
+        open={retroOpen}
+        onClose={() => setRetroOpen(false)}
+        onCreated={refresh}
+        defaultDate={viewedDate}
       />
 
       <VoidModal

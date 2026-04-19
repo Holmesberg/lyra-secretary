@@ -9,15 +9,40 @@ export function Hero() {
   return (
     <section
       id="top"
-      className="relative isolate overflow-hidden pt-28 md:pt-36"
+      className="relative isolate overflow-hidden pt-20 md:pt-36"
     >
       <div className="mx-auto max-w-7xl px-6 md:px-10">
+        {/* Mobile-only logo block — gives the brand its own moment at the
+           top of the content flow since the mobile nav drops the logo. */}
+        <div className="mb-10 flex flex-col items-center gap-3 md:hidden">
+          <div className="relative">
+            <div
+              aria-hidden
+              className="absolute inset-0 -z-10 rounded-full bg-signal/20 blur-2xl"
+            />
+            <Image
+              src="/lyraos-logo.png"
+              alt=""
+              width={140}
+              height={140}
+              priority
+              className="h-[140px] w-auto"
+            />
+          </div>
+          <span className="font-display text-[1.75rem] font-medium leading-none tracking-tight text-parchment">
+            LyraOS
+          </span>
+        </div>
+
         {/* === Hero grid: copy left, product right (matches Landing Page.png) === */}
         <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-12 lg:gap-12">
-          {/* Left: copy column */}
+          {/* Left: copy column. Entrance animation uses y-translate only —
+             no `opacity:0` on initial state so crawlers + social previews
+             see the copy as real text in the SSR HTML (previous opacity-0
+             was getting flagged as hidden content by lightweight bots). */}
           <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ y: 18 }}
+            animate={{ y: 0 }}
             transition={{ duration: 0.95, ease: [0.16, 1, 0.3, 1] }}
             className="order-1 lg:col-span-6"
           >
@@ -63,10 +88,11 @@ export function Hero() {
             </div>
           </motion.div>
 
-          {/* Right: product chrome (laptop with insights — the hero visual) */}
+          {/* Right: product chrome (laptop with insights — the hero visual).
+             Scale-only entrance animation; opacity always 1 for SSR. */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={{ scale: 0.97 }}
+            animate={{ scale: 1 }}
             transition={{
               duration: 1.1,
               delay: 0.15,
@@ -119,10 +145,11 @@ export function Hero() {
           </motion.div>
         </div>
 
-        {/* === Real-data metrics strip — pulled from operator's Supabase 2026-04-18 === */}
+        {/* === Real-data metrics strip — pulled from operator's Supabase 2026-04-18.
+           Y-translate-only entrance on scroll-into-view; no opacity-0 initial. */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
+          initial={{ y: 20 }}
+          whileInView={{ y: 0 }}
           viewport={{ once: true, margin: "-10%" }}
           transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
           className="mt-20 md:mt-24"

@@ -337,3 +337,50 @@ export function lookupBiasFactor(category: string, tod: string, plannedMinutes: 
     `/v1/analytics/bias_factor/lookup?category=${encodeURIComponent(category)}&tod=${encodeURIComponent(tod)}&planned_minutes=${plannedMinutes}`
   );
 }
+
+// ─── Retroactive logging ───────────────────────────────────────────────
+//
+// Posts a completed session after the fact. Backend creates the Task in
+// EXECUTED state with initiation_status="retroactive" + a closed
+// StopwatchSession with the supplied timestamps. Used by the "Retroactive
+// ↓" flow in /today when the operator forgot to log a session live.
+
+export type UnplannedReason =
+  | "unexpected_task"
+  | "forgot_to_log"
+  | "planning_friction"
+  | "spontaneous_decision";
+
+export interface RetroactiveInput {
+  title: string;
+  start_time: string;           // ISO with timezone
+  end_time: string;
+  post_task_reflection: number; // 1–5, backend-required
+  total_paused_minutes: number; // backend-required (0 is fine)
+  unplanned_reason: UnplannedReason;
+  pre_task_readiness?: number;
+  category?: string;
+  planned_duration_minutes?: number;
+}
+
+export interface RetroactiveResponse {
+  task_id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  planned_duration_minutes: number;
+  delta_minutes: number;
+  initiation_status: "retroactive";
+  pre_task_readiness: number | null;
+  post_task_reflection: number | null;
+  discrepancy_score: number | null;
+  notion_synced: boolean;
+}
+
+export function createRetroactive(input: RetroactiveInput) {
+  return api<RetroactiveResponse>("/v1/stopwatch/retroactive", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}

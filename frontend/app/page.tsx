@@ -1,8 +1,7 @@
-"use client";
-
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+// Server component — renders the full landing SSR so crawlers see all
+// copy as real HTML text instead of the previous client-only
+// "Loading…" skeleton. Auth-redirect for authenticated visitors lives
+// in the tiny client <AuthRedirectGate /> below.
 
 import { SiteNav } from "@/components/landing/site-nav";
 import { StarField } from "@/components/landing/star-field";
@@ -15,33 +14,13 @@ import { LiveDataStrip } from "@/components/landing/live-data-strip";
 import { ManifestoPreview } from "@/components/landing/manifesto-preview";
 import { DeployCta } from "@/components/landing/deploy-cta";
 import { SiteFooter } from "@/components/landing/site-footer";
+import { AuthRedirectGate } from "@/components/landing/auth-redirect-gate";
 
 export default function LandingPage() {
-  const { status } = useSession();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (status === "authenticated") router.replace("/today");
-  }, [status, router]);
-
-  useEffect(() => {
-    document.body.setAttribute("data-surface", "landing");
-    return () => document.body.removeAttribute("data-surface");
-  }, []);
-
-  if (status === "loading" || status === "authenticated") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-void text-xs text-dust">
-        Loading…
-      </div>
-    );
-  }
-
   return (
-    <main
-      className="relative isolate min-h-screen overflow-hidden bg-neural-void text-parchment"
-      style={{ color: "#F0EFEA" }}
-    >
+    <main className="relative isolate min-h-screen overflow-hidden bg-neural-void text-parchment">
+      <AuthRedirectGate />
+
       {/* Layered atmosphere: stars (depth) + circuit substrate (cyber texture)
           + warm amber radial glow in the top-right corner for warmth. */}
       <StarField />

@@ -28,13 +28,37 @@ function formatLocal(d: Date) {
   )}:${pad(d.getMinutes())}`;
 }
 
-/** Round up to next 30-minute boundary. */
+/** Round up to the next 5-minute boundary. 2:06 → 2:10; 2:58 → 3:00. */
 function defaultStart(from: Date = new Date()) {
   const d = new Date(from);
   const mins = d.getMinutes();
-  const next30 = mins <= 0 ? 0 : mins <= 30 ? 30 : 60;
-  d.setMinutes(next30, 0, 0);
+  const next5 = Math.ceil(mins / 5) * 5;
+  if (next5 >= 60) {
+    d.setHours(d.getHours() + 1, 0, 0, 0);
+  } else {
+    d.setMinutes(next5, 0, 0);
+  }
   return formatLocal(d);
+}
+
+/**
+ * Default start for a specific target date — preserves the user's current
+ * clock time (rounded up to next 5 min) but swaps the calendar day to the
+ * `targetDateStr` (YYYY-MM-DD). Used when the operator clicks "+ New task"
+ * while viewing a future day in /today — the start defaults to that day
+ * at "now"-ish rather than literal today.
+ */
+function defaultStartForDate(targetDateStr: string, now: Date = new Date()) {
+  const [y, m, d] = targetDateStr.split("-").map(Number);
+  const base = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), 0, 0);
+  const mins = base.getMinutes();
+  const next5 = Math.ceil(mins / 5) * 5;
+  if (next5 >= 60) {
+    base.setHours(base.getHours() + 1, 0, 0, 0);
+  } else {
+    base.setMinutes(next5, 0, 0);
+  }
+  return formatLocal(base);
 }
 
 function addMinutes(localStr: string, mins: number): string {
@@ -78,9 +102,13 @@ interface Props {
   onCreated: () => void;
   onInterruptionCreated?: (taskId: string, taskTitle: string) => void;
   editingTask?: TaskRow | null;
+  /** Day the operator is viewing in /today — default start defaults to this
+     day at the current clock time (rounded to 5 min). Format YYYY-MM-DD.
+     Omit for "use today". */
+  defaultDate?: string;
 }
 
-export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, editingTask }: Props) {
+export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, editingTask, defaultDate }: Props) {
   const isEdit = !!editingTask;
   const now = useCurrentTime();
 
@@ -153,7 +181,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open && !editingTask) {
-      const s = defaultStart(now);
+      const s = defaultDate ? defaultStartForDate(defaultDate, now) : defaultStart(now);
       setStart(s);
       setEnd(s);
       setDurHours(0);
@@ -204,7 +232,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   }
 
   function resetForm() {
-    const s = defaultStart(now);
+    const s = defaultDate ? defaultStartForDate(defaultDate, now) : defaultStart(now);
     setTitle("");
     setStart(s);
     setEnd(s);

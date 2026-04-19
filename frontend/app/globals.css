@@ -208,3 +208,19 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,
 input[type="time"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Schedule-X v4 collapses the view-selector to a day-only dropdown at
+   mobile widths. Force all three view toggles (day/week/month) to
+   render as inline buttons across every viewport. Applies to the
+   authenticated /calendar route only.
+   ───────────────────────────────────────────────────────────────────── */
+.sx__view-selection-items,
+.sx__view-selection-dropdown-wrapper > ul,
+.sx-react-calendar-wrapper .sx__view-selection > * {
+  display: flex !important;
+  flex-wrap: wrap;
+}
+.sx-react-calendar-wrapper .sx__view-selection-item {
+  display: inline-flex !important;
+}
