@@ -38,11 +38,11 @@ export function Hero() {
 
         {/* === Hero grid: copy left, product right.
            lg:items-start top-aligns the two columns so the insights
-           panel's top edge can be made to match the H1 "Your Cognitive"
-           top (via an invisible eyebrow-height spacer on the right
-           column) and its bottom edge can be made to stop just above
-           the CTA button row (via an explicit lg:h-[400px] on the
-           panel chrome). Mobile (<lg) stacks naturally. === */}
+           panel's top edge matches the H1 "Your Cognitive" top (via
+           an invisible eyebrow-height spacer + lg:mt-6 on the right
+           column). Bottom edge is natural — panel keeps its native
+           aspect, no height cap, no object-cover crop. Mobile (<lg)
+           stacks naturally. === */}
         <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-12 lg:items-start lg:gap-12">
           {/* Left: copy column. Entrance animation uses y-translate only —
              no `opacity:0` on initial state so crawlers + social previews
@@ -136,13 +136,11 @@ export function Hero() {
                 thickness={1.5}
                 color="rgba(77, 212, 232, 0.75)"
               />
-              {/* Panel chrome — lg:h-[400px] caps total panel height so
-                 its bottom sits just above the CTA button row on desktop.
-                 Mobile has no height cap (natural image aspect shows in
-                 full). The scan-lines region is flex-1 so image stretches
-                 to fill whatever vertical space remains below the header
-                 strip on desktop. */}
-              <div className="relative overflow-hidden rounded-sm border border-hairline-signal bg-void-2 shadow-[0_40px_120px_-20px_rgba(77,212,232,0.35)] lg:flex lg:h-[400px] lg:flex-col">
+              {/* Panel chrome — natural image aspect preserved (no height
+                 cap, no object-cover crop). Top edge aligns with H1-top
+                 via the invisible eyebrow spacer + lg:mt-6 above. Bottom
+                 edge falls wherever the image's native aspect lands. */}
+              <div className="relative overflow-hidden rounded-sm border border-hairline-signal bg-void-2 shadow-[0_40px_120px_-20px_rgba(77,212,232,0.35)]">
                 {/* status header chrome */}
                 <div className="flex items-center justify-between border-b border-hairline-signal bg-void/80 px-4 py-2.5">
                   <div className="flex items-center gap-1.5">
@@ -157,7 +155,7 @@ export function Hero() {
                     ●
                   </span>
                 </div>
-                <div className="scan-lines lg:min-h-0 lg:flex-1 lg:overflow-hidden">
+                <div className="scan-lines">
                   <Image
                     src="/insights-v1.png"
                     alt="LyraOS insights dashboard — 45 sessions analyzed across estimation, time-of-day, abandonment, pause pattern, and category dimensions."
@@ -166,7 +164,7 @@ export function Hero() {
                     priority
                     quality={95}
                     sizes="(max-width: 1024px) 100vw, 56vw"
-                    className="block w-full lg:h-full lg:object-cover lg:object-top"
+                    className="block w-full"
                   />
                 </div>
               </div>
