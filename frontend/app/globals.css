@@ -210,6 +210,25 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
+   Tremor (Recharts) chart labels on the landing — the default muted
+   gray fill reads as low-contrast on the neural-noir dark background.
+   Force all axis ticks, legend text, and SVG labels to parchment white
+   inside the #live-data section only (keeps the authenticated app's
+   charts on their original muted palette).
+   ───────────────────────────────────────────────────────────────────── */
+section#live-data svg text,
+section#live-data .recharts-cartesian-axis-tick text,
+section#live-data .recharts-polar-angle-axis-tick text,
+section#live-data .recharts-label-list text,
+section#live-data .recharts-default-legend text {
+  fill: #f0efea !important;
+}
+section#live-data .recharts-legend-item-text,
+section#live-data .recharts-default-legend {
+  color: #f0efea !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
    Schedule-X v4 collapses the view-selector to a day-only dropdown at
    mobile widths. Force all three view toggles (day/week/month) to
    render as inline buttons across every viewport. Applies to the
