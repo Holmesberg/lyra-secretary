@@ -484,7 +484,7 @@ export default function CalendarPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-medium tracking-tight text-parchment">
+          <h1 className="text-2xl font-semibold tracking-tight text-parchment">
             Calendar
           </h1>
           <p className="mt-1 text-xs text-dust">

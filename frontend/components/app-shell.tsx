@@ -58,7 +58,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               sizes="36px"
               className="h-9 w-auto"
             />
-            <span className="font-display text-lg font-medium tracking-tight text-parchment">
+            {/* App wordmark uses Geist Sans (already bundled) rather than
+               the landing's Chakra Petch; the display font is reserved
+               for marketing surfaces so authenticated routes don't pull
+               down the 5-weight Chakra WOFF2 family on first paint. */}
+            <span className="text-lg font-semibold tracking-tight text-parchment">
               LyraOS
             </span>
           </Link>

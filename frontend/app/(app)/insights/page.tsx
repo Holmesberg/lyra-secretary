@@ -128,7 +128,7 @@ export default function InsightsPage() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <h1 className="font-display text-2xl font-medium tracking-tight text-parchment">
+        <h1 className="text-2xl font-semibold tracking-tight text-parchment">
           Insights
         </h1>
         <div className="space-y-3">
@@ -146,7 +146,7 @@ export default function InsightsPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <h1 className="font-display text-2xl font-medium tracking-tight text-parchment">
+        <h1 className="text-2xl font-semibold tracking-tight text-parchment">
           Insights
         </h1>
         <div className="rounded-sm border border-ember/40 bg-ember/5 p-4 text-sm text-ember">
@@ -161,7 +161,7 @@ export default function InsightsPage() {
       (data?.min_sessions_required ?? 3) - (data?.sessions_analyzed ?? 0);
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
-        <h1 className="font-display text-2xl font-medium tracking-tight text-parchment">
+        <h1 className="text-2xl font-semibold tracking-tight text-parchment">
           Insights
         </h1>
         <p className="max-w-md text-sm text-dust">
@@ -200,7 +200,7 @@ export default function InsightsPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-baseline justify-between">
-        <h1 className="font-display text-2xl font-medium tracking-tight text-parchment">
+        <h1 className="text-2xl font-semibold tracking-tight text-parchment">
           Insights
         </h1>
         <span className="font-mono text-[10px] uppercase tracking-widest text-dust">

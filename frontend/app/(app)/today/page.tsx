@@ -419,7 +419,7 @@ function TodayInner() {
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="font-display text-2xl font-medium tracking-tight text-parchment">
+            <h1 className="text-2xl font-semibold tracking-tight text-parchment">
               {format(viewedDateObj, "EEEE, MMMM d")}
             </h1>
             {!isToday && (
