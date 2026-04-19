@@ -14,6 +14,8 @@ const LINKS = [
 // === Desktop stepped-tab geometry. Do not touch on mobile — the whole
 // shape is hidden below the md breakpoint; mobile gets a separate
 // simple-bar treatment further down.
+// TAB_H = logo render height — logo fills the tab edge-to-edge with
+// zero pad so the detective silhouette reads as the brand anchor.
 const TAB_W = 300;
 const TAB_H = 130;
 const LINE_Y = 70;
@@ -88,12 +90,12 @@ export function SiteNav() {
           <Image
             src="/lyraos-logo.png"
             alt=""
-            width={126}
-            height={126}
+            width={123}
+            height={130}
             priority
             quality={100}
-            sizes="126px"
-            className="h-[126px] w-auto"
+            sizes="130px"
+            className="h-[130px] w-auto"
           />
           <span className="font-display text-[2rem] font-medium leading-none tracking-tight text-parchment lg:text-[2.25rem]">
             LyraOS
