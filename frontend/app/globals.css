@@ -27,31 +27,17 @@
 }
 
 @layer utilities {
-  /* Neural-noir backdrop: deep void + two radial lamps (cyan top, amber
-     bottom-right) + an almost-imperceptible vignette at the edges. */
-  .bg-neural-void {
-    background:
-      radial-gradient(
-        ellipse 70% 55% at 50% -5%,
-        rgba(0, 229, 255, 0.09),
-        transparent 60%
-      ),
-      radial-gradient(
-        ellipse 55% 45% at 95% 85%,
-        rgba(255, 138, 61, 0.05),
-        transparent 60%
-      ),
-      radial-gradient(
-        ellipse 100% 100% at 50% 50%,
-        transparent 55%,
-        rgba(0, 0, 0, 0.55) 100%
-      ),
-      #05070c;
-  }
+  /* ═══════════════════════════════════════════════════════════════════════
+     SHARED BRAND UTILITIES — safe to use in both landing AND authenticated
+     app surfaces. These carry the brand identity (palette ticks, cyber
+     readout motifs, pill CTAs) without invoking the heavy atmosphere that
+     belongs to marketing surfaces only.
+     ═══════════════════════════════════════════════════════════════════════ */
 
   /* Terminal panel — a sharp-edged card with vestigial corner ticks.
      Used for system-panel treatments on data cards, manifesto quotes,
-     and featured insights. */
+     featured insights, and the authenticated app's marquee surfaces
+     (active timer banner, /insights cards). */
   .terminal-panel {
     position: relative;
     background: linear-gradient(
@@ -83,7 +69,8 @@
     border-top: none;
   }
 
-  /* Cyan neon text — used sparingly on key headline accents. */
+  /* Cyan / ember neon text — used sparingly on key headline accents
+     (landing hero verbs, elapsed-time counter, /insights headline). */
   .neon-cyan {
     color: #4dd4e8;
     text-shadow:
@@ -98,7 +85,9 @@
   }
 
   /* Cyber pill CTAs — replace the generic SaaS pill with something that
-     has presence. Corner ticks via box-shadow tricks, subtle glow on hover. */
+     has presence. On landing used at full size; on app surfaces use the
+     `.cyber-pill-compact` sibling for a shrunk variant appropriate for
+     operational density. */
   .cyber-pill {
     position: relative;
     display: inline-flex;
@@ -149,7 +138,7 @@
   }
 
   /* Terminal prefix treatment — used on eyebrow labels so they read as
-     system readouts instead of SaaS eyebrows. */
+     system readouts instead of SaaS eyebrows. Safe for any surface. */
   .terminal-prefix::before {
     content: ">>";
     color: #4dd4e8;
@@ -163,9 +152,39 @@
     opacity: 0.75;
   }
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     LANDING-ONLY ATMOSPHERE — DO NOT use on authenticated surfaces.
+     These decorations earn attention on the marketing page but distract
+     from operational density on /today, /calendar, /insights, etc.
+     Scoped by class-name only (no :not() selectors) — it is the app
+     shell's responsibility to not reference these classes.
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  /* Neural-noir backdrop: deep void + two radial lamps (cyan top, amber
+     bottom-right) + an almost-imperceptible vignette at the edges.
+     Landing <main> only. */
+  .bg-neural-void {
+    background:
+      radial-gradient(
+        ellipse 70% 55% at 50% -5%,
+        rgba(0, 229, 255, 0.09),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 55% 45% at 95% 85%,
+        rgba(255, 138, 61, 0.05),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 100% 100% at 50% 50%,
+        transparent 55%,
+        rgba(0, 0, 0, 0.55) 100%
+      ),
+      #05070c;
+  }
+
   /* Scan lines — CRT-style overlay for screenshots and display panels.
-     Runs diagonally rather than flat horizontal so it reads as craft
-     rather than filter. */
+     Landing product chrome only. */
   .scan-lines {
     position: relative;
   }
@@ -185,13 +204,17 @@
   }
 }
 
-/* ─────────────────────────────────────────────────────────────────────
-   Native date/time picker icon — on a dark theme the browser default
+/* ═════════════════════════════════════════════════════════════════════════
+   THIRD-PARTY + NATIVE SYSTEM OVERRIDES
+   Not scoped to landing/app — apply to anywhere the relevant component
+   renders (inputs, Schedule-X, Tremor).
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* Native date/time picker icon — on a dark theme the browser default
    renders the ::-webkit-calendar-picker-indicator near-black on black,
    making it invisible. The filter chain tints it cyan-ish to match
    brand. Chrome/Edge/Safari honor the pseudo; Firefox has no picker
-   indicator to style.
-   ───────────────────────────────────────────────────────────────────── */
+   indicator to style. */
 input[type="datetime-local"]::-webkit-calendar-picker-indicator,
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator,
@@ -209,13 +232,11 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
 
-/* ─────────────────────────────────────────────────────────────────────
-   Tremor (Recharts) chart labels on the landing — the default muted
-   gray fill reads as low-contrast on the neural-noir dark background.
-   Force all axis ticks, legend text, and SVG labels to parchment white
-   inside the #live-data section only (keeps the authenticated app's
-   charts on their original muted palette).
-   ───────────────────────────────────────────────────────────────────── */
+/* Tremor (Recharts) chart labels on the LANDING ONLY — the default
+   muted gray fill reads as low-contrast on the neural-noir dark
+   background. Force all axis ticks, legend text, and SVG labels to
+   parchment white inside the #live-data section only (keeps the
+   authenticated app's charts on their original muted palette). */
 section#live-data svg text,
 section#live-data .recharts-cartesian-axis-tick text,
 section#live-data .recharts-polar-angle-axis-tick text,
@@ -228,12 +249,10 @@ section#live-data .recharts-default-legend {
   color: #f0efea !important;
 }
 
-/* ─────────────────────────────────────────────────────────────────────
-   Schedule-X v4 collapses the view-selector to a day-only dropdown at
+/* Schedule-X v4 collapses the view-selector to a day-only dropdown at
    mobile widths. Force all three view toggles (day/week/month) to
    render as inline buttons across every viewport. Applies to the
-   authenticated /calendar route only.
-   ───────────────────────────────────────────────────────────────────── */
+   authenticated /calendar route only. */
 .sx__view-selection-items,
 .sx__view-selection-dropdown-wrapper > ul,
 .sx-react-calendar-wrapper .sx__view-selection > * {
