@@ -136,6 +136,16 @@
     transform: translateY(-1px);
     box-shadow: 0 0 24px -8px rgba(77, 212, 232, 0.5);
   }
+  /* Compact variant for authenticated app CTAs — the full-size pill is
+     calibrated for landing presence; rendering it inside /today's dense
+     task-list header would dominate the row. Override just padding and
+     font-size; glow + border + hover behavior inherit from the sibling
+     classes above. */
+  .cyber-pill-compact {
+    padding: 0.5rem 1.125rem;
+    font-size: 0.72rem;
+    gap: 0.5rem;
+  }
 
   /* Terminal prefix treatment — used on eyebrow labels so they read as
      system readouts instead of SaaS eyebrows. Safe for any surface. */

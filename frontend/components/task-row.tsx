@@ -30,14 +30,14 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
   const { state, pre_task_readiness, post_task_reflection, duration_delta_minutes } = task;
 
   if (state === "SKIPPED") {
-    return <span className="font-mono text-[11px] text-white/30">—</span>;
+    return <span className="font-mono text-[11px] text-dust-deep">—</span>;
   }
   if (state === "PLANNED") return null;
 
   if (state === "EXECUTING" || state === "PAUSED") {
     if (pre_task_readiness == null) return null;
     return (
-      <span className="font-mono text-[11px] text-white/40">
+      <span className="font-mono text-[11px] text-dust">
         ready {pre_task_readiness} →
       </span>
     );
@@ -55,7 +55,7 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
       ? ` −${delta}min`
       : ` +${Math.abs(delta)}min`;
   return (
-    <span className="font-mono text-[11px] text-white/40">
+    <span className="font-mono text-[11px] text-dust">
       {pre_task_readiness ?? "?"} → {post_task_reflection ?? "?"}
       {deltaStr}
     </span>
@@ -77,8 +77,9 @@ export function TaskRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-4 rounded-md border border-white/5 bg-white/[0.02] px-4 py-3",
-        selected && "bg-blue-500/5 border-blue-500/20"
+        "group flex items-center gap-4 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 transition-colors",
+        selected && "border-signal/40 bg-signal/5",
+        isLive && !selected && "border-signal/30 bg-signal/[0.03]"
       )}
     >
       {onToggleSelect && (
@@ -87,20 +88,20 @@ export function TaskRow({
           checked={!!selected}
           onChange={() => onToggleSelect(task.task_id)}
           className={cn(
-            "h-3.5 w-3.5 shrink-0 accent-blue-500 cursor-pointer",
+            "h-3.5 w-3.5 shrink-0 cursor-pointer accent-[#4dd4e8]",
             showCheckbox ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           )}
           onClick={(e) => e.stopPropagation()}
         />
       )}
-      <div className="w-28 font-mono text-xs text-white/50">
+      <div className="w-28 font-mono text-xs text-dust">
         {start}–{end}
       </div>
       <div
         className={cn("min-w-0 flex-1", state === "PLANNED" && onEdit && "cursor-pointer")}
         onClick={() => state === "PLANNED" && onEdit?.(task)}
       >
-        <div className="truncate text-sm">{task.title}</div>
+        <div className="truncate text-sm text-parchment">{task.title}</div>
       </div>
       <ResearchLayer task={task} />
       {cat && CATEGORY_COLORS[cat] && (
@@ -151,7 +152,7 @@ export function TaskRow({
                 variant="ghost"
                 onClick={() => onDelete(task)}
                 title="Delete task"
-                className="text-white/30 hover:text-red-300"
+                className="text-dust-deep hover:text-ember"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>

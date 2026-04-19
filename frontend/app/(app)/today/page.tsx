@@ -19,7 +19,6 @@ import {
   type PausePredictionNotification,
 } from "@/lib/tasks";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
-import { Button } from "@/components/ui/button";
 import { TaskRow } from "@/components/task-row";
 import { ActiveTimerBanner } from "@/components/active-timer-banner";
 import { ReadinessModal } from "@/components/readiness-modal";
@@ -414,27 +413,27 @@ function TodayInner() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigateTo(prevDateStr)}
-            className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white"
+            className="rounded p-1 text-dust transition-colors hover:bg-signal/10 hover:text-signal"
             aria-label="Previous day"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-semibold">
+            <h1 className="font-display text-2xl font-medium tracking-tight text-parchment">
               {format(viewedDateObj, "EEEE, MMMM d")}
             </h1>
             {!isToday && (
               <button
                 onClick={() => navigateTo(today)}
-                className="text-xs text-blue-400 hover:text-blue-300"
+                className="font-mono text-[10px] uppercase tracking-widest text-signal transition-colors hover:text-signal-neon"
               >
-                Back to today
+                ← back to today
               </button>
             )}
           </div>
           <button
             onClick={() => navigateTo(nextDateStr)}
-            className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white"
+            className="rounded p-1 text-dust transition-colors hover:bg-signal/10 hover:text-signal"
             aria-label="Next day"
             title="Next day"
           >
@@ -442,13 +441,16 @@ function TodayInner() {
           </button>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <Button onClick={() => setNewTaskOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" />
+          <button
+            onClick={() => setNewTaskOpen(true)}
+            className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
+          >
+            <Plus className="h-3.5 w-3.5" />
             New task
-          </Button>
+          </button>
           <button
             onClick={() => setRetroOpen(true)}
-            className="text-[11px] text-white/50 transition-colors hover:text-white"
+            className="font-mono text-[10px] uppercase tracking-widest text-dust transition-colors hover:text-parchment"
             title="Log a past session that wasn't tracked live"
           >
             Retroactive ↓
@@ -482,24 +484,29 @@ function TodayInner() {
       )}
 
       {errorMsg && (
-        <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+        <div className="mb-4 rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
           {errorMsg}
         </div>
       )}
 
       {infoMsg && (
-        <div className="mb-4 flex items-center justify-between rounded border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+        <div className="mb-4 flex items-center justify-between rounded-sm border border-signal/40 bg-signal/5 p-3 text-xs text-signal">
           <span>{infoMsg}</span>
-          <button onClick={() => setInfoMsg(null)} className="ml-2 text-white/40 hover:text-white/70">&times;</button>
+          <button
+            onClick={() => setInfoMsg(null)}
+            className="ml-2 text-dust-deep transition-colors hover:text-parchment"
+          >
+            &times;
+          </button>
         </div>
       )}
 
       {tasksQ.isLoading && (
-        <div className="text-sm text-white/50">Loading tasks…</div>
+        <div className="text-sm text-dust">Loading tasks…</div>
       )}
 
       {tasksQ.data && tasksQ.data.length === 0 && (
-        <div className="rounded-lg border border-dashed border-white/10 p-10 text-center text-sm text-white/50">
+        <div className="rounded-sm border border-dashed border-hairline p-10 text-center text-sm text-dust">
           {isPast ? "No tasks recorded for this day." : "Nothing scheduled yet. Create your first task."}
         </div>
       )}
@@ -598,7 +605,7 @@ function TodayInner() {
 /** Page wrapper with Suspense boundary for useSearchParams. */
 export default function TodayPage() {
   return (
-    <Suspense fallback={<div className="text-sm text-white/50">Loading…</div>}>
+    <Suspense fallback={<div className="text-sm text-dust">Loading…</div>}>
       <TodayInner />
     </Suspense>
   );

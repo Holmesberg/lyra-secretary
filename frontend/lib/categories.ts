@@ -20,16 +20,23 @@ export const CATEGORIES = [
 
 export type Category = (typeof CATEGORIES)[number];
 
-// Muted hues that read cleanly on a dark background.
-// P1-2 convention: PLANNED gray, EXECUTING blue, PAUSED amber,
-// EXECUTED green, SKIPPED red, DELETED dimmed gray.
+// Brand-unified state badges (Phase 3c). Mapped from the old traffic-
+// light convention (blue/yellow/green/red) to the brand's two-accent
+// palette + dust ramp, matching the active-timer-banner (Phase 3a)
+// which uses signal for active and ember for paused:
+//   PLANNED   → dust      (neutral, not yet started)
+//   EXECUTING → signal    (active cyan — same as active-timer pulse)
+//   PAUSED    → ember     (attention amber — same as paused-timer)
+//   EXECUTED  → dust      (completed, greyed so planned rows lead the eye)
+//   SKIPPED   → dust-deep (muted terminal state)
+//   DELETED   → dust-deep/50 (archived)
 export const STATE_STYLES: Record<string, string> = {
-  PLANNED: "bg-white/10 text-white/70 border-white/15",
-  EXECUTING: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  PAUSED: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-  EXECUTED: "bg-green-500/20 text-green-300 border-green-500/30",
-  SKIPPED: "bg-red-500/15 text-red-300 border-red-500/25",
-  DELETED: "bg-white/[0.03] text-white/30 border-white/10",
+  PLANNED: "bg-void-2 text-dust border-hairline",
+  EXECUTING: "bg-signal/15 text-signal border-signal/40",
+  PAUSED: "bg-ember/15 text-ember border-ember/40",
+  EXECUTED: "bg-dust/10 text-dust border-dust/30",
+  SKIPPED: "bg-void-2 text-dust-deep border-hairline",
+  DELETED: "bg-void-2/50 text-dust-deep/50 border-hairline/50",
 };
 
 export const CATEGORY_COLORS: Record<Category, string> = {
