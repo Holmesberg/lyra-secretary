@@ -113,7 +113,38 @@ This is now a durable working rule. Every non-trivial decision, idea, data findi
 **Deferred (Path B P1+):**
 - Morning-plan APScheduler job + user "preferred nudge time" preference — P1
 - Reclassification UI ("you're a planner" / "you're reactive" at session 5-7) — P1, gated on archetype-assignment telemetry
-- Notion IMPORT direction (page URL → parsed tasks) — P2, post n=20 users
-- Google Calendar event → PLANNED task import — P3, gated on Phase 7 multi-timezone + OAuth
 - Custom time picker — dogfood-gated (need ≥3 AM/PM incident reports)
 - Brain-dump AI subtask decomposition — Phase 5+, gated on 50+ dumps corpus
+- Import integrations (ICS → GCal → Notion) — post-Spring-School (see §5 below and `docs/import_integrations_capability_map.md`)
+
+---
+
+## 5. Onboarding surface reversal + pivot to import-first
+
+**Previous state (from earlier in this doc, shipped earlier today):** Path B P0 was a full-screen onboarding surface — `OnboardingFlow` component rendered by `(app)/layout.tsx` when `user.onboarding_completed_at` was null, inviting the user to brain-dump their week into a planning task's description. Meta-task defaulted to tomorrow 9am.
+
+**Dogfood finding (same-day retrospective):** Operator tested and identified two problems:
+- **Brain dump had nowhere visible to go** — the description field is not surfaced on `/today`, so a user who typed ten bulleted items clicked "Lock in" and saw one task with their work buried invisibly. "If a user enters their brain dump and it disappears, we lose them from the get-go."
+- **The meta-task was scheduled tomorrow** while the user was mid-planning right now. Senseless.
+
+**Attempted mid-flight fix:** I proposed parsing the bulleted items into N separate PLANNED tasks stacked at tomorrow 9am + 30-min increments. Operator rejected it: the system doesn't know when each item should actually be scheduled; fabricating start times is dishonest. Same class as the rejected "auto-suggested durations" pattern in `do_not_add.md`.
+
+**Clarified framing:** Remove the forced onboarding surface entirely. The first-time experience should be a **single PLANNED "Plan your week" starter task that's already sitting on `/today` when the user arrives.** They can start its timer to plan, reschedule it, delete it, or ignore it and build their own tasks. The real leverage for Path B isn't another custom UI surface — it's importing users' existing plans from the tools they already live in (Notion, Google Calendar, ICS), so they don't have to re-enter anything.
+
+**Mechanical implementation (shipped 2026-04-21 late):**
+- `backend/app/core/security.py` now seeds a starter task inside `resolve_user_from_token` on fresh user creation. Direct ORM insert — new user has no conflicts, no Notion sync (non-operator), no substitution linkage to compute; bypasses `TaskManager` for simplicity. Stamps `onboarding_completed_at` atomically so the kill-criterion query still has a reliable first-interaction timestamp.
+- Pre-Apr-21 users who signed up but never created a task (users 3 and 7 as of the pivot) are covered by a parallel branch: on their next sign-in, if `onboarding_completed_at` is null AND task count is zero, they get the same starter seed.
+- `frontend/components/onboarding-flow.tsx` — **not deleted**, commented out via a prominent banner at the top of the file. Full code preserved for post-Spring-School re-enable; build runs on every merge so framework drift is loud if it happens.
+- `frontend/app/(app)/layout.tsx` — `OnboardingFlow` import + conditional render commented out inline with context pointer.
+- `POST /v1/users/me/skip-onboarding` endpoint — commented out in `backend/app/api/v1/endpoints/users.py`. No caller anymore; harmless to leave the code preserved.
+- `user.onboarding_completed_at` column kept — still stamped (atomically in the starter seed + by `task_manager` on first regular task create), still drives the 2026-05-21 kill-criterion query. Semantics shift from "has cleared the onboarding modal" to "has received their starter task or logged their first manually-created task" — one flag, two creation paths, same measurement.
+
+**Post-Spring-School roadmap (preserved, not shipped):**
+- Re-enable `OnboardingFlow` as the richer first-time experience when the archetype instrument battery (MEQ-5, BFI-10, BSCS, GP-Short) + import ingestion are ready to bundle.
+- Ship ICS drag-drop import first — zero-auth, universal, de-risks the rest. See `docs/import_integrations_capability_map.md` for the full capability map and ranked build order.
+- Google Calendar OAuth scope extension (+`calendar.events.readonly`) second.
+- Notion import direction third (write direction already shipped; crib the OAuth / retry plumbing).
+
+**Why this reversal is not a rollback:** the strategic commitment to Path B (engineer planning as a habit) is unchanged. What changed is the mechanism. A forced onboarding surface is a behavioral constraint; a pre-seeded starter task on an otherwise-empty `/today` is a structural invitation. Per `docs/design_patterns/rules_vs_agency.md`, invitations outperform gates on retention at this stage. The real habit-engineering happens when imports bring the user's existing mental model of "their plans" into Lyra, at which point the measurement work (delta, scope, readiness) has real data to operate on instead of the null observations the current 0/9 dogfood produced.
+
+**Kill criterion (unchanged for now):** 2026-05-21, ≥30% of users with `onboarding_completed_at` stamped must have logged a second `planning` category task before session 10. The starter-seed flow and the commented-out onboarding-surface flow stamp the same field, so the query doesn't need to distinguish them. If the criterion fires negative, the diagnosis is whether users engage with the starter (data: does the starter task ever enter EXECUTING state, or does it just sit?) — not a statement about the custom onboarding surface per se.

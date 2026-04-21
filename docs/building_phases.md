@@ -373,7 +373,7 @@ Items with explicit deferral decisions and reasons. Not rejected — just not ye
 | Multi-user collaboration | Post-retention | Social-obligation confound, irrelevant until single-user value proven |
 | pre_task_readiness reactive measure note | Paper 1 methods | Framing change, not measurement change |
 | ~~self_reflection → planning rename~~ | **Shipped 2026-04-21** | Un-merged early as part of Path B (engineer planning habit). See `docs/strategic_decisions_april_21.md`. |
-| ~~Phase 5 onboarding scaffold~~ | **Shipped 2026-04-21 (P0)** | First-session planning ritual surface + backend onboarding flag. Structural measurement moment per `rules_vs_agency.md`, not a behavioral gate. Full rationale + deferred items (morning nudge, archetype reveal) in `docs/strategic_decisions_april_21.md`. |
+| ~~Phase 5 onboarding scaffold~~ | **Shipped then paused 2026-04-21** | Full-screen onboarding surface shipped in the morning, commented out same-day after dogfood showed the brain-dump had nowhere visible to go. Replaced by a backend-seeded starter task inside `resolve_user_from_token` — user lands on `/today` with one PLANNED "plan your week" task already there. Onboarding UI code preserved for post-Spring-School re-enable. See `docs/strategic_decisions_april_21.md` §5 + `docs/import_integrations_capability_map.md`. |
 | Complexity field (VT-4) | Phase 6 | Optional enrichment, not blocking |
 
 ---
