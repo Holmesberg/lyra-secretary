@@ -62,3 +62,51 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   work: "bg-slate-500/15 text-slate-300 border-slate-500/25",
   personal: "bg-pink-500/15 text-pink-300 border-pink-500/25",
 };
+
+// Fallback palette for user-created custom categories. Picked to be
+// visually distinct from each other AND from the built-in set above
+// (no hue overlap — these are orange, sky, lime, purple, yellow,
+// red/salmon, gray, green, blue-violet, teal-warm). Same
+// bg-500/15 + text-300 + border-500/25 pattern so a custom badge
+// reads identically to a built-in one.
+const CUSTOM_CATEGORY_PALETTE = [
+  "bg-orange-500/15 text-orange-300 border-orange-500/25",
+  "bg-sky-500/15 text-sky-300 border-sky-500/25",
+  "bg-lime-500/15 text-lime-300 border-lime-500/25",
+  "bg-purple-500/15 text-purple-300 border-purple-500/25",
+  "bg-yellow-500/15 text-yellow-300 border-yellow-500/25",
+  "bg-red-500/15 text-red-300 border-red-500/25",
+  "bg-stone-500/15 text-stone-300 border-stone-500/25",
+  "bg-green-500/15 text-green-300 border-green-500/25",
+  "bg-violet-400/15 text-violet-200 border-violet-400/25",
+  "bg-teal-400/15 text-teal-200 border-teal-400/25",
+];
+
+/**
+ * Deterministic color assignment for any category name.
+ *
+ * Built-in categories return their canonical color from CATEGORY_COLORS.
+ * Custom categories (user-typed via "+ Create a new category…" in the
+ * new-task / retroactive modals) hash into CUSTOM_CATEGORY_PALETTE, so
+ * the same custom name always renders the same color across
+ * /today, /calendar, /table, and dropdowns — no DB round-trip needed.
+ *
+ * Fixes the 2026-04-21 dogfood report: "categories don't persist
+ * after creating a new category, it should assign a color." Prior
+ * task-row.tsx guarded on `CATEGORY_COLORS[cat]` which returned
+ * undefined for custom cats → no badge rendered at all. Now every
+ * category gets a badge.
+ *
+ * Hash: simple char-code sum modulo palette length. Cheap, stable,
+ * no external dep.
+ */
+export function getCategoryColor(cat: string | null | undefined): string | null {
+  if (!cat) return null;
+  const built = (CATEGORY_COLORS as Record<string, string>)[cat];
+  if (built) return built;
+  let hash = 0;
+  for (let i = 0; i < cat.length; i++) {
+    hash = (hash + cat.charCodeAt(i)) % CUSTOM_CATEGORY_PALETTE.length;
+  }
+  return CUSTOM_CATEGORY_PALETTE[hash];
+}

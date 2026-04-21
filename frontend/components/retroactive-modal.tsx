@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createRetroactive, type UnplannedReason } from "@/lib/tasks";
-import { CATEGORIES } from "@/lib/categories";
+import { CategorySelect } from "@/components/category-select";
 
 function formatLocal(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -237,31 +237,18 @@ export function RetroactiveModal({
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="retro-category">Category</Label>
                 {categoryMode === "picker" ? (
-                  <select
+                  <CategorySelect
                     id="retro-category"
                     value={category}
-                    onChange={(e) => {
-                      if (e.target.value === "__CREATE_NEW__") {
+                    onChange={(val) => {
+                      if (val === "__CREATE_NEW__") {
                         setCategoryMode("custom");
                         setCategory("");
                       } else {
-                        setCategory(e.target.value);
+                        setCategory(val);
                       }
                     }}
-                    className="h-9 rounded-sm border border-hairline-signal/30 bg-transparent px-3 text-sm text-parchment"
-                  >
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c} className="bg-void">
-                        {c.replace("_", " ")}
-                      </option>
-                    ))}
-                    <option
-                      value="__CREATE_NEW__"
-                      className="bg-void text-signal"
-                    >
-                      + Create a new category…
-                    </option>
-                  </select>
+                  />
                 ) : (
                   <div className="flex items-center gap-2">
                     <Input

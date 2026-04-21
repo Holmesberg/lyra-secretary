@@ -2,7 +2,7 @@
 import { format } from "date-fns";
 import { Play, Square, Ban, Trash2 } from "lucide-react";
 import type { TaskRow as TaskRowType } from "@/lib/tasks";
-import { CATEGORY_COLORS, STATE_STYLES, type Category } from "@/lib/categories";
+import { getCategoryColor, STATE_STYLES } from "@/lib/categories";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +69,8 @@ export function TaskRow({
   // P1-1: 12-hour format.
   const start = task.start ? format(new Date(task.start), "h:mm a") : "—";
   const end = task.end ? format(new Date(task.end), "h:mm a") : "—";
-  const cat = task.category as Category | null;
+  const cat = task.category as string | null;
+  const catColor = getCategoryColor(cat);
   const state = task.state;
   const isLive = state === "EXECUTING" || state === "PAUSED";
   const isTerminal = state === "EXECUTED" || state === "SKIPPED";
@@ -104,11 +105,11 @@ export function TaskRow({
         <div className="truncate text-sm text-parchment">{task.title}</div>
       </div>
       <ResearchLayer task={task} />
-      {cat && CATEGORY_COLORS[cat] && (
+      {cat && catColor && (
         <span
           className={cn(
             "rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide",
-            CATEGORY_COLORS[cat]
+            catColor
           )}
         >
           {cat.replace("_", " ")}

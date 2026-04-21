@@ -6,7 +6,7 @@ import { Download, ChevronUp, ChevronDown } from "lucide-react";
 import { queryTasksRange, type TaskRow, type QueryResponse } from "@/lib/tasks";
 import {
   CATEGORIES,
-  CATEGORY_COLORS,
+  getCategoryColor,
   STATE_STYLES,
   type Category,
 } from "@/lib/categories";
@@ -516,7 +516,7 @@ export default function TablePage() {
             <span
               className={cn(
                 "rounded border px-1.5 py-0.5 text-[10px] uppercase",
-                CATEGORY_COLORS[o as Category] ?? "text-dust"
+                getCategoryColor(o) ?? "text-dust"
               )}
             >
               {o.replace("_", " ")}
@@ -646,16 +646,19 @@ export default function TablePage() {
                       {t.title}
                     </td>
                     <td className="px-3 py-2">
-                      {cat && CATEGORY_COLORS[cat] && (
-                        <span
-                          className={cn(
-                            "rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
-                            CATEGORY_COLORS[cat]
-                          )}
-                        >
-                          {cat.replace("_", " ")}
-                        </span>
-                      )}
+                      {cat && (() => {
+                        const color = getCategoryColor(cat);
+                        return color ? (
+                          <span
+                            className={cn(
+                              "rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
+                              color
+                            )}
+                          >
+                            {cat.replace("_", " ")}
+                          </span>
+                        ) : null;
+                      })()}
                     </td>
                     <td className="px-3 py-2">
                       <span

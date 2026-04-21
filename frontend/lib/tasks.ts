@@ -338,6 +338,22 @@ export function lookupBiasFactor(category: string, tod: string, plannedMinutes: 
   );
 }
 
+// ─── User categories ──────────────────────────────────────────────────
+// Fixes the 2026-04-21 dogfood report "categories don't persist after
+// creating a new category". Modals call this on open to populate the
+// dropdown with built-in + any user-custom categories from task
+// history — so a custom "BCI" typed two weeks ago stays selectable
+// without retyping.
+
+export interface UserCategoriesResponse {
+  built_in: string[];
+  custom: string[];
+}
+
+export function getUserCategories() {
+  return api<UserCategoriesResponse>("/v1/users/me/categories");
+}
+
 // ─── Retroactive logging ───────────────────────────────────────────────
 //
 // Posts a completed session after the fact. Backend creates the Task in
