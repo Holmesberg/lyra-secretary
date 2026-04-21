@@ -331,6 +331,11 @@ class User(Base):
     archetype_id: Mapped[Optional[str]] = mapped_column(String(40), ForeignKey("archetype.archetype_id"))
     terms_accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     research_consent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Path B (2026-04-21): stamped on first task creation OR explicit
+    # skip. Null = user has not yet completed the onboarding planning
+    # ritual. Used by the frontend (app)/layout.tsx to gate the
+    # onboarding surface and by the 2026-05-21 kill-criterion query.
+    onboarding_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 

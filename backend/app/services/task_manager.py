@@ -193,6 +193,18 @@ class TaskManager:
         
         self.db.add(task)
         self.db.flush()  # Get task_id
+        # Path B onboarding stamp: the first task a user ever creates
+        # completes the onboarding ritual atomically with the task
+        # create, so there's no window where the user has one task AND
+        # a null onboarding_completed_at (which would silently re-show
+        # the onboarding surface on next layout-level fetch of /users/me).
+        try:
+            from app.db.models import User
+            u = self.db.query(User).filter(User.user_id == uid).first()
+            if u is not None and u.onboarding_completed_at is None:
+                u.onboarding_completed_at = created_at_ts
+        except Exception as e:
+            logger.warning(f"Onboarding stamp failed (non-blocking): {e}")
         self.db.commit()
         self.db.refresh(task)
 
@@ -305,6 +317,15 @@ class TaskManager:
 
         self.db.add(task)
         self.db.flush()
+        # Path B onboarding stamp (see create_task): retroactive is also a
+        # first-interaction path that completes the ritual.
+        try:
+            from app.db.models import User
+            u = self.db.query(User).filter(User.user_id == uid).first()
+            if u is not None and u.onboarding_completed_at is None:
+                u.onboarding_completed_at = created_at_ts
+        except Exception as e:
+            logger.warning(f"Onboarding stamp failed (non-blocking): {e}")
         self.db.commit()
         self.db.refresh(task)
 

@@ -45,7 +45,29 @@ def get_me(db: Session = Depends(get_db)):
         "archetype_id": user.archetype_id,
         "terms_accepted_at": user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
         "research_consent_at": user.research_consent_at.isoformat() if user.research_consent_at else None,
+        "onboarding_completed_at": user.onboarding_completed_at.isoformat() if user.onboarding_completed_at else None,
         "created_at": user.created_at.isoformat(),
+    }
+
+
+@router.post("/users/me/skip-onboarding")
+def skip_onboarding(db: Session = Depends(get_db)):
+    """Stamp onboarding_completed_at for a user who declined the ritual.
+
+    Path B makes the onboarding planning task a structural measurement
+    moment but not a hard gate (see docs/design_patterns/rules_vs_agency.md).
+    The operator can always skip — we still record the exit so the
+    retention analysis can tell "completed planning ritual" from
+    "skipped and proceeded" from "bounced without signal."
+    """
+    user = _current_user(db)
+    if user.onboarding_completed_at is None:
+        user.onboarding_completed_at = datetime.utcnow()
+        db.commit()
+    return {
+        "ok": True,
+        "onboarding_completed_at": user.onboarding_completed_at.isoformat(),
+        "skipped": True,
     }
 
 
