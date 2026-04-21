@@ -2,7 +2,7 @@
 
 Retrospective canonical document. What has happened in the project's build history, from inception to the current phase. Updated at phase boundaries.
 
-**Last updated:** April 14, 2026 (Phase 4.5 active)
+**Last updated:** April 21, 2026 (Phase 4.5 active — Path B committed, first external activations observed)
 
 ---
 
@@ -285,3 +285,17 @@ As of April 14, 2026:
 - 5 background jobs (backend/app/workers/jobs/)
 - 4 frontend routes (/today, /calendar, /table, /settings)
 - 5 VTs added during Phase 4.5 alone (VT-11, VT-14, VT-15, VT-16, and voided_at audit driving the pattern)
+
+---
+
+## April 18-21, 2026 — First external users + Path B commit
+
+**External user activations.** First non-operator sessions logged 2026-04-18 (user_id 4 + 5, two sessions each, user_id 5 hit a stale-session auto-close). First textbook external activation 2026-04-20 (user_id 6, three clean EXECUTED sessions in a six-hour window, 79-min average, zero auto-closes). As of 2026-04-21: 99 total sessions across 5 of 7 signups, operator dominates at 87/99. D1 return = 0/2 for external users; D3 + D7 = 2/2.
+
+**Brand unification push (2026-04-19 → 2026-04-20, 12 commits).** Phase 1→6 of the app-shell brand-unification plan shipped end-to-end in a single session: `refactor(globals)` → `feat(app-shell)` → `feat(timer-banner)` → `feat(insights)` → `fix(today)` → `fix(calendar)` → `chore(mobile)` → `refactor(typography)` → `chore(sweep)`. Authenticated routes now wear the landing's neural-noir palette with preserved operational density. Chakra Petch dropped from the authenticated bundle.
+
+**Path B strategic commitment (2026-04-21).** Dogfood finding: 0/9 external-user tasks had >30 min planning lead. External users are pure reactive executers; the "planning fallacy" thesis assumes a planning behavior that doesn't exist in the wild. Committed to **engineering planning as a habit** rather than accommodating reactive execution. See `docs/strategic_decisions_april_21.md` for full reasoning, kill criterion pre-registered for 2026-05-21.
+
+**Taxonomy edit (2026-04-21).** `self_reflection` → `planning` un-merged (reversing the April 8 merge). Six task rows + nine category_mapping rows migrated in prod. Seven new planning-oriented keywords seeded (brain dump, schedule, outline, agenda, roadmap, priorities, weekly review). Path B ratifies the category surface as an invitation to plan rather than a label for people who already do.
+
+**new-task-modal 3-bug fix (2026-04-21).** AM/PM slip recovery + duration always-recompute + calibration-nudge guard on invalid ranges. Dogfood-driven; operator-observed bug report with screenshot.

@@ -372,7 +372,7 @@ Items with explicit deferral decisions and reasons. Not rejected — just not ye
 | sleep_hours field | v1.5+ | Leading indicator for cascade, but adds daily friction |
 | Multi-user collaboration | Post-retention | Social-obligation confound, irrelevant until single-user value proven |
 | pre_task_readiness reactive measure note | Paper 1 methods | Framing change, not measurement change |
-| self_reflection → planning rename | Phase 6 migration batch | Cosmetic, bundle with category_type |
+| ~~self_reflection → planning rename~~ | **Shipped 2026-04-21** | Un-merged early as part of Path B (engineer planning habit). See `docs/strategic_decisions_april_21.md`. |
 | Complexity field (VT-4) | Phase 6 | Optional enrichment, not blocking |
 
 ---
