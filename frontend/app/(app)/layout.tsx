@@ -5,12 +5,22 @@ import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 import { ConsentModal } from "@/components/consent-modal";
-import { OnboardingFlow } from "@/components/onboarding-flow";
+// Temporarily disabled 2026-04-21 — the full-screen onboarding surface
+// was replaced by a backend-seeded starter task (see
+// backend/app/core/security.py `_seed_starter_task`). Import left in
+// place and commented so we can re-enable post-Spring-School when the
+// onboarding + first-time-user battery + import ingestion flows are
+// ready to ship together. See docs/strategic_decisions_april_21.md §5.
+// import { OnboardingFlow } from "@/components/onboarding-flow";
 
 type Me = {
   user_id: number;
   email: string;
   terms_accepted_at: string | null;
+  // Kept on the Me type — still returned by /v1/users/me, still stamped
+  // atomically on first task create (including the starter seed in
+  // security.py). Drives the 2026-05-21 kill-criterion query regardless
+  // of whether the onboarding surface is live.
   onboarding_completed_at: string | null;
 };
 
@@ -95,20 +105,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!me) return null;
 
   const needsConsent = !me.terms_accepted_at;
-  const needsOnboarding = !needsConsent && !me.onboarding_completed_at;
 
-  // Onboarding surface runs OUTSIDE AppShell — the Path B ritual is a
-  // full-screen measurement moment, not a sub-route under the app
-  // navigation. Skipping or completing refetches /users/me; on refresh
-  // the flag is set and the regular shell takes over.
-  if (needsOnboarding) {
-    return (
-      <OnboardingFlow
-        userEmail={me.email}
-        onCompleted={() => api<Me>("/v1/users/me").then(setMe)}
-      />
-    );
-  }
+  // Temporarily disabled 2026-04-21 — full-screen onboarding surface
+  // replaced by a backend-seeded starter task on first sign-in.
+  // Re-enable post-Spring-School when the richer onboarding flow
+  // (archetype instrument battery + import ingestion) is ready to ship.
+  // const needsOnboarding = !needsConsent && !me.onboarding_completed_at;
+  // if (needsOnboarding) {
+  //   return (
+  //     <OnboardingFlow
+  //       userEmail={me.email}
+  //       onCompleted={() => api<Me>("/v1/users/me").then(setMe)}
+  //     />
+  //   );
+  // }
 
   return (
     <AppShell>

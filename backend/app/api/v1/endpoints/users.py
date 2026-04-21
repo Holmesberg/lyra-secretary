@@ -50,25 +50,31 @@ def get_me(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/users/me/skip-onboarding")
-def skip_onboarding(db: Session = Depends(get_db)):
-    """Stamp onboarding_completed_at for a user who declined the ritual.
-
-    Path B makes the onboarding planning task a structural measurement
-    moment but not a hard gate (see docs/design_patterns/rules_vs_agency.md).
-    The operator can always skip — we still record the exit so the
-    retention analysis can tell "completed planning ritual" from
-    "skipped and proceeded" from "bounced without signal."
-    """
-    user = _current_user(db)
-    if user.onboarding_completed_at is None:
-        user.onboarding_completed_at = datetime.utcnow()
-        db.commit()
-    return {
-        "ok": True,
-        "onboarding_completed_at": user.onboarding_completed_at.isoformat(),
-        "skipped": True,
-    }
+# Temporarily disabled 2026-04-21 — the onboarding surface that called
+# this endpoint has been replaced by a backend-seeded starter task
+# (see backend/app/core/security.py `_seed_starter_task`). Left in
+# place as dead code to re-enable when the fuller onboarding flow
+# ships post-Spring-School. See docs/strategic_decisions_april_21.md §5.
+#
+# @router.post("/users/me/skip-onboarding")
+# def skip_onboarding(db: Session = Depends(get_db)):
+#     """Stamp onboarding_completed_at for a user who declined the ritual.
+#
+#     Path B makes the onboarding planning task a structural measurement
+#     moment but not a hard gate (see docs/design_patterns/rules_vs_agency.md).
+#     The operator can always skip — we still record the exit so the
+#     retention analysis can tell "completed planning ritual" from
+#     "skipped and proceeded" from "bounced without signal."
+#     """
+#     user = _current_user(db)
+#     if user.onboarding_completed_at is None:
+#         user.onboarding_completed_at = datetime.utcnow()
+#         db.commit()
+#     return {
+#         "ok": True,
+#         "onboarding_completed_at": user.onboarding_completed_at.isoformat(),
+#         "skipped": True,
+#     }
 
 
 @router.post("/users/me/consent")

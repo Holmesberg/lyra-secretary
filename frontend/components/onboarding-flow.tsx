@@ -2,13 +2,37 @@
 /**
  * Onboarding surface — Path B first-session planning ritual.
  *
+ * ╔══════════════════════════════════════════════════════════════════╗
+ * ║ TEMPORARILY DISABLED 2026-04-21                                  ║
+ * ║                                                                  ║
+ * ║ Not rendered anywhere — the (app)/layout.tsx conditional that    ║
+ * ║ mounted this component has been commented out. The first-time    ║
+ * ║ user experience is now a backend-seeded starter task (see        ║
+ * ║ backend/app/core/security.py `_seed_starter_task`), which shows  ║
+ * ║ up directly on /today when the user lands — no forced UI.        ║
+ * ║                                                                  ║
+ * ║ Re-enable post-Spring-School when the richer onboarding flow is  ║
+ * ║ ready to ship:                                                   ║
+ * ║  - Archetype instrument battery (MEQ-5, BFI-10, BSCS, GP-Short)  ║
+ * ║  - Import ingestion (ICS drag-drop, Google Calendar OAuth)       ║
+ * ║  - Progressive revelation ("your archetype: Planner" at N=5-7)   ║
+ * ║                                                                  ║
+ * ║ See docs/strategic_decisions_april_21.md §5 for the reversal     ║
+ * ║ rationale.                                                       ║
+ * ║                                                                  ║
+ * ║ Code below is intact and passes TSC — do not let it bit-rot.     ║
+ * ║ Run the build on every merge so a framework or API shift breaks  ║
+ * ║ loudly rather than silently when we re-enable it.                ║
+ * ╚══════════════════════════════════════════════════════════════════╝
+ *
+ * Original design (preserved for reference):
+ *
  * Shown when the authenticated user has `onboarding_completed_at`
  * null on the `/users/me` response (see backend migration 025 and
  * docs/strategic_decisions_april_21.md). The backend stamps the
  * field atomically when the user creates their first task, so the
  * flow auto-exits as soon as submit succeeds.
  *
- * Design decisions:
  * - Structural invariant, not a behavioral gate. The "Skip for now"
  *   link calls POST /users/me/skip-onboarding which stamps the same
  *   field, so the user can always bypass — but we record that they
@@ -17,7 +41,7 @@
  *   (see memory: OpenClaw is operator-only until components are
  *   integrated).
  * - Category = "planning" (the un-merged slot, shipped 2026-04-21).
- *   Default start is tomorrow 9am local, 30 min duration, brain-dump
+ *   Default start is now + 5min rounded, 30 min duration, brain-dump
  *   textarea focused on mount.
  * - Copy pitches measurement, not productivity. The promise is
  *   "Lyra starts learning your pattern here," not "we'll teach you
@@ -35,10 +59,13 @@ function formatLocal(d: Date) {
   )}:${pad(d.getMinutes())}`;
 }
 
-function tomorrowAt9am() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setHours(9, 0, 0, 0);
+/** Round up to next 5-minute mark — matches new-task-modal defaults. */
+function nextFiveMin(from: Date = new Date()) {
+  const d = new Date(from);
+  const mins = d.getMinutes();
+  const next5 = Math.ceil(mins / 5) * 5;
+  if (next5 >= 60) d.setHours(d.getHours() + 1, 0, 0, 0);
+  else d.setMinutes(next5, 0, 0);
   return d;
 }
 
@@ -48,8 +75,12 @@ interface Props {
 }
 
 export function OnboardingFlow({ userEmail, onCompleted }: Props) {
+  // Meta-task defaults: NOW + 30 min. The planning ritual IS happening
+  // right now during onboarding; scheduling it tomorrow (prior behavior)
+  // told the user "plan again tomorrow" which is senseless when they're
+  // mid-plan. User can still edit the times before submit.
   const defaults = (() => {
-    const s = tomorrowAt9am();
+    const s = nextFiveMin();
     const e = new Date(s);
     e.setMinutes(e.getMinutes() + 30);
     return { start: formatLocal(s), end: formatLocal(e) };
