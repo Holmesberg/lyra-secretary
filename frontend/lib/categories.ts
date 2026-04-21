@@ -3,6 +3,16 @@
  * DO NOT add categories without updating the doc and the experiment plan.
  * Adding a new category mid-experiment redistributes buckets and breaks
  * the per-(category, time_of_day) bias-factor model.
+ *
+ * 2026-04-21: `self_reflection` → `planning` rename (Path B commitment).
+ * The April 8 merge collapsed `planning` into `self_reflection` because
+ * usage data showed operator-dominated self-reflection logging. Dogfood
+ * data on 2026-04-21 (0/9 external tasks with >30min planning lead)
+ * reversed that call — the product now needs to engineer planning as a
+ * habit, so the category surface must invite planning not self-reflection.
+ * Pure rename, same slot; bias_factor priors remain stable because the
+ * (category, time_of_day) key space is unchanged. See
+ * docs/strategic_decisions_april_21.md for the full reasoning.
  */
 export const CATEGORIES = [
   "fitness",
@@ -11,7 +21,7 @@ export const CATEGORIES = [
   "development",
   "meeting",
   "prayer",
-  "self_reflection",
+  "planning",
   "network",
   "health",
   "work",
@@ -46,7 +56,7 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   development: "bg-violet-500/15 text-violet-300 border-violet-500/25",
   meeting: "bg-amber-500/15 text-amber-300 border-amber-500/25",
   prayer: "bg-teal-500/15 text-teal-300 border-teal-500/25",
-  self_reflection: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/25",
+  planning: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/25",
   network: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
   health: "bg-rose-500/15 text-rose-300 border-rose-500/25",
   work: "bg-slate-500/15 text-slate-300 border-slate-500/25",

@@ -52,10 +52,28 @@ def seed():
         {"keyword": "Maghrib", "category": "prayer"},
         {"keyword": "Isha", "category": "prayer"},
         {"keyword": "Taraweeh", "category": "prayer"},
-        # self_reflection
-        {"keyword": "planning", "category": "self_reflection"},
-        {"keyword": "reflection", "category": "self_reflection"},
-        {"keyword": "journal", "category": "self_reflection"},
+        # planning (Apr 21: un-merged from self_reflection — Path B commits
+        # to engineering planning as a habit; reflection/journal keywords
+        # stay pointing here since "thinking about next steps" is the
+        # dominant behavior the category now anchors. Dedicated
+        # journaling/self_reflection will be a separate category when
+        # n=50 data shows it's a real sub-behavior, not before.)
+        {"keyword": "plan", "category": "planning"},
+        {"keyword": "planning", "category": "planning"},
+        {"keyword": "brain dump", "category": "planning"},
+        {"keyword": "brainstorm", "category": "planning"},
+        {"keyword": "schedule", "category": "planning"},
+        {"keyword": "outline", "category": "planning"},
+        {"keyword": "agenda", "category": "planning"},
+        {"keyword": "roadmap", "category": "planning"},
+        {"keyword": "priorities", "category": "planning"},
+        {"keyword": "weekly review", "category": "planning"},
+        {"keyword": "reflection", "category": "planning"},
+        {"keyword": "journal", "category": "planning"},
+        {"keyword": "calibration", "category": "planning"},
+        {"keyword": "friction", "category": "planning"},
+        {"keyword": "idea", "category": "planning"},
+        {"keyword": "refinement", "category": "planning"},
         # network
         {"keyword": "interview", "category": "network"},
         {"keyword": "LinkedIn", "category": "network"},
@@ -65,14 +83,6 @@ def seed():
         {"keyword": "dinner", "category": "personal"},
         # health (operator vocabulary additions, Apr 8)
         {"keyword": "sleep", "category": "health"},
-        # planning merged into self_reflection (Apr 8 — taxonomy freeze, see docs/product.md §1)
-        {"keyword": "calibration", "category": "self_reflection"},
-        {"keyword": "plan", "category": "self_reflection"},
-        {"keyword": "friction", "category": "self_reflection"},
-        # self_reflection extensions (Apr 8)
-        {"keyword": "idea", "category": "self_reflection"},
-        {"keyword": "refinement", "category": "self_reflection"},
-        {"keyword": "brainstorm", "category": "self_reflection"},
         # development extensions (Apr 8)
         {"keyword": "swe", "category": "development"},
         {"keyword": "debugging", "category": "development"},
