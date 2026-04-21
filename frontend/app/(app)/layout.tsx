@@ -5,11 +5,13 @@ import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 import { ConsentModal } from "@/components/consent-modal";
+import { OnboardingFlow } from "@/components/onboarding-flow";
 
 type Me = {
   user_id: number;
   email: string;
   terms_accepted_at: string | null;
+  onboarding_completed_at: string | null;
 };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -93,6 +95,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!me) return null;
 
   const needsConsent = !me.terms_accepted_at;
+  const needsOnboarding = !needsConsent && !me.onboarding_completed_at;
+
+  // Onboarding surface runs OUTSIDE AppShell — the Path B ritual is a
+  // full-screen measurement moment, not a sub-route under the app
+  // navigation. Skipping or completing refetches /users/me; on refresh
+  // the flag is set and the regular shell takes over.
+  if (needsOnboarding) {
+    return (
+      <OnboardingFlow
+        userEmail={me.email}
+        onCompleted={() => api<Me>("/v1/users/me").then(setMe)}
+      />
+    );
+  }
+
   return (
     <AppShell>
       {needsConsent && (
