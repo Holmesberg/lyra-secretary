@@ -82,12 +82,12 @@ This is now a durable working rule. Every non-trivial decision, idea, data findi
 
 ## Roadmap sketch (what Path B needs)
 
-*Not committed beyond Phase 4.5 + the first-session planning task; captured here so it's legible next session.*
+*P0 shipped 2026-04-21 (commits below). Items beyond P0 captured here so they're legible next session.*
 
 | Item | Blocker | Est. | Priority |
 |------|---------|------|----------|
-| Onboarding flow scaffolding (`frontend/app/onboarding/` currently empty) | None | ~1 day | P0 for first-session planning task |
-| First-session planning task auto-creation | Onboarding flow | ~2h | P0 (the Path B ritual) |
+| ~~Onboarding flow scaffolding~~ | ~~None~~ | ~~~1 day~~ | **Shipped 2026-04-21** (`frontend/components/onboarding-flow.tsx` + `(app)/layout.tsx` gate) |
+| ~~First-session planning task auto-creation~~ | ~~Onboarding flow~~ | ~~~2h~~ | **Shipped 2026-04-21** (backend stamps `user.onboarding_completed_at` atomically with first `task_manager.create_task` / `create_retroactive_task`; migration 025) |
 | Morning-plan APScheduler job + user settings surface | None | ~1 day | P1 (daily habit reinforcement) |
 | Notion import flow (page URL → parsed tasks) | OpenClaw parse reusable? | ~3 days | P2 (post n=20 users) |
 | Google Calendar import (events → PLANNED tasks) | OAuth + timezone refactor | ~1 week | P3 (post multi-timezone, Phase 7+) |
@@ -99,10 +99,21 @@ This is now a durable working rule. Every non-trivial decision, idea, data findi
 **Shipped today (2026-04-21):**
 - 3-bug UI fix on `new-task-modal.tsx`
 - `self_reflection` → `planning` taxonomy rename (frontend + backend + prod DB + keyword seeder)
-- This decision doc
-- Matching updates to `docs/building_phases.md` and `docs/dogfood_findings_living.md`
+- This decision doc + updates to `docs/building_phases.md` / `docs/dogfood_findings_living.md` / `docs/project_history.md`
+- **P0 onboarding shipped** — Alembic migration 025 adds `user.onboarding_completed_at`, backfilled for existing 5 users-with-tasks; two users with no tasks (mariamnasser, meroo0jj) will see the onboarding surface on next sign-in. Auto-stamp is atomic with `create_task` / `create_retroactive_task` — no race where the user has one task and a null flag. Skip affordance via `POST /users/me/skip-onboarding` (also stamps the flag; the kill-criterion query distinguishes completed-by-creating-task from completed-by-skipping via the task existence).
 - Council-review verdict + dogfood data finding (captured inline in this doc's §1)
 
-**Deferred:**
-- Net-new Path B infrastructure (onboarding, morning nudge) — planned for next session cycle
+**Onboarding design decisions (captured for audit trail):**
+- **Structural, not gate.** Matches `docs/design_patterns/rules_vs_agency.md`. The user can always skip — we record the exit rather than blocking access. The kill criterion reads task existence, not the flag alone, to distinguish completers from skippers.
+- **No OpenClaw, no Telegram, no LLM.** Per operator guidance 2026-04-21: OpenClaw is operator-only until components are integrated into the Lyra codebase. The onboarding ritual must work for a user with only the web UI. Brain-dump capture is a plain textarea stored in `task.description` (Phase 4.5 field, already shipped). AI decomposition remains a Phase 5+ item gated on 50+ dumps.
+- **Default: tomorrow 9am local, 30 min, category=planning, title "Plan your week — brain dump and triage."** Textarea focused on mount; title is secondary. Pre-filled values are editable — the user's own numbers, not ours, are what the calibration loop reads later.
+- **Copy pitches measurement, not productivity.** "Lyra starts learning from the first plan you write." Not "we'll teach you to plan." The honest framing matches what the data will actually do.
+- **Full-screen surface OUTSIDE `AppShell`.** No nav bar, no header distraction. First 90 seconds is the ritual, nothing else. On completion/skip, `/users/me` refetches and the regular shell takes over.
+
+**Deferred (Path B P1+):**
+- Morning-plan APScheduler job + user "preferred nudge time" preference — P1
+- Reclassification UI ("you're a planner" / "you're reactive" at session 5-7) — P1, gated on archetype-assignment telemetry
+- Notion IMPORT direction (page URL → parsed tasks) — P2, post n=20 users
+- Google Calendar event → PLANNED task import — P3, gated on Phase 7 multi-timezone + OAuth
 - Custom time picker — dogfood-gated (need ≥3 AM/PM incident reports)
+- Brain-dump AI subtask decomposition — Phase 5+, gated on 50+ dumps corpus
