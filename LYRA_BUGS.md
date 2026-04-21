@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 21, 2026 — v1.10 (Path B P0 + delete hotfix). 13 open, 26 deferred (OpenClaw), 64 fixed.
+Last updated: April 21, 2026 — v1.11 (GCal integration + categories fix). 13 open, 26 deferred (OpenClaw), 65 fixed.
 
 ---
 
@@ -24,10 +24,11 @@ Last updated: April 21, 2026 — v1.10 (Path B P0 + delete hotfix). 13 open, 26 
 
 ---
 
-## Fixed (64 bugs)
+## Fixed (65 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
+| LYR-101 | 🟡 medium | frontend | Custom categories don't persist in dropdown + no color badge | Dogfood 2026-04-21: user creates a custom category via "+ Create a new category…" — category saved on the task row but (a) not shown in subsequent modal opens (dropdown read hardcoded `CATEGORIES` only), (b) no color badge anywhere in the app because `CATEGORY_COLORS[customCat]` returned undefined. Fix shipped same day: new `getCategoryColor(cat)` helper hashes custom categories into a 10-entry palette so every category gets a color; new `CategorySelect` shared component fetches `/v1/users/me/categories` which returns built-in + user's distinct non-voided categories; call sites updated (task-row, table/page, new-task-modal, retroactive-modal). |
 | LYR-100 | 🔴 high | backend | `DELETE /v1/users/me` fails with Postgres syntax error on `user` table | Raw SQL `DELETE FROM user WHERE user_id = :u` at `endpoints/users.py:223,230` hit `psycopg2.errors.SyntaxError: syntax error at or near "user"` because `user` is a reserved keyword in Postgres. Worked against SQLite in tests (non-reserved there). Surfaced when first non-operator user (user_id=8, moriartyholmesberg@gmail.com) tried to self-delete after onboarding 2026-04-21; operator is gated via `is_operator` check so the bug was latent for all dogfood prior. Fix: quote the table name as `DELETE FROM "user" WHERE user_id = :u` in both retain_for_research and hard-delete branches. SQLAlchemy ORM queries against User elsewhere auto-quote reserved identifiers; only the raw SQL in this endpoint bypassed that. No data corruption — the failing transaction rolled back atomically before commit. |
 | LYR-056 | 🟡 medium | parser | Multi-task chaining via "then" keyword not supported | `TaskParser.parse_chained()` added in commit `5fa85d8` — splits on "then", chains end→start for tasks without explicit time. `/v1/parse` endpoint updated to return `{ tasks: [...], compound: bool }`. Apr-18 alignment-audit integrity pass: body already described fix; moved OPEN → FIXED. Multi-user validation pending post-alpha. |
 | LYR-058 | 🟢 low | backend | Stopwatch API returns UTC datetimes to agent | Fixed in commit `9e7c650` — `start_time`, `executed_at`, `paused_at` in stopwatch responses now pass through `to_local()`. Apr-18 alignment-audit integrity pass: body already described fix; moved OPEN → FIXED. |

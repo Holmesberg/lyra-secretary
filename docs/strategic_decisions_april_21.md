@@ -148,3 +148,113 @@ This is now a durable working rule. Every non-trivial decision, idea, data findi
 **Why this reversal is not a rollback:** the strategic commitment to Path B (engineer planning as a habit) is unchanged. What changed is the mechanism. A forced onboarding surface is a behavioral constraint; a pre-seeded starter task on an otherwise-empty `/today` is a structural invitation. Per `docs/design_patterns/rules_vs_agency.md`, invitations outperform gates on retention at this stage. The real habit-engineering happens when imports bring the user's existing mental model of "their plans" into Lyra, at which point the measurement work (delta, scope, readiness) has real data to operate on instead of the null observations the current 0/9 dogfood produced.
 
 **Kill criterion (unchanged for now):** 2026-05-21, ≥30% of users with `onboarding_completed_at` stamped must have logged a second `planning` category task before session 10. The starter-seed flow and the commented-out onboarding-surface flow stamp the same field, so the query doesn't need to distinguish them. If the criterion fires negative, the diagnosis is whether users engage with the starter (data: does the starter task ever enter EXECUTING state, or does it just sit?) — not a statement about the custom onboarding surface per se.
+
+---
+
+## 6. Google Calendar read-only integration (shipped 2026-04-21 late afternoon)
+
+**Context:** Operator entered Spring School today — 10 days of lectures, workshops, hackathon. External commitments dominate the schedule; Lyra without calendar awareness can't detect conflicts or measure initiation_delay against real obligations. Built the ICS/GCal/Notion roadmap (`docs/import_integrations_capability_map.md`) earlier in the day; operator pulled GCal forward out of the queue and asked for read-only sync in 2-3 hours.
+
+**Clarified scope:**
+- **Read-only.** No writes back to Google.
+- **Context, not task creation.** Calendar events are rendered as grey background blocks on `/calendar`. Never persisted as `task` rows.
+- **No conflict-detector extension in v1** (deferred to v2 same week — new-task modal overlap warning against GCal events).
+- **Primary calendar only.** Multi-calendar selection UX deferred.
+- **Skip all-day events + declined events.** All-day events have no `dateTime` (can't place on timed grid); declined events are noise.
+
+**Why read-only / no task rows — research-integrity rationale (structural-investigation note, pre-registered):**
+
+Imported GCal events must NOT enter the H1 test set. The thesis under test is `readiness-at-plan-time → executed_duration delta` — i.e., did the user confront a planning decision in Lyra's UX and miscalibrate? GCal events were planned in a different tool with different affordances and readiness was never captured. They're scheduling context, not planning data.
+
+Exclusion is natural by design: events live in Redis cache only, never in `task`. Any `SELECT FROM task WHERE ...` query (H1 analysis, calibration nudge, archetype bucket) automatically excludes them. If we later decide to persist for longitudinal research, the rows will need an explicit `external_source='google_calendar'` marker and H1 queries will need `WHERE external_source IS NULL` — pre-registered here.
+
+**Architecture:**
+
+```
+User ─ sign in ─ NextAuth ─┬─ scope: calendar.readonly (re-consent)
+                          └─ account.refresh_token captured in JWT (server-side)
+                              │
+                              ▼
+Frontend (app)/layout.tsx detects session.hasGoogleRefreshToken
+                              │
+                              ▼
+POST /api/calendar/setup (Next.js server-side API route)
+                              │  reads JWT via getToken(), forwards refresh_token
+                              ▼
+Lyra backend POST /v1/users/me/google-refresh-token
+                              │  store_refresh_token(user_id, token)
+                              ▼
+user.google_refresh_token column (plaintext v1, Fernet deferred to Phase 6+)
+
+(later)
+
+/calendar page ─ fetch ─ GET /v1/calendar/events?date_from=&date_to=
+                                    │
+                                    ▼
+                            Redis cache check (gcal:events:{uid}:{from}:{to}, TTL=60s)
+                                    │
+                                    ▼  (miss)
+                            Google access_token refresh (cached in Redis 45min)
+                                    │
+                                    ▼
+                            events.list primary calendar, singleEvents=true
+                                    │
+                                    ▼
+                            Filter (skip all-day, skip declined)
+                                    │
+                                    ▼
+                            Cache + return
+
+Schedule-X event list = Lyra tasks + GCal events with calendarId="google_external"
+                         (muted grey, disableDND + disableResize)
+```
+
+**Files shipped 2026-04-21:**
+- `backend/alembic/versions/026_add_google_refresh_token.py` — new column on `user`
+- `backend/app/db/models.py` — `User.google_refresh_token` field
+- `backend/requirements.txt` — `google-api-python-client==2.143.0`, `google-auth==2.34.0`
+- `backend/app/services/calendar_sync.py` — service + access-token cache + event fetch + graceful 401 handling (clears stale refresh_token automatically)
+- `backend/app/api/v1/endpoints/calendar.py` — `GET /v1/calendar/events`
+- `backend/app/api/v1/endpoints/users.py` — `POST` and `DELETE /v1/users/me/google-refresh-token`; also `google_calendar_connected` boolean on `/v1/users/me`
+- `backend/app/api/v1/router.py` — calendar router registered
+- `frontend/lib/auth.ts` — NextAuth Google scope expanded; `access_type=offline` + `prompt=consent` to guarantee a refresh_token; JWT stores `googleRefreshToken`; session exposes only `hasGoogleRefreshToken` boolean (never the raw token)
+- `frontend/app/api/calendar/setup/route.ts` — server-side API route that reads JWT via `getToken()`, forwards `refresh_token` to Lyra backend
+- `frontend/lib/calendar.ts` — `getCalendarEvents`, `disconnectCalendar`
+- `frontend/app/(app)/calendar/page.tsx` — Schedule-X merges Lyra tasks + GCal events; new `google_external` calendar in `STATE_CALENDARS` (muted grey, disableDND + disableResize)
+- `frontend/app/(app)/layout.tsx` — one-shot handshake: when `session.hasGoogleRefreshToken && !me.google_calendar_connected`, POST `/api/calendar/setup` and refetch `me`
+
+**Security debt (tracked):**
+- `user.google_refresh_token` stored as plaintext. Fernet-at-rest encryption deferred to Phase 6+. Blast radius: DB compromise exposes read-only calendar access. Mitigating factors: field never returned in any API response, never logged, never exposed to client JS.
+- NextAuth JWT cookie contains the refresh_token during the handoff window (1 request-response cycle from sign-in → /api/calendar/setup POST). Cookie is encrypted by NextAuth; not exposed to JS. After Phase 6 we may null out the token from the JWT after the backend stores it.
+
+**Kill criteria (pre-registered 2026-04-21):**
+- **IMP-1 (scope inflation on imported data):** if imported GCal events are ever persisted (deferred), compare their `duration_delta_minutes` distribution to manually-entered tasks. External data behaves the same = VT-22 cross-validation; external behaves differently = calibration loop trained on Lyra-native data generalizes poorly.
+- **IMP-3 (retention lift):** at n≥20 calendar-connected users, if D7 session count for connected users isn't >1.25× unconnected, the integration is retention-neutral — keep for data coverage, don't invest further integrations until finding a hook.
+- **Trust kill:** if >30% of users who connect revoke access within 7 days (trackable via the 401 → clear-refresh-token path), the scope ask is too heavy or the value is unclear — reduce UI prominence and add explanatory copy.
+
+**Deferred to v2 (same week):**
+- Conflict-detector extension: overlap a new Lyra task with a GCal event → soft warning in the create modal
+- `/today` "Your schedule" section — render the next N GCal events above the task list
+- Fernet encryption of `google_refresh_token`
+- Disconnect UI on Settings page (endpoint already exists)
+
+**Operator action required for first-use:**
+1. Sign out of Lyra
+2. Sign back in — Google will show consent screen including calendar.readonly scope
+3. Grant access
+4. Navigate to `/calendar` — next 30 days of GCal events should render as grey background blocks
+5. Adding an event to Google Calendar → refresh /calendar → event appears within 60s
+
+---
+
+## 7. Categories persistence + color assignment (shipped 2026-04-21 same push as §6)
+
+**Bug (dogfood 2026-04-21):** User creates a custom category via "+ Create a new category…" in new-task-modal → category saved on the task, but (a) not shown in the dropdown next time the modal opens, (b) no color badge rendered because `CATEGORY_COLORS[customCat]` is undefined.
+
+**Fix:**
+- Frontend: new `getCategoryColor(cat)` helper in `lib/categories.ts`. Built-in categories return their canonical color; custom categories hash-map into a 10-entry `CUSTOM_CATEGORY_PALETTE` (orange, sky, lime, purple, yellow, red, stone, green, violet-400, teal-400 — picked to be visually distinct from the built-in set). Deterministic: same custom name always renders the same color.
+- Frontend: new shared `CategorySelect` component fetches `/v1/users/me/categories` on mount (TanStack Query, 60s stale), renders built-in in canonical order + user-custom in an `<optgroup>` below, trailing "+ Create a new category…" sentinel.
+- Backend: new `GET /v1/users/me/categories` returns `{ built_in: [...], custom: [distinct values from user's non-voided tasks - built_in] }`. No DB schema change — reads the existing `task.category` column.
+- Sites updated: `task-row.tsx`, `app/(app)/table/page.tsx`, `components/new-task-modal.tsx`, `components/retroactive-modal.tsx`.
+
+**Logged as LYR-101 (see LYRA_BUGS.md).**
