@@ -352,13 +352,19 @@ export default function CalendarPage() {
     // calendarId="google_external" picks up the muted grey scheme
     // registered in STATE_CALENDARS; _options disables DND/resize so
     // Schedule-X treats them as immutable alongside EXECUTED/SKIPPED
-    // Lyra tasks. id-prefixed with `gcal:` so onEventClick can
+    // Lyra tasks. id-prefixed with `gcal-` so onEventClick can
     // distinguish external events from Lyra task ids (Lyra uses
-    // UUIDs, external uses gcal:<google_event_id>).
+    // UUIDs, external uses gcal-<google_event_id>). Hyphen — not
+    // colon — because Schedule-X uses document.querySelector on the
+    // event id, and `:` is a CSS pseudo-class delimiter that breaks
+    // selector parsing (2026-04-21 crash: "Event id gcal:... is not
+    // a valid id"). Google event ids are base32 + underscore +
+    // hyphen per their docs, all CSS-ident-safe with the letter
+    // prefix.
     const gcalEvents: CalendarEventExternal[] = (
       calendarEventsQ.data?.events ?? []
     ).map((e: ExternalCalendarEvent) => ({
-      id: `gcal:${e.id}`,
+      id: `gcal-${e.id}`,
       title: e.title,
       start: toZdt(e.start),
       end: toZdt(e.end),
