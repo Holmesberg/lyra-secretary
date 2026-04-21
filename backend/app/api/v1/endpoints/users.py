@@ -220,14 +220,14 @@ def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
 
             # Delete non-behavioral rows
             db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
-            db.execute(text("DELETE FROM user WHERE user_id = :u"), {"u": uid})
+            db.execute(text('DELETE FROM "user" WHERE user_id = :u'), {"u": uid})
             db.commit()
         else:
             # Hard delete cascade — all data permanently removed
             db.execute(text("DELETE FROM stopwatch_session WHERE user_id = :u"), {"u": uid})
             db.execute(text("DELETE FROM task WHERE user_id = :u"), {"u": uid})
             db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
-            db.execute(text("DELETE FROM user WHERE user_id = :u"), {"u": uid})
+            db.execute(text('DELETE FROM "user" WHERE user_id = :u'), {"u": uid})
             db.commit()
     finally:
         set_current_user_id(uid)

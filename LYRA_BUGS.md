@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 18, 2026 — v1.9 (alignment audit apr18 integrity pass). 13 open, 26 deferred (OpenClaw), 63 fixed. (Prior headers overclaimed the Fixed count by ~26 — corrected after direct row recount on Apr 18.)
+Last updated: April 21, 2026 — v1.10 (Path B P0 + delete hotfix). 13 open, 26 deferred (OpenClaw), 64 fixed.
 
 ---
 
@@ -24,10 +24,11 @@ Last updated: April 18, 2026 — v1.9 (alignment audit apr18 integrity pass). 13
 
 ---
 
-## Fixed (63 bugs)
+## Fixed (64 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
+| LYR-100 | 🔴 high | backend | `DELETE /v1/users/me` fails with Postgres syntax error on `user` table | Raw SQL `DELETE FROM user WHERE user_id = :u` at `endpoints/users.py:223,230` hit `psycopg2.errors.SyntaxError: syntax error at or near "user"` because `user` is a reserved keyword in Postgres. Worked against SQLite in tests (non-reserved there). Surfaced when first non-operator user (user_id=8, moriartyholmesberg@gmail.com) tried to self-delete after onboarding 2026-04-21; operator is gated via `is_operator` check so the bug was latent for all dogfood prior. Fix: quote the table name as `DELETE FROM "user" WHERE user_id = :u` in both retain_for_research and hard-delete branches. SQLAlchemy ORM queries against User elsewhere auto-quote reserved identifiers; only the raw SQL in this endpoint bypassed that. No data corruption — the failing transaction rolled back atomically before commit. |
 | LYR-056 | 🟡 medium | parser | Multi-task chaining via "then" keyword not supported | `TaskParser.parse_chained()` added in commit `5fa85d8` — splits on "then", chains end→start for tasks without explicit time. `/v1/parse` endpoint updated to return `{ tasks: [...], compound: bool }`. Apr-18 alignment-audit integrity pass: body already described fix; moved OPEN → FIXED. Multi-user validation pending post-alpha. |
 | LYR-058 | 🟢 low | backend | Stopwatch API returns UTC datetimes to agent | Fixed in commit `9e7c650` — `start_time`, `executed_at`, `paused_at` in stopwatch responses now pass through `to_local()`. Apr-18 alignment-audit integrity pass: body already described fix; moved OPEN → FIXED. |
 | LYR-092 | 🟡 medium | notion | notion_sync retry loop infinitely retries archived pages | Fixed in commit `951160e` — detects "Can't edit block that is archived" error and drops page from Redis retry queue permanently instead of re-queueing every 5 min. Note: commit message labels the fix `LYR-091` but LYR-091 is the unrelated `resolve_user_from_token` Phase-9 bug that remains OPEN; the `951160e` fix is actually for LYR-092. Apr-18 alignment-audit integrity pass resolved the ID collision. |
