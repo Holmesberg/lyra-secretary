@@ -143,13 +143,24 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   } | null>(null);
 
   // Fetch bias_factor when category or start time changes (debounced).
+  // Gated on a valid positive planned duration — a 0-min estimate with
+  // a `|| 30` fallback (prior behavior) fired the "adjust to X min"
+  // popup on an invalid form, visually drowning the end-before-start
+  // error banner. Now the nudge only fires when the user has typed a
+  // real duration AND the range is valid.
   useEffect(() => {
     if (!open || isEdit) { setCalibrationNudge(null); return; }
-    const tod = timeOfDay(start);
     const planned = durHours * 60 + durMinutes;
+    const rangeValid = diffMinutes(start, end) > 0;
+    if (planned <= 0 || !rangeValid) {
+      setCalibrationNudge(null);
+      setNudgeSource(null);
+      return;
+    }
+    const tod = timeOfDay(start);
     const abortCtl = new AbortController();
     const timer = setTimeout(() => {
-      lookupBiasFactor(category, tod, planned || 30)
+      lookupBiasFactor(category, tod, planned)
         .then((res) => {
           if (abortCtl.signal.aborted) return;
           const isResearch = res.source === "research";
@@ -169,11 +180,32 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     }, 400);
     return () => { clearTimeout(timer); abortCtl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, category, start, durHours, durMinutes, isEdit]);
+  }, [open, category, start, end, durHours, durMinutes, isEdit]);
 
   const totalMinutes = durHours * 60 + durMinutes;
   const endBeforeStart = diffMinutes(start, end) <= 0;
   const canSubmit = !submitting && title.trim().length > 0 && !endBeforeStart && totalMinutes > 0;
+
+  // AM/PM-swap recovery. Native <input type="datetime-local"> keeps
+  // whichever period was last rendered; if the user types "1:45" meaning
+  // PM after typing "11:45 AM" for the start, end silently lands 10h
+  // before start on the same calendar day. Offer a one-tap +12h shift
+  // as a fix. Gated to same-day + negative diff in [−12h, 0) so genuine
+  // overnight ranges (rare) don't get false positives.
+  const suggestAmPmSwap = (() => {
+    if (!endBeforeStart) return null;
+    const sDate = new Date(start);
+    const eDate = new Date(end);
+    if (Number.isNaN(sDate.getTime()) || Number.isNaN(eDate.getTime())) return null;
+    if (sDate.toDateString() !== eDate.toDateString()) return null;
+    const negDiffMin = diffMinutes(start, end);
+    if (negDiffMin > 0 || negDiffMin <= -12 * 60) return null;
+    return addMinutes(end, 12 * 60);
+  })();
+  function applyAmPmSwap() {
+    if (!suggestAmPmSwap) return;
+    handleEndChange(suggestAmPmSwap);
+  }
 
   // Fresh defaults every time modal opens for a new task.
   // Using `open` as only dep intentionally — the 60s `now` tick must
@@ -262,9 +294,19 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   function handleEndChange(newEnd: string) {
     setEnd(newEnd);
     const mins = diffMinutes(start, newEnd);
+    // Always update duration so the UI stays consistent with start/end.
+    // For negative ranges we zero the duration state, but the
+    // `endBeforeStart` flag drives the error banner + nudge-suppression
+    // so the user gets feedback that the range is invalid (previously
+    // the duration silently stayed at the last good value, producing
+    // "0h 0m / End before start" while the two fields visibly
+    // disagreed — see dogfood 2026-04-21 AM/PM bug report).
     if (mins > 0) {
       setDurHours(Math.floor(mins / 60));
       setDurMinutes(mins % 60);
+    } else {
+      setDurHours(0);
+      setDurMinutes(0);
     }
   }
 
@@ -603,8 +645,23 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           )}
 
           {endBeforeStart && (
-            <div className="rounded border border-ember/40 bg-ember/5 p-2 text-xs text-ember">
-              End time must be after start
+            <div className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
+              <div className="font-medium">End time must be after start.</div>
+              {suggestAmPmSwap && (
+                <button
+                  type="button"
+                  onClick={applyAmPmSwap}
+                  className="mt-1.5 inline-flex items-center gap-1 text-signal underline-offset-2 transition-colors hover:text-signal-neon hover:underline"
+                >
+                  Did you mean{" "}
+                  {new Date(suggestAmPmSwap).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  })}
+                  ? — tap to fix
+                </button>
+              )}
             </div>
           )}
 
