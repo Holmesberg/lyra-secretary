@@ -33,6 +33,10 @@ import {
   getStopwatchStatus,
   type TaskRow as TaskRowType,
 } from "@/lib/tasks";
+import {
+  getCalendarEvents,
+  type ExternalCalendarEvent,
+} from "@/lib/calendar";
 import { NewTaskModal } from "@/components/new-task-modal";
 import {
   Dialog,
@@ -111,6 +115,20 @@ const STATE_CALENDARS: Record<string, CalendarType> = {
       main: "#4A5168", // dust-deep
       container: "#1F2230", // void-deep
       onContainer: "#9CA3AF", // dust-mid
+    },
+  },
+  // Google Calendar read-only import (Path B, 2026-04-21). Rendered
+  // as muted grey background blocks — distinct from every Lyra state
+  // so the user can't confuse "my tracked plan" with "my external
+  // commitment." Events carry disableDND + disableResize via
+  // _options so Schedule-X doesn't offer interaction handles.
+  google_external: {
+    colorName: "google_external",
+    label: "Google Calendar",
+    darkColors: {
+      main: "#6B7280", // muted grey (same ramp as EXECUTED)
+      container: "#111827", // darker void, sinks behind Lyra blocks
+      onContainer: "#9CA3AF", // dust-mid — readable but not attention-grabbing
     },
   },
 };
@@ -255,6 +273,29 @@ export default function CalendarPage() {
     queryFn: () => queryTasks(pivotKey, RANGE_DAYS),
   });
 
+  // Google Calendar read-only events. Same window as the task query so
+  // external events render alongside Lyra tasks across the operator's
+  // scrollable view. 60s staleTime matches the backend Redis TTL, so
+  // switching views feels instant but Lyra picks up newly-added GCal
+  // events within ~1 minute. Connected=false (no refresh_token yet)
+  // returns empty events gracefully — no error toast, UI simply shows
+  // Lyra tasks alone.
+  const calEnd = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + (RANGE_DAYS - 14));
+    return d;
+  }, []);
+  const calendarEventsQ = useQuery({
+    queryKey: ["calendar-events", pivotKey, calEnd.toISOString().slice(0, 10)],
+    queryFn: () =>
+      getCalendarEvents({
+        dateFrom: pivotKey,
+        dateTo: calEnd.toISOString().slice(0, 10),
+      }),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
   // Stopwatch status poll — drives the live EXECUTING block. Inherits the
   // global 10 s refetchInterval from providers.tsx. When the operator is
   // actively timing a task, `statusQ.data` reports task_id + active/paused
@@ -295,7 +336,7 @@ export default function CalendarPage() {
     const liveEnd = activeId
       ? Temporal.Now.zonedDateTimeISO(TIMEZONE)
       : null;
-    return tasksQ.data
+    const lyraEvents = tasksQ.data
       .filter((t) => !t.voided_at)
       .map((t) => {
         const isActive = t.task_id === activeId;
@@ -306,6 +347,29 @@ export default function CalendarPage() {
         );
       })
       .filter((e): e is CalendarEventExternal => e !== null);
+
+    // Merge in Google Calendar events as read-only background blocks.
+    // calendarId="google_external" picks up the muted grey scheme
+    // registered in STATE_CALENDARS; _options disables DND/resize so
+    // Schedule-X treats them as immutable alongside EXECUTED/SKIPPED
+    // Lyra tasks. id-prefixed with `gcal:` so onEventClick can
+    // distinguish external events from Lyra task ids (Lyra uses
+    // UUIDs, external uses gcal:<google_event_id>).
+    const gcalEvents: CalendarEventExternal[] = (
+      calendarEventsQ.data?.events ?? []
+    ).map((e: ExternalCalendarEvent) => ({
+      id: `gcal:${e.id}`,
+      title: e.title,
+      start: toZdt(e.start),
+      end: toZdt(e.end),
+      calendarId: "google_external",
+      _options: {
+        disableDND: true,
+        disableResize: true,
+      },
+    }) as CalendarEventExternal);
+
+    return [...lyraEvents, ...gcalEvents];
     // dataUpdatedAt changes on every poll, guaranteeing a fresh
     // Temporal.Now on each refresh cycle. Without this dep the block
     // would only grow when the status payload shape differs — but
@@ -318,6 +382,7 @@ export default function CalendarPage() {
     statusQ.data?.paused,
     statusQ.data?.start_time,
     statusQ.dataUpdatedAt,
+    calendarEventsQ.data,
   ]);
 
   // `useNextCalendarApp` initializes the calendar ONCE on mount and the

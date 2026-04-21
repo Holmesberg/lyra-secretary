@@ -22,10 +22,16 @@ type Me = {
   // security.py). Drives the 2026-05-21 kill-criterion query regardless
   // of whether the onboarding surface is live.
   onboarding_completed_at: string | null;
+  // Google Calendar read-only integration (2026-04-21). Boolean
+  // surface only — the actual refresh_token lives in the backend
+  // `user.google_refresh_token` column. Null/false means no calendar
+  // data on /calendar. The /api/calendar/setup handshake below flips
+  // this from false to true once the refresh_token reaches the backend.
+  google_calendar_connected: boolean;
 };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { status } = useSession();
+  const { status, data: session } = useSession();
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [meError, setMeError] = useState<string | null>(null);
@@ -37,6 +43,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
   }, [status, router]);
+
+  // Google Calendar refresh-token handshake (Path B, 2026-04-21).
+  // When a user signs in with the new calendar.readonly scope,
+  // NextAuth captures account.refresh_token and surfaces the
+  // `hasGoogleRefreshToken` boolean on the session. If the backend
+  // doesn't yet know about it (me.google_calendar_connected is
+  // false), POST to the Next.js server-side /api/calendar/setup
+  // route, which reads the token from the server-side JWT and
+  // forwards it to Lyra. One-shot, fire-and-forget — failure is
+  // non-blocking (calendar just doesn't connect this session).
+  useEffect(() => {
+    if (!me || !session) return;
+    const hasRefreshToken = (session as { hasGoogleRefreshToken?: boolean })
+      .hasGoogleRefreshToken;
+    if (hasRefreshToken && !me.google_calendar_connected) {
+      fetch("/api/calendar/setup", { method: "POST" })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+        .then(() => {
+          // Refetch /users/me so google_calendar_connected flips to
+          // true and the /calendar page starts fetching events.
+          return api<Me>("/v1/users/me").then(setMe);
+        })
+        .catch((err) => {
+          console.warn("calendar setup failed (non-blocking):", err);
+        });
+    }
+  }, [me, session]);
 
   useEffect(() => {
     if (status !== "authenticated") return;

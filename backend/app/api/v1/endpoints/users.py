@@ -11,7 +11,28 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.db.models import ArchetypeAssignment, StopwatchSession, Task, TaskState, User
 from app.db.scoping import get_current_user_id, set_current_user_id
+from app.services.calendar_sync import store_refresh_token
 from app.utils.time_utils import now_utc
+
+# Built-in category taxonomy mirrors frontend/lib/categories.ts.
+# Source-of-truth note — the frontend file is the canonical copy for
+# the UI taxonomy; this list exists to back the /users/me/categories
+# endpoint (so the dropdown can render built-in + user-custom together).
+# If you edit one, edit both — there is no runtime constraint making
+# them match.
+BUILT_IN_CATEGORIES = [
+    "fitness",
+    "academic",
+    "study",
+    "development",
+    "meeting",
+    "prayer",
+    "planning",
+    "network",
+    "health",
+    "work",
+    "personal",
+]
 
 router = APIRouter()
 
@@ -46,7 +67,82 @@ def get_me(db: Session = Depends(get_db)):
         "terms_accepted_at": user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
         "research_consent_at": user.research_consent_at.isoformat() if user.research_consent_at else None,
         "onboarding_completed_at": user.onboarding_completed_at.isoformat() if user.onboarding_completed_at else None,
+        # Surface only whether calendar is connected, never the token
+        # itself. Frontend uses this to decide whether to show the
+        # "Connect Google Calendar" CTA vs the calendar-events UI.
+        "google_calendar_connected": user.google_refresh_token is not None,
         "created_at": user.created_at.isoformat(),
+    }
+
+
+class StoreRefreshTokenIn(BaseModel):
+    refresh_token: str
+
+
+@router.post("/users/me/google-refresh-token")
+def post_google_refresh_token(body: StoreRefreshTokenIn, db: Session = Depends(get_db)):
+    """Persist a Google OAuth refresh token for the current user.
+
+    Called by the Next.js server-side API route
+    `/api/calendar/setup` after NextAuth captures the refresh_token on
+    first sign-in with the calendar.readonly scope. The frontend
+    never holds the token long enough to leak it outside the
+    server-side session; the hop from Next.js API route to this
+    endpoint is authenticated with the same backend JWT.
+
+    Request body is deliberately minimal — no scope / expiry /
+    id_token passthrough. Only the refresh token is persistent server
+    state; everything else is derived or refetched.
+    """
+    user = _current_user(db)
+    if not body.refresh_token:
+        raise HTTPException(status_code=400, detail="refresh_token required")
+    store_refresh_token(user.user_id, body.refresh_token)
+    return {"ok": True, "google_calendar_connected": True}
+
+
+@router.delete("/users/me/google-refresh-token")
+def delete_google_refresh_token(db: Session = Depends(get_db)):
+    """Forget the user's refresh token — disconnects Google Calendar.
+
+    Does NOT revoke the token with Google; user must also visit
+    myaccount.google.com/permissions to fully revoke. This endpoint
+    just clears Lyra's copy so the sync stops.
+    """
+    user = _current_user(db)
+    user.google_refresh_token = None
+    db.commit()
+    return {"ok": True, "google_calendar_connected": False}
+
+
+@router.get("/users/me/categories")
+def get_my_categories(db: Session = Depends(get_db)):
+    """Return the category dropdown source: built-in + user-custom.
+
+    Fix for the 2026-04-21 dogfood report "categories don't persist
+    after creating a new category." The frontend hardcoded list
+    never grew with user-typed custom categories, so every new-task
+    modal open reset the picker. This endpoint merges built-in
+    taxonomy with the distinct categories the user has actually
+    logged on any non-voided task. Color is assigned client-side via
+    a deterministic hash (see frontend/lib/categories.ts).
+    """
+    user = _current_user(db)
+    # Auto-scoped query — returns only this user's distinct categories.
+    rows = (
+        db.query(Task.category)
+        .filter(Task.category.isnot(None))
+        .filter(Task.voided_at.is_(None))
+        .distinct()
+        .all()
+    )
+    user_cats = {r[0] for r in rows if r[0]}
+    # Report built-in separately so the frontend can render them in
+    # canonical order; custom sorted alphabetically.
+    custom = sorted(user_cats - set(BUILT_IN_CATEGORIES))
+    return {
+        "built_in": BUILT_IN_CATEGORIES,
+        "custom": custom,
     }
 
 

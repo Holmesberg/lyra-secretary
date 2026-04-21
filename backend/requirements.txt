@@ -14,3 +14,8 @@ PyJWT==2.9.0
 # Postgres driver — lyraos.org deployment (Apr 16 2026). Pinned 2.9.10
 # (stable, precompiled wheel — no libpq-dev needed at image build time).
 psycopg2-binary==2.9.10
+# Google Calendar read-only integration (2026-04-21). google-auth provides
+# credential refresh; google-api-python-client wraps events.list against
+# Calendar API v3. See services/calendar_sync.py.
+google-api-python-client==2.143.0
+google-auth==2.34.0

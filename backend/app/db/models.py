@@ -336,6 +336,13 @@ class User(Base):
     # ritual. Used by the frontend (app)/layout.tsx to gate the
     # onboarding surface and by the 2026-05-21 kill-criterion query.
     onboarding_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Google Calendar read-only integration (2026-04-21, migration 026).
+    # Long-lived refresh token for offline calendar.readonly access.
+    # Stored plaintext in v1 — Fernet encryption deferred to Phase 6+
+    # (security debt). NEVER returned in any API response, never logged.
+    # Null = user has not completed calendar OAuth consent yet OR
+    # revoked access.
+    google_refresh_token: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 
