@@ -178,3 +178,83 @@ candidates:
 None of these ship this round — but Decision 1 removes the
 calendar-scope drag from that path, which is the biggest single
 friction we can see today.
+
+---
+
+## 4. Instrument-Gap Audit (addendum 2026-04-22 evening)
+
+Triggered by the structural stress test + feedback-loop audit late in
+the day. The landing-page thesis (MANIFESTO §29: *"Are humans wrong
+about themselves in a structured way that predicts failure?"*) has
+been load-bearing since day 1, but several instruments that would
+make it testable at deeper granularity don't exist yet. This section
+catalogs the gap.
+
+### 4.1 Missing schema fields
+
+- **`Task.deadline_utc`** (nullable DateTime). Without a commitment
+  anchor, the "failure" half of the thesis is un-measurable — we only
+  see duration delta, not deadline miss. Macro tasks (thesis chapters,
+  client milestones) are the natural carriers. Add via alembic 029
+  when thesis-instrumentation work begins.
+- **`Task.scope_bullet_count_at_plan`** + **`scope_bullet_count_at_execute`**
+  (both nullable Int). Freezes the scope statement at plan time and
+  re-samples at execute time; enables VT-22 scope-inflation regression.
+  Parser: `^\s*[-*•·]` multi-line match on `description`.
+- **Derived `is_macro`** flag (computed from `parent_task_id IS NULL AND
+  has any child`) or explicit Boolean. Cheap; useful for cohort
+  queries ("all macro tasks carrying a deadline").
+
+### 4.2 Reassessment of "useless variables" under this thesis
+
+From the 2026-04-22 stress test, these were flagged dead but should be
+reconsidered given the landing-page thesis:
+
+| Field | Old verdict | Reframe |
+|---|---|---|
+| `parent_task_id` | Rare use at current scale | Macro→sub structure is the deadline-bearing unit; load-bearing when thesis-instruments ship |
+| `scope_outcome` | Written but unanalyzed | The post-hoc scope answer. Direct dependent variable for VT-22 |
+| `task.description` | Free text, no analyzer | Raw scope statement. Bullet-count parser unlocks VT-22 |
+| `Archetype` family | Zero assignments | Deferred not dead. Future deadline-temperament priors when intake ships |
+
+Remaining dead-weight candidates under this thesis:
+
+- `task.confidence_score` — no call site. Safe to remove (cheap
+  migration, no user-visible change).
+- `task.source` — voice path dead; `manual` vs `web` indistinguishable
+  behaviorally. Keep for telemetry, don't build on it.
+- `task.initiation_status` + `initiation_delay_minutes` — stuck on
+  `not_started` for historical rows (LYR-050). Re-purpose as
+  "lead-time-before-deadline" if useful; otherwise prune.
+- `task.interruption_type`, `replaced_by_task_id`, `replaces_task_id` —
+  low data volume. Infrastructure for a phenomenon that doesn't
+  happen at current scale.
+- `task.unplanned_reason` — marginal; audit for any read site.
+- `stopwatch_session.pause_reason` / `pause_initiator` — legacy
+  double-write since migration 020. Confirm no read sites then prune.
+
+### 4.3 Research re-prioritization
+
+Under the landing-page thesis, VT-22 (scope inflation) is the
+load-bearing mechanism for testing it — not a companion hypothesis.
+VT-17 (pause prediction) stays important but secondary; VT-21
+(surface-exposure stratification) supports the "does the mirror
+actually change behavior" question orthogonally. VT-23 (GCal
+attendance) remains pre-registered but deprioritized — attendance
+binaries don't carry scope depth.
+
+See `docs/feedback_loops_closure_plan.md` for the concrete closure
+specs on each loop. Loop 11 (deadline + scope-bullet instrument) is
+the single schema commit that unblocks thesis-level testing and is
+flagged P0 there.
+
+### 4.4 Why this lives here, not in MANIFESTO
+
+MANIFESTO is the thesis + rules + kill criteria. It's stable by
+design — edits are dated and numbered (v1.7 as of April 17, 2026).
+This instrument-gap audit is a *discovery* about what the current
+schema does and doesn't support — not a thesis revision. It belongs
+in the strategic-decisions stream, not the manifesto. When the
+thesis-instruments actually ship (alembic 029 + scope parser), those
+ship docs reference this section; if the thesis itself needs
+tightening language, that goes into MANIFESTO.md as a proper revision.
