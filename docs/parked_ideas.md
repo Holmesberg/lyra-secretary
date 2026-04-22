@@ -7,6 +7,113 @@ before conditions are met.*
 
 ---
 
+## Bayesian causal network — per-user personalization endgame
+*Captured: 2026-04-22 evening. Operator recalled from memory while
+debugging a user report ("understands some of my gaps but doesn't
+REALLY get me"). Verified absent from the docs corpus before writing
+this entry — only related-but-different references are Bayesian
+weighting for BCI+self-report signal fusion (`archive/FEATURES.md:583`,
+`README.md:19`) and Bayesian shrinkage for bias_factor
+(`docs/methodology.md:62-69`, `README.md:190`). Neither is structure
+learning. Operator remembered the shrinkage formula as living in a
+`clustering_spec.md` file — that file does not exist; the formula is
+in methodology.md.*
+
+**Idea.** Phase 6+ personalization layer beyond cluster priors +
+shrinkage. Given the variables Lyra already collects (readiness,
+planned_duration, category, time_of_day, delta, scope_density, pause
+patterns, cascade signatures, initiation delay, etc.), discover the
+**per-user causal graph** that explains HOW those variables produce
+failure. Output: directed acyclic graph showing which variables cause
+which outcomes for THIS user.
+
+**Why this addresses the "doesn't REALLY get me" feedback.** Prior
+layers produce "people like you" personalization:
+- Layer 1 (published priors from Buehler/Kahneman): generic by design
+- Layer 2 (archetype cluster priors): cohort-level
+- Layer 3 (shrinkage blend toward personal data — methodology.md:62-69):
+  still a lookup table per (category, time_of_day) cell
+
+These produce *correlations*. A Bayesian causal network produces
+*mechanism*. The difference: Layer 1-3 answer "what typically happens
+to people like you"; the causal network answers "given YOUR readiness
+pattern + YOUR category + YOUR time-of-day, the causal path to
+overrun goes through scope inflation, not time estimation — here's
+the intervention point."
+
+**Method.**
+- Library: `pgmpy` (Python, MIT-licensed). Structure-learning
+  algorithms: PC (constraint-based) or GES (score-based).
+- Every variable already in the schema becomes a node. The network
+  discovers the edges — causal structure + conditional-probability
+  tables.
+- Queryable per user: "given readiness=4 + category=dev + time=11am,
+  what's the most probable mechanism of failure?" Returns path
+  through the graph, not just endpoint prediction.
+
+**Data volume.**
+- Structure-learning stability gates: **n ≥ 50 users × n ≥ 20
+  sessions each ≈ 1,000+ data points minimum.** Population-level
+  causal structure first; per-user individual graphs later
+  (50+ sessions per user for stable per-user DAG).
+- At current scale (5 users × ~10 sessions ≈ 50 data points),
+  attempting structure learning produces noise. Phase 6+ for a
+  reason.
+
+**Connection to VT-22 (scope inflation) — this is the key structural
+insight.** VT-22 manually hypothesizes what the Bayesian network
+would discover automatically. MANIFESTO Rule 12 pre-registers the
+mediation test: `readiness → scope_density → delta` (not `readiness
+→ delta` directly). If true, scope inflation is the causal mechanism
+for high-readiness overruns.
+- A Bayesian network learned from multi-user data would either
+  confirm that edge (validating VT-22 *structurally*, not just
+  inferentially) OR reveal a different causal path — e.g., `readiness
+  → task_difficulty_selection → delta`, matching VT-22 competing
+  hypothesis (b).
+- When the network matures, VT-22-style manual mediation tests
+  become a constrained special case — "does the discovered DAG
+  include the edge `scope_density → delta` with non-zero conditional
+  probability, after controlling for ancestors?"
+
+**Integration with existing layers (replacement, not bolt-on).**
+This completes the 4-layer stack, each adding specificity as data
+accumulates:
+
+| Layer | When active | What it produces | Status |
+|-------|------------|------------------|--------|
+| 1. Published priors | Session 0 | "Research says people underestimate by 40-60%" | Shipped |
+| 2. Archetype cluster priors | Sessions 1-30 per cell | "People in your cohort underestimate by 1.4×" | Designed (Phase 5) |
+| 3. Shrinkage blend | Sessions 1-30 per cell, weighted | `personal_weight × personal_mean + (1 - personal_weight) × archetype_prior` (methodology.md:62-69) | Designed (Phase 5.5+) |
+| 4. Personal bias_factor (full) | Sessions 30+ per cell | Pure per-(user, category, time_of_day) estimate | Shipped (commit bac6fc2) |
+| 5. Bayesian causal network (this entry) | n ≥ 50 users × 20 sessions | Population-level causal structure + per-user mechanism trace | Parked — Phase 6+ |
+| 6. Individual per-user DAG (endgame) | 50+ sessions per user | Fully individual causal graph | Parked — Phase 7+ |
+
+**Revisit conditions** — all must be met before building:
+- n ≥ 50 users with ≥ 20 sessions each (data-volume gate)
+- H1 / VT-22 status is resolved (Paper 1 analysis closed so the
+  network isn't used to steer a still-live pre-registered test)
+- Phase 6 shrinkage blend (Layer 3) is already shipped and stable
+  (natural predecessor — the network adds mechanism on top of a
+  working magnitude-estimation stack)
+
+**Do not:**
+- Attempt at n < 20 users — discovered structure will be noise and
+  misinform subsequent design
+- Use for individual per-user graphs before that user has 50+
+  sessions — individual-level structure learning is much hungrier
+  for data than population-level
+- Bolt on without Layers 1-4 below it — the network is for
+  *mechanism discovery*, not a replacement for the main
+  personalization surface
+
+**Connection to the immediate need.** The clustering survey (Layer 2
+in the Phase 5 build plan) is the pre-Spring-School fix for "doesn't
+REALLY get me." The Bayesian network is the post-Spring-School,
+post-H1-resolution endgame. Not a substitute; the endpoint.
+
+---
+
 ## Guided product tour (onboarding steps)
 *Captured: 2026-04-22 (operator-proposed; triggered by mom-guided-demo
 observation + pending mentor share with Omar today)*
