@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 import { ConsentModal } from "@/components/consent-modal";
+import { TutorialOverlay } from "@/components/tutorial-overlay";
 // Temporarily disabled 2026-04-21 — the full-screen onboarding surface
 // was replaced by a backend-seeded starter task (see
 // backend/app/core/security.py `_seed_starter_task`). Import left in
@@ -22,6 +23,11 @@ type Me = {
   // security.py). Drives the 2026-05-21 kill-criterion query regardless
   // of whether the onboarding surface is live.
   onboarding_completed_at: string | null;
+  // Guided tour stamps (alembic 029, 2026-04-22). Both null AND
+  // onboarding_completed_at NOT NULL triggers the TutorialOverlay
+  // render below. Either stamp set prevents re-fire.
+  tutorial_completed_at: string | null;
+  tutorial_skipped_at: string | null;
   // Google Calendar read-only integration (2026-04-21). Boolean
   // surface only — the actual refresh_token lives in the backend
   // `user.google_refresh_token` column. Null/false means no calendar
@@ -119,6 +125,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!me) return null;
 
   const needsConsent = !me.terms_accepted_at;
+  // Tour gate: onboarding must be done AND neither tutorial stamp set.
+  // Prevents firing for users who never completed onboarding (u3, u7)
+  // and for users who already saw/skipped the tour (re-fire protection).
+  const needsTutorial =
+    !needsConsent &&
+    !!me.onboarding_completed_at &&
+    !me.tutorial_completed_at &&
+    !me.tutorial_skipped_at;
 
   // Temporarily disabled 2026-04-21 — full-screen onboarding surface
   // replaced by a backend-seeded starter task on first sign-in.
@@ -142,6 +156,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         />
       )}
       {!needsConsent && children}
+      {needsTutorial && (
+        <TutorialOverlay
+          onFinished={() => api<Me>("/v1/users/me").then(setMe)}
+        />
+      )}
     </AppShell>
   );
 }

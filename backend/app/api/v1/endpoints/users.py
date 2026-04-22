@@ -67,6 +67,11 @@ def get_me(db: Session = Depends(get_db)):
         "terms_accepted_at": user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
         "research_consent_at": user.research_consent_at.isoformat() if user.research_consent_at else None,
         "onboarding_completed_at": user.onboarding_completed_at.isoformat() if user.onboarding_completed_at else None,
+        # Guided tour stamps — surface so the frontend can gate the
+        # TutorialOverlay render on (both null AND onboarding_completed_at
+        # NOT NULL).
+        "tutorial_completed_at": user.tutorial_completed_at.isoformat() if user.tutorial_completed_at else None,
+        "tutorial_skipped_at": user.tutorial_skipped_at.isoformat() if user.tutorial_skipped_at else None,
         # Surface only whether calendar is connected, never the token
         # itself. Frontend uses this to decide whether to show the
         # "Connect Google Calendar" CTA vs the calendar-events UI.
@@ -113,6 +118,38 @@ def delete_google_refresh_token(db: Session = Depends(get_db)):
     user.google_refresh_token = None
     db.commit()
     return {"ok": True, "google_calendar_connected": False}
+
+
+@router.post("/users/me/tutorial/complete")
+def complete_tutorial(db: Session = Depends(get_db)):
+    """Stamp tutorial_completed_at. Idempotent — first call wins."""
+    user = _current_user(db)
+    if user.tutorial_completed_at is None:
+        user.tutorial_completed_at = datetime.utcnow()
+        db.commit()
+    return {
+        "ok": True,
+        "tutorial_completed_at": user.tutorial_completed_at.isoformat(),
+    }
+
+
+@router.post("/users/me/tutorial/skip")
+def skip_tutorial(db: Session = Depends(get_db)):
+    """Stamp tutorial_skipped_at. Idempotent — first call wins.
+
+    Recorded separately from `completed` so the 2026-05-21 retention
+    analysis can distinguish "user walked through the whole tour"
+    from "user dismissed immediately" from "user never saw it" — three
+    different signals about onboarding fit.
+    """
+    user = _current_user(db)
+    if user.tutorial_skipped_at is None:
+        user.tutorial_skipped_at = datetime.utcnow()
+        db.commit()
+    return {
+        "ok": True,
+        "tutorial_skipped_at": user.tutorial_skipped_at.isoformat(),
+    }
 
 
 @router.get("/users/me/categories")

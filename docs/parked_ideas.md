@@ -7,6 +7,79 @@ before conditions are met.*
 
 ---
 
+## Guided product tour (onboarding steps)
+*Captured: 2026-04-22 (operator-proposed; triggered by mom-guided-demo
+observation + pending mentor share with Omar today)*
+
+**Idea:** 7–8 skippable tutorial overlay steps that introduce Lyra's
+core surfaces to a fresh user on first sign-in. Standard pattern from
+complex SaaS apps (Notion, Linear, Figma). Persist per-user completion
+/ skip state so they don't re-fire.
+
+**Why:** mom (u4) couldn't return after her guided demo because she
+couldn't reconstruct the flow independently. Omar (mentor) gets the
+app today — biggest single-test-case of "is this learnable without a
+human in the loop." Current app throws the user onto /today with a
+seeded starter task and no orientation; not enough scaffolding for a
+non-operator mental model.
+
+**Proposed step sequence:**
+1. *Welcome + one-sentence thesis.* "Lyra measures how long your tasks
+   actually take vs how long you thought they would — over time, you
+   see the shape of your own planning."
+2. *Starter task highlight.* Arrow to the seeded "Plan your week"
+   row. "This is your first task. Click Start to fire a timer; we'll
+   ask how ready you feel before you begin."
+3. *Readiness prompt preview.* Screenshot / mock. "A 1–5 slider before
+   every task. Not scored, not shown to anyone — it's calibration
+   input."
+4. *Stop + reflection preview.* "When you stop, we ask how you felt
+   about the run. The gap between readiness and reflection is a
+   signal."
+5. *Calendar tour.* Briefly: "Drag to reschedule PLANNED tasks; past
+   ones are locked."
+6. *Insights tour.* "Your delta pattern shows up here after 10+
+   tasks."
+7. *Integrations tour.* Briefly: "Connect Google Calendar if you want
+   external events alongside your plans. Optional."
+8. *Closing.* "We stay out of your way. No streaks, no guilt, no push
+   notifications until you earn them. Questions → settings."
+
+**Implementation sketch:**
+- New Alembic migration adds `user.tutorial_completed_at` +
+  `user.tutorial_skipped_at` (nullable DateTime).
+- New frontend overlay component (`<TutorialOverlay />`) rendered in
+  `(app)/layout.tsx` when both fields are null and
+  `onboarding_completed_at IS NOT NULL`.
+- Steps implemented as a simple carousel: no interactive DOM-targeting
+  highlighting in v1 (brittle); just a modal with "Next / Skip" per
+  step.
+- "Skip all" button on step 1 stamps `tutorial_skipped_at = now()` +
+  closes.
+- "Finish" on step 8 stamps `tutorial_completed_at = now()`.
+- Accessibility: dismissable via Escape key; focus trap inside modal.
+- Research note: tour exposure logged to `reflection_view_log` as
+  `reflection_type='tutorial'` so VT-21 can eventually ask "does
+  tutorial exposure correlate with D7 return?"
+
+**Priority:** P0 if Omar-test today is load-bearing. Otherwise ship
+before the next external-user invite.
+
+**Revisit conditions:** ship on first iteration. Can always skip for
+Omar today (one mentor, high trust) and aim for the next invite, but
+operator flagged it as "why don't we just add this" — net positive
+even at n=1 mentor.
+
+**Do not:**
+- Gate core app behind completion (Structural Investigation: tutorial
+  is a *structural invariant measurement moment*, not a *behavioral
+  gate*)
+- Auto-advance or time-limit steps (user-paced)
+- Add gamification (streaks / XP / achievement badges) — violates
+  `do_not_add.md`
+
+---
+
 ## LLM-powered subscription tier
 *Captured: April 14, 2026*
 
