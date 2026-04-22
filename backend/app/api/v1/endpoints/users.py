@@ -9,10 +9,31 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.db.models import ArchetypeAssignment, StopwatchSession, Task, TaskState, User
+from app.db.models import Archetype, ArchetypeAssignment, StopwatchSession, Task, TaskState, User
 from app.db.scoping import get_current_user_id, set_current_user_id
+from app.schemas.archetype import ArchetypeAssignmentOut, ArchetypeSurveyIn
+from app.services.archetype_service import (
+    DIFFUSE_AVERAGE_ID,
+    assign_archetype,
+    classify_discipline,
+    compute_discipline_z,
+    score_bfi_c,
+    score_bscs,
+    score_gp,
+    score_meq,
+)
 from app.services.calendar_sync import store_refresh_token
 from app.utils.time_utils import now_utc
+
+# Phase D archetype-survey eligibility gate. Users created on or after
+# this timestamp see the survey during onboarding (after consent, before
+# starter task). Users created before it bypass the gate and see the
+# Settings retrofit banner instead. Frozen at Wave 2 ship; changing it
+# retroactively reclassifies users, which is a mild UX surprise
+# (banner disappears, survey appears) — not a research-integrity
+# violation since the archetype-prior blend behaves identically either
+# path.
+ARCHETYPE_SURVEY_LAUNCH_UTC = datetime(2026, 4, 22, 0, 0, 0)
 
 # Built-in category taxonomy mirrors frontend/lib/categories.ts.
 # Source-of-truth note — the frontend file is the canonical copy for
@@ -56,6 +77,23 @@ class ConsentIn(BaseModel):
 @router.get("/users/me")
 def get_me(db: Session = Depends(get_db)):
     user = _current_user(db)
+    # Archetype-survey eligibility (Phase D, 2026-04-22 clustering ship).
+    # True → post-launch user who should see the survey between consent
+    # and starter-task reveal. False → pre-launch user who bypasses the
+    # gate and sees the Settings retrofit banner. Existing completed or
+    # skipped assignments suppress both (survey never re-fires; banner
+    # hidden). See backend/app/api/v1/endpoints/users.py constant.
+    latest_assignment = (
+        db.query(ArchetypeAssignment)
+        .filter(ArchetypeAssignment.user_id == user.user_id)
+        .order_by(ArchetypeAssignment.assigned_at.desc())
+        .first()
+    )
+    has_assignment = latest_assignment is not None
+    archetype_survey_eligible = (
+        user.created_at >= ARCHETYPE_SURVEY_LAUNCH_UTC
+        and not has_assignment
+    )
     return {
         "user_id": user.user_id,
         "email": user.email,
@@ -64,6 +102,20 @@ def get_me(db: Session = Depends(get_db)):
         "is_operator": user.is_operator,
         "notion_enabled": user.notion_enabled,
         "archetype_id": user.archetype_id,
+        "archetype_survey_eligible": archetype_survey_eligible,
+        "archetype_assignment_completed": bool(
+            latest_assignment and latest_assignment.completed
+        ),
+        "archetype_latest_assignment_at": (
+            latest_assignment.assigned_at.isoformat()
+            if latest_assignment
+            else None
+        ),
+        "archetype_retrofit_dismissed_at": (
+            user.archetype_retrofit_dismissed_at.isoformat()
+            if getattr(user, "archetype_retrofit_dismissed_at", None)
+            else None
+        ),
         "terms_accepted_at": user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
         "research_consent_at": user.research_consent_at.isoformat() if user.research_consent_at else None,
         "onboarding_completed_at": user.onboarding_completed_at.isoformat() if user.onboarding_completed_at else None,
@@ -118,6 +170,144 @@ def delete_google_refresh_token(db: Session = Depends(get_db)):
     user.google_refresh_token = None
     db.commit()
     return {"ok": True, "google_calendar_connected": False}
+
+
+@router.post("/users/me/archetype/survey", response_model=ArchetypeAssignmentOut)
+def submit_archetype_survey(
+    body: ArchetypeSurveyIn, db: Session = Depends(get_db)
+) -> ArchetypeAssignmentOut:
+    """Score the 29-item battery and write an ArchetypeAssignment.
+
+    Scores all four instruments, computes discipline_z via the Rule-13
+    composite, classifies tertiles, assigns archetype per the pattern
+    matcher (specific-first per methodology.md:85-90). Writes a new
+    ArchetypeAssignment row with completed=True and preserves the raw
+    29-item responses in `raw_responses` for future re-scoring under
+    Gate 3/4 weight tuning.
+
+    Idempotent by user: if the user already has an assignment, a new
+    row is added and User.archetype_id updates to the latest. The
+    historical row stays (enables longitudinal study of how archetype
+    assignment drifts across retakes).
+    """
+    user = _current_user(db)
+
+    meq_score, chronotype = score_meq(body.meq)
+    bfi_c_score, _ = score_bfi_c(body.bfi_c)
+    bscs_score, _ = score_bscs(body.bscs)
+    gp_score, _ = score_gp(body.gp)
+    discipline_z = compute_discipline_z(bfi_c_score, bscs_score, gp_score)
+    discipline = classify_discipline(discipline_z)
+    archetype_id = assign_archetype(chronotype, discipline)
+
+    assignment = ArchetypeAssignment(
+        user_id=user.user_id,
+        archetype_id=archetype_id,
+        meq_score=meq_score,
+        bfi_c_score=bfi_c_score,
+        bscs_score=bscs_score,
+        gp_score=gp_score,
+        chronotype=chronotype,
+        discipline_z=round(discipline_z, 3),
+        assigned_at=datetime.utcnow(),
+        completed=True,
+        skipped_at=None,
+        raw_responses={
+            "meq": body.meq,
+            "bfi_c": body.bfi_c,
+            "bscs": body.bscs,
+            "gp": body.gp,
+        },
+    )
+    db.add(assignment)
+    user.archetype_id = archetype_id
+    db.commit()
+
+    return ArchetypeAssignmentOut(
+        archetype_id=archetype_id,
+        completed=True,
+        chronotype=chronotype,
+        discipline_z=round(discipline_z, 3),
+        meq_score=meq_score,
+        bfi_c_score=bfi_c_score,
+        bscs_score=bscs_score,
+        gp_score=gp_score,
+    )
+
+
+@router.post("/users/me/archetype/skip", response_model=ArchetypeAssignmentOut)
+def skip_archetype_survey(db: Session = Depends(get_db)) -> ArchetypeAssignmentOut:
+    """Record a skip: defaults the user to Diffuse Average.
+
+    Writes ArchetypeAssignment(archetype_id='diffuse_average',
+    completed=False, skipped_at=now()) and sets User.archetype_id.
+    The completed=False flag is what retention analyses use to
+    separate genuine Diffuse Average assignments (user answered and
+    classified to diffuse_average) from skip-defaulted rows.
+    Idempotent: re-skip is a no-op.
+    """
+    user = _current_user(db)
+
+    existing = (
+        db.query(ArchetypeAssignment)
+        .filter(ArchetypeAssignment.user_id == user.user_id)
+        .first()
+    )
+    if existing is not None and existing.skipped_at is not None:
+        return ArchetypeAssignmentOut(
+            archetype_id=existing.archetype_id,
+            completed=existing.completed,
+            chronotype=existing.chronotype,
+            discipline_z=existing.discipline_z,
+        )
+
+    assignment = ArchetypeAssignment(
+        user_id=user.user_id,
+        archetype_id=DIFFUSE_AVERAGE_ID,
+        chronotype=None,
+        discipline_z=None,
+        meq_score=None,
+        bfi_c_score=None,
+        bscs_score=None,
+        gp_score=None,
+        assigned_at=datetime.utcnow(),
+        completed=False,
+        skipped_at=datetime.utcnow(),
+        raw_responses=None,
+    )
+    db.add(assignment)
+    user.archetype_id = DIFFUSE_AVERAGE_ID
+    db.commit()
+
+    return ArchetypeAssignmentOut(
+        archetype_id=DIFFUSE_AVERAGE_ID,
+        completed=False,
+    )
+
+
+@router.post("/users/me/archetype/retrofit-dismiss")
+def dismiss_archetype_retrofit(db: Session = Depends(get_db)) -> dict:
+    """Stamp user.archetype_retrofit_dismissed_at. Idempotent — first call wins.
+
+    Called by the Settings retrofit banner when a pre-launch user
+    clicks Dismiss. The banner then disappears from their Settings.
+    User remains on Diffuse Average default (no ArchetypeAssignment
+    row is written) — they can still take the survey later by
+    clicking the banner's Take-survey button before dismissing, or
+    via a future Settings "Retake survey" affordance.
+    """
+    user = _current_user(db)
+    if user.archetype_retrofit_dismissed_at is None:
+        user.archetype_retrofit_dismissed_at = datetime.utcnow()
+        db.commit()
+    return {
+        "ok": True,
+        "archetype_retrofit_dismissed_at": (
+            user.archetype_retrofit_dismissed_at.isoformat()
+            if user.archetype_retrofit_dismissed_at
+            else None
+        ),
+    }
 
 
 @router.post("/users/me/tutorial/complete")

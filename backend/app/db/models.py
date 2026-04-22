@@ -343,6 +343,13 @@ class User(Base):
     # docs/parked_ideas.md §Guided product tour.
     tutorial_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     tutorial_skipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Archetype survey retrofit banner dismissal (alembic 032, 2026-04-22).
+    # Set when a pre-launch user clicks Dismiss on the Settings
+    # "Get predictions that fit you" banner. Null = banner still visible
+    # if user has no ArchetypeAssignment. Taking the survey makes the
+    # banner disappear independently of this stamp (via the
+    # has_assignment check in /users/me).
+    archetype_retrofit_dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     # Google Calendar read-only integration (2026-04-21, migration 026).
     # Long-lived refresh token for offline calendar.readonly access.
     # Stored plaintext in v1 — Fernet encryption deferred to Phase 6+
