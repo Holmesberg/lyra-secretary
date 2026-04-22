@@ -320,12 +320,20 @@ def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
                 {"now": now, "hash": uid_hash, "u": uid},
             )
 
-            # Delete non-behavioral rows
+            # Delete non-behavioral rows. external_event_outcome rows
+            # get purged alongside the user — at current n the VT-23
+            # aggregate signal from deleted users is negligible; LYR-103
+            # tracks the retention-anonymize follow-up for when n grows.
+            # The DB-level ON DELETE CASCADE added in alembic 028 is the
+            # belt-and-suspenders backstop; this explicit DELETE matches
+            # the pattern used for every other user-scoped table here.
+            db.execute(text("DELETE FROM external_event_outcome WHERE user_id = :u"), {"u": uid})
             db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
             db.execute(text('DELETE FROM "user" WHERE user_id = :u'), {"u": uid})
             db.commit()
         else:
-            # Hard delete cascade — all data permanently removed
+            # Hard delete — all data permanently removed.
+            db.execute(text("DELETE FROM external_event_outcome WHERE user_id = :u"), {"u": uid})
             db.execute(text("DELETE FROM stopwatch_session WHERE user_id = :u"), {"u": uid})
             db.execute(text("DELETE FROM task WHERE user_id = :u"), {"u": uid})
             db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})

@@ -388,7 +388,13 @@ class ExternalEventOutcome(Base):
     __tablename__ = "external_event_outcome"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.user_id"), nullable=False, index=True)
+    # ON DELETE CASCADE added in alembic 028 (2026-04-22). User deletion
+    # purges outcome rows atomically — see LYR-103 note for the
+    # retention-consistency follow-up (task/stopwatch_session anonymize
+    # on retention; this table currently purges either way).
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user.user_id", ondelete="CASCADE"), nullable=False, index=True
+    )
     external_source: Mapped[str] = mapped_column(String(32), nullable=False)  # 'google_calendar'
     external_id: Mapped[str] = mapped_column(String(256), nullable=False)
     outcome: Mapped[str] = mapped_column(String(16), nullable=False)  # 'attended' | 'skipped'
