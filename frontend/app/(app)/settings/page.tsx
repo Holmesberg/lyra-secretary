@@ -15,6 +15,13 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { IntegrationsSection } from "@/components/integrations-section";
+import { ArchetypeProfileSection } from "@/components/archetype-profile-section";
+
+type MeArchetype = {
+  archetype_id: string | null;
+  archetype_assignment_completed: boolean;
+  archetype_latest_assignment_at: string | null;
+};
 
 type DataSummary = {
   total_tasks: number;
@@ -29,6 +36,27 @@ type DataSummary = {
 export default function SettingsPage() {
   const { data: session } = useSession();
   const userEmail = session?.user?.email ?? "";
+
+  // --- Archetype profile section (2026-04-22 clustering ship) ---
+  // Persistent Settings surface showing current archetype state + a
+  // retake affordance. Replaces the earlier retrofit banner —
+  // operator asked 2026-04-22 for: (a) button always available, (b)
+  // emphasis retake after 3 months. See
+  // docs/strategic_decisions_april_22.md §5.
+  const [archetypeMe, setArchetypeMe] = useState<MeArchetype | null>(null);
+  useEffect(() => {
+    api<MeArchetype>("/v1/users/me")
+      .then(setArchetypeMe)
+      .catch(() => {
+        // Non-blocking — section just won't render.
+      });
+  }, []);
+
+  function refreshArchetypeMe() {
+    api<MeArchetype>("/v1/users/me")
+      .then(setArchetypeMe)
+      .catch(() => {});
+  }
 
   // --- Export ---
   const [exporting, setExporting] = useState(false);
@@ -110,6 +138,25 @@ export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold tracking-tight text-parchment">Settings</h1>
+
+      {/* --- Archetype profile section (2026-04-22) ---
+          Persistent Settings surface handling 4 states:
+            - no_assignment: primary Take-survey CTA
+            - skipped: primary Take-survey CTA
+            - recent (<90d): secondary Retake CTA
+            - aged (≥90d): primary Retake CTA (operator's 3-month
+              retry rule)
+          Survey inline-opens the ArchetypeSurvey modal. Retakes
+          write NEW ArchetypeAssignment rows (historical preserved
+          for Gate 5 stability analysis). */}
+      {archetypeMe && (
+        <ArchetypeProfileSection
+          archetypeId={archetypeMe.archetype_id}
+          completed={archetypeMe.archetype_assignment_completed}
+          latestAssignmentAt={archetypeMe.archetype_latest_assignment_at}
+          onChanged={refreshArchetypeMe}
+        />
+      )}
 
       {/* --- Integrations card (2026-04-22) ---
           Third-party connections live above data ops (Export / Delete).

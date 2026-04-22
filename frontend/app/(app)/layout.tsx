@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
+import { ArchetypeSurvey } from "@/components/archetype-survey";
 import { ConsentModal } from "@/components/consent-modal";
 import { TutorialOverlay } from "@/components/tutorial-overlay";
 // Temporarily disabled 2026-04-21 — the full-screen onboarding surface
@@ -28,6 +29,17 @@ type Me = {
   // render below. Either stamp set prevents re-fire.
   tutorial_completed_at: string | null;
   tutorial_skipped_at: string | null;
+  // Archetype survey gate (2026-04-22 clustering ship). True when
+  // user is post-launch AND has no ArchetypeAssignment yet. Drives
+  // the ArchetypeSurvey gate below (fires between consent + tutorial).
+  archetype_survey_eligible: boolean;
+  // True when the user has a completed=True ArchetypeAssignment. Used
+  // by the Settings retrofit banner (show iff no completed assignment
+  // AND retrofit_dismissed_at is null). Distinguishes real archetypes
+  // from skip-defaulted Diffuse Average rows.
+  archetype_assignment_completed: boolean;
+  archetype_retrofit_dismissed_at: string | null;
+  archetype_id: string | null;
   // Google Calendar read-only integration (2026-04-21). Boolean
   // surface only — the actual refresh_token lives in the backend
   // `user.google_refresh_token` column. Null/false means no calendar
@@ -125,11 +137,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!me) return null;
 
   const needsConsent = !me.terms_accepted_at;
-  // Tour gate: onboarding must be done AND neither tutorial stamp set.
-  // Prevents firing for users who never completed onboarding (u3, u7)
-  // and for users who already saw/skipped the tour (re-fire protection).
+  // Archetype survey gate (2026-04-22 clustering ship). Fires for
+  // post-launch users who haven't yet submitted OR skipped the survey.
+  // Pre-launch users (archetype_survey_eligible=false) bypass this
+  // gate and see the Settings retrofit banner instead. Skipped users
+  // have an ArchetypeAssignment row → archetype_survey_eligible=false,
+  // so they don't re-fire.
+  const needsArchetypeSurvey = !needsConsent && me.archetype_survey_eligible;
+  // Tour gate: onboarding done AND neither tutorial stamp set AND
+  // archetype-survey gate has passed (so we don't stack three modals
+  // on first-run).
   const needsTutorial =
     !needsConsent &&
+    !needsArchetypeSurvey &&
     !!me.onboarding_completed_at &&
     !me.tutorial_completed_at &&
     !me.tutorial_skipped_at;
@@ -156,6 +176,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         />
       )}
       {!needsConsent && children}
+      {needsArchetypeSurvey && (
+        <ArchetypeSurvey
+          onFinished={() => api<Me>("/v1/users/me").then(setMe)}
+        />
+      )}
       {needsTutorial && (
         <TutorialOverlay
           onFinished={() => api<Me>("/v1/users/me").then(setMe)}
