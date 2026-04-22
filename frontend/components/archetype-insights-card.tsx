@@ -2,30 +2,33 @@
 /**
  * Archetype insights card — shows at top of /insights page.
  *
- * Self-updating: reads /v1/users/me + /v1/analytics/bias_factor/lookup
- * via React Query. When the operator submits or skips the survey, the
- * ArchetypeSurvey component invalidates `["me"]` + `["bias_factor_*"]`
- * + `["insights"]` query keys, causing this card to auto-refetch and
- * re-render with the new archetype + updated blend.
+ * Self-updating via React Query: the survey submit invalidates
+ * ["me"] + ["bias_factor*"] + ["insights"], causing this card to
+ * auto-refetch and re-render with the new archetype + updated blend.
+ *
+ * Layout philosophy (operator note 2026-04-23, "outputs the math not
+ * the archetype"):
+ *   - HERO = archetype name + behavioral description + planning
+ *     implication. This is the identity the user cares about.
+ *   - COLLAPSIBLE = blend math (archetype prior, personal weight,
+ *     blended number). Useful for the operator / research-minded
+ *     users, noise for everyone else.
  *
  * Display adapts to state:
- *   - NO archetype (no assignment): "Take the survey to unlock
- *     personalized predictions" + dead-end (link to Settings)
- *   - Diffuse Average (skipped or legitimately classified there):
- *     "Using population-average priors" + blend sample
- *   - Any other archetype: "Profile: <label> · predictions shifted
- *     <direction> <magnitude> on a representative cell"
- *
- * The "blend sample" fetches a representative bias_factor lookup
- * (category=development, tod=morning, planned=60min) so the user can
- * see the actual shift in action. This cell was chosen because it
- * maps to the highest-magnitude research prior (1.50, Buehler 1994)
- * and is where archetype differences are most visible.
+ *   - NO archetype: "Take the survey in Settings to unlock" + link
+ *   - Archetype assigned: hero label + description + implication +
+ *     "Show calibration math" disclosure
  */
+import { useState } from "react";
+import { ChevronUp, Sigma } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { ARCHETYPE_LABELS } from "@/lib/archetype";
+import {
+  ARCHETYPE_DESCRIPTIONS,
+  ARCHETYPE_LABELS,
+  ARCHETYPE_PLANNING_IMPLICATION,
+} from "@/lib/archetype";
 
 interface MeArchetype {
   archetype_id: string | null;
@@ -43,14 +46,13 @@ interface BiasBlendSample {
   cell?: { bias_factor?: number; sessions?: number };
 }
 
-// Representative cell — development/morning/60min is where research
-// priors are strongest (1.50, Buehler 1994) so archetype scaling
-// differences are most visible.
 const SAMPLE_CATEGORY = "development";
 const SAMPLE_TOD = "morning";
 const SAMPLE_MINUTES = 60;
 
 export function ArchetypeInsightsCard() {
+  const [mathOpen, setMathOpen] = useState(false);
+
   const meQ = useQuery({
     queryKey: ["me"],
     queryFn: () => api<MeArchetype>("/v1/users/me"),
@@ -68,14 +70,31 @@ export function ArchetypeInsightsCard() {
   });
 
   if (!meQ.data) return null;
-
   const me = meQ.data;
-  const blend = blendQ.data;
-
   const archetypeId = me.archetype_id;
-  const label = archetypeId
-    ? ARCHETYPE_LABELS[archetypeId] ?? archetypeId
-    : null;
+  if (!archetypeId) {
+    return (
+      <Card>
+        <CardContent className="p-5">
+          <p className="text-sm text-dust">
+            No archetype assigned yet. Take the{" "}
+            <a
+              href="/settings"
+              className="text-signal underline-offset-2 hover:text-signal-neon hover:underline"
+            >
+              4-minute survey in Settings
+            </a>{" "}
+            to unlock personalized priors. Predictions currently use
+            the flat population prior.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const label = ARCHETYPE_LABELS[archetypeId] ?? archetypeId;
+  const description = ARCHETYPE_DESCRIPTIONS[archetypeId];
+  const implication = ARCHETYPE_PLANNING_IMPLICATION[archetypeId];
   const daysSince = me.archetype_latest_assignment_at
     ? Math.floor(
         (Date.now() - new Date(me.archetype_latest_assignment_at).getTime()) /
@@ -83,70 +102,94 @@ export function ArchetypeInsightsCard() {
       )
     : null;
 
-  // State classification.
-  const state =
-    archetypeId === null
-      ? "none"
-      : !me.archetype_assignment_completed
-      ? "skipped"
-      : "assigned";
-
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-3">
-          <span>Your archetype profile</span>
-          {label && (
-            <span className="rounded-sm bg-signal/10 px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-widest text-signal">
+      <CardContent className="flex flex-col gap-4 p-5">
+        {/* Hero: label + assignment recency */}
+        <div>
+          <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+            Your archetype
+          </div>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="text-2xl font-semibold tracking-tight text-parchment">
               {label}
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-4 pt-0">
-        {state === "none" && (
-          <p className="text-sm text-dust">
-            No archetype assigned yet. Predictions currently use
-            flat-1.0 fallback — take the{" "}
-            <a
-              href="/settings"
-              className="text-signal underline-offset-2 hover:text-signal-neon hover:underline"
-            >
-              4-minute survey in Settings
-            </a>{" "}
-            to unlock personalized priors.
-          </p>
+            </h2>
+            {daysSince !== null && (
+              <span className="text-[11px] text-dust-deep">
+                {daysSince === 0
+                  ? "assigned today"
+                  : `assigned ${daysSince} day${daysSince !== 1 ? "s" : ""} ago`}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Description — what this archetype means */}
+        {description && (
+          <p className="text-sm leading-relaxed text-dust">{description}</p>
         )}
 
-        {state === "skipped" && (
-          <p className="text-sm text-dust">
-            You're using the population-average prior ({label}). Take
-            the{" "}
-            <a
-              href="/settings"
-              className="text-signal underline-offset-2 hover:text-signal-neon hover:underline"
-            >
-              survey in Settings
-            </a>{" "}
-            anytime to swap this for a prior tuned to how you actually
-            work.
-          </p>
+        {/* Planning implication — what it means for the user's workflow */}
+        {implication && (
+          <div className="rounded-sm border border-hairline bg-void/30 px-3 py-2 text-xs leading-relaxed text-parchment">
+            {implication}
+          </div>
         )}
 
-        {state === "assigned" && daysSince !== null && (
-          <p className="mb-3 text-sm text-dust">
-            Profile assigned {daysSince === 0 ? "today" : `${daysSince} day${daysSince !== 1 ? "s" : ""} ago`}.
-            Your predictions are now leaning on this prior — blending
-            with your personal data as you accumulate sessions.
-          </p>
-        )}
-
-        {/* Blend sample — shown for every state except "none" */}
-        {state !== "none" && blend && typeof blend.bias_factor_final === "number" && (
-          <BlendSample blend={blend} />
+        {/* Math disclosure — icon-only toggle, low-prominence */}
+        {blendQ.data && typeof blendQ.data.bias_factor_final === "number" && (
+          <MathDisclosure
+            open={mathOpen}
+            onToggle={() => setMathOpen((o) => !o)}
+            blend={blendQ.data}
+          />
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function MathDisclosure({
+  open,
+  onToggle,
+  blend,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  blend: BiasBlendSample;
+}) {
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label="Show calibration math"
+        title="Show calibration math"
+        className="inline-flex h-6 w-6 items-center justify-center self-end rounded-sm text-dust-deep transition-colors hover:text-signal"
+      >
+        <Sigma className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+          <Sigma className="h-3 w-3" />
+          Calibration math
+        </div>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label="Hide calibration math"
+          title="Hide calibration math"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-dust-deep transition-colors hover:text-parchment"
+        >
+          <ChevronUp className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <BlendSample blend={blend} />
+    </div>
   );
 }
 
@@ -158,12 +201,13 @@ function BlendSample({ blend }: { blend: BiasBlendSample }) {
   const archPrior = blend.archetype_prior_for_cell ?? 0;
   const personalValue = blend.cell?.bias_factor ?? 0;
   const finalPct = Math.round((final - 1) * 100);
-  const personalPct = personalSessions > 0 ? Math.round((personalValue - 1) * 100) : null;
+  const personalPct =
+    personalSessions > 0 ? Math.round((personalValue - 1) * 100) : null;
 
   return (
-    <div className="rounded-sm border border-hairline bg-void/30 p-3 font-mono text-[11px] leading-relaxed">
+    <div className="mt-2 rounded-sm border border-hairline bg-void/30 p-3 font-mono text-[11px] leading-relaxed">
       <div className="mb-2 text-dust-deep">
-        Sample: {SAMPLE_CATEGORY} · {SAMPLE_TOD} · {SAMPLE_MINUTES}-min tasks
+        Reference cell: {SAMPLE_CATEGORY} · {SAMPLE_TOD} · {SAMPLE_MINUTES}-min
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         <div>
@@ -203,8 +247,8 @@ function BlendSample({ blend }: { blend: BiasBlendSample }) {
           {personalPct > finalPct ? "Shrinkage pulls" : "Shrinkage lifts"}{" "}
           your noisy personal estimate ({personalPct > 0 ? "+" : ""}
           {personalPct}%) toward the research-backed prior. As you
-          accumulate sessions, the personal weight grows and this number
-          converges to your true pattern.
+          accumulate sessions, the personal weight grows and this
+          number converges to your true pattern.
         </p>
       )}
     </div>
