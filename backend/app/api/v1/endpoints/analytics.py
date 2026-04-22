@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 
 from app.api.deps import get_db
-from app.db.models import Task, TaskState, StopwatchSession, PausePredictionLog
+from app.db.models import Archetype, ArchetypeAssignment, Task, TaskState, StopwatchSession, PausePredictionLog, User
 from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_local, now_utc
 from app.utils.redis_client import RedisClient
@@ -572,6 +572,169 @@ def _insight_initiation_delay(tasks: list) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Archetype-aware insight generators (2026-04-22 clustering ship, Rule 13)
+#
+# These fire ONLY when the user has an Archetype assigned (after taking
+# or skipping the survey). They compare the operator's personal
+# bias_factor to the archetype prior for the same cell and surface
+# emergent patterns: divergence (personal differs from expected prior)
+# and maturation (personal_weight has grown enough to dominate).
+#
+# Depends on SVC_RESEARCH_PRIORS + SVC_RESEARCH_PRIOR_DEFAULT imported
+# from bias_factor_service at module top.
+# ---------------------------------------------------------------------------
+
+
+def _insight_archetype_divergence(
+    tasks: list, archetype: Optional[Archetype]
+) -> Optional[dict]:
+    """Personal bias_factor diverges from archetype prior by ≥25%.
+
+    Groups executed tasks by category, computes personal_sum_ratio,
+    compares to the archetype-scaled research prior for that category.
+    Reports the category with the largest absolute divergence as long
+    as the personal sample is ≥5 tasks.
+
+    Meaning: "Your archetype expects X, your data shows Y — you're
+    behaving differently from the cohort-level prior in this area."
+    Useful even when divergence is downward (person does BETTER than
+    their archetype expects — confirmation of discipline) or upward
+    (person does WORSE — scope-inflation warning vector).
+    """
+    if archetype is None:
+        return None
+
+    # Group executed tasks by category (ignore uncategorized).
+    from collections import defaultdict
+    cat_ratios: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    for t in tasks:
+        if (
+            t.state != TaskState.EXECUTED
+            or t.executed_duration_minutes is None
+            or not t.planned_duration_minutes
+            or t.category is None
+            or t.category == "uncategorized"
+        ):
+            continue
+        cat_ratios[t.category].append(
+            (t.planned_duration_minutes, t.executed_duration_minutes)
+        )
+
+    best_cat: Optional[str] = None
+    best_divergence: float = 0.0
+    best_personal: float = 0.0
+    best_prior: float = 0.0
+    best_n: int = 0
+
+    for cat, pairs in cat_ratios.items():
+        if len(pairs) < 5:
+            continue
+        sum_p = sum(p for p, _ in pairs)
+        sum_e = sum(e for _, e in pairs)
+        if sum_p <= 0:
+            continue
+        personal = sum_e / sum_p
+        research = RESEARCH_PRIORS.get(cat, RESEARCH_PRIOR_DEFAULT)["bias_factor"]
+        archetype_prior_for_cell = research * (archetype.prior_bias_factor / 1.30)
+        if archetype_prior_for_cell <= 0:
+            continue
+        divergence = abs(personal - archetype_prior_for_cell) / archetype_prior_for_cell
+        if divergence < 0.25:
+            continue
+        if divergence > best_divergence:
+            best_divergence = divergence
+            best_cat = cat
+            best_personal = personal
+            best_prior = archetype_prior_for_cell
+            best_n = len(pairs)
+
+    if best_cat is None:
+        return None
+
+    personal_pct = round((best_personal - 1) * 100)
+    prior_pct = round((best_prior - 1) * 100)
+
+    def _fmt(pct: int) -> str:
+        """Human-readable delta: '+30% over plan', '15% under plan', 'on plan'."""
+        if pct > 0:
+            return f"+{pct}% over plan"
+        if pct < 0:
+            return f"{abs(pct)}% under plan"
+        return "on plan"
+
+    direction = "below" if best_personal < best_prior else "above"
+    obs = (
+        f"On {best_cat} tasks you're running {_fmt(personal_pct)} — "
+        f"{direction} your archetype's prior ({_fmt(prior_pct)}). "
+        f"Your personal data is pulling the blended prediction away "
+        f"from the cohort average."
+    )
+    return _insight(
+        "archetype_divergence",
+        obs,
+        best_n,
+        strength=best_divergence * 100,
+    )
+
+
+def _insight_calibration_maturation(
+    tasks: list, archetype: Optional[Archetype]
+) -> Optional[dict]:
+    """Personal data has enough volume in ≥1 cell to dominate the blend.
+
+    Per Rule 13, `personal_weight = min(1.0, n_sessions_in_cell / 30)`.
+    At n=15, weight ≥ 0.5 — personal is now the majority contributor.
+    Fires when the user hits that threshold in any (category,
+    time_of_day) cell. Shows the shrinkage learning velocity in
+    plain language.
+    """
+    if archetype is None:
+        return None
+
+    from collections import defaultdict
+    cell_counts: dict[tuple[str, str], int] = defaultdict(int)
+    for t in tasks:
+        if (
+            t.state != TaskState.EXECUTED
+            or t.executed_duration_minutes is None
+            or not t.planned_duration_minutes
+            or t.category is None
+            or t.category == "uncategorized"
+        ):
+            continue
+        tod = _time_of_day(to_local(t.planned_start_utc))
+        cell_counts[(t.category, tod)] += 1
+
+    # Cells where personal_weight ≥ 0.5 (i.e., n ≥ 15).
+    mature_cells = [
+        (cat, tod, n)
+        for (cat, tod), n in cell_counts.items()
+        if n >= 15
+    ]
+    if not mature_cells:
+        return None
+
+    # Pick the highest-volume mature cell for the observation.
+    mature_cells.sort(key=lambda x: -x[2])
+    top_cat, top_tod, top_n = mature_cells[0]
+    weight_pct = round(min(1.0, top_n / 30) * 100)
+
+    obs = (
+        f"Your personal data now accounts for {weight_pct}% of the "
+        f"prediction on {top_cat}/{top_tod} tasks ({top_n} sessions). "
+        f"The blend is shifting from your archetype's prior to your "
+        f"actual behavior — predictions are becoming yours, not the "
+        f"reference cohort's."
+    )
+    return _insight(
+        "calibration_maturation",
+        obs,
+        top_n,
+        strength=weight_pct,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Insights endpoint
 # ---------------------------------------------------------------------------
 
@@ -613,8 +776,23 @@ async def get_insights(
             "message": f"Log {remaining} more session{'s' if remaining != 1 else ''} to unlock your first behavioral insights.",
         }
 
-    # Run all insight generators, collect results
-    generators = [
+    # Resolve archetype for archetype-aware generators. Falls back to
+    # Diffuse Average when user has no assignment (per Rule 13 skip-path).
+    uid = get_current_user_id()
+    archetype: Optional[Archetype] = None
+    if uid is not None:
+        user = db.query(User).filter(User.user_id == uid).first()
+        archetype_id = (user.archetype_id if user else None) or "diffuse_average"
+        archetype = (
+            db.query(Archetype)
+            .filter(Archetype.archetype_id == archetype_id)
+            .first()
+        )
+
+    # Run all insight generators, collect results. Archetype-aware
+    # generators take the Archetype row as a second arg; regular ones
+    # just take tasks.
+    base_generators = [
         _insight_time_of_day,
         _insight_readiness,
         _insight_abandonment,
@@ -627,11 +805,19 @@ async def get_insights(
         _insight_retroactive_rate,
         _insight_initiation_delay,
     ]
+    archetype_generators = [
+        _insight_archetype_divergence,
+        _insight_calibration_maturation,
+    ]
 
     redis = RedisClient()
     candidates = []
-    for gen in generators:
+    for gen in base_generators:
         result = gen(all_tasks)
+        if result is not None:
+            candidates.append(result)
+    for gen in archetype_generators:
+        result = gen(all_tasks, archetype)
         if result is not None:
             candidates.append(result)
 
