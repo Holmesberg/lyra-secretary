@@ -861,40 +861,18 @@ async def get_cascade(
 # Bias Factor
 # ---------------------------------------------------------------------------
 
-def _bias_cell(rows: list[tuple[int, int]], min_n: int) -> Optional[dict]:
-    """
-    Build a bias-factor cell from a list of (planned, executed) integer pairs.
+# `_bias_cell` extracted to services/bias_factor_service.py on 2026-04-22
+# (Phase A of the clustering ship). Re-exported here so existing call
+# sites in this module keep working unchanged. See MANIFESTO.md v1.10
+# Rule 13 for the canonical computation definition.
+from app.services.bias_factor_service import (
+    RESEARCH_PRIOR_DEFAULT as _SVC_RESEARCH_PRIOR_DEFAULT,
+    RESEARCH_PRIORS as _SVC_RESEARCH_PRIORS,
+    _adaptive_calibration as _svc_adaptive_calibration,
+    _bias_cell as _svc_bias_cell,
+)
 
-    Returns None if rows < min_n. Otherwise returns:
-        bias_factor       — sum(executed) / sum(planned)        (PRIMARY, weighted)
-        bias_factor_mean  — mean(executed_i / planned_i)         (per-session mean)
-
-    Sum-ratio is the primary because it weights longer tasks proportionally and
-    is what a scheduler should consume to size the next slot. Mean-ratio is
-    reported alongside as a sanity check — divergence between the two reveals a
-    bucket dominated by a small number of long sessions.
-
-    interpretation thresholds apply to the primary (sum-ratio).
-    """
-    if len(rows) < min_n:
-        return None
-    sum_p = sum(p for p, _ in rows)
-    sum_e = sum(e for _, e in rows)
-    if sum_p <= 0:
-        return None
-    sum_ratio = round(sum_e / sum_p, 3)
-    mean_ratio = round(sum(e / p for p, e in rows) / len(rows), 3)
-    return {
-        "bias_factor": sum_ratio,
-        "bias_factor_mean": mean_ratio,
-        "sessions": len(rows),
-        "confidence": _confidence(len(rows)),
-        "interpretation": (
-            "on target" if 0.9 <= sum_ratio <= 1.1
-            else "underestimates" if sum_ratio > 1.1
-            else "overestimates"
-        ),
-    }
+_bias_cell = _svc_bias_cell
 
 
 @router.get("/analytics/bias_factor")
@@ -985,138 +963,19 @@ async def get_bias_factor(
     }
 
 
-RESEARCH_PRIORS: dict[str, dict] = {
-    "development": {"bias_factor": 1.50, "citation": "Buehler et al. 1994; Connolly & Dean 1997"},
-    "work":        {"bias_factor": 1.45, "citation": "Buehler et al. 1994"},
-    "study":       {"bias_factor": 1.40, "citation": "Newby-Clark et al. 2000"},
-    "academic":    {"bias_factor": 1.40, "citation": "Newby-Clark et al. 2000"},
-    "exercise":    {"bias_factor": 1.15, "citation": "Roy et al. 2005"},
-    "fitness":     {"bias_factor": 1.15, "citation": "Roy et al. 2005"},
-}
-RESEARCH_PRIOR_DEFAULT = {"bias_factor": 1.35, "citation": "Kahneman & Tversky 1979 (planning fallacy mean)"}
+# RESEARCH_PRIORS + RESEARCH_PRIOR_DEFAULT extracted to
+# services/bias_factor_service.py (2026-04-22, Phase A). These module-level
+# names remain for backward compatibility with any call site that still
+# imports them from here.
+RESEARCH_PRIORS = _SVC_RESEARCH_PRIORS
+RESEARCH_PRIOR_DEFAULT = _SVC_RESEARCH_PRIOR_DEFAULT
 
 
-def _adaptive_calibration(
-    tasks: list[Task], category: str, tod: str, planned_minutes: int,
-) -> dict:
-    """Adaptive calibration using a signal cascade.
-
-    Tries progressively broader slices of personal data before falling
-    back to research priors. Each level is more specific but needs more
-    data.  The first level with >= 3 sessions wins.
-
-    Signal cascade (most specific → broadest):
-      1. category × tod × duration_bucket  (short/medium/long)
-      2. category × tod                     (the original lookup)
-      3. category only                      (any time of day)
-      4. research prior                     (cold start only)
-
-    Returns the winning signal with metadata about what contributed.
-    """
-    cat_rows_all = []
-    cat_tod_rows = []
-    cat_tod_dur_rows = []
-
-    dur_bucket = "short" if planned_minutes < 30 else "long" if planned_minutes > 60 else "medium"
-
-    for t in tasks:
-        cat = t.category or "uncategorized"
-        if cat != category:
-            continue
-        pair = (t.planned_duration_minutes, t.executed_duration_minutes)
-        cat_rows_all.append(pair)
-
-        t_tod = _time_of_day(to_local(t.planned_start_utc))
-        if t_tod != tod:
-            continue
-        cat_tod_rows.append(pair)
-
-        t_dur = (
-            "short" if t.planned_duration_minutes < 30
-            else "long" if t.planned_duration_minutes > 60
-            else "medium"
-        )
-        if t_dur == dur_bucket:
-            cat_tod_dur_rows.append(pair)
-
-    signals = []
-
-    # Level 1: category × tod × duration bucket (most specific)
-    cell = _bias_cell(cat_tod_dur_rows, min_n=3)
-    if cell is not None:
-        cell["category"] = category
-        cell["time_of_day"] = tod
-        signals.append({
-            "level": "category_tod_duration",
-            "label": f"{category} / {tod} / {dur_bucket} tasks",
-            "bias_factor": cell["bias_factor"],
-            "sessions": cell["sessions"],
-        })
-        return {
-            "cell": cell, "sessions": cell["sessions"], "min_sessions": 3,
-            "source": "personal", "signal_level": "category_tod_duration",
-            "signals": signals,
-        }
-
-    # Level 2: category × tod
-    cell = _bias_cell(cat_tod_rows, min_n=3)
-    if cell is not None:
-        cell["category"] = category
-        cell["time_of_day"] = tod
-        signals.append({
-            "level": "category_tod",
-            "label": f"{category} / {tod}",
-            "bias_factor": cell["bias_factor"],
-            "sessions": cell["sessions"],
-        })
-        return {
-            "cell": cell, "sessions": cell["sessions"], "min_sessions": 3,
-            "source": "personal", "signal_level": "category_tod",
-            "signals": signals,
-        }
-
-    # Level 3: category only (any time of day)
-    cell = _bias_cell(cat_rows_all, min_n=3)
-    if cell is not None:
-        cell["category"] = category
-        cell["time_of_day"] = "all"
-        signals.append({
-            "level": "category",
-            "label": f"{category} (all times)",
-            "bias_factor": cell["bias_factor"],
-            "sessions": cell["sessions"],
-        })
-        return {
-            "cell": cell, "sessions": cell["sessions"], "min_sessions": 3,
-            "source": "personal", "signal_level": "category",
-            "signals": signals,
-        }
-
-    # Level 4: research prior (cold start)
-    prior = RESEARCH_PRIORS.get(category, RESEARCH_PRIOR_DEFAULT)
-    signals.append({
-        "level": "research",
-        "label": prior["citation"],
-        "bias_factor": prior["bias_factor"],
-        "sessions": 0,
-    })
-    return {
-        "cell": {
-            "bias_factor": prior["bias_factor"],
-            "bias_factor_mean": prior["bias_factor"],
-            "sessions": 0,
-            "confidence": "research",
-            "interpretation": "underestimates",
-            "category": category,
-            "time_of_day": tod,
-            "citation": prior["citation"],
-        },
-        "sessions": len(cat_rows_all),
-        "min_sessions": 3,
-        "source": "research",
-        "signal_level": "research",
-        "signals": signals,
-    }
+# _adaptive_calibration was extracted to services/bias_factor_service.py
+# on 2026-04-22 (Phase A of the clustering ship). Re-exported as a
+# module-level alias so `analytics._adaptive_calibration(...)` call
+# sites keep working without edits. See MANIFESTO.md v1.10 Rule 13.
+_adaptive_calibration = _svc_adaptive_calibration
 
 
 @router.get("/analytics/bias_factor/lookup")
