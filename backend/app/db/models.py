@@ -5,6 +5,7 @@ from typing import Optional
 from uuid import uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -365,7 +366,18 @@ class Archetype(Base):
 
 
 class ArchetypeAssignment(Base):
-    """Per-user archetype assignment + raw instrument scores for re-bucketing."""
+    """Per-user archetype assignment + raw instrument scores for re-bucketing.
+
+    Alembic 031 (2026-04-22) added `completed`, `skipped_at`,
+    `raw_responses` — distinguishes genuine survey-answered
+    assignments from skip-defaulted Diffuse Average rows. Skipped
+    assignments have `completed=False`, `skipped_at` stamped,
+    `raw_responses=NULL`. Completed assignments have `completed=True`,
+    `skipped_at=NULL`, `raw_responses` = 29-item answer array.
+    Retention analyses that want "genuine clustering" exclude
+    `completed=False` rows; analyses that want "all assignments
+    including defaults" include everything.
+    """
 
     __tablename__ = "archetype_assignment"
 
@@ -379,6 +391,16 @@ class ArchetypeAssignment(Base):
     chronotype: Mapped[Optional[str]] = mapped_column(String(20))
     discipline_z: Mapped[Optional[float]] = mapped_column(Float)
     assigned_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    # Alembic 031 additions (2026-04-22).
+    completed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    skipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Raw 29-item responses: {"meq": [a,b,c,d,e], "bfi_c": [a,b],
+    # "bscs": [...13 items...], "gp": [...9 items...]}. Enables
+    # re-scoring under future weight tuning without re-surveying
+    # (Gate 3/4 remediation). NULL for skip-defaulted assignments.
+    raw_responses: Mapped[Optional[dict]] = mapped_column(JSON)
 
 
 class ExternalEventOutcome(Base):
