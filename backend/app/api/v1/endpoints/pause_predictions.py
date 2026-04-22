@@ -25,7 +25,7 @@ Three surfaces:
 Scoping: the before_compile hook auto-filters `db.query(PausePredictionLog)`
 by the current user, so a caller cannot respond to another user's firing.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 
@@ -37,6 +37,20 @@ from app.api.deps import get_db
 from app.db.models import PauseEvent, PausePredictionLog
 from app.db.scoping import get_current_user_id
 from app.utils.time_utils import now_utc
+
+
+def _utc_iso(dt: datetime) -> str:
+    """Serialize a datetime as an unambiguous UTC ISO string.
+
+    DB stores pause_prediction_log timestamps as naive UTC. If we emit
+    `.isoformat()` without a timezone marker, browsers parse the string
+    as LOCAL time (ECMA-262) and the UTC→user-tz conversion never
+    happens — the chip then renders 13:37 UTC as "1:37 PM Cairo" when
+    it should be "3:37 PM Cairo". Stamping `+00:00` restores the round-trip.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 router = APIRouter()
 
@@ -91,7 +105,7 @@ def respond_to_firing(
     return {
         "firing_id": row.firing_id,
         "user_response": row.user_response,
-        "response_at": row.response_at.isoformat(),
+        "response_at": _utc_iso(row.response_at),
     }
 
 
@@ -180,7 +194,7 @@ def confirm_retroactive(
     return {
         "firing_id": row.firing_id,
         "user_response": row.user_response,
-        "response_at": row.response_at.isoformat(),
+        "response_at": _utc_iso(row.response_at),
         "pause_event_id": pause_event_id,
     }
 
@@ -259,8 +273,8 @@ def pending_confirmations(db: Session = Depends(get_db)) -> dict:
             {
                 "firing_id": row.firing_id,
                 "active_task_id": row.active_task_id,
-                "fired_at": row.fired_at.isoformat(),
-                "predicted_at": row.predicted_at.isoformat(),
+                "fired_at": _utc_iso(row.fired_at),
+                "predicted_at": _utc_iso(row.predicted_at),
                 "mechanism": row.mechanism,
                 "confidence": row.confidence,
             }
