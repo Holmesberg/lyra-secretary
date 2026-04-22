@@ -54,10 +54,14 @@ interface Props {
   showOrphanWarning?: boolean;
   onDismissOrphanWarning?: () => void;
   requestPause?: boolean;
+  // When set, skip the reason picker and apply pause immediately with
+  // this reason. Used by the prediction-banner "Quick pause" action
+  // (2026-04-22): operator mid-break shouldn't have to pick a reason.
+  quickPauseReason?: string;
   onRequestPauseHandled?: () => void;
 }
 
-export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWarning, requestPause, onRequestPauseHandled }: Props) {
+export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWarning, requestPause, quickPauseReason, onRequestPauseHandled }: Props) {
   const qc = useQueryClient();
   const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -199,10 +203,21 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
   useEffect(() => {
     if (requestPause && !localPaused) {
-      setShowReasonPicker(true);
+      if (quickPauseReason) {
+        // One-tap quick pause — skip the reason picker. Direct apply
+        // with the supplied reason (typically "intentional_break" for
+        // the VT-17 prediction-banner flow).
+        void applyPause(quickPauseReason);
+      } else {
+        setShowReasonPicker(true);
+      }
       onRequestPauseHandled?.();
     }
-  }, [requestPause, localPaused, onRequestPauseHandled]);
+    // applyPause is defined below and closes over the latest qc/status;
+    // intentionally excluded from deps to avoid a re-run loop when
+    // status changes mid-pause.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestPause, localPaused, quickPauseReason, onRequestPauseHandled]);
 
   if (!status.active || !status.start_time) return null;
   const paused = localPaused;

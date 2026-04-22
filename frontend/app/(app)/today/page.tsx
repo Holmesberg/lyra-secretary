@@ -29,6 +29,8 @@ import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
 import { PausePredictionBanner } from "@/components/pause-prediction-banner";
+import { PauseConfirmChip } from "@/components/pause-confirm-chip";
+import { listPendingConfirmations } from "@/lib/pause-predictions";
 import { ExternalEventRow } from "@/components/external-event-row";
 import {
   getCalendarEvents,
@@ -113,6 +115,51 @@ function TodayInner() {
     queryFn: getPendingNotifications,
     refetchInterval: 30_000,
   });
+
+  // Retroactive pause-confirmation chips. Backend applies all three
+  // gates: user_response='no_response', fired_at within 24h, no
+  // pause_event within ±10 min of predicted_at. We just render what
+  // it returns, tracking local dismiss state for the session.
+  const pauseConfirmQ = useQuery({
+    queryKey: ["pause-predictions-pending-confirmation"],
+    queryFn: listPendingConfirmations,
+    refetchInterval: 120_000,
+  });
+  const [dismissedConfirms, setDismissedConfirms] = useState<Set<string>>(new Set());
+
+  // Partition firings into task-attached (rendered inline after
+  // matching TaskRow) and standalone (no active_task_id OR task not
+  // visible in current feed — rendered as a small banner above the
+  // feed).
+  const visibleTaskIds = new Set(
+    (tasksQ.data ?? []).filter((t) => !t.voided_at).map((t) => t.task_id)
+  );
+  type PendingList = NonNullable<typeof pauseConfirmQ.data>["pending"];
+  const pendingByTask = new Map<string, PendingList>();
+  const pendingStandalone: PendingList = [];
+  for (const p of pauseConfirmQ.data?.pending ?? []) {
+    if (dismissedConfirms.has(p.firing_id)) continue;
+    if (p.active_task_id && visibleTaskIds.has(p.active_task_id)) {
+      const list = pendingByTask.get(p.active_task_id) ?? [];
+      list.push(p);
+      pendingByTask.set(p.active_task_id, list);
+    } else {
+      pendingStandalone.push(p);
+    }
+  }
+
+  function onConfirmResolved(firingId: string) {
+    setDismissedConfirms((s) => {
+      const n = new Set(s);
+      n.add(firingId);
+      return n;
+    });
+    // Refetch so if the server still has other pending firings we
+    // haven't interacted with, they stay in sync.
+    qc.invalidateQueries({
+      queryKey: ["pause-predictions-pending-confirmation"],
+    });
+  }
   const [dismissedFirings, setDismissedFirings] = useState<Set<string>>(new Set());
   const pausePrediction: PausePredictionNotification | null = (() => {
     for (const n of notifQ.data?.notifications ?? []) {
@@ -144,7 +191,14 @@ function TodayInner() {
   const [orphanWarnShown, setOrphanWarnShown] = useState(false);
   const [orphanWarnDismissed, setOrphanWarnDismissed] = useState(false);
   const [requestPause, setRequestPause] = useState(false);
-  const clearRequestPause = useCallback(() => setRequestPause(false), []);
+  // When set, ActiveTimerBanner skips the reason picker on pause and
+  // applies this reason directly — one-tap pause from the prediction
+  // banner's primary action (2026-04-22). Clears on handled.
+  const [quickPauseReason, setQuickPauseReason] = useState<string | undefined>(undefined);
+  const clearRequestPause = useCallback(() => {
+    setRequestPause(false);
+    setQuickPauseReason(undefined);
+  }, []);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -533,8 +587,9 @@ function TodayInner() {
       {pausePrediction && status?.active && !status?.paused && (
         <PausePredictionBanner
           prediction={pausePrediction}
-          onPauseNow={() => {
+          onPauseNow={(quick) => {
             setDismissedFirings((s) => new Set(s).add(pausePrediction!.firing_id));
+            setQuickPauseReason(quick ? "intentional_break" : undefined);
             setRequestPause(true);
           }}
           onDismissed={() =>
@@ -550,6 +605,7 @@ function TodayInner() {
           showOrphanWarning={orphanWarnShown}
           onDismissOrphanWarning={dismissOrphanWarn}
           requestPause={requestPause}
+          quickPauseReason={quickPauseReason}
           onRequestPauseHandled={clearRequestPause}
         />
       )}
@@ -588,31 +644,53 @@ function TodayInner() {
         onCancel={clearSelection}
       />
 
+      {/* Standalone pause-confirm chips — firings without a task in
+          the current feed render here above the task list. */}
+      {pendingStandalone.map((p) => (
+        <PauseConfirmChip
+          key={p.firing_id}
+          prediction={p}
+          variant="standalone"
+          onResolved={onConfirmResolved}
+        />
+      ))}
+
       {(feed.top.length > 0 || feed.bottom.length > 0) && (
         <div className="flex flex-col gap-2">
           {[...feed.top, ...feed.bottom].map((item) =>
             item.kind === "task" ? (
-              <TaskRow
-                key={item.task.task_id}
-                task={item.task}
-                disableStart={
-                  isPast ||
-                  (timerBusy && item.task.task_id !== activeTaskId)
-                }
-                onStart={(task) => setReadinessFor(task)}
-                onStartHover={
-                  item.task.task_id !== activeTaskId
-                    ? notifyPotentialStart
-                    : undefined
-                }
-                onStop={() => setReflectionOpen(true)}
-                onSkip={isPast ? undefined : handleSkip}
-                onDelete={isPast ? undefined : handleDelete}
-                onEdit={(task) => setEditingTask(task)}
-                selected={selectedIds.has(item.task.task_id)}
-                showCheckbox={selectedIds.size > 0}
-                onToggleSelect={toggleSelect}
-              />
+              <div key={item.task.task_id} className="flex flex-col gap-1.5">
+                <TaskRow
+                  task={item.task}
+                  disableStart={
+                    isPast ||
+                    (timerBusy && item.task.task_id !== activeTaskId)
+                  }
+                  onStart={(task) => setReadinessFor(task)}
+                  onStartHover={
+                    item.task.task_id !== activeTaskId
+                      ? notifyPotentialStart
+                      : undefined
+                  }
+                  onStop={() => setReflectionOpen(true)}
+                  onSkip={isPast ? undefined : handleSkip}
+                  onDelete={isPast ? undefined : handleDelete}
+                  onEdit={(task) => setEditingTask(task)}
+                  selected={selectedIds.has(item.task.task_id)}
+                  showCheckbox={selectedIds.size > 0}
+                  onToggleSelect={toggleSelect}
+                />
+                {/* Inline pause-confirm chips for this task. Rendered
+                    under the row, visually attached via gap-1.5. */}
+                {(pendingByTask.get(item.task.task_id) ?? []).map((p) => (
+                  <PauseConfirmChip
+                    key={p.firing_id}
+                    prediction={p}
+                    variant="inline"
+                    onResolved={onConfirmResolved}
+                  />
+                ))}
+              </div>
             ) : (
               <ExternalEventRow
                 key={item.event.id}

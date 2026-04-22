@@ -9,14 +9,21 @@ import {
 
 interface Props {
   prediction: PausePredictionNotification;
-  onPauseNow: () => void;
+  // onPauseNow(quick): true = one-tap quick pause (parent defaults
+  // reason to intentional_break and skips the picker); false = open
+  // the reason picker. Operator feedback 2026-04-22: primary action
+  // must be one tap when they're mid-break.
+  onPauseNow: (quick: boolean) => void;
   onDismissed: () => void;
 }
 
 export function PausePredictionBanner({ prediction, onPauseNow, onDismissed }: Props) {
   const [busy, setBusy] = useState(false);
 
-  async function respond(action: "pause_now" | "dismiss" | "snooze") {
+  async function respond(
+    action: "pause_now" | "dismiss" | "snooze",
+    opts: { quick?: boolean } = {}
+  ) {
     setBusy(true);
     try {
       await respondToPausePrediction(prediction.firing_id, action);
@@ -24,7 +31,7 @@ export function PausePredictionBanner({ prediction, onPauseNow, onDismissed }: P
       // Best-effort — log fires even if response endpoint fails.
     }
     if (action === "pause_now") {
-      onPauseNow();
+      onPauseNow(opts.quick ?? true);
     } else {
       onDismissed();
     }
@@ -56,15 +63,25 @@ export function PausePredictionBanner({ prediction, onPauseNow, onDismissed }: P
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex flex-wrap gap-2">
         <Button
           variant="outline"
           size="sm"
-          onClick={() => respond("pause_now")}
+          onClick={() => respond("pause_now", { quick: true })}
           disabled={busy}
           className="text-xs"
         >
           Pause now
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => respond("pause_now", { quick: false })}
+          disabled={busy}
+          className="text-xs text-dust"
+          title="Open the reason picker instead of defaulting to 'intentional break'"
+        >
+          Pause + pick reason
         </Button>
         <Button
           variant="ghost"
