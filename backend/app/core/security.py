@@ -46,25 +46,83 @@ def _seed_starter_task(db: Session, user: User) -> None:
     compute. Keeps the seed cheap and isolated from the full-create
     machinery.
 
-    Scheduling: tomorrow 9 am local (Africa/Cairo single-timezone
-    alpha). User can reschedule, start immediately, or delete — the
-    seed is a prompt, not a commitment. Also stamps
-    onboarding_completed_at so the 2026-05-21 kill-criterion query has
-    a reliable "user has received their starter" timestamp.
+    Scheduling policy (2026-04-22, revised): the task MUST land on
+    today so it shows up on /today's feed the moment the user lands,
+    not tomorrow where it's hidden. Three tiers by sign-up time:
+
+      - sign-up before 9 am local → today 9 am (morning anchor)
+      - sign-up between 9 am and 23:29 → next :30 or :00 mark from now
+        (always strictly future; always stays on today)
+      - sign-up at or after 23:29 → tomorrow 9 am (less than 30 min
+        remaining today — not enough for a meaningful slot)
+
+    Window end clamps to 23:59 today so we never cross midnight — a
+    starter spanning today→tomorrow appears on tomorrow's /today
+    feed, which defeats the fix. Planned duration follows the actual
+    window length so duration_delta measurement stays consistent
+    (a 23:00 sign-up gets a 29-min planned slot, not 30).
+
+    Previous shape (2026-04-21 → 2026-04-22): tomorrow 9 am fixed.
+    Operator dogfood observation 2026-04-22: mom (u4) and others
+    likely saw an empty /today on signup day and didn't come back.
+
+    Also stamps onboarding_completed_at so the 2026-05-21
+    kill-criterion query has a reliable "user has received their
+    starter" timestamp.
     """
     now = datetime.utcnow()
-    # Tomorrow 9 am in local tz. Pre-multi-timezone refactor: we store
-    # naked Cairo-local datetimes in "_utc" columns (project convention,
-    # see MANIFESTO.md timezone contract). That's why this uses
-    # datetime.utcnow() then shifts — the backend treats these wall-clock.
-    start = now.replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    end = start + timedelta(minutes=30)
+    # Pre-multi-timezone refactor: we store naked Cairo-local datetimes
+    # in "_utc" columns (project convention, see MANIFESTO.md timezone
+    # contract). That's why this uses datetime.utcnow() then treats it
+    # as wall-clock — the backend renders these without offset shift.
+    today_9am = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    end_of_day = now.replace(hour=23, minute=59, second=0, microsecond=0)
+    # Last point where the next :30 or :00 mark still lands on today.
+    # At 23:29 the next half-hour is 23:30 (still today); at 23:30 it
+    # would be 00:00 tomorrow. Anything ≥ 23:29 falls to tomorrow 9 am.
+    late_cutoff = now.replace(hour=23, minute=29, second=0, microsecond=0)
+
+    if now < today_9am:
+        start = today_9am
+    elif now < late_cutoff:
+        # Round up to the next :30 or :00 mark. Always strictly future
+        # so the starter never opens with the "start is in the past"
+        # inline hint we added for the new-task modal 2026-04-22.
+        bump = 1 if (now.second or now.microsecond) else 0
+        next_minute = now.minute + bump
+        if next_minute <= 30:
+            start = now.replace(minute=30, second=0, microsecond=0)
+            # If next_minute == 30 exactly (0 seconds), start == now —
+            # advance to the following half-hour so it's strictly ahead.
+            if start <= now:
+                start = start + timedelta(minutes=30)
+        else:
+            start = (now + timedelta(hours=1)).replace(
+                minute=0, second=0, microsecond=0
+            )
+    else:
+        # Less than ~30 min left in the day — no meaningful today-slot
+        # possible. Land on tomorrow 9 am instead.
+        start = today_9am + timedelta(days=1)
+
+    desired_end = start + timedelta(minutes=30)
+    if start.date() != now.date():
+        # Tomorrow-9am branch — clean 30-min slot on the next day.
+        end = desired_end
+    elif desired_end > end_of_day:
+        # Clamp to 23:59 if the window would cross midnight. Happens
+        # only at the edge (e.g. start 23:30 → end 24:00 → clamp 23:59).
+        end = end_of_day
+    else:
+        end = desired_end
+
+    duration = max(1, int((end - start).total_seconds() / 60))
     task = Task(
         title="Plan your week — brain dump and triage",
         category="planning",
         planned_start_utc=start,
         planned_end_utc=end,
-        planned_duration_minutes=30,
+        planned_duration_minutes=duration,
         state=TaskState.PLANNED,
         source=TaskSource.WEB,
         description="Lyra started this for you. Edit the time, fire the timer to plan, or delete and build your own setup.",
