@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getInsights, type Insight } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
+import { ArchetypeInsightsCard } from "@/components/archetype-insights-card";
 
 // Confidence-tier → brand text token. Replaces the traffic-light
 // (green/yellow/red) palette the page shipped with; brand-unification
@@ -28,6 +29,11 @@ const ID_LABELS: Record<string, string> = {
   morning_anchor_cascade: "Morning cascade",
   retroactive_rate: "Retroactive rate",
   initiation_delay: "Start delay",
+  // Archetype-aware emergent patterns (2026-04-22 clustering ship).
+  // Fire after archetype is assigned and user has enough per-cell
+  // personal data to compare against the archetype prior.
+  archetype_divergence: "Archetype fit",
+  calibration_maturation: "Personal calibration",
 };
 
 function ConfidenceBar({
@@ -207,6 +213,10 @@ export default function InsightsPage() {
           {data.sessions_analyzed} sessions analyzed
         </span>
       </div>
+
+      {/* Archetype profile card — self-updates when the survey is taken
+          via React Query invalidation. See ArchetypeInsightsCard. */}
+      <ArchetypeInsightsCard />
 
       {featured && <FeaturedCard insight={featured} />}
 

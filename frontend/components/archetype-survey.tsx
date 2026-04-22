@@ -34,6 +34,7 @@
  * the survey is submission-telemetered only.
  */
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import {
   BFI_C_ITEMS,
@@ -96,6 +97,26 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
   const [err, setErr] = useState<string | null>(null);
   const [confirmSkip, setConfirmSkip] = useState(false);
 
+  // After a successful survey submit / skip, the user's archetype_id
+  // changes — which means every bias_factor lookup needs a fresh blend
+  // AND /insights should re-render with the new prior. Invalidate all
+  // archetype-dependent query keys so any open tab auto-refetches the
+  // moment the user finishes. This is the "self-update" behavior the
+  // operator asked for 2026-04-23.
+  const qc = useQueryClient();
+  function invalidateArchetypeDependent() {
+    qc.invalidateQueries({ queryKey: ["insights"] });
+    qc.invalidateQueries({ queryKey: ["me"] });
+    // Bias-factor lookups are per (category, tod, planned) — we don't
+    // know every key variant open tabs might have cached. Broad match
+    // on the first key segment so every cached lookup invalidates.
+    qc.invalidateQueries({
+      predicate: (q) =>
+        typeof q.queryKey[0] === "string" &&
+        (q.queryKey[0] as string).startsWith("bias_factor"),
+    });
+  }
+
   const section = SECTIONS[sectionIdx];
   const totalItems = SECTIONS.reduce((s, x) => s + x.items.length, 0);
   const answeredCount = Object.keys(answers).length;
@@ -126,6 +147,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
         bscs: BSCS_ITEMS.map((it) => answers[it.id]),
         gp: GP_ITEMS.map((it) => answers[it.id]),
       });
+      invalidateArchetypeDependent();
       onFinished();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't submit — try again.");
@@ -138,6 +160,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
     setErr(null);
     try {
       await skipArchetypeSurvey();
+      invalidateArchetypeDependent();
       onFinished();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't record skip — try again.");
