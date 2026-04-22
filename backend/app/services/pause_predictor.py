@@ -138,12 +138,22 @@ class PausePredictor:
         lookback = now - timedelta(days=LOOKBACK_DAYS)
         is_weekend = now.weekday() >= 5
 
+        # Training-data integrity: retroactive self-reports (chip on
+        # /today, 2026-04-22) attach paused_at_utc = predicted_at, i.e.
+        # the value this same predictor emitted. Including them here
+        # would self-reinforce existing predictions and prevent the
+        # model from tracking drift in the operator's actual pause
+        # timing. Retroactive rows stay in pause_event for VT-17d
+        # stratified acceptance-rate analysis but are excluded from
+        # training. See docs/feedback_loops_closure_plan.md §Loop 9
+        # closure and MANIFESTO v1.9 §VT-17d.
         rows = (
             self.db.query(PauseEvent.paused_at_utc)
             .filter(
                 PauseEvent.user_id == user_id,
                 PauseEvent.paused_at_utc >= lookback,
                 PauseEvent.paused_at_utc < now,
+                PauseEvent.self_reported_retroactively.is_(False),
             )
             .all()
         )
@@ -195,9 +205,9 @@ class PausePredictor:
 
         lookback = now - timedelta(days=LOOKBACK_DAYS)
 
-        # Historical time-to-first-pause for this user+category. Use the first
-        # pause_event per session (aggregate min paused_at_utc), join back to
-        # session.start_time_utc to compute the delta.
+        # Same training-data integrity rule as clock_anchor: exclude
+        # retroactive self-reports so the work_rhythm medians track
+        # real-time capture, not the predictor's own output.
         rows = (
             self.db.query(
                 StopwatchSession.start_time_utc,
@@ -206,6 +216,7 @@ class PausePredictor:
             .join(PauseEvent, PauseEvent.session_id == StopwatchSession.session_id)
             .join(Task, Task.task_id == StopwatchSession.task_id)
             .filter(
+                PauseEvent.self_reported_retroactively.is_(False),
                 StopwatchSession.user_id == user_id,
                 StopwatchSession.start_time_utc >= lookback,
                 Task.category == active_task.category,

@@ -440,6 +440,15 @@ class PauseEvent(Base):
     pause_reason: Mapped[str] = mapped_column(String(50), nullable=False)
     pause_initiator: Mapped[str] = mapped_column(String(20), nullable=False)
     active_elapsed_at_pause_seconds: Mapped[Optional[int]] = mapped_column(Integer)
+    # Flag for pauses captured via the retroactive-confirmation chip
+    # (2026-04-22, alembic 030). False = real-time pause via timer
+    # action. True = operator confirmed the pause retroactively after
+    # a prediction fired as `no_response`. VT-17d stratified analysis
+    # reports acceptance rate with and without retroactive-confirmed
+    # rows (MANIFESTO v1.9 §VT-17d).
+    self_reported_retroactively: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )

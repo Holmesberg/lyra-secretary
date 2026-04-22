@@ -74,12 +74,21 @@ def _run_for_one_user(db, user: User):
 
     for row in unreconciled:
         window_end = row.predicted_at + timedelta(minutes=ACCEPTANCE_WINDOW_MINUTES)
+        # Exclude retroactive self-reports from primary VT-17
+        # acceptance matching. Retroactive pauses have
+        # paused_at_utc = predicted_at of some prior firing, so they
+        # could mechanically "accept" nearby later firings that had
+        # nothing to do with the operator's actual behavior. VT-17d
+        # stratified analysis uses self_reported_yes counts directly
+        # from pause_prediction_log; it does NOT replay the retro-
+        # actively-created pause_event rows through this reconciliation.
         matching_pause = (
             db.query(PauseEvent)
             .filter(
                 PauseEvent.user_id == user.user_id,
                 PauseEvent.paused_at_utc >= row.fired_at,
                 PauseEvent.paused_at_utc <= window_end,
+                PauseEvent.self_reported_retroactively.is_(False),
             )
             .order_by(PauseEvent.paused_at_utc.asc())
             .first()
