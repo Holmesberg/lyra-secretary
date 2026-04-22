@@ -1,6 +1,6 @@
 """V1 API Router."""
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar
+from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -16,3 +16,4 @@ api_router.include_router(users.router, tags=["users"])
 api_router.include_router(pause_predictions.router, tags=["pause_predictions"])
 api_router.include_router(reflection_view.router, tags=["reflection_view"])
 api_router.include_router(calendar.router, tags=["calendar"])
+api_router.include_router(integrations.router, tags=["integrations"])

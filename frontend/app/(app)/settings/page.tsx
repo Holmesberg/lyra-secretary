@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { IntegrationsSection } from "@/components/integrations-section";
 
 type DataSummary = {
   total_tasks: number;
@@ -109,6 +110,13 @@ export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold tracking-tight text-parchment">Settings</h1>
+
+      {/* --- Integrations card (2026-04-22) ---
+          Third-party connections live above data ops (Export / Delete).
+          Identity is separate from authorization — sign-in requests no
+          sensitive scopes; each integration asks for its own permission
+          when the user connects it. See docs/integrations_architecture.md. */}
+      <IntegrationsSection />
 
       {/* --- Export card --- */}
       <Card>
