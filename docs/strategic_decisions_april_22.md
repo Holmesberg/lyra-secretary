@@ -258,3 +258,114 @@ in the strategic-decisions stream, not the manifesto. When the
 thesis-instruments actually ship (alembic 029 + scope parser), those
 ship docs reference this section; if the thesis itself needs
 tightening language, that goes into MANIFESTO.md as a proper revision.
+
+---
+
+## 5. Clustering Acceleration — Phase 5 → Trusted-User Week 2 (addendum 2026-04-22 late-evening)
+
+Triggered by an external trusted-user's direct quote on 2026-04-22:
+*"You know how ChatGPT just gets you? This app understands some of my
+gaps but doesn't REALLY get me."* That is the cold-start personalization
+problem we had pre-registered for Phase 5 (post-May 1). The operator
+chose to accelerate it into trusted-user week 2 so the next external
+user to sign up lands on a mirror that leans on population / archetype
+priors instead of the current flat-1.0 fallback.
+
+### 5.1 What ships in the acceleration
+
+**Wave 1 — silent shrinkage** (ships today):
+- Alembic 031 adds `completed` + `skipped_at` + `raw_responses` to
+  `archetype_assignment` (distinguishes genuine survey-answered
+  assignments from skip-defaulted rows)
+- Pure-function `archetype_service.py` implements MEQ-5 / BFI-10 C /
+  BSCS-Brief / GP-Short scoring + discipline_z composite + assignment
+  algorithm per `docs/methodology.md §1`
+- `bias_factor_service.py` extracted from `analytics.py` (no behavior
+  change); hosts the new `blend()` function that wraps
+  `_adaptive_calibration` with archetype-prior shrinkage
+- `GET /v1/analytics/bias_factor/lookup` returns both `cell.bias_factor`
+  (personal-only, diagnostic) and `bias_factor_final` (blended,
+  canonical). Frontend nudge reads `bias_factor_final`
+- `/insights` gains an operator-only diagnostic panel showing the blend
+  components per query
+- MANIFESTO v1.10 adds Rule 13 pre-registering the shrinkage formula,
+  the 5 archetype priors, the `RESEARCH_PRIORS` dict, and the
+  Diffuse-Average skip-path default — frozen at launch. VT-25
+  (archetype-reveal narrative internalization) drafted inactive.
+
+**Wave 2 — questionnaire UI + retrofit banner** (ships tomorrow):
+- 29-item survey (MEQ-5 × BFI-10 C × BSCS-Brief × GP-Short) in
+  `frontend/components/archetype-survey.tsx`
+- Submission endpoint `POST /v1/users/me/archetype/survey` writes
+  ArchetypeAssignment with `completed=True` + archetype_id
+- Skip endpoint `POST /v1/users/me/archetype/skip` writes
+  ArchetypeAssignment with `archetype_id='diffuse_average'`,
+  `completed=False`, `skipped_at=now()`
+- `(app)/layout.tsx` gate: after ConsentModal, before TutorialOverlay
+- Alembic 032 adds `user.archetype_retrofit_dismissed_at`
+- Settings retrofit banner for pre-launch users (u2, u5, u6); banner
+  dismissal stamps the column; survey completion makes it disappear
+
+### 5.2 Why silent shrinkage first, reveal UI in v1.1
+
+Shipping shrinkage and reveal simultaneously confounds two separate
+treatments: "does archetype prior help cold-start calibration?"
+(H_shrinkage) vs "does knowing your archetype change how you plan?"
+(H_reveal). They require separate test designs. Silent-first lets us
+measure shrinkage's effect via bias_factor-MAE deltas on u5/u6 over
+weeks 2–4, then ship reveal in v1.1 with a pre-registered within-user
+A/B (Rule 11 framework adapted). Activation of VT-25 follows the
+reveal ship, not Rule 13's ship.
+
+### 5.3 What this acceleration explicitly does NOT ship in v1
+
+- Reveal UI (session 5-7 archetype chip) — v1.1
+- Reclassification check at sessions 15-20 — Phase 5.5
+- 90-day auto-refit scheduler — Phase 5.5
+- Per-cell `bias_factor_prior` table — deferred until we have
+  empirical per-cell data for Gate 3 pass
+- Automated Cronbach α monitoring (lit proxy used until n≥20) — Phase 5.5
+- Arabic / Egyptian localization of instrument items — Phase 7+
+- Per-archetype calibration_nudge copy variation — v1.2+
+
+### 5.4 Gate status at acceleration
+
+- **Gate 1 (Cronbach α ≥ 0.65 at first 20 users)** — blocking per
+  `methodology.md §Gate 1`. Not evaluable at n=5. Lit-proxy used:
+  published α values (MEQ-5 ≈ 0.70, BFI-10 C ≈ 0.62, BSCS ≈ 0.83,
+  GP ≈ 0.87). Gate 1 evaluation deferred until n≥20 users have
+  completed the survey; pre-registered fallback per `methodology.md:114`
+  (BSCS+GP composite if BFI-10 C fails) covers the edge-case risk.
+- **Gate 2 (silhouette ≥ 0.3 at n≥250)** — blocking for production
+  archetype separability. Not evaluable until n≥250. Until then,
+  5-archetype structure is treated as "descriptive heuristic backed by
+  literature" per `MANIFESTO.md §Methodological note on profile
+  taxonomy` line 285, not validated clusters.
+- **Gates 3-5** — corrective. System launches with hardcoded priors;
+  gates trigger improvements rather than blocks.
+
+### 5.5 Kill criterion — clustering survey retention-cost
+
+If signup-to-onboarding-complete drops below 55% over the 72 hours
+following the Wave 2 flag-flip (NEXT_PUBLIC_ARCHETYPE_SURVEY_ENABLED=
+true), flip the flag back to false and fall back to Settings-banner-only
+distribution. 55% is the floor; current bounce rate is 29% per the
+§3 retention-data clarification, so a 26-percentage-point drop is the
+threshold above which the survey's retention cost outweighs its
+personalization benefit for the cold-start cohort.
+
+### 5.6 Licensing flag (operator pre-public-beta review)
+
+Four instruments with varying licensing clarity:
+- **BFI-10**: public domain (Rammstedt & John 2007 explicit)
+- **MEQ-5, BSCS-Brief, GP-Short**: published in academic literature,
+  research-use exemption typical but not explicit
+
+For trusted-user week 2 dogfooding (n<10), legal risk is effectively
+zero. For public beta (Phase 7+) the operator should:
+1. Email the 2–3 uncertain-licensed authors as a courtesy disclosure
+2. Ensure citations displayed in the survey footer + `/privacy`
+3. Use items verbatim — no paraphrasing (strengthens the case)
+4. Document the BFI-2 + SCS-5 (Maloney 2012) fallback in
+   `docs/methodology.md` so an instrument swap is pre-planned if a
+   takedown notice ever arrives

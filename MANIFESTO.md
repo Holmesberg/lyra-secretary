@@ -1,4 +1,4 @@
-# Lyra Secretary — Manifesto v1.9
+# Lyra Secretary — Manifesto v1.10
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
@@ -797,6 +797,26 @@ acceptance_rate_permissive := acceptance_count_permissive / total_fires_permissi
 
 **Status:** VT-23 pre-registered April 21, 2026. Implemented April 21 (DB schema, migration 027) and April 22 (/today UI + `POST /v1/calendar/attendance`). See `docs/strategic_decisions_april_21.md §6.1` and `docs/integrations_architecture.md §Research-integrity rules`.
 
+### VT-24: *[Reserved — no validity threat assigned at this number. Keep sequence contiguous; next new VT uses 25.]*
+
+### VT-25: Archetype-Reveal Narrative Internalization — DRAFTED, INACTIVE
+*Drafted: April 22, 2026. Activates when the archetype reveal UI ships in v1.1. Until then, this threat does not apply — Rule 13 ships silent shrinkage only (no visible archetype label for the user).*
+
+**Threat:** Showing a user their archetype label (e.g., "your profile: Procrastinator") may cause label-internalization — the user's subsequent `planned_duration_minutes` and `pre_task_readiness` inputs could entangle with the label rather than reflect underlying cognitive state. This is the same class of instrument-intervention threat as VT-21 (narrative internalization from calibration_nudge and micro_mirror) but with a stronger manipulation — an explicit categorical identity label vs. a continuous magnitude nudge.
+
+**Why Rule 13 does NOT activate VT-25.** Rule 13 ships the shrinkage blend silently — every user consumes `bias_factor_final` transparently via the calibration_nudge magnitude but is never told "you are a Procrastinator." The archetype is a computational handle, not a surfaced identity. No label-internalization pathway exists until a reveal UI ships.
+
+**Distinguishing analyses — frozen at reveal-feature launch (not at this drafting):**
+- **25a. Pre-vs-post-reveal within-user planning shift.** For users who see their archetype at session 5–7 (per `docs/building_phases.md §Phase 5 progressive revelation`), compute the shift in mean `planned_duration_minutes` over the 10 sessions preceding vs 10 sessions following the reveal moment, stratified by the archetype's prior_bias_factor direction. **Label-internalization detected:** users assigned high-prior archetypes (procrastinator, diffuse_average, lark_low_discipline) inflate plans by ≥15% post-reveal relative to pre-reveal, controlling for category and time_of_day.
+- **25b. Cross-user bias_factor trajectory — reveal-shown vs reveal-suppressed.** Using a within-subject A/B via the Rule 11 no-nudge-day framework adapted for archetype reveals: if some users see the reveal and others don't (by experimental suppression), compare the bias_factor convergence trajectory over sessions 5–15, paired by archetype. **Self-fulfilling prophecy detected:** shown users' personal bias_factor moves toward their archetype prior faster than suppressed users', indicating the reveal is *inducing* the prior rather than the prior predicting natural behavior.
+
+**Mitigation if detected:**
+- Demote reveal copy from identity-framing ("you are a Procrastinator") to pattern-framing ("your first-10-sessions data resembles the Procrastinator prior — subject to change as you accumulate more data")
+- Add explicit medium-confidence framing at every reveal surface (per `docs/building_phases.md:167` "Phase 5 progressive revelation")
+- Consider suppressing reveal entirely for users whose 25a analysis shows strong label-internalization and running silent-shrinkage-only for those users
+
+**Status:** Drafted April 22, 2026 alongside Rule 13. INACTIVE until reveal UI ships (expected v1.1, post-Spring-School per `docs/strategic_decisions_april_22.md §5`). When activated, distinguishing analyses 25a + 25b become frozen pre-registration — no post-hoc threshold tuning permitted.
+
 ## Anonymized Retention Policy
 
 Anonymized retention serves product research only:
@@ -851,6 +871,7 @@ The experiment has started. Stay in measurement mode.
 *Manifesto v1.7 — revised April 17, 2026 (VT-22: scope inflation hypothesis; Rules 10 + 12: readiness-direction analysis + scope inflation mediation test; brain dump field elevated to potential primary measurement surface)*
 *Manifesto v1.8 — revised April 22, 2026 (VT-23 external-source attendance self-report absorbed from strategic_decisions_april_21.md §6.1; External Data Exclusion Rule absorbed as top-level section; System Architecture diagram updated — OpenClaw + Telegram clarified as operator-only, Postgres promoted to primary DB reflecting April 16 Supabase migration; structural-invariants gloss added to Companion principle §line 60; preamble added to pre-registered analysis rules)*
 *Manifesto v1.9 — revised April 22, 2026 evening (VT-17d retroactive-confirmation stratified acceptance-rate pre-registered — parallel to VT-17 strict formula, no modification of VT-17. Triggered by 2 observed predictions that correctly anticipated operator food breaks taken outside the app; closes the in-app-capture gap with alembic 030 `pause_event.self_reported_retroactively`, new confirm/pending-confirmation endpoints, retroactive chip on /today, and exclusion of retroactive pauses from predictor training + VT-17 primary matching to prevent self-reinforcement.)*
+*Manifesto v1.10 — revised April 22, 2026 late-evening (Rule 13: archetype-prior shrinkage is the canonical `bias_factor` computation. Pre-registered BEFORE the first shrinkage-blended value reaches any user-facing surface. Formula, archetype priors, RESEARCH_PRIORS dict, and skip-path Diffuse Average default are all frozen. Triggered by 2026-04-22 trusted-user feedback "doesn't REALLY get me" and the operator's decision to accelerate clustering from Phase 5 into trusted-user week 2. VT-25 "Archetype-Reveal Narrative Internalization" drafted — inactive until reveal UI ships in v1.1.)*
 
 ---
 
@@ -935,3 +956,66 @@ These rules are fixed in advance to remove analyst degrees of freedom on the day
 11. **No-nudge control days (VT-21 detection protocol).** *(Added April 16, 2026.)* Beginning at trusted-user week 2 (after minimum 7 days of nudge-active baseline), suppress all `micro_mirror`, `calibration_nudge`, and `/insights` surfaces on randomly selected days at a 1-in-7 target frequency. Within-user, compare distributions of `duration_delta_minutes`, `skip_rate`, and `initiation_delay_minutes` between nudge-active and no-nudge days. Report paired effect sizes with confidence intervals. **Necessity-of-nudge decision criterion:** at N ≥ 30 paired day-observations per user, if no-nudge days produce statistically equivalent or better calibration, re-evaluate the necessity of the nudge mechanism. **VT-21 detection criterion:** if nudge-active days show systematically different `planned_duration_minutes` distributions than no-nudge days, controlling for category and time_of_day, narrative internalization is confirmed per VT-21. **Stratification requirement:** all post-nudge-deployment H1 analysis is stratified by nudge-exposure status at the session level (surface-fired vs surface-suppressed), using the `reflection_view_log` shipped in LYR-098 Commit 2b as the authoritative exposure flag.
 
 12. **Scope inflation mediation test (VT-22 falsification).** *(Added April 17, 2026.)* When `task.description` data is available (≥ 50 tasks with non-empty descriptions per user), compute `scope_density = description_item_count / planned_duration_minutes` for each task. Run a mediation analysis: `pre_task_readiness → scope_density → duration_delta_minutes`. **If scope_density mediates the relationship** (readiness → delta attenuation ≥ 40% when controlling for scope_density, Sobel test p < 0.05): delta is primarily a scope inflation signal, not a time estimation error signal. Calibration nudge architecture pivots from time-adjustment to scope-adjustment in Phase 6+. **If scope_density does NOT mediate** (attenuation < 20%): the standard time-estimation frame stands, VT-22 is falsified, and the description field remains a Phase 5 corpus accumulator without elevated measurement status. **Interim analysis (before brain dump data):** use `pause_count` and within-session duration variance as proxy scope-complexity indicators. Report the readiness → proxy_complexity → delta mediation path as an exploratory supplement. This interim analysis is NOT a basis for the pivot decision — only the brain-dump-based mediation is authoritative.
+
+13. **Archetype-prior shrinkage is the canonical `bias_factor` computation.** *(Added April 22, 2026 — pre-registered BEFORE the first shrinkage-blended `bias_factor_final` value is consumed by any user-facing surface. Triggered by the 2026-04-22 "doesn't REALLY get me" trusted-user feedback and the operator's decision to accelerate clustering from Phase 5 into trusted-user week 2. See `docs/strategic_decisions_april_22.md §5`.)*
+
+    **Formula — frozen at launch.** For any `(user_id, category, time_of_day)` lookup, the canonical `bias_factor_final` consumed by the scheduler + calibration_nudge + insights surfaces is:
+    ```
+    personal_weight          = min(1.0, n_sessions_in_cell / 30)
+    prior_weight             = 1.0 − personal_weight
+    archetype_scaling        = archetype.prior_bias_factor / 1.30
+    archetype_prior_for_cell = RESEARCH_PRIORS[category].bias_factor × archetype_scaling
+    bias_factor_final        = prior_weight × archetype_prior_for_cell
+                             + personal_weight × personal_sum_ratio_for_cell
+    ```
+    where `personal_sum_ratio_for_cell = sum(executed_duration_minutes) / sum(planned_duration_minutes)` over the filtered session set defined below.
+
+    **Operational definition of `n_sessions_in_cell`:** tasks matching the requesting user's `user_id` with category = requested category, `time_of_day` bucket = requested bucket, and ALL of:
+    - `state = 'EXECUTED'`
+    - `voided_at IS NULL`
+    - `initiation_status != 'retroactive'`
+    - `initiation_status != 'system_error'`
+    - `executed_duration_minutes IS NOT NULL`
+    - `planned_duration_minutes >= 5`
+
+    Cell granularity is `(category, time_of_day)`. `time_of_day` follows the existing `_time_of_day(local_dt)` bucketizer (morning / afternoon / evening / night). The cascade from `(cat, tod)` → `(cat)` → global fallback in `_adaptive_calibration` continues to apply for the *personal* portion of the blend; the archetype prior always uses the requested category's research prior.
+
+    **Archetype prior values frozen at Rule 13 launch** (seeded in alembic 015, citations in `docs/methodology.md §1`):
+    - `disciplined_lark` — prior_bias_factor 0.95, σ 0.15
+    - `disciplined_owl` — prior_bias_factor 1.05, σ 0.20
+    - `diffuse_average` — prior_bias_factor 1.30, σ 0.30
+    - `procrastinator` — prior_bias_factor 1.80, σ 0.40
+    - `lark_low_discipline` — prior_bias_factor 1.50, σ 0.35
+
+    **`RESEARCH_PRIORS` dict frozen at Rule 13 launch** (per-category literature priors, in `backend/app/services/bias_factor_service.py`):
+    - `development` 1.50 — Buehler et al. 1994; Connolly & Dean 1997
+    - `work` 1.45 — Buehler et al. 1994
+    - `study` 1.40 / `academic` 1.40 — Newby-Clark et al. 2000
+    - `exercise` 1.15 / `fitness` 1.15 — Roy et al. 2005
+    - default 1.35 — Kahneman & Tversky 1979 (planning-fallacy mean)
+
+    **Default archetype when user has no ArchetypeAssignment:** `diffuse_average` (population midpoint). A user who skipped the survey and was stamped with `ArchetypeAssignment(archetype_id='diffuse_average', completed=False)` receives the same blend as a user with no assignment at all; the `completed` flag separates the two populations for retention analysis, NOT for prior selection.
+
+    **Scope of this pre-registration:**
+    - The formula exactly as written above
+    - The `n_sessions_in_cell` operational definition
+    - The 5 archetype prior values
+    - The `RESEARCH_PRIORS` dict values + default
+    - The `archetype_scaling = archetype.prior_bias_factor / 1.30` composite rule
+    - The `diffuse_average` fallback for users without an assignment
+
+    **Freedoms preserved (not protocol violations):**
+    - Correctness bug fixes (documented post-hoc in an amendment noting what changed, why it was a bug, what retroactive reanalysis applies)
+    - Gate-4-authorized threshold tuning at n ≥ 200 users × 90 days per `methodology.md §Gate 4` — when Gate 4 fires, the `n/30` linearization is tunable per pre-authorized remediation, and an amendment to Rule 13 replaces the threshold with a dated note
+
+    **Protocol violations (require new pre-registration before change):**
+    - Changing the discipline_z composite weights (0.30 / 0.40 / 0.30)
+    - Modifying any of the 5 archetype prior values mid-window
+    - Modifying the `RESEARCH_PRIORS` dict values mid-window
+    - Adding per-cell archetype priors (ArchetypePrior table) without a new Rule-13 amendment
+    - Changing the filter criteria that define `n_sessions_in_cell`
+    - Changing the `/ 1.30` normalization anchor in the composite scaling rule
+
+    **Reporting requirement.** Any H1 or bias_factor-adjacent analysis run on data collected after 2026-04-22 must report the distribution of `personal_weight` values across the sessions used in the analysis. The "archetype-prior-dominant" subset (`personal_weight < 0.5`) is flagged for sensitivity analysis — if the headline result changes substantially when restricting to `personal_weight ≥ 0.5`, the blend is doing visible work and must be discussed explicitly in the writeup.
+
+    **Implementation anchor.** The canonical implementation is `blend()` in `backend/app/services/bias_factor_service.py` (wired into `GET /v1/analytics/bias_factor/lookup` in Phase C of the 2026-04-22 ship). Any alternative computation path anywhere in the codebase MUST delegate to this function — no re-implementation in endpoints or frontends.
