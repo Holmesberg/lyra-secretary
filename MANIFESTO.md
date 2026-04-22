@@ -1,4 +1,4 @@
-# Lyra Secretary — Manifesto v1.7
+# Lyra Secretary — Manifesto v1.8
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
@@ -57,7 +57,7 @@ Concretely ordered in `docs/building_phases.md` §Phase 4.5 under Tier 1 (retent
 
 This section is load-bearing for the retention outcome. The May 21 retention checkpoint is the test of whether this philosophy survived contact with ten non-operator users. If retention fails *and* Tier 1 shipped completely, the finding is "the feedback loop wasn't enough" and Phase 1A pivot (delta-only) activates. If retention fails *and* Tier 1 slipped, the finding is unreadable — we shipped a logger and measured logger retention.
 
-**Companion principle (Apr 16, 2026):** the retention-before-polish ordering is one axis; `docs/design_patterns/rules_vs_agency.md` §Structural Invariants vs Behavioral Constraints is the other. Research discipline stays *invisible* to the user by being expressed as structural invariants the system enforces silently, not as behavioral constraints the user has to work around. Every proposed hard-block rule must pass the diagnostic test in that doc before shipping.
+**Companion principle (Apr 16, 2026):** the retention-before-polish ordering is one axis; `docs/design_patterns/rules_vs_agency.md` §Structural Invariants vs Behavioral Constraints is the other. *A structural invariant is a non-negotiable constraint that protects measurement integrity (single mutation authority, voided_at on every Task query, research-field NULL-not-default); a behavioral constraint is a user-facing rule that should stay soft unless it directly protects an invariant.* Research discipline stays *invisible* to the user by being expressed as structural invariants the system enforces silently, not as behavioral constraints the user has to work around. Every proposed hard-block rule must pass the diagnostic test in that doc before shipping.
 
 ### Scope of the retention-before-polish principle
 *Added: April 14, 2026.*
@@ -181,15 +181,26 @@ We are not building a planning tool that requires planning effort. The system sh
 
 ---
 
+## External Data Exclusion Rule
+*Added: April 21, 2026. Pre-registered alongside the Google Calendar integration.*
+
+When the system imports events from third-party sources (Google Calendar today; Notion, ICS, Outlook in future phases), those rows MUST carry an explicit `external_source` marker and MUST NOT be included in H1 analysis, `bias_factor` computation, or any research aggregate that assumes Lyra-native planning context.
+
+Imported events were planned under a different affordance set with different measurement conditions — no `pre_task_readiness`, no scope commitment via description, no intent-to-measure. Including them would contaminate the H1 test set with data from a different instrument.
+
+Implementation: imported events live in Redis (ephemeral) or in `external_event_outcome` (user-marked attendance), never in the `task` table. If a future integration persists imported items as Lyra plans, those rows carry `external_source` and every H1 query filters `WHERE external_source IS NULL`. See `docs/integrations_architecture.md §Research-integrity rules`.
+
+---
+
 ## System Architecture
 
 ```
-Web UI (Next.js)            ─┐
-Telegram → OpenClaw (agent)  ├→ FastAPI Backend → TaskManager → SQLite + Redis → Notion
-                             ─┘        ↕
-                                  APScheduler
-                         (reminders, overflow, sync retry,
-                          overdue task detection)
+Web UI (Next.js)                        ─┐
+Telegram (operator-only, not alpha)      ├→ FastAPI Backend → TaskManager → Postgres (prod) / SQLite (dev) + Redis → Notion
+OpenClaw agent (testing/dev, not alpha)  ─┘                ↕
+                                                      APScheduler
+                                  (reminders, overflow, sync retry, overdue
+                                   task detection, pause prediction)
 ```
 
 **Key design decisions:**
@@ -198,6 +209,10 @@ Telegram → OpenClaw (agent)  ├→ FastAPI Backend → TaskManager → SQLite
 - 30-second undo window via Redis
 - Pause/resume support — prayer breaks excluded from delta
 - Hard Rules in SKILL.md — AI agent cannot confirm without backend response
+
+**User-facing vs internal interfaces (clarified April 21, 2026):** Alpha users interact via the Web UI only. Telegram and OpenClaw remain operator-only development/testing tools until components are integrated into the Lyra codebase proper. User-facing Telegram + LLM-parsed task creation ship post-retention-validation. See `docs/strategic_decisions_april_21.md §5` and `docs/building_phases.md §Phase 4.5 Tier 4`.
+
+**Production deployment (April 16, 2026+):** Postgres via Supabase eu-west-1 (primary); SQLite retained at `.env.backup-sqlite-2026-04-16` for fast revert. Fronted by Cloudflare Tunnel from the operator's laptop at `lyraos.org` + `api.lyraos.org`. See `docs/deployment_architecture.md` for stack + recovery playbook.
 
 ---
 
@@ -734,6 +749,23 @@ Thresholds (per-user, not aggregate): acceptance_rate ≥ 0.40 = ship; < 0.20 = 
 
 **Status:** VT-22 documented April 17, 2026. Pre-registered before trusted-user data arrives. Falsification test committed as Rule 12. Phase 6+ investigation; no code changes to calibration system until multi-user data confirms the mediation.
 
+### VT-23: External-Source Attendance Self-Report
+*Added: April 21, 2026. Pre-registered before any `external_event_outcome` data lands. Implemented in the Google Calendar integration same day (schema) and April 22 (/today UI).*
+
+**Threat:** The "Did you attend?" control on past Google Calendar events (Path B 2026-04-21) invites users to self-report attendance on imported events. Three validity threats compound:
+- **Selection bias:** users only mark events they remember
+- **Recency bias:** marks cluster near fresh events, leaving a sparse tail
+- **Social desirability:** "attended" is overclaimed for events the user feels they should have attended
+
+**Mitigation:**
+- `external_event_outcome` is stored in its own table, not in `task` — the H1 test set never sees imported data (enforced by the External Data Exclusion Rule above)
+- Event title + start/end snapshotted at mark time so the self-report survives later GCal edits by the user
+- The signal participates in retention + product research only, not H1
+
+**Kill criterion:** at n≥20 calendar-connected users, if <15% of past GCal events get marked within 7 days of elapsing, the signal is too sparse for retention or research use. Revisit after the 2026-05-21 retention checkpoint.
+
+**Status:** VT-23 pre-registered April 21, 2026. Implemented April 21 (DB schema, migration 027) and April 22 (/today UI + `POST /v1/calendar/attendance`). See `docs/strategic_decisions_april_21.md §6.1` and `docs/integrations_architecture.md §Research-integrity rules`.
+
 ## Anonymized Retention Policy
 
 Anonymized retention serves product research only:
@@ -786,6 +818,7 @@ The experiment has started. Stay in measurement mode.
 *Manifesto v1.5 — revised April 15, 2026 (VT-19, VT-20, VT-21 candidate; Rules 8–9; profile taxonomy note; retention-scope clarification)*
 *Manifesto v1.6 — revised April 16, 2026 (Rule 11: no-nudge control days — VT-21 detection protocol; Rule 10 reserved)*
 *Manifesto v1.7 — revised April 17, 2026 (VT-22: scope inflation hypothesis; Rules 10 + 12: readiness-direction analysis + scope inflation mediation test; brain dump field elevated to potential primary measurement surface)*
+*Manifesto v1.8 — revised April 22, 2026 (VT-23 external-source attendance self-report absorbed from strategic_decisions_april_21.md §6.1; External Data Exclusion Rule absorbed as top-level section; System Architecture diagram updated — OpenClaw + Telegram clarified as operator-only, Postgres promoted to primary DB reflecting April 16 Supabase migration; structural-invariants gloss added to Companion principle §line 60; preamble added to pre-registered analysis rules)*
 
 ---
 
@@ -842,6 +875,8 @@ The manifesto defines `delta = planned_duration − executed_duration`, so **ove
 A median-split of `pre_task_readiness` against `duration_delta_minutes` on the n=18 paired sessions available on Day 4 showed that **low-readiness sessions outperformed sharp ones by 58 minutes** on average — the opposite of the naive planning-fallacy prediction. This is *not* H1 itself (H1 uses `signed_discrepancy = post − pre`, not `pre` alone) and does not constitute evidence for or against H1. Possible explanation: conservative planning under low readiness rather than better execution — i.e. when the operator feels drained, plans are scaled down, so the resulting delta is smaller. Examine in the April 15 analysis by comparing the distribution of `planned_duration_minutes` across low- vs high-readiness sessions before drawing any execution-side conclusions.
 
 ### Pre-registered analysis rules (committed before April 15 analysis is run)
+
+Twelve pre-registered analysis rules follow, frozen before analysis. Rules 1–9 lock the test set and reporting format. Rules 10–12 address specific validity threats (readiness-direction per VT-22, no-nudge control days per VT-21, scope-inflation mediation per VT-22).
 
 These rules are fixed in advance to remove analyst degrees of freedom on the day of analysis. Any deviation must be explicitly justified in the writeup.
 
