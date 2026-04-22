@@ -276,25 +276,40 @@ today is based on manual inspection; this automates the inspection.
 
 ## Loop 9 — OpenClaw Telegram delivery → user intervention
 
-**Signal captured:** pause prediction fires, notification enqueued
-in Redis.
+**Original concern:** pause prediction fires, notification enqueued
+in Redis. Only operator had OpenClaw integration → VT-17 intervention
+arm was effectively n=1.
 
-**What's missing:** only operator has OpenClaw integration → only
-operator receives the notification → VT-17 intervention arm is n=1.
+**CLOSED 2026-04-22 via in-app retroactive confirmation path instead
+of Telegram delivery.** Two changes closed the loop without resolving
+the OpenClaw operator-only constraint:
 
-**Closure spec (BLOCKED):**
+1. **In-the-moment one-tap quick pause.** `PausePredictionBanner`'s
+   primary "Pause now" action now skips the reason picker and
+   defaults pause_reason=intentional_break (the dominant case for the
+   VT-17 prediction flow). Secondary "Pause + pick reason" opens the
+   picker when needed. Web-session users get same ease as the
+   Telegram flow was supposed to provide.
 
-1. OpenClaw integration is operator-only per pre-registered memory
-2. Alternative delivery paths:
-   - Web push notifications (browser native)
-   - Email digest (batched)
-   - In-app banner (already partially exists — PausePredictionBanner)
-3. The in-app banner IS a delivery arm for web-session users —
-   treat VT-17 as measuring in-app intervention, not Telegram. Update
-   the pre-registration to reflect the actual delivery channel.
+2. **Retroactive confirmation chip.** For pauses the operator took
+   OUT of the app without clicking Pause, a chip on the /today task
+   row asks "did you pause around X?" — one tap to confirm. Writes to
+   pause_prediction_log as `self_reported_yes` / `self_reported_no`,
+   optionally creates a pause_event flagged as retroactive. Gated
+   server-side: only shown if no pause_event landed within ±10 min of
+   predicted_at. See MANIFESTO v1.9 §VT-17d for the stratified
+   analysis pre-registration.
 
-**Why BLOCKED:** requires resolving OpenClaw operator-only constraint
-OR formally reframing VT-17 as an in-app-only intervention.
+VT-17 intervention arm is no longer n=1 — any operator using the web
+UI has the full capture pathway. MANIFESTO v1.9 VT-17d reports the
+permissive acceptance rate (including retroactive confirmations)
+parallel to VT-17 strict so the Paper 1 writeup captures both
+numbers; divergence diagnoses the in-app-capture gap.
+
+**Still deferred:** actual Telegram delivery for users who prefer
+out-of-app notification. Gated on OpenClaw being merged into the
+Lyra codebase OR a native web-push implementation. Neither blocks
+VT-17 scientific validity anymore.
 
 ---
 

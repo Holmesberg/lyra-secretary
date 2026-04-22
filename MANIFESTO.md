@@ -1,4 +1,4 @@
-# Lyra Secretary — Manifesto v1.8
+# Lyra Secretary — Manifesto v1.9
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
@@ -687,6 +687,37 @@ Thresholds (per-user, not aggregate): acceptance_rate ≥ 0.40 = ship; < 0.20 = 
 
 **Status:** VT-17 documented April 14, 2026. Pre-registered before any pause_prediction_log data lands. Distinguishing analyses and acceptance-rate formula are immutable.
 
+### VT-17d: Retroactive self-report stratification (permissive acceptance rate)
+*Added: April 22, 2026. Separate pre-registration with its own window start. Does NOT modify VT-17's frozen formula — parallel secondary analysis only.*
+
+**Motivation.** Two VT-17 firings in the operator's first-week data (2026-04-21 and 2026-04-22) correctly predicted food breaks but logged `user_response='no_response'` because the operator took the breaks outside the app and didn't click Pause. VT-17's frozen formula requires a `pause_event` row in the acceptance window; absent that row, the prediction scores as a miss even when phenomenologically correct. This is an instrument-coverage gap, not a prediction failure.
+
+**Instrument extension (shipped 2026-04-22).** A retroactive-confirmation chip on `/today` lets the operator answer "did you pause around X?" for any `no_response` firing whose predicted time has no `pause_event` within ±10 min. Chip suppression window (±10 min) is deliberately wider than VT-17's acceptance window so operators who paused *near* the prediction aren't patronized. Chip answers flow to `pause_prediction_log.user_response` as either `self_reported_yes` or `self_reported_no`. On `self_reported_yes`, a `pause_event` is created with `self_reported_retroactively=true` (alembic 030); this flag excludes it from `clock_anchor` + `work_rhythm` predictor training (no self-reinforcement) and from VT-17's primary acceptance matching (no mechanical acceptance of later firings).
+
+**VT-17d permissive acceptance-rate formula (frozen at launch 2026-04-22):**
+```
+acceptance_count_permissive(user, window=7d)
+  := count of pause_prediction_log rows where
+       fired_at ∈ window
+       AND user_response IN ('pause_now', 'self_reported_yes')
+       AND parent_firing_id IS NULL
+total_fires_permissive(user, window=7d)
+  := count of pause_prediction_log rows where
+       fired_at ∈ window AND parent_firing_id IS NULL
+acceptance_rate_permissive := acceptance_count_permissive / total_fires_permissive
+```
+
+**Thresholds** (per-user, applied once the operator has been exposed to the chip for ≥7 days): permissive rate ≥ 0.40 = ship VT-17; < 0.20 = kill VT-17. Same thresholds as VT-17 strict, applied to the permissive rate. The decision uses whichever rate fires first.
+
+**Reporting requirement.** The Paper 1 writeup MUST report VT-17 strict + VT-17d permissive side-by-side. If the rates diverge substantially (|permissive − strict| ≥ 0.15), the in-app capture gap is a load-bearing confound; the paper discusses it explicitly. If they converge (|difference| < 0.05), retroactive confirmation isn't adding decision-shifting signal and VT-17's original formula is adequate.
+
+**Validity threats introduced by VT-17d itself.**
+- **17d-α: Retroactive confirmation bias.** Users asked "did you pause?" may be more likely to answer yes than no, inflating acceptance_rate_permissive. Mitigation: the chip offers equal visual weight to Yes / No / dismiss. Track the Yes : No ratio per user; if >3:1 systematically, flag as possible confirmation bias.
+- **17d-β: Memory confabulation.** Users confirming pauses up to 24h post-hoc may remember incorrectly. Mitigation: chip freshness window is 24h (CHIP_FRESHNESS_HOURS); older firings drop out. Pre-registered analysis stratifies self_reported_yes by `(now − predicted_at)` to check whether confirmation rate decays with time.
+- **17d-γ: Predictor drift masking.** Retroactive pauses are excluded from predictor training (see instrument extension above) to prevent self-reinforcement, but this means the predictor's training corpus skews toward operators who DO log pauses in real time. Pre-registered analysis compares training-set pause distributions against retroactive-confirmation distributions; if they diverge, the predictor is being trained on a biased subset.
+
+**Status:** VT-17d shipped 2026-04-22 alongside alembic 030 (pause_event.self_reported_retroactively bool), `POST /v1/pause_predictions/{id}/confirm`, `GET /v1/pause_predictions/pending-confirmation`, and the `PauseConfirmChip` UI. Window start for per-user VT-17d evaluation: first `no_response` firing after feature launch time. Formula frozen at launch per MANIFESTO pre-registration discipline.
+
 ### VT-18: *[Reserved — number skipped during April 14 batch insertion. No validity threat assigned.]*
 
 ### VT-19: Post-task endogeneity in `signed_discrepancy`
@@ -819,6 +850,7 @@ The experiment has started. Stay in measurement mode.
 *Manifesto v1.6 — revised April 16, 2026 (Rule 11: no-nudge control days — VT-21 detection protocol; Rule 10 reserved)*
 *Manifesto v1.7 — revised April 17, 2026 (VT-22: scope inflation hypothesis; Rules 10 + 12: readiness-direction analysis + scope inflation mediation test; brain dump field elevated to potential primary measurement surface)*
 *Manifesto v1.8 — revised April 22, 2026 (VT-23 external-source attendance self-report absorbed from strategic_decisions_april_21.md §6.1; External Data Exclusion Rule absorbed as top-level section; System Architecture diagram updated — OpenClaw + Telegram clarified as operator-only, Postgres promoted to primary DB reflecting April 16 Supabase migration; structural-invariants gloss added to Companion principle §line 60; preamble added to pre-registered analysis rules)*
+*Manifesto v1.9 — revised April 22, 2026 evening (VT-17d retroactive-confirmation stratified acceptance-rate pre-registered — parallel to VT-17 strict formula, no modification of VT-17. Triggered by 2 observed predictions that correctly anticipated operator food breaks taken outside the app; closes the in-app-capture gap with alembic 030 `pause_event.self_reported_retroactively`, new confirm/pending-confirmation endpoints, retroactive chip on /today, and exclusion of retroactive pauses from predictor training + VT-17 primary matching to prevent self-reinforcement.)*
 
 ---
 
