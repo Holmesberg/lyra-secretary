@@ -11,6 +11,8 @@
  */
 import { api } from "./api";
 
+export type EventOutcome = "attended" | "skipped" | null;
+
 export interface ExternalCalendarEvent {
   id: string;
   title: string;
@@ -19,6 +21,8 @@ export interface ExternalCalendarEvent {
   end: string;
   calendar_id: string;
   source: "google";
+  /** User-marked attendance. Null = not yet answered (UI shows yes/no buttons for past events). */
+  outcome?: EventOutcome;
 }
 
 export interface CalendarEventsResponse {
@@ -55,4 +59,29 @@ export async function disconnectCalendar(): Promise<{ ok: boolean }> {
   return api<{ ok: boolean }>("/v1/users/me/google-refresh-token", {
     method: "DELETE",
   });
+}
+
+/**
+ * Mark attendance on an external calendar event. `outcome="unknown"`
+ * clears any prior answer (revert to unset). Persists to
+ * external_event_outcome — never creates a Lyra Task row.
+ */
+export async function markEventAttendance(body: {
+  external_id: string;
+  outcome: "attended" | "skipped" | "unknown";
+  event_title?: string;
+  event_start_utc?: string;
+  event_end_utc?: string;
+  external_source?: string;
+}): Promise<{ ok: boolean; outcome: EventOutcome }> {
+  return api<{ ok: boolean; outcome: EventOutcome }>(
+    "/v1/calendar/attendance",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        external_source: body.external_source ?? "google_calendar",
+        ...body,
+      }),
+    }
+  );
 }

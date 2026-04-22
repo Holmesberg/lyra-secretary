@@ -29,6 +29,11 @@ import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
 import { PausePredictionBanner } from "@/components/pause-prediction-banner";
+import { ExternalEventRow } from "@/components/external-event-row";
+import {
+  getCalendarEvents,
+  type ExternalCalendarEvent,
+} from "@/lib/calendar";
 
 interface ToastEntry {
   id: string;
@@ -86,6 +91,22 @@ function TodayInner() {
   // Forward-nav is always enabled — the operator can open any future day
   // and plan tasks there. (Previously gated on whether tomorrow had any
   // PLANNED tasks, which made cold-start forward navigation impossible.)
+
+  // External calendar events for the viewed day (Path B 2026-04-21).
+  // Mirrors /calendar's fetch with a tighter window — just the one day
+  // the user is looking at. 60s staleTime + refetchInterval keeps
+  // "adding an event in Google Calendar → it appears here" near-instant.
+  // Query key scoped to `viewedDate` so navigating days invalidates.
+  const calEventsQ = useQuery({
+    queryKey: ["calendar-events-today", viewedDate],
+    queryFn: () =>
+      getCalendarEvents({
+        dateFrom: viewedDate,
+        dateTo: nextDateStr,
+      }),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
 
   const notifQ = useQuery({
     queryKey: ["notifications-pending"],
@@ -186,18 +207,68 @@ function TodayInner() {
     }
   }
 
-  const sortedTasks = tasksQ.data
-    ? (() => {
-        const visible = tasksQ.data.filter((t) => !t.voided_at);
-        const planned = visible
-          .filter((t) => t.state === "PLANNED")
-          .sort((a, b) => sortKey(a) - sortKey(b));
-        const rest = visible
-          .filter((t) => t.state !== "PLANNED")
-          .sort((a, b) => sortKey(b) - sortKey(a));
-        return [...planned, ...rest];
-      })()
-    : [];
+  // Unified /today feed — Lyra tasks + external GCal events interleaved
+  // by time while preserving Lyra's existing two-bucket rhythm:
+  //   top  — PLANNED Lyra tasks + FUTURE/ongoing GCal events, asc by start
+  //   bottom — non-PLANNED Lyra tasks + PAST GCal events, desc by end
+  //
+  // Past-end GCal events sit alongside EXECUTED/SKIPPED so the operator
+  // finds attendance controls where they expect "what-happened" items
+  // to live. Future events sit with PLANNED so the day reads
+  // chronologically forward.
+  //
+  // The sort produces a union-typed list the renderer branches on
+  // (TaskRow vs ExternalEventRow) — keeps the two row types visually
+  // distinct without duplicating the feed.
+  type FeedItem =
+    | { kind: "task"; task: TaskRowType }
+    | { kind: "external"; event: ExternalCalendarEvent };
+
+  const nowMs = now.getTime();
+  const gcalEventsAll: ExternalCalendarEvent[] = calEventsQ.data?.events ?? [];
+
+  const feed = ((): { top: FeedItem[]; bottom: FeedItem[] } => {
+    if (!tasksQ.data) return { top: [], bottom: [] };
+    const visible = tasksQ.data.filter((t) => !t.voided_at);
+    const plannedTasks = visible.filter((t) => t.state === "PLANNED");
+    const restTasks = visible.filter((t) => t.state !== "PLANNED");
+    const gcalFuture = gcalEventsAll.filter(
+      (e) => new Date(e.end).getTime() > nowMs
+    );
+    const gcalPast = gcalEventsAll.filter(
+      (e) => new Date(e.end).getTime() <= nowMs
+    );
+
+    const topItems: FeedItem[] = [
+      ...plannedTasks.map(
+        (t): FeedItem => ({ kind: "task", task: t })
+      ),
+      ...gcalFuture.map(
+        (e): FeedItem => ({ kind: "external", event: e })
+      ),
+    ].sort((a, b) => {
+      const at =
+        a.kind === "task" ? sortKey(a.task) : new Date(a.event.start).getTime();
+      const bt =
+        b.kind === "task" ? sortKey(b.task) : new Date(b.event.start).getTime();
+      return at - bt;
+    });
+
+    const bottomItems: FeedItem[] = [
+      ...restTasks.map((t): FeedItem => ({ kind: "task", task: t })),
+      ...gcalPast.map(
+        (e): FeedItem => ({ kind: "external", event: e })
+      ),
+    ].sort((a, b) => {
+      const at =
+        a.kind === "task" ? sortKey(a.task) : new Date(a.event.end).getTime();
+      const bt =
+        b.kind === "task" ? sortKey(b.task) : new Date(b.event.end).getTime();
+      return bt - at;
+    });
+
+    return { top: topItems, bottom: bottomItems };
+  })();
 
   async function handleStart(task: TaskRowType, readiness: number) {
     setErrorMsg(null);
@@ -517,26 +588,44 @@ function TodayInner() {
         onCancel={clearSelection}
       />
 
-      {sortedTasks.length > 0 && (
+      {(feed.top.length > 0 || feed.bottom.length > 0) && (
         <div className="flex flex-col gap-2">
-          {sortedTasks.map((t) => (
-            <TaskRow
-              key={t.task_id}
-              task={t}
-              disableStart={isPast || (timerBusy && t.task_id !== activeTaskId)}
-              onStart={(task) => setReadinessFor(task)}
-              onStartHover={
-                t.task_id !== activeTaskId ? notifyPotentialStart : undefined
-              }
-              onStop={() => setReflectionOpen(true)}
-              onSkip={isPast ? undefined : handleSkip}
-              onDelete={isPast ? undefined : handleDelete}
-              onEdit={(task) => setEditingTask(task)}
-              selected={selectedIds.has(t.task_id)}
-              showCheckbox={selectedIds.size > 0}
-              onToggleSelect={toggleSelect}
-            />
-          ))}
+          {[...feed.top, ...feed.bottom].map((item) =>
+            item.kind === "task" ? (
+              <TaskRow
+                key={item.task.task_id}
+                task={item.task}
+                disableStart={
+                  isPast ||
+                  (timerBusy && item.task.task_id !== activeTaskId)
+                }
+                onStart={(task) => setReadinessFor(task)}
+                onStartHover={
+                  item.task.task_id !== activeTaskId
+                    ? notifyPotentialStart
+                    : undefined
+                }
+                onStop={() => setReflectionOpen(true)}
+                onSkip={isPast ? undefined : handleSkip}
+                onDelete={isPast ? undefined : handleDelete}
+                onEdit={(task) => setEditingTask(task)}
+                selected={selectedIds.has(item.task.task_id)}
+                showCheckbox={selectedIds.size > 0}
+                onToggleSelect={toggleSelect}
+              />
+            ) : (
+              <ExternalEventRow
+                key={item.event.id}
+                event={item.event}
+                now={now}
+                onMutated={() => {
+                  qc.invalidateQueries({
+                    queryKey: ["calendar-events-today", viewedDate],
+                  });
+                }}
+              />
+            )
+          )}
         </div>
       )}
 
