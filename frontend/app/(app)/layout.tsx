@@ -44,32 +44,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (status === "unauthenticated") router.replace("/");
   }, [status, router]);
 
-  // Google Calendar refresh-token handshake (Path B, 2026-04-21).
-  // When a user signs in with the new calendar.readonly scope,
-  // NextAuth captures account.refresh_token and surfaces the
-  // `hasGoogleRefreshToken` boolean on the session. If the backend
-  // doesn't yet know about it (me.google_calendar_connected is
-  // false), POST to the Next.js server-side /api/calendar/setup
-  // route, which reads the token from the server-side JWT and
-  // forwards it to Lyra. One-shot, fire-and-forget — failure is
-  // non-blocking (calendar just doesn't connect this session).
-  useEffect(() => {
-    if (!me || !session) return;
-    const hasRefreshToken = (session as { hasGoogleRefreshToken?: boolean })
-      .hasGoogleRefreshToken;
-    if (hasRefreshToken && !me.google_calendar_connected) {
-      fetch("/api/calendar/setup", { method: "POST" })
-        .then((r) => (r.ok ? r.json() : Promise.reject(r)))
-        .then(() => {
-          // Refetch /users/me so google_calendar_connected flips to
-          // true and the /calendar page starts fetching events.
-          return api<Me>("/v1/users/me").then(setMe);
-        })
-        .catch((err) => {
-          console.warn("calendar setup failed (non-blocking):", err);
-        });
-    }
-  }, [me, session]);
+  // Calendar refresh-token handshake was here (2026-04-21 → 2026-04-22).
+  // Removed when we split identity from authorization: sign-in no longer
+  // requests calendar.readonly, so there's no refresh_token in the JWT
+  // to forward. Users acquire calendar access from Settings →
+  // Integrations via the incremental OAuth flow at
+  // /api/integrations/google-calendar/connect. See
+  // docs/integrations_architecture.md.
 
   useEffect(() => {
     if (status !== "authenticated") return;
