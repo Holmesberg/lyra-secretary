@@ -60,12 +60,74 @@ export const metadata: Metadata = {
   },
 };
 
+// JSON-LD structured data (Schema.org) for rich-snippet + knowledge-
+// graph eligibility. WebApplication + Organization + SoftwareApplication
+// so search engines can surface category, pricing (free pre-alpha),
+// homepage URL, + the operator attribution. Added 2026-04-23 alongside
+// the robots.txt /admin disallow fix.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebApplication",
+      "@id": "https://lyraos.org/#app",
+      name: "LyraOS",
+      url: "https://lyraos.org",
+      description:
+        "Measurement-backed adaptive task scheduler. Records planned vs executed duration per task to learn behavioral patterns, with a research layer that validates whether its own insights actually predict anything.",
+      applicationCategory: "ProductivityApplication",
+      operatingSystem: "Web",
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+        availability: "https://schema.org/LimitedAvailability",
+      },
+      featureList: [
+        "Task planning with duration estimates",
+        "Stopwatch timing with pause/resume",
+        "Pre- and post-task readiness capture",
+        "Personal bias factor calibration",
+        "Archetype-prior shrinkage predictions",
+        "Google Calendar integration",
+        "Pause pattern prediction",
+      ],
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://lyraos.org/#org",
+      name: "LyraOS",
+      url: "https://lyraos.org",
+      description:
+        "Independent research instrument for measuring how humans estimate vs execute. Pre-alpha, built in public in Cairo.",
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://lyraos.org/#site",
+      url: "https://lyraos.org",
+      name: "LyraOS",
+      description:
+        "Are humans wrong about themselves in a structured way that predicts failure?",
+      inLanguage: "en",
+      publisher: { "@id": "https://lyraos.org/#org" },
+    },
+  ],
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
       className={`dark ${chakra.variable} ${GeistSans.variable} ${GeistMono.variable}`}
     >
+      <head>
+        {/* Schema.org JSON-LD — rendered server-side so crawlers see it
+            without executing JS. Next.js auto-hydrates; no runtime cost. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body>
         <Providers>{children}</Providers>
       </body>
