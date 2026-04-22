@@ -142,15 +142,25 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     cell: BiasFactorCell;
     suggestedMin: number;
   } | null>(null);
+  // Once the user decides on the calibration nudge — accept the
+  // suggested duration OR dismiss — suppress further fetches for the
+  // rest of this modal session. Prevents the re-suggestion loop the
+  // operator flagged 2026-04-21: clicking "Use X min" changes the
+  // duration, which re-runs the bias_factor lookup with the new
+  // planned value, which finds a *new* suggestion, which pops up a
+  // second time. One decision per modal open. Reset on modal re-open
+  // (see the `if (open && !editingTask)` effect below).
+  const [nudgeDecisionMade, setNudgeDecisionMade] = useState(false);
 
   // Fetch bias_factor when category or start time changes (debounced).
   // Gated on a valid positive planned duration — a 0-min estimate with
   // a `|| 30` fallback (prior behavior) fired the "adjust to X min"
   // popup on an invalid form, visually drowning the end-before-start
   // error banner. Now the nudge only fires when the user has typed a
-  // real duration AND the range is valid.
+  // real duration AND the range is valid AND the user hasn't already
+  // made a decision on a prior nudge this session.
   useEffect(() => {
-    if (!open || isEdit) { setCalibrationNudge(null); return; }
+    if (!open || isEdit || nudgeDecisionMade) { setCalibrationNudge(null); return; }
     const planned = durHours * 60 + durMinutes;
     const rangeValid = diffMinutes(start, end) > 0;
     if (planned <= 0 || !rangeValid) {
@@ -181,7 +191,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     }, 400);
     return () => { clearTimeout(timer); abortCtl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, category, start, end, durHours, durMinutes, isEdit]);
+  }, [open, category, start, end, durHours, durMinutes, isEdit, nudgeDecisionMade]);
 
   const totalMinutes = durHours * 60 + durMinutes;
   const endBeforeStart = diffMinutes(start, end) <= 0;
@@ -191,8 +201,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // whichever period was last rendered; if the user types "1:45" meaning
   // PM after typing "11:45 AM" for the start, end silently lands 10h
   // before start on the same calendar day. Offer a one-tap +12h shift
-  // as a fix. Gated to same-day + negative diff in [−12h, 0) so genuine
-  // overnight ranges (rare) don't get false positives.
+  // as a fix.
+  //
+  // Strict inequality (negDiffMin < 0, not <= 0): when end EQUALS start
+  // (diff=0) the user has zero duration, not an AM/PM slip. Dogfood
+  // 2026-04-21 screenshot showed the old `>` guard (which flipped to
+  // false for diff=0) suggesting "Did you mean 9:25 AM?" for start=end=
+  // 9:25 PM — misleading because shifting 9:25 PM by +12h lands on the
+  // NEXT day's 9:25 AM, and the time-only display hid the date change.
+  // Same-day check on the shifted result catches any cross-midnight
+  // shift defensively.
   const suggestAmPmSwap = (() => {
     if (!endBeforeStart) return null;
     const sDate = new Date(start);
@@ -200,12 +218,56 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     if (Number.isNaN(sDate.getTime()) || Number.isNaN(eDate.getTime())) return null;
     if (sDate.toDateString() !== eDate.toDateString()) return null;
     const negDiffMin = diffMinutes(start, end);
-    if (negDiffMin > 0 || negDiffMin <= -12 * 60) return null;
-    return addMinutes(end, 12 * 60);
+    if (negDiffMin >= 0 || negDiffMin <= -12 * 60) return null;
+    const shifted = addMinutes(end, 12 * 60);
+    const shiftedDate = new Date(shifted);
+    if (Number.isNaN(shiftedDate.getTime())) return null;
+    // The +12h shift must stay on the start's calendar day. Otherwise
+    // the suggestion is nonsense (time-only display formatting hides the
+    // date change from the user) and should not render.
+    if (shiftedDate.toDateString() !== sDate.toDateString()) return null;
+    // Defensive: shifted must now be strictly after start. If the
+    // hour math still produces end <= start, something's off — don't
+    // suggest.
+    if (diffMinutes(start, shifted) <= 0) return null;
+    return shifted;
   })();
   function applyAmPmSwap() {
     if (!suggestAmPmSwap) return;
     handleEndChange(suggestAmPmSwap);
+  }
+
+  // Past-start recovery. Distinct concern from AM/PM swap: user typed a
+  // start time that's already passed (e.g., it's 9:23 PM and they set
+  // start to 9:20 PM by accident, or the modal's `defaultStart` round-
+  // up has gone stale because the user spent >5 min filling out the
+  // form). Offer to bump start to the next 5-min mark in the future.
+  // Fires alongside (not instead of) the AM/PM banner when both apply
+  // — they're independent fixes. Only fires when start is strictly in
+  // the past; the 60s useCurrentTime tick means the suggestion
+  // naturally appears after the user lingers past the original
+  // round-up mark.
+  const suggestPushStartToFuture = (() => {
+    if (!start) return null;
+    const sDate = new Date(start);
+    if (Number.isNaN(sDate.getTime())) return null;
+    if (sDate.getTime() >= now.getTime()) return null;
+    const next = new Date(now);
+    const mins = next.getMinutes();
+    const next5 = Math.ceil(mins / 5) * 5;
+    if (next5 >= 60) next.setHours(next.getHours() + 1, 0, 0, 0);
+    else next.setMinutes(next5, 0, 0);
+    next.setSeconds(0, 0);
+    // Ensure strictly after `now` — if current minute is a 5-mark
+    // already, Math.ceil returns the same minute. Advance by 5.
+    if (next.getTime() <= now.getTime()) {
+      next.setMinutes(next.getMinutes() + 5);
+    }
+    return formatLocal(next);
+  })();
+  function applyPushStartToFuture() {
+    if (!suggestPushStartToFuture) return;
+    handleStartChange(suggestPushStartToFuture);
   }
 
   // Fresh defaults every time modal opens for a new task.
@@ -226,6 +288,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       setShowDescription(false);
       setError(null);
       setPausedConflict(null);
+      setNudgeDecisionMade(false);
       setLastEditId(null);
     }
   }, [open, editingTask]);
@@ -280,6 +343,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setSoftConflict(null);
     setCalibrationNudge(null);
     setNudgeSource(null);
+    setNudgeDecisionMade(false);
     setLastEditId(null);
   }
 
@@ -513,6 +577,23 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 value={start}
                 onChange={(e) => handleStartChange(e.target.value)}
               />
+              {suggestPushStartToFuture && !isEdit && (
+                <p className="text-[11px] text-ember/80">
+                  Start is in the past —{" "}
+                  <button
+                    type="button"
+                    onClick={applyPushStartToFuture}
+                    className="text-signal underline-offset-2 transition-colors hover:text-signal-neon hover:underline"
+                  >
+                    push to{" "}
+                    {new Date(suggestPushStartToFuture).toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      hour12: true,
+                    })}
+                  </button>
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="end">End</Label>
@@ -745,6 +826,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     setDurMinutes(newMin % 60);
                     setEnd(addMinutes(start, newMin));
                     setCalibrationNudge(null);
+                    setNudgeDecisionMade(true);
                   }}
                 >
                   Use {calibrationNudge.suggestedMin} min
@@ -752,7 +834,10 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 <button
                   type="button"
                   className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment"
-                  onClick={() => setCalibrationNudge(null)}
+                  onClick={() => {
+                    setCalibrationNudge(null);
+                    setNudgeDecisionMade(true);
+                  }}
                 >
                   Keep {durHours * 60 + durMinutes} min
                 </button>
