@@ -375,6 +375,29 @@ class ArchetypeAssignment(Base):
     assigned_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 
+class ExternalEventOutcome(Base):
+    """User-marked attendance on imported external calendar events.
+
+    Path B (2026-04-21): the "Did you attend?" yes/no on /today cards
+    for Google Calendar-imported events lands here. NOT in the `task`
+    table — imported events never enter H1's test set. See
+    docs/strategic_decisions_april_21.md §6 (VT-23: external-source
+    attendance self-report).
+    """
+
+    __tablename__ = "external_event_outcome"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.user_id"), nullable=False, index=True)
+    external_source: Mapped[str] = mapped_column(String(32), nullable=False)  # 'google_calendar'
+    external_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)  # 'attended' | 'skipped'
+    event_title: Mapped[Optional[str]] = mapped_column(Text)
+    event_start_utc: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    event_end_utc: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    marked_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class PauseEvent(Base):
     """One row per pause, created on pause() and closed on resume().
 
