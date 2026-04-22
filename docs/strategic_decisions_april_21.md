@@ -234,9 +234,47 @@ Schedule-X event list = Lyra tasks + GCal events with calendarId="google_externa
 
 **Deferred to v2 (same week):**
 - Conflict-detector extension: overlap a new Lyra task with a GCal event → soft warning in the create modal
-- `/today` "Your schedule" section — render the next N GCal events above the task list
+- ~~`/today` "Your schedule" section — render the next N GCal events above the task list~~ **Shipped 2026-04-22** — see §6.1 below.
 - Fernet encryption of `google_refresh_token`
 - Disconnect UI on Settings page (endpoint already exists)
+
+### §6.1 — /today integration + attendance self-report (shipped 2026-04-22)
+
+Operator wanted GCal events visible on /today too, not just /calendar. Debated two shapes:
+  - Render past events as `EXECUTED` (fiction — asserts attendance)
+  - Render future-only (misses morning lectures during Spring School)
+
+Picked **Option 3 (external badge, time-neutral)** with a twist the operator proposed: add a "Did you attend?" yes/no control on past events. User self-reports outcome; Lyra stores it in a new table outside the `task` hierarchy.
+
+**Feed ordering on /today:**
+- Top bucket (ascending by start): PLANNED Lyra tasks + FUTURE GCal events
+- Bottom bucket (descending by end): non-PLANNED Lyra tasks + PAST GCal events
+
+Past GCal events sit alongside EXECUTED/SKIPPED Lyra tasks so the operator finds attendance controls where they expect "what happened" items to live.
+
+**New table: `external_event_outcome`** (alembic 027)
+- Keyed by `(user_id, external_source, external_id)` — unique
+- Snapshots `event_title` / `event_start_utc` / `event_end_utc` at mark time so the user's self-report survives GCal edits
+- `outcome ∈ {attended, skipped}` — row absence means "unknown/not marked"
+- NEVER creates a Task row — H1 exclusion stays intact
+
+**New endpoint: `POST /v1/calendar/attendance`** upserts an outcome. `outcome="unknown"` deletes any existing row (revert path).
+
+**Extended endpoint: `GET /v1/calendar/events`** now joins the per-event outcome into the response so the frontend renders the locked-in state without a second round-trip.
+
+**New research question — VT-23: external-source attendance self-report.** Pre-registered validity threats:
+- **Selection bias:** users only mark events they remember
+- **Recency bias:** marks cluster near fresh events
+- **Social desirability:** "attended" overclaimed for events they feel they should have attended
+
+**Kill criterion at n≥20 calendar-connected users:** if <15% of past GCal events get marked within 7 days of elapsing, the signal is too sparse for retention or research use. Revisit after Spring School (operator is dogfooding daily; data accumulates fast).
+
+**Why attendance self-report isn't PLANNED/EXECUTED on the Task rows:** The `task` table is reserved for plans the user made *inside Lyra* with a measurement context (readiness, scope, explicit duration). Imported events have none of those — GCal gives us a time range and a title; there's no planning moment to measure. Mixing self-reported attendance into the Task state machine would:
+- Conflate two different kinds of signal under the same column
+- Force H1 queries to carry a `WHERE external_source IS NULL` filter everywhere
+- Create temptation to "fill in" pre_task_readiness for imported events, which would be invented data
+
+Separate table, separate research question. Cleaner.
 
 **Operator action required for first-use:**
 1. Sign out of Lyra
