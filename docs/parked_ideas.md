@@ -70,7 +70,87 @@ Omar today (one mentor, high trust) and aim for the next invite, but
 operator flagged it as "why don't we just add this" — net positive
 even at n=1 mentor.
 
+**Tour v2 — contextual/pointer-based walkthrough (parked 2026-04-22 evening)**
+
+Operator feedback after v1 shipped: the centered-modal carousel tells
+users about features in the abstract but doesn't show them *where* the
+features live. "Basic" was the word used. The next iteration should
+anchor each step to a real UI element with a tooltip + backdrop
+highlight, similar to Intercom / Pendo / Userflow / React-Joyride
+patterns.
+
+**Proposed step sequence (v2 — tour should point at these):**
+1. *Welcome.* Centered, same as v1.
+2. *"Create a new task" button* — tooltip anchored to the `+` button
+   on /today. "Click this to plan ahead. You can also type a time like
+   'tomorrow 3pm' and Lyra parses it."
+3. *Task row affordances* — anchored to the first row on the feed.
+   Walk through: Start timer button, the three-dot menu (Edit / Skip /
+   Delete / Void), the category badge, the duration + state chip.
+4. *Readiness modal preview* — trigger the modal (or screenshot) when
+   user hypothetically clicks Start. Explain the 1–5 slider and why
+   it matters.
+5. *Timer + Pause* — anchored to the active-timer banner. Explain
+   Pause vs Stop, when to pause (prayer, break, interruption) vs when
+   to stop (done).
+6. *Stop + reflection* — second half of a timer's life. Reflection
+   slider, task_completion_percentage, then the calibration nudge /
+   micro_mirror surfaces that may fire post-stop.
+7. *Void control* — anchored to the void option in the menu. Critical:
+   "Delete = I regret creating this. Void = this isn't real data,
+   don't use it for learning." The distinction matters for research
+   integrity and the operator flagged it specifically.
+8. *Calendar nav* — link to /calendar in sidebar. "Everything you plan
+   and execute lives on this grid. Drag PLANNED tasks to reschedule."
+9. *Insights nav* — after ~10 tasks.
+10. *Settings → Integrations nav* — "Connect Google Calendar here
+    when you're ready. Optional."
+11. *Closing.* Centered finish, "Get started."
+
+**Implementation sketch:**
+- Add `data-tour-id="new-task-button"` etc. to anchor elements across
+  the codebase. Keep the IDs in a central constants file
+  (`frontend/lib/tour-anchors.ts`) so renames don't silently break
+  the tour.
+- Use `@floating-ui/react` (MIT, small, framework-native) for anchor
+  positioning with auto-flip when the anchor is near a viewport edge.
+- Backdrop: absolutely-positioned div with a `clip-path` cutout
+  around the anchor's bounding rect. Re-compute on scroll + resize.
+- Advance on: click Next button OR click the highlighted anchor
+  itself (if the step is about an action the user should learn by
+  doing).
+- Re-entry: the tour can be re-opened from Settings → "Replay product
+  tour" button. Stamp `tutorial_replayed_at` so re-runs don't affect
+  the original completion analysis.
+- Skip button stays available on every step. Esc still dismisses.
+- Storage: re-use `user.tutorial_completed_at` + `tutorial_skipped_at`;
+  add `user.tutorial_replayed_at` in a future migration.
+
+**Tradeoffs vs v1:**
+- Higher build cost (~6–8h). More moving parts; more visual-regression
+  risk when UI changes.
+- Higher learn-by-seeing value. Mom-proof test: if it points at the
+  button you want her to click, she doesn't have to pattern-match
+  from description.
+- Anchor IDs become a minor maintenance burden — every time a
+  component rename happens, the tour needs a bump.
+
+**Revisit conditions:** ship when (a) Omar's session exposes specific
+gaps the v1 tour didn't cover, OR (b) next external-user invite
+cohort is ≥3 users (enough to justify the build cost), OR (c) the
+mom-user-archetype retention proves otherwise unaddressable. Whichever
+fires first.
+
 **Do not:**
+- Build the anchor system before operator feedback from Omar's run
+  lands — v1 may prove sufficient for some users and the v2 build
+  should be driven by observed failure modes, not speculation.
+- Auto-replay the tour on every login after changes (feels patronizing;
+  changes the measurement context for existing users).
+
+---
+
+**Do not (v1 constraints, retained):**
 - Gate core app behind completion (Structural Investigation: tutorial
   is a *structural invariant measurement moment*, not a *behavioral
   gate*)
