@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 21, 2026 — v1.12 (GCal hotfix). 13 open, 26 deferred (OpenClaw), 66 fixed.
+Last updated: April 22, 2026 — v1.13 (Integrations panel + identity/auth split). 13 open, 26 deferred (OpenClaw), 66 fixed.
 
 ---
 
@@ -17,7 +17,7 @@ Last updated: April 21, 2026 — v1.12 (GCal hotfix). 13 open, 26 deferred (Open
 | LYR-068 | 🟡 medium | notion | Notion date property timezone confusion | UTC offset in payload causes double conversion depending on property timezone setting. |
 | LYR-080 | 🔴 high | backend | Backend rebuild during active paused session corrupts task/session references | Desync recovery restores pause time but loses task linkage. Delta not computed. stop response returns wrong task_id. |
 | LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Pause A → start B → stop B → resume A: Redis loses task A's active session reference. User continues work untracked. |
-| LYR-091 | 🟢 low | backend | `resolve_user_from_token` matches by email only | `google_id` stays as `simulated-google-sub` placeholder after real sign-in. Upsert real `google_id` from JWT `sub` claim on first real sign-in. Phase 9 fix. |
+| LYR-091 | 🟢 low | backend | `resolve_user_from_token` matches by email only | `google_id` stays as `simulated-google-sub` placeholder after real sign-in. Upsert real `google_id` from JWT `sub` claim on first real sign-in. Phase 9 fix. **NOTE 2026-04-22:** unchanged after Integrations split — incremental OAuth still keys match on email (via `id_token.email` vs `session.email`), not `google_id`. When we move to `google_id`-based matching for any provider, this becomes urgent. See `docs/integrations_architecture.md`. |
 | LYR-096 | 🟡 medium | frontend | `task_completion_percentage` dropped between ReflectionModal and stopStopwatch | `today/page.tsx:112` passes `{ confirmed }` but not `task_completion_percentage`. Value from modal never reaches backend. |
 | LYR-097 | 🟡 medium | frontend | `is_future_task` warning from start endpoint not shown in UI | Backend returns `is_future_task: true` but frontend ignores it. No warning when starting timer for future task. |
 | LYR-099 | 🟢 low | frontend | New task modal start time stale after idle | `defaultStart()` called once on mount. Reopening modal after 30min shows stale default time. |

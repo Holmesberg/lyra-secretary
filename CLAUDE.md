@@ -131,6 +131,14 @@ Copy `.env.example` to `.env`. Required vars: `DATABASE_URL`, `REDIS_URL`, `NOTI
 
 - `POST /v1/parse` — scheduled for deprecation. LLMs should call `/v1/create` directly with structured fields extracted from user input. Use `/v1/parse` only as a last resort for genuinely ambiguous time expressions (e.g. "later", "this evening"). The endpoint now returns `{ tasks: [...], compound: bool }` and supports "then"-chained compound requests via `TaskParser.parse_chained()`.
 
+## Integrations
+
+Third-party integrations (Google Calendar, Notion, ICS, future Outlook/Slack/Gmail) use **incremental OAuth**: sign-in requests only identity scopes (`openid email profile`), and each integration requests its own scopes from Settings → Integrations when the user clicks Connect. Never add sensitive scopes to the NextAuth sign-in config — that breaks signup for anyone not on the Google Cloud Console Testing-mode user list.
+
+Canonical pattern: `docs/integrations_architecture.md`. Adding-a-new-integration checklist + security rules + research-integrity rules all live there. Registry: `frontend/lib/integrations.ts`. Backend status endpoint: `GET /v1/integrations`. OAuth routes: `frontend/app/api/integrations/<provider>/{connect,callback}/route.ts`.
+
+**External data stays out of the `task` table** unless marked with an explicit `external_source` field. The `external_event_outcome` table (Alembic 027) is the template for user-marked outcomes on imported data. H1 research queries must filter `WHERE external_source IS NULL` if this invariant is ever broken.
+
 ## Known issues
 
 See `LYRA_BUGS.md` for active bugs. See `archive/lyra_final_spec.md` for the historical product spec (superseded by `docs/building_phases.md` and `docs/project_history.md` as canonical forward/backward-looking documents).
