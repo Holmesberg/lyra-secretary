@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from app.api.deps import get_db
 from app.db.models import Task, TaskState, StopwatchSession, PausePredictionLog
+from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_local, now_utc
 from app.utils.redis_client import RedisClient
 
@@ -985,18 +986,26 @@ async def bias_factor_lookup(
     planned_minutes: int = Query(30, ge=1, description="Planned duration for duration-bucket signal"),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Adaptive calibration lookup for the creation-nudge.
+    """Canonical calibration lookup per MANIFESTO Rule 13.
 
-    Signal cascade (most specific → broadest personal → research prior):
-      1. category × tod × duration_bucket  (short <30 / medium 30-60 / long >60)
-      2. category × tod
-      3. category only (any time of day)
-      4. research prior (cold start fallback)
+    Returns the shrinkage-blended `bias_factor_final` (frontend
+    calibration_nudge consumes this) PLUS the full `_adaptive_calibration`
+    cascade metadata for transparency:
 
-    First level with ≥3 sessions wins. Returns signal_level indicating
-    which level fired, plus a signals array showing available data at
-    each level for transparency.
+      bias_factor_final          — (1-w) × archetype_prior_for_cell
+                                  + w × personal_sum_ratio_for_cell
+                                  where w = min(1.0, n/30)
+      personal_weight, prior_weight — the blend ratio used
+      archetype_id, archetype_prior_bias_factor — which archetype fired
+      archetype_prior_for_cell, archetype_scaling — composite scaling trace
+      cell.bias_factor           — personal-only diagnostic (pre-blend)
+      signal_level, signals      — cascade provenance
+
+    When the user has no ArchetypeAssignment, archetype_id resolves to
+    `diffuse_average` (population midpoint) — NOT flat 1.0, so every
+    user still benefits from a research-backed prior at cold start.
     """
+    uid = get_current_user_id()
     tasks = (
         db.query(Task)
         .filter(
@@ -1009,7 +1018,13 @@ async def bias_factor_lookup(
         )
         .all()
     )
-    return _adaptive_calibration(tasks, category, tod, planned_minutes)
+    # If scoping is absent (admin or test path), fall through to the
+    # legacy personal-only cascade — blend() requires a user_id to look
+    # up the archetype. This should not happen under normal auth flow.
+    if uid is None:
+        return _adaptive_calibration(tasks, category, tod, planned_minutes)
+    from app.services.bias_factor_service import blend
+    return blend(db, uid, tasks, category, tod, planned_minutes)
 
 
 @router.get("/analytics/pause_prediction")

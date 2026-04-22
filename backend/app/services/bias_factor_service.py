@@ -22,8 +22,19 @@ from __future__ import annotations
 
 from typing import Optional
 
-from app.db.models import Task
+from sqlalchemy.orm import Session
+
+from app.db.models import Archetype, Task, User
+from app.services.archetype_service import DIFFUSE_AVERAGE_ID
 from app.utils.time_utils import to_local
+
+# Normalization anchor for the composite scaling rule (Rule 13). The
+# `diffuse_average` archetype's prior of 1.30 matches the population
+# midpoint in RESEARCH_PRIORS (Roy 2005 meta-analytic mean), so
+# `archetype_scaling = archetype.prior_bias_factor / 1.30` maps each
+# archetype onto a proportional shift of the per-category research
+# prior. Frozen at launch.
+_ARCHETYPE_SCALING_ANCHOR = 1.30
 
 
 def _confidence(n: int) -> str:
@@ -222,4 +233,130 @@ def _adaptive_calibration(
         "source": "research",
         "signal_level": "research",
         "signals": signals,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase C (2026-04-22): archetype-prior shrinkage blend.
+#
+# blend() is the canonical `bias_factor_final` computation per MANIFESTO
+# v1.10 Rule 13. Every user-facing surface that consumes bias_factor
+# (calibration_nudge, insights, future scheduler auto-sizing) MUST call
+# blend() — not `_adaptive_calibration` directly, which returns only the
+# personal-cascade portion of the formula.
+#
+# The canonical formula:
+#   personal_weight          = min(1.0, n_sessions_in_cell / 30)
+#   archetype_scaling        = archetype.prior_bias_factor / 1.30
+#   archetype_prior_for_cell = RESEARCH_PRIORS[category].bias_factor
+#                            × archetype_scaling
+#   bias_factor_final        = (1 − personal_weight) × archetype_prior_for_cell
+#                            + personal_weight × personal_sum_ratio_for_cell
+#
+# Anything that deviates from this formula without a Rule-13 amendment
+# is a pre-registration protocol violation.
+# ---------------------------------------------------------------------------
+
+
+def _archetype_prior_for_cell(
+    archetype: Archetype, category: str
+) -> tuple[float, str]:
+    """Compute archetype_prior_for_cell via the composite scaling rule.
+
+    Returns (prior_value, citation_label). citation_label is the
+    RESEARCH_PRIORS citation string with the archetype appended so the
+    diagnostic panel can display both sources in one line.
+    """
+    research_prior_entry = RESEARCH_PRIORS.get(category, RESEARCH_PRIOR_DEFAULT)
+    research_prior = research_prior_entry["bias_factor"]
+    archetype_scaling = archetype.prior_bias_factor / _ARCHETYPE_SCALING_ANCHOR
+    prior_value = research_prior * archetype_scaling
+    return prior_value, research_prior_entry["citation"]
+
+
+def blend(
+    db: Session,
+    user_id: int,
+    tasks: list[Task],
+    category: str,
+    tod: str,
+    planned_minutes: int,
+) -> dict:
+    """Canonical `bias_factor_final` computation per MANIFESTO Rule 13.
+
+    Layered on top of `_adaptive_calibration` — preserves the full
+    personal-cascade metadata (signal_level, signals array, confidence
+    tier) and adds the shrinkage-blend fields the frontend consumes.
+
+    Contract:
+      - Returns the same shape as _adaptive_calibration, PLUS:
+          bias_factor_final          — the blended scalar (canonical)
+          personal_weight            — min(1.0, n/30)
+          prior_weight               — 1 - personal_weight
+          archetype_id               — which archetype was blended in
+          archetype_prior_for_cell   — the scaled research prior
+          archetype_scaling          — the composite scaling multiplier
+          archetype_prior_citation   — research-prior source label
+
+    When the user has no ArchetypeAssignment, archetype_id resolves to
+    `diffuse_average` (population midpoint) per Rule 13. When the user
+    has a completed=False skip-defaulted assignment, archetype_id on
+    User.archetype_id was also set to diffuse_average; same behavior.
+    """
+    personal = _adaptive_calibration(tasks, category, tod, planned_minutes)
+
+    # Personal cell magnitude — use the cascade's winning bias_factor,
+    # regardless of whether it was personal or research fallback. This
+    # is the `personal_sum_ratio_for_cell` term in the Rule 13 formula.
+    # For cold-start users (cascade returns research prior), the blend
+    # still works — personal_weight is 0, so the archetype_prior term
+    # fully dominates. The "double research prior" concern does not
+    # apply because the research prior IS part of the archetype prior
+    # via the composite scaling rule; the personal branch at weight 0
+    # contributes nothing.
+    personal_value = personal["cell"]["bias_factor"]
+    n = personal["cell"]["sessions"]
+
+    personal_weight = min(1.0, n / 30.0)
+    prior_weight = 1.0 - personal_weight
+
+    # Look up archetype. User.archetype_id is nullable; default to
+    # Diffuse Average per Rule 13 skip-path semantics.
+    user = db.query(User).filter(User.user_id == user_id).first()
+    archetype_id = (user.archetype_id if user else None) or DIFFUSE_AVERAGE_ID
+    archetype = (
+        db.query(Archetype)
+        .filter(Archetype.archetype_id == archetype_id)
+        .first()
+    )
+    # Defensive: if the archetype_id on the user doesn't match any row
+    # (shouldn't happen — FK enforced — but belt-and-suspenders), fall
+    # back to Diffuse Average.
+    if archetype is None:
+        archetype = (
+            db.query(Archetype)
+            .filter(Archetype.archetype_id == DIFFUSE_AVERAGE_ID)
+            .first()
+        )
+
+    archetype_prior_for_cell, citation = _archetype_prior_for_cell(
+        archetype, category
+    )
+    archetype_scaling = archetype.prior_bias_factor / _ARCHETYPE_SCALING_ANCHOR
+
+    bias_factor_final = (
+        prior_weight * archetype_prior_for_cell
+        + personal_weight * personal_value
+    )
+
+    return {
+        **personal,
+        "bias_factor_final": round(bias_factor_final, 3),
+        "personal_weight": round(personal_weight, 3),
+        "prior_weight": round(prior_weight, 3),
+        "archetype_id": archetype.archetype_id,
+        "archetype_prior_bias_factor": round(archetype.prior_bias_factor, 3),
+        "archetype_prior_for_cell": round(archetype_prior_for_cell, 3),
+        "archetype_scaling": round(archetype_scaling, 3),
+        "archetype_prior_citation": citation,
     }

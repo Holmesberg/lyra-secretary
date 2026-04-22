@@ -176,10 +176,18 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           if (abortCtl.signal.aborted) return;
           const isResearch = res.source === "research";
           const threshold = isResearch ? 1.20 : 1.25;
-          if (res.cell && res.cell.bias_factor >= threshold) {
+          // Rule-13 canonical magnitude (MANIFESTO v1.10): prefer the
+          // shrinkage-blended `bias_factor_final` when present. Falls
+          // back to the personal-cascade cell.bias_factor only on the
+          // no-auth path (unusual). The display-cell mirrors the blend
+          // magnitude so the user-visible percentage matches the
+          // suggestion math.
+          const magnitude =
+            res.bias_factor_final ?? res.cell?.bias_factor ?? null;
+          if (res.cell && magnitude !== null && magnitude >= threshold) {
             setCalibrationNudge({
-              cell: res.cell,
-              suggestedMin: roundTo5(planned * res.cell.bias_factor),
+              cell: { ...res.cell, bias_factor: magnitude },
+              suggestedMin: roundTo5(planned * magnitude),
             });
             setNudgeSource(isResearch ? "research" : "personal");
           } else {

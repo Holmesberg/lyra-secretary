@@ -310,6 +310,19 @@ export interface BiasLookupResponse {
   source?: "personal" | "research";
   signal_level?: string;
   signals?: Array<{ level: string; label: string; bias_factor: number; sessions: number }>;
+  // Rule-13 shrinkage-blend fields (MANIFESTO v1.10, 2026-04-22). Present
+  // whenever the authenticated scoping hook resolves a user_id (the
+  // normal auth path); absent on the legacy unauth fallback that
+  // returns the personal-only cascade. UI should prefer these when
+  // present — they are the canonical magnitude per the pre-registration.
+  bias_factor_final?: number;
+  personal_weight?: number;
+  prior_weight?: number;
+  archetype_id?: string;
+  archetype_prior_bias_factor?: number;
+  archetype_prior_for_cell?: number;
+  archetype_scaling?: number;
+  archetype_prior_citation?: string;
 }
 
 export interface Insight {
