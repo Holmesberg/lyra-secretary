@@ -817,6 +817,40 @@ acceptance_rate_permissive := acceptance_count_permissive / total_fires_permissi
 
 **Status:** Drafted April 22, 2026 alongside Rule 13. INACTIVE until reveal UI ships (expected v1.1, post-Spring-School per `docs/strategic_decisions_april_22.md §5`). When activated, distinguishing analyses 25a + 25b become frozen pre-registration — no post-hoc threshold tuning permitted.
 
+### VT-26: Category-Semantic Drift Between User Labels and Research Priors
+*Added April 23, 2026 — Day-18 data sweep surfaced per-category RESEARCH_PRIOR drift exceeding archetype σ: for u=1 (n=4–7 per cell) observed sum-ratios diverged from published priors by `work` +0.67, `study` −0.93, `planning` +0.92 vs the frozen `RESEARCH_PRIORS` dict. The shrinkage formula assumes user-typed category labels (`"study"`) carry the same semantic as the published-study definition they were keyed to (Newby-Clark 2000 for "study"). If user labels drift from research semantics, the prior being blended in is the wrong prior for that user — and shrinkage actively pulls small-n predictions away from truth.*
+
+**Threat:** Rule 13's canonical blend uses `archetype_prior_for_cell = RESEARCH_PRIORS[category].bias_factor × archetype_scaling`. The lookup is by category string, which is user-free-form (or mapped via `category_mapping` keyword seed). If operator's `"study"` = focused revision of familiar material (short, finishes early) while Newby-Clark's "study" = novel-topic mastery (long, overruns), the prior is systematically wrong for this user. At small n, shrinkage dominates (`pw = min(1, n/30)`), so wrong-prior predictions propagate into calibration_nudge, new-task-modal suggestions, and the /insights blend panel. Cold-start UX quality for off-prior users is degraded for ~30 cell-sessions before personal data dominates.
+
+**Distinguishing analyses — frozen at April 23, 2026 drafting:**
+- **26a. Cross-user per-category MAE at small n.** For users with ≥50 total executed sessions AND ≥10 per-category cells, compute prediction MAE (|predicted bias_factor_final − observed sum-ratio|) stratified by personal_weight bucket: (pw < 0.2, 0.2 ≤ pw < 0.5, 0.5 ≤ pw < 0.8, pw ≥ 0.8). **Drift confirmed:** low-pw MAE per category is systematically higher than high-pw MAE in specific categories (same direction across users) indicating a category-label prior mismatch rather than random noise.
+- **26b. Within-user per-category stationarity.** For users with ≥30 executed sessions in a category, split in half chronologically. If observed sum-ratio is stable across halves (within ±0.10) but differs from `RESEARCH_PRIORS[category]` by ≥0.30, the user's stable pattern for that category label differs from the research prior — consistent with label-semantic drift (not within-user behavioral change). Report per user per category.
+
+**Mitigation if detected:**
+- Document label-semantic drift per user as a known limitation of the cold-start blend
+- Consider a UI refinement: when a user creates their first task in a category, surface the research-prior source ("Lyra's prior for 'study' is based on Newby-Clark 2000's definition of novel-topic mastery — does that match what you mean by 'study'?") with a one-tap recategorize affordance
+- Phase 6+: migrate from string-match `category` → semantic-cluster category (LLM-inferred + user-confirmed)
+- Do NOT retroactively adjust `RESEARCH_PRIORS` mid-experiment window — that's a Rule 13 violation
+
+**Status:** Drafted April 23, 2026 after Day-18 operator-data pass (u=1, n=43). n too small for conclusions; distinguishing analyses require cross-user coverage that activates once 3+ trusted users pass 50 executed sessions each (expected ~2026-05-15 at current activity rate).
+
+### VT-27: Pause-Prediction Confidence-Function Calibration
+*Added April 23, 2026 — Day-18 sweep: operator's 5 pause-prediction firings show a consistent shape (confidence bucket 50–59% → 0% observed hit rate, bucket 60–69% → 75% observed hit rate at n=5 total firings). n is an order of magnitude too small for conclusions, but the shape is directionally consistent with correct calibration. This VT pre-registers the threshold analysis so that when n accumulates we can read the signal cleanly.*
+
+**Threat:** The pause-predictor's `confidence` scalar is currently a function of `sample_size` + `mechanism`-specific variance (see `services/pause_predictor.py`). If the function is mis-calibrated — e.g. the 50–59% bucket actually hits 30% of the time, or the 70–79% bucket hits 95% — then VT-17's acceptance-rate measurement is reading a shifted distribution. Users who see "65% clock pattern" banners form internal expectations that are either over- or under-calibrated to reality, and the kill-criterion-based VT-17 decision (acceptance ≥ 0.40 ships / ≤ 0.20 kills) becomes entangled with the confidence-function error rather than the predictor's raw skill.
+
+**Distinguishing analyses — frozen at April 23, 2026 drafting:**
+- **27a. Per-bucket hit rate at n≥30 firings per bucket.** Once `pause_prediction_log` accumulates ≥30 firings in each 10-pp confidence bucket (50s, 60s, 70s, 80s) across all users, compute observed hit rate per bucket (hit defined per VT-17d: `user_response` ∈ {`pause_now`, `self_reported_yes`} OR a `pause_event` exists within the predicted_at ±10-min window regardless of response flag). **Calibration confirmed:** observed rate tracks bucket midpoint within ±10pp.
+- **27b. Per-mechanism calibration stability.** Same analysis stratified by `mechanism` ∈ {`clock_anchor`, `session_rhythm`}. If one mechanism shows acceptable calibration and the other drifts, kill the miscalibrated mechanism rather than retraining globally.
+- **27c. Sample_size-regression.** Fit observed hit rate ~ confidence + sample_size. If sample_size is a significant predictor after controlling for confidence (p < 0.05), the confidence function is under-weighting sample_size and the low-n firings are over-confident (or vice versa).
+
+**Mitigation if detected:**
+- Re-estimate the confidence function using the accumulated empirical hit-rate-per-bucket curve (isotonic regression)
+- Amend Rule 12's VT-17 acceptance window only if the mechanism survives 27a; otherwise deactivate the predictor rather than tune around miscalibration
+- Do NOT change the confidence function mid-experiment-window without pre-registering the amendment
+
+**Status:** Drafted April 23, 2026 after Day-18 operator-data pass (n=5 firings, below threshold for 27a/b/c). Activates empirically once pause_prediction_log per-bucket n reaches 30 across the active cohort.
+
 ## Anonymized Retention Policy
 
 Anonymized retention serves product research only:
