@@ -42,6 +42,7 @@ interface ToastEntry {
   message: string;
   viewId: string | null;
   lifespan: "auto" | "pin";
+  detailHref?: string;
 }
 
 function localDateKey(d: Date) {
@@ -209,12 +210,17 @@ function TodayInner() {
     setOrphanWarnShown(false);
   }, []);
 
-  function pushToast(message: string, viewId: string | null, lifespan: "auto" | "pin") {
+  function pushToast(
+    message: string,
+    viewId: string | null,
+    lifespan: "auto" | "pin",
+    detailHref?: string,
+  ) {
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setToasts((prev) => [...prev, { id, message, viewId, lifespan }]);
+    setToasts((prev) => [...prev, { id, message, viewId, lifespan, detailHref }]);
   }
 
   const refresh = () => {
@@ -422,11 +428,15 @@ function TodayInner() {
       // notification_patterns.md §Toast. micro_mirror auto-dismisses
       // in 8s; calibration_nudge is pinned until dismissed since the
       // reference-class summary needs dwell time to read.
+      // LYR-110: both toasts now carry a "View details →" link to /insights.
+      // micro_mirror had 95% dismissal at ~6s dwell across all users —
+      // adding a deeper-engagement affordance tests whether absence-of-
+      // affordance was the failure vs content-not-valuable.
       if (res.micro_mirror) {
-        pushToast(res.micro_mirror, res.micro_mirror_view_id ?? null, "auto");
+        pushToast(res.micro_mirror, res.micro_mirror_view_id ?? null, "auto", "/insights");
       }
       if (res.calibration_nudge) {
-        pushToast(res.calibration_nudge, res.calibration_nudge_view_id ?? null, "pin");
+        pushToast(res.calibration_nudge, res.calibration_nudge_view_id ?? null, "pin", "/insights");
       }
       refresh();
     } catch (e: any) {
@@ -761,6 +771,7 @@ function TodayInner() {
             message={t.message}
             viewId={t.viewId}
             lifespan={t.lifespan}
+            detailHref={t.detailHref}
             onDismiss={removeToast}
           />
         ))}

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { X } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, X } from "lucide-react";
 
 import { markDismissed, markViewed } from "@/lib/reflection-view";
 
@@ -15,6 +16,18 @@ export interface ToastProps {
    *          notification_patterns.md §Toast Lifespan exception).
    */
   lifespan?: "auto" | "pin";
+  /**
+   * Optional destination for a "View details →" affordance. When
+   * present, renders a tiny link button alongside the X so the toast
+   * has a deeper-engagement escape hatch instead of only click-to-
+   * dismiss. Route target typically /insights. Clicking marks the
+   * toast dismissed (reflection_view_log) AND navigates.
+   *
+   * Motivated by Day-18 finding: micro_mirror had 95% dismissal at
+   * ~6s dwell across all users who viewed one. Hypothesis: no deeper-
+   * engagement affordance = glance-and-dismiss is the only option.
+   */
+  detailHref?: string;
   onDismiss: (id: string) => void;
 }
 
@@ -25,6 +38,7 @@ export function Toast({
   message,
   viewId,
   lifespan = "auto",
+  detailHref,
   onDismiss,
 }: ToastProps) {
   // One-shot guard — stamp viewed_at exactly once per mount (Strict
@@ -64,17 +78,29 @@ export function Toast({
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-auto flex w-80 items-start gap-2 rounded-sm border border-hairline-signal/40 bg-void p-3 text-sm text-parchment shadow-lg"
+      className="pointer-events-auto flex w-80 flex-col gap-2 rounded-sm border border-hairline-signal/40 bg-void p-3 text-sm text-parchment shadow-lg"
     >
-      <div className="flex-1 leading-relaxed">{message}</div>
-      <button
-        type="button"
-        onClick={() => latestDismiss.current()}
-        aria-label="Dismiss"
-        className="-mt-0.5 shrink-0 text-dust-deep transition-colors hover:text-parchment"
-      >
-        <X className="h-4 w-4" />
-      </button>
+      <div className="flex items-start gap-2">
+        <div className="flex-1 leading-relaxed">{message}</div>
+        <button
+          type="button"
+          onClick={() => latestDismiss.current()}
+          aria-label="Dismiss"
+          className="-mt-0.5 shrink-0 text-dust-deep transition-colors hover:text-parchment"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {detailHref && (
+        <Link
+          href={detailHref}
+          onClick={() => latestDismiss.current()}
+          className="inline-flex items-center gap-1 self-start font-mono text-[10px] uppercase tracking-widest text-dust-deep transition-colors hover:text-signal"
+        >
+          View details
+          <ArrowUpRight className="h-3 w-3" />
+        </Link>
+      )}
     </div>
   );
 }

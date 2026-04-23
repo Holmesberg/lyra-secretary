@@ -706,6 +706,12 @@ class StopwatchManager:
             session.end_time_utc = stop_time
             if task_completion_percentage is not None:
                 session.task_completion_percentage = task_completion_percentage
+            # LYR-105: close any lingering open pause_event so VT-17
+            # aggregations see a complete pair. Redis pause_state is
+            # cleared above (line ~676); the PauseEvent row was written
+            # by the original pause call and still has resumed_at_utc
+            # NULL. Helper is idempotent (no-op when no open rows).
+            self._close_open_pause_events(session.session_id, stop_time)
             self.db.add(session)
             task.state = TaskState.SKIPPED
             task.initiation_status = "abandoned"
@@ -723,6 +729,9 @@ class StopwatchManager:
             return session, task, True, notion_synced_zero, None, None, None, pre_existing_pct
 
         session.end_time_utc = stop_time
+        # LYR-105: same invariant on the normal stop path. Helper is
+        # idempotent — no-op when the session has no open pause_event.
+        self._close_open_pause_events(session.session_id, stop_time)
         self.db.add(session)
 
         # complete_task() sets executed_duration = (end - start).minutes (wall clock)

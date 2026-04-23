@@ -1192,6 +1192,10 @@ async def bias_factor_lookup(
     user still benefits from a research-backed prior at cold start.
     """
     uid = get_current_user_id()
+    # Rule 13 operational definition of n_sessions_in_cell (MANIFESTO
+    # v1.10 §13): planned_duration_minutes >= 5. The 5-minute floor
+    # matches the H1 exclusion threshold (Rule 4) — sub-5-minute tasks
+    # are dominated by startup overhead, not planning-fallacy signal.
     tasks = (
         db.query(Task)
         .filter(
@@ -1200,7 +1204,7 @@ async def bias_factor_lookup(
             Task.voided_at.is_(None),
             Task.initiation_status != "retroactive",
             Task.executed_duration_minutes != None,
-            Task.planned_duration_minutes > 0,
+            Task.planned_duration_minutes >= 5,
         )
         .all()
     )
