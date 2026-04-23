@@ -1,4 +1,4 @@
-# Lyra Secretary — Manifesto v1.10
+# Lyra Secretary — Manifesto v1.11
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
@@ -906,6 +906,7 @@ The experiment has started. Stay in measurement mode.
 *Manifesto v1.8 — revised April 22, 2026 (VT-23 external-source attendance self-report absorbed from strategic_decisions_april_21.md §6.1; External Data Exclusion Rule absorbed as top-level section; System Architecture diagram updated — OpenClaw + Telegram clarified as operator-only, Postgres promoted to primary DB reflecting April 16 Supabase migration; structural-invariants gloss added to Companion principle §line 60; preamble added to pre-registered analysis rules)*
 *Manifesto v1.9 — revised April 22, 2026 evening (VT-17d retroactive-confirmation stratified acceptance-rate pre-registered — parallel to VT-17 strict formula, no modification of VT-17. Triggered by 2 observed predictions that correctly anticipated operator food breaks taken outside the app; closes the in-app-capture gap with alembic 030 `pause_event.self_reported_retroactively`, new confirm/pending-confirmation endpoints, retroactive chip on /today, and exclusion of retroactive pauses from predictor training + VT-17 primary matching to prevent self-reinforcement.)*
 *Manifesto v1.10 — revised April 22, 2026 late-evening (Rule 13: archetype-prior shrinkage is the canonical `bias_factor` computation. Pre-registered BEFORE the first shrinkage-blended value reaches any user-facing surface. Formula, archetype priors, RESEARCH_PRIORS dict, and skip-path Diffuse Average default are all frozen. Triggered by 2026-04-22 trusted-user feedback "doesn't REALLY get me" and the operator's decision to accelerate clustering from Phase 5 into trusted-user week 2. VT-25 "Archetype-Reveal Narrative Internalization" drafted — inactive until reveal UI ships in v1.1.)*
+*Manifesto v1.11 — revised April 23, 2026 (H3 Internal Conflict Signatures drafted as PROVISIONAL — multi-faction behavioral-signature framework reading the same data H1 reads through a competing-systems lens. Five signatures S1–S5 each specify disconfirming prediction first, confirming prediction second. Zero active at drafting; earliest activation months out at current growth. Diagnostic-only — confirmed signatures surface as pattern names in /insights, never as nudges. VT-26 "Category-Semantic Drift" + VT-27 "Pause-Predictor Confidence Calibration" pre-registered in same day's sweep. LYR-105/107/110 correctness bugs fixed alongside.)*
 
 ---
 
@@ -1053,3 +1054,194 @@ These rules are fixed in advance to remove analyst degrees of freedom on the day
     **Reporting requirement.** Any H1 or bias_factor-adjacent analysis run on data collected after 2026-04-22 must report the distribution of `personal_weight` values across the sessions used in the analysis. The "archetype-prior-dominant" subset (`personal_weight < 0.5`) is flagged for sensitivity analysis — if the headline result changes substantially when restricting to `personal_weight ≥ 0.5`, the blend is doing visible work and must be discussed explicitly in the writeup.
 
     **Implementation anchor.** The canonical implementation is `blend()` in `backend/app/services/bias_factor_service.py` (wired into `GET /v1/analytics/bias_factor/lookup` in Phase C of the 2026-04-22 ship). Any alternative computation path anywhere in the codebase MUST delegate to this function — no re-implementation in endpoints or frontends.
+
+---
+
+## H3 — Internal Conflict Signatures (PROVISIONAL)
+
+*Drafted April 23, 2026. Status: **PROVISIONAL**. Each signature below is individually provisional and activates only when its n threshold is met AND its disconfirming prediction is specified in advance. Signatures may activate or deactivate independently. The H3 family as a whole does not carry a single kill criterion — individual signatures that falsify are deactivated and documented; remaining signatures continue.*
+
+### Why this exists
+
+H1 frames the user as a single agent estimating time badly. VT-22 adds a scope-inflation alternative: the planning self over-commits, the execution self under-delivers, the gap = planned−executed. H3 generalizes the VT-22 shape to a **multi-faction model**: human as internal coalition, observable failure as a balance-of-power outcome rather than an estimation error. Competing-systems framing is classical (Minsky's Society of Mind 1986; Internal Family Systems 1995; Fishbach & Woolley 2015 on goal conflict). H3's contribution is not the theory — it's specifying **behavioral signatures already recorded in Lyra's schema** that would let the competing-systems reading earn or lose evidence without new instruments.
+
+### Relationship to H1 and VT-22
+
+- **H1** remains the falsifiable scaffolding (Kill Criterion above, unchanged).
+- **VT-22** is the scope-inflation alternative, with its own mediation test (analysis rule 12).
+- **H3** reads the same data through a multi-faction lens. It does not replace H1. It does not depend on VT-22 crossing significance — the signatures can confirm or fail independently. If VT-22 crosses *and* ≥2 H3 signatures confirm at threshold, the competing-systems reading gains explanatory weight. If VT-22 crosses alone with H3 signatures null, scope-inflation is real but the multi-faction generalization was over-reach.
+
+### Frictionless-inference constraint
+
+Every H3 signature must be computable from **fields already in the schema on 2026-04-23**. No new questionnaires, no new capture surfaces. If a signature requires a new field to operationalize, it is ineligible until the field ships under a standard LYR-xxx.
+
+### Signatures
+
+Each signature specifies disconfirming prediction FIRST (what pattern falsifies the reading), then confirming prediction, activation threshold, product implication, deactivation path, and known confounds. A signature that never meets its activation threshold stays PROVISIONAL indefinitely — neither confirmed nor falsified, just unread.
+
+---
+
+### S1 — Creation-to-Start Latency as Avoidance Index
+
+**Claim.** Per-category latency between `task.created_at` and the first `stopwatch_session.start_time_utc` indexes an avoidance faction. Categories where the avoidance coalition wins show systematically longer latency.
+
+**Operational definition.** For each (user, category) pair with ≥ 5 executed sessions, compute median minutes from `created_at` to first `start_time_utc` for `live` initiations only (`initiation_status='live'`, excluding retroactive). Compute per-user Spearman ρ between `median_latency_per_category` and `skip_rate_per_category` (the skip rate is the parliament's expressed veto; the latency is the parliament's delay tax).
+
+**Disconfirming prediction (specified first).** S1 is **falsified** if, at n ≥ 5 categories per user with ≥ 5 sessions each:
+- Within-user Spearman ρ(median_latency, skip_rate) is between −0.20 and +0.20, AND
+- Bootstrap 95% CI on that ρ includes zero, AND
+- The pattern is non-replicating across ≥ 3 users.
+
+Falsification means latency is scheduling preference, not avoidance — some users schedule far in advance for reasons unrelated to internal conflict.
+
+**Confirming prediction.** Within-user Spearman ρ(median_latency, skip_rate) ≥ +0.40 at n ≥ 5 categories, replicating across ≥ 3 users at trusted-user-alpha cohort.
+
+**Activation threshold.** ≥ 3 users with ≥ 5 categories each populated ≥ 5 sessions. Estimated earliest date: 2026-06-15 at current trusted-user growth.
+
+**Product implication if confirmed.** `/insights` surfaces a per-category "avoidance latency" chip: *"Your 'study' tasks wait 3.2× longer between creation and start than your average. The pattern predicts a 56% skip rate in this category."* This is **diagnostic**, not prescriptive — the product names the pattern and leaves the user to decide what to do.
+
+**Deactivation if falsified.** Signature removed from product surface. Finding documented in `docs/operator_findings_log.md` with the bootstrap CI and replication attempt. No change to H1 or VT-22.
+
+**Known confounds.** (a) Cascade failure (morning-skip → all-day-shift) inflates latency for same-day-created tasks that get reshuffled. Stratify by same-day-created vs advance-scheduled. (b) Retroactive initiation is excluded by filter. (c) New-user cold-start period (first 7 days) has different latency distribution than steady-state — exclude first 7 days per user.
+
+---
+
+### S2 — Same-Session Switching with Self-Initiated Pause Reason as Escape Signature
+
+**Claim.** Pause events where `pause_initiator='user'` and `pause_reason` ∈ {`distraction`, `mental_fatigue`, `internal_interruption`}, followed within the same day by the user starting a *different* task, signal an **escape-faction win** — distinct from legitimate external interruption.
+
+**Operational definition.** For each user, classify pause_events into two groups:
+- **ESCAPE candidates**: `pause_initiator='user'`, `pause_reason` ∈ {`distraction`, `mental_fatigue`, `internal_interruption`}, followed within 60 minutes by the user starting a different task.
+- **INTERRUPTION**: all other pauses.
+
+Compare the ratio ESCAPE / total_pauses across categories. Categories with high escape ratio are categories where the escape faction has power.
+
+**Disconfirming prediction (specified first).** S2 is **falsified** if, at n ≥ 30 pause_events per user:
+- The pause_reason distribution conditional on switching is statistically indistinguishable from the distribution conditional on not switching (chi-square p > 0.20), AND
+- The ESCAPE ratio is approximately uniform across categories (within-user σ(escape_ratio_per_category) < 0.10), AND
+- Pattern does not replicate across ≥ 3 users.
+
+Falsification means switching after a pause is contextually driven (external pressure, schedule demand) and does not signal a distinct escape coalition.
+
+**Confirming prediction.** chi-square p < 0.05 for the conditional distribution difference, AND within-user σ(escape_ratio_per_category) ≥ 0.20 (strong per-category variance), AND replication across ≥ 3 users.
+
+**Activation threshold.** ≥ 3 users with ≥ 30 total pause_events each. Operator currently at 59 pause_events; u=2 at 2, u=5 at 2, u=6 at 1. Estimated earliest date: late 2026-Q2 at current growth.
+
+**Product implication if confirmed.** `/insights` surfaces per-category escape-ratio with the distinction called out: *"In 'study' sessions, 40% of your pauses are followed by switching to a different task — vs 8% in 'development'. The pattern is specific to this category."* Confirmation does NOT imply the product pushes back on switching. It NAMES the pattern.
+
+**Deactivation if falsified.** Signature removed. No change to the pause-prediction VT-17 pipeline (orthogonal concerns).
+
+**Known confounds.** (a) Fatigue is monotonic across the day — session_index_in_day correlates with pause_reason, so stratify by first-half / second-half of day. (b) Category scheduling correlates with time-of-day (study in morning, dev in afternoon), so control for time_of_day. (c) The `mental_fatigue` reason is semantically close to legitimate exhaustion — its inclusion in ESCAPE is contestable. If S2 activates, report results with and without `mental_fatigue` and flag the sensitivity.
+
+---
+
+### S3 — Post-Overrun Scope Trajectory as Contrition / Stubbornness / Avoidance
+
+**Claim.** After an overrun session (`bias_factor > 1.5` on executed_duration/planned_duration), the user's next session in the same category shows one of three trajectories that reveal which faction learned: **contrition** (reduced planned_duration, ≥ 20% smaller), **stubbornness** (same planned_duration, within ±10%), or **avoidance** (category skipped entirely for ≥ 72h).
+
+**Operational definition.** For each user, for each overrun session where `executed_duration/planned_duration > 1.5` and the session count in that category is ≥ 5, look ahead to the NEXT same-category session (if any). Classify the next session:
+- **CONTRITION**: `next.planned_duration_minutes ≤ 0.80 × overrun.planned_duration_minutes`
+- **STUBBORNNESS**: `0.90 × overrun.planned_duration_minutes ≤ next.planned_duration_minutes ≤ 1.10 × overrun.planned_duration_minutes`
+- **INFLATION**: `next.planned_duration_minutes > 1.10 × overrun.planned_duration_minutes`
+- **AVOIDANCE**: no same-category session within 72 hours (cross-reference skip/void/no-creation together)
+
+**Disconfirming prediction (specified first).** S3 is **falsified** if, at n ≥ 20 overrun-with-followup pairs per user:
+- The trajectory distribution is indistinguishable from uniform-over-categories (chi-square p > 0.20 vs the user's baseline category distribution), AND
+- Within-user, categories do not show systematic preference for one trajectory over others (each category's most-common trajectory is tied within ±10%), AND
+- Pattern does not replicate across ≥ 3 users.
+
+Falsification means post-overrun behavior is contextual noise, not a coalition signal.
+
+**Confirming prediction.** Systematic within-user per-category trajectory preference (chi-square p < 0.05) AND replication across ≥ 3 users showing the SAME CATEGORY taking the SAME TRAJECTORY (e.g. "study → avoidance" across multiple users).
+
+**Activation threshold.** ≥ 3 users with ≥ 20 overrun-with-followup pairs each. Operator has ~10 overruns at n=43 — close to half-threshold. Cross-user requires ~6-8 weeks at current growth.
+
+**Product implication if confirmed.** The `/insights` "Archetype fit" card extends with a trajectory label per category: *"Your pattern after study overruns: 60% avoidance, 30% stubbornness, 10% contrition."* The avoidance percentage is the operationalized "identity resistance index" the essay described.
+
+**Deactivation if falsified.** Signature removed. S3 is the most complex of the signatures and most likely to fail for lack of clean per-category sample sizes — a null result here does not diminish S1/S2/S4/S5.
+
+**Known confounds.** (a) Cascade failure across days can force same-category avoidance for reasons unrelated to the overrun (a day shifts, the study block falls off). Stratify by whether the next-day calendar was already populated. (b) VT-21 (narrative internalization): if a calibration_nudge fired post-overrun and the user internalized it, the contrition classification is the *nudge* speaking, not the user. Use `reflection_view_log` to stratify by whether a nudge was viewed between the two sessions. (c) Small per-category n inflates variance.
+
+---
+
+### S4 — Across-Category Variance as Coalition-Specific Competence
+
+**Claim.** Users with genuine internal coalitions show **high variance in bias_factor across categories** — the coalition that runs 'development' is not the one that runs 'study'. Users whose behavior is a single-agent calibration error show **low variance across categories** — error is unified.
+
+**Operational definition.** Per user at ≥ 3 categories with ≥ 5 sessions each, compute:
+- `across_σ` = standard deviation of `bias_factor_final` across categories (one value per category, SD across the set)
+- `within_σ` = mean of per-category standard deviations of `bias_factor_final` computed over the sessions in that category
+
+If coalition-specific competence exists, `across_σ > within_σ` systematically. If single-agent noise, `across_σ ≈ within_σ`.
+
+**Disconfirming prediction (specified first).** S4 is **falsified** if, at n ≥ 5 users with ≥ 3 categories ≥ 5 sessions each:
+- Per-user ratio `across_σ / within_σ` has median ≤ 1.2 across users, AND
+- The ratio has 95% CI including 1.0, AND
+- F-test of `across_σ²` vs `within_σ²` per user fails to reject uniform-variance null (p > 0.20) in ≥ 60% of users.
+
+Falsification means calibration error is global (one user, one noise level across categories), not coalition-specific.
+
+**Confirming prediction.** Median ratio ≥ 1.8, 95% CI excludes 1.0, F-test rejects uniform-variance null in ≥ 60% of users.
+
+**Activation threshold.** ≥ 5 users with ≥ 3 categories ≥ 5 sessions each. Operator is the only user currently eligible (n=43 with 6 categories ≥ 2 sessions). Realistic date: late 2026-Q2.
+
+**Product implication if confirmed.** `/insights` introduces a per-user "coalition coherence" number: a single scalar (ratio of across-category SD to within-category SD) that distinguishes "single-agent" users from "multi-coalition" users. Single-agent users get simpler nudges (one calibration model). Multi-coalition users get category-differentiated surfaces (each category treated as a different internal actor with its own track record).
+
+**Deactivation if falsified.** Signature removed. The calibration_nudge continues treating each category independently as it already does; the "coalition coherence" scalar never surfaces.
+
+**Known confounds.** (a) Categories differ in inherent variance for reasons unrelated to internal coalitions (e.g. `study` is inherently more variable than `exercise`). Use the archetype-scaled research prior's σ as the expected-variance baseline per category — report residual variance above that baseline. (b) Task-type heterogeneity within a category (not all 'development' tasks are the same) inflates within-σ and masks the signal. Sensitivity analysis with title-keyword-based sub-categories.
+
+---
+
+### S5 — Post-Overrun Readiness Shift as Self-Honest vs. Self-Protecting
+
+**Claim.** After a session with significant negative `duration_delta_minutes` (overrun) and low `post_task_reflection` (sub-par performance self-rating), the user's next `pre_task_readiness` in the same category shifts downward (self-honest update) OR stays flat / rises (self-protection by a faction that maintains identity).
+
+**Operational definition.** For each user, for each session where `duration_delta_minutes < -15 AND post_task_reflection ≤ 2 AND pre_task_readiness ≥ 4` (a "confident-but-failed" session), compute:
+- `readiness_shift = next_same_category_session.pre_task_readiness - this_session.pre_task_readiness`
+- Classify:
+  - **SELF-HONEST**: `readiness_shift ≤ -1` (readiness drops by ≥ 1 point on 5-point scale)
+  - **FLAT**: `-1 < readiness_shift < +1`
+  - **SELF-PROTECTING**: `readiness_shift ≥ +1` OR the user rates ≥ 4 readiness on next session after a low-reflection failure
+
+**Disconfirming prediction (specified first).** S5 is **falsified** if, at n ≥ 15 confident-but-failed-with-followup pairs per user:
+- Wilcoxon signed-rank on `readiness_shift` has p > 0.20 AND |median shift| < 0.5 points, AND
+- The SELF-HONEST / FLAT / SELF-PROTECTING distribution is indistinguishable from the user's baseline readiness-transition distribution (chi-square p > 0.20), AND
+- Pattern does not replicate across ≥ 3 users.
+
+Falsification means readiness rating is not responsive to recent performance — either the instrument is ceiling-saturated (VT-12), or readiness and performance are genuinely independent for this user, or the timescale of update is longer than session-to-session.
+
+**Confirming prediction.** Consistent within-user SELF-HONEST dominance (median shift ≤ -0.5, p < 0.05) OR consistent within-user SELF-PROTECTING dominance (≥ 40% of post-failed-session ratings stay ≥ 4, p < 0.05 vs baseline).
+
+**Activation threshold.** ≥ 3 users with ≥ 15 confident-but-failed-with-followup pairs. Operator is eligible at n ≈ 8 currently — roughly half-threshold. Cross-user replication: 2026-Q3.
+
+**Product implication if confirmed.** Users classified SELF-HONEST get weight-1.0 on their readiness scores in blended predictions. Users classified SELF-PROTECTING get downweighted readiness (weight 0.5) in the blend, because their ratings don't track performance. This is a **per-user instrument calibration**, not a user-facing label.
+
+**Deactivation if falsified.** Readiness continues being used at weight-1.0 uniformly. Signature removed.
+
+**Known confounds.** (a) VT-1 Hawthorne: just being measured may cause readiness to adjust for reasons unrelated to coalition dynamics. Report S5 alongside VT-1 results. (b) VT-12 scale saturation: if a user anchors at readiness=5 regardless, S5 classifies them SELF-PROTECTING when they may just have a compressed range. Require within-user readiness SD ≥ 0.8 as a precondition for S5 classification. (c) VT-21 narrative internalization: nudge-exposed sessions have readiness entangled with the nudge. Stratify by `reflection_view_log` exposure.
+
+---
+
+### H3 amendment protocol
+
+- New signatures may be added to H3 at any time. Each new signature specifies its disconfirming prediction BEFORE its confirming prediction AND before any data is read against it. The git commit introducing the signature is the pre-registration timestamp.
+- Individual signatures may be retired after falsification, with a dated entry in `docs/operator_findings_log.md` capturing the falsifying analysis and its bootstrap CIs.
+- **Forbidden:** reading the data, THEN formulating the signature. Every signature must be registered before its activation threshold is met on the data.
+- **Forbidden:** loosening a signature's falsification threshold post-hoc. Tightening is permitted with documented rationale.
+
+### Reporting requirement
+
+Any H3-adjacent analysis that confirms or falsifies a signature must publish:
+- The filter set applied (matching or deviating from Rule 13's `n_sessions_in_cell` definition — any deviation is called out)
+- The bootstrap CI on the primary statistic
+- The cross-user replication attempt and its outcome
+- Confounds addressed and confounds acknowledged-but-unaddressed
+
+### Relationship to product
+
+H3 is **diagnostic**, not prescriptive. Confirmed signatures surface as **pattern names** in `/insights` — *"your post-overrun trajectory in study is avoidance"* — and never as nudges or interventions. The theoretical framing (parliament / coalitions / factions) stays in `MANIFESTO.md` and `docs/methodology.md`; the user-facing surface uses concrete behavioral language ("pattern", "tendency", "trajectory"). No user ever sees the word "faction" or "coalition" in the product.
+
+### Status
+
+PROVISIONAL. Zero signatures active at drafting time. Earliest activation (S1 latency-avoidance) requires ≥ 3 users × ≥ 5 categories × ≥ 5 sessions — months out at current growth. The signatures are pre-registered now to preserve falsifiability when the data lands; they are **not** acted upon today.
