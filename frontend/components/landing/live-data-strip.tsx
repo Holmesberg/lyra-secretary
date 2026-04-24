@@ -25,7 +25,7 @@ const biasByCategory = [
 ];
 
 const pauseDistribution = [
-  { reason: "mental fatigue", value: 35 },
+  { reason: "low focus", value: 35 },
   { reason: "distraction", value: 25 },
   { reason: "task difficulty", value: 15 },
   { reason: "external", value: 10 },
@@ -87,7 +87,7 @@ export function LiveDataStrip() {
             />
           </ChartCell>
 
-          <ChartCell code="03.3" label="Pause reason distribution" caption="35% mental fatigue · 25% distraction">
+          <ChartCell code="03.3" label="Pause reason distribution" caption="35% low focus · 25% distraction">
             <DonutChart
               data={pauseDistribution}
               category="value"

@@ -34,7 +34,7 @@ export function ConsentModal({ onAccepted }: { onAccepted: () => void }) {
       <div className="bg-background border border-border rounded-lg max-w-lg w-full p-6">
         <h2 className="text-xl font-semibold mb-2">Before you continue</h2>
         <p className="text-muted-foreground text-sm mb-6">
-          Lyra Secretary collects task timing data to personalize your scheduler. Please review and accept.
+          Lyra learns from how you plan and work to personalize your scheduler. Please review and accept.
         </p>
 
         <label className="flex items-start gap-3 mb-4 cursor-pointer">
@@ -61,7 +61,7 @@ export function ConsentModal({ onAccepted }: { onAccepted: () => void }) {
             className="mt-1"
           />
           <span className="text-sm">
-            I consent to my anonymized data being used in research on planning and self-prediction.{" "}
+            I allow my anonymized usage data to be used to improve Lyra over time.{" "}
             <span className="text-muted-foreground">(optional)</span>
           </span>
         </label>

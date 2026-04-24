@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 // Matches backend PAUSE_REASONS enum in
 // backend/app/schemas/stopwatch.py:58. Keep in sync.
 const PAUSE_REASON_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "mental_fatigue", label: "Mental fatigue" },
+  { value: "mental_fatigue", label: "Low focus" },
   { value: "distraction", label: "Distraction" },
   { value: "task_difficulty", label: "Task difficulty" },
   { value: "external_interruption", label: "External interruption" },
