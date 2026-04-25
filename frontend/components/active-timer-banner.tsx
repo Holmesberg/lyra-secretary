@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pause, Play, X } from "lucide-react";
+import { Pause, Play, X, ArrowLeftRight } from "lucide-react";
 import {
   pauseStopwatch,
   resumeStopwatch,
+  switchStopwatch,
   type StopwatchStatus,
+  type PausedOther,
 } from "@/lib/tasks";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -219,7 +221,22 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestPause, localPaused, quickPauseReason, onRequestPauseHandled]);
 
-  if (!status.active || !status.start_time) return null;
+  // Multi-tasking swap chips visibility: paused-with-open-session tasks
+  // that the user can switch into. Render even when no active task —
+  // user may have stopped the child and the parent is still paused-with-
+  // open-session, resumable via switch.
+  const pausedOthers = status.paused_others ?? [];
+  const hasOthers = pausedOthers.length > 0;
+  const hasActive = !!(status.active && status.start_time);
+
+  if (!hasActive && !hasOthers) return null;
+
+  if (!hasActive) {
+    return (
+      <PausedOthersPanel others={pausedOthers} />
+    );
+  }
+
   const paused = localPaused;
 
   let elapsed: string;
@@ -433,6 +450,75 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
           </button>
         </div>
       )}
+      {hasOthers && (
+        <PausedOthersChips others={pausedOthers} />
+      )}
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Multi-tasking swap (Apr 25): chip row + standalone panel
+// ---------------------------------------------------------------------------
+
+function PausedOthersChips({ others }: { others: PausedOther[] }) {
+  const qc = useQueryClient();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleSwitch(target: PausedOther) {
+    setErr(null);
+    setBusyId(target.task_id);
+    try {
+      await switchStopwatch(target.task_id);
+      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline-signal/40 pt-2">
+      <span className="font-mono text-[10px] uppercase tracking-widest text-dust">
+        Other in-progress
+      </span>
+      {others.map((other) => (
+        <button
+          key={other.task_id}
+          type="button"
+          disabled={busyId === other.task_id}
+          onClick={() => handleSwitch(other)}
+          className="inline-flex items-center gap-1.5 rounded-sm border border-hairline-signal/40 bg-void-2/40 px-2 py-1 text-[11px] text-dust transition-colors hover:border-signal/60 hover:bg-signal/10 hover:text-parchment disabled:opacity-50"
+          title={`Switch to ${other.title} (paused ${other.paused_minutes}m)`}
+        >
+          <ArrowLeftRight className="h-3 w-3" />
+          <span className="truncate max-w-[180px]">{other.title}</span>
+          <span className="text-dust-deep">·{other.paused_minutes}m</span>
+        </button>
+      ))}
+      {err && <span className="text-[11px] text-ember">{err}</span>}
+    </div>
+  );
+}
+
+
+function PausedOthersPanel({ others }: { others: PausedOther[] }) {
+  // Standalone panel for the no-active case: user stopped the child but the
+  // parent (or any other paused-with-open-session task) is still resumable.
+  // Same chip surface as inside the active banner.
+  return (
+    <div className="terminal-panel mb-6 px-4 py-3">
+      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-dust">
+        <span className="h-1.5 w-1.5 rounded-full bg-ember" />
+        <span>Paused tasks (resumable)</span>
+      </div>
+      <div className="mt-2">
+        <PausedOthersChips others={others} />
+      </div>
     </div>
   );
 }

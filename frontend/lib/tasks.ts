@@ -140,6 +140,13 @@ export function createTask(input: CreateTaskInput) {
 
 // ─── Stopwatch ────────────────────────────────────────────────────────
 
+export interface PausedOther {
+  task_id: string;
+  title: string;
+  session_id: string;
+  paused_minutes: number;
+}
+
 export interface StopwatchStatus {
   active: boolean;
   task_id?: string;
@@ -150,10 +157,32 @@ export interface StopwatchStatus {
   planned_duration_minutes?: number;
   paused?: boolean;
   total_paused_minutes?: number;
+  // Multi-tasking swap (Apr 25): paused-with-open-session tasks for this
+  // user that aren't currently active. Each is a /switch candidate.
+  paused_others?: PausedOther[];
 }
 
 export function getStopwatchStatus() {
   return api<StopwatchStatus>("/v1/stopwatch/status");
+}
+
+export interface SwitchResponse {
+  switched: boolean;
+  noop: boolean;
+  from_task_id: string | null;
+  from_session_id: string | null;
+  to_task_id: string;
+  to_session_id: string;
+  to_title: string;
+  to_start_time: string;
+  target_pause_duration_minutes: number;
+}
+
+export function switchStopwatch(target_task_id: string) {
+  return api<SwitchResponse>(
+    `/v1/stopwatch/switch/${encodeURIComponent(target_task_id)}`,
+    { method: "POST" }
+  );
 }
 
 export function startStopwatch(task_id: string, pre_task_readiness: number) {

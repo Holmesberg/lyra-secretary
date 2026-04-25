@@ -16,6 +16,7 @@ from app.schemas.stopwatch import (
     StopwatchPauseResponse,
     StopwatchResumeResponse,
     StopwatchStatusResponse,
+    StopwatchSwitchResponse,
     ReadinessCorrectionRequest,
     ReadinessCorrectionResponse,
     UpdateCompletionRequest,
@@ -249,15 +250,55 @@ async def stop_stopwatch(
 
 @router.get("/status", response_model=StopwatchStatusResponse)
 async def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResponse:
-    """Get stopwatch status. Includes paused state and total paused minutes."""
+    """Get stopwatch status. Includes paused state, total paused minutes,
+    and paused_others (other paused-with-open-session tasks for this user
+    that the multi-tasking swap UX uses as switch candidates)."""
     try:
         manager = StopwatchManager(db)
         status = manager.get_status()
-        if status and status.get("start_time"):
+        if status.get("start_time"):
             status["start_time"] = to_local(status["start_time"])
-        return StopwatchStatusResponse(**status) if status else StopwatchStatusResponse(active=False)
+        return StopwatchStatusResponse(**status)
     except Exception as e:
         logger.error(f"Stopwatch status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/switch/{task_id}", response_model=StopwatchSwitchResponse)
+async def switch_stopwatch(
+    task_id: str,
+    db: Session = Depends(get_db),
+) -> StopwatchSwitchResponse:
+    """Atomically swap the active stopwatch to a different paused task.
+
+    Multi-tasking swap (Apr 25): operator runs Task A as an interruption
+    while Task B is paused-with-open-session. Calling this endpoint with
+    target=B pauses A in a single transaction and resumes B.
+
+    Validation errors (HTTP 400):
+      * Target task not found
+      * Target task is voided
+      * Target task state != PAUSED
+      * Target task has no open StopwatchSession (start it instead)
+
+    Idempotent on switch-to-self: target == current active returns noop=True
+    (or falls through to a regular resume if the active task happens to be
+    paused).
+    """
+    try:
+        manager = StopwatchManager(db)
+        result = manager.switch_to_task(target_task_id=task_id)
+        if result.get("to_start_time"):
+            result["to_start_time"] = to_local(result["to_start_time"])
+        return StopwatchSwitchResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except NoActiveStopwatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except StopwatchNotPausedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Stopwatch switch error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

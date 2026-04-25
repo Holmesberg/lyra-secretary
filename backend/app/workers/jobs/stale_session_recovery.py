@@ -11,16 +11,28 @@ Conservative by design:
     while producing near-zero false positives for legitimate long tasks.
     Lowered from 24h after Apr 12 dogfood evidence (16h 41m paused
     session went undetected by auto-cleanup).
+  * **Skip currently-active session.** Apr 25 2026: the multi-tasking
+    swap fix introduced a path where a paused-with-open-session task gets
+    resumed (Redis active reset to it) even though its session.start_time
+    is well past the 12h cutoff. The recovery must not close a session the
+    user just deliberately resumed. Long deep-work sessions are also
+    legitimately old; same skip logic protects them.
   * end_time_utc = start_time_utc + max(planned_duration, 1) min so the
-    row has a defensible duration rather than extending to "now"
-  * Redis keys cleared only if they still point at the stale session
+    row has a defensible duration rather than extending to "now".
+  * **Defense-in-depth task-state transition.** Apr 25 2026: when closing
+    an orphan session, also transition Task.state EXECUTING|PAUSED →
+    SKIPPED with initiation_status='orphaned_recovery' if the task has no
+    OTHER open session. Previously this transition was deferred to
+    orphan_task_recovery (a separate 15-min job), creating a window where
+    the task showed "Stop" but the stop endpoint returned "no active
+    stopwatch." Single-pass recovery closes the window.
   * Per-user iteration via for_each_user so a bad row on one tenant
-    doesn't poison the sweep for everyone else
+    doesn't poison the sweep for everyone else.
 """
 import logging
 from datetime import timedelta
 
-from app.db.models import PauseEvent, StopwatchSession, Task, User
+from app.db.models import PauseEvent, StopwatchSession, Task, TaskState, User
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
@@ -46,9 +58,24 @@ def _run_for_one_user(db, user: User):
     if not stale:
         return
 
+    # Read Redis active ONCE per user; the recovery loop uses it to skip
+    # the currently-active session (Apr 25 multi-tasking swap fix).
+    active = redis.get_active_stopwatch(user.user_id)
+    active_session_id = active.get("session_id") if active else None
+
     closed = 0
     for session in stale:
         try:
+            # Skip currently-active session — operator just resumed it
+            # via swap, or is in a long deep-work session. Closing the
+            # pointed-to session would clear Redis underneath the user.
+            if active_session_id and session.session_id == active_session_id:
+                logger.info(
+                    f"stale_session_recovery: skipping currently-active "
+                    f"session_id={session.session_id} user_id={user.user_id}"
+                )
+                continue
+
             task = db.query(Task).filter(Task.task_id == session.task_id).first()
             if task and task.voided_at is not None:
                 continue
@@ -76,10 +103,25 @@ def _run_for_one_user(db, user: User):
                     (end_time - evt.paused_at_utc).total_seconds() / 60.0
                 )
 
-            active = redis.get_active_stopwatch(user.user_id)
-            if active and active.get("session_id") == session.session_id:
-                redis.clear_active_stopwatch(user.user_id)
-                redis.clear_pause_state(user.user_id)
+            # Defense-in-depth: transition Task.state if it's still abandoned-shaped.
+            # Confirms there's no OTHER open session (multi-tasking case where
+            # this task somehow has multiple sessions across resume cycles —
+            # unlikely but defensive). Only transitions when this is the LAST
+            # open session for the task.
+            if task and task.voided_at is None and task.state in (TaskState.EXECUTING, TaskState.PAUSED):
+                other_open = (
+                    db.query(StopwatchSession)
+                    .filter(
+                        StopwatchSession.task_id == task.task_id,
+                        StopwatchSession.end_time_utc.is_(None),
+                        StopwatchSession.session_id != session.session_id,
+                    )
+                    .first()
+                )
+                if not other_open:
+                    task.state = TaskState.SKIPPED
+                    task.initiation_status = "orphaned_recovery"
+                    task.last_modified_at = end_time
 
             closed += 1
             logger.warning(

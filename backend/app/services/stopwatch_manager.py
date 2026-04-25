@@ -593,6 +593,295 @@ class StopwatchManager:
             "total_paused_minutes": session.total_paused_minutes,
         }
 
+    def switch_to_task(self, target_task_id: str) -> dict:
+        """Atomically switch the active stopwatch to a different paused task.
+
+        Multi-tasking swap (Apr 25): when the operator has run a task as an
+        interruption (parent paused with open session, child executing), the
+        only way back to the parent was previously to stop the child. This
+        method enables direct swap — pause whatever's currently running,
+        resume the target — in a single transaction.
+
+        Pre-conditions:
+          * Target task exists, belongs to the current user (auto-scoped),
+            voided_at IS NULL
+          * Target task state is PAUSED
+          * Target task has an open StopwatchSession (i.e., paused mid-work,
+            not just a planned task that's never been started)
+
+        Effects (single atomic commit):
+          * If currently EXECUTING task X exists in Redis: pause X (insert
+            pause_event with reason='task_switch', set X.state=PAUSED,
+            update session.paused_at_utc). Don't increment X.pause_count
+            (matches existing pause() convention — count is incremented on
+            resume).
+          * If currently PAUSED task X exists in Redis: just clear Redis
+            (X is already PAUSED in DB; no double pause_event).
+          * If no current active: nothing to pause.
+          * In all cases: resume the target — close target's open
+            pause_event with resumed_at, accumulate pause duration into
+            session.total_paused_minutes, set target.state=EXECUTING,
+            increment target.pause_count, swap Redis active_stopwatch.
+
+        Edge cases handled:
+          * Target == current active (idempotency): if target is also paused
+            in Redis, falls through to a regular resume(). Otherwise no-op
+            success. Prevents double-clicks from breaking state.
+          * Source voided since Redis was set: detect, skip the pause step
+            (nothing legitimate to pause), proceed with target resume.
+          * Target has no open session: reject — caller should /start the
+            task instead of /switch.
+          * Target not in PAUSED state: reject (only paused tasks are valid
+            switch destinations).
+          * Voided target: reject.
+          * State machine: EXECUTING→PAUSED and PAUSED→EXECUTING are both
+            permitted unconditionally per state_machine.py:20-27, so direct
+            mutation is safe (matches the pause()/resume() convention of
+            inline state transitions to avoid a second commit-fsync).
+        """
+        user_id = self._user_key()
+        now = now_utc()
+
+        # ---- Validate target ----
+        target = self.db.query(Task).filter(Task.task_id == target_task_id).first()
+        if not target:
+            raise ValueError("Target task not found")
+        if target.voided_at is not None:
+            raise ValueError("Cannot switch to a voided task")
+        if target.state != TaskState.PAUSED:
+            raise ValueError(
+                f"Target task must be PAUSED to switch (current state: "
+                f"{target.state.name if hasattr(target.state, 'name') else target.state})"
+            )
+        target_session = (
+            self.db.query(StopwatchSession)
+            .filter(
+                StopwatchSession.task_id == target_task_id,
+                StopwatchSession.end_time_utc.is_(None),
+            )
+            .order_by(StopwatchSession.start_time_utc.desc())
+            .first()
+        )
+        if not target_session:
+            raise ValueError(
+                "Target task has no open session — start it instead of switching"
+            )
+
+        # ---- Resolve current active ----
+        active = self.redis.get_active_stopwatch(user_id)
+
+        # Idempotency: target is currently the active task.
+        if active and active.get("task_id") == target_task_id:
+            # If target is paused (Redis pause_state), resume it normally.
+            if self.redis.get_pause_state(user_id):
+                resume_result = self.resume()
+                return {
+                    "switched": True,
+                    "noop": False,
+                    "from_task_id": None,
+                    "from_session_id": None,
+                    "to_task_id": target_task_id,
+                    "to_session_id": active.get("session_id") or target_session.session_id,
+                    "to_title": target.title,
+                    "to_start_time": target_session.start_time_utc,
+                    "target_pause_duration_minutes": resume_result.get(
+                        "paused_minutes", 0.0
+                    ),
+                }
+            # Already executing this task — no-op.
+            return {
+                "switched": True,
+                "noop": True,
+                "from_task_id": None,
+                "from_session_id": None,
+                "to_task_id": target_task_id,
+                "to_session_id": active.get("session_id") or target_session.session_id,
+                "to_title": target.title,
+                "to_start_time": target_session.start_time_utc,
+                "target_pause_duration_minutes": 0.0,
+            }
+
+        # ---- Pause the source (if any) ----
+        source_task_id = None
+        source_session_id = None
+        if active:
+            source_session_id = active.get("session_id")
+            source_session = (
+                self.db.query(StopwatchSession)
+                .filter(StopwatchSession.session_id == source_session_id)
+                .first()
+            )
+            source_task = self.db.query(Task).filter(
+                Task.task_id == active.get("task_id")
+            ).first()
+
+            # Source could have been voided/terminal-stated since Redis was
+            # set (race with /tasks/{id}/void or mark_abandoned). In that
+            # case skip the pause step — there's nothing legitimate to
+            # pause — and proceed straight to resuming target. The voided
+            # task's session was already closed by void_cleanup.
+            if source_task and source_task.voided_at is None and source_session:
+                source_task_id = source_task.task_id
+                source_pause_state = self.redis.get_pause_state(user_id)
+
+                if source_pause_state:
+                    # Source is already paused — Redis pause_state exists,
+                    # state.PAUSED already in DB, pause_event already open.
+                    # Don't insert a duplicate pause_event; the swap is
+                    # purely a Redis-pointer change for source.
+                    pass
+                else:
+                    # Source is EXECUTING — pause it now.
+                    source_session.paused_at_utc = now
+                    source_session.pause_reason = "task_switch"
+                    source_session.pause_initiator = "self"
+
+                    total_sec = (now - source_session.start_time_utc).total_seconds()
+                    paused_sec = (source_session.total_paused_minutes or 0.0) * 60.0
+                    active_elapsed_sec = int(max(0.0, total_sec - paused_sec))
+
+                    pause_event = PauseEvent(
+                        pause_event_id=str(uuid.uuid4()),
+                        session_id=source_session.session_id,
+                        user_id=source_session.user_id,
+                        paused_at_utc=now,
+                        pause_reason="task_switch",
+                        pause_initiator="self",
+                        active_elapsed_at_pause_seconds=active_elapsed_sec,
+                    )
+                    self.db.add(pause_event)
+
+                    if source_task.state == TaskState.EXECUTING:
+                        source_task.state = TaskState.PAUSED
+                        source_task.last_modified_at = now
+
+        # ---- Resume the target ----
+        # Find target's open pause_event (created when target was paused
+        # for interruption or by a previous switch). Close it.
+        target_open_event = (
+            self.db.query(PauseEvent)
+            .filter(
+                PauseEvent.session_id == target_session.session_id,
+                PauseEvent.resumed_at_utc.is_(None),
+            )
+            .order_by(PauseEvent.paused_at_utc.desc())
+            .first()
+        )
+        target_pause_duration = 0.0
+        if target_open_event:
+            target_pause_duration = (
+                (now - target_open_event.paused_at_utc).total_seconds() / 60.0
+            )
+            target_open_event.resumed_at_utc = now
+            target_open_event.duration_minutes = target_pause_duration
+            target_session.total_paused_minutes = (
+                target_session.total_paused_minutes or 0.0
+            ) + target_pause_duration
+        target_session.paused_at_utc = None
+
+        target.state = TaskState.EXECUTING
+        target.last_modified_at = now
+        target.pause_count = (target.pause_count or 0) + 1
+
+        # ---- Single atomic commit for source-pause + target-resume ----
+        self.db.commit()
+
+        # ---- Update Redis: clear old, set new ----
+        self.redis.clear_pause_state(user_id)
+        self.redis.set_active_stopwatch(
+            user_id=user_id,
+            session_id=target_session.session_id,
+            task_id=target.task_id,
+            title=target.title,
+            start_time=target_session.start_time_utc.isoformat(),
+        )
+
+        # ---- Best-effort Notion sync for both ends ----
+        try:
+            uid_s = str(get_current_user_id() or 1)
+            if source_task_id:
+                self.redis.queue_notion_sync(
+                    source_task_id, {"action": "sync"}, user_id=uid_s
+                )
+            self.redis.queue_notion_sync(
+                target.task_id, {"action": "sync"}, user_id=uid_s
+            )
+        except Exception as e:
+            logger.error(f"Notion enqueue failed on switch: {e}", exc_info=True)
+
+        return {
+            "switched": True,
+            "noop": False,
+            "from_task_id": source_task_id,
+            "from_session_id": source_session_id,
+            "to_task_id": target.task_id,
+            "to_session_id": target_session.session_id,
+            "to_title": target.title,
+            "to_start_time": target_session.start_time_utc,
+            "target_pause_duration_minutes": target_pause_duration,
+        }
+
+    def get_paused_others(self) -> list[dict]:
+        """Return paused-with-open-session tasks for this user that are NOT
+        currently the active stopwatch.
+
+        Used by the multi-tasking swap UX — each entry is a candidate the
+        user can switch into via POST /v1/stopwatch/switch/{task_id}.
+        Filters out voided tasks and any that aren't strictly state==PAUSED.
+        """
+        user_id = self._user_key()
+        active = self.redis.get_active_stopwatch(user_id)
+        active_session_id = active.get("session_id") if active else None
+
+        from app.db.scoping import get_current_user_id as _gcuid
+        uid = _gcuid()
+        if uid is None:
+            return []
+
+        open_sessions = (
+            self.db.query(StopwatchSession)
+            .filter(
+                StopwatchSession.user_id == int(uid),
+                StopwatchSession.end_time_utc.is_(None),
+            )
+            .all()
+        )
+
+        others: list[dict] = []
+        seen_task_ids: set[str] = set()
+        for session in open_sessions:
+            if active_session_id and session.session_id == active_session_id:
+                continue
+            if session.task_id in seen_task_ids:
+                # If a task somehow has multiple open sessions (shouldn't
+                # under normal flow but defensive), surface only the most
+                # recently paused one.
+                continue
+            task = self.db.query(Task).filter(
+                Task.task_id == session.task_id
+            ).first()
+            if not task or task.voided_at is not None:
+                continue
+            if task.state != TaskState.PAUSED:
+                continue
+            paused_at = session.paused_at_utc
+            paused_mins = (
+                int((now_utc() - paused_at).total_seconds() / 60)
+                if paused_at else 0
+            )
+            others.append({
+                "task_id": task.task_id,
+                "title": task.title,
+                "session_id": session.session_id,
+                "paused_minutes": paused_mins,
+            })
+            seen_task_ids.add(session.task_id)
+
+        # Stable order: most recently paused first (intuitive for the chip
+        # row — "the thing I just paused" appears leftmost).
+        others.sort(key=lambda x: -x["paused_minutes"])
+        return others
+
     def stop(
         self,
         post_task_reflection: Optional[int] = None,
@@ -850,16 +1139,28 @@ class StopwatchManager:
         }
 
     def get_status(self) -> Optional[dict]:
-        """Get current stopwatch status including pause state.
+        """Get current stopwatch status including pause state and paused_others.
 
         Uses _get_active() so Redis loss (restart, eviction) falls through
         to _recover_from_db() — prevents the banner-disappears-during-pause
         bug (LYR-095).
+
+        Always returns a dict (never None now). When no active stopwatch,
+        returns active=False but still populates paused_others — the
+        multi-tasking UX needs to show "Other in-progress" candidates even
+        from /today's empty state (e.g. user stops the child task; no
+        active stopwatch; parent still PAUSED with open session and is
+        resumable via /switch).
         """
         user_id = self._user_key()
         active = self._get_active(user_id)
+        paused_others = self.get_paused_others()
+
         if not active:
-            return None
+            return {
+                "active": False,
+                "paused_others": paused_others,
+            }
 
         session = self.db.query(StopwatchSession).filter(
             StopwatchSession.session_id == active["session_id"]
@@ -884,4 +1185,5 @@ class StopwatchManager:
             "elapsed_minutes": elapsed_minutes,
             "paused": is_paused,
             "total_paused_minutes": total_paused,
+            "paused_others": paused_others,
         }

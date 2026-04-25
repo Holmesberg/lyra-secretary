@@ -125,10 +125,66 @@ def test_voided_executing_task_not_touched(db):
 
 
 def test_planned_task_not_touched(db):
-    """Non-EXECUTING tasks are left alone."""
+    """PLANNED tasks are left alone (not in ABANDONED_STATES)."""
     task = _seed_task(db, title="planned", state=TaskState.PLANNED)
     user = db.query(User).filter(User.user_id == USER_ID).first()
     set_current_user_id(USER_ID)
     _run_for_one_user(db, user)
     db.refresh(task)
     assert task.state == TaskState.PLANNED
+
+
+# ---------------------------------------------------------------------------
+# Apr 25 2026: PAUSED-with-no-open-session ghost-paused recovery
+# ---------------------------------------------------------------------------
+
+
+def test_orphan_paused_no_session_transitions_to_skipped(db):
+    """Bug 1 (LYR-NNN): PAUSED task with no open session → SKIPPED.
+
+    Reproduces the u5 Altium / u6 Compilers Lecs class: stale_session_recovery
+    auto-closed the session at 12h+ but Task.state was never transitioned.
+    The orphan_task_recovery extension catches it.
+    """
+    task = _seed_task(db, title="ghost-paused", state=TaskState.PAUSED)
+    user = db.query(User).filter(User.user_id == USER_ID).first()
+    set_current_user_id(USER_ID)
+    _run_for_one_user(db, user)
+    db.refresh(task)
+    assert task.state == TaskState.SKIPPED
+    assert task.initiation_status == "orphaned_recovery"
+
+
+def test_paused_with_open_session_not_touched(db):
+    """A PAUSED task that still has an open session (interruption parent) is left alone."""
+    task = _seed_task(db, title="paused-parent", state=TaskState.PAUSED)
+    _seed_session(db, task, closed=False)
+    user = db.query(User).filter(User.user_id == USER_ID).first()
+    set_current_user_id(USER_ID)
+    _run_for_one_user(db, user)
+    db.refresh(task)
+    assert task.state == TaskState.PAUSED
+
+
+def test_paused_with_only_closed_sessions_recovered(db):
+    """PAUSED task whose only sessions are closed (auto_closed=True) → SKIPPED."""
+    task = _seed_task(db, title="paused-closed-only", state=TaskState.PAUSED)
+    _seed_session(db, task, closed=True)
+    user = db.query(User).filter(User.user_id == USER_ID).first()
+    set_current_user_id(USER_ID)
+    _run_for_one_user(db, user)
+    db.refresh(task)
+    assert task.state == TaskState.SKIPPED
+    assert task.initiation_status == "orphaned_recovery"
+
+
+def test_voided_paused_task_not_touched(db):
+    """Voided PAUSED task is filtered out by voided_at IS NULL check."""
+    task = _seed_task(db, title="voided-paused", state=TaskState.PAUSED)
+    task.voided_at = now_utc()
+    db.commit()
+    user = db.query(User).filter(User.user_id == USER_ID).first()
+    set_current_user_id(USER_ID)
+    _run_for_one_user(db, user)
+    db.refresh(task)
+    assert task.state == TaskState.PAUSED  # unchanged — voided guard wins
