@@ -560,10 +560,40 @@ function TodayInner() {
 
   async function handleBulkVoid(reason: string, detail?: string) {
     const ids = Array.from(selectedIds);
-    await Promise.all(ids.map((id) => voidTask(id, reason, detail)));
+    if (ids.length === 0) return;
+
+    // Apr 26 perf fix: optimistic close + cache update. Operator complaint
+    // was "modal closing takes forever" — root cause was awaiting N parallel
+    // void network calls (~1s each over Cloudflare Tunnel + Supabase) before
+    // closing the modal. Now we close the modal AND fade voided tasks from
+    // the list instantly; mutations fire in background; on error we rollback
+    // and surface via errorMsg.
+    await qc.cancelQueries({ queryKey: ["tasks", viewedDate] });
+    const snapshot = qc.getQueryData<TaskRowType[]>(["tasks", viewedDate]);
+    const nowIso = new Date().toISOString();
+    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+      Array.isArray(old)
+        ? old.map((t) =>
+            ids.includes(t.task_id) ? { ...t, voided_at: nowIso } : t
+          )
+        : old
+    );
     clearSelection();
     setVoidModalOpen(false);
-    refresh();
+
+    try {
+      await Promise.all(ids.map((id) => voidTask(id, reason, detail)));
+      qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });
+      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    } catch (e) {
+      // Rollback the optimistic mutation; surface error.
+      if (snapshot !== undefined) {
+        qc.setQueryData(["tasks", viewedDate], snapshot);
+      }
+      setErrorMsg(
+        `Void failed: ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
   }
 
   const prevDateStr = localDateKey(subDays(viewedDateObj, 1));

@@ -888,6 +888,12 @@ class StopwatchManager:
         Used by the multi-tasking swap UX — each entry is a candidate the
         user can switch into via POST /v1/stopwatch/switch/{task_id}.
         Filters out voided tasks and any that aren't strictly state==PAUSED.
+
+        Apr 26 perf fix: replaced N+1 (1 query for sessions + 1 query per
+        session for the Task) with a single JOIN. Operator's Cairo→Supabase
+        eu-west-1 RTT is ~100-200ms per query; with N paused sessions the
+        old code added ~N×200ms to /v1/stopwatch/status (called every 10s
+        by the frontend). Single JOIN cuts that to one round-trip.
         """
         user_id = self._user_key()
         active = self.redis.get_active_stopwatch(user_id)
@@ -898,31 +904,29 @@ class StopwatchManager:
         if uid is None:
             return []
 
-        open_sessions = (
-            self.db.query(StopwatchSession)
+        # Single JOIN: pull the (session, task) pairs in one round-trip,
+        # filtering at the SQL layer instead of per-row in Python.
+        rows = (
+            self.db.query(StopwatchSession, Task)
+            .join(Task, Task.task_id == StopwatchSession.task_id)
             .filter(
                 StopwatchSession.user_id == int(uid),
                 StopwatchSession.end_time_utc.is_(None),
+                Task.voided_at.is_(None),
+                Task.state == TaskState.PAUSED,
             )
             .all()
         )
 
         others: list[dict] = []
         seen_task_ids: set[str] = set()
-        for session in open_sessions:
+        for session, task in rows:
             if active_session_id and session.session_id == active_session_id:
                 continue
             if session.task_id in seen_task_ids:
-                # If a task somehow has multiple open sessions (shouldn't
-                # under normal flow but defensive), surface only the most
-                # recently paused one.
-                continue
-            task = self.db.query(Task).filter(
-                Task.task_id == session.task_id
-            ).first()
-            if not task or task.voided_at is not None:
-                continue
-            if task.state != TaskState.PAUSED:
+                # Defensive: a task with multiple open sessions (shouldn't
+                # happen under normal flow). Surface only the most-recently-
+                # paused one.
                 continue
             paused_at = session.paused_at_utc
             paused_mins = (
