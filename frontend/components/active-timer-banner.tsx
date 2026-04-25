@@ -464,20 +464,96 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
 function PausedOthersChips({ others }: { others: PausedOther[] }) {
   const qc = useQueryClient();
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Optimistic swap: mirrors the pause/resume optimistic pattern. The
+  // network call to /v1/stopwatch/switch typically takes 300-1000ms (DB
+  // pause source + resume target + Redis swap); without optimistic
+  // updates the UI hangs for that round-trip. With optimistic updates,
+  // the banner flips identity instantly and the refetch reconciles
+  // seconds later. On failure we rollback to the snapshot.
   async function handleSwitch(target: PausedOther) {
     setErr(null);
-    setBusyId(target.task_id);
+    setBusy(true);
+
+    // Snapshot for rollback BEFORE we mutate anything.
+    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
+    const statusSnapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    const sourceTaskId = statusSnapshot?.task_id;
+    const sourceTitle = statusSnapshot?.task_title;
+    const sourceSessionId = statusSnapshot?.session_id;
+
+    // Optimistic stopwatch-status: target becomes active, source (if any)
+    // moves to paused_others. Set elapsed_minutes=0 so the per-session-
+    // reset effect in the banner anchors the timer at zero — refetch
+    // reconciles within ~50-100ms with the true elapsed value.
+    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) => {
+      const remainingOthers = (old?.paused_others ?? []).filter(
+        (o) => o.task_id !== target.task_id
+      );
+      const newOthers =
+        sourceTaskId && sourceTitle && sourceSessionId
+          ? [
+              {
+                task_id: sourceTaskId,
+                title: sourceTitle,
+                session_id: sourceSessionId,
+                paused_minutes: 0,
+              },
+              ...remainingOthers,
+            ]
+          : remainingOthers;
+      return {
+        ...(old ?? {}),
+        active: true,
+        task_id: target.task_id,
+        task_title: target.title,
+        session_id: target.session_id,
+        paused: false,
+        elapsed_minutes: 0,
+        total_paused_minutes: 0,
+        start_time: new Date().toISOString(),
+        paused_others: newOthers,
+      } as StopwatchStatus;
+    });
+
+    // Optimistic task list: target → EXECUTING, source → PAUSED.
+    qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+      Array.isArray(old)
+        ? old.map((t: Record<string, unknown>) => {
+            if (t.task_id === target.task_id) return { ...t, state: "EXECUTING" };
+            if (sourceTaskId && t.task_id === sourceTaskId)
+              return { ...t, state: "PAUSED" };
+            return t;
+          })
+        : old
+    );
+
     try {
       await switchStopwatch(target.task_id);
+      // Reconcile with truth — fast path because we already cancelled
+      // pending queries above; this fires a fresh fetch.
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
     } catch (e) {
+      // Rollback the optimistic mutations.
+      if (statusSnapshot !== undefined) {
+        qc.setQueryData(["stopwatch-status"], statusSnapshot);
+      }
+      qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+        Array.isArray(old)
+          ? old.map((t: Record<string, unknown>) => {
+              if (t.task_id === target.task_id) return { ...t, state: "PAUSED" };
+              if (sourceTaskId && t.task_id === sourceTaskId)
+                return { ...t, state: "EXECUTING" };
+              return t;
+            })
+          : old
+      );
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusyId(null);
+      setBusy(false);
     }
   }
 
@@ -490,7 +566,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
         <button
           key={other.task_id}
           type="button"
-          disabled={busyId === other.task_id}
+          disabled={busy}
           onClick={() => handleSwitch(other)}
           className="inline-flex items-center gap-1.5 rounded-sm border border-hairline-signal/40 bg-void-2/40 px-2 py-1 text-[11px] text-dust transition-colors hover:border-signal/60 hover:bg-signal/10 hover:text-parchment disabled:opacity-50"
           title={`Switch to ${other.title} (paused ${other.paused_minutes}m)`}
