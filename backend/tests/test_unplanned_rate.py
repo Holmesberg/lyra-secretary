@@ -47,7 +47,9 @@ def test_unplanned_rate_fields_present():
     mock_db.query.return_value.filter.return_value.count.return_value = 0
     mock_db.query.return_value.filter.return_value.all.return_value = []
 
-    result = asyncio.get_event_loop().run_until_complete(get_discrepancy(db=mock_db))
+    # Apr 26 perf fix: get_discrepancy is now sync (was `async def` with no
+    # await statements; converted to `def` so FastAPI threadpools it).
+    result = get_discrepancy(db=mock_db)
     summary = result["research_layer"]["summary"]
 
     assert "unplanned_execution_rate" in summary
@@ -67,7 +69,9 @@ def test_unplanned_rate_calculation():
     mock_db.query.return_value.filter.return_value.count.return_value = 0
     mock_db.query.return_value.filter.return_value.all.return_value = []
 
-    result = asyncio.get_event_loop().run_until_complete(get_discrepancy(db=mock_db))
+    # Apr 26 perf fix: get_discrepancy is now sync (was `async def` with no
+    # await statements; converted to `def` so FastAPI threadpools it).
+    result = get_discrepancy(db=mock_db)
     summary = result["research_layer"]["summary"]
 
     assert summary["retroactive_count"] == 2
