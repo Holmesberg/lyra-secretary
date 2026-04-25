@@ -485,13 +485,18 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
     const sourceSessionId = statusSnapshot?.session_id;
 
     // Optimistic stopwatch-status: target becomes active, source (if any)
-    // moves to paused_others. Set elapsed_minutes=0 so the per-session-
-    // reset effect in the banner anchors the timer at zero — refetch
-    // reconciles within ~50-100ms with the true elapsed value.
+    // moves to paused_others. Use the target's server-computed elapsed +
+    // start_time + total_paused so the banner anchors at the CORRECT
+    // value instantly. Pre-fix used elapsed=0 + start=now, which made the
+    // timer count up from 0:00 for the entire round-trip duration (the
+    // operator saw 16 seconds of wrong-value over the Cloudflare Tunnel).
     qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) => {
       const remainingOthers = (old?.paused_others ?? []).filter(
         (o) => o.task_id !== target.task_id
       );
+      // For the source we're demoting: copy what we know from snapshot
+      // and approximate the chip fields (paused_minutes=0 since we just
+      // paused it; elapsed and start carry forward).
       const newOthers =
         sourceTaskId && sourceTitle && sourceSessionId
           ? [
@@ -500,6 +505,9 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
                 title: sourceTitle,
                 session_id: sourceSessionId,
                 paused_minutes: 0,
+                elapsed_minutes: old?.elapsed_minutes ?? 0,
+                start_time: old?.start_time ?? null,
+                total_paused_minutes: old?.total_paused_minutes ?? 0,
               },
               ...remainingOthers,
             ]
@@ -511,9 +519,10 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
         task_title: target.title,
         session_id: target.session_id,
         paused: false,
-        elapsed_minutes: 0,
-        total_paused_minutes: 0,
-        start_time: new Date().toISOString(),
+        elapsed_minutes: target.elapsed_minutes,
+        total_paused_minutes: target.total_paused_minutes,
+        start_time:
+          target.start_time ?? old?.start_time ?? new Date().toISOString(),
         paused_others: newOthers,
       } as StopwatchStatus;
     });

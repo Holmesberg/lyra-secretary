@@ -570,3 +570,10 @@ def test_get_paused_others_returns_only_paused_with_open_sessions(db):
     assert others[0]["task_id"] == candidate.task_id
     assert others[0]["title"] == "candidate"
     assert others[0]["paused_minutes"] >= 11
+    # Apr 25 perf fix: chip carries server-computed elapsed snapshot for
+    # instant optimistic anchoring on the frontend.
+    assert "elapsed_minutes" in others[0]
+    assert isinstance(others[0]["elapsed_minutes"], int)
+    assert others[0]["elapsed_minutes"] >= 0
+    assert "start_time" in others[0]
+    assert "total_paused_minutes" in others[0]

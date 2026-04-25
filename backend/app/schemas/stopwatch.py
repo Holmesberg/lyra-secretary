@@ -104,11 +104,21 @@ class PausedOtherInfo(BaseModel):
     """A paused-with-open-session task belonging to the same user that is
     NOT currently the active stopwatch — a candidate to swap into via
     POST /v1/stopwatch/switch/{task_id}.
+
+    `elapsed_minutes`, `start_time`, and `total_paused_minutes` are
+    server-computed snapshots of the active elapsed time at the moment of
+    the current pause. The frontend uses them for instant optimistic-
+    mutation anchoring on swap (Apr 25 fix) — so the banner shows the
+    correct elapsed value the moment the user taps the chip, instead of
+    counting from 0:00 while waiting for the network round-trip.
     """
     task_id: str
     title: str
     session_id: str
     paused_minutes: int
+    elapsed_minutes: int = 0
+    start_time: Optional[datetime] = None
+    total_paused_minutes: float = 0.0
 
 
 class StopwatchStatusResponse(BaseModel):

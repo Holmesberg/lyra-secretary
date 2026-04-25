@@ -145,6 +145,12 @@ export interface PausedOther {
   title: string;
   session_id: string;
   paused_minutes: number;
+  // Apr 25 perf fix: server-computed snapshot of the target's active
+  // elapsed time at pause moment. Used for optimistic-anchor on swap
+  // so the timer shows correct elapsed instantly rather than 0:00.
+  elapsed_minutes: number;
+  start_time: string | null;
+  total_paused_minutes: number;
 }
 
 export interface StopwatchStatus {

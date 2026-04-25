@@ -929,11 +929,26 @@ class StopwatchManager:
                 int((now_utc() - paused_at).total_seconds() / 60)
                 if paused_at else 0
             )
+            # Active elapsed at the moment of the current pause — the
+            # value the timer SHOULD show if the user resumes via swap.
+            # Frontend uses this for the optimistic-mutation anchor so
+            # the banner doesn't display 0:00 during the swap round-trip
+            # (Apr 25: operator reported 16s "counting up from 0:00"
+            # over Cloudflare Tunnel + Supabase before refetch reconciled).
+            if paused_at and session.start_time_utc:
+                wall_sec = (paused_at - session.start_time_utc).total_seconds()
+                paused_sec = (session.total_paused_minutes or 0.0) * 60.0
+                elapsed_min = int(max(0.0, wall_sec - paused_sec) // 60)
+            else:
+                elapsed_min = 0
             others.append({
                 "task_id": task.task_id,
                 "title": task.title,
                 "session_id": session.session_id,
                 "paused_minutes": paused_mins,
+                "elapsed_minutes": elapsed_min,
+                "start_time": session.start_time_utc.isoformat() if session.start_time_utc else None,
+                "total_paused_minutes": session.total_paused_minutes or 0.0,
             })
             seen_task_ids.add(session.task_id)
 
