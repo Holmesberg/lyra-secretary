@@ -426,6 +426,105 @@ def test_switch_redis_swapped_atomically(db):
 
 
 @needs_redis
+def test_recover_from_db_prefers_executing_over_most_recent_start(db):
+    """Apr 25 multi-tasking recovery bug: with multiple open sessions
+    (one EXECUTING + one PAUSED, where PAUSED has the more recent
+    start_time), _recover_from_db must pick the EXECUTING task, not the
+    most-recent-by-start.
+
+    Reproduces the screenshot scenario: post-switch state has CO vid 2
+    EXECUTING (older session) + feedback calibration PAUSED (newer
+    session). If Redis is lost (TTL, eviction), recovery must rehydrate
+    to CO vid 2, not feedback calibration. The pre-fix logic ordered by
+    start_time DESC and picked feedback calibration — the wrong task.
+    """
+    # Older-start EXECUTING task (the post-swap "active" one)
+    executing = _make_task(db, title="executing-older", state=TaskState.EXECUTING)
+    executing_session = _make_open_session(db, executing, start_offset_min=180)
+
+    # Newer-start PAUSED task (the post-swap source)
+    paused = _make_task(db, title="paused-newer", state=TaskState.PAUSED)
+    paused_at = now_utc() - timedelta(minutes=10)
+    paused_session = _make_open_session(db, paused, paused_at=paused_at, start_offset_min=60)
+    _make_pause_event(db, paused_session, paused_at)
+
+    # Redis is empty — simulate Redis loss. Recovery should rehydrate
+    # to the EXECUTING task's session, NOT the most-recent-by-start.
+    from app.utils.redis_client import RedisClient
+    rc = RedisClient()
+    rc.clear_active_stopwatch(str(USER_ID))
+    rc.clear_pause_state(str(USER_ID))
+
+    mgr = StopwatchManager(db)
+    recovered = mgr._recover_from_db(str(USER_ID))
+
+    assert recovered is not None
+    assert recovered["task_id"] == executing.task_id
+    assert recovered["session_id"] == executing_session.session_id
+
+    # Pause state must be cleared on EXECUTING recovery
+    assert rc.get_pause_state(str(USER_ID)) is None
+
+
+@needs_redis
+def test_recover_from_db_falls_back_to_most_recently_paused(db):
+    """No EXECUTING task → recover the most-recently-paused PAUSED task
+    and rehydrate pause_state."""
+    older = _make_task(db, title="paused-older", state=TaskState.PAUSED)
+    older_paused_at = now_utc() - timedelta(minutes=60)
+    _make_open_session(db, older, paused_at=older_paused_at, start_offset_min=120)
+
+    newer = _make_task(db, title="paused-newer", state=TaskState.PAUSED)
+    newer_paused_at = now_utc() - timedelta(minutes=5)
+    newer_session = _make_open_session(db, newer, paused_at=newer_paused_at, start_offset_min=30)
+
+    from app.utils.redis_client import RedisClient
+    rc = RedisClient()
+    rc.clear_active_stopwatch(str(USER_ID))
+    rc.clear_pause_state(str(USER_ID))
+
+    mgr = StopwatchManager(db)
+    recovered = mgr._recover_from_db(str(USER_ID))
+
+    assert recovered is not None
+    assert recovered["task_id"] == newer.task_id
+    assert recovered["session_id"] == newer_session.session_id
+
+    # Pause state rehydrated for the paused task
+    pause_state = rc.get_pause_state(str(USER_ID))
+    assert pause_state is not None
+    assert pause_state["session_id"] == newer_session.session_id
+
+
+@needs_redis
+def test_recover_from_db_returns_none_when_no_open_sessions(db):
+    """No open sessions for the user → return None (nothing to recover)."""
+    # Create a task with only a CLOSED session
+    task = _make_task(db, title="closed-only", state=TaskState.PAUSED)
+    closed_session = StopwatchSession(
+        session_id=str(uuid4()),
+        task_id=task.task_id,
+        user_id=USER_ID,
+        start_time_utc=now_utc() - timedelta(hours=2),
+        end_time_utc=now_utc() - timedelta(hours=1),
+        auto_closed=True,
+        total_paused_minutes=0.0,
+    )
+    db.add(closed_session)
+    db.commit()
+
+    from app.utils.redis_client import RedisClient
+    rc = RedisClient()
+    rc.clear_active_stopwatch(str(USER_ID))
+    rc.clear_pause_state(str(USER_ID))
+
+    mgr = StopwatchManager(db)
+    recovered = mgr._recover_from_db(str(USER_ID))
+
+    assert recovered is None
+
+
+@needs_redis
 def test_get_paused_others_returns_only_paused_with_open_sessions(db):
     """Helper returns paused-with-open-session tasks excluding the active one."""
     # Active task

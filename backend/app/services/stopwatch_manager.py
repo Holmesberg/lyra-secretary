@@ -290,47 +290,107 @@ class StopwatchManager:
         return is_early, elapsed, planned
 
     def _recover_from_db(self, user_id: str) -> Optional[dict]:
-        unclosed = self.db.query(StopwatchSession).filter(
-            StopwatchSession.end_time_utc == None
-        ).order_by(StopwatchSession.start_time_utc.desc()).all()
+        """Rehydrate Redis active_stopwatch from DB after Redis loss/eviction.
 
-        if not unclosed:
+        Multi-tasking awareness (Apr 25 fix): with the swap endpoint, a user
+        can have multiple open StopwatchSessions at once — one per task that
+        was paused-mid-work. The currently-active task is the one whose
+        Task.state is EXECUTING; all other open sessions belong to PAUSED
+        tasks (interruption parents or post-swap source tasks).
+
+        Recovery priority:
+          1. Find the unique session whose task is in state==EXECUTING.
+             That's unambiguously the user's active stopwatch.
+          2. If no executing task exists, fall back to the PAUSED task with
+             the most recent paused_at_utc (the user's last interaction).
+             Rehydrate Redis pause_state too in that case.
+          3. If neither exists, return None — no recoverable state.
+
+        Pre-fix bug: ordered by start_time_utc.DESC, which after multi-tasking
+        could pick the most-recently-started session (likely the child of an
+        interruption flow) even when the user had already switched back to
+        the parent. That left Redis pointing at a PAUSED task while another
+        task was actually EXECUTING — the swap chip then disappeared because
+        get_paused_others excludes the Redis-active session.
+        """
+        # Defensive cross-user safety: explicitly scope StopwatchSession.user_id.
+        # Task query is auto-scoped via ContextVar, but the StopwatchSession
+        # base query isn't, and the user_id comes from _user_key() which reads
+        # ContextVar. Explicit filter matches the get_paused_others pattern.
+        try:
+            uid_int = int(user_id)
+        except (TypeError, ValueError):
             return None
 
-        if len(unclosed) > 1:
-            logger.warning(
-                f"Multiple unclosed sessions found ({len(unclosed)}) — "
-                f"recovering most recent. Others may be orphaned."
+        # Priority 1: find the EXECUTING task for this user with an open session.
+        executing_session = (
+            self.db.query(StopwatchSession)
+            .join(Task, Task.task_id == StopwatchSession.task_id)
+            .filter(
+                StopwatchSession.user_id == uid_int,
+                StopwatchSession.end_time_utc.is_(None),
+                Task.state == TaskState.EXECUTING,
+                Task.voided_at.is_(None),
             )
-
-        session = unclosed[0]
-
-        task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
-        if not task:
-            return None
-        # Defense-in-depth: a voided or terminal-state task must never
-        # rehydrate into the banner. void_cleanup() closes the session at
-        # void-time (commit 59ca80d), and mark_abandoned now clears Redis
-        # too, but any orphan rows left over from before those fixes
-        # shipped would otherwise resurface on the next Redis-loss event.
-        if task.voided_at is not None or task.state in (
-            TaskState.SKIPPED, TaskState.EXECUTED, TaskState.DELETED,
-        ):
-            return None
-
-        self.redis.set_active_stopwatch(
-            user_id=user_id,
-            session_id=session.session_id,
-            task_id=task.task_id,
-            title=task.title,
-            start_time=session.start_time_utc.isoformat()
+            .order_by(StopwatchSession.start_time_utc.desc())
+            .first()
         )
 
-        # Recover pause state too if session was paused
-        if session.paused_at_utc and not self.redis.get_pause_state(user_id):
-            self.redis.set_pause_state(user_id, session.session_id, session.paused_at_utc.isoformat())
+        if executing_session:
+            task = self.db.query(Task).filter(
+                Task.task_id == executing_session.task_id
+            ).first()
+            self.redis.set_active_stopwatch(
+                user_id=user_id,
+                session_id=executing_session.session_id,
+                task_id=task.task_id,
+                title=task.title,
+                start_time=executing_session.start_time_utc.isoformat(),
+            )
+            # Defensive: clear any lingering pause_state. The TTLs on
+            # active_stopwatch and pause_state SHOULD coincide, but if a
+            # race left pause_state behind after active expired, recovery
+            # to an EXECUTING task must not report paused=true.
+            self.redis.clear_pause_state(user_id)
+            return self.redis.get_active_stopwatch(user_id)
 
-        return self.redis.get_active_stopwatch(user_id)
+        # Priority 2: no EXECUTING task. Fall back to the most-recently-paused
+        # PAUSED task (one the user most recently interacted with).
+        paused_session = (
+            self.db.query(StopwatchSession)
+            .join(Task, Task.task_id == StopwatchSession.task_id)
+            .filter(
+                StopwatchSession.user_id == uid_int,
+                StopwatchSession.end_time_utc.is_(None),
+                Task.state == TaskState.PAUSED,
+                Task.voided_at.is_(None),
+            )
+            .order_by(StopwatchSession.paused_at_utc.desc())
+            .first()
+        )
+
+        if paused_session:
+            task = self.db.query(Task).filter(
+                Task.task_id == paused_session.task_id
+            ).first()
+            self.redis.set_active_stopwatch(
+                user_id=user_id,
+                session_id=paused_session.session_id,
+                task_id=task.task_id,
+                title=task.title,
+                start_time=paused_session.start_time_utc.isoformat(),
+            )
+            # Rehydrate pause_state so the banner correctly shows paused.
+            if paused_session.paused_at_utc and not self.redis.get_pause_state(user_id):
+                self.redis.set_pause_state(
+                    user_id,
+                    paused_session.session_id,
+                    paused_session.paused_at_utc.isoformat(),
+                )
+            return self.redis.get_active_stopwatch(user_id)
+
+        # No EXECUTING and no PAUSED open sessions — nothing to recover.
+        return None
 
     # ------------------------------------------------------------------
     # Public API
