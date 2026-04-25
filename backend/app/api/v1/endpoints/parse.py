@@ -17,7 +17,7 @@ class ParseChainResponse(BaseModel):
 
 
 @router.post("/parse", response_model=ParseChainResponse)
-async def parse_input(request: TaskParseRequest) -> ParseChainResponse:
+def parse_input(request: TaskParseRequest) -> ParseChainResponse:
     """
     Parse natural language text into structured task data.
 

@@ -16,6 +16,7 @@ from app.db.scoping import install_scoping
 install_scoping(Base)
 
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.concurrency import run_in_threadpool
 from app.db.scoping import set_current_user_id
 
 
@@ -28,6 +29,16 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
       3. Default: user_id=1 (operator) — preserves single-user clients
 
     The bearer path also auto-provisions a User row on first login.
+
+    Apr 26 perf fix: resolve_user_from_token is synchronous (Postgres
+    query + commit). Calling it directly from this `async def dispatch`
+    method blocks the entire ASGI event loop — every concurrent request
+    serializes through the same JWT decode + DB lookup. With the /today
+    fan-out (5+ parallel requests on mount) and Cairo→Supabase RTT of
+    100-200ms, the practical effect was that the operator's sister
+    couldn't sign in: 5 concurrent requests × ~1s each, all queued.
+    Wrapping in run_in_threadpool releases the event loop so concurrent
+    requests can dispatch in parallel via the FastAPI default threadpool.
     """
 
     async def dispatch(self, request, call_next):
@@ -42,7 +53,10 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
         if auth and auth.lower().startswith("bearer "):
             token = auth.split(None, 1)[1].strip()
             try:
-                user = resolve_user_from_token(token)
+                # Offload the sync DB work so other concurrent requests can
+                # progress. This single change is the dominant signup-latency
+                # fix.
+                user = await run_in_threadpool(resolve_user_from_token, token)
                 user_id = user.user_id
                 resolved = True
             except HTTPException as e:

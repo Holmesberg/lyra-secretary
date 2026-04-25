@@ -19,6 +19,7 @@ from typing import Optional
 
 import jwt
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -138,7 +139,22 @@ def _seed_starter_task(db: Session, user: User) -> None:
 
 
 def resolve_user_from_token(token: str) -> User:
-    """Decode the JWT and return the matching User, creating it on first login."""
+    """Decode the JWT and return the matching User, creating it on first login.
+
+    Apr 26 fixes:
+      1. **Race-safe provisioning.** When a new user signs in, the frontend
+         fan-out fires 5+ concurrent requests; without protection they ALL
+         see user=None and all try to INSERT, hitting the email unique
+         constraint. Wrap the insert in try/except IntegrityError + re-query;
+         whichever request wins, the others adopt the existing row.
+      2. **Killed `_seed_starter_task` callsites.** Per Apr 25 strategic
+         decision (`docs/strategic_decisions_april_24.md` + `memory/
+         project_relief_instrument_reframe.md`): the seeded "Plan your week
+         — brain dump and triage" task poisoned every signup's activation
+         funnel (u12, u14 each got it, both abandoned it). The right fix is
+         to ship Family F1 chaos capture instead of a placeholder task.
+         Removing the calls also cuts ~1 commit + 1 round-trip from signup.
+    """
     payload = decode_token(token)
     email = payload.get("email")
     google_id = payload.get("sub") or payload.get("google_id")
@@ -149,36 +165,39 @@ def resolve_user_from_token(token: str) -> User:
     try:
         user: Optional[User] = db.query(User).filter(User.email == email).first()
         if user is None:
-            user = User(
-                email=email,
-                google_id=google_id,
-                timezone="Africa/Cairo",
-                is_operator=False,
-                notion_enabled=False,
-                created_at=datetime.utcnow(),
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-            # Fresh signup — seed the starter task so /today isn't empty.
-            _seed_starter_task(db, user)
-            db.refresh(user)
+            try:
+                user = User(
+                    email=email,
+                    google_id=google_id,
+                    timezone="Africa/Cairo",
+                    is_operator=False,
+                    notion_enabled=False,
+                    created_at=datetime.utcnow(),
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+            except IntegrityError:
+                # Concurrent signup race: another request beat us to the
+                # INSERT and committed first. Roll back our failed transaction
+                # and re-query; the other request's row is the canonical one.
+                db.rollback()
+                user = (
+                    db.query(User).filter(User.email == email).first()
+                )
+                if user is None:
+                    # Truly unexpected — IntegrityError without a winning
+                    # row. Surface as 500 so the failure is loud.
+                    raise HTTPException(
+                        status_code=500,
+                        detail="user provisioning failed (race-recovery)",
+                    )
         else:
             if google_id and user.google_id is None:
                 # Backfill google_id on the operator's existing row at first login
                 user.google_id = google_id
                 db.commit()
                 db.refresh(user)
-            # Pre-Apr-21 signups who never got past the (now-removed)
-            # onboarding surface — if they have zero tasks and a null
-            # flag, seed them on this sign-in. Users with any prior task
-            # have the flag stamped (via the 2026-04-21 backfill) and
-            # skip this branch.
-            if user.onboarding_completed_at is None:
-                task_count = db.query(Task).filter(Task.user_id == user.user_id).count()
-                if task_count == 0:
-                    _seed_starter_task(db, user)
-                    db.refresh(user)
         return user
     finally:
         db.close()

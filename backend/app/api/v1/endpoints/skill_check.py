@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.get("/skill/ping")
-async def skill_ping(db: Session = Depends(get_db)) -> dict:
+def skill_ping(db: Session = Depends(get_db)) -> dict:
     """
     Lightweight connectivity and state check for session start.
 

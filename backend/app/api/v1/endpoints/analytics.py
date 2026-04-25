@@ -31,7 +31,7 @@ def _avg(vals: list) -> float:
 
 
 @router.get("/analytics/discrepancy")
-async def get_discrepancy(db: Session = Depends(get_db)) -> dict:
+def get_discrepancy(db: Session = Depends(get_db)) -> dict:
     """
     Return discrepancy measurement data in two separate layers:
 
@@ -739,7 +739,7 @@ def _insight_calibration_maturation(
 # ---------------------------------------------------------------------------
 
 @router.get("/analytics/insights")
-async def get_insights(
+def get_insights(
     auto_mark: bool = Query(False, description="Mark returned unseen insights as seen in Redis (24h TTL)"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -849,7 +849,7 @@ async def get_insights(
 # ---------------------------------------------------------------------------
 
 @router.get("/analytics/cascade")
-async def get_cascade(
+def get_cascade(
     days: int = Query(7, ge=1, le=90, description="Look-back window in days"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -1063,7 +1063,7 @@ _bias_cell = _svc_bias_cell
 
 
 @router.get("/analytics/bias_factor")
-async def get_bias_factor(
+def get_bias_factor(
     min_sessions: int = Query(3, ge=2, le=50, description="Minimum sessions per bucket"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -1166,7 +1166,7 @@ _adaptive_calibration = _svc_adaptive_calibration
 
 
 @router.get("/analytics/bias_factor/lookup")
-async def bias_factor_lookup(
+def bias_factor_lookup(
     category: str = Query(..., description="Task category"),
     tod: str = Query(..., description="Time-of-day bucket (morning/afternoon/evening/night)"),
     planned_minutes: int = Query(30, ge=1, description="Planned duration for duration-bucket signal"),
@@ -1218,7 +1218,7 @@ async def bias_factor_lookup(
 
 
 @router.get("/analytics/pause_prediction")
-async def get_pause_prediction(db: Session = Depends(get_db)) -> dict:
+def get_pause_prediction(db: Session = Depends(get_db)) -> dict:
     """VT-17 pause-prediction dashboard (scoped to the requesting user).
 
     Reports firing volume, acceptance_rate, and per-mechanism breakdown

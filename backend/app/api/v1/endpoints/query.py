@@ -20,7 +20,7 @@ ROW_LIMIT = 1000
 
 
 @router.get("/tasks/query")
-async def query_tasks(
+def query_tasks(
     date: Optional[str] = Query(None, description="Filter by date (YYYY-MM-DD)"),
     days: int = Query(1, ge=1, le=62, description="Number of days starting at `date` to include (default 1). 62 cap = ~2 months, enough for the calendar month view."),
     date_from: Optional[str] = Query(None, description="Range start (YYYY-MM-DD). Takes precedence over `date` when set."),
@@ -164,7 +164,7 @@ async def query_tasks(
 
 
 @router.get("/tasks/last")
-async def get_last_task(db: Session = Depends(get_db)):
+def get_last_task(db: Session = Depends(get_db)):
     """
     Return the most recently created, rescheduled, or completed task (1-hour window).
 

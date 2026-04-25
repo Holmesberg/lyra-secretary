@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/start", response_model=StopwatchStartResponse)
-async def start_stopwatch(
+def start_stopwatch(
     request: StopwatchStartRequest,
     db: Session = Depends(get_db),
 ) -> StopwatchStartResponse:
@@ -90,7 +90,7 @@ async def start_stopwatch(
 
 
 @router.post("/pause", response_model=StopwatchPauseResponse)
-async def pause_stopwatch(
+def pause_stopwatch(
     request: StopwatchPauseRequest,
     db: Session = Depends(get_db),
 ) -> StopwatchPauseResponse:
@@ -127,7 +127,7 @@ async def pause_stopwatch(
 
 
 @router.post("/resume", response_model=StopwatchResumeResponse)
-async def resume_stopwatch(db: Session = Depends(get_db)) -> StopwatchResumeResponse:
+def resume_stopwatch(db: Session = Depends(get_db)) -> StopwatchResumeResponse:
     """
     Resume a paused stopwatch. Reports how many minutes were paused.
     """
@@ -145,7 +145,7 @@ async def resume_stopwatch(db: Session = Depends(get_db)) -> StopwatchResumeResp
 
 
 @router.post("/stop", response_model=StopwatchStopResponse)
-async def stop_stopwatch(
+def stop_stopwatch(
     request: StopwatchStopRequest = None,
     confirmed: bool = Query(False, description="Set to true to confirm early stop"),
     db: Session = Depends(get_db),
@@ -249,7 +249,7 @@ async def stop_stopwatch(
 
 
 @router.get("/status", response_model=StopwatchStatusResponse)
-async def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResponse:
+def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResponse:
     """Get stopwatch status. Includes paused state, total paused minutes,
     and paused_others (other paused-with-open-session tasks for this user
     that the multi-tasking swap UX uses as switch candidates)."""
@@ -265,7 +265,7 @@ async def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResp
 
 
 @router.post("/switch/{task_id}", response_model=StopwatchSwitchResponse)
-async def switch_stopwatch(
+def switch_stopwatch(
     task_id: str,
     db: Session = Depends(get_db),
 ) -> StopwatchSwitchResponse:
@@ -303,7 +303,7 @@ async def switch_stopwatch(
 
 
 @router.post("/update-completion", response_model=UpdateCompletionResponse)
-async def update_completion(
+def update_completion(
     request: UpdateCompletionRequest,
     db: Session = Depends(get_db),
 ) -> UpdateCompletionResponse:
@@ -331,7 +331,7 @@ async def update_completion(
 
 
 @router.post("/correct-readiness", response_model=ReadinessCorrectionResponse)
-async def correct_readiness(
+def correct_readiness(
     request: ReadinessCorrectionRequest,
     db: Session = Depends(get_db),
 ) -> ReadinessCorrectionResponse:
@@ -353,7 +353,7 @@ async def correct_readiness(
 
 
 @router.post("/retroactive", response_model=RetroactiveResponse)
-async def retroactive_log(
+def retroactive_log(
     request: RetroactiveRequest,
     db: Session = Depends(get_db),
 ) -> RetroactiveResponse:

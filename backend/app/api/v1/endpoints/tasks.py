@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/create", response_model=TaskCreateResponse)
-async def create_task(
+def create_task(
     request: TaskCreateRequest,
     db: Session = Depends(get_db),
     x_idempotency_key: Optional[str] = Header(None)
@@ -142,7 +142,7 @@ async def create_task(
 
 
 @router.post("/reschedule", response_model=TaskRescheduleResponse)
-async def reschedule_task(
+def reschedule_task(
     request: TaskRescheduleRequest,
     db: Session = Depends(get_db)
 ) -> TaskRescheduleResponse:
@@ -185,7 +185,7 @@ async def reschedule_task(
 
 
 @router.post("/delete", response_model=TaskDeleteResponse)
-async def delete_task(
+def delete_task(
     request: TaskDeleteRequest,
     db: Session = Depends(get_db)
 ) -> TaskDeleteResponse:
@@ -207,7 +207,7 @@ async def delete_task(
 
 
 @router.post("/tasks/{task_id}/void", response_model=TaskVoidResponse)
-async def void_task(
+def void_task(
     task_id: str,
     request: TaskVoidRequest,
     db: Session = Depends(get_db),
@@ -268,7 +268,7 @@ async def void_task(
 
 
 @router.post("/tasks/{task_id}/mark-abandoned", response_model=MarkAbandonedResponse)
-async def mark_abandoned(
+def mark_abandoned(
     task_id: str,
     request: MarkAbandonedRequest = None,
     db: Session = Depends(get_db),
@@ -330,7 +330,7 @@ async def mark_abandoned(
 
 
 @router.post("/tasks/swap", response_model=SwapResponse)
-async def swap_tasks(
+def swap_tasks(
     request: SwapRequest,
     db: Session = Depends(get_db),
 ) -> SwapResponse:
@@ -357,7 +357,7 @@ async def swap_tasks(
 
 
 @router.post("/schedule/clear")
-async def clear_schedule(
+def clear_schedule(
     db: Session = Depends(get_db),
 ) -> dict:
     """
@@ -396,7 +396,7 @@ async def clear_schedule(
 
 
 @router.post("/tasks/{task_id}/sync")
-async def sync_task_to_notion(
+def sync_task_to_notion(
     task_id: str,
     db: Session = Depends(get_db),
 ) -> dict:
@@ -423,7 +423,7 @@ async def sync_task_to_notion(
 
 
 @router.get("/tasks/{task_id}", response_model=TaskDetail)
-async def get_task(
+def get_task(
     task_id: str,
     db: Session = Depends(get_db)
 ) -> TaskDetail:

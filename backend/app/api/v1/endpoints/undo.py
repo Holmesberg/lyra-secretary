@@ -21,7 +21,7 @@ class UndoResponse(BaseModel):
     message: str
 
 @router.post("/undo", response_model=UndoResponse)
-async def undo_action(db: Session = Depends(get_db)) -> UndoResponse:
+def undo_action(db: Session = Depends(get_db)) -> UndoResponse:
     """
     Undo the last action within the 30-second window.
     Supports reverting task creation and deletion.

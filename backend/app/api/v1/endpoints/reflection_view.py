@@ -24,7 +24,7 @@ router = APIRouter()
 
 
 @router.post("/reflection_view/{view_id}/viewed")
-async def mark_viewed(view_id: str, db: Session = Depends(get_db)) -> dict:
+def mark_viewed(view_id: str, db: Session = Depends(get_db)) -> dict:
     """Stamp viewed_at. First-view wins (idempotent)."""
     row = (
         db.query(ReflectionViewLog)
@@ -44,7 +44,7 @@ async def mark_viewed(view_id: str, db: Session = Depends(get_db)) -> dict:
 
 
 @router.post("/reflection_view/{view_id}/dismissed")
-async def mark_dismissed(view_id: str, db: Session = Depends(get_db)) -> dict:
+def mark_dismissed(view_id: str, db: Session = Depends(get_db)) -> dict:
     """Stamp dismissed_at; if viewed_at is set, compute dwell_seconds.
     First-dismiss wins (idempotent)."""
     row = (
