@@ -1,13 +1,45 @@
 # Deadline Mechanism — Design Note
 
-**Status:** PARKED design. Do not implement before the Jun 18-25 retention checkpoint
-or before H1 has reached an explicit decision (whichever comes second). This doc
-specifies the design so that when the gating conditions resolve, the work has a
-ready-to-lift spec.
+**Status:** APPROVED for Option B build (2026-04-25, post-midterms start). Locked
+by operator decision. See "Operator decision (Apr 25)" section below for the
+justification chain. This doc is the implementation reference; do not depart from
+the schema, parser, or pre-registration plan without an explicit re-review.
 
 **Created:** 2026-04-25, midterm halt window.
+**Approved:** 2026-04-25 by operator. Build starts post-midterms (≥ Apr 27).
 **Owner:** Operator (Ali).
-**Triggers:** Jun 18-25 GREEN AND H1 decision-window closed (validated, falsified, or pivot).
+**Choice locked:** Option B (build before Jun 18-25 retention check) — see "Why this
+conflicts with H1 measurement" section below for the surfaced trade.
+
+---
+
+## Operator decision (Apr 25)
+
+**Choice:** Option B — build deadline mechanism mid-alpha, before the Jun 18-25
+retention checkpoint and before H1 reaches an explicit decision.
+
+**Justification (operator-stated):**
+1. Per the operator's priority hierarchy (operator's time > users' time > research
+   publications, see `~/.claude/projects/.../memory/user_priority_hierarchy.md`),
+   research-integrity caveats yield to features the operator needs.
+2. The operator wants to use this feature himself for midterms + BCI hackathon
+   work — self-dogfooding is the fastest validation loop available.
+3. The H1 retention signal is weak (1/9 actively retaining external users as of
+   Apr 25). The dataset is too sparse to be at meaningful risk from
+   mid-experiment additions, so the parked H2 caveat about "would invalidate the
+   pre-registered analysis rules" is largely moot.
+4. The deadline mechanism is hypothesized to *reduce* logging friction (see
+   `project_logging_friction.md`), which would *increase* H1 dataset density. Net
+   effect on H1 measurement quality may be positive even with the mid-experiment
+   contamination.
+
+**What this means for research-integrity mitigation (still required):**
+- Pre-register the deadline split-cohort RCT in MANIFESTO before the soft-warning
+  UX ships (data collection on the schema can begin earlier).
+- Run analyses both with and without deadline-stratification when computing H1
+  rho, so the H1 finding (or null) doesn't entangle with deadline introduction.
+- Document the operator-decision-driven cohort change in the eventual H1 writeup
+  if a writeup happens. Be explicit about the pivot from the parked H2 plan.
 
 ---
 
@@ -251,6 +283,12 @@ parked H2 guidance. The justification (worth making explicit if shipped):
 **Operator's instinct (per Apr 25 chat):** lean toward (B) given retention weakness.
 This doc captures (C) as the structurally-cleanest middle path — pre-registers the
 data without contaminating intervention measurement.
+
+**Resolved (2026-04-25):** Option B locked by operator. See "Operator decision" at
+top of this doc for the full justification chain. Option C's silent-collect path is
+preserved internally as a fallback — if mid-build the operator decides the
+soft-warning RCT is contaminating something important, the surfaces can be feature-
+flagged off while data accrual continues.
 
 ---
 
