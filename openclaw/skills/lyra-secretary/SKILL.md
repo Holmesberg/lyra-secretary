@@ -70,6 +70,7 @@ Base URL: `http://backend:8000/v1` — All times: **Africa/Cairo local, ISO 8601
 **POST /v1/stopwatch/retroactive** — body: `title`*, `start_time`*, `end_time`*, `post_task_reflection`*, `total_paused_minutes`*, `unplanned_reason`* (unexpected_task|forgot_to_log|planning_friction|spontaneous_decision), `pre_task_readiness`, `category`, `planned_duration_minutes` — returns: `task_id`, `duration_minutes`, `delta_minutes`
 **POST /v1/stopwatch/pause** — body (optional): `pause_reason`, `pause_initiator` (self|external) — returns: `paused`, `elapsed_minutes`, `paused_at`
 **POST /v1/stopwatch/resume** — no body — returns: `resumed`, `paused_minutes`, `total_paused_minutes`
+**POST /v1/stopwatch/switch/{task_id}** — atomic swap to a paused-with-open-session target — pauses current source, resumes target — returns: `from_task_id`, `to_task_id`, `noop`
 **POST /v1/stopwatch/correct-readiness** — body: `pre_task_readiness`* (1-5) — returns: `corrected`, `original`, `new`
 **GET /v1/stopwatch/status** — returns: `active`, `task_title`, `elapsed_minutes`, `paused`, `total_paused_minutes`
 **POST /v1/undo** — no body — reverts last create or delete

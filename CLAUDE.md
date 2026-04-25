@@ -98,7 +98,7 @@ Transitions are enforced by `services/state_machine.py`. Completed/skipped/delet
 | `services/telegram_notifier.py` | Telegram bot delivery for reminders and overflow alerts |
 | `workers/scheduler.py` | APScheduler setup wired into FastAPI lifespan |
 
-### Database schema (9 tables)
+### Database schema (10 tables)
 - **task** — core entity with planned/executed time pairs, state, Notion page ID
 - **stopwatch_session** — one-to-many with task; tracks individual timer runs
 - **pause_event** — one-to-many with stopwatch_session; full pause/resume history (VT-17 pause-prediction data source)
@@ -108,6 +108,7 @@ Transitions are enforced by `services/state_machine.py`. Completed/skipped/delet
 - **user** — authenticated users; retention cohort, consent, anonymized-deletion fields
 - **archetype** — static chronotype × discipline profile with prior bias_factor
 - **archetype_assignment** — per-user archetype snapshot at onboarding (re-fit later)
+- **external_event_outcome** — user-marked outcomes on imported calendar events (Apr 21 alembic 027); H1 queries MUST filter `WHERE external_source IS NULL` to exclude these from research analysis (template per `docs/integrations_architecture.md`)
 
 ### OpenClaw integration
 OpenClaw runs in a separate Docker Compose stack. Connect the two via Docker network bridge (see `docs/architecture.md §3`). The agent skill definition lives at `openclaw/skills/lyra-secretary/SKILL.md` and must be copied to `~/.openclaw/skills/lyra-secretary/`. Notification delivery is poll-based: the backend enqueues payloads into Redis via `POST /v1/notifications/push` (scheduler-internal) and the agent drains `GET /v1/notifications/pending` every 30 s. No direct push channel to the OpenClaw gateway is used.

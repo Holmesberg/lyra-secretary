@@ -546,6 +546,16 @@ behavioral signals.
 *Captured: April 16, 2026 (from ChatGPT conversation). Expanded April 17
 with integration mapping.*
 
+> **STATUS: ELEVATED to active design — 2026-04-25.** Per operator
+> decision (Option B locked), the deadline mechanism is being built
+> mid-alpha rather than waiting for Phase 6+. The "Do not build
+> mid-experiment" caveat below is overridden by the priority hierarchy
+> (operator's time > users' time > research). Current design lives in
+> `docs/deadline_mechanism_design.md` with pre-registration plan for
+> the soft-warning RCT to mitigate the H1 contamination concern. The
+> historical parked-idea text is preserved below as the original
+> hypothesis statement; treat the design doc as canonical.
+
 **Hypothesis:** Users systematically underestimate task duration due to
 distorted risk assessment under deadline proximity, producing increasing
 `duration_delta_minutes` as deadline approaches. Mechanism: temporal

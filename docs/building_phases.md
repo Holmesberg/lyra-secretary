@@ -404,11 +404,11 @@ This document uses **engineering phase numbering**. MANIFESTO.md uses **research
 
 ## Commit Statistics Snapshot
 
-As of April 17, 2026 (see `project_history.md` for full history):
-- ~222 commits on main
-- 23 Alembic migrations
-- 221 backend tests passing
-- 39 API endpoints
-- 9 business tables
-- 8 APScheduler background jobs
-- 5 frontend routes (/today, /calendar, /table, /settings, /insights)
+As of April 26, 2026 (post Apr 17-26 shipping burst; see `project_history.md` for full history):
+- ~314 commits on main (was 222 at Apr 17 baseline)
+- 33 Alembic migrations (was 23)
+- 322 backend tests passing (was 221)
+- 55 API endpoints (was 39)
+- 10 business tables (was 9 — added `external_event_outcome` Apr 21 alembic 027)
+- 8 APScheduler background jobs (unchanged: reminders, notion-retry, timer-overflow, overdue-tasks, stale-session-recovery, orphan-task-recovery, pause-prediction, reconcile-responses)
+- 6 frontend (app)/ routes (/today, /calendar, /table, /settings, /insights, /admin) + 3 root pages (/onboarding, /privacy, /terms)
