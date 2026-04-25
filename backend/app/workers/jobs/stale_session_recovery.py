@@ -60,8 +60,19 @@ def _run_for_one_user(db, user: User):
 
     # Read Redis active ONCE per user; the recovery loop uses it to skip
     # the currently-active session (Apr 25 multi-tasking swap fix).
-    active = redis.get_active_stopwatch(user.user_id)
-    active_session_id = active.get("session_id") if active else None
+    # Defensive: if Redis is unreachable (CI without redis service, network
+    # blip), the skip-active optimization is lost but recovery still runs
+    # correctly. The previous iteration-level try/except in the for-loop
+    # absorbed Redis failures the same way; this preserves that contract.
+    try:
+        active = redis.get_active_stopwatch(user.user_id)
+        active_session_id = active.get("session_id") if active else None
+    except Exception as e:
+        logger.warning(
+            f"stale_session_recovery: redis unavailable, skip-active disabled "
+            f"for user_id={user.user_id}: {e}"
+        )
+        active_session_id = None
 
     closed = 0
     for session in stale:
