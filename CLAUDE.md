@@ -27,6 +27,21 @@ pip install matplotlib
 python docs/diagrams/generate_diagrams.py
 ```
 
+### Frontend — production serving (lyraos.org via Cloudflare Tunnel)
+```bash
+cd frontend/
+npm run build       # ~1-2 min; rebuild after every code change
+npm run start       # serves :3000 — this is what Cloudflare Tunnel forwards
+```
+
+**Critical:** never use `npm run dev` for traffic served at lyraos.org. The Apr 25 perf incident (`commit TBD`) found the operator was serving `next dev` over the tunnel, shipping ~12MB unminified bundles per page load. Production builds tree-shake to ~190KB initial load for `/today`. Use `dev` only for local iteration on `localhost:3000`.
+
+### Frontend — local development
+```bash
+cd frontend/
+npm run dev         # localhost:3000, hot-reload, full source maps
+```
+
 ## Architecture
 
 Lyra Secretary is a measurement-backed adaptive task scheduler. It records **planned vs. executed duration** per task to learn behavioral patterns, with a research layer that validates whether its own insights actually predict anything. The `duration_delta_minutes` field (planned − executed) is the core metric.
