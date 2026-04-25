@@ -2,6 +2,7 @@
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 import { ArchetypeSurvey } from "@/components/archetype-survey";
@@ -51,8 +52,7 @@ type Me = {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { status, data: session } = useSession();
   const router = useRouter();
-  const [me, setMe] = useState<Me | null>(null);
-  const [meError, setMeError] = useState<string | null>(null);
+  const qc = useQueryClient();
   // True while we're auto-triggering next-auth signOut after a 401.
   // Distinguishes the "your session expired, redirecting" banner from
   // the "backend is actually down" banner — different recovery paths.
@@ -70,26 +70,43 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // /api/integrations/google-calendar/connect. See
   // docs/integrations_architecture.md.
 
-  useEffect(() => {
-    if (status !== "authenticated") return;
-    setMeError(null);
-    api<Me>("/v1/users/me")
-      .then(setMe)
-      .catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e);
-        setMeError(msg);
-        // Log with a real label so WSL/dev tab shows the actual reason.
-        console.error("users/me fetch failed:", msg);
+  // /v1/users/me via React Query, key ["me"] — shared cache with all
+  // other components that fetch /me (archetype-insights-card, settings/
+  // page, archetype-survey-invalidation, etc.). Apr 25 perf fix:
+  // settings page archetype section was paying a fresh ~1s /me round-
+  // trip on every visit because it used a plain useEffect+useState
+  // instead of the shared cache key. Now layout's first fetch warms
+  // the cache; settings reads it instantly.
+  const meQ = useQuery<Me>({
+    queryKey: ["me"],
+    queryFn: () => api<Me>("/v1/users/me"),
+    enabled: status === "authenticated",
+    retry: false, // 401 must not retry — it'll loop signOut otherwise
+    refetchOnWindowFocus: false,
+    refetchInterval: false, // /me is stable across the session
+    staleTime: 5 * 60_000, // treat as fresh for 5 min
+  });
+  const me = meQ.data;
+  const meError =
+    meQ.error instanceof Error
+      ? meQ.error.message
+      : meQ.error
+        ? String(meQ.error)
+        : null;
 
-        // 401 = expired/invalid JWT in the next-auth session. Reloading
-        // won't help — the stored token is dead. Auto-trigger signOut
-        // and bounce to the landing page for a fresh login.
-        if (e instanceof ApiError && e.status === 401) {
-          setAutoSigningOut(true);
-          signOut({ callbackUrl: "/" });
-        }
-      });
-  }, [status]);
+  useEffect(() => {
+    if (!meQ.error) return;
+    console.error("users/me fetch failed:", meError);
+    if (meQ.error instanceof ApiError && meQ.error.status === 401) {
+      setAutoSigningOut(true);
+      signOut({ callbackUrl: "/" });
+    }
+  }, [meQ.error, meError]);
+
+  // Used by gating modals (consent, archetype, tutorial) to refresh
+  // /me after the user submits. Invalidate-and-refetch — same key, so
+  // every consumer updates simultaneously.
+  const refetchMe = () => qc.invalidateQueries({ queryKey: ["me"] });
 
   if (status === "loading") {
     return (
@@ -170,22 +187,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AppShell>
-      {needsConsent && (
-        <ConsentModal
-          onAccepted={() => api<Me>("/v1/users/me").then(setMe)}
-        />
-      )}
+      {needsConsent && <ConsentModal onAccepted={refetchMe} />}
       {!needsConsent && children}
-      {needsArchetypeSurvey && (
-        <ArchetypeSurvey
-          onFinished={() => api<Me>("/v1/users/me").then(setMe)}
-        />
-      )}
-      {needsTutorial && (
-        <TutorialOverlay
-          onFinished={() => api<Me>("/v1/users/me").then(setMe)}
-        />
-      )}
+      {needsArchetypeSurvey && <ArchetypeSurvey onFinished={refetchMe} />}
+      {needsTutorial && <TutorialOverlay onFinished={refetchMe} />}
     </AppShell>
   );
 }

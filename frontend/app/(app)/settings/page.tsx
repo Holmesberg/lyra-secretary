@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -43,19 +44,23 @@ export default function SettingsPage() {
   // operator asked 2026-04-22 for: (a) button always available, (b)
   // emphasis retake after 3 months. See
   // docs/strategic_decisions_april_22.md §5.
-  const [archetypeMe, setArchetypeMe] = useState<MeArchetype | null>(null);
-  useEffect(() => {
-    api<MeArchetype>("/v1/users/me")
-      .then(setArchetypeMe)
-      .catch(() => {
-        // Non-blocking — section just won't render.
-      });
-  }, []);
-
+  //
+  // Apr 25 perf fix: shared cache key ["me"] with (app)/layout.tsx and
+  // archetype-insights-card.tsx. By the time the user navigates to
+  // /settings, the layout has already populated the cache — this read
+  // is instant. Previously did its own useEffect+api() round-trip,
+  // which paid the full ~1s /me cost (3+s on cold pool) on every visit.
+  const meQ = useQuery<MeArchetype>({
+    queryKey: ["me"],
+    queryFn: () => api<MeArchetype>("/v1/users/me"),
+    refetchOnWindowFocus: false,
+    refetchInterval: false,
+    staleTime: 5 * 60_000,
+  });
+  const archetypeMe = meQ.data ?? null;
+  const qc = useQueryClient();
   function refreshArchetypeMe() {
-    api<MeArchetype>("/v1/users/me")
-      .then(setArchetypeMe)
-      .catch(() => {});
+    qc.invalidateQueries({ queryKey: ["me"] });
   }
 
   // --- Export ---

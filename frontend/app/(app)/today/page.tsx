@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams, useRouter } from "next/navigation";
 import { format, addDays, subDays, isSameDay } from "date-fns";
@@ -80,6 +80,32 @@ function TodayInner() {
     const qs = params.toString();
     router.push(qs ? `/today?${qs}` : "/today");
   }
+
+  // Apr 25 edge-case fix: midnight auto-advance.
+  // Operator scenario: user is on /today (URL has explicit ?date=2026-04-25
+  // because they navigated to it earlier OR they have a task spanning
+  // midnight). At midnight the clock crosses; useCurrentTime's 60s tick
+  // recomputes `today` to "2026-04-26" but the URL param keeps `viewedDate`
+  // at "2026-04-25". Without this redirect, the user stays staring at
+  // "Friday April 25" until they manually click "← back to today."
+  //
+  // Heuristic: only auto-advance if the URL's date param matched the
+  // PREVIOUS "today." If the user is explicitly viewing some past or
+  // future date (e.g. an archive day), don't surprise them by yanking
+  // the calendar forward.
+  const prevTodayRef = useRef(today);
+  useEffect(() => {
+    const prevToday = prevTodayRef.current;
+    if (today !== prevToday && viewedDate === prevToday) {
+      // Clock crossed midnight; user was on the day that just stopped
+      // being today. Strip the date param so it defaults to the new today.
+      navigateTo(today);
+    }
+    prevTodayRef.current = today;
+    // navigateTo is stable enough; deps locked to today/viewedDate so
+    // the effect runs whenever either ticks forward.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today, viewedDate]);
 
   const tasksQ = useQuery({
     queryKey: ["tasks", viewedDate],
