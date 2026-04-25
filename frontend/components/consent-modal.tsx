@@ -31,7 +31,17 @@ export function ConsentModal({ onAccepted }: { onAccepted: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-      <div className="bg-background border border-border rounded-lg max-w-lg w-full p-6">
+      <div
+        className="bg-background border border-border rounded-lg max-w-lg w-full p-6"
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+          if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+          if (!terms || submitting) return;
+          e.preventDefault();
+          submit();
+        }}
+      >
         <h2 className="text-xl font-semibold mb-2">Before you continue</h2>
         <p className="text-muted-foreground text-sm mb-6">
           Lyra learns from how you plan and work to personalize your scheduler. Please review and accept.

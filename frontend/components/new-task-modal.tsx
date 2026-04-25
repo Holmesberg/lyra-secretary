@@ -554,7 +554,32 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { resetForm(); onClose(); } }}>
-      <DialogContent>
+      <DialogContent
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+          if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+          if (submitting) return;
+          // Mirror DialogFooter button-selection logic so Enter triggers
+          // whichever primary action is currently visible.
+          if (pausedConflict) {
+            if (pausedConflict.blockingTitles.length === 0) {
+              e.preventDefault();
+              submitAsInterruption();
+            }
+            return;
+          }
+          if (softConflict) {
+            e.preventDefault();
+            submitWithForce();
+            return;
+          }
+          if (canSubmit) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
           <DialogDescription>

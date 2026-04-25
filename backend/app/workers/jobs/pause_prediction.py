@@ -68,6 +68,16 @@ def _run_for_one_user(db, user: User):
 
     active_task = _resolve_active_task(db, user)
 
+    # Product gate (Apr 25): pause predictions only fire when the user
+    # currently has an active stopwatch (Task.state == EXECUTING with an
+    # open StopwatchSession). The clock-anchor-only mechanism — which
+    # could fire without an active task — was producing predictions that
+    # could never be confirmed by an actual pause event (no session = no
+    # pause), so every such firing was a guaranteed VT-17 miss and noise
+    # in the user's UI. Killing it cleans both UX and measurement.
+    if active_task is None:
+        return
+
     try:
         prediction = PausePredictor(db).predict(
             user_id=user.user_id,

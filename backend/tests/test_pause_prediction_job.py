@@ -1,14 +1,18 @@
 """Pins the Commit 5a contract for the pause_prediction scheduler job.
 
-  * When PausePredictor returns a PausePrediction, the job writes exactly
-    one pause_prediction_log row with all fields mapped from the dataclass
-    and enqueues one notification via /v1/notifications/push.
+  * When PausePredictor returns a PausePrediction AND the user has an active
+    EXECUTING task, the job writes exactly one pause_prediction_log row with
+    all fields mapped from the dataclass and enqueues one notification via
+    /v1/notifications/push.
   * When the predictor returns None, no row and no notification.
   * FIRING_COOLDOWN_MINUTES: if a row already exists within the cooldown,
     the job does not re-fire — even if the predictor would have returned
     a valid prediction.
   * Active-task resolution prefers the Redis active_stopwatch; falls back
     to a Task.state==EXECUTING query when Redis is empty.
+  * Apr 25 product gate: when there is no active task, the job returns
+    before invoking the predictor — clock-anchor-only firings without a
+    session were noise the user could never confirm via an actual pause.
   * A predictor exception for one user does not leave partial writes.
 """
 from datetime import timedelta
@@ -107,6 +111,7 @@ def _canned_prediction(user_id: int = USER_ID, mechanism: str = "clock_anchor") 
 
 def test_firing_writes_log_row_and_queues_notification(db, user):
     """Happy path: predictor returns → one row + one httpx.post."""
+    _make_executing_task(db)
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
@@ -136,6 +141,7 @@ def test_firing_writes_log_row_and_queues_notification(db, user):
 
 def test_no_prediction_no_row_no_queue(db, user):
     """Predictor returns None → no row, no notification."""
+    _make_executing_task(db)
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
          patch("app.workers.jobs.pause_prediction.httpx") as mock_httpx, \
          patch("app.workers.jobs.pause_prediction.send_telegram_message_sync"):
@@ -144,6 +150,26 @@ def test_no_prediction_no_row_no_queue(db, user):
 
     assert db.query(PausePredictionLog).count() == 0
     assert mock_httpx.post.call_count == 0
+
+
+def test_no_active_task_skips_prediction(db, user):
+    """Apr 25 product gate: with no EXECUTING task, the predictor is not even
+    invoked. No row, no notification, no Telegram delivery."""
+    # Deliberately do NOT create an EXECUTING task.
+    with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
+         patch("app.workers.jobs.pause_prediction.RedisClient") as mock_redis_cls, \
+         patch("app.workers.jobs.pause_prediction.httpx") as mock_httpx, \
+         patch(
+             "app.workers.jobs.pause_prediction.send_telegram_message_sync"
+         ) as mock_telegram:
+        mock_redis_cls.return_value.get_active_stopwatch.return_value = None
+        mock_cls.return_value.predict.return_value = _canned_prediction()
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
+    assert mock_httpx.post.call_count == 0
+    assert mock_telegram.call_count == 0
 
 
 def test_cooldown_blocks_refire(db, user):
@@ -176,6 +202,7 @@ def test_cooldown_blocks_refire(db, user):
 
 def test_cooldown_expired_allows_fire(db, user):
     """A firing older than FIRING_COOLDOWN_MINUTES does not block a new fire."""
+    _make_executing_task(db)
     now = now_utc()
     old = PausePredictionLog(
         user_id=USER_ID,
@@ -219,6 +246,7 @@ def test_active_task_resolved_via_executing_query(db, user):
 
 def test_predictor_exception_does_not_leak_row(db, user):
     """A predictor exception must not leave a half-written pause_prediction_log row."""
+    _make_executing_task(db)
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
          patch("app.workers.jobs.pause_prediction.httpx") as mock_httpx, \
          patch("app.workers.jobs.pause_prediction.send_telegram_message_sync"):
@@ -231,6 +259,7 @@ def test_predictor_exception_does_not_leak_row(db, user):
 
 def test_notification_push_failure_keeps_row(db, user):
     """If the /push call fails, the log row must still be committed."""
+    _make_executing_task(db)
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
@@ -246,6 +275,7 @@ def test_notification_push_failure_keeps_row(db, user):
 
 def test_firing_delivers_telegram_message_with_firing_metadata(db, user):
     """5b: Telegram outbound fires with lead_minutes + mechanism in the text."""
+    _make_executing_task(db)
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
@@ -270,6 +300,7 @@ def test_firing_delivers_telegram_message_with_firing_metadata(db, user):
 
 def test_telegram_failure_does_not_rollback_row(db, user):
     """A Telegram delivery failure must NOT undo the research row."""
+    _make_executing_task(db)
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \

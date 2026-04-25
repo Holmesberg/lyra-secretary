@@ -37,7 +37,24 @@ export function VoidModal({ open, taskCount, onConfirm, onCancel }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent>
+      <DialogContent
+        onKeyDown={async (e) => {
+          if (e.key !== "Enter") return;
+          if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+          if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+          if (!canSubmit || submitting) return;
+          e.preventDefault();
+          setSubmitting(true);
+          setError(null);
+          try {
+            await onConfirm(reason, needsDetail ? detail.trim() : undefined);
+          } catch (err: any) {
+            setError(err?.message ?? "Void failed");
+          } finally {
+            setSubmitting(false);
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>
             Void {taskCount} session{taskCount > 1 ? "s" : ""}?

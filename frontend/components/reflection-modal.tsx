@@ -55,7 +55,32 @@ export function ReflectionModal({
   const [submitting, setSubmitting] = useState(false);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent>
+      <DialogContent
+        onKeyDown={async (e) => {
+          if (e.key !== "Enter") return;
+          if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+          if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+          if (value === null || submitting) return;
+          e.preventDefault();
+          let clampedPct: number | undefined;
+          if (pct !== "") {
+            const n = Number(pct);
+            clampedPct = Number.isFinite(n)
+              ? Math.max(0, Math.min(100, Math.round(n)))
+              : undefined;
+          }
+          setSubmitting(true);
+          try {
+            await onConfirm(value, {
+              confirmed: !!earlyStop,
+              completionPct: clampedPct,
+              scopeOutcome: scope ?? undefined,
+            });
+          } finally {
+            setSubmitting(false);
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>How was your focus?</DialogTitle>
           <DialogDescription>

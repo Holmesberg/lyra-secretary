@@ -165,7 +165,25 @@ export function RetroactiveModal({
         if (!o) onClose();
       }}
     >
-      <DialogContent>
+      <DialogContent
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+          if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+          if (submitting) return;
+          if (step === "reason") {
+            if (reason) {
+              e.preventDefault();
+              setStep("log");
+            }
+            return;
+          }
+          if (canSubmit) {
+            e.preventDefault();
+            handleSubmit();
+          }
+        }}
+      >
         {step === "reason" ? (
           <>
             <DialogHeader>

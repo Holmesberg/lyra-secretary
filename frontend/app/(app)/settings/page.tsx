@@ -206,7 +206,26 @@ export default function SettingsPage() {
 
       {/* --- Delete modal (three stages) --- */}
       <Dialog open={deleteOpen} onOpenChange={(o) => { if (!o) closeDeleteModal(); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent
+          className="max-w-lg"
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+            if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+            if (deleting) return;
+            if (stage === 1) {
+              if (acknowledged) {
+                e.preventDefault();
+                setStage(2);
+              }
+              return;
+            }
+            if (stage === 2 && confirmEmail === userEmail) {
+              e.preventDefault();
+              handleDelete();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="text-ember">
               Permanently delete your account

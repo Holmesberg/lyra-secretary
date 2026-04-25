@@ -34,7 +34,21 @@ export function ReadinessModal({ open, taskTitle, onConfirm, onCancel }: Props) 
   const [submitting, setSubmitting] = useState(false);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent>
+      <DialogContent
+        onKeyDown={async (e) => {
+          if (e.key !== "Enter") return;
+          if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+          if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+          if (value === null || submitting) return;
+          e.preventDefault();
+          setSubmitting(true);
+          try {
+            await onConfirm(value);
+          } finally {
+            setSubmitting(false);
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>How ready do you feel?</DialogTitle>
           <DialogDescription>
