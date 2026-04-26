@@ -1,10 +1,10 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 22, 2026 — v1.14 (delete-account FK fix + starter task scheduler). 13 open, 26 deferred (OpenClaw), 68 fixed.
+Last updated: April 26, 2026 — v1.15 (recovery priority fix + LYR-106 negative-duration guard + LYR-105/107/110 confirmed fixed in dogfood sweep). 8 open, 26 deferred (OpenClaw), 73 fixed.
 
 ---
 
-## Open (13 bugs)
+## Open (8 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
@@ -15,8 +15,6 @@ Last updated: April 22, 2026 — v1.14 (delete-account FK fix + starter task sch
 | LYR-054 | 🟢 low | data | `category` null on tasks without explicit category context | Parser not inferring category from task title when user omits it (e.g. "lec 2 AI" → `category: null`). `category_mapping` keyword lookup not applied during task creation via OpenClaw. |
 | LYR-060 | 🟢 low | backend | 5-minute task overflow notification didn't fire | APScheduler may not catch short-duration tasks that complete before the 2-min poll interval. |
 | LYR-068 | 🟡 medium | notion | Notion date property timezone confusion | UTC offset in payload causes double conversion depending on property timezone setting. |
-| LYR-080 | 🔴 high | backend | Backend rebuild during active paused session corrupts task/session references | Desync recovery restores pause time but loses task linkage. Delta not computed. stop response returns wrong task_id. |
-| LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Pause A → start B → stop B → resume A: Redis loses task A's active session reference. User continues work untracked. |
 | LYR-091 | 🟢 low | backend | `resolve_user_from_token` matches by email only | `google_id` stays as `simulated-google-sub` placeholder after real sign-in. Upsert real `google_id` from JWT `sub` claim on first real sign-in. Phase 9 fix. **NOTE 2026-04-22:** unchanged after Integrations split — incremental OAuth still keys match on email (via `id_token.email` vs `session.email`), not `google_id`. When we move to `google_id`-based matching for any provider, this becomes urgent. See `docs/integrations_architecture.md`. |
 | LYR-096 | 🟡 medium | frontend | `task_completion_percentage` dropped between ReflectionModal and stopStopwatch | `today/page.tsx:112` passes `{ confirmed }` but not `task_completion_percentage`. Value from modal never reaches backend. |
 | LYR-097 | 🟡 medium | frontend | `is_future_task` warning from start endpoint not shown in UI | Backend returns `is_future_task: true` but frontend ignores it. No warning when starting timer for future task. |
@@ -24,10 +22,16 @@ Last updated: April 22, 2026 — v1.14 (delete-account FK fix + starter task sch
 
 ---
 
-## Fixed (68 bugs)
+## Fixed (73 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
+| LYR-110 | 🟡 medium | frontend | Toast notification missing detail link to triggering task | Fixed 2026-04-25 in commit `95567c3`. Toast UI now renders an inline detail link routing to the originating task surface. Confirmed in dogfood sweep before promotion to FIXED. |
+| LYR-107 | 🟡 medium | backend | Bias-factor lookup gated on `<5` instead of `>=5` sessions | Fixed in commit `95567c3`. Canonical `/v1/bias_factor/lookup` now uses `>= 5` so users with exactly 5 EXECUTED sessions actually receive a bias factor instead of falling through the gate. Rule 13 filter intent preserved. |
+| LYR-106 | 🔴 high | backend | Negative pause duration in `resume()` (Day-18 sweep, u=5 pe=a3c8629f, -12.02 min) | Fixed 2026-04-26. Added timestamp-integrity guard in `StopwatchManager.resume()`: any computed `pause_duration < -5s` (5s tolerance for normal clock drift) is logged at ERROR with session/user/task IDs and the offending timestamps; any negative value is clamped to 0 before accumulating into `total_paused_minutes`. Preserves the resume action for the user; surfaces the root-cause data (clock skew vs ContextVar drift) in logs for future diagnosis. Regression tests in `tests/test_recovery_and_negative_pause.py` cover both the >5s log+clamp path and the <5s silent-clamp path. |
+| LYR-105 | 🔴 high | backend | Stop didn't close open `pause_event` rows — analytics saw dangling opens | Fixed in commit `95567c3`. `StopwatchManager.stop()` now calls `_close_open_pause_events(session_id, now)` on both the executed and skipped exit paths, so any pause_event left open at stop time gets `resumed_at_utc` + `duration_minutes` populated atomically with the session close. |
+| LYR-088 | 🟡 medium | backend | `resume()` loses Redis session reference after another stopwatch runs in between | Fixed by Apr 25 `_recover_from_db` priority-ordered refactor. Recovery now (1) finds the unique session whose `Task.state == EXECUTING` first, only falling back to (2) the most-recently-paused PAUSED session, eliminating the start_time_utc.DESC selection that picked the wrong session post-swap. Regression test: `test_recover_picks_executing_task_over_paused` in `tests/test_recovery_and_negative_pause.py`. |
+| LYR-080 | 🔴 high | backend | Backend rebuild during active paused session corrupts task/session references | Fixed by Apr 25 `_recover_from_db` refactor. When recovery falls through to a PAUSED-state session, it now rehydrates Redis `pause_state` from `paused_session.paused_at_utc` so the banner correctly shows paused after Redis loss. Defensively clears any lingering `pause_state` when recovery returns an EXECUTING session (so the banner doesn't ghost-report paused). Regression tests: `test_recover_rehydrates_pause_state_for_paused_task` + `test_recover_clears_lingering_pause_state_on_executing_recovery` in `tests/test_recovery_and_negative_pause.py`. |
 | LYR-103 | 🔴 high | backend | Delete-account 500s ("fails to fetch") when user has marked any attendance outcome | Migration 027 added `external_event_outcome.user_id` as a bare `FK(user.user_id)` — ON DELETE NO ACTION. Any row referencing a user blocked the `DELETE FROM "user"` cascade at the end of `delete_my_account`. Surfaced 2026-04-22 when operator tried to delete alt account u2 (asabryhafez — one outcome row from GCal dogfood). Backend raised `psycopg2.errors.ForeignKeyViolation`, client saw "fails to fetch". Fix: migration 028 adds `ON DELETE CASCADE` to the FK as the DB-level backstop; endpoint now also explicitly `DELETE FROM external_event_outcome WHERE user_id = :u` in both retention and hard-delete branches, matching the pattern used for every other user-scoped table. CASCADE + explicit DELETE is belt-and-suspenders (explicit delete works on SQLite test DB where FKs aren't enforced, CASCADE catches any future code path that forgets). Regression test: `tests/test_delete_account_with_external_outcomes.py` (2 cases — retention + hard delete). Known follow-up: `external_event_outcome` currently purges on retention delete instead of anonymizing like `task`/`stopwatch_session` do via alembic 019. At current n (1 outcome row total in prod) the research signal cost is zero; revisit when VT-23 reaches n≥20 connected users. |
 | LYR-102 | 🔴 high | frontend | Colon in GCal event id crashes Schedule-X on /calendar render | Shipped GCal integration 2026-04-21 used `gcal:<google_event_id>` as the Schedule-X event id. Once the operator enabled Calendar API in Cloud Console and events actually started flowing, Schedule-X threw `[Schedule-X error]: Event id gcal:... is not a valid id. Only non-unicode characters that can be used by document.querySelector is allowed` — the `:` is a CSS pseudo-class delimiter and breaks the selector parser. Error fires during a render-phase memo computation → React crashes the whole page with a client-side exception (Next.js generic error screen). Fix: swap the separator to `-` (CSS-ident-safe). Downstream logic (findTask, onEventClick no-op on external events) unaffected. Lesson logged for future integrations: ANY id passed to Schedule-X (or anything using `document.querySelector` under the hood) must match `[a-zA-Z_][a-zA-Z0-9_-]*` — colons, dots, slashes, @, and other punctuation break it. |
 | LYR-101 | 🟡 medium | frontend | Custom categories don't persist in dropdown + no color badge | Dogfood 2026-04-21: user creates a custom category via "+ Create a new category…" — category saved on the task row but (a) not shown in subsequent modal opens (dropdown read hardcoded `CATEGORIES` only), (b) no color badge anywhere in the app because `CATEGORY_COLORS[customCat]` returned undefined. Fix shipped same day: new `getCategoryColor(cat)` helper hashes custom categories into a 10-entry palette so every category gets a color; new `CategorySelect` shared component fetches `/v1/users/me/categories` which returns built-in + user's distinct non-voided categories; call sites updated (task-row, table/page, new-task-modal, retroactive-modal). |
@@ -101,22 +105,21 @@ Last updated: April 22, 2026 — v1.14 (delete-account FK fix + starter task sch
 ## Priority Order for Next Session
 
 ### Critical (🔴)
-1. LYR-080 — Backend rebuild during active paused session corrupts task/session linkage; delta not computed
+_None — LYR-080, LYR-105, LYR-106 fixed in Apr 25-26 sweep._
 
 ### Medium (🟡)
-3. LYR-096 — `task_completion_percentage` dropped in frontend stop flow
-4. LYR-097 — `is_future_task` warning not shown in UI
-5. LYR-088 — resume() loses Redis session reference after another stopwatch runs in between
-6. LYR-068 — Notion date timezone double conversion
-8. LYR-050 — backfill initiation_status on historical tasks
+1. LYR-096 — `task_completion_percentage` dropped in frontend stop flow
+2. LYR-097 — `is_future_task` warning not shown in UI
+3. LYR-068 — Notion date timezone double conversion
+4. LYR-050 — backfill initiation_status on historical tasks
 
 ### Low (🟢)
-11. LYR-099 — New task modal start time stale after idle
-12. LYR-060 — overflow notification misses short tasks
-13. LYR-054 — category_mapping inference at creation time
-14. LYR-018 + LYR-020 — backfill sync, clean test data
-15. LYR-047 — document as Notion limitation
-16. LYR-091 — resolve_user_from_token Phase 9 fix
+5. LYR-099 — New task modal start time stale after idle
+6. LYR-060 — overflow notification misses short tasks
+7. LYR-054 — category_mapping inference at creation time
+8. LYR-018 + LYR-020 — backfill sync, clean test data
+9. LYR-047 — document as Notion limitation
+10. LYR-091 — resolve_user_from_token Phase 9 fix
 
 ---
 

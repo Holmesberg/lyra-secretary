@@ -603,6 +603,28 @@ class StopwatchManager:
         # Float minutes — no sub-minute truncation (LYR-094).
         pause_duration = (now - paused_at).total_seconds() / 60.0
 
+        # LYR-106 guard: timestamp-integrity invariant. A negative
+        # pause_duration means resumed_at < paused_at — physically
+        # impossible. Day-18 sweep found one production row (u=5,
+        # pe=a3c8629f, -12.02 min). Root cause was clock-skew or a
+        # mid-session timezone change in pause_state's paused_at ISO
+        # string. Clamping to zero (rather than rejecting outright)
+        # preserves the resume action for the user; logging the surrounding
+        # state lets future occurrences be diagnosed. Either: clock skew
+        # in the client→server pipeline, OR ContextVar drift between
+        # pause and resume calls in the same session. The 5-second
+        # tolerance prevents tiny clock-drift normal-cases from logging.
+        if pause_duration < -5.0 / 60.0:
+            logger.error(
+                f"LYR-106: negative pause duration detected — "
+                f"now={now.isoformat()} paused_at={paused_at.isoformat()} "
+                f"computed_duration={pause_duration:.4f} min, "
+                f"session_id={active.get('session_id', '?')} "
+                f"user_id={user_id} task_id={active.get('task_id')}. Clamping to 0."
+            )
+        if pause_duration < 0:
+            pause_duration = 0.0
+
         session = self._get_session(active["session_id"])
         task = self.db.query(Task).filter(Task.task_id == session.task_id).first()
 
