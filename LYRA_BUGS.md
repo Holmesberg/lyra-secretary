@@ -1,13 +1,14 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 26, 2026 — v1.15 (recovery priority fix + LYR-106 negative-duration guard + LYR-105/107/110 confirmed fixed in dogfood sweep). 8 open, 26 deferred (OpenClaw), 73 fixed.
+Last updated: April 26, 2026 — v1.15 (recovery priority fix + LYR-106 negative-duration guard + LYR-105/107/110 confirmed fixed in dogfood sweep). 9 open, 26 deferred (OpenClaw), 73 fixed.
 
 ---
 
-## Open (8 bugs)
+## Open (9 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
+| LYR-111 | 🟢 low | backend | Timer banner snaps to last whole minute after multi-task swap | After resuming task A via swap (or after any pause→resume on the swap path), the active-timer banner reboots its display from `elapsed_minutes` (integer) and loses up to 59s of precision. Operator-observed during Apr 26 swap dogfood. Underlying `total_paused_minutes` math is float-precise (LYR-094) so research data is unaffected — visual-only. Root cause: `StopwatchManager._active_elapsed()` returns `int(active_seconds // 60)`. The frontend banner ticks forward from that integer rather than from a sub-minute-precise basis. Fix options: (a) add `elapsed_seconds: int` to the status payload alongside `elapsed_minutes`, frontend uses seconds for banner basis; (b) return `elapsed_minutes: float` (more invasive — touches every banner consumer). Defer behind higher-priority work. |
 | LYR-018 | 🟢 low | notion | Orphaned SQLite records in conflict messages | Old tasks in SQLite but not in Notion appear in conflict detection. Same class as LYR-015. |
 | LYR-020 | 🟢 low | notion | Test tasks polluting schedule | Smoke test tasks still visible in Notion. Need cleanup. |
 | LYR-047 | 🟢 low | notion | "Past Due" showing on EXECUTED tasks | Status groups correctly configured (EXECUTED in Complete). Notion platform limitation — no programmatic fix available. Document only. |
@@ -114,12 +115,13 @@ _None — LYR-080, LYR-105, LYR-106 fixed in Apr 25-26 sweep._
 4. LYR-050 — backfill initiation_status on historical tasks
 
 ### Low (🟢)
-5. LYR-099 — New task modal start time stale after idle
-6. LYR-060 — overflow notification misses short tasks
-7. LYR-054 — category_mapping inference at creation time
-8. LYR-018 + LYR-020 — backfill sync, clean test data
-9. LYR-047 — document as Notion limitation
-10. LYR-091 — resolve_user_from_token Phase 9 fix
+5. LYR-111 — Timer banner snaps to last whole minute after multi-task swap (visual only)
+6. LYR-099 — New task modal start time stale after idle
+7. LYR-060 — overflow notification misses short tasks
+8. LYR-054 — category_mapping inference at creation time
+9. LYR-018 + LYR-020 — backfill sync, clean test data
+10. LYR-047 — document as Notion limitation
+11. LYR-091 — resolve_user_from_token Phase 9 fix
 
 ---
 
