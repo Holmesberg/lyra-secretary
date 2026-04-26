@@ -117,6 +117,10 @@ class PausedOtherInfo(BaseModel):
     session_id: str
     paused_minutes: int
     elapsed_minutes: int = 0
+    # LYR-111: second-precision elapsed at pause-time. Banner uses this on
+    # swap-in so the resumed clock starts at the exact paused second
+    # instead of snapping back to the last whole minute.
+    elapsed_seconds: int = 0
     start_time: Optional[datetime] = None
     total_paused_minutes: float = 0.0
 
@@ -128,6 +132,11 @@ class StopwatchStatusResponse(BaseModel):
     task_title: Optional[str] = None
     start_time: Optional[datetime] = None
     elapsed_minutes: Optional[int] = None
+    # LYR-111: second-precision elapsed for banner tick basis. Same logic
+    # as elapsed_minutes (excludes current pause) — divides into minutes
+    # at frontend display boundary instead of at backend response boundary.
+    # Defaults to None for back-compat with consumers that ignore it.
+    elapsed_seconds: Optional[int] = None
     paused: bool = False
     total_paused_minutes: float = 0
     # Multi-tasking swap (Apr 25): other paused tasks for this user that

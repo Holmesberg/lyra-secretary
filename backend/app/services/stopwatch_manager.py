@@ -258,6 +258,14 @@ class StopwatchManager:
         sub-minute pauses don't truncate to zero (LYR-094). The integer
         return preserves the existing early-stop gate and status payload.
         """
+        return self._active_elapsed_seconds(session, pause_state) // 60
+
+    def _active_elapsed_seconds(self, session: StopwatchSession, pause_state: Optional[dict]) -> int:
+        """Same as _active_elapsed but returns seconds (LYR-111).
+
+        The status payload exposes both. Banner uses seconds as its tick
+        basis so resume-after-swap doesn't snap to the last whole minute.
+        """
         now = now_utc()
         total_seconds = (now - session.start_time_utc).total_seconds()
         paused_seconds = (session.total_paused_minutes or 0.0) * 60.0
@@ -265,7 +273,7 @@ class StopwatchManager:
             paused_at = datetime.fromisoformat(pause_state["paused_at"])
             paused_seconds += (now - paused_at).total_seconds()
         active_seconds = max(0.0, total_seconds - paused_seconds)
-        return int(active_seconds // 60)
+        return int(active_seconds)
 
     def check_early_stop(self) -> tuple[bool, int, int]:
         """
@@ -964,8 +972,10 @@ class StopwatchManager:
             if paused_at and session.start_time_utc:
                 wall_sec = (paused_at - session.start_time_utc).total_seconds()
                 paused_sec = (session.total_paused_minutes or 0.0) * 60.0
-                elapsed_min = int(max(0.0, wall_sec - paused_sec) // 60)
+                elapsed_sec = int(max(0.0, wall_sec - paused_sec))
+                elapsed_min = elapsed_sec // 60
             else:
+                elapsed_sec = 0
                 elapsed_min = 0
             others.append({
                 "task_id": task.task_id,
@@ -973,6 +983,7 @@ class StopwatchManager:
                 "session_id": session.session_id,
                 "paused_minutes": paused_mins,
                 "elapsed_minutes": elapsed_min,
+                "elapsed_seconds": elapsed_sec,
                 "start_time": session.start_time_utc.isoformat() if session.start_time_utc else None,
                 "total_paused_minutes": session.total_paused_minutes or 0.0,
             })
@@ -1273,9 +1284,15 @@ class StopwatchManager:
 
         start_time = datetime.fromisoformat(active["start_time"])
         # elapsed = active work time only (current pause not counted until resumed)
-        elapsed_minutes = self._active_elapsed(session, pause_state) if session else (
-            max(0, int((now_utc() - start_time).total_seconds() / 60) - total_paused)
-        )
+        if session:
+            elapsed_seconds = self._active_elapsed_seconds(session, pause_state)
+            elapsed_minutes = elapsed_seconds // 60
+        else:
+            # Sessionless fallback (recovery edge case) — minute-precision only.
+            elapsed_minutes = max(
+                0, int((now_utc() - start_time).total_seconds() / 60) - int(total_paused)
+            )
+            elapsed_seconds = elapsed_minutes * 60
 
         return {
             "active": True,
@@ -1284,6 +1301,7 @@ class StopwatchManager:
             "task_title": active["title"],
             "start_time": start_time,
             "elapsed_minutes": elapsed_minutes,
+            "elapsed_seconds": elapsed_seconds,
             "paused": is_paused,
             "total_paused_minutes": total_paused,
             "paused_others": paused_others,

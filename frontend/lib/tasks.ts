@@ -149,6 +149,10 @@ export interface PausedOther {
   // elapsed time at pause moment. Used for optimistic-anchor on swap
   // so the timer shows correct elapsed instantly rather than 0:00.
   elapsed_minutes: number;
+  // LYR-111: second-precision sibling of elapsed_minutes. Banner anchors
+  // off this on swap-in so the resumed clock starts at the exact paused
+  // second instead of snapping back to the last whole minute.
+  elapsed_seconds?: number;
   start_time: string | null;
   total_paused_minutes: number;
 }
@@ -160,6 +164,9 @@ export interface StopwatchStatus {
   session_id?: string;
   start_time?: string;
   elapsed_minutes?: number;
+  // LYR-111: second-precision sibling of elapsed_minutes. Same logic
+  // (excludes current pause), divided into minutes at display boundary.
+  elapsed_seconds?: number;
   planned_duration_minutes?: number;
   paused?: boolean;
   total_paused_minutes?: number;

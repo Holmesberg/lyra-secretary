@@ -1,14 +1,13 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 26, 2026 — v1.15 (recovery priority fix + LYR-106 negative-duration guard + LYR-105/107/110 confirmed fixed in dogfood sweep). 9 open, 26 deferred (OpenClaw), 73 fixed.
+Last updated: April 26, 2026 — v1.16 (LYR-111 second-precision banner + LYR-106 guard + LYR-080/088/105/107/110 confirmed fixed). 8 open, 26 deferred (OpenClaw), 74 fixed.
 
 ---
 
-## Open (9 bugs)
+## Open (8 bugs)
 
 | ID | Priority | Tag | Title | Notes |
 |----|----------|-----|-------|-------|
-| LYR-111 | 🟢 low | backend | Timer banner snaps to last whole minute after multi-task swap | After resuming task A via swap (or after any pause→resume on the swap path), the active-timer banner reboots its display from `elapsed_minutes` (integer) and loses up to 59s of precision. Operator-observed during Apr 26 swap dogfood. Underlying `total_paused_minutes` math is float-precise (LYR-094) so research data is unaffected — visual-only. Root cause: `StopwatchManager._active_elapsed()` returns `int(active_seconds // 60)`. The frontend banner ticks forward from that integer rather than from a sub-minute-precise basis. Fix options: (a) add `elapsed_seconds: int` to the status payload alongside `elapsed_minutes`, frontend uses seconds for banner basis; (b) return `elapsed_minutes: float` (more invasive — touches every banner consumer). Defer behind higher-priority work. |
 | LYR-018 | 🟢 low | notion | Orphaned SQLite records in conflict messages | Old tasks in SQLite but not in Notion appear in conflict detection. Same class as LYR-015. |
 | LYR-020 | 🟢 low | notion | Test tasks polluting schedule | Smoke test tasks still visible in Notion. Need cleanup. |
 | LYR-047 | 🟢 low | notion | "Past Due" showing on EXECUTED tasks | Status groups correctly configured (EXECUTED in Complete). Notion platform limitation — no programmatic fix available. Document only. |
@@ -23,10 +22,11 @@ Last updated: April 26, 2026 — v1.15 (recovery priority fix + LYR-106 negative
 
 ---
 
-## Fixed (73 bugs)
+## Fixed (74 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
+| LYR-111 | 🟢 low | backend+frontend | Timer banner snaps to last whole minute after multi-task swap | Fixed 2026-04-26. Added `_active_elapsed_seconds()` helper alongside the existing minute-truncated `_active_elapsed()`; status response now includes `elapsed_seconds: int` (active work seconds, current pause excluded) on both the active timer and each `paused_others` chip. Frontend banner anchor seeds, frozen-second snapshots, and per-task-change reset now prefer `elapsed_seconds` with a `* 60` fallback for back-compat. Server catch-up effect also reads `elapsed_seconds`. Result: swap-resume starts the displayed clock at the exact paused second instead of the last whole minute. Visual fix only — underlying `total_paused_minutes` math was already float-precise (LYR-094). Verified via 328-test backend suite + frontend tsc. |
 | LYR-110 | 🟡 medium | frontend | Toast notification missing detail link to triggering task | Fixed 2026-04-25 in commit `95567c3`. Toast UI now renders an inline detail link routing to the originating task surface. Confirmed in dogfood sweep before promotion to FIXED. |
 | LYR-107 | 🟡 medium | backend | Bias-factor lookup gated on `<5` instead of `>=5` sessions | Fixed in commit `95567c3`. Canonical `/v1/bias_factor/lookup` now uses `>= 5` so users with exactly 5 EXECUTED sessions actually receive a bias factor instead of falling through the gate. Rule 13 filter intent preserved. |
 | LYR-106 | 🔴 high | backend | Negative pause duration in `resume()` (Day-18 sweep, u=5 pe=a3c8629f, -12.02 min) | Fixed 2026-04-26. Added timestamp-integrity guard in `StopwatchManager.resume()`: any computed `pause_duration < -5s` (5s tolerance for normal clock drift) is logged at ERROR with session/user/task IDs and the offending timestamps; any negative value is clamped to 0 before accumulating into `total_paused_minutes`. Preserves the resume action for the user; surfaces the root-cause data (clock skew vs ContextVar drift) in logs for future diagnosis. Regression tests in `tests/test_recovery_and_negative_pause.py` cover both the >5s log+clamp path and the <5s silent-clamp path. |
@@ -115,13 +115,12 @@ _None — LYR-080, LYR-105, LYR-106 fixed in Apr 25-26 sweep._
 4. LYR-050 — backfill initiation_status on historical tasks
 
 ### Low (🟢)
-5. LYR-111 — Timer banner snaps to last whole minute after multi-task swap (visual only)
-6. LYR-099 — New task modal start time stale after idle
-7. LYR-060 — overflow notification misses short tasks
-8. LYR-054 — category_mapping inference at creation time
-9. LYR-018 + LYR-020 — backfill sync, clean test data
-10. LYR-047 — document as Notion limitation
-11. LYR-091 — resolve_user_from_token Phase 9 fix
+5. LYR-099 — New task modal start time stale after idle
+6. LYR-060 — overflow notification misses short tasks
+7. LYR-054 — category_mapping inference at creation time
+8. LYR-018 + LYR-020 — backfill sync, clean test data
+9. LYR-047 — document as Notion limitation
+10. LYR-091 — resolve_user_from_token Phase 9 fix
 
 ---
 

@@ -78,15 +78,19 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   // the optimistic flip, causing a visible pause↔unpause flicker.
   const [localPaused, setLocalPaused] = useState(!!status.paused);
 
+  // LYR-111: prefer second-precision elapsed_seconds; fall back to
+  // elapsed_minutes * 60 for back-compat. Without this, swap-resume
+  // snaps the banner to the last whole minute (up to -59s precision loss).
+  const initialSec = status.elapsed_seconds ?? (status.elapsed_minutes ?? 0) * 60;
   const [anchor, setAnchor] = useState<{ sec: number; ts: number }>(() => ({
-    sec: (status.elapsed_minutes ?? 0) * 60,
+    sec: initialSec,
     ts: Date.now(),
   }));
   const [frozenSec, setFrozenSec] = useState<number | null>(
-    status.paused ? (status.elapsed_minutes ?? 0) * 60 : null
+    status.paused ? initialSec : null
   );
   const prevPausedRef = useRef<boolean>(!!status.paused);
-  const lastDisplayedRef = useRef<number>((status.elapsed_minutes ?? 0) * 60);
+  const lastDisplayedRef = useRef<number>(initialSec);
 
   // Pause counter: cumulative pause seconds. pauseBaseSec = completed
   // pauses from server; pauseStartRef = when the current pause began
@@ -128,14 +132,17 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   useEffect(() => {
     if (status.task_id === prevTaskIdRef.current) return;
     prevTaskIdRef.current = status.task_id;
+    // LYR-111: anchor off elapsed_seconds (sub-minute precision) when
+    // available; without this, swap resets banner to last-whole-minute.
+    const sec = status.elapsed_seconds ?? (status.elapsed_minutes ?? 0) * 60;
     setLocalPaused(!!status.paused);
-    setAnchor({ sec: (status.elapsed_minutes ?? 0) * 60, ts: Date.now() });
-    setFrozenSec(status.paused ? (status.elapsed_minutes ?? 0) * 60 : null);
+    setAnchor({ sec, ts: Date.now() });
+    setFrozenSec(status.paused ? sec : null);
     prevPausedRef.current = !!status.paused;
-    lastDisplayedRef.current = (status.elapsed_minutes ?? 0) * 60;
+    lastDisplayedRef.current = sec;
     setPauseBaseSec((status.total_paused_minutes ?? 0) * 60);
     pauseStartRef.current = status.paused ? Date.now() : null;
-  }, [status.task_id, status.paused, status.elapsed_minutes, status.total_paused_minutes]);
+  }, [status.task_id, status.paused, status.elapsed_minutes, status.elapsed_seconds, status.total_paused_minutes]);
 
   // Pause-transition effect — freezes on pause, rebases anchor on resume.
   // Uses lastDisplayedRef (the value the user SAW on screen) to avoid a
@@ -156,17 +163,19 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localPaused]);
 
-  // Server catch-up — advance to server `elapsed_minutes` only if it
-  // passes the local tick. Strict `>` so polls never rewind the display.
+  // Server catch-up — advance to server elapsed only if it passes the
+  // local tick. Strict `>` so polls never rewind the display. LYR-111:
+  // catch up off elapsed_seconds when available so server can correct
+  // sub-minute drift, not just whole-minute drift.
   useEffect(() => {
     if (localPaused) return;
-    const serverSec = (status.elapsed_minutes ?? 0) * 60;
+    const serverSec = status.elapsed_seconds ?? (status.elapsed_minutes ?? 0) * 60;
     const localSec = anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
     if (serverSec > localSec) {
       setAnchor({ sec: serverSec, ts: Date.now() });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status.elapsed_minutes]);
+  }, [status.elapsed_minutes, status.elapsed_seconds]);
 
   // 1-Hz local tick — always runs unless the reason picker is open
   // (pre-freeze: timer appears to stop the moment the user clicks
@@ -506,6 +515,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
                 session_id: sourceSessionId,
                 paused_minutes: 0,
                 elapsed_minutes: old?.elapsed_minutes ?? 0,
+                elapsed_seconds: old?.elapsed_seconds ?? (old?.elapsed_minutes ?? 0) * 60,
                 start_time: old?.start_time ?? null,
                 total_paused_minutes: old?.total_paused_minutes ?? 0,
               },
@@ -520,6 +530,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
         session_id: target.session_id,
         paused: false,
         elapsed_minutes: target.elapsed_minutes,
+        elapsed_seconds: target.elapsed_seconds ?? target.elapsed_minutes * 60,
         total_paused_minutes: target.total_paused_minutes,
         start_time:
           target.start_time ?? old?.start_time ?? new Date().toISOString(),
