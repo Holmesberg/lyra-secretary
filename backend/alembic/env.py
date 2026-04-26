@@ -50,6 +50,20 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Supabase pooler enforces a default statement_timeout (~8s) that
+        # was killing migration 033's CREATE TABLE during pg_type catalog
+        # update (`pg_type_typname_nsp_index` insert). Disabling for the
+        # migration session only — application sessions still respect
+        # whatever timeout is configured upstream. This is scoped to one
+        # connection (NullPool, so the timeout reset only affects this
+        # one migration run).
+        # Postgres-only — SQLite ignores SET commands silently, but we
+        # guard with dialect check anyway.
+        if connection.dialect.name == "postgresql":
+            connection.exec_driver_sql("SET statement_timeout = 0")
+            connection.exec_driver_sql("SET lock_timeout = 0")
+            connection.exec_driver_sql("SET idle_in_transaction_session_timeout = 0")
+
         context.configure(
             connection=connection, target_metadata=target_metadata
         )

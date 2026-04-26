@@ -139,6 +139,15 @@ class StopwatchStatusResponse(BaseModel):
     elapsed_seconds: Optional[int] = None
     paused: bool = False
     total_paused_minutes: float = 0
+    # Server-computed elapsed seconds since the CURRENT pause started
+    # (zero when not paused). Frontend banner uses this to anchor the
+    # "paused · MM:SS" counter so it doesn't restart from 00:00 on
+    # banner remount / multi-task swap. Added 2026-04-26 alongside
+    # the operator's "electronics paused early but counting from 00:00"
+    # report. Companion field current_pause_started_at is the ISO
+    # timestamp of the same moment, exposed for forensics + future use.
+    current_pause_seconds: int = 0
+    current_pause_started_at: Optional[str] = None
     # Multi-tasking swap (Apr 25): other paused tasks for this user that
     # have an open session. The active timer banner uses this to render
     # "Other in-progress: [title]" chips with one-tap switch.

@@ -1294,6 +1294,27 @@ class StopwatchManager:
             )
             elapsed_seconds = elapsed_minutes * 60
 
+        # When paused, expose how long the CURRENT pause has been running
+        # (server-computed). Without this the frontend banner restarts the
+        # "paused · MM:SS" counter from 00:00 every time the banner remounts
+        # — which happens during multi-task swap, when the user stops one
+        # task and recovery promotes the next paused task to active. Operator
+        # observed this 2026-04-26 ("electronics paused early but counting
+        # from 00:00 when I stopped the parallel task"). The active-work
+        # elapsed (elapsed_seconds) was always correct; this fixes the
+        # paused-duration display only.
+        current_pause_seconds = 0
+        current_pause_started_at: Optional[str] = None
+        if is_paused and pause_state and pause_state.get("paused_at"):
+            try:
+                paused_at_dt = datetime.fromisoformat(pause_state["paused_at"])
+                delta = (now_utc() - paused_at_dt).total_seconds()
+                current_pause_seconds = max(0, int(delta))
+                current_pause_started_at = pause_state["paused_at"]
+            except (ValueError, TypeError):
+                # Defensive — malformed paused_at falls back to 0 / null.
+                pass
+
         return {
             "active": True,
             "session_id": active["session_id"],
@@ -1304,5 +1325,7 @@ class StopwatchManager:
             "elapsed_seconds": elapsed_seconds,
             "paused": is_paused,
             "total_paused_minutes": total_paused,
+            "current_pause_seconds": current_pause_seconds,
+            "current_pause_started_at": current_pause_started_at,
             "paused_others": paused_others,
         }

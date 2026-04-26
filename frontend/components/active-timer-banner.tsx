@@ -94,12 +94,24 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
   // Pause counter: cumulative pause seconds. pauseBaseSec = completed
   // pauses from server; pauseStartRef = when the current pause began
-  // (local capture, not from server). Display = base + (now - start).
+  // (LOCAL ms anchor — Date.now() at the moment we observed the pause
+  // start, NOT the server's wall-clock time). Display = base + (now − start).
+  //
+  // 2026-04-26 fix: server now ships current_pause_seconds (how long the
+  // CURRENT pause has been running per server clock). On mount /
+  // task-swap we anchor pauseStartRef to (Date.now() − current_pause_seconds·1000)
+  // so the counter starts from the actual elapsed pause duration, not
+  // from 00:00. Without this, stopping a parallel task and falling back
+  // onto a previously-paused task showed "paused · 00:00" instead of
+  // "paused · 8h00m" (operator report 2026-04-26: "electronics paused
+  // early but counting from 00:00 when I stopped the parallel task").
   const [pauseBaseSec, setPauseBaseSec] = useState(
     (status.total_paused_minutes ?? 0) * 60
   );
   const pauseStartRef = useRef<number | null>(
-    status.paused ? Date.now() : null
+    status.paused
+      ? Date.now() - (status.current_pause_seconds ?? 0) * 1000
+      : null
   );
 
   // Sync pause base from server polls.
@@ -119,10 +131,14 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
         pauseStartRef.current = null;
         setFrozenSec(null);
       } else {
-        pauseStartRef.current = pauseStartRef.current ?? Date.now();
+        // Anchor at server-reported pause start when available so the
+        // counter shows the true pause duration, not a re-zeroed counter.
+        pauseStartRef.current =
+          pauseStartRef.current ??
+          (Date.now() - (status.current_pause_seconds ?? 0) * 1000);
       }
     }
-  }, [status.paused, busy, localPaused]);
+  }, [status.paused, status.current_pause_seconds, busy, localPaused]);
 
   // Per-session reset: when the active task changes (new start, interruption,
   // etc.), all local timer state must reset to match the new task. Without
@@ -141,8 +157,14 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     prevPausedRef.current = !!status.paused;
     lastDisplayedRef.current = sec;
     setPauseBaseSec((status.total_paused_minutes ?? 0) * 60);
-    pauseStartRef.current = status.paused ? Date.now() : null;
-  }, [status.task_id, status.paused, status.elapsed_minutes, status.elapsed_seconds, status.total_paused_minutes]);
+    // 2026-04-26 fix: when swapping into a previously-paused task, anchor
+    // pauseStartRef using the server's current_pause_seconds so the
+    // "paused · MM:SS" counter resumes from the actual elapsed pause
+    // duration, not from 00:00. See banner-init comment block above.
+    pauseStartRef.current = status.paused
+      ? Date.now() - (status.current_pause_seconds ?? 0) * 1000
+      : null;
+  }, [status.task_id, status.paused, status.elapsed_minutes, status.elapsed_seconds, status.total_paused_minutes, status.current_pause_seconds]);
 
   // Pause-transition effect — freezes on pause, rebases anchor on resume.
   // Uses lastDisplayedRef (the value the user SAW on screen) to avoid a

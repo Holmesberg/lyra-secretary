@@ -170,6 +170,13 @@ export interface StopwatchStatus {
   planned_duration_minutes?: number;
   paused?: boolean;
   total_paused_minutes?: number;
+  // Server-computed seconds since the CURRENT pause started (zero when
+  // not paused). Used by the banner's "paused · MM:SS" counter so it
+  // doesn't restart from 00:00 on banner remount / multi-task swap.
+  // Companion to current_pause_started_at (ISO timestamp). Added 2026-04-26
+  // alongside the multi-task-swap pause-counter fix.
+  current_pause_seconds?: number;
+  current_pause_started_at?: string | null;
   // Multi-tasking swap (Apr 25): paused-with-open-session tasks for this
   // user that aren't currently active. Each is a /switch candidate.
   paused_others?: PausedOther[];
