@@ -700,7 +700,7 @@ function TodayInner() {
 
       {tasksQ.data && tasksQ.data.length === 0 && (
         <div className="rounded-sm border border-dashed border-hairline p-10 text-center text-sm text-dust">
-          {isPast ? "No tasks recorded for this day." : "Nothing scheduled yet. Create your first task."}
+          {isPast ? "Nothing logged on this day." : "Nothing on the day yet. Add the first thing on your mind."}
         </div>
       )}
 

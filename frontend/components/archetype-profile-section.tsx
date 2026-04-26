@@ -7,25 +7,41 @@
  * already entered once after 3 months"). Always visible; copy and
  * button prominence vary by user state.
  *
+ * 2026-04-26 (LYR-112): the label is now session-gated. The survey
+ * captures a single moment of the user (could be finals stress, sleep
+ * deprivation, etc.) — naming an archetype before Lyra has watched the
+ * user actually work overfits transient state into something that reads
+ * as identity. MANIFESTO §VT-25 + docs/building_phases.md:167 specify
+ * sessions 5-7 as the reveal threshold; below that we show "settling
+ * in" copy and hide the label entirely. The bias_factor blend still
+ * uses the prior internally — we just don't surface the name.
+ *
  * States handled (in priority order):
  *
- *   1. NO ASSIGNMENT (fresh pre-launch user OR eligibility window)
- *      → "Take the 4-min survey to unlock personalized predictions"
+ *   1. NO ASSIGNMENT
+ *      → "Help Lyra start with a sense of how you work — 4-min survey"
  *      → Primary [Take survey]
  *
  *   2. SKIPPED (completed=False, defaulted to Diffuse Average)
- *      → "Using population-average predictions. Take the survey
- *         anytime to personalize."
+ *      → "Lyra's using a generic starting point until you take it"
  *      → Primary [Take survey]
  *
- *   3. RECENT COMPLETION (<90 days)
- *      → "Profile: <label> · assigned N days ago"
- *      → Secondary [Retake survey] (low prominence)
+ *   3. CALIBRATING (assigned, but executed_session_count < 5)
+ *      → "Settling in. After ~N more sessions Lyra will share a profile
+ *         that reflects how you actually work."
+ *      → Secondary [Retake survey]
+ *      → Label hidden (this is the LYR-112 gate; applies even to users
+ *        who completed the survey, which is the whole point)
  *
- *   4. AGED COMPLETION (≥90 days — operator's 3-month retry rule)
- *      → "Profile: <label> · assigned N months ago. Your patterns may
- *         have shifted — retake to refresh."
- *      → Primary [Retake survey] (emphasized)
+ *   4. RECENT (assigned, ≥5 sessions, <90 days)
+ *      → "Profile: <label> · early read"
+ *      → Body warmly notes the label may shift
+ *      → Secondary [Retake survey]
+ *
+ *   5. AGED (≥90 days)
+ *      → "Profile: <label>" + "It's been a while — your rhythm may have
+ *         shifted. Take the survey again to refresh things."
+ *      → Primary [Retake survey]
  *
  * Research note: re-takes write NEW ArchetypeAssignment rows
  * (submit_archetype_survey is additive). The original assignment
@@ -41,6 +57,13 @@ import { ARCHETYPE_LABELS } from "@/lib/archetype";
 
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
+// MANIFESTO.md:810 — "display archetype at session 5–7 with
+// medium-confidence framing". 5 is the floor; below this the label is
+// hidden because the survey-based archetype hasn't been validated
+// against any actual behavior yet. The bias_factor blend still uses
+// the prior internally; it's only the visible label that's gated.
+const ARCHETYPE_REVEAL_MIN_SESSIONS = 5;
+
 export interface ArchetypeProfileSectionProps {
   /** Current archetype_id from /me. Null when no assignment exists. */
   archetypeId: string | null;
@@ -48,19 +71,28 @@ export interface ArchetypeProfileSectionProps {
   completed: boolean;
   /** ISO timestamp of the latest assignment (completed OR skipped). */
   latestAssignmentAt: string | null;
+  /** Total EXECUTED, non-voided sessions ever. Drives the label gate. */
+  executedSessionCount: number;
   /** Called after survey submit / skip — parent refetches /me. */
   onChanged: () => void;
 }
+
+type SectionState = "no_assignment" | "skipped" | "calibrating" | "recent" | "aged";
 
 export function ArchetypeProfileSection({
   archetypeId,
   completed,
   latestAssignmentAt,
+  executedSessionCount,
   onChanged,
 }: ArchetypeProfileSectionProps) {
   const [surveyOpen, setSurveyOpen] = useState(false);
 
-  const state = classifyState(completed, latestAssignmentAt);
+  const state = classifyState(
+    completed,
+    latestAssignmentAt,
+    executedSessionCount
+  );
   const daysSince = latestAssignmentAt
     ? Math.floor(
         (Date.now() - new Date(latestAssignmentAt).getTime()) /
@@ -72,22 +104,27 @@ export function ArchetypeProfileSection({
     ? ARCHETYPE_LABELS[archetypeId] ?? archetypeId
     : null;
 
+  const sessionsToReveal = Math.max(
+    0,
+    ARCHETYPE_REVEAL_MIN_SESSIONS - executedSessionCount
+  );
+
   return (
     <>
       <Card>
         <CardHeader>
-          <CardTitle>Your archetype profile</CardTitle>
+          <CardTitle>Your profile</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 p-4 pt-0">
           {state === "no_assignment" && (
             <StatePanel
               emphasis="primary"
               heading="No profile yet"
-              body="Take the 4-minute calibration survey to unlock
-                personalized predictions. Lyra will tune its time
-                estimates to how you actually work instead of defaulting
-                to population averages."
-              buttonLabel="Take survey"
+              body="A 4-minute survey gives Lyra a head start — morning
+                vs evening person, how you tend to approach things.
+                After a few sessions together, Lyra refines this from
+                how you actually move through your day."
+              buttonLabel="Take the survey"
               onClick={() => setSurveyOpen(true)}
             />
           )}
@@ -95,24 +132,39 @@ export function ArchetypeProfileSection({
           {state === "skipped" && (
             <StatePanel
               emphasis="primary"
-              heading="Using population-average predictions"
+              heading="No survey yet"
               body={
                 daysSince !== null
-                  ? `You skipped the calibration survey ${friendlyTime(daysSince)} ago. Lyra is using the population-average prior (Diffuse Average) until you take it. No pressure — it's optional.`
-                  : "You skipped the calibration survey. Lyra is using the population-average prior until you take it."
+                  ? `You skipped the survey ${friendlyTime(daysSince)} ago — totally fine. Lyra's using a generic starting point until you take it. Time estimates personalize either way as you log sessions; the survey just gives Lyra a head start.`
+                  : "Lyra's using a generic starting point until you take the survey. Time estimates personalize either way as you log sessions; the survey just gives Lyra a head start."
               }
-              buttonLabel="Take survey"
+              buttonLabel="Take the survey"
               onClick={() => setSurveyOpen(true)}
             />
           )}
 
-          {state === "recent" && label && daysSince !== null && (
+          {state === "calibrating" && (
+            <StatePanel
+              emphasis="secondary"
+              heading="Settling in"
+              body={
+                sessionsToReveal === 1
+                  ? "After one more session — start, work, finish — Lyra will share a profile here that reflects how you actually work, not just how the survey read you. Time estimates are already personalizing in the background."
+                  : `After about ${sessionsToReveal} more sessions — start, work, finish — Lyra will share a profile here that reflects how you actually work, not just how the survey read you. Time estimates are already personalizing in the background.`
+              }
+              buttonLabel="Retake survey"
+              onClick={() => setSurveyOpen(true)}
+            />
+          )}
+
+          {state === "recent" && label && (
             <StatePanel
               emphasis="secondary"
               heading={`Profile: ${label}`}
-              body={`Assigned ${friendlyTime(daysSince)} ago. Lyra is
-                blending this prior with your personal data as you
-                accumulate sessions. You can retake the survey anytime.`}
+              body="An early read based on your survey + first sessions
+                with Lyra. This may shift as Lyra sees more of how you
+                actually work — that's expected, not a problem. You can
+                retake the survey anytime."
               buttonLabel="Retake survey"
               onClick={() => setSurveyOpen(true)}
             />
@@ -121,11 +173,11 @@ export function ArchetypeProfileSection({
           {state === "aged" && label && daysSince !== null && (
             <StatePanel
               emphasis="primary"
-              heading={`Profile: ${label} · ${friendlyTime(daysSince)} ago`}
-              body="It's been 3+ months since your last calibration.
-                Your sleep rhythm, discipline patterns, or task
-                approach may have shifted. Retake the survey to refresh
-                Lyra's starting assumptions about you."
+              heading={`Profile: ${label}`}
+              body={`It's been ${friendlyTime(daysSince)} since your last
+                survey. Sleep rhythm, focus, the way you approach work —
+                these things shift. Take the survey again whenever you
+                feel like the old read no longer fits.`}
               buttonLabel="Retake survey"
               onClick={() => setSurveyOpen(true)}
             />
@@ -179,10 +231,17 @@ function StatePanel({
 
 function classifyState(
   completed: boolean,
-  latestAssignmentAt: string | null
-): "no_assignment" | "skipped" | "recent" | "aged" {
+  latestAssignmentAt: string | null,
+  executedSessionCount: number
+): SectionState {
   if (latestAssignmentAt === null) return "no_assignment";
   if (!completed) return "skipped";
+  // LYR-112: completed surveys with too few EXECUTED sessions stay in
+  // calibrating — the label is hidden until Lyra has watched the user
+  // work enough to validate it against actual behavior.
+  if (executedSessionCount < ARCHETYPE_REVEAL_MIN_SESSIONS) {
+    return "calibrating";
+  }
   const ageMs = Date.now() - new Date(latestAssignmentAt).getTime();
   return ageMs >= NINETY_DAYS_MS ? "aged" : "recent";
 }

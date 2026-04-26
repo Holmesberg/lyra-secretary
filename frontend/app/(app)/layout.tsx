@@ -41,6 +41,10 @@ type Me = {
   archetype_assignment_completed: boolean;
   archetype_retrofit_dismissed_at: string | null;
   archetype_id: string | null;
+  // MANIFESTO §VT-25 / building_phases.md:167 — archetype label is
+  // surfaced only after ~5 EXECUTED sessions (gate in
+  // ArchetypeProfileSection). Total EXECUTED, non-voided across all time.
+  executed_session_count: number;
   // Google Calendar read-only integration (2026-04-21). Boolean
   // surface only — the actual refresh_token lives in the backend
   // `user.google_refresh_token` column. Null/false means no calendar

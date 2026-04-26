@@ -212,14 +212,15 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
         {sectionIdx === 0 && (
           <div className="mb-5 rounded-sm border border-hairline bg-void/40 p-3 text-xs leading-relaxed text-dust">
             <p className="mb-1 font-medium text-parchment">
-              A 4-minute calibration survey.
+              A few quick questions — about 4 minutes.
             </p>
             <p>
-              Four short instruments let Lyra start with population
-              priors tuned to how you work — better predictions from
-              session 1 instead of waiting for your own data to
-              accumulate. Skip anytime: skipped users still get
-              population-average predictions.
+              These help Lyra start with a sense of how you tend to work
+              — morning vs evening, how you approach things — so the
+              first time estimates aren&apos;t blind guesses. After a
+              handful of sessions, Lyra stops leaning on this and starts
+              learning from how you actually move through your day. Skip
+              anytime: it just means a slower start.
             </p>
           </div>
         )}
@@ -254,9 +255,9 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
         {confirmSkip && (
           <div className="mt-5 rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
             <p className="mb-2">
-              Skip the survey? Your predictions will use the population
-              average until you take it later from Settings. You can
-              always come back.
+              Skip for now? Lyra will use a generic starting point and
+              learn from your sessions. You can take the survey from
+              Settings whenever — no rush.
             </p>
             <div className="flex items-center gap-2">
               <button

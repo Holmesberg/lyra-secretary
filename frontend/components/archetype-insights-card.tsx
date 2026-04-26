@@ -34,7 +34,16 @@ interface MeArchetype {
   archetype_id: string | null;
   archetype_assignment_completed: boolean;
   archetype_latest_assignment_at: string | null;
+  // MANIFESTO §VT-25: gate label reveal until ~5 EXECUTED sessions.
+  executed_session_count: number;
 }
+
+// Threshold derived from MANIFESTO.md:810 + docs/building_phases.md:167:
+// "display archetype at session 5–7 with medium-confidence framing".
+// Picking 5 as the boundary keeps the gate tight; the "medium" caveat
+// covers 5–14, after which (v1.1, sessions 15-20) reclassification UI
+// surfaces if behavior diverges.
+const ARCHETYPE_REVEAL_MIN_SESSIONS = 5;
 
 interface BiasBlendSample {
   bias_factor_final?: number;
@@ -77,15 +86,41 @@ export function ArchetypeInsightsCard() {
       <Card>
         <CardContent className="p-5">
           <p className="text-sm text-dust">
-            No archetype assigned yet. Take the{" "}
+            No profile yet. The{" "}
             <a
               href="/settings"
               className="text-signal underline-offset-2 hover:text-signal-neon hover:underline"
             >
               4-minute survey in Settings
             </a>{" "}
-            to unlock personalized priors. Predictions currently use
-            the flat population prior.
+            gives Lyra a head start on how you tend to plan and work.
+            Predictions still personalize as you log sessions.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Pre-reveal gate: archetype assigned but the user hasn't logged
+  // enough EXECUTED sessions for the label to be load-bearing yet.
+  // MANIFESTO §VT-25: the survey can overfit transient state (sleep
+  // deprivation, finals stress, etc.); ~5 sessions of real behavior
+  // validate before naming.
+  const sessionCount = me.executed_session_count ?? 0;
+  if (sessionCount < ARCHETYPE_REVEAL_MIN_SESSIONS) {
+    const remaining = ARCHETYPE_REVEAL_MIN_SESSIONS - sessionCount;
+    return (
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-5">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+            Settling in
+          </div>
+          <p className="text-sm leading-relaxed text-dust">
+            Lyra is using your survey as a starting point and watching
+            how you actually move through your day. After about{" "}
+            {remaining === 1 ? "one more session" : `${remaining} more sessions`},
+            you&apos;ll see a profile here that reflects both. Time
+            estimates are already personalizing in the background.
           </p>
         </CardContent>
       </Card>
@@ -95,12 +130,6 @@ export function ArchetypeInsightsCard() {
   const label = ARCHETYPE_LABELS[archetypeId] ?? archetypeId;
   const description = ARCHETYPE_DESCRIPTIONS[archetypeId];
   const implication = ARCHETYPE_PLANNING_IMPLICATION[archetypeId];
-  const daysSince = me.archetype_latest_assignment_at
-    ? Math.floor(
-        (Date.now() - new Date(me.archetype_latest_assignment_at).getTime()) /
-          (24 * 60 * 60 * 1000)
-      )
-    : null;
 
   return (
     <Card>
@@ -108,19 +137,15 @@ export function ArchetypeInsightsCard() {
         {/* Hero: label + assignment recency */}
         <div>
           <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-            Your archetype
+            Your profile
           </div>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h2 className="text-2xl font-semibold tracking-tight text-parchment">
               {label}
             </h2>
-            {daysSince !== null && (
-              <span className="text-[11px] text-dust-deep">
-                {daysSince === 0
-                  ? "assigned today"
-                  : `assigned ${daysSince} day${daysSince !== 1 ? "s" : ""} ago`}
-              </span>
-            )}
+            <span className="text-[11px] text-dust-deep">
+              early read · may shift as Lyra sees more of how you work
+            </span>
           </div>
         </div>
 

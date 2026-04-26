@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: April 26, 2026 — v1.16 (LYR-111 second-precision banner + LYR-106 guard + LYR-080/088/105/107/110 confirmed fixed). 8 open, 26 deferred (OpenClaw), 74 fixed.
+Last updated: April 26, 2026 — v1.17 (LYR-112 archetype-label session gate + warm-tone copy refresh; LYR-111 banner second-precision; LYR-106 negative-duration guard). 8 open, 26 deferred (OpenClaw), 75 fixed.
 
 ---
 
@@ -22,10 +22,11 @@ Last updated: April 26, 2026 — v1.16 (LYR-111 second-precision banner + LYR-10
 
 ---
 
-## Fixed (74 bugs)
+## Fixed (75 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
+| LYR-112 | 🔴 high | frontend+backend | Archetype label shown at session 0 in clinical research-instrument copy | Pre-registered design (`MANIFESTO.md:810`, `docs/building_phases.md:167`) gates the label reveal at sessions 5-7 with medium-confidence framing — not shipped in v0.1, so users (operator's sister + a friend) saw `Profile: Procrastinator` immediately after the survey, locking them into an identity-coded label assigned from a possibly-overfit single moment of mental state. Fix shipped 2026-04-26: backend `/v1/users/me` now returns `executed_session_count` (total EXECUTED, non-voided sessions). Frontend `archetype-profile-section.tsx` + `archetype-insights-card.tsx` both gate label rendering on `count >= 5`; below threshold show "Settling in" / "Getting to know you" copy that names what's happening without naming the user. Existing assigned users with <5 sessions retroactively roll back to the gated state — the whole point of the fix. Bias_factor blend uses the prior internally regardless. Same commit: warm-tone refresh on the survey intro/skip dialog, `/today` empty state, and "Your archetype" → "Your profile" labeling. Tone-rule saved as memory `feedback_warm_tone_copy.md` for future copy work. |
 | LYR-111 | 🟢 low | backend+frontend | Timer banner snaps to last whole minute after multi-task swap | Fixed 2026-04-26. Added `_active_elapsed_seconds()` helper alongside the existing minute-truncated `_active_elapsed()`; status response now includes `elapsed_seconds: int` (active work seconds, current pause excluded) on both the active timer and each `paused_others` chip. Frontend banner anchor seeds, frozen-second snapshots, and per-task-change reset now prefer `elapsed_seconds` with a `* 60` fallback for back-compat. Server catch-up effect also reads `elapsed_seconds`. Result: swap-resume starts the displayed clock at the exact paused second instead of the last whole minute. Visual fix only — underlying `total_paused_minutes` math was already float-precise (LYR-094). Verified via 328-test backend suite + frontend tsc. |
 | LYR-110 | 🟡 medium | frontend | Toast notification missing detail link to triggering task | Fixed 2026-04-25 in commit `95567c3`. Toast UI now renders an inline detail link routing to the originating task surface. Confirmed in dogfood sweep before promotion to FIXED. |
 | LYR-107 | 🟡 medium | backend | Bias-factor lookup gated on `<5` instead of `>=5` sessions | Fixed in commit `95567c3`. Canonical `/v1/bias_factor/lookup` now uses `>= 5` so users with exactly 5 EXECUTED sessions actually receive a bias factor instead of falling through the gate. Rule 13 filter intent preserved. |

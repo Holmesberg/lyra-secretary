@@ -94,6 +94,21 @@ def get_me(db: Session = Depends(get_db)):
         user.created_at >= ARCHETYPE_SURVEY_LAUNCH_UTC
         and not has_assignment
     )
+    # MANIFESTO §VT-25 / building_phases.md:167 — archetype label is
+    # surfaced only after ~5 EXECUTED sessions so the survey-based label
+    # is validated against actual behavior before it's named to the user.
+    # Below threshold the Settings card hides the label and shows
+    # "Getting to know you" copy; predictions still personalize silently.
+    executed_session_count = (
+        db.query(func.count(Task.task_id))
+        .filter(
+            Task.user_id == user.user_id,
+            Task.state == TaskState.EXECUTED,
+            Task.voided_at.is_(None),
+        )
+        .scalar()
+        or 0
+    )
     return {
         "user_id": user.user_id,
         "email": user.email,
@@ -111,6 +126,10 @@ def get_me(db: Session = Depends(get_db)):
             if latest_assignment
             else None
         ),
+        # Total EXECUTED, non-voided sessions ever. Drives the
+        # archetype-label session gate (≥5 → label revealed with
+        # "may shift" caveat; <5 → calibrating state).
+        "executed_session_count": int(executed_session_count),
         "archetype_retrofit_dismissed_at": (
             user.archetype_retrofit_dismissed_at.isoformat()
             if getattr(user, "archetype_retrofit_dismissed_at", None)

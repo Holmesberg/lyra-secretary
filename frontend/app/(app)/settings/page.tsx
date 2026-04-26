@@ -22,6 +22,7 @@ type MeArchetype = {
   archetype_id: string | null;
   archetype_assignment_completed: boolean;
   archetype_latest_assignment_at: string | null;
+  executed_session_count: number;
 };
 
 type DataSummary = {
@@ -159,6 +160,7 @@ export default function SettingsPage() {
           archetypeId={archetypeMe.archetype_id}
           completed={archetypeMe.archetype_assignment_completed}
           latestAssignmentAt={archetypeMe.archetype_latest_assignment_at}
+          executedSessionCount={archetypeMe.executed_session_count ?? 0}
           onChanged={refreshArchetypeMe}
         />
       )}
