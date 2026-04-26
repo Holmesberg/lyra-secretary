@@ -11,6 +11,8 @@ from app.workers.jobs.stale_session_recovery import run_stale_session_recovery
 from app.workers.jobs.orphan_task_recovery import run_orphan_task_recovery
 from app.workers.jobs.pause_prediction import run_pause_prediction
 from app.workers.jobs.reconcile_responses import run_reconcile_responses
+from app.workers.jobs.reconcile_deadline_outcomes import run_reconcile_deadline_outcomes
+from app.workers.jobs.sweep_missed_deadlines import run_sweep_missed_deadlines
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -96,6 +98,27 @@ def start_scheduler():
         trigger=IntervalTrigger(minutes=5),
         id="reconcile_responses",
         name="VT-17 outcome reconciliation — close acceptance window",
+        replace_existing=True
+    )
+
+    # Loop 11 — Phase H reconciliation jobs (2026-04-26).
+    # Reconcile deadline_met outcomes for EXECUTED tasks bound to deadlines
+    # (every 30 min). Pre-registered MANIFESTO Rule 14.
+    scheduler.add_job(
+        run_reconcile_deadline_outcomes,
+        trigger=IntervalTrigger(minutes=30),
+        id="reconcile_deadline_outcomes",
+        name="Loop 11 — write task_deadline_outcome rows for EXECUTED deadline-bound tasks",
+        replace_existing=True
+    )
+
+    # Sweep deadlines that passed due_at_utc without completion (every hour).
+    # Transitions active → missed. Planned deadlines stay planned (no task ever bound).
+    scheduler.add_job(
+        run_sweep_missed_deadlines,
+        trigger=IntervalTrigger(hours=1),
+        id="sweep_missed_deadlines",
+        name="Loop 11 — sweep active deadlines past due_at into missed state",
         replace_existing=True
     )
 

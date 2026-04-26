@@ -168,16 +168,122 @@ Total elapsed: ~5h vs. plan estimate 6–10h.
 
 | Item | Phase | Cost | Reason |
 |------|-------|------|--------|
-| Run `alembic upgrade head` against a fresh dev SQLite + verify downgrade cycle | This commit's verification | 15min | Tested via ORM only; need to verify the migration file itself executes |
-| Backend CRUD endpoints for deadline (POST/GET/PUT/DELETE /v1/deadlines) | Phase F (deferred) | 3–4h | Schema is live but unwriteable from API without these |
-| Parser Pass 2 — keyword-overlap inference | Phase G (deferred) | 2–3h | Currently only Pass 1 (explicit) works |
-| Reconciliation jobs: `deadline_met` writer + `deadline.state='missed'` sweeper | Phase H (deferred) | 2–3h | `task_deadline_outcome` rows never get written without this |
-| Analytics: `GET /v1/analytics/deadline-shape` + per-deadline bias_factor query | Phase I (deferred) | 3–4h | Rules 14, 15 cannot fire without these queries |
+| Run `alembic upgrade head` against Supabase | Operator | 15min | Tested via ORM only; permission denied during agent run, deferred to stable-wifi session |
 | Frontend deadline list + CRUD UI | Phase J (deferred) | 3–4 days | Users can't create/manage deadlines yet |
 | Frontend task-creation deadline picker | Phase K (deferred) | 2–3 days | Tasks can't be bound to deadlines from UI yet |
 | Soft-warning UX + RCT split-cohort flag | Phase L (deferred) | 2 days | Rule 16 stays INACTIVE until this ships |
 | Deadline-progress dashboard + planning prompt | Phase M (deferred) | 1 week | Highest-leverage user-facing surface per `deadline_mechanism_design.md:85-110` |
-| B-13 — `analytics.py:130` voided_at filter fix | Bundle with Phase I | 5min | Out-of-scope for this commit |
+
+---
+
+## Backend Phases F–I + G — second commit (2026-04-26 same session)
+
+After the foundation commit (`f43a234`), Phases F + G + H + I + B-13 fix were
+shipped in one bundled backend commit. Frontend phases J–M remain deferred
+(need operator design input on UX and the soft-warning RCT timing).
+
+### Phase F — Deadline CRUD endpoints (~2h)
+
+- New service `backend/app/services/deadline_manager.py` — single mutation
+  authority mirroring `TaskManager`. Reads `current_user_id` from ContextVar,
+  enforces voided_at filtering, validates state-transition graph.
+- New endpoints `backend/app/api/v1/endpoints/deadlines.py`:
+    `POST   /v1/deadlines`             create (state defaults to 'planned')
+    `GET    /v1/deadlines`              list with optional `state` filter,
+                                       optional `?include_voided=true`
+    `GET    /v1/deadlines/{id}`         get one (404 if not found OR cross-user)
+    `PUT    /v1/deadlines/{id}`         update fields + state transitions
+    `DELETE /v1/deadlines/{id}`         soft-delete (sets voided_at)
+- Registered in `backend/app/api/v1/router.py`.
+- 22 tests in `test_deadline_endpoints.py`.
+
+State transition enforcement (USER_TRANSITIONS_FROM map in deadline_manager.py):
+    planned → {active, skipped}
+    active  → {completed, skipped}
+    completed | missed | skipped → {} (terminal; void via DELETE)
+
+Cross-user access returns 404 (not 403) — avoids existence-leak signal.
+
+### B-13 — analytics.py:130 voided_at filter fix (5min)
+
+Bundled while in the analytics file. Original query counted `system_error`
+tasks for research summary without the discipline filter. Now explicitly
+filters `voided_at IS NOT NULL` AND `initiation_status == 'system_error'`.
+Same count in practice (system_error implies voided in current code paths)
+but the filter makes the discipline acknowledgment explicit.
+
+### Phase H — Reconciliation jobs (~1.5h)
+
+Two new APScheduler jobs registered alongside the existing 8:
+
+1. **`reconcile_deadline_outcomes`** (every 30 min)
+   - File: `backend/app/workers/jobs/reconcile_deadline_outcomes.py`
+   - For EXECUTED, non-voided, deadline-bound tasks without an outcome row,
+     compute `deadline_met` and `delay_minutes` and write to
+     `task_deadline_outcome` (new table from alembic 033).
+   - Idempotent: LEFT JOIN filter excludes already-reconciled rows.
+   - Skips voided deadlines and voided tasks per voided_at_guard.
+2. **`sweep_missed_deadlines`** (every 1 hour)
+   - File: `backend/app/workers/jobs/sweep_missed_deadlines.py`
+   - For Deadline rows in 'active' state past `due_at_utc`, transition to
+     'missed'. Planned deadlines past due_at stay planned (deliberate —
+     planned = user never bound a task; not the same as "ran out of time").
+   - Voided deadlines skipped.
+- 19 tests across `test_reconcile_deadline_outcomes_job.py` and
+  `test_sweep_missed_deadlines_job.py`.
+- `test_state_consistency.py:test_apscheduler_job_count` updated 8→10.
+
+### Phase I — `/v1/analytics/deadline-shape` (~1.5h)
+
+- File: appended to `backend/app/api/v1/endpoints/analytics.py`.
+- Pre-registered against MANIFESTO Rules 14 + 15.
+- Auto-scoped to current user via `get_current_user_id()`.
+- voided_at_guard applied to all three tables (TaskDeadlineOutcome, Task, Deadline).
+- Response shape:
+    `summary` — total / met / missed / met_rate / mean_delay / median_delay
+    `by_match_source` — stratified by user_explicit / parser_auto / user_corrected
+                        (Rule 14 stratification)
+    `by_scope_bullet_count_band` — 0 / 1-3 / 4-6 / 7+ buckets (Rule 12 amendment)
+    `per_deadline` — per-deadline aggregation including
+                     `bias_factor_observed = mean(signed delta) / mean(planned)`
+                     for Rule 15 within-user σ computation downstream.
+- 9 tests in `test_analytics_deadline_shape.py`.
+
+### Phase G — Parser Pass 2 keyword-overlap inference (~1h)
+
+- New helper `infer_deadline_binding(title, candidates)` in `parser.py`.
+- Asymmetric ratio (over `task_tokens` not `deadline_tokens`) — a task whose
+  title is fully contained in a deadline description matches strongly even
+  if the deadline has many unrelated words.
+- Stoplist: short common words (`the`, `a`, `to`, etc) + scheduling fillers
+  (`today`, `tomorrow`, `morning`, etc) + tokens shorter than 3 chars.
+- Threshold: ratio ≥ 0.5 AND ≥ 1 non-stoplist shared token.
+- Tie-break: highest ratio first; on ties, earliest `due_at_utc` wins.
+- Wired into `TaskManager.create_task`: when `deadline_id` is None, Pass 2
+  loads bindable candidates (state ∈ planned|active, voided_at IS NULL) and
+  picks the best match if any. Sets `deadline_match_source='parser_auto'`,
+  confidence equal to the overlap ratio.
+- 16 tests in `test_parser_pass2_keyword_binding.py` covering pure-function
+  semantics, integration via TaskManager, voided/terminal exclusion, and
+  cross-user invisibility.
+
+### Bug-catch log additions (Phases F-I-G)
+
+- **B-15 — `set_current_user_id` not enough for TestClient tests.** UserScopeMiddleware reads `X-User-Id` header and overwrites ContextVar per-request, so prior `set_current_user_id(user_a.user_id)` calls are clobbered. Initial Phase F tests passed by accident because all operations defaulted to user_id=1. Fixed by passing `headers={"X-User-Id": str(uid)}` on every TestClient call. Removed the "no_auth → 401" test since the middleware always falls back to user_id=1 in dev for X-User-Id absent — testing the 401 path requires sending a *bad* Bearer token, not "no header at all."
+
+- **B-16 — APScheduler job-count gate.** Adding the two Phase H jobs broke `test_state_consistency.py:test_apscheduler_job_count` which hardcoded the expected count at 8. Updated to 10 with the new job names listed in the docstring. This is by design — the test is a trip-wire for "did someone add/remove a job without updating the documentation?"
+
+- **B-17 — Pass 2 vs Pass 1 ordering in create_task.** Pass 2 inference was almost-wired to fire even when `deadline_id` was provided, which would have overridden the user's explicit choice silently. Fixed by guarding on `if deadline_id is not None` for Pass 1 vs `else` for Pass 2 — explicit binding always wins.
+
+- **B-18 — Test fixture timezone offset (recurrence of B-11).** New Phase G tests initially used `datetime.utcnow() + timedelta(hours=2)` which is in the past after Cairo→UTC conversion. Bumped all to `+timedelta(hours=24)`. The B-11 lesson is repeating itself; consider extracting a `_future_start()` helper into `conftest.py`.
+
+### Test totals
+
+- Before today's session: 328
+- After foundation commit `f43a234`: 360 (+32)
+- After Phases F-I-G (this commit): 426 (+66 from foundation; +98 from baseline)
+
+All 426 pass. Zero pre-existing test regressions.
 
 ---
 

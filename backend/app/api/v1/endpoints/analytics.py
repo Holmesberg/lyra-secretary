@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 
 from app.api.deps import get_db
-from app.db.models import Archetype, ArchetypeAssignment, Task, TaskState, StopwatchSession, PausePredictionLog, User
+from app.db.models import Archetype, ArchetypeAssignment, Task, TaskState, StopwatchSession, PausePredictionLog, User, Deadline, TaskDeadlineOutcome
 from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_local, now_utc
 from app.utils.redis_client import RedisClient
@@ -127,7 +127,20 @@ def get_discrepancy(db: Session = Depends(get_db)) -> dict:
         })
 
     # --- Research layer summary ---
-    voided_count = db.query(Task).filter(Task.initiation_status == "system_error").count()
+    # B-13 fix (2026-04-26): added explicit voided_at IS NOT NULL filter
+    # to honor the voided_at_guard discipline. Previously filtered only
+    # on initiation_status='system_error', which leaks any non-voided
+    # row that happened to have that status. In practice voiding always
+    # stamps initiation_status='system_error' so the count is the same,
+    # but the discipline rule is "every Task query checks voided_at."
+    voided_count = (
+        db.query(Task)
+        .filter(
+            Task.voided_at.is_not(None),
+            Task.initiation_status == "system_error",
+        )
+        .count()
+    )
     total = len(research_sessions)
     initiated = [s for s in research_sessions if s["initiation_status"] == "initiated"]
     abandoned = [s for s in research_sessions if s["initiation_status"] == "abandoned"]
@@ -1285,4 +1298,216 @@ def get_pause_prediction(db: Session = Depends(get_db)) -> dict:
         "summary": summary,
         "by_mechanism": by_mechanism,
         "primary_metric": "acceptance_rate (MANIFESTO §VT-17, pre-registered)",
+    }
+
+
+@router.get("/analytics/deadline-shape")
+def get_deadline_shape(db: Session = Depends(get_db)) -> dict:
+    """Loop 11 — per-user deadline-met distribution (MANIFESTO Rules 14, 15).
+
+    Pre-registered at MANIFESTO v1.12 (2026-04-26). Reads
+    `task_deadline_outcome` rows (written by Phase H reconciliation job)
+    and stratifies along the dimensions specified in Rules 14 + 15:
+
+    - Rule 14: Spearman ρ between `delay_minutes` and signed
+      `duration_delta_minutes` is computed downstream by the operator
+      notebook from the per-task rows we expose here. Stratification
+      by `deadline_match_source` is included.
+
+    - Rule 15: per-deadline `bias_factor_observed = mean(signed delta)
+      / mean(planned_minutes)` requires per-deadline aggregation; we
+      surface the per-deadline summary so the notebook can compute σ
+      across deadlines per user.
+
+    Voided_at discipline (per `feedback_voided_at_guard` memory):
+    every query in this endpoint filters voided rows from BOTH
+    `task_deadline_outcome.voided_at IS NULL` AND the underlying
+    `task` and `deadline` rows.
+
+    Response shape:
+      {
+        "summary": {
+          "total_outcomes": int,
+          "deadline_met_count": int,
+          "deadline_missed_count": int,
+          "deadline_met_rate": float,           # met / total
+          "mean_delay_minutes": float,           # signed: + miss, − met
+          "median_delay_minutes": int,
+        },
+        "by_match_source": [
+          {"source": "user_explicit", "n": ..., "met_rate": ..., "mean_delay": ...},
+          {"source": "parser_auto", ...},
+          {"source": "user_corrected", ...},
+        ],
+        "by_scope_bullet_count_band": [
+          {"band": "0", "n": ..., "met_rate": ...},        # zero or null
+          {"band": "1-3", "n": ..., "met_rate": ...},
+          {"band": "4-6", "n": ..., "met_rate": ...},
+          {"band": "7+", "n": ..., "met_rate": ...},
+        ],
+        "per_deadline": [
+          {
+            "deadline_id": ..., "title": ..., "n": ...,
+            "met_rate": ..., "mean_delay_minutes": ...,
+            "bias_factor_observed": ...,        # for Rule 15
+          },
+          ...
+        ],
+        "primary_metric": "delay_minutes_distribution (MANIFESTO Rule 14, pre-registered)",
+      }
+
+    Auto-scoped to current user via `get_current_user_id()`. Operator
+    cross-user analysis bypasses this endpoint via direct DB reads.
+    """
+    uid = get_current_user_id()
+
+    # Per-task outcome rows + joined task fields. voided_at filtered
+    # on all three tables (outcome, task, deadline) per the discipline.
+    rows = (
+        db.query(
+            TaskDeadlineOutcome,
+            Task,
+            Deadline,
+        )
+        .join(Task, Task.task_id == TaskDeadlineOutcome.task_id)
+        .join(Deadline, Deadline.deadline_id == Task.deadline_id)
+        .filter(
+            TaskDeadlineOutcome.voided_at.is_(None),
+            Task.voided_at.is_(None),
+            Deadline.voided_at.is_(None),
+        )
+    )
+    if uid is not None:
+        rows = rows.filter(TaskDeadlineOutcome.user_id == uid)
+    results = rows.all()
+
+    total = len(results)
+    if total == 0:
+        return {
+            "summary": {
+                "total_outcomes": 0,
+                "deadline_met_count": 0,
+                "deadline_missed_count": 0,
+                "deadline_met_rate": 0.0,
+                "mean_delay_minutes": None,
+                "median_delay_minutes": None,
+            },
+            "by_match_source": [],
+            "by_scope_bullet_count_band": [],
+            "per_deadline": [],
+            "primary_metric": "delay_minutes_distribution (MANIFESTO Rule 14, pre-registered)",
+            "note": "no deadline-bound EXECUTED tasks reconciled for this user yet",
+        }
+
+    met = [r for r in results if r[0].deadline_met]
+    delays = sorted([r[0].delay_minutes for r in results])
+
+    def _mean(xs):
+        return round(sum(xs) / len(xs), 2) if xs else None
+
+    def _median(xs):
+        if not xs:
+            return None
+        n = len(xs)
+        return xs[n // 2] if n % 2 == 1 else int((xs[n // 2 - 1] + xs[n // 2]) / 2)
+
+    def _rate(num: int, denom: int) -> float:
+        return round(num / denom, 3) if denom else 0.0
+
+    summary = {
+        "total_outcomes": total,
+        "deadline_met_count": len(met),
+        "deadline_missed_count": total - len(met),
+        "deadline_met_rate": _rate(len(met), total),
+        "mean_delay_minutes": _mean(delays),
+        "median_delay_minutes": _median(delays),
+    }
+
+    # Stratify by deadline_match_source (Rule 14 stratification).
+    by_match_source: dict[str, list] = defaultdict(list)
+    for outcome, task, _ in results:
+        key = task.deadline_match_source or "unknown"
+        by_match_source[key].append(outcome)
+
+    by_match_source_out = []
+    for source in sorted(by_match_source.keys()):
+        bucket = by_match_source[source]
+        bucket_met = [o for o in bucket if o.deadline_met]
+        by_match_source_out.append({
+            "source": source,
+            "n": len(bucket),
+            "met_rate": _rate(len(bucket_met), len(bucket)),
+            "mean_delay_minutes": _mean([o.delay_minutes for o in bucket]),
+        })
+
+    # Stratify by scope_bullet_count_at_plan (Rule 12 amendment).
+    def _band(count):
+        if count is None:
+            return "0"  # null treated as zero-bullets for stratification
+        if count == 0:
+            return "0"
+        if count <= 3:
+            return "1-3"
+        if count <= 6:
+            return "4-6"
+        return "7+"
+
+    by_band: dict[str, list] = defaultdict(list)
+    for outcome, task, _ in results:
+        by_band[_band(task.scope_bullet_count_at_plan)].append(outcome)
+
+    band_order = ["0", "1-3", "4-6", "7+"]
+    by_band_out = []
+    for band in band_order:
+        bucket = by_band.get(band, [])
+        bucket_met = [o for o in bucket if o.deadline_met]
+        by_band_out.append({
+            "band": band,
+            "n": len(bucket),
+            "met_rate": _rate(len(bucket_met), len(bucket)),
+            "mean_delay_minutes": _mean([o.delay_minutes for o in bucket]),
+        })
+
+    # Per-deadline aggregation (Rule 15 inputs).
+    per_deadline_groups: dict[str, list] = defaultdict(list)
+    for outcome, task, deadline in results:
+        per_deadline_groups[deadline.deadline_id].append((outcome, task, deadline))
+
+    per_deadline_out = []
+    for deadline_id, group in per_deadline_groups.items():
+        group_outcomes = [g[0] for g in group]
+        group_tasks = [g[1] for g in group]
+        deadline_obj = group[0][2]
+        deltas = [
+            (t.planned_duration_minutes - t.executed_duration_minutes)
+            for t in group_tasks
+            if t.planned_duration_minutes and t.executed_duration_minutes
+        ]
+        planned_minutes = [t.planned_duration_minutes for t in group_tasks if t.planned_duration_minutes]
+        # bias_factor_observed: mean(signed delta) / mean(planned_minutes).
+        # Note sign: in Lyra duration_delta = planned - executed, so negative
+        # means overran. bias_factor in canonical form is executed/planned;
+        # for Rule 15 we report the signed-delta-based ratio per the spec.
+        bias_factor_observed = (
+            round(_mean(deltas) / _mean(planned_minutes), 3)
+            if deltas and planned_minutes and _mean(planned_minutes)
+            else None
+        )
+        met_in_group = [o for o in group_outcomes if o.deadline_met]
+        per_deadline_out.append({
+            "deadline_id": deadline_id,
+            "title": deadline_obj.title,
+            "state": deadline_obj.state,
+            "n": len(group_outcomes),
+            "met_rate": _rate(len(met_in_group), len(group_outcomes)),
+            "mean_delay_minutes": _mean([o.delay_minutes for o in group_outcomes]),
+            "bias_factor_observed": bias_factor_observed,
+        })
+
+    return {
+        "summary": summary,
+        "by_match_source": by_match_source_out,
+        "by_scope_bullet_count_band": by_band_out,
+        "per_deadline": per_deadline_out,
+        "primary_metric": "delay_minutes_distribution (MANIFESTO Rule 14, pre-registered)",
     }

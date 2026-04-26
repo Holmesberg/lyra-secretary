@@ -12,7 +12,7 @@ import logging
 
 from app.db.models import Task, TaskState, TaskSource, CategoryMapping, Deadline
 from app.db.scoping import get_current_user_id
-from app.services.parser import TaskParser, extract_scope_bullets
+from app.services.parser import TaskParser, extract_scope_bullets, infer_deadline_binding
 from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector, ConflictResult
 from app.services.notion_client import NotionClient
@@ -220,8 +220,32 @@ class TaskManager:
         # Loop 11: validate explicit deadline binding BEFORE creating task
         # (fail fast — no orphan tasks if deadline_id is bogus).
         bound_deadline: Optional[Deadline] = None
+        bound_via_inference = False
+        bound_confidence: Optional[float] = None
         if deadline_id is not None:
             bound_deadline = self._validate_bindable_deadline(deadline_id)
+            bound_confidence = 1.0
+        else:
+            # Pass 2 — keyword-overlap inference. Only fires if no
+            # explicit deadline_id was supplied. Loads bindable
+            # deadlines for the current user (state ∈ planned|active,
+            # voided_at IS NULL) and picks the best title-overlap match
+            # if any clears the 0.5 threshold.
+            uid_for_pass2 = _require_current_user("create_task_pass2")
+            candidates = (
+                self.db.query(Deadline)
+                .filter(
+                    Deadline.user_id == uid_for_pass2,
+                    Deadline.voided_at.is_(None),
+                    Deadline.state.in_(("planned", "active")),
+                )
+                .all()
+            )
+            if candidates:
+                match = infer_deadline_binding(title, candidates)
+                if match is not None:
+                    bound_deadline, bound_confidence = match
+                    bound_via_inference = True
 
         # Auto-infer category from title if not provided
         if not category:
@@ -253,8 +277,12 @@ class TaskManager:
             # Loop 11 fields (alembic 033)
             scope_bullet_count_at_plan=scope_bullets_at_plan,
             deadline_id=bound_deadline.deadline_id if bound_deadline else None,
-            deadline_match_confidence=1.0 if bound_deadline else None,
-            deadline_match_source="user_explicit" if bound_deadline else None,
+            deadline_match_confidence=bound_confidence if bound_deadline else None,
+            deadline_match_source=(
+                "parser_auto" if (bound_deadline and bound_via_inference)
+                else "user_explicit" if bound_deadline
+                else None
+            ),
         )
 
         # Loop 11: auto-transition planned → active on first bind. Idempotent
