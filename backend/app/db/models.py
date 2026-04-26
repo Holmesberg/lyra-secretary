@@ -152,11 +152,36 @@ class Task(Base):
     # NO default — writes MUST pass user_id explicitly. The prior default=1
     # silently funneled every cross-tenant write to the operator (LYR-093).
     user_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    
+
+    # Loop 11 — deadline mechanism foundation (alembic 033, 2026-04-26).
+    # Pre-registered MANIFESTO Rules 14, 15, 16 + Rule 12 amendment.
+    # See `docs/feedback_loops_closure_plan.md §Loop 11` and
+    # `docs/deadline_mechanism_design.md`.
+    deadline_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("deadline.deadline_id"),
+    )
+    # 0.0–1.0 from binding source (1.0 for explicit, 0.5–0.99 for parser).
+    deadline_match_confidence: Mapped[Optional[float]] = mapped_column(Float)
+    # Enum string: 'user_explicit' | 'parser_auto' | 'user_corrected'.
+    deadline_match_source: Mapped[Optional[str]] = mapped_column(String(20))
+    # Auto-counted at PLANNED-state creation by extract_scope_bullets().
+    scope_bullet_count_at_plan: Mapped[Optional[int]] = mapped_column(Integer)
+    # Re-sampled at complete_task time (before EXECUTED transition).
+    scope_bullet_count_at_execute: Mapped[Optional[int]] = mapped_column(Integer)
+
     # Relationships
     stopwatch_sessions: Mapped[list["StopwatchSession"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan"
+    )
+    deadline: Mapped[Optional["Deadline"]] = relationship(
+        back_populates="tasks"
+    )
+    deadline_outcome: Mapped[Optional["TaskDeadlineOutcome"]] = relationship(
+        back_populates="task",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
     
     # Constraints
@@ -219,6 +244,132 @@ class Task(Base):
         if self.pre_task_readiness is None or self.post_task_reflection is None:
             return None
         return self.post_task_reflection - self.pre_task_readiness
+
+
+class Deadline(Base):
+    """First-class deadline entity (alembic 033, 2026-04-26).
+
+    Many tasks → one deadline. Created in `state='planned'` (dormant);
+    auto-transitions to 'active' on first task bind via TaskManager.
+
+    State enum: planned | active | completed | missed | skipped | voided.
+    Per operator decision 2026-04-26 — mirrors task lifecycle semantics.
+    `skipped` is intentional abandonment (distinct from `missed` which is
+    passive — `due_at_utc` passed unhandled).
+
+    Pre-registration: MANIFESTO Rules 14 (deadline-distance kill criterion),
+    15 (per-deadline bias_factor analysis), 16 (soft-warning RCT design).
+
+    Voided_at discipline (per `feedback_voided_at_guard` memory): every
+    query of this table MUST filter `voided_at IS NULL`. State-only filters
+    leak voided rows.
+    """
+
+    __tablename__ = "deadline"
+
+    deadline_id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("user.user_id"),
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    due_at_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    category_hint: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # See class docstring for state enum semantics.
+    state: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="planned",
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    tasks: Mapped[list["Task"]] = relationship(back_populates="deadline")
+
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('planned', 'active', 'completed', 'missed', 'skipped', 'voided')",
+            name="check_deadline_state",
+        ),
+        Index("idx_deadline_user_state", "user_id", "state", "voided_at"),
+    )
+
+    @property
+    def is_bindable(self) -> bool:
+        """Can a new task be bound to this deadline?
+
+        Bindable iff state ∈ {planned, active} AND not voided. Terminal
+        states (completed/missed/skipped) reject new bindings; voided is
+        a soft-delete that supersedes any state.
+        """
+        if self.voided_at is not None:
+            return False
+        return self.state in ("planned", "active")
+
+
+class TaskDeadlineOutcome(Base):
+    """Post-execution reconciliation row for deadline-met outcomes (alembic 033).
+
+    Stored in a separate table from `task` to preserve EXECUTED-task
+    immutability (state_machine.py:29,61-64). Mirrors the
+    `external_event_outcome` template (alembic 027).
+
+    Frozen-at-compute-time semantics: `deadline_utc_at_compute` and
+    `executed_end_utc_at_compute` snapshot the values used in the
+    `deadline_met` decision. If the rule changes later (e.g., grace
+    period for clock skew), historical answers remain reproducible
+    against the snapshotted inputs.
+
+    Voided_at: if the underlying task is voided post-EXECUTED (LYR-095
+    scenario), this row is invalidated (NOT deleted) by setting voided_at.
+    Future reconciliation queries MUST filter `voided_at IS NULL` per
+    `feedback_voided_at_guard` discipline.
+
+    Written by the Phase H reconciliation job (deferred from today's
+    foundation commit). Read by `GET /v1/analytics/deadline-shape`
+    (Phase I, also deferred).
+    """
+
+    __tablename__ = "task_deadline_outcome"
+
+    task_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("task.task_id"),
+        primary_key=True,
+    )
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    deadline_utc_at_compute: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+    )
+    executed_end_utc_at_compute: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+    )
+    deadline_met: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # Signed: positive = overran (missed by N min), negative = under (met
+    # by N min). delay_minutes == 0 is treated as met (boundary case).
+    delay_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    task: Mapped["Task"] = relationship(back_populates="deadline_outcome")
+
+    __table_args__ = (
+        Index("idx_tdo_user_computed", "user_id", "computed_at"),
+    )
 
 
 class StopwatchSession(Base):

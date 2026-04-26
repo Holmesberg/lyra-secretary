@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 
 import logging
 
-from app.db.models import Task, TaskState, TaskSource, CategoryMapping
+from app.db.models import Task, TaskState, TaskSource, CategoryMapping, Deadline
 from app.db.scoping import get_current_user_id
-from app.services.parser import TaskParser
+from app.services.parser import TaskParser, extract_scope_bullets
 from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector, ConflictResult
 from app.services.notion_client import NotionClient
@@ -123,6 +123,45 @@ class TaskManager:
                 return m.category
         return None
 
+    def _validate_bindable_deadline(self, deadline_id: str) -> Deadline:
+        """Resolve a deadline_id to a Deadline row that accepts new task bindings.
+
+        Loop 11 (alembic 033) — explicit-binding helper for parser Pass 1.
+        Reads user_id from the request-scoped ContextVar (matches the
+        codebase's existing scoping pattern, NOT a param).
+
+        Bindable: state ∈ {planned, active} AND voided_at IS NULL AND
+        deadline.user_id == current_user.
+
+        Raises ValueError on:
+          - deadline not found
+          - cross-user attempt (deadline owned by a different user)
+          - voided deadline
+          - terminal state (completed | missed | skipped | voided)
+
+        See `docs/deadline_mechanism_design.md §"Inference mechanism"` Pass 1.
+        Caller (create_task) is responsible for catching ValueError and
+        mapping to HTTP 400 at the API layer.
+        """
+        uid = _require_current_user("validate_bindable_deadline")
+        deadline = self.db.query(Deadline).filter(
+            Deadline.deadline_id == deadline_id
+        ).first()
+        if deadline is None:
+            raise ValueError(f"deadline_not_found: {deadline_id}")
+        if deadline.user_id != uid:
+            # Same error wording as not-found to avoid cross-user leakage
+            # signal (don't tell user_A that user_B owns a specific UUID).
+            raise ValueError(f"deadline_not_found: {deadline_id}")
+        if deadline.voided_at is not None:
+            raise ValueError(f"deadline_voided: {deadline_id}")
+        if deadline.state not in ("planned", "active"):
+            raise ValueError(
+                f"deadline_terminal_state: {deadline_id} is in state "
+                f"'{deadline.state}' which rejects new task bindings"
+            )
+        return deadline
+
     def create_task(
         self,
         title: str,
@@ -133,7 +172,8 @@ class TaskManager:
         state: TaskState = TaskState.PLANNED,
         source: TaskSource = TaskSource.MANUAL,
         confidence_score: Optional[float] = None,
-        force_conflicts: bool = False
+        force_conflicts: bool = False,
+        deadline_id: Optional[str] = None,
     ) -> tuple[Optional[Task], ConflictResult, bool]:
         """
         Create a new task.
@@ -147,6 +187,18 @@ class TaskManager:
           - SOFT conflicts (PLANNED/PAUSED overlap, duplicate title same UTC
             day) reject when force_conflicts=False, accept when True.
           - No conflicts → create normally.
+
+        Loop 11 (alembic 033, 2026-04-26):
+          - `deadline_id` (optional) → parser Pass 1 explicit binding.
+            Validated by `_validate_bindable_deadline`; ValueError on
+            invalid id / cross-user / voided / terminal state.
+            On bind, `deadline_match_source='user_explicit'`,
+            `deadline_match_confidence=1.0`. If the deadline is in
+            'planned' state, auto-transitions to 'active' (idempotent
+            if already active).
+          - `scope_bullet_count_at_plan` is auto-counted from
+            `description` regardless of deadline binding. Powers
+            MANIFESTO Rule 12's `scope_density` metric.
         """
         # Convert naive local times (Cairo) to UTC before storing
         start = to_utc(start)
@@ -164,14 +216,23 @@ class TaskManager:
             return None, result, False
         if result.has_soft() and not force_conflicts:
             return None, result, False
-        
+
+        # Loop 11: validate explicit deadline binding BEFORE creating task
+        # (fail fast — no orphan tasks if deadline_id is bogus).
+        bound_deadline: Optional[Deadline] = None
+        if deadline_id is not None:
+            bound_deadline = self._validate_bindable_deadline(deadline_id)
+
         # Auto-infer category from title if not provided
         if not category:
             category = self._infer_category(title)
 
         # Calculate duration
         duration_minutes = int((end - start).total_seconds() / 60)
-        
+
+        # Loop 11: parse scope bullets from description at PLANNED creation.
+        scope_bullets_at_plan = extract_scope_bullets(description)
+
         # Create task (transaction safety)
         created_at_ts = now_utc()
         uid = _require_current_user("create_task")
@@ -189,8 +250,19 @@ class TaskManager:
             last_modified_at=created_at_ts,
             session_index_in_day=self._compute_session_index(start, created_at_ts),
             user_id=uid,
+            # Loop 11 fields (alembic 033)
+            scope_bullet_count_at_plan=scope_bullets_at_plan,
+            deadline_id=bound_deadline.deadline_id if bound_deadline else None,
+            deadline_match_confidence=1.0 if bound_deadline else None,
+            deadline_match_source="user_explicit" if bound_deadline else None,
         )
-        
+
+        # Loop 11: auto-transition planned → active on first bind. Idempotent
+        # if deadline already active. Terminal states are unreachable here
+        # (rejected by _validate_bindable_deadline above).
+        if bound_deadline is not None and bound_deadline.state == "planned":
+            bound_deadline.state = "active"
+
         self.db.add(task)
         self.db.flush()  # Get task_id
         # Path B onboarding stamp: the first task a user ever creates
@@ -389,10 +461,19 @@ class TaskManager:
             raise ValueError("Cannot complete a voided task")
 
         executed_duration = int((executed_end - executed_start).total_seconds() / 60)
-        
+
         task.executed_start_utc = executed_start
         task.executed_end_utc = executed_end
         task.executed_duration_minutes = executed_duration
+
+        # Loop 11 (alembic 033) — re-sample scope bullets at execute time
+        # BEFORE the EXECUTED state transition fires (task is still mutable
+        # while in EXECUTING/PAUSED — once EXECUTED, immutability per
+        # state_machine.py:29 forbids further writes). The (at_plan,
+        # at_execute) pair is the within-task scope-drift signal exposed
+        # in MANIFESTO Rule 12's exploratory secondary analysis.
+        task.scope_bullet_count_at_execute = extract_scope_bullets(task.description)
+
         task = self.state_machine.transition(task, TaskState.EXECUTED)
 
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).

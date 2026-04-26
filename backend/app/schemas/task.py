@@ -22,6 +22,15 @@ class TaskCreateRequest(BaseModel):
     source: TaskSource = TaskSource.MANUAL
     confidence_score: Optional[float] = Field(None, ge=0.0, le=1.0)
     force: bool = Field(False, description="Ignore conflicts if true")
+    # Loop 11 — explicit deadline binding (parser Pass 1).
+    # If provided, TaskManager validates ownership + bindable state and sets
+    # deadline_match_source='user_explicit' with confidence=1.0.
+    deadline_id: Optional[str] = Field(
+        None,
+        min_length=36,
+        max_length=36,
+        description="Optional UUID of the deadline this task should bind to",
+    )
     
     @validator('end')
     def end_after_start(cls, v, values):
@@ -137,11 +146,19 @@ class TaskDetail(BaseModel):
     
     created_at: datetime
     last_modified_at: datetime
-    
+
+    # Loop 11 — deadline binding + scope-bullet instruments (alembic 033).
+    # All optional → backward-compat with consumers that ignore these fields.
+    deadline_id: Optional[str] = None
+    deadline_match_confidence: Optional[float] = None
+    deadline_match_source: Optional[str] = None
+    scope_bullet_count_at_plan: Optional[int] = None
+    scope_bullet_count_at_execute: Optional[int] = None
+
     # Computed fields
     duration_delta_minutes: Optional[int]
     is_mutable: bool
-    
+
     class Config:
         from_attributes = True
 

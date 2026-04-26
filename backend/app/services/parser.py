@@ -274,7 +274,42 @@ class TaskParser:
         
         if end or duration:
             confidence += 0.2
-        
+
         confidence += time_confidence * 0.2
-        
+
         return min(confidence, 1.0)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Loop 11 — scope-bullet counter (alembic 033, 2026-04-26).
+# Counts bullet markers in `task.description` to populate
+# `task.scope_bullet_count_at_plan` (at create) and
+# `scope_bullet_count_at_execute` (at complete). Operationalizes
+# `scope_density` per MANIFESTO Rule 12 amendment.
+# Pattern: line starts with optional whitespace then one of [-*•·].
+# Matches markdown-style bullets, asterisk-bullets, and unicode bullets.
+# Known false positive: dashes inside fenced code blocks (e.g.
+# ```bash\n- ls\n```) are counted. Documented as v1 instrument
+# approximation — not fixed.
+# ──────────────────────────────────────────────────────────────────────
+
+BULLET_PATTERN = re.compile(r"^\s*[-*•·]", re.MULTILINE)
+
+
+def extract_scope_bullets(description: Optional[str]) -> Optional[int]:
+    """Count bullet markers in task description.
+
+    None or empty description → None (distinguishable from 0, which
+    means "description present but has no bullets").
+
+    Bullet rule: line starts with optional whitespace, then one of
+    `-`, `*`, `•` (U+2022), or `·` (U+00B7). Mid-line dashes do NOT
+    count (e.g., "task - urgent" is 0 bullets).
+
+    See MANIFESTO Rule 12 amendment (2026-04-26) for the research
+    interpretation: this count is the operational definition of
+    `description_item_count` in the scope_density formula.
+    """
+    if not description:
+        return None
+    return len(BULLET_PATTERN.findall(description))

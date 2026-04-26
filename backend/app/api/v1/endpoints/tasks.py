@@ -71,7 +71,8 @@ def create_task(
             state=request.state,
             source=request.source,
             confidence_score=request.confidence_score,
-            force_conflicts=request.force
+            force_conflicts=request.force,
+            deadline_id=request.deadline_id,
         )
 
         if task is None:
