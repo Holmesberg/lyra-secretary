@@ -64,3 +64,19 @@ def db():
 def client():
     """Provide a TestClient backed by the shared test DB."""
     return TestClient(app, raise_server_exceptions=False)
+
+
+def auth_headers(user_id: int) -> dict:
+    """Build an X-User-Id header dict for TestClient requests.
+
+    Always use this when calling client.{post,get,put,delete} from a test.
+    Without it, UserScopeMiddleware defaults to user_id=1 silently — a
+    test that seeded user_id=77's data and then forgot the header runs as
+    user_id=1 and most assertions fall through to coincidental pass. See
+    `docs/testing_patterns.md` for the full pattern guide.
+
+    Pattern:
+        from tests.conftest import auth_headers
+        client.post("/v1/...", json={...}, headers=auth_headers(77))
+    """
+    return {"X-User-Id": str(user_id)}
