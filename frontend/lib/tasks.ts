@@ -89,6 +89,15 @@ export interface CreateTaskInput {
   category: string;
   description?: string;
   force?: boolean;
+  // Loop 1 calibration_nudge outcome log: when the modal showed a nudge
+  // and the user accepted/dismissed it, the four fields below travel with
+  // the create payload so the backend can write a calibration_nudge_event
+  // row in the same transaction. All-or-none: either all four are set or
+  // none are.
+  nudge_decision?: "accepted" | "dismissed";
+  nudge_suggested_duration_minutes?: number;
+  nudge_bias_factor?: number;
+  nudge_sample_size?: number;
 }
 
 export interface ConflictSummary {
@@ -134,6 +143,10 @@ export function createTask(input: CreateTaskInput) {
       description: input.description || undefined,
       source: "web",
       force: input.force ?? false,
+      nudge_decision: input.nudge_decision,
+      nudge_suggested_duration_minutes: input.nudge_suggested_duration_minutes,
+      nudge_bias_factor: input.nudge_bias_factor,
+      nudge_sample_size: input.nudge_sample_size,
     }),
   });
 }

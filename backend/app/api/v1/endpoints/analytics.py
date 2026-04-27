@@ -1576,3 +1576,92 @@ def get_archetype_proximity_trend(
     if uid is None:
         raise HTTPException(status_code=401, detail="not authenticated")
     return compute_proximity_trend(db, uid, current_days, prior_days)
+
+
+@router.get("/analytics/calibration_nudge")
+def get_calibration_nudge_outcomes(
+    days: int = Query(30, ge=1, le=180, description="Rolling window in days"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Loop 1 — calibration nudge effectiveness (per feedback_loops_closure_plan.md §Loop 1).
+
+    Mirrors `/v1/analytics/pause_prediction` shape. Stratified by user_decision
+    (accepted | dismissed). Pre-registered primary metric is the
+    delta_difference between accepted-vs-dismissed groups: did accepting
+    the nudge produce smaller mean overruns than dismissing?
+
+    Filters (per voided_at_guard discipline):
+      - voided_at IS NULL on the event row
+      - decided_at within the rolling window
+      - auto-scoped to current_user via ContextVar
+
+    Outcome fields (executed_duration_minutes, resolved_at) are stamped
+    inline by TaskManager.complete_task when the task transitions to
+    EXECUTED. Events with NULL outcome are reported as 'unresolved'.
+    """
+    from datetime import datetime, timedelta
+    from app.db.models import CalibrationNudgeEvent
+
+    uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    rows = (
+        db.query(CalibrationNudgeEvent)
+        .filter(
+            CalibrationNudgeEvent.user_id == uid,
+            CalibrationNudgeEvent.voided_at.is_(None),
+            CalibrationNudgeEvent.decided_at >= cutoff,
+        )
+        .all()
+    )
+
+    accepted = [r for r in rows if r.user_decision == "accepted"]
+    dismissed = [r for r in rows if r.user_decision == "dismissed"]
+    resolved = [r for r in rows if r.executed_duration_minutes is not None]
+    unresolved = [r for r in rows if r.executed_duration_minutes is None]
+
+    def _mean_delta(events: list) -> Optional[float]:
+        """Mean (user_planned − executed_duration) for events with outcome."""
+        deltas = [
+            e.user_planned_duration_minutes - e.executed_duration_minutes
+            for e in events
+            if e.executed_duration_minutes is not None
+        ]
+        return round(sum(deltas) / len(deltas), 2) if deltas else None
+
+    total = len(rows)
+
+    accepted_delta = _mean_delta(accepted)
+    dismissed_delta = _mean_delta(dismissed)
+    delta_difference = (
+        round(accepted_delta - dismissed_delta, 2)
+        if accepted_delta is not None and dismissed_delta is not None
+        else None
+    )
+
+    return {
+        "summary": {
+            "total_nudges": total,
+            "accepted": len(accepted),
+            "dismissed": len(dismissed),
+            "resolved": len(resolved),
+            "unresolved": len(unresolved),
+            "acceptance_rate": (
+                round(len(accepted) / total, 3) if total else 0.0
+            ),
+        },
+        "delta_by_decision": {
+            "accepted_mean_delta_minutes": accepted_delta,
+            "accepted_resolved_n": sum(
+                1 for e in accepted if e.executed_duration_minutes is not None
+            ),
+            "dismissed_mean_delta_minutes": dismissed_delta,
+            "dismissed_resolved_n": sum(
+                1 for e in dismissed if e.executed_duration_minutes is not None
+            ),
+            "delta_difference_accepted_minus_dismissed": delta_difference,
+        },
+        "lookback_days": days,
+        "primary_metric": "delta_difference_accepted_minus_dismissed (Loop 1, pre-registered)",
+    }

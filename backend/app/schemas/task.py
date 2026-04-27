@@ -1,6 +1,6 @@
 """Pydantic schemas for task operations."""
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field, validator
 from app.db.models import TaskState, TaskSource
 
@@ -31,11 +31,48 @@ class TaskCreateRequest(BaseModel):
         max_length=36,
         description="Optional UUID of the deadline this task should bind to",
     )
-    
+    # Loop 1 (alembic 034, 2026-04-27) — calibration nudge decision logging.
+    # Set by NewTaskModal when the user clicks "Use [suggested]" or
+    # "Keep [typed]" on the bias_factor suggestion. All four fields must
+    # appear together OR all four must be absent — partial sets are rejected
+    # by TaskManager. When present, TaskManager writes one
+    # CalibrationNudgeEvent row in the same transaction as the task.
+    nudge_decision: Optional[Literal["accepted", "dismissed"]] = Field(
+        None,
+        description="'accepted' (used Lyra's suggestion) or 'dismissed' (kept typed duration)",
+    )
+    nudge_suggested_duration_minutes: Optional[int] = Field(
+        None, ge=1, le=480, description="What Lyra suggested at nudge-fire time"
+    )
+    nudge_bias_factor: Optional[float] = Field(
+        None, ge=0.1, le=10.0, description="bias_factor used to compute the suggestion"
+    )
+    nudge_sample_size: Optional[int] = Field(
+        None, ge=0, description="n_sessions_in_cell at nudge-fire time"
+    )
+
     @validator('end')
     def end_after_start(cls, v, values):
         if 'start' in values and v <= values['start']:
             raise ValueError('end must be after start')
+        return v
+
+    @validator('nudge_sample_size', always=True)
+    def nudge_fields_all_or_none(cls, v, values):
+        """All-four-or-none discipline. Partial sets indicate a frontend bug."""
+        nudge_fields = (
+            values.get('nudge_decision'),
+            values.get('nudge_suggested_duration_minutes'),
+            values.get('nudge_bias_factor'),
+            v,
+        )
+        present = sum(1 for f in nudge_fields if f is not None)
+        if present not in (0, 4):
+            raise ValueError(
+                f"nudge_* fields must all be present or all absent; got {present}/4. "
+                "If a calibration nudge fired, the modal must capture decision + "
+                "suggested + bias_factor + sample_size together."
+            )
         return v
 
 

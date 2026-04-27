@@ -151,6 +151,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // second time. One decision per modal open. Reset on modal re-open
   // (see the `if (open && !editingTask)` effect below).
   const [nudgeDecisionMade, setNudgeDecisionMade] = useState(false);
+  // Loop 1 calibration_nudge outcome log: capture the user's decision +
+  // the four numeric inputs that produced the suggestion. Travels with
+  // the createTask payload so the backend writes a calibration_nudge_event
+  // row in the same transaction. Null when no nudge fired this session.
+  const [nudgeDecisionData, setNudgeDecisionData] = useState<{
+    decision: "accepted" | "dismissed";
+    suggested_minutes: number;
+    bias_factor: number;
+    sample_size: number;
+  } | null>(null);
 
   // Fetch bias_factor when category or start time changes (debounced).
   // Gated on a valid positive planned duration — a 0-min estimate with
@@ -297,6 +307,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       setError(null);
       setPausedConflict(null);
       setNudgeDecisionMade(false);
+      setNudgeDecisionData(null);
       setLastEditId(null);
     }
   }, [open, editingTask]);
@@ -352,6 +363,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setCalibrationNudge(null);
     setNudgeSource(null);
     setNudgeDecisionMade(false);
+    setNudgeDecisionData(null);
     setLastEditId(null);
   }
 
@@ -426,6 +438,14 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         end: endDate.toISOString(),
         category,
         description: description.trim() || undefined,
+        ...(nudgeDecisionData
+          ? {
+              nudge_decision: nudgeDecisionData.decision,
+              nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
+              nudge_bias_factor: nudgeDecisionData.bias_factor,
+              nudge_sample_size: nudgeDecisionData.sample_size,
+            }
+          : {}),
       });
       // Debug aid (Apr 16): dogfood diagnostic for severity-render
       // bug. If operator sees the wrong UI (red when expecting yellow
@@ -504,6 +524,14 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         end: endDate.toISOString(),
         category,
         force: true,
+        ...(nudgeDecisionData
+          ? {
+              nudge_decision: nudgeDecisionData.decision,
+              nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
+              nudge_bias_factor: nudgeDecisionData.bias_factor,
+              nudge_sample_size: nudgeDecisionData.sample_size,
+            }
+          : {}),
       });
       if (!res.created) {
         setError(
@@ -535,6 +563,14 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         end: endDate.toISOString(),
         category,
         force: true,
+        ...(nudgeDecisionData
+          ? {
+              nudge_decision: nudgeDecisionData.decision,
+              nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
+              nudge_bias_factor: nudgeDecisionData.bias_factor,
+              nudge_sample_size: nudgeDecisionData.sample_size,
+            }
+          : {}),
       });
       if (!res.created || !res.task_id) {
         setError("Failed to create interruption task.");
@@ -855,6 +891,12 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30"
                   onClick={() => {
                     const newMin = calibrationNudge.suggestedMin;
+                    setNudgeDecisionData({
+                      decision: "accepted",
+                      suggested_minutes: calibrationNudge.suggestedMin,
+                      bias_factor: calibrationNudge.cell.bias_factor,
+                      sample_size: calibrationNudge.cell.sessions,
+                    });
                     setDurHours(Math.floor(newMin / 60));
                     setDurMinutes(newMin % 60);
                     setEnd(addMinutes(start, newMin));
@@ -868,6 +910,12 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   type="button"
                   className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment"
                   onClick={() => {
+                    setNudgeDecisionData({
+                      decision: "dismissed",
+                      suggested_minutes: calibrationNudge.suggestedMin,
+                      bias_factor: calibrationNudge.cell.bias_factor,
+                      sample_size: calibrationNudge.cell.sessions,
+                    });
                     setCalibrationNudge(null);
                     setNudgeDecisionMade(true);
                   }}

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 import logging
 
-from app.db.models import Task, TaskState, TaskSource, CategoryMapping, Deadline
+from app.db.models import Task, TaskState, TaskSource, CategoryMapping, Deadline, CalibrationNudgeEvent
 from app.db.scoping import get_current_user_id
 from app.services.parser import TaskParser, extract_scope_bullets, infer_deadline_binding
 from app.services.state_machine import StateMachine
@@ -174,6 +174,12 @@ class TaskManager:
         confidence_score: Optional[float] = None,
         force_conflicts: bool = False,
         deadline_id: Optional[str] = None,
+        # Loop 1 (alembic 034) — calibration nudge decision logging.
+        # All four nudge_* params are all-or-none; partial sets raise.
+        nudge_decision: Optional[str] = None,
+        nudge_suggested_duration_minutes: Optional[int] = None,
+        nudge_bias_factor: Optional[float] = None,
+        nudge_sample_size: Optional[int] = None,
     ) -> tuple[Optional[Task], ConflictResult, bool]:
         """
         Create a new task.
@@ -293,6 +299,41 @@ class TaskManager:
 
         self.db.add(task)
         self.db.flush()  # Get task_id
+
+        # Loop 1 (alembic 034): if a calibration nudge fired during this
+        # task's creation, log the user's decision in the same transaction
+        # as the task. All-four-or-none discipline; partials raise. The
+        # event row's executed_duration_minutes + resolved_at are NULL
+        # at fire time and stamped by complete_task() when the task
+        # transitions to EXECUTED.
+        nudge_fields_present = sum(
+            1 for f in (
+                nudge_decision,
+                nudge_suggested_duration_minutes,
+                nudge_bias_factor,
+                nudge_sample_size,
+            ) if f is not None
+        )
+        if nudge_fields_present == 4:
+            self.db.add(CalibrationNudgeEvent(
+                user_id=uid,
+                task_id=task.task_id,
+                suggested_duration_minutes=nudge_suggested_duration_minutes,
+                user_planned_duration_minutes=duration_minutes,
+                bias_factor=nudge_bias_factor,
+                sample_size=nudge_sample_size,
+                user_decision=nudge_decision,
+                decided_at=created_at_ts,
+            ))
+        elif nudge_fields_present != 0:
+            # Defensive — Pydantic schema already enforces all-or-none, but
+            # internal callers (StopwatchManager.start unplanned-task path)
+            # bypass schema validation. Raise loudly so the bug surfaces.
+            raise ValueError(
+                f"create_task: nudge_* fields must be all-or-none; got "
+                f"{nudge_fields_present}/4 present"
+            )
+
         # Path B onboarding stamp: the first task a user ever creates
         # completes the onboarding ritual atomically with the task
         # create, so there's no window where the user has one task AND
@@ -501,6 +542,25 @@ class TaskManager:
         # at_execute) pair is the within-task scope-drift signal exposed
         # in MANIFESTO Rule 12's exploratory secondary analysis.
         task.scope_bullet_count_at_execute = extract_scope_bullets(task.description)
+
+        # Loop 1 (alembic 034) — stamp calibration_nudge_event outcome if
+        # one exists for this task. Inline UPDATE in the same transaction
+        # as the task transition (cheaper than an APScheduler reconciliation
+        # job; sub-millisecond per stop). voided_at filter respects the
+        # voided_at_guard discipline — if the nudge event was invalidated
+        # post-creation we don't resurrect it.
+        nudge_event = (
+            self.db.query(CalibrationNudgeEvent)
+            .filter(
+                CalibrationNudgeEvent.task_id == task.task_id,
+                CalibrationNudgeEvent.executed_duration_minutes.is_(None),
+                CalibrationNudgeEvent.voided_at.is_(None),
+            )
+            .first()
+        )
+        if nudge_event is not None:
+            nudge_event.executed_duration_minutes = executed_duration
+            nudge_event.resolved_at = now_utc()
 
         task = self.state_machine.transition(task, TaskState.EXECUTED)
 

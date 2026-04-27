@@ -37,6 +37,20 @@ Plus one cross-cutting:
 
 ## Loop 1 — Calibration nudge → behavior change
 
+**Status (2026-04-27):** SHIPPED. Alembic 034 created
+`calibration_nudge_event`; `TaskCreateRequest` accepts the four nudge_*
+fields with all-or-none validation; `TaskManager.create_task` writes the
+event row in the same transaction as the task; `complete_task` stamps
+`executed_duration_minutes` + `resolved_at` inline (no separate
+APScheduler reconciliation job — single indexed UPDATE keyed on
+`task_id`); analytics endpoint `GET /v1/analytics/calibration_nudge`
+returns acceptance rate + per-decision mean delta + the pre-registered
+primary metric `delta_difference_accepted_minus_dismissed`. Frontend
+`NewTaskModal` captures decision data on the "Use X min" / "Keep Y min"
+buttons and threads it through `createTask`. Test coverage: 14 lifecycle
+tests + 8 analytics tests, all green at 463/463 backend suite. Docs
+updated. The original spec follows for archive purposes.
+
 **Signal captured:** nudge fires (bias_factor lookup); user accepts
 (clicks "Use X min") or dismisses (clicks "Keep Y min"). The
 `nudgeDecisionMade` flag (shipped 2026-04-22) is session-scoped and

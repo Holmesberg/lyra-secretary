@@ -73,6 +73,10 @@ def create_task(
             confidence_score=request.confidence_score,
             force_conflicts=request.force,
             deadline_id=request.deadline_id,
+            nudge_decision=request.nudge_decision,
+            nudge_suggested_duration_minutes=request.nudge_suggested_duration_minutes,
+            nudge_bias_factor=request.nudge_bias_factor,
+            nudge_sample_size=request.nudge_sample_size,
         )
 
         if task is None:

@@ -684,6 +684,76 @@ class PausePredictionLog(Base):
     )
 
 
+class CalibrationNudgeEvent(Base):
+    """Per-fire calibration nudge event + decision + outcome (Loop 1).
+
+    Pre-registered in `docs/feedback_loops_closure_plan.md §Loop 1`. Captures
+    every NewTaskModal nudge fire + user decision (accepted | dismissed) +
+    the executed_duration_minutes outcome once the bound task transitions
+    to EXECUTED. Enables the "did the nudge improve calibration?" research
+    question by comparing mean delta on accepted vs dismissed events.
+
+    Lifecycle:
+      1. NewTaskModal computes a calibration suggestion via
+         `lookupBiasFactor`. User decides "use suggested" (accepted) or
+         keeps their typed duration (dismissed).
+      2. Task creation (`POST /v1/tasks/create`) accepts optional
+         `nudge_decision` + `nudge_*` fields. If present, TaskManager
+         writes ONE CalibrationNudgeEvent row in the SAME transaction
+         as the Task — ensuring task_id and event_id are both committed
+         atomically (or both rolled back).
+      3. When the task transitions to EXECUTED via
+         `TaskManager.complete_task`, an inline reconciliation block
+         queries this table by task_id and stamps
+         executed_duration_minutes + resolved_at.
+      4. If the task is voided post-creation, the event row's voided_at
+         is set (NOT deleted) to keep the audit trail intact.
+
+    Analytics: `GET /v1/analytics/calibration_nudge` aggregates
+    user_decision='accepted' vs 'dismissed' delta means over rolling N days.
+
+    voided_at_guard discipline (per `feedback_voided_at_guard` memory):
+    every analytics query MUST filter `voided_at IS NULL`.
+    """
+
+    __tablename__ = "calibration_nudge_event"
+
+    event_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user.user_id"), nullable=False
+    )
+    task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("task.task_id"), nullable=False
+    )
+    # What Lyra suggested at nudge-fire time.
+    suggested_duration_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False
+    )
+    # What the user actually typed in.
+    user_planned_duration_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False
+    )
+    # Snapshot of bias_factor used to compute the suggestion (Rule-13 blend).
+    bias_factor: Mapped[float] = mapped_column(Float, nullable=False)
+    # n_sessions_in_cell at nudge-fire time. <30 → prior-dominant blend.
+    sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 'accepted' (user used suggested_duration) or 'dismissed' (kept typed).
+    user_decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # Filled inline by TaskManager.complete_task on EXECUTED transition.
+    executed_duration_minutes: Mapped[Optional[int]] = mapped_column(Integer)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Symmetry with task voiding (LYR-095 + Loop 11 outcome precedent).
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    __table_args__ = (
+        Index("idx_cne_user_decided", "user_id", "decided_at"),
+        Index("idx_cne_task", "task_id"),
+    )
+
+
 class ReflectionViewLog(Base):
     """Per-fired reflection-surface impression record (LYR-098 Commit 2b).
 
