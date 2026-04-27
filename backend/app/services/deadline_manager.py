@@ -45,7 +45,14 @@ from app.db.scoping import get_current_user_id
 # reset the user back to the editable starting state. Re-binding a
 # task auto-transitions planned → active per the existing path.
 USER_TRANSITIONS_FROM: dict[str, set[str]] = {
-    "planned": {"active", "skipped"},
+    # `planned → completed` allowed for the no-bind path (operator
+    # finished a deadline manually without ever binding a Lyra task).
+    # Apr 27 dogfood: operator caught this on first try after the
+    # auto-save fix. Without it, the user has to click "Reopen → Save"
+    # → reopen modal → "Active" wait, you can't even set active
+    # explicitly without binding... so the only path was
+    # planned → active(auto via bind) → completed. UX dead-end.
+    "planned": {"active", "completed", "skipped"},
     "active": {"completed", "skipped"},
     # Reopen paths from terminal states. Lyra still does NOT distinguish
     # "freshly created" from "reopened" in the schema — analytics that

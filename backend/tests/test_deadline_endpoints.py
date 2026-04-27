@@ -262,7 +262,9 @@ def test_valid_state_transitions(db, from_state, to_state):
 
 
 @pytest.mark.parametrize("invalid_transition", [
-    ("planned", "completed"),  # planned → completed is NOT allowed
+    # planned → completed used to be in this list; unlocked Apr 27 for
+    # the no-bind manual-complete path. See
+    # test_planned_to_completed_no_bind_path below.
     ("active", "planned"),     # active → planned is NOT allowed
 ])
 def test_invalid_state_transitions_rejected(db, invalid_transition):
@@ -300,6 +302,29 @@ def test_terminal_state_rejects_lateral_transitions(db):
     resp = client.put(f"/v1/deadlines/{deadline_id}", json={"state": "skipped"})
     assert resp.status_code == 400
     assert "invalid_transition" in resp.json()["detail"]["error"]
+
+
+def test_planned_to_completed_no_bind_path(db):
+    """A deadline can be marked complete directly from `planned` without
+    a task ever being bound. Apr 27 dogfood — operator hit
+    `deadline_invalid_transition: planned -> completed` because the
+    prior graph forced planned → active → completed and `active` only
+    fires automatically when a task binds. Operators completing a
+    deadline manually (e.g. "I finished this offline") need a direct
+    path.
+    """
+    user = _make_user(db, "no-bind-complete@example.com")
+    set_current_user_id(user.user_id)
+
+    created = client.post("/v1/deadlines", json=_create_deadline_payload()).json()
+    deadline_id = created["deadline_id"]
+    assert created["state"] == "planned"
+
+    resp = client.put(
+        f"/v1/deadlines/{deadline_id}", json={"state": "completed"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["state"] == "completed"
 
 
 def test_skipped_reopen_to_planned(db):
