@@ -281,8 +281,11 @@ def test_invalid_state_transitions_rejected(db, invalid_transition):
     assert "invalid_transition" in resp.json()["detail"]["error"]
 
 
-def test_terminal_state_rejects_further_transitions(db):
-    """Once 'completed', no user-driven transitions allowed."""
+def test_terminal_state_rejects_lateral_transitions(db):
+    """Once 'completed', no LATERAL user-driven transitions allowed
+    (e.g. completed → skipped is nonsensical). Reopen to planned IS
+    allowed — see test_skipped_reopen_to_planned + sibling.
+    """
     user = _make_user(db, "terminal@example.com")
     set_current_user_id(user.user_id)
 
@@ -293,10 +296,50 @@ def test_terminal_state_rejects_further_transitions(db):
     client.put(f"/v1/deadlines/{deadline_id}", json={"state": "active"})
     client.put(f"/v1/deadlines/{deadline_id}", json={"state": "completed"})
 
-    # Attempt to transition further: rejected
+    # Lateral transition (completed → skipped): rejected
     resp = client.put(f"/v1/deadlines/{deadline_id}", json={"state": "skipped"})
     assert resp.status_code == 400
     assert "invalid_transition" in resp.json()["detail"]["error"]
+
+
+def test_skipped_reopen_to_planned(db):
+    """Apr 27 dogfood — operator misclicked 'Mark skipped' in the
+    DeadlineModal and lost the ability to act on the deadline. Reopen
+    to planned must be a user-driven path so the recovery is self-
+    service rather than DB-only.
+    """
+    user = _make_user(db, "reopen@example.com")
+    set_current_user_id(user.user_id)
+
+    created = client.post("/v1/deadlines", json=_create_deadline_payload()).json()
+    deadline_id = created["deadline_id"]
+
+    # Skip the deadline (mistake)
+    skip_resp = client.put(f"/v1/deadlines/{deadline_id}", json={"state": "skipped"})
+    assert skip_resp.status_code == 200
+    assert skip_resp.json()["state"] == "skipped"
+
+    # Reopen — back to planned
+    reopen = client.put(f"/v1/deadlines/{deadline_id}", json={"state": "planned"})
+    assert reopen.status_code == 200, reopen.text
+    assert reopen.json()["state"] == "planned"
+
+
+def test_completed_reopen_to_planned(db):
+    """Same recovery path from completed → planned (rare misclick,
+    but symmetric with skipped recovery)."""
+    user = _make_user(db, "completed-reopen@example.com")
+    set_current_user_id(user.user_id)
+
+    created = client.post("/v1/deadlines", json=_create_deadline_payload()).json()
+    deadline_id = created["deadline_id"]
+
+    client.put(f"/v1/deadlines/{deadline_id}", json={"state": "active"})
+    client.put(f"/v1/deadlines/{deadline_id}", json={"state": "completed"})
+
+    reopen = client.put(f"/v1/deadlines/{deadline_id}", json={"state": "planned"})
+    assert reopen.status_code == 200
+    assert reopen.json()["state"] == "planned"
 
 
 def test_idempotent_same_state_transition(db):

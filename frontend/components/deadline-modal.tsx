@@ -20,7 +20,12 @@ import {
 } from "@/lib/deadlines";
 
 type Mode = "create" | "edit";
-type StateButton = "completed" | "skipped";
+// State actions surfaced inside the modal. Includes "planned" as a
+// reopen target from terminal states (skipped / completed / missed) —
+// shipped Apr 27 after operator misclicked Skip and lost the
+// deadline. The button STAGES the change locally; nothing persists
+// until the user clicks Save.
+type StateButton = "completed" | "skipped" | "planned";
 
 interface Props {
   open: boolean;
@@ -64,6 +69,11 @@ export function DeadlineModal({
   const [categoryMode, setCategoryMode] = useState<"picker" | "custom">("picker");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Staged state change. Apr 27 footgun: the prior version called the
+  // API the moment the user clicked Skip/Complete, so a misclick was
+  // unrecoverable through the UI. Now state buttons set this local
+  // value and nothing reaches the server until Save.
+  const [pendingState, setPendingState] = useState<StateButton | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -86,6 +96,7 @@ export function DeadlineModal({
       setCategoryHint("");
       setCategoryMode("picker");
     }
+    setPendingState(null);
     setError(null);
   }, [open, mode, deadline]);
 
@@ -104,6 +115,8 @@ export function DeadlineModal({
           description: description.trim() || undefined,
           due_at_utc: _localInputToIso(dueAt),
           category_hint: categoryHint.trim() || undefined,
+          // Persist staged state change at Save time, not at click time.
+          ...(pendingState ? { state: pendingState } : {}),
         };
         saved = await updateDeadline(deadline.deadline_id, patch);
       } else {
@@ -123,25 +136,35 @@ export function DeadlineModal({
     }
   }
 
-  async function handleStateTransition(next: StateButton) {
-    if (!deadline) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const saved = await updateDeadline(deadline.deadline_id, { state: next });
-      onSaved(saved);
-      onClose();
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to update state");
-    } finally {
-      setSubmitting(false);
-    }
+  // State buttons: stage locally only — no API call here. The pending
+  // transition surfaces as a pill above the Save button so the user
+  // sees what's about to land. Cancel / close discards the staging.
+  function stageState(next: StateButton) {
+    setPendingState(next);
   }
 
-  const showStateButtons =
-    mode === "edit" &&
-    deadline &&
-    (deadline.state === "planned" || deadline.state === "active");
+  function clearStaging() {
+    setPendingState(null);
+  }
+
+  // The buttons surfaced in the "Mark as" panel depend on the deadline's
+  // current state. Active/planned deadlines can move forward (complete,
+  // skip). Terminal-state deadlines (skipped, completed, missed) get
+  // a reopen button — recovery from misclicks per the Apr 27 incident.
+  const stateButtonOptions: StateButton[] = (() => {
+    if (mode !== "edit" || !deadline) return [];
+    switch (deadline.state) {
+      case "planned":
+      case "active":
+        return ["completed", "skipped"];
+      case "skipped":
+      case "completed":
+      case "missed":
+        return ["planned"]; // reopen
+      default:
+        return [];
+    }
+  })();
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -245,35 +268,63 @@ export function DeadlineModal({
             </div>
           )}
 
-          {showStateButtons && (
+          {stateButtonOptions.length > 0 && (
             <div className="flex flex-col gap-2 rounded-sm border border-hairline p-3">
               <span className="text-[11px] uppercase tracking-widest text-dust-deep">
-                Mark as
+                {deadline?.state === "planned" || deadline?.state === "active"
+                  ? "Mark as"
+                  : "Reopen"}
               </span>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleStateTransition("completed")}
-                  disabled={submitting}
-                  className={cn(
-                    "flex-1 rounded-sm border border-signal/40 bg-signal/10 px-3 py-1.5 text-xs text-parchment transition-colors hover:bg-signal/20",
-                    submitting && "opacity-50"
-                  )}
-                >
-                  Complete
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleStateTransition("skipped")}
-                  disabled={submitting}
-                  className={cn(
-                    "flex-1 rounded-sm border border-hairline bg-void-2 px-3 py-1.5 text-xs text-dust transition-colors hover:border-dust hover:text-parchment",
-                    submitting && "opacity-50"
-                  )}
-                >
-                  Skip
-                </button>
+                {stateButtonOptions.map((opt) => {
+                  const staged = pendingState === opt;
+                  const tone =
+                    opt === "completed"
+                      ? "border-signal/40 bg-signal/10 hover:bg-signal/20 text-parchment"
+                      : opt === "planned"
+                        ? "border-signal/40 bg-signal/10 hover:bg-signal/20 text-parchment"
+                        : "border-hairline bg-void-2 hover:border-dust hover:text-parchment text-dust";
+                  const stagedTone =
+                    "border-signal bg-signal/30 text-parchment";
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => stageState(opt)}
+                      disabled={submitting}
+                      className={cn(
+                        "flex-1 rounded-sm border px-3 py-1.5 text-xs transition-colors",
+                        staged ? stagedTone : tone,
+                        submitting && "opacity-50"
+                      )}
+                    >
+                      {opt === "completed"
+                        ? "Complete"
+                        : opt === "skipped"
+                          ? "Skip"
+                          : "Reopen as planned"}
+                    </button>
+                  );
+                })}
               </div>
+              {pendingState && (
+                <div className="flex items-center justify-between rounded-sm border border-signal/40 bg-signal/5 px-2 py-1 text-[11px] text-signal">
+                  <span>
+                    Will mark as{" "}
+                    <span className="font-medium text-parchment">
+                      {pendingState}
+                    </span>{" "}
+                    on save.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={clearStaging}
+                    className="text-dust-deep transition-colors hover:text-parchment"
+                  >
+                    undo
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

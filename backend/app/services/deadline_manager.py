@@ -34,14 +34,26 @@ from app.db.scoping import get_current_user_id
 # State transitions a user is allowed to drive directly via update_deadline.
 # `missed` is reconciliation-only; `voided` flows through void_deadline
 # (which sets voided_at, not state).
+#
+# Apr 27 dogfood: operator accidentally tapped "Mark skipped" in the
+# DeadlineModal and the change auto-persisted with no recovery path.
+# The DeadlineModal now stages state changes until Save, AND the
+# state graph permits returning skipped/completed/missed → planned so
+# self-service correction works without DB intervention. Going to
+# `planned` (NOT `active`) is deliberate — `active` carries the
+# "user has bound a task to this deadline" semantic; reopening should
+# reset the user back to the editable starting state. Re-binding a
+# task auto-transitions planned → active per the existing path.
 USER_TRANSITIONS_FROM: dict[str, set[str]] = {
     "planned": {"active", "skipped"},
     "active": {"completed", "skipped"},
-    # Terminal states reject further user-driven transitions. They're
-    # only reachable via void_deadline (sets voided_at, NOT state).
-    "completed": set(),
-    "missed": set(),
-    "skipped": set(),
+    # Reopen paths from terminal states. Lyra still does NOT distinguish
+    # "freshly created" from "reopened" in the schema — analytics that
+    # care about completion fidelity should look at completed_at /
+    # task_deadline_outcome, not at the current state alone.
+    "completed": {"planned"},
+    "missed": {"planned"},
+    "skipped": {"planned"},
     "voided": set(),
 }
 
