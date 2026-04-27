@@ -365,3 +365,61 @@ export const ARCHETYPE_PLANNING_IMPLICATION: Record<string, string> = {
   lark_low_discipline:
     "Expect moderate uplift on all tasks with slightly less on your peak morning window. Personal data will sharpen the peak-vs-off-peak split.",
 };
+
+// ──────────────────────────────────────────────────────────────────────
+// VT-25 dynamic-reveal client (MANIFESTO Rule 17, 2026-04-27).
+// Replaces the static "Profile: Procrastinator" reveal with a
+// continuously-updated Bayesian posterior over the 5 archetypes.
+// Backend service: backend/app/services/archetype_proximity_service.py
+// Endpoint: GET /v1/analytics/archetype/proximity (+ /trend variant)
+// ──────────────────────────────────────────────────────────────────────
+
+export interface ArchetypeProximity {
+  archetype_id: string;
+  label: string;
+  /** Posterior probability in [0, 1]. Sums to ~1.0 across the 5 archetypes. */
+  score: number;
+  /** Rank by score desc (1 = highest). */
+  rank: number;
+  /** Number of EXECUTED tasks contributing to this posterior (n=0 → uniform). */
+  n_tasks: number;
+}
+
+export interface ProximityResponse {
+  proximity: ArchetypeProximity[];
+  lookback_days: number;
+  n_tasks: number;
+  primary_metric: string;
+}
+
+export interface ProximityTrend {
+  current: ArchetypeProximity[];
+  prior: ArchetypeProximity[];
+  /** Score delta per archetype_id (current − prior). Positive = trending up. */
+  delta_per_archetype: Record<string, number>;
+  current_window_days: number;
+  prior_window_days: number;
+}
+
+/**
+ * Get the user's current archetype proximity over the last N days.
+ * Uniform 1/5 across all archetypes if no qualifying tasks (cold start).
+ */
+export function getArchetypeProximity(days = 14): Promise<ProximityResponse> {
+  return api<ProximityResponse>(
+    `/v1/analytics/archetype/proximity?days=${days}`
+  );
+}
+
+/**
+ * Get current vs prior window proximity for trend display.
+ * Powers the "a month ago you were X — pattern is consolidating toward Y" copy.
+ */
+export function getArchetypeProximityTrend(
+  currentDays = 14,
+  priorDays = 14
+): Promise<ProximityTrend> {
+  return api<ProximityTrend>(
+    `/v1/analytics/archetype/proximity/trend?current_days=${currentDays}&prior_days=${priorDays}`
+  );
+}

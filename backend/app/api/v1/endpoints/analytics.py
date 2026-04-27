@@ -1,7 +1,7 @@
 """Analytics endpoints — discrepancy experiment measurement layer."""
 from datetime import date, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from collections import defaultdict
 
@@ -1511,3 +1511,68 @@ def get_deadline_shape(db: Session = Depends(get_db)) -> dict:
         "per_deadline": per_deadline_out,
         "primary_metric": "delay_minutes_distribution (MANIFESTO Rule 14, pre-registered)",
     }
+
+
+@router.get("/analytics/archetype/proximity")
+def get_archetype_proximity(
+    days: int = Query(14, ge=1, le=90, description="Lookback window in days"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """VT-25 dynamic-reveal data source. Pre-registered MANIFESTO Rule 17 (2026-04-27).
+
+    Returns per-archetype Bayesian posterior probabilities over the user's
+    last N days of EXECUTED, non-voided task data. Frontend renders the
+    top-3 archetypes with percentage bars + trend arrows; replaces the
+    static "Profile: Procrastinator" reveal that shipped via LYR-112.
+
+    Filters (per Rule 13 + voided_at_guard memory):
+      - state == EXECUTED
+      - voided_at IS NULL
+      - initiation_status != 'system_error'
+      - planned_duration_minutes >= 5
+      - executed_duration_minutes IS NOT NULL
+
+    Cold start (no qualifying tasks): returns uniform 1/N distribution.
+    Frontend renders this as "settling in" copy without the percentage UI.
+
+    Auto-scoped via current_user_id ContextVar.
+    """
+    from app.services.archetype_proximity_service import compute_proximity
+
+    uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    proximity = compute_proximity(db, uid, lookback_days=days)
+    n_tasks = proximity[0]["n_tasks"] if proximity else 0
+    return {
+        "proximity": proximity,
+        "lookback_days": days,
+        "n_tasks": n_tasks,
+        "primary_metric": "archetype_posterior (MANIFESTO Rule 17, pre-registered)",
+    }
+
+
+@router.get("/analytics/archetype/proximity/trend")
+def get_archetype_proximity_trend(
+    current_days: int = Query(14, ge=1, le=90, description="Current window"),
+    prior_days: int = Query(14, ge=1, le=90, description="Prior window (immediately before current)"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Current vs prior window comparison for archetype proximity.
+
+    Returns {current, prior, delta_per_archetype, current_window_days,
+    prior_window_days}. Powers the frontend "a month ago you were 65/70 —
+    pattern is consolidating toward Procrastinator" copy.
+
+    Time math:
+      current = [now - current_days, now]
+      prior   = [now - current_days - prior_days, now - current_days]
+
+    Same per-row shape as /proximity. Pre-registered Rule 17.
+    """
+    from app.services.archetype_proximity_service import compute_proximity_trend
+
+    uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    return compute_proximity_trend(db, uid, current_days, prior_days)

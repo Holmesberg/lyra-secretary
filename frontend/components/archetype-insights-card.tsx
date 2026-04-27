@@ -3,21 +3,30 @@
  * Archetype insights card — shows at top of /insights page.
  *
  * Self-updating via React Query: the survey submit invalidates
- * ["me"] + ["bias_factor*"] + ["insights"], causing this card to
- * auto-refetch and re-render with the new archetype + updated blend.
+ * ["me"] + ["bias_factor*"] + ["insights"] + ["proximity*"], causing
+ * this card to auto-refetch and re-render.
  *
- * Layout philosophy (operator note 2026-04-23, "outputs the math not
- * the archetype"):
- *   - HERO = archetype name + behavioral description + planning
- *     implication. This is the identity the user cares about.
+ * Layout philosophy (revised 2026-04-27 per MANIFESTO Rule 17):
+ *   - HERO = TOP-3 dynamic posterior over archetypes (last 14d window).
+ *     Replaces the prior static "Profile: Procrastinator" identity
+ *     framing with a moving-observation framing. Mitigates VT-25
+ *     label-internalization (per Rule 17 §25a kill criterion).
+ *   - TREND CAPTION = "a month ago you were Y — pattern is shifting
+ *     toward X" — only renders when the prior window has data.
  *   - COLLAPSIBLE = blend math (archetype prior, personal weight,
- *     blended number). Useful for the operator / research-minded
- *     users, noise for everyone else.
+ *     blended number). Tangentially-related but useful for the
+ *     operator / research-minded users. Note: the disclosure shows
+ *     the SURVEY-assigned archetype's prior (frozen at survey time);
+ *     the dynamic posterior above shows current behavior. The two
+ *     SHOULD diverge as data accumulates — that divergence is the
+ *     literal claim of the system.
  *
  * Display adapts to state:
  *   - NO archetype: "Take the survey in Settings to unlock" + link
- *   - Archetype assigned: hero label + description + implication +
- *     "Show calibration math" disclosure
+ *   - Archetype assigned, < 5 EXECUTED sessions: "Settling in" copy
+ *   - Archetype assigned, ≥ 5 EXECUTED total but < 3 in last 14d:
+ *     "Get back into the rhythm" copy with assigned starting point
+ *   - Archetype assigned, ≥ 3 in last 14d: full dynamic posterior view
  */
 import { useState } from "react";
 import { ChevronUp, Sigma } from "lucide-react";
@@ -25,10 +34,20 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import {
-  ARCHETYPE_DESCRIPTIONS,
   ARCHETYPE_LABELS,
-  ARCHETYPE_PLANNING_IMPLICATION,
+  getArchetypeProximity,
+  getArchetypeProximityTrend,
 } from "@/lib/archetype";
+import {
+  ArchetypeProximityRows,
+  ArchetypeTrendCaption,
+} from "@/components/archetype-proximity-display";
+// ARCHETYPE_DESCRIPTIONS + ARCHETYPE_PLANNING_IMPLICATION imports
+// dropped 2026-04-27 (Rule 17): the dynamic posterior view doesn't
+// surface the prescriptive "people like you typically..." copy because
+// that re-anchors users to identity framing — exactly the
+// label-internalization risk Rule 17 mitigates. The dicts remain
+// exported from @/lib/archetype for any future surface that wants them.
 
 interface MeArchetype {
   archetype_id: string | null;
@@ -127,46 +146,109 @@ export function ArchetypeInsightsCard() {
     );
   }
 
-  const label = ARCHETYPE_LABELS[archetypeId] ?? archetypeId;
-  const description = ARCHETYPE_DESCRIPTIONS[archetypeId];
-  const implication = ARCHETYPE_PLANNING_IMPLICATION[archetypeId];
+  return (
+    <DynamicProximityCard
+      archetypeId={archetypeId}
+      mathOpen={mathOpen}
+      onToggleMath={() => setMathOpen((o) => !o)}
+      blendData={blendQ.data}
+    />
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Dynamic posterior reveal (MANIFESTO Rule 17, 2026-04-27).
+// ──────────────────────────────────────────────────────────────────────
+
+function DynamicProximityCard({
+  archetypeId,
+  mathOpen,
+  onToggleMath,
+  blendData,
+}: {
+  archetypeId: string;
+  mathOpen: boolean;
+  onToggleMath: () => void;
+  blendData?: BiasBlendSample;
+}) {
+  const proximityQ = useQuery({
+    queryKey: ["proximity", 14],
+    queryFn: () => getArchetypeProximity(14),
+    staleTime: 60_000,
+  });
+  const trendQ = useQuery({
+    queryKey: ["proximity-trend", 14, 14],
+    queryFn: () => getArchetypeProximityTrend(14, 14),
+    staleTime: 60_000,
+  });
+
+  if (proximityQ.isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-5">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+            Your pattern
+          </div>
+          <div className="h-20 animate-pulse rounded-sm bg-void/30" />
+        </CardContent>
+      </Card>
+    );
+  }
+  if (!proximityQ.data) return null;
+
+  // Edge case: total session count crossed 5 (gate above), but the last
+  // 14 days has too few qualifying tasks to compute meaningful posterior.
+  // Fall back to a softer copy rather than showing uniform-looking bars.
+  if (proximityQ.data.n_tasks < 3) {
+    const startingLabel = ARCHETYPE_LABELS[archetypeId] ?? archetypeId;
+    return (
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-5">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+            Your pattern
+          </div>
+          <p className="text-sm leading-relaxed text-dust">
+            Lyra needs a few more recent sessions to show your current pattern.
+            Your starting point was <span className="text-parchment">{startingLabel}</span>{" "}
+            — check back here after a couple more executed tasks and
+            you&apos;ll see how today&apos;s rhythm compares.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const top3 = proximityQ.data.proximity.slice(0, 3);
+  const top = top3[0];
 
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 p-5">
-        {/* Hero: label + assignment recency */}
         <div>
-          <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-            Your profile
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+            Your last 14 days look most like…
           </div>
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="text-2xl font-semibold tracking-tight text-parchment">
-              {label}
-            </h2>
-            <span className="text-[11px] text-dust-deep">
-              early read · may shift as Lyra sees more of how you work
-            </span>
-          </div>
+          <ArchetypeProximityRows top3={top3} trend={trendQ.data} />
         </div>
 
-        {/* Description — what this archetype means */}
-        {description && (
-          <p className="text-sm leading-relaxed text-dust">{description}</p>
+        {trendQ.data && (
+          <ArchetypeTrendCaption top={top} trend={trendQ.data} />
         )}
 
-        {/* Planning implication — what it means for the user's workflow */}
-        {implication && (
-          <div className="rounded-sm border border-hairline bg-void/30 px-3 py-2 text-xs leading-relaxed text-parchment">
-            {implication}
-          </div>
-        )}
+        <p className="text-[11px] leading-relaxed text-dust-deep">
+          These tendencies shift as Lyra sees more of how you actually work.
+          Not a fixed identity — a moving observation.
+        </p>
 
-        {/* Math disclosure — icon-only toggle, low-prominence */}
-        {blendQ.data && typeof blendQ.data.bias_factor_final === "number" && (
+        {/* Math disclosure — icon-only toggle, low-prominence. The blend
+            math here is about the SURVEY-assigned archetype's prior (frozen
+            at survey time). The pattern above is current behavior — these
+            two SHOULD diverge over time. */}
+        {blendData && typeof blendData.bias_factor_final === "number" && (
           <MathDisclosure
             open={mathOpen}
-            onToggle={() => setMathOpen((o) => !o)}
-            blend={blendQ.data}
+            onToggle={onToggleMath}
+            blend={blendData}
           />
         )}
       </CardContent>

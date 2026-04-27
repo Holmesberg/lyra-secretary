@@ -50,10 +50,19 @@
  * which is what the Rule-13 blend reads.
  */
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArchetypeSurvey } from "@/components/archetype-survey";
-import { ARCHETYPE_LABELS } from "@/lib/archetype";
+import {
+  ARCHETYPE_LABELS,
+  getArchetypeProximity,
+  getArchetypeProximityTrend,
+} from "@/lib/archetype";
+import {
+  ArchetypeProximityRows,
+  ArchetypeTrendCaption,
+} from "@/components/archetype-proximity-display";
 
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -158,28 +167,20 @@ export function ArchetypeProfileSection({
           )}
 
           {state === "recent" && label && (
-            <StatePanel
-              emphasis="secondary"
-              heading={`Profile: ${label}`}
-              body="An early read based on your survey + first sessions
-                with Lyra. This may shift as Lyra sees more of how you
-                actually work — that's expected, not a problem. You can
-                retake the survey anytime."
-              buttonLabel="Retake survey"
-              onClick={() => setSurveyOpen(true)}
+            <DynamicProfilePanel
+              startingLabel={label}
+              daysSince={daysSince ?? 0}
+              ageEmphasis="recent"
+              onRetake={() => setSurveyOpen(true)}
             />
           )}
 
           {state === "aged" && label && daysSince !== null && (
-            <StatePanel
-              emphasis="primary"
-              heading={`Profile: ${label}`}
-              body={`It's been ${friendlyTime(daysSince)} since your last
-                survey. Sleep rhythm, focus, the way you approach work —
-                these things shift. Take the survey again whenever you
-                feel like the old read no longer fits.`}
-              buttonLabel="Retake survey"
-              onClick={() => setSurveyOpen(true)}
+            <DynamicProfilePanel
+              startingLabel={label}
+              daysSince={daysSince}
+              ageEmphasis="aged"
+              onRetake={() => setSurveyOpen(true)}
             />
           )}
         </CardContent>
@@ -194,6 +195,95 @@ export function ArchetypeProfileSection({
         />
       )}
     </>
+  );
+}
+
+// Dynamic-reveal panel for the recent/aged states (MANIFESTO Rule 17,
+// 2026-04-27). Replaces the prior static "Profile: <label>" StatePanel
+// with the top-3 posterior view + retake-survey CTA below.
+//
+// `ageEmphasis="aged"` makes the retake button primary (>90 days = nudge
+// toward refresh); "recent" keeps it secondary (<90 days = just an
+// option). The dynamic posterior is the same in both cases — only the
+// retake-CTA prominence + caption emphasis differ.
+function DynamicProfilePanel({
+  startingLabel,
+  daysSince,
+  ageEmphasis,
+  onRetake,
+}: {
+  startingLabel: string;
+  daysSince: number;
+  ageEmphasis: "recent" | "aged";
+  onRetake: () => void;
+}) {
+  const proximityQ = useQuery({
+    queryKey: ["proximity", 14],
+    queryFn: () => getArchetypeProximity(14),
+    staleTime: 60_000,
+  });
+  const trendQ = useQuery({
+    queryKey: ["proximity-trend", 14, 14],
+    queryFn: () => getArchetypeProximityTrend(14, 14),
+    staleTime: 60_000,
+  });
+
+  const isLoading = proximityQ.isLoading;
+  const prox = proximityQ.data;
+  const sparseRecent = prox && prox.n_tasks < 3;
+  const top = prox?.proximity[0];
+
+  const retakeBody =
+    ageEmphasis === "aged"
+      ? `It's been ${friendlyTime(daysSince)} since your last survey. ` +
+        "Sleep rhythm, focus, the way you approach work — these things " +
+        "shift. Take the survey again whenever you feel like the old " +
+        "read no longer fits."
+      : "You can retake the survey anytime — the dynamic pattern above " +
+        "updates from your behavior either way, but a fresh survey " +
+        "re-anchors the starting point.";
+
+  const buttonVariant =
+    ageEmphasis === "aged" ? "default" : ("outline" as const);
+
+  return (
+    <div className="flex flex-col gap-4 rounded-sm border border-hairline bg-void/30 px-4 py-3">
+      <div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+          Your last 14 days look most like…
+        </div>
+        {isLoading && (
+          <div className="h-16 animate-pulse rounded-sm bg-void/40" />
+        )}
+        {!isLoading && sparseRecent && (
+          <p className="text-sm leading-relaxed text-dust">
+            Lyra needs a few more recent sessions to show your current
+            pattern. Your starting point was{" "}
+            <span className="text-parchment">{startingLabel}</span>.
+          </p>
+        )}
+        {!isLoading && !sparseRecent && prox && top && (
+          <ArchetypeProximityRows top3={prox.proximity.slice(0, 3)} trend={trendQ.data} />
+        )}
+      </div>
+      {!isLoading && !sparseRecent && top && trendQ.data && (
+        <ArchetypeTrendCaption top={top} trend={trendQ.data} />
+      )}
+      <p className="text-xs leading-relaxed text-dust">
+        Started as <span className="text-parchment">{startingLabel}</span>{" "}
+        {friendlyTime(daysSince)} ago. {retakeBody}
+      </p>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          size="sm"
+          variant={buttonVariant}
+          onClick={onRetake}
+        >
+          Retake survey
+        </Button>
+      </div>
+    </div>
   );
 }
 
