@@ -9,7 +9,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { CategorySelect } from "@/components/category-select";
 import {
   type DeadlineResponse,
   type DeadlineUpdateRequest,
@@ -29,7 +31,9 @@ interface Props {
 }
 
 function _isoToLocalInput(iso: string | null | undefined): string {
-  // datetime-local needs YYYY-MM-DDTHH:mm in local time
+  // datetime-local needs YYYY-MM-DDTHH:mm in local time. Backend now
+  // emits explicit UTC offsets (DeadlineResponse._serialize_utc), so
+  // `new Date(iso)` correctly converts UTC → local before getHours().
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -55,6 +59,9 @@ export function DeadlineModal({
   const [description, setDescription] = useState("");
   const [dueAt, setDueAt] = useState(""); // datetime-local string
   const [categoryHint, setCategoryHint] = useState("");
+  // Mirror NewTaskModal: dropdown for built-ins + custom-entry mode
+  // when the user picks "+ Create a new category…".
+  const [categoryMode, setCategoryMode] = useState<"picker" | "custom">("picker");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +72,10 @@ export function DeadlineModal({
       setDescription(deadline.description ?? "");
       setDueAt(_isoToLocalInput(deadline.due_at_utc));
       setCategoryHint(deadline.category_hint ?? "");
+      // Free-text customs from prior tasks may not match a built-in;
+      // if the existing hint isn't blank, default to picker mode and
+      // let CategorySelect surface it under "Your categories".
+      setCategoryMode("picker");
     } else {
       setTitle("");
       setDescription("");
@@ -73,6 +84,7 @@ export function DeadlineModal({
       tomorrow.setHours(17, 0, 0, 0);
       setDueAt(_isoToLocalInput(tomorrow.toISOString()));
       setCategoryHint("");
+      setCategoryMode("picker");
     }
     setError(null);
   }, [open, mode, deadline]);
@@ -133,7 +145,19 @@ export function DeadlineModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent
+        onKeyDown={(e) => {
+          // Enter submits — except inside textareas (where Enter inserts
+          // a newline) and when modifier keys are held. Mirrors the
+          // pattern used in reflection-modal, readiness-modal, etc.
+          if (e.key !== "Enter") return;
+          if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+          if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+          if (!canSubmit) return;
+          e.preventDefault();
+          void handleSave();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>
             {mode === "edit" ? "Edit deadline" : "New deadline"}
@@ -178,16 +202,42 @@ export function DeadlineModal({
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-xs text-dust">
-            Category hint (optional)
-            <input
-              type="text"
-              value={categoryHint}
-              onChange={(e) => setCategoryHint(e.target.value)}
-              placeholder="e.g. academic, work"
-              className="rounded-sm border border-hairline bg-void-2 px-3 py-2 text-sm text-parchment focus:border-signal/60 focus:outline-none"
-            />
-          </label>
+          <div className="flex flex-col gap-1 text-xs text-dust">
+            <span>Category (optional)</span>
+            {categoryMode === "picker" ? (
+              <CategorySelect
+                value={categoryHint || "work"}
+                onChange={(val) => {
+                  if (val === "__CREATE_NEW__") {
+                    setCategoryMode("custom");
+                    setCategoryHint("");
+                  } else {
+                    setCategoryHint(val);
+                  }
+                }}
+              />
+            ) : (
+              <div className="flex items-center gap-2">
+                <Input
+                  value={categoryHint}
+                  onChange={(e) => setCategoryHint(e.target.value)}
+                  placeholder="e.g. research, admin, side_project"
+                  autoComplete="off"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="whitespace-nowrap text-xs text-dust transition-colors hover:text-parchment"
+                  onClick={() => {
+                    setCategoryMode("picker");
+                    setCategoryHint("");
+                  }}
+                >
+                  ← Back
+                </button>
+              </div>
+            )}
+          </div>
 
           {error && (
             <div className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">

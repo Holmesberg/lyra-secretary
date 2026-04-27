@@ -7,9 +7,9 @@ types to TaskManager's `_validate_bindable_deadline` helper.
 State enum values mirror the deadline ORM model:
     planned | active | completed | missed | skipped | voided
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_serializer, validator
 
 
 # Allowed deadline state values. `voided` is a soft-delete; users do not
@@ -73,6 +73,22 @@ class DeadlineResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    # The deadline columns are stored as naive datetimes representing UTC
+    # (alembic 033 uses `sa.DateTime` without timezone=True, matching the
+    # rest of the codebase). Pydantic would otherwise emit them without an
+    # offset suffix, and `new Date("2026-05-04T15:00:00")` in the browser
+    # interprets the string as LOCAL time — so a deadline saved at 18:00
+    # Cairo (15:00 UTC) renders as 3:00 PM Cairo. Stamp every datetime
+    # field with explicit UTC on the way out so the frontend can
+    # disambiguate.
+    @field_serializer("due_at_utc", "completed_at", "voided_at", "created_at")
+    def _serialize_utc(self, v: Optional[datetime]) -> Optional[str]:
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        return v.isoformat()
 
 
 class DeadlineListResponse(BaseModel):

@@ -25,6 +25,16 @@ import {
 
 
 /**
+ * Display caps the per-archetype percentage so saturated posteriors
+ * (e.g. 28 days of consistent overrun → procrastinator at 1.0000) read
+ * as "99%, high confidence" rather than "100%". A 100% display lands
+ * as identity ("you ARE a procrastinator"), which is exactly the label-
+ * reinforcement risk MANIFESTO Rule 17 §25a is watching for. The
+ * underlying math is unchanged — this is a UI clamp.
+ */
+const DISPLAY_CAP = 0.99;
+
+/**
  * Renders the top-3 archetypes as labeled bars with percentages + trend arrows.
  * Caller passes the proximity result; this just renders it.
  */
@@ -40,7 +50,8 @@ export function ArchetypeProximityRows({
       {top3.map((arch, idx) => {
         const delta = trend?.delta_per_archetype[arch.archetype_id] ?? 0;
         const label = ARCHETYPE_LABELS[arch.archetype_id] ?? arch.label;
-        const pct = Math.round(arch.score * 100);
+        const displayed = Math.min(arch.score, DISPLAY_CAP);
+        const pct = Math.round(displayed * 100);
         return (
           <div key={arch.archetype_id} className="flex items-center gap-3">
             <div
@@ -106,6 +117,24 @@ export function ArchetypeTrendArrow({ delta }: { delta: number }) {
       className="h-3 w-3 flex-shrink-0 text-dust-deep"
       aria-label="stable"
     />
+  );
+}
+
+/**
+ * Saturated-posterior caveat — when the top archetype crosses the display
+ * cap, the model has effectively concentrated all probability there.
+ * Naming that explicitly defends against label internalization (the
+ * label_reinforcement_framing memory): the user sees "model is confident
+ * given the data" rather than "this IS me."
+ */
+export function ArchetypeSaturationNote({ top }: { top: ArchetypeProximity }) {
+  if (top.score < DISPLAY_CAP) return null;
+  return (
+    <p className="text-[11px] leading-relaxed text-dust-deep">
+      Your last {top.n_tasks} sessions concentrate tightly on this pattern. As
+      you log a wider mix of categories and days, the distribution will spread
+      out again — this isn&apos;t a fixed reading.
+    </p>
   );
 }
 

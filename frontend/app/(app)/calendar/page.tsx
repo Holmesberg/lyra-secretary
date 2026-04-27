@@ -38,6 +38,7 @@ import {
   type ExternalCalendarEvent,
 } from "@/lib/calendar";
 import { NewTaskModal } from "@/components/new-task-modal";
+import { UpcomingDeadlines } from "@/components/upcoming-deadlines";
 import {
   Dialog,
   DialogContent,
@@ -563,6 +564,8 @@ export default function CalendarPage() {
           </p>
         </div>
       </div>
+
+      <UpcomingDeadlines />
 
       {errorMsg && (
         <div className="mb-4 flex items-center justify-between rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">

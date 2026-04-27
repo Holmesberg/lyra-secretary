@@ -84,6 +84,27 @@ def test_create_deadline_happy_path(db):
     assert data["user_id"] == user.user_id
 
 
+def test_response_datetimes_carry_explicit_utc_offset(db):
+    """Regression — Apr 27 dogfood: deadline created at 18:00 Cairo
+    rendered as 3pm in the list view because the response emitted naive
+    UTC datetimes ("2026-05-04T15:00:00") and `new Date(...)` in the
+    browser parsed them as LOCAL. Schema field_serializer now stamps
+    UTC explicitly. Pin that here so the bug can't silently come back.
+    """
+    user = _make_user(db, "tz@example.com")
+    set_current_user_id(user.user_id)
+
+    resp = client.post("/v1/deadlines", json=_create_deadline_payload())
+    data = resp.json()
+    # Aware datetimes serialize with either "+00:00" or "Z" suffix; both
+    # are valid ISO 8601 UTC markers and both unambiguous to JS Date.
+    for field in ("due_at_utc", "created_at"):
+        s = data[field]
+        assert s.endswith("+00:00") or s.endswith("Z"), (
+            f"{field} lost its UTC marker: {s!r}"
+        )
+
+
 def _hdr(uid: int) -> dict:
     """Auth header for TestClient. UserScopeMiddleware reads X-User-Id and
     overwrites ContextVar — passing the header is the canonical way to

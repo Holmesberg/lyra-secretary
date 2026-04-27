@@ -29,6 +29,7 @@ import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
 import { PausePredictionBanner } from "@/components/pause-prediction-banner";
+import { UpcomingDeadlines } from "@/components/upcoming-deadlines";
 import { PauseConfirmChip } from "@/components/pause-confirm-chip";
 import { listPendingConfirmations } from "@/lib/pause-predictions";
 import { ExternalEventRow } from "@/components/external-event-row";
@@ -675,6 +676,9 @@ function TodayInner() {
           onRequestPauseHandled={clearRequestPause}
         />
       )}
+
+      {/* Upcoming deadlines strip — auto-hidden when none. */}
+      <UpcomingDeadlines />
 
       {errorMsg && (
         <div className="mb-4 rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">

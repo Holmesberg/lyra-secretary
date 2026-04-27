@@ -40,6 +40,7 @@ import {
 } from "@/lib/archetype";
 import {
   ArchetypeProximityRows,
+  ArchetypeSaturationNote,
   ArchetypeTrendCaption,
 } from "@/components/archetype-proximity-display";
 // ARCHETYPE_DESCRIPTIONS + ARCHETYPE_PLANNING_IMPLICATION imports
@@ -234,6 +235,8 @@ function DynamicProximityCard({
         {trendQ.data && (
           <ArchetypeTrendCaption top={top} trend={trendQ.data} />
         )}
+
+        <ArchetypeSaturationNote top={top} />
 
         <p className="text-[11px] leading-relaxed text-dust-deep">
           These tendencies shift as Lyra sees more of how you actually work.

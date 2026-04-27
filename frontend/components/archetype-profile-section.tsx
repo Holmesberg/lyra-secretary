@@ -61,6 +61,7 @@ import {
 } from "@/lib/archetype";
 import {
   ArchetypeProximityRows,
+  ArchetypeSaturationNote,
   ArchetypeTrendCaption,
 } from "@/components/archetype-proximity-display";
 
@@ -268,6 +269,9 @@ function DynamicProfilePanel({
       </div>
       {!isLoading && !sparseRecent && top && trendQ.data && (
         <ArchetypeTrendCaption top={top} trend={trendQ.data} />
+      )}
+      {!isLoading && !sparseRecent && top && (
+        <ArchetypeSaturationNote top={top} />
       )}
       <p className="text-xs leading-relaxed text-dust">
         Started as <span className="text-parchment">{startingLabel}</span>{" "}
