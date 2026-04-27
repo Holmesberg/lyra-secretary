@@ -6,16 +6,25 @@
  * ║ TEMPORARILY DISABLED 2026-04-21                                  ║
  * ║                                                                  ║
  * ║ Not rendered anywhere — the (app)/layout.tsx conditional that    ║
- * ║ mounted this component has been commented out. The first-time    ║
- * ║ user experience is now a backend-seeded starter task (see        ║
- * ║ backend/app/core/security.py `_seed_starter_task`), which shows  ║
- * ║ up directly on /today when the user lands — no forced UI.        ║
+ * ║ mounted this component has been commented out.                   ║
+ * ║                                                                  ║
+ * ║ History (2026-04-27 update):                                     ║
+ * ║ The original 2026-04-21 reversal replaced this surface with a    ║
+ * ║ backend-seeded starter task (`_seed_starter_task`). That seed    ║
+ * ║ was itself REMOVED 2026-04-27 — operator dogfood found u12 + u14 ║
+ * ║ both abandoned the placeholder rather than engaging. Current     ║
+ * ║ first-time-user surface: empty /today (intentional gap until     ║
+ * ║ Family F1 chaos capture ships per                                ║
+ * ║ memory/project_relief_instrument_reframe.md).                    ║
  * ║                                                                  ║
  * ║ Re-enable post-Spring-School when the richer onboarding flow is  ║
  * ║ ready to ship:                                                   ║
  * ║  - Archetype instrument battery (MEQ-5, BFI-10, BSCS, GP-Short)  ║
  * ║  - Import ingestion (ICS drag-drop, Google Calendar OAuth)       ║
- * ║  - Progressive revelation ("your archetype: Planner" at N=5-7)   ║
+ * ║  - Progressive revelation (the original "your archetype: Planner║
+ * ║    at N=5-7" framing has shifted toward dynamic-posterior reveal ║
+ * ║    per VT-25 mitigation — re-confirm the surface design before   ║
+ * ║    re-enabling)                                                  ║
  * ║                                                                  ║
  * ║ See docs/strategic_decisions_april_21.md §5 for the reversal     ║
  * ║ rationale.                                                       ║

@@ -9,11 +9,14 @@ import { ArchetypeSurvey } from "@/components/archetype-survey";
 import { ConsentModal } from "@/components/consent-modal";
 import { TutorialOverlay } from "@/components/tutorial-overlay";
 // Temporarily disabled 2026-04-21 — the full-screen onboarding surface
-// was replaced by a backend-seeded starter task (see
-// backend/app/core/security.py `_seed_starter_task`). Import left in
-// place and commented so we can re-enable post-Spring-School when the
-// onboarding + first-time-user battery + import ingestion flows are
-// ready to ship together. See docs/strategic_decisions_april_21.md §5.
+// was first replaced by a backend-seeded starter task, which was itself
+// removed 2026-04-27 because it poisoned the activation funnel (u12 + u14
+// both abandoned the placeholder). Path forward: ship Family F1 chaos
+// capture as the real first-time-user surface (per
+// `memory/project_relief_instrument_reframe.md`). This OnboardingFlow
+// import is preserved as commented dead code for the post-Spring-School
+// re-enable when the richer onboarding flow ships.
+// See docs/strategic_decisions_april_21.md §5.
 // import { OnboardingFlow } from "@/components/onboarding-flow";
 
 type Me = {
