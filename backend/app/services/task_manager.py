@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 import logging
 
-from app.db.models import Task, TaskState, TaskSource, CategoryMapping, Deadline, CalibrationNudgeEvent
+from app.db.models import Task, TaskState, TaskSource, CategoryMapping, Deadline, CalibrationNudgeEvent, ReflectionViewLog
 from app.db.scoping import get_current_user_id
 from app.services.parser import TaskParser, extract_scope_bullets, infer_deadline_binding
 from app.services.state_machine import StateMachine
@@ -180,6 +180,12 @@ class TaskManager:
         nudge_suggested_duration_minutes: Optional[int] = None,
         nudge_bias_factor: Optional[float] = None,
         nudge_sample_size: Optional[int] = None,
+        # Phase 6 V3 prerequisite (alembic 035) — when did the modal
+        # surface appear? Used to compute dwell_seconds for the
+        # creation_nudge ReflectionViewLog row written alongside the
+        # CalibrationNudgeEvent. Optional; when omitted, dwell_seconds
+        # is left NULL (still a valid V3 row, just no dwell).
+        nudge_viewed_at: Optional[datetime] = None,
     ) -> tuple[Optional[Task], ConflictResult, bool]:
         """
         Create a new task.
@@ -324,6 +330,34 @@ class TaskManager:
                 sample_size=nudge_sample_size,
                 user_decision=nudge_decision,
                 decided_at=created_at_ts,
+            ))
+            # Phase 6 V3 commitment (`docs/phase_6_architecture_backlog.md:227`):
+            # every creation-nudge fire writes a ReflectionViewLog row alongside
+            # the CalibrationNudgeEvent, so the response-type classifier has
+            # signal data when Phase 6 ships. CalibrationNudgeEvent is the
+            # research-artifact log (delta-difference primary metric);
+            # ReflectionViewLog is the user-engagement log (V3 dwell + outcome).
+            # Same fire = both rows.
+            outcome = "adjusted" if nudge_decision == "accepted" else "kept"
+            dwell = (
+                int((created_at_ts - nudge_viewed_at).total_seconds())
+                if nudge_viewed_at is not None
+                else None
+            )
+            self.db.add(ReflectionViewLog(
+                user_id=uid,
+                reflection_type="creation_nudge",
+                task_id=task.task_id,
+                payload=(
+                    f"creation_nudge: suggested={nudge_suggested_duration_minutes}min "
+                    f"(bf={nudge_bias_factor:.2f}, n={nudge_sample_size}); "
+                    f"user_planned={duration_minutes}min; outcome={outcome}"
+                ),
+                fired_at=nudge_viewed_at or created_at_ts,
+                viewed_at=nudge_viewed_at,
+                dismissed_at=created_at_ts,
+                dwell_seconds=dwell,
+                outcome=outcome,
             ))
         elif nudge_fields_present != 0:
             # Defensive — Pydantic schema already enforces all-or-none, but

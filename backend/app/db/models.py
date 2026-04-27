@@ -781,7 +781,10 @@ class ReflectionViewLog(Base):
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
     user_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    # 'micro_mirror' | 'calibration_nudge' — enforced at application layer.
+    # 'micro_mirror' | 'calibration_nudge' (stop-time toast)
+    # | 'creation_nudge' (task-creation modal, alembic 035)
+    # | 'pause_prediction' (forward) | 'archetype_proximity' (forward)
+    # — enforced at application layer.
     reflection_type: Mapped[str] = mapped_column(String(30), nullable=False)
     task_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("task.task_id", ondelete="SET NULL")
@@ -791,6 +794,11 @@ class ReflectionViewLog(Base):
     viewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     dwell_seconds: Mapped[Optional[int]] = mapped_column(Integer)
+    # Decision outcome on decisional surfaces. Per Phase 6 V3 spec
+    # (`docs/phase_6_architecture_backlog.md:227`): for creation_nudge
+    # this carries 'kept' / 'adjusted' / 'dismissed'. NULL on
+    # informational surfaces (micro_mirror, banner). Added in alembic 035.
+    outcome: Mapped[Optional[str]] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )

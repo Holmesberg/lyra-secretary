@@ -17,6 +17,7 @@ from sqlalchemy import text
 
 from app.db.models import (
     CalibrationNudgeEvent,
+    ReflectionViewLog,
     Task,
     TaskSource,
     TaskState,
@@ -301,3 +302,83 @@ def test_cross_user_event_isolation(db):
         .all()
     )
     assert len(a_events) == 1
+
+
+# ── Phase 6 V3 — ReflectionViewLog write at creation_nudge fire ────
+
+
+def test_creation_nudge_writes_reflection_view_log(db):
+    """Apr 27 drift fix — every creation-nudge fire writes a
+    ReflectionViewLog row alongside the CalibrationNudgeEvent so the
+    Phase 6 response-type classifier has V3 signal data when it
+    activates. Per `docs/phase_6_architecture_backlog.md:227`.
+    """
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    start, end = _future_window()
+
+    fire_time = datetime.utcnow() - timedelta(seconds=12)
+
+    tm = TaskManager(db)
+    task, _, _ = tm.create_task(
+        title="study", start=start, end=end,
+        nudge_decision="accepted",
+        nudge_suggested_duration_minutes=90,
+        nudge_bias_factor=1.4,
+        nudge_sample_size=12,
+        nudge_viewed_at=fire_time,
+    )
+
+    rows = db.query(ReflectionViewLog).filter(
+        ReflectionViewLog.task_id == task.task_id,
+        ReflectionViewLog.reflection_type == "creation_nudge",
+    ).all()
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.user_id == user.user_id
+    assert r.outcome == "adjusted"  # accepted → adjusted
+    # dwell_seconds computed from fire_time → decision_time (~12s)
+    assert r.dwell_seconds is not None
+    assert r.dwell_seconds >= 10
+    assert r.viewed_at == fire_time
+    assert r.dismissed_at is not None
+
+
+def test_creation_nudge_dismissed_outcome(db):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    start, end = _future_window()
+
+    tm = TaskManager(db)
+    task, _, _ = tm.create_task(
+        title="t", start=start, end=end,
+        nudge_decision="dismissed",
+        nudge_suggested_duration_minutes=90,
+        nudge_bias_factor=1.4,
+        nudge_sample_size=12,
+        # No nudge_viewed_at — dwell_seconds should be NULL but the
+        # row still writes.
+    )
+    rows = db.query(ReflectionViewLog).filter(
+        ReflectionViewLog.task_id == task.task_id,
+        ReflectionViewLog.reflection_type == "creation_nudge",
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].outcome == "kept"  # dismissed → kept (user kept their typed value)
+    assert rows[0].dwell_seconds is None
+    assert rows[0].viewed_at is None
+
+
+def test_no_reflection_view_log_when_nudge_absent(db):
+    """Tasks without a calibration nudge don't write reflection_view_log."""
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    start, end = _future_window()
+
+    tm = TaskManager(db)
+    task, _, _ = tm.create_task(title="t", start=start, end=end)
+
+    rows = db.query(ReflectionViewLog).filter(
+        ReflectionViewLog.task_id == task.task_id,
+    ).all()
+    assert len(rows) == 0

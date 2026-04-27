@@ -50,6 +50,15 @@ class TaskCreateRequest(BaseModel):
     nudge_sample_size: Optional[int] = Field(
         None, ge=0, description="n_sessions_in_cell at nudge-fire time"
     )
+    nudge_viewed_at: Optional[datetime] = Field(
+        None,
+        description=(
+            "Phase 6 V3 prerequisite: when did the modal calibration "
+            "nudge first appear in the UI? Optional. When supplied, "
+            "TaskManager writes dwell_seconds on the ReflectionViewLog "
+            "row alongside the CalibrationNudgeEvent."
+        ),
+    )
 
     @validator('end')
     def end_after_start(cls, v, values):

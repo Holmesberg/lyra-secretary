@@ -148,6 +148,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [calibrationNudge, setCalibrationNudge] = useState<{
     cell: BiasFactorCell;
     suggestedMin: number;
+    // ISO timestamp captured at the moment the nudge first appeared in
+    // the UI. Sent as `nudge_viewed_at` with the createTask payload so
+    // backend can compute dwell_seconds for the V3 ReflectionViewLog
+    // row (Phase 6 prerequisite per phase_6_architecture_backlog.md:227).
+    firedAt: string;
   } | null>(null);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
@@ -167,6 +172,10 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     suggested_minutes: number;
     bias_factor: number;
     sample_size: number;
+    // Phase 6 V3 — fire-time of the modal nudge. Sent as
+    // nudge_viewed_at; backend computes dwell_seconds = decision_time
+    // − fire_time for the ReflectionViewLog row.
+    viewed_at: string;
   } | null>(null);
 
   // Loop 11 Phase K — deadline picker. `deadlineId` carries the user's
@@ -215,6 +224,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             setCalibrationNudge({
               cell: { ...res.cell, bias_factor: magnitude },
               suggestedMin: roundTo5(planned * magnitude),
+              firedAt: new Date().toISOString(),
             });
             setNudgeSource(isResearch ? "research" : "personal");
           } else {
@@ -501,6 +511,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
               nudge_bias_factor: nudgeDecisionData.bias_factor,
               nudge_sample_size: nudgeDecisionData.sample_size,
+              nudge_viewed_at: nudgeDecisionData.viewed_at,
             }
           : {}),
       });
@@ -588,6 +599,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
               nudge_bias_factor: nudgeDecisionData.bias_factor,
               nudge_sample_size: nudgeDecisionData.sample_size,
+              nudge_viewed_at: nudgeDecisionData.viewed_at,
             }
           : {}),
       });
@@ -628,6 +640,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
               nudge_bias_factor: nudgeDecisionData.bias_factor,
               nudge_sample_size: nudgeDecisionData.sample_size,
+              nudge_viewed_at: nudgeDecisionData.viewed_at,
             }
           : {}),
       });
@@ -969,7 +982,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     {" "}run <span className="font-medium text-parchment">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over plan.
                   </>
                 )}
-                {" "}Adjust to {calibrationNudge.suggestedMin} min?
+                {" "}A typical wrap is {calibrationNudge.suggestedMin} min.
               </div>
               <div className="mt-2 flex gap-2">
                 <button
@@ -982,6 +995,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                       suggested_minutes: calibrationNudge.suggestedMin,
                       bias_factor: calibrationNudge.cell.bias_factor,
                       sample_size: calibrationNudge.cell.sessions,
+                      viewed_at: calibrationNudge.firedAt,
                     });
                     setDurHours(Math.floor(newMin / 60));
                     setDurMinutes(newMin % 60);
@@ -1001,6 +1015,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                       suggested_minutes: calibrationNudge.suggestedMin,
                       bias_factor: calibrationNudge.cell.bias_factor,
                       sample_size: calibrationNudge.cell.sessions,
+                      viewed_at: calibrationNudge.firedAt,
                     });
                     setCalibrationNudge(null);
                     setNudgeDecisionMade(true);

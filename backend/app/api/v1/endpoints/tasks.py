@@ -77,6 +77,7 @@ def create_task(
             nudge_suggested_duration_minutes=request.nudge_suggested_duration_minutes,
             nudge_bias_factor=request.nudge_bias_factor,
             nudge_sample_size=request.nudge_sample_size,
+            nudge_viewed_at=request.nudge_viewed_at,
         )
 
         if task is None:

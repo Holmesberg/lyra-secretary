@@ -102,6 +102,10 @@ export interface CreateTaskInput {
   nudge_suggested_duration_minutes?: number;
   nudge_bias_factor?: number;
   nudge_sample_size?: number;
+  // Phase 6 V3 — fire-time of the modal nudge as ISO string. When
+  // present, backend computes dwell_seconds = decision_time - viewed_at
+  // for the ReflectionViewLog row.
+  nudge_viewed_at?: string;
 }
 
 export interface ConflictSummary {
@@ -152,6 +156,7 @@ export function createTask(input: CreateTaskInput) {
       nudge_suggested_duration_minutes: input.nudge_suggested_duration_minutes,
       nudge_bias_factor: input.nudge_bias_factor,
       nudge_sample_size: input.nudge_sample_size,
+      nudge_viewed_at: input.nudge_viewed_at,
     }),
   });
 }
