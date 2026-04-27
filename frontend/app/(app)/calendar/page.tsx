@@ -38,7 +38,8 @@ import {
   type ExternalCalendarEvent,
 } from "@/lib/calendar";
 import { NewTaskModal } from "@/components/new-task-modal";
-import { UpcomingDeadlines } from "@/components/upcoming-deadlines";
+import { DeadlineModal } from "@/components/deadline-modal";
+import { listDeadlines, type DeadlineResponse } from "@/lib/deadlines";
 import {
   Dialog,
   DialogContent,
@@ -132,6 +133,21 @@ const STATE_CALENDARS: Record<string, CalendarType> = {
       onContainer: "#9CA3AF", // dust-mid — readable but not attention-grabbing
     },
   },
+  // Loop 11 deadline mechanism (April 2026). Rendered with a warm
+  // ember-leaning hue so a deadline reads as a flag, not a task.
+  // disableDND + disableResize via _options on each event — the
+  // operator should not be able to silently drag a deadline off its
+  // actual day from the calendar surface; due-date changes go through
+  // the DeadlineModal instead.
+  deadlines: {
+    colorName: "deadlines",
+    label: "Deadlines",
+    darkColors: {
+      main: "#E8A04D", // warm amber, distinct from PAUSED ember (which is task-state)
+      container: "#2D2417",
+      onContainer: "#FDE8D3",
+    },
+  },
 };
 
 function calendarIdForState(state: TaskRowType["state"]): string {
@@ -158,6 +174,17 @@ function calendarIdForState(state: TaskRowType["state"]): string {
 // commit. See TIMEZONE CONTRACT above.
 function toZdt(iso: string): Temporal.ZonedDateTime {
   return Temporal.PlainDateTime.from(iso).toZonedDateTime(TIMEZONE);
+}
+
+// Deadlines deliberately violate the TIMEZONE CONTRACT for tasks: the
+// DeadlineResponse schema serializes due_at_utc with an explicit UTC
+// offset ("2026-05-15T15:00:00+00:00") so the browser-local list view
+// renders correctly. Schedule-X expects a Cairo-zoned time, so convert
+// from Instant → ZonedDateTime in the user's tz here. Do NOT call
+// `toZdt(...)` on a deadline ISO; PlainDateTime.from rejects offsets
+// and throws.
+function deadlineToZdt(iso: string): Temporal.ZonedDateTime {
+  return Temporal.Instant.from(iso).toZonedDateTimeISO(TIMEZONE);
 }
 
 function taskToEvent(
@@ -313,7 +340,20 @@ export default function CalendarPage() {
 
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
   const [detailsTask, setDetailsTask] = useState<TaskRowType | null>(null);
+  const [editingDeadline, setEditingDeadline] = useState<DeadlineResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Deadlines render as Schedule-X events on their actual due day.
+  // No state filter — completed/missed/skipped deadlines also surface
+  // (their state pill is reflected in the event title via the icon),
+  // so the calendar reads as the historical record of every deadline.
+  // Voided deadlines are excluded by default per the list endpoint.
+  const deadlinesQ = useQuery({
+    queryKey: ["deadlines"],
+    queryFn: () => listDeadlines(),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
 
   const events = useMemo(() => {
     if (!tasksQ.data) return [];
@@ -376,7 +416,31 @@ export default function CalendarPage() {
       },
     }) as CalendarEventExternal);
 
-    return [...lyraEvents, ...gcalEvents];
+    // Deadlines appear on their actual due day. Each is a 1-hour
+    // block ending at due_at — the title carries a flag emoji so the
+    // ember calendar color + the prefix together read as "deadline."
+    // Both DND and resize disabled: editing a deadline's due time
+    // should go through the modal, not silent calendar drag (the
+    // modal also runs the planned→active transition + state buttons).
+    const deadlineEvents: CalendarEventExternal[] = (
+      deadlinesQ.data?.deadlines ?? []
+    ).map((d) => {
+      const end = deadlineToZdt(d.due_at_utc);
+      const start = end.subtract({ minutes: 60 });
+      return {
+        id: `deadline-${d.deadline_id}`,
+        title: `⚑ ${d.title}`,
+        start,
+        end,
+        calendarId: "deadlines",
+        _options: {
+          disableDND: true,
+          disableResize: true,
+        },
+      } as CalendarEventExternal;
+    });
+
+    return [...lyraEvents, ...gcalEvents, ...deadlineEvents];
     // dataUpdatedAt changes on every poll, guaranteeing a fresh
     // Temporal.Now on each refresh cycle. Without this dep the block
     // would only grow when the status payload shape differs — but
@@ -390,6 +454,7 @@ export default function CalendarPage() {
     statusQ.data?.start_time,
     statusQ.dataUpdatedAt,
     calendarEventsQ.data,
+    deadlinesQ.data,
   ]);
 
   // `useNextCalendarApp` initializes the calendar ONCE on mount and the
@@ -406,6 +471,19 @@ export default function CalendarPage() {
   function findTask(id: string | number): TaskRowType | undefined {
     const idStr = String(id);
     return tasksRef.current?.find((t) => t.task_id === idStr);
+  }
+
+  // Same trick for deadlines — onEventClick reads fresh rows without
+  // closing over a stale snapshot.
+  const deadlinesRef = useRef<DeadlineResponse[] | undefined>(undefined);
+  useEffect(() => {
+    deadlinesRef.current = deadlinesQ.data?.deadlines;
+  }, [deadlinesQ.data]);
+
+  function findDeadline(id: string): DeadlineResponse | undefined {
+    if (!id.startsWith("deadline-")) return undefined;
+    const did = id.slice("deadline-".length);
+    return deadlinesRef.current?.find((d) => d.deadline_id === did);
   }
 
   // Refresh both cache keys on any calendar-driven mutation so the
@@ -508,7 +586,18 @@ export default function CalendarPage() {
       selectedDate: Temporal.Now.plainDateISO(TIMEZONE),
       callbacks: {
         onEventClick(evt) {
-          const task = findTask(evt.id);
+          const idStr = String(evt.id);
+          // Branch on prefix: deadlines open the DeadlineModal in
+          // edit mode; tasks fall through to the existing flow.
+          // External GCal events (id `gcal-...`) reach this same
+          // handler but are no-ops: findTask returns undefined and
+          // we early-return.
+          if (idStr.startsWith("deadline-")) {
+            const dl = findDeadline(idStr);
+            if (dl) setEditingDeadline(dl);
+            return;
+          }
+          const task = findTask(idStr);
           if (!task) return;
           if (task.state === "PLANNED") {
             setEditingTask(task);
@@ -517,6 +606,10 @@ export default function CalendarPage() {
           }
         },
         async onBeforeEventUpdateAsync(_oldEvent, newEvent) {
+          // Deadlines have disableDND/disableResize so this callback
+          // shouldn't fire for them — guard anyway in case Schedule-X
+          // surfaces a drag-attempt for a brief moment.
+          if (String(newEvent.id).startsWith("deadline-")) return false;
           const task = findTask(newEvent.id);
           if (!task) return false;
           if (task.state !== "PLANNED") {
@@ -564,8 +657,6 @@ export default function CalendarPage() {
           </p>
         </div>
       </div>
-
-      <UpcomingDeadlines />
 
       {errorMsg && (
         <div className="mb-4 flex items-center justify-between rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
@@ -622,6 +713,17 @@ export default function CalendarPage() {
       <TaskDetailsDialog
         task={detailsTask}
         onClose={() => setDetailsTask(null)}
+      />
+
+      <DeadlineModal
+        open={!!editingDeadline}
+        mode="edit"
+        deadline={editingDeadline}
+        onClose={() => setEditingDeadline(null)}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["deadlines"] });
+          setEditingDeadline(null);
+        }}
       />
     </div>
   );

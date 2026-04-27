@@ -29,7 +29,9 @@ import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
 import { PausePredictionBanner } from "@/components/pause-prediction-banner";
-import { UpcomingDeadlines } from "@/components/upcoming-deadlines";
+import { DeadlineRow } from "@/components/deadline-row";
+import { DeadlineModal } from "@/components/deadline-modal";
+import { listDeadlines, type DeadlineResponse } from "@/lib/deadlines";
 import { PauseConfirmChip } from "@/components/pause-confirm-chip";
 import { listPendingConfirmations } from "@/lib/pause-predictions";
 import { ExternalEventRow } from "@/components/external-event-row";
@@ -137,6 +139,22 @@ function TodayInner() {
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
+
+  // Loop 11 follow-up: deadlines render on the day they're due, not as
+  // a generic "upcoming" strip. Filter applied client-side because the
+  // backend list endpoint accepts only one state filter and we want
+  // {planned, active} together. Two inclusion rules:
+  //   1. due_at_utc (browser-local) date matches viewedDate
+  //   2. when viewedDate === today, ALSO include overdue planned/active
+  //      deadlines (state ∈ {planned, active}, due < now) — pinned to
+  //      today so the operator notices and marks complete or skips.
+  const deadlinesQ = useQuery({
+    queryKey: ["deadlines"],
+    queryFn: () => listDeadlines(),
+    staleTime: 60_000,
+  });
+
+  const [editingDeadline, setEditingDeadline] = useState<DeadlineResponse | null>(null);
 
   const notifQ = useQuery({
     queryKey: ["notifications-pending"],
@@ -309,10 +327,42 @@ function TodayInner() {
   // distinct without duplicating the feed.
   type FeedItem =
     | { kind: "task"; task: TaskRowType }
-    | { kind: "external"; event: ExternalCalendarEvent };
+    | { kind: "external"; event: ExternalCalendarEvent }
+    | { kind: "deadline"; deadline: DeadlineResponse; overdue: boolean };
 
   const nowMs = now.getTime();
   const gcalEventsAll: ExternalCalendarEvent[] = calEventsQ.data?.events ?? [];
+
+  // Filter deadlines for the viewed day. Browser-local date comparison —
+  // matches the operator's mental model (Cairo-local since
+  // USER_TIMEZONE=Africa/Cairo and the operator dogfoods from Cairo).
+  // Voided deadlines are always excluded; state-based exclusion is left
+  // to the badge rendering (so completed deadlines on a past day still
+  // show with a "COMPLETED" pill for historical reference).
+  const isViewingToday = viewedDate === today;
+  const dueDeadlines = ((): { deadline: DeadlineResponse; overdue: boolean }[] => {
+    const all = deadlinesQ.data?.deadlines ?? [];
+    return all.flatMap((d) => {
+      if (d.voided_at) return [];
+      const due = new Date(d.due_at_utc);
+      const dueLocalKey = format(due, "yyyy-MM-dd");
+      const isOverdue =
+        (d.state === "planned" || d.state === "active") &&
+        due.getTime() < nowMs;
+      // Show on the deadline's actual due day (any past/future day the
+      // operator views). The OVERDUE pill is independent of which day is
+      // being viewed — it reflects whether the deadline is past-due AND
+      // still pending action.
+      if (dueLocalKey === viewedDate) {
+        return [{ deadline: d, overdue: isOverdue }];
+      }
+      // Pin overdue items to today so they stay visible until resolved.
+      if (isViewingToday && isOverdue) {
+        return [{ deadline: d, overdue: true }];
+      }
+      return [];
+    });
+  })();
 
   const feed = ((): { top: FeedItem[]; bottom: FeedItem[] } => {
     if (!tasksQ.data) return { top: [], bottom: [] };
@@ -333,11 +383,24 @@ function TodayInner() {
       ...gcalFuture.map(
         (e): FeedItem => ({ kind: "external", event: e })
       ),
+      // Deadlines always live in the top bucket — they are pending-action
+      // items even when overdue, never "what already happened."
+      ...dueDeadlines.map(
+        (x): FeedItem => ({ kind: "deadline", deadline: x.deadline, overdue: x.overdue })
+      ),
     ].sort((a, b) => {
       const at =
-        a.kind === "task" ? sortKey(a.task) : new Date(a.event.start).getTime();
+        a.kind === "task"
+          ? sortKey(a.task)
+          : a.kind === "external"
+            ? new Date(a.event.start).getTime()
+            : new Date(a.deadline.due_at_utc).getTime();
       const bt =
-        b.kind === "task" ? sortKey(b.task) : new Date(b.event.start).getTime();
+        b.kind === "task"
+          ? sortKey(b.task)
+          : b.kind === "external"
+            ? new Date(b.event.start).getTime()
+            : new Date(b.deadline.due_at_utc).getTime();
       return at - bt;
     });
 
@@ -348,9 +411,17 @@ function TodayInner() {
       ),
     ].sort((a, b) => {
       const at =
-        a.kind === "task" ? sortKey(a.task) : new Date(a.event.end).getTime();
+        a.kind === "task"
+          ? sortKey(a.task)
+          : a.kind === "external"
+            ? new Date(a.event.end).getTime()
+            : new Date(a.deadline.due_at_utc).getTime();
       const bt =
-        b.kind === "task" ? sortKey(b.task) : new Date(b.event.end).getTime();
+        b.kind === "task"
+          ? sortKey(b.task)
+          : b.kind === "external"
+            ? new Date(b.event.end).getTime()
+            : new Date(b.deadline.due_at_utc).getTime();
       return bt - at;
     });
 
@@ -677,8 +748,6 @@ function TodayInner() {
         />
       )}
 
-      {/* Upcoming deadlines strip — auto-hidden when none. */}
-      <UpcomingDeadlines />
 
       {errorMsg && (
         <div className="mb-4 rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
@@ -702,7 +771,7 @@ function TodayInner() {
         <div className="text-sm text-dust">Loading tasks…</div>
       )}
 
-      {tasksQ.data && tasksQ.data.length === 0 && (
+      {tasksQ.data && tasksQ.data.length === 0 && dueDeadlines.length === 0 && (
         <div className="rounded-sm border border-dashed border-hairline p-10 text-center text-sm text-dust">
           {isPast ? "Nothing logged on this day." : "Nothing on the day yet. Add the first thing on your mind."}
         </div>
@@ -761,7 +830,7 @@ function TodayInner() {
                   />
                 ))}
               </div>
-            ) : (
+            ) : item.kind === "external" ? (
               <ExternalEventRow
                 key={item.event.id}
                 event={item.event}
@@ -771,6 +840,13 @@ function TodayInner() {
                     queryKey: ["calendar-events-today", viewedDate],
                   });
                 }}
+              />
+            ) : (
+              <DeadlineRow
+                key={`deadline-${item.deadline.deadline_id}`}
+                deadline={item.deadline}
+                overdue={item.overdue}
+                onEdit={(d) => setEditingDeadline(d)}
               />
             )
           )}
@@ -818,6 +894,17 @@ function TodayInner() {
         taskCount={selectedIds.size}
         onConfirm={handleBulkVoid}
         onCancel={() => setVoidModalOpen(false)}
+      />
+
+      <DeadlineModal
+        open={!!editingDeadline}
+        mode="edit"
+        deadline={editingDeadline}
+        onClose={() => setEditingDeadline(null)}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["deadlines"] });
+          setEditingDeadline(null);
+        }}
       />
 
       {/* LYR-098 toast stack — bottom-right, fixed, pointer-events-none
