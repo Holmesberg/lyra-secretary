@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,12 @@ import {
   type TaskRow,
   type BiasFactorCell,
 } from "@/lib/tasks";
+import {
+  listDeadlines,
+  previewDeadlineBinding,
+  type DeadlineResponse,
+  type DeadlinePreviewResponse,
+} from "@/lib/deadlines";
 import { CategorySelect } from "@/components/category-select";
 
 function formatLocal(d: Date) {
@@ -162,6 +169,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     sample_size: number;
   } | null>(null);
 
+  // Loop 11 Phase K — deadline picker. `deadlineId` carries the user's
+  // explicit choice (or the confirmed parser suggestion). `parserSuggestion`
+  // is the read-only Pass 2 preview surfaced as a soft suggestion above the
+  // submit button. They live in separate slices so dismissing the suggestion
+  // doesn't clobber an already-confirmed picker choice.
+  const [deadlineId, setDeadlineId] = useState<string | null>(null);
+  const [parserSuggestion, setParserSuggestion] =
+    useState<DeadlinePreviewResponse | null>(null);
+  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
+
   // Fetch bias_factor when category or start time changes (debounced).
   // Gated on a valid positive planned duration — a 0-min estimate with
   // a `|| 30` fallback (prior behavior) fired the "adjust to X min"
@@ -210,6 +227,39 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     return () => { clearTimeout(timer); abortCtl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, category, start, end, durHours, durMinutes, isEdit, nudgeDecisionMade]);
+
+  // Loop 11 Phase K — Pass 2 deadline-binding preview.
+  //
+  // Debounced 500ms (matches the bias_factor lookup cadence) and
+  // race-safe: we abort any in-flight fetch on every input change, so
+  // a slower late-firing response can't overwrite a fresher one. The
+  // effect skips when the user has already explicitly picked a deadline
+  // (deadlineId set) — the manual choice wins and we don't second-guess
+  // it with a parser suggestion.
+  useEffect(() => {
+    if (!open || isEdit) {
+      setParserSuggestion(null);
+      return;
+    }
+    const trimmed = title.trim();
+    if (trimmed.length < 3 || deadlineId) {
+      setParserSuggestion(null);
+      return;
+    }
+    const abortCtl = new AbortController();
+    const timer = setTimeout(() => {
+      previewDeadlineBinding(trimmed, description.trim() || undefined)
+        .then((res) => {
+          if (abortCtl.signal.aborted) return;
+          if (res.deadline_id) setParserSuggestion(res);
+          else setParserSuggestion(null);
+        })
+        .catch(() => {
+          if (!abortCtl.signal.aborted) setParserSuggestion(null);
+        });
+    }, 500);
+    return () => { clearTimeout(timer); abortCtl.abort(); };
+  }, [open, isEdit, title, description, deadlineId]);
 
   const totalMinutes = durHours * 60 + durMinutes;
   const endBeforeStart = diffMinutes(start, end) <= 0;
@@ -308,6 +358,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       setPausedConflict(null);
       setNudgeDecisionMade(false);
       setNudgeDecisionData(null);
+      setDeadlineId(null);
+      setParserSuggestion(null);
+      setShowDeadlinePicker(false);
       setLastEditId(null);
     }
   }, [open, editingTask]);
@@ -364,6 +417,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setNudgeSource(null);
     setNudgeDecisionMade(false);
     setNudgeDecisionData(null);
+    setDeadlineId(null);
+    setParserSuggestion(null);
+    setShowDeadlinePicker(false);
     setLastEditId(null);
   }
 
@@ -438,6 +494,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         end: endDate.toISOString(),
         category,
         description: description.trim() || undefined,
+        deadline_id: deadlineId ?? undefined,
         ...(nudgeDecisionData
           ? {
               nudge_decision: nudgeDecisionData.decision,
@@ -524,6 +581,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         end: endDate.toISOString(),
         category,
         force: true,
+        deadline_id: deadlineId ?? undefined,
         ...(nudgeDecisionData
           ? {
               nudge_decision: nudgeDecisionData.decision,
@@ -563,6 +621,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         end: endDate.toISOString(),
         category,
         force: true,
+        deadline_id: deadlineId ?? undefined,
         ...(nudgeDecisionData
           ? {
               nudge_decision: nudgeDecisionData.decision,
@@ -861,6 +920,33 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             </div>
           )}
 
+          {/* Loop 11 Phase K — deadline picker.
+              Three modes:
+                1. deadlineId set → show "Bound to X" with a clear button
+                2. parserSuggestion present (and no manual choice) → soft suggestion
+                3. neither → "+ pick deadline" link (opens manual picker) */}
+          {!isEdit && !softConflict && !pausedConflict && !error && (
+            <DeadlinePickerSlot
+              deadlineId={deadlineId}
+              suggestion={parserSuggestion}
+              showPicker={showDeadlinePicker}
+              onConfirmSuggestion={() => {
+                if (parserSuggestion?.deadline_id) {
+                  setDeadlineId(parserSuggestion.deadline_id);
+                  setParserSuggestion(null);
+                }
+              }}
+              onDismissSuggestion={() => setParserSuggestion(null)}
+              onClearBinding={() => setDeadlineId(null)}
+              onTogglePicker={() => setShowDeadlinePicker((s) => !s)}
+              onPick={(id) => {
+                setDeadlineId(id);
+                setShowDeadlinePicker(false);
+                setParserSuggestion(null);
+              }}
+            />
+          )}
+
           {calibrationNudge && !softConflict && !pausedConflict && !error && (
             <div className="rounded-sm border border-signal/40 bg-signal/5 p-3 text-xs text-signal">
               <div>
@@ -959,5 +1045,154 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface DeadlinePickerSlotProps {
+  deadlineId: string | null;
+  suggestion: DeadlinePreviewResponse | null;
+  showPicker: boolean;
+  onConfirmSuggestion: () => void;
+  onDismissSuggestion: () => void;
+  onClearBinding: () => void;
+  onTogglePicker: () => void;
+  onPick: (deadlineId: string) => void;
+}
+
+function DeadlinePickerSlot({
+  deadlineId,
+  suggestion,
+  showPicker,
+  onConfirmSuggestion,
+  onDismissSuggestion,
+  onClearBinding,
+  onTogglePicker,
+  onPick,
+}: DeadlinePickerSlotProps) {
+  // Bindable deadlines = state ∈ {planned, active}, voided_at IS NULL.
+  // Backend's list endpoint already filters voided by default; we filter
+  // state client-side because the list endpoint accepts only one state
+  // at a time and we want both planned and active.
+  const { data, isLoading } = useQuery({
+    queryKey: ["deadlines", "bindable"],
+    queryFn: () => listDeadlines(),
+    enabled: showPicker,
+  });
+  const bindable = (data?.deadlines ?? []).filter(
+    (d) => d.state === "planned" || d.state === "active"
+  );
+
+  const boundDeadline = bindable.find((d) => d.deadline_id === deadlineId);
+
+  if (deadlineId) {
+    return (
+      <div className="rounded-sm border border-signal/40 bg-signal/5 p-3 text-xs text-signal">
+        <div className="flex items-center justify-between gap-2">
+          <span>
+            Bound to{" "}
+            <span className="font-medium text-parchment">
+              {boundDeadline?.title ?? "deadline"}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={onClearBinding}
+            className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust hover:text-parchment"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (suggestion?.deadline_id && !showPicker) {
+    const conf = suggestion.deadline_match_confidence ?? 0;
+    return (
+      <div className="rounded-sm border border-hairline-signal/40 bg-void-2/40 p-3 text-xs text-dust">
+        <div>
+          Lyra thinks this binds to{" "}
+          <span className="font-medium text-parchment">
+            {suggestion.deadline_title}
+          </span>
+          {" "}— {Math.round(conf * 100)}% match
+        </div>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={onConfirmSuggestion}
+            className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30"
+          >
+            Confirm
+          </button>
+          <button
+            type="button"
+            onClick={onTogglePicker}
+            className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment"
+          >
+            Pick another
+          </button>
+          <button
+            type="button"
+            onClick={onDismissSuggestion}
+            className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust-deep transition-colors hover:text-dust"
+          >
+            No deadline
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (showPicker) {
+    return (
+      <div className="rounded-sm border border-hairline bg-void-2/40 p-3 text-xs text-dust">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+            Pick a deadline
+          </span>
+          <button
+            type="button"
+            onClick={onTogglePicker}
+            className="text-[11px] text-dust-deep hover:text-dust"
+          >
+            Cancel
+          </button>
+        </div>
+        {isLoading ? (
+          <div className="text-[11px] text-dust-deep">Loading…</div>
+        ) : bindable.length === 0 ? (
+          <div className="text-[11px] text-dust-deep">
+            No active deadlines. Create one from /deadlines first.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+            {bindable.map((d) => (
+              <button
+                key={d.deadline_id}
+                type="button"
+                onClick={() => onPick(d.deadline_id)}
+                className="flex items-center justify-between gap-2 rounded-sm border border-hairline bg-void-2 px-2 py-1 text-left text-[11px] text-dust transition-colors hover:border-signal/40 hover:text-parchment"
+              >
+                <span className="truncate">{d.title}</span>
+                <span className="shrink-0 text-dust-deep">
+                  {new Date(d.due_at_utc).toLocaleDateString()}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onTogglePicker}
+      className="self-start rounded-sm text-[11px] text-dust-deep transition-colors hover:text-dust"
+    >
+      + Bind to a deadline
+    </button>
   );
 }

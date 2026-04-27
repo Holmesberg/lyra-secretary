@@ -89,6 +89,10 @@ export interface CreateTaskInput {
   category: string;
   description?: string;
   force?: boolean;
+  // Loop 11 Phase K: optional explicit deadline binding. When null/absent
+  // the backend's Pass 2 keyword-overlap inference may still bind one
+  // automatically. When supplied, it overrides Pass 2.
+  deadline_id?: string;
   // Loop 1 calibration_nudge outcome log: when the modal showed a nudge
   // and the user accepted/dismissed it, the four fields below travel with
   // the create payload so the backend can write a calibration_nudge_event
@@ -143,6 +147,7 @@ export function createTask(input: CreateTaskInput) {
       description: input.description || undefined,
       source: "web",
       force: input.force ?? false,
+      deadline_id: input.deadline_id,
       nudge_decision: input.nudge_decision,
       nudge_suggested_duration_minutes: input.nudge_suggested_duration_minutes,
       nudge_bias_factor: input.nudge_bias_factor,

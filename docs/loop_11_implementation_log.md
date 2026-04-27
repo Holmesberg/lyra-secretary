@@ -287,4 +287,77 @@ All 426 pass. Zero pre-existing test regressions.
 
 ---
 
+## 2026-04-27 — Phases J + K (frontend deadline list page + picker integration)
+
+Phase J — `/deadlines` list page (`frontend/app/(app)/deadlines/page.tsx`):
+- Three sections — Active deadlines (state ∈ planned|active), Completed,
+  Missed/Skipped — sorted by due_at_utc (active asc; completed by
+  completed_at desc; terminal by due_at desc).
+- Empty state + new-deadline CTA + per-row Edit / Void affordances.
+- "Void" requires a click-confirm step to defend against accidental
+  soft-deletes; the row stays visible until the API returns 204.
+- Sidebar entry added to `app-shell.tsx` between Calendar and Table.
+
+Phase J supplement — single `<DeadlineModal mode="create" | "edit">`
+component (`frontend/components/deadline-modal.tsx`):
+- Mirrors the `ReflectionModal` dialog pattern.
+- Edit mode adds Mark complete / Mark skipped buttons when the deadline
+  is in `planned` or `active` state (terminal-state rows hide them).
+- Default due-at = +7 days at 17:00 local on create.
+
+Phase K — Pass 2 deadline-binding preview, parser endpoint + modal hookup:
+- Backend `POST /v1/parse/deadline-preview` in
+  `backend/app/api/v1/endpoints/parse.py`. Read-only inference; reuses
+  the existing `infer_deadline_binding` helper so the preview can never
+  disagree with what creation would actually bind. Filters:
+  voided_at IS NULL, state ∈ {planned, active}.
+- Frontend `lib/deadlines.ts` (NEW) — full CRUD client + preview client.
+- Frontend `lib/tasks.ts` `CreateTaskInput` extended with optional
+  `deadline_id`, threaded through all three create call sites in
+  `new-task-modal.tsx` (happy path, soft-conflict force, paused-conflict
+  interruption).
+- `NewTaskModal` deadline picker (`DeadlinePickerSlot` subcomponent):
+  three modes — bound (clear button), suggestion (confirm / pick another /
+  no deadline), idle (+ bind link). 500ms debounce on title+description
+  changes; race-safe via AbortController; suppressed when the user has
+  manually picked.
+
+Tests:
+- `test_parse_deadline_preview.py` (NEW, 8 tests): no-candidates empty
+  payload, strong match returns binding, weak match below 0.5 threshold
+  returns null, voided/terminal-state filters, cross-user invisibility.
+  The 401-unauth path is unreachable through TestClient because
+  `UserScopeMiddleware` defaults to user_id=1; documented in the test
+  header rather than swept under the rug.
+
+### Bug-catch log additions (Phases J-K)
+
+- **B-19 — `api()` always parses JSON.** The shared HTTP client at
+  `frontend/lib/api.ts` calls `res.json()` unconditionally, which blows
+  up on 204 No Content responses. The deadline soft-delete (DELETE
+  /v1/deadlines/{id}) returns 204, so `voidDeadline` had to drive
+  `fetch` directly and tolerate the empty body. Did not refactor the
+  shared client because the existing JSON-only contract is load-bearing
+  for every other caller.
+
+- **B-20 — Race-safe parser preview.** Without an `AbortController`,
+  fast typing can let a slow Pass-2 response from "study s" overwrite
+  a fresh response from "study session". Aborting on every input change
+  keeps the latest-wins invariant.
+
+- **B-21 — Picker query gated on showPicker.** The bindable-deadlines
+  list query is `enabled: showPicker` so we don't fetch the user's full
+  deadline list every time the modal opens — only when the user reaches
+  for the manual picker. Shaves 1 GET off the common path.
+
+### Test totals (J + K)
+
+- Before this session: 463 (post-Loop-1 ship)
+- After Phase K (this commit): 471 (+8 preview-endpoint tests)
+
+All 471 pass. Zero pre-existing test regressions. Frontend tsc clean,
+production build emits `/deadlines` at 4.75 kB / 143 kB First Load.
+
+---
+
 *This log is the audit trail for the Loop 11 thesis-instrument commit. Future sessions reviewing this work should start here, then read the approved plan, then read the MANIFESTO v1.12 diff. SIR step 7 (operator review) was completed via plan-mode approval before any code was written.*
