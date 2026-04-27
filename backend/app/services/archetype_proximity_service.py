@@ -6,7 +6,7 @@ with a dynamic posterior view: "your last 14 days look most like
 Procrastinator (78%), with shades of Sprinter (45%); a month ago you were
 65/70 — pattern is consolidating toward Procrastinator."
 
-Math (frozen at MANIFESTO Rule 17 ship):
+Math (Rule 17 v1.15, April 27, 2026 — effective-sample-size correction):
 
     prior P(A_i) = 1/5  (uniform; population frequency unknown)
 
@@ -24,8 +24,19 @@ Math (frozen at MANIFESTO Rule 17 ship):
         likelihood_i = pdf( Normal(archetype_prior_for_cell_i, A_i.prior_sigma) )
                        evaluated at observed_bf
 
-    log_posterior_i = log(prior_i) + Σ log(likelihood_i)
+    log_posterior_i = log(prior_i) + ( Σ log(likelihood_i) ) / sqrt(N)
     posterior_i = softmax(log_posteriors)
+
+The sqrt(N) damping is the Rule 17 v1.15 amendment. Tasks within a
+single user's window are not iid (same user, week, project, measurement
+protocol → strong within-cluster correlation). Treating them as
+independent compounds evidence linearly across N tasks and rounds
+saturated archetypes to 1.0000 after ~15–25 overrun-heavy samples —
+which reads as identity rather than pattern. Kish-style ESS correction
+treats the cluster as sqrt(N) effective independent observations,
+honest about the iid violation while preserving evidence direction.
+v1.13/v1.14 analyses were produced under the un-damped formula; future
+analyses are tagged with their math version.
 
 Numerical stability: log-space accumulation + logsumexp for normalization.
 A 100-task input set won't underflow even when likelihoods are e^{-50}.
@@ -51,6 +62,21 @@ from app.services.bias_factor_service import RESEARCH_PRIORS, RESEARCH_PRIOR_DEF
 
 
 _LOG_2PI = math.log(2.0 * math.pi)
+
+# Rule 17 v1.15 outlier winsorization. The archetype Normal-pdf priors
+# span roughly bf ∈ [0.5, 2.5] — disciplined_lark μ=0.95 σ=0.15,
+# procrastinator μ=1.80 σ=0.40. Observations far outside any archetype's
+# mean ± a few σ are not informative about archetype identity; they're
+# informative about something else the model can't read (scope inflation
+# per VT-22, mid-task scope shifts, forgot-to-stop-timer artifacts).
+# Treating them as iid Normal samples drives tight-σ archetypes to
+# log-likelihood -∞, saturating the posterior on the only archetype
+# wide enough to swallow the outlier (procrastinator at σ=0.40). Cap at
+# [0.30, 3.0] so a single 9.2× overrun can't dominate the likelihood
+# computation; the downstream analysis layer is responsible for handling
+# scope-inflation-shaped events separately per the existing VT-22 path.
+_BIAS_FACTOR_CAP_LOW = 0.30
+_BIAS_FACTOR_CAP_HIGH = 3.0
 
 
 def _normal_log_pdf(x: float, mu: float, sigma: float) -> float:
@@ -107,19 +133,33 @@ def _compute_log_posteriors(
 
     Returns a list aligned with `archetypes` (same order). Uniform prior
     (log(1/N)). Likelihood is Normal(archetype_prior_for_cell, sigma) evaluated
-    at observed bias_factor (executed/planned). Sum log-likelihoods across
-    tasks; add log-prior at the end.
+    at observed bias_factor (executed/planned). Per-archetype log-likelihoods
+    are accumulated across tasks, then divided by sqrt(N_tasks) before the
+    log-prior is added.
+
+    The sqrt(N) damping is the Rule 17 v1.15 amendment (April 27, 2026):
+    tasks within a single user's window are not iid. Same user, same week,
+    same project, same measurement protocol → strong within-cluster
+    correlation. Treating N=28 tasks as 28 independent observations made
+    the posterior round to 1.0000 / 0.0000 at four decimals after ~15-25
+    overrun-heavy tasks, which read as identity rather than pattern.
+    Effective sample size correction (Kish 1965) treats the cluster as
+    sqrt(N) effective independent samples — honest about the iid
+    violation while preserving the directionality of the evidence.
     """
     n_archetypes = len(archetypes)
     log_prior = math.log(1.0 / n_archetypes) if n_archetypes else float("-inf")
     log_likelihoods = [0.0] * n_archetypes
 
+    n_used = 0
     for t in tasks:
         # Defensive — should be filtered upstream, but guard so a single
         # bad row doesn't crash the whole posterior computation.
         if not t.planned_duration_minutes or not t.executed_duration_minutes:
             continue
-        observed_bf = t.executed_duration_minutes / t.planned_duration_minutes
+        raw_bf = t.executed_duration_minutes / t.planned_duration_minutes
+        # Winsorize per Rule 17 v1.15 — see _BIAS_FACTOR_CAP_* above.
+        observed_bf = max(_BIAS_FACTOR_CAP_LOW, min(_BIAS_FACTOR_CAP_HIGH, raw_bf))
         cat_key = (t.category or "").lower()
         cat_prior_bf = RESEARCH_PRIORS.get(cat_key, RESEARCH_PRIOR_DEFAULT)["bias_factor"]
         for i, a in enumerate(archetypes):
@@ -127,8 +167,12 @@ def _compute_log_posteriors(
             log_likelihoods[i] += _normal_log_pdf(
                 observed_bf, archetype_prior_for_cell, a.prior_sigma
             )
+        n_used += 1
 
-    return [log_prior + ll for ll in log_likelihoods]
+    # Effective-sample-size damping — sqrt(N_used). When n_used == 0 the
+    # likelihood sum is zero anyway; defensively divide by 1.
+    scale = math.sqrt(n_used) if n_used > 0 else 1.0
+    return [log_prior + (ll / scale) for ll in log_likelihoods]
 
 
 def _normalize_posteriors(log_posteriors: list[float]) -> list[float]:

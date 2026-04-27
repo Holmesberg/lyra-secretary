@@ -30,9 +30,17 @@ import {
  * as "99%, high confidence" rather than "100%". A 100% display lands
  * as identity ("you ARE a procrastinator"), which is exactly the label-
  * reinforcement risk MANIFESTO Rule 17 §25a is watching for. The
- * underlying math is unchanged — this is a UI clamp.
+ * underlying math is sqrt(N)-damped per Rule 17 v1.15; this is the
+ * UI-side belt-and-suspenders.
+ *
+ * DISPLAY_FLOOR keeps even the lowest-scoring archetype's bar visible
+ * at >= 2% width so the row reads as "you are nearer this archetype
+ * than the others" rather than implying the runner-ups have zero
+ * probability. The displayed percentage continues to use the actual
+ * (rounded) score so the operator can see honest small numbers.
  */
 const DISPLAY_CAP = 0.99;
+const DISPLAY_FLOOR = 0.02;
 
 /**
  * Renders the top-3 archetypes as labeled bars with percentages + trend arrows.
@@ -50,8 +58,12 @@ export function ArchetypeProximityRows({
       {top3.map((arch, idx) => {
         const delta = trend?.delta_per_archetype[arch.archetype_id] ?? 0;
         const label = ARCHETYPE_LABELS[arch.archetype_id] ?? arch.label;
-        const displayed = Math.min(arch.score, DISPLAY_CAP);
-        const pct = Math.round(displayed * 100);
+        const capped = Math.min(arch.score, DISPLAY_CAP);
+        const pct = Math.round(capped * 100);
+        // Bar width uses the floor so runner-ups don't render as
+        // invisible 0-width slivers; numeric percentage uses the
+        // rounded honest value (cap-only).
+        const barPct = Math.round(Math.max(capped, DISPLAY_FLOOR) * 100);
         return (
           <div key={arch.archetype_id} className="flex items-center gap-3">
             <div
@@ -71,7 +83,7 @@ export function ArchetypeProximityRows({
                     ? "absolute left-0 top-0 h-full bg-signal"
                     : "absolute left-0 top-0 h-full bg-dust/60"
                 }
-                style={{ width: `${Math.max(2, pct)}%` }}
+                style={{ width: `${barPct}%` }}
               />
             </div>
             <div

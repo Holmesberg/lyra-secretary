@@ -395,3 +395,99 @@ def test_trend_returns_current_prior_and_delta(db, archetypes_seeded):
     assert "delta_per_archetype" in out
     # Procrastinator should be HIGHER in current than in prior
     assert out["delta_per_archetype"]["procrastinator"] > 0
+
+
+# ── Rule 17 v1.15 — sqrt(N) effective-sample-size damping ──────────────
+
+
+def test_sqrt_n_damping_keeps_runner_ups_above_floor(db, archetypes_seeded):
+    """Rule 17 v1.15 regression. With N=28 procrastinator-leaning tasks,
+    runner-up archetypes used to round to 0.0000 at four decimals because
+    log-likelihoods accumulated linearly across iid samples. The damped
+    formula (`Σ log_LL / sqrt(N)`) treats the cluster as sqrt(N)
+    effective independent samples, keeping runner-ups detectably non-zero.
+
+    Uses bf=2.0 (planned=30, executed=60) — procrastinator's
+    prior_for_cell is 2.008 in 'work' category, the closest archetype mean
+    to the observed value, so procrastinator wins on log-likelihood. (At
+    bf=1.7 the tighter-σ lark_low_discipline at 1.673 would win — see the
+    note in test_consistent_high_overrun_favors_procrastinator.)
+    """
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    for i in range(28):
+        _make_task(
+            db, user.user_id, planned=30, executed=60,  # bf=2.0 — procrastinator territory
+            category="work", days_ago=(i % 14) + 1,
+        )
+
+    out = compute_proximity(db, user.user_id, lookback_days=14)
+    assert out[0]["archetype_id"] == "procrastinator"
+    # Top archetype is still the clear winner — but no longer 1.0000.
+    # Damping keeps the runner-up posterior above 0.001 so the dynamic
+    # reveal can render an honest distribution rather than identity.
+    assert out[0]["score"] < 0.99
+    assert out[1]["score"] > 0.001
+    # Posteriors still sum to 1.0 (within fp epsilon)
+    assert abs(sum(r["score"] for r in out) - 1.0) < 1e-3
+
+
+def test_sqrt_n_damping_preserves_directionality(db, archetypes_seeded):
+    """Damping must NOT change which archetype wins — only how strongly.
+    A deterministic high-overrun fixture still ranks procrastinator first
+    after damping; we just don't claim 100% certainty about it.
+    """
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    for i in range(20):
+        _make_task(
+            db, user.user_id, planned=30, executed=60,  # bf=2.0
+            category="work", days_ago=(i % 14) + 1,
+        )
+
+    out = compute_proximity(db, user.user_id, lookback_days=14)
+    # Same ranking the un-damped formula produced; just less concentrated
+    assert out[0]["archetype_id"] == "procrastinator"
+    assert out[0]["score"] > out[1]["score"]
+    # Confidence is still meaningful — top archetype above uniform 1/5
+    assert out[0]["score"] > 0.30
+
+
+def test_extreme_outlier_winsorized_not_dominant(db, archetypes_seeded):
+    """Rule 17 v1.15 winsorization regression. A single 9× overrun used
+    to drive disciplined-archetype log-likelihoods to -∞ (Normal pdf at
+    30+σ ≈ 0), so the only archetype wide enough to swallow the outlier
+    (procrastinator, σ=0.40) won by an unbeatable margin no matter how
+    many calibrated tasks the user had alongside.
+
+    With winsorization to bf ∈ [0.30, 3.0], a single bf=9.0 task is
+    treated as a bf=3.0 observation — informative about overrun
+    direction but bounded so it can't pin the posterior on the only
+    σ-wide archetype.
+
+    Operator's actual data (Apr 27 dogfood) had bf=9.2, 3.7, 3.5
+    outliers and rendered as 100% procrastinator before winsorization.
+    Pin a similar shape here.
+    """
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    # 9 calibrated/mild-overrun tasks (bf ≈ 1.0–1.4)
+    for i in range(9):
+        _make_task(
+            db, user.user_id, planned=30, executed=36,  # bf=1.2
+            category="work", days_ago=(i % 14) + 1,
+        )
+    # 1 catastrophic overrun (bf=9.0) — would dominate without winsorize
+    _make_task(
+        db, user.user_id, planned=10, executed=90,
+        category="work", days_ago=1,
+    )
+
+    out = compute_proximity(db, user.user_id, lookback_days=14)
+    # Procrastinator is no longer pinned at 1.0; runner-ups visible.
+    procr = next(r for r in out if r["archetype_id"] == "procrastinator")
+    assert procr["score"] < 0.99
+    # Diffuse_average (mean=1.30) is reasonably close to the bulk of
+    # the data (bf=1.2) so it should have non-trivial mass.
+    diffuse = next(r for r in out if r["archetype_id"] == "diffuse_average")
+    assert diffuse["score"] > 0.05
