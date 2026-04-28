@@ -589,6 +589,7 @@ function TodayInner() {
       llm_deadline_candidates: null,
       llm_priority: null,
       llm_binding_rejected_at: null,
+      llm_alternative_suggestion: null,
     });
   }
 

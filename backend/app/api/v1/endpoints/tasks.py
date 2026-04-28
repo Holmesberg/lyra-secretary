@@ -496,14 +496,18 @@ def confirm_llm_binding(
                 detail="No deadline to bind: llm_inferred_deadline_id is null and no chosen_deadline_id provided",
             )
         # Validate the chosen deadline is in the candidate list (Tier 2)
-        # OR matches the top candidate (Tier 1). Defensive — prevents a
-        # malicious / stale frontend from binding to a deadline the LLM
-        # never proposed.
+        # OR matches the top candidate (Tier 1) OR matches the alternative
+        # suggestion (trust-not-rewrite Switch path, 2026-04-28). Defensive
+        # — prevents a malicious / stale frontend from binding to a
+        # deadline the LLM never proposed.
         candidates = task.llm_deadline_candidates or []
-        if not any(c.get("deadline_id") == target_deadline_id for c in candidates):
+        alt = task.llm_alternative_suggestion or {}
+        in_candidates = any(c.get("deadline_id") == target_deadline_id for c in candidates)
+        in_alt = alt.get("deadline_id") == target_deadline_id
+        if not (in_candidates or in_alt):
             raise HTTPException(
                 status_code=400,
-                detail="chosen_deadline_id not in llm_deadline_candidates",
+                detail="chosen_deadline_id not in llm_deadline_candidates or llm_alternative_suggestion",
             )
         # Validate the deadline belongs to the user and is bindable
         # (mirror the existing TaskManager._validate_bindable_deadline guard).
@@ -520,14 +524,23 @@ def confirm_llm_binding(
                 detail="Deadline not bindable (not found, voided, or terminal)",
             )
         task.deadline_id = target_deadline_id
-        # Look up confidence from the candidate list for the chosen id.
+        # Look up confidence from candidates (Tier 1/2) or alt (Switch
+        # path). Fall back to alt.confidence when candidates didn't
+        # carry the chosen id.
         confidence = next(
             (c.get("confidence") for c in candidates
              if c.get("deadline_id") == target_deadline_id),
             None,
         )
+        if confidence is None and in_alt:
+            confidence = alt.get("confidence")
         task.deadline_match_confidence = confidence
-        task.deadline_match_source = "llm_auto_confirmed"
+        # Switch path uses 'user_corrected' (operator's override priority
+        # list — user actively switched after seeing both); Tier 1/2 keep
+        # the existing 'llm_auto_confirmed'.
+        task.deadline_match_source = "user_corrected" if in_alt else "llm_auto_confirmed"
+        # Clear the alternative now that the user resolved it
+        task.llm_alternative_suggestion = None
         # Auto-transition the deadline to active if currently planned
         # (mirror TaskManager.create_task's pass 1 behavior).
         if d.state == "planned":

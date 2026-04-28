@@ -170,6 +170,11 @@ def query_tasks(
                     to_local(t.llm_binding_rejected_at).isoformat()
                     if t.llm_binding_rejected_at else None
                 ),
+                # Trust-not-rewrite contract (alembic 039, 2026-04-28).
+                # Set by llm_enrichment when the LLM disagrees with an
+                # existing user/heuristic binding. Chip renders
+                # "Possible better match" when present.
+                "llm_alternative_suggestion": t.llm_alternative_suggestion,
             })
 
         return {"tasks": task_list, "total": total_count, "truncated": truncated}

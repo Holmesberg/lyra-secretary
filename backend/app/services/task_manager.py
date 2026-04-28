@@ -13,6 +13,7 @@ import logging
 from app.db.models import Task, TaskState, TaskSource, CategoryMapping, Deadline, CalibrationNudgeEvent, ReflectionViewLog
 from app.db.scoping import get_current_user_id
 from app.services.parser import TaskParser, extract_scope_bullets, infer_deadline_binding
+from app.services.deadline_heuristic import score_deadlines
 from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector, ConflictResult
 from app.services.notion_client import NotionClient
@@ -233,16 +234,24 @@ class TaskManager:
         # (fail fast — no orphan tasks if deadline_id is bogus).
         bound_deadline: Optional[Deadline] = None
         bound_via_inference = False
+        bound_via_heuristic = False
+        heuristic_source: Optional[str] = None
         bound_confidence: Optional[float] = None
         if deadline_id is not None:
             bound_deadline = self._validate_bindable_deadline(deadline_id)
             bound_confidence = 1.0
         else:
-            # Pass 2 — keyword-overlap inference. Only fires if no
-            # explicit deadline_id was supplied. Loads bindable
-            # deadlines for the current user (state ∈ planned|active,
-            # voided_at IS NULL) and picks the best title-overlap match
-            # if any clears the 0.5 threshold.
+            # Pass 2 — Tier 0 deterministic heuristic (2026-04-28 magic-for-
+            # alpha Phase 1). Loads bindable deadlines and runs the scoring
+            # engine. Auto-binds only when operator's 4-rule guardrail
+            # passes (score >= 0.6 + uniqueness margin >= 0.2 + at most one
+            # competitor + not brittle). On auto-bind, source is one of
+            # heuristic_exact_title / heuristic_startswith /
+            # heuristic_substring per the score band. Sub-10ms, no LLM
+            # wait. The override priority list (operator-locked) is:
+            #   manual_user > heuristic_exact_title > llm_auto_confirmed >
+            #   user_corrected > heuristic_startswith > heuristic_substring
+            #   > parser_auto > null
             uid_for_pass2 = _require_current_user("create_task_pass2")
             candidates = (
                 self.db.query(Deadline)
@@ -254,10 +263,29 @@ class TaskManager:
                 .all()
             )
             if candidates:
-                match = infer_deadline_binding(title, candidates)
-                if match is not None:
-                    bound_deadline, bound_confidence = match
-                    bound_via_inference = True
+                heuristic_match = score_deadlines(title, description, candidates)
+                if heuristic_match.auto_bind and heuristic_match.candidates:
+                    top = heuristic_match.candidates[0]
+                    bound_deadline = next(
+                        (d for d in candidates if d.deadline_id == top.deadline_id),
+                        None,
+                    )
+                    if bound_deadline is not None:
+                        bound_via_heuristic = True
+                        heuristic_source = top.source
+                        bound_confidence = top.score
+                # Pass 3 — legacy parser_auto keyword-overlap. Only fires
+                # if heuristic did not auto-bind. Preserves the existing
+                # binding behavior for cases the heuristic couldn't resolve
+                # confidently. Sits below heuristic_substring in the
+                # override priority — but if heuristic.auto_bind=False
+                # (guardrails failed), parser_auto's looser matching may
+                # still find a useful soft binding.
+                if bound_deadline is None:
+                    match = infer_deadline_binding(title, candidates)
+                    if match is not None:
+                        bound_deadline, bound_confidence = match
+                        bound_via_inference = True
 
         # Auto-infer category from title if not provided
         if not category:
@@ -291,7 +319,8 @@ class TaskManager:
             deadline_id=bound_deadline.deadline_id if bound_deadline else None,
             deadline_match_confidence=bound_confidence if bound_deadline else None,
             deadline_match_source=(
-                "parser_auto" if (bound_deadline and bound_via_inference)
+                heuristic_source if (bound_deadline and bound_via_heuristic)
+                else "parser_auto" if (bound_deadline and bound_via_inference)
                 else "user_explicit" if bound_deadline
                 else None
             ),

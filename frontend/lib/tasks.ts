@@ -59,6 +59,16 @@ export interface TaskRow {
   llm_deadline_candidates: LlmDeadlineCandidate[] | null;
   llm_priority: number | null;
   llm_binding_rejected_at: string | null;
+  // Trust-not-rewrite contract (alembic 039, 2026-04-28). Populated by
+  // the LLM enrichment worker when it disagrees with an existing
+  // user/heuristic binding. Chip renders "Possible better match" when
+  // present.
+  llm_alternative_suggestion: {
+    deadline_id: string;
+    title: string;
+    confidence: number;
+    from_source: string;
+  } | null;
 }
 
 export interface QueryResponse {

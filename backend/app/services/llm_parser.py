@@ -390,21 +390,43 @@ def enrich_task_via_llm(db: Session, task_id: str) -> str:
     ]
     task.llm_parsed_at = now_utc()
 
-    # Deadline-write guard (P0 stress-test 2026-04-28): only write
-    # deadline-related fields when the user hasn't already taken
-    # ownership of the binding. If `deadline_match_source` is set by
-    # user_explicit, user_corrected, or llm_auto_confirmed (the user
-    # already accepted a previous LLM suggestion — possible if
-    # enrichment retries on a re-queued row), DO NOT overwrite with
-    # async LLM output. User intent wins.
-    user_owns_deadline = task.deadline_match_source not in (None, "parser_auto")
-    if user_owns_deadline:
-        # Skip deadline-related writes; preserve nullability of the
-        # candidate fields (not a confidence, not a misleading list).
+    # Trust-not-rewrite contract (Phase 1 heuristic 2026-04-28).
+    # Operator-locked invariant: "Do not silently rewrite canonical
+    # after user has seen it. That breaks trust."
+    #
+    # Categories of existing binding source:
+    #   - None / 'parser_auto'           → tentative; LLM may write
+    #   - 'heuristic_*'                  → user-visible; LLM stores
+    #                                       alternative, never rewrites
+    #   - 'user_explicit', 'user_corrected', 'llm_auto_confirmed'
+    #                                    → user owns; same as above
+    existing_canonical = task.deadline_match_source not in (None, "parser_auto")
+    if existing_canonical:
+        # Don't touch task.deadline_id. If LLM disagrees with the
+        # current canonical binding AND has high confidence, store the
+        # alt for the chip's "Possible better match" surface. If LLM
+        # agrees or has no candidates, clear any prior alt.
+        if (
+            candidates
+            and candidates[0]["deadline_id"] != task.deadline_id
+            and candidates[0].get("confidence", 0) >= 0.85  # only strong disagreement
+        ):
+            task.llm_alternative_suggestion = {
+                "deadline_id": candidates[0]["deadline_id"],
+                "title": candidates[0]["title"],
+                "confidence": candidates[0]["confidence"],
+                "from_source": "llm_auto",
+            }
+        else:
+            task.llm_alternative_suggestion = None
+        # Clear stale candidate-list — chip uses task.deadline_id +
+        # llm_alternative_suggestion for the trust-preserving render.
         task.llm_deadline_candidates = None
         task.llm_inferred_deadline_id = None
         task.llm_deadline_match_confidence = None
     else:
+        # Tentative or unbound → LLM may populate candidate list.
+        task.llm_alternative_suggestion = None
         task.llm_deadline_candidates = candidates
         if candidates:
             # Top entry is the canonical "single best" candidate for

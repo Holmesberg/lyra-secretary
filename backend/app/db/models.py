@@ -202,6 +202,16 @@ class Task(Base):
     # Set by POST /v1/tasks/{id}/reject-llm-binding (Workstream 4) when
     # the user explicitly rejects the LLM-suggested deadline binding.
     llm_binding_rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Trust-not-rewrite contract (alembic 039, 2026-04-28). When a
+    # heuristic-bound or user-bound task gets a different deadline
+    # suggestion from the async LLM enrichment, we DO NOT silently
+    # rewrite task.deadline_id — that breaks user trust ("the chip
+    # changed under me"). Instead, the alternative is stored here as a
+    # JSONB suggestion the chip can render as "Possible better match
+    # — [keep current] [switch]". User decides.
+    # Shape: {"deadline_id": "...", "title": "...", "confidence": 0..1,
+    #         "from_source": "llm_auto" | "heuristic_substring" | ...}
+    llm_alternative_suggestion: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Relationships
     stopwatch_sessions: Mapped[list["StopwatchSession"]] = relationship(

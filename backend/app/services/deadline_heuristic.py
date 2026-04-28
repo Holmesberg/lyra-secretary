@@ -1,0 +1,240 @@
+"""Tier 0 deterministic deadline-matching heuristic (2026-04-28).
+
+Sibling of the LLM enrichment path. Runs synchronously inside POST
+/v1/create with sub-10ms latency. When confident, sets the canonical
+`task.deadline_id` immediately so the user sees the binding the moment
+the task lands on /today — no LLM wait, no chip flash.
+
+Operator-locked design (2026-04-28 conversation):
+
+  Score components (additive, then capped at +1.0):
+    +1.0  exact normalized title match (full title in haystack)
+    +0.8  haystack startswith deadline.title (case + punct normalized)
+    +0.6  deadline.title is substring of haystack
+    +0.4  meaningful-token overlap (post stopword strip)
+    -0.5  applied per competing candidate above 0.5 (multi-match penalty)
+
+  Auto-bind (canonical `deadline_id` SET on /v1/create) requires ALL:
+    1. top.score >= AUTO_BIND_MIN_SCORE (0.6)
+    2. top.score - second.score >= UNIQUENESS_MARGIN (0.2)
+    3. count(c for c in candidates if c.score >= 0.5) <= 1
+    4. NOT brittle_match — if removing generic tokens drops score below
+       BRITTLE_FLOOR (0.5), the match is incidental ("paper" matched but
+       nothing semantically distinctive)
+
+  Failing any guardrail → return ranked candidates anyway, but
+  `auto_bind=False`. The chip surfaces them; user decides.
+
+Source enum granularity (per operator's research-integrity guidance —
+Rule 14 stratification stays sharp):
+  - 'heuristic_exact_title'   score >= 1.0
+  - 'heuristic_startswith'    0.8 <= score < 1.0
+  - 'heuristic_substring'     0.6 <= score < 0.8
+  - 'heuristic_alias'         (reserved — for future user-defined alias
+                               table; not populated yet)
+
+Override priority (chip + LLM worker respect this order):
+    manual_user > heuristic_exact_title > llm_auto_confirmed >
+    user_corrected > heuristic_startswith > heuristic_substring >
+    parser_auto > null
+
+Pre-registration footnote: the four new `deadline_match_source` values
+extend Rule 14's stratification list (per docs/manifesto_alignment_audit_
+2026_04_28.md item #2 pattern). Documented in the commit message + the
+heuristic registry doc.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+from typing import Optional
+
+from app.db.models import Deadline
+
+
+AUTO_BIND_MIN_SCORE = 0.6
+UNIQUENESS_MARGIN = 0.2
+BRITTLE_FLOOR = 0.5
+
+# Generic tokens that should NOT be the sole semantic anchor for an
+# auto-bind. If removing these from the input drops the score below
+# BRITTLE_FLOOR, the match is brittle (e.g. "paper reading" vs deadline
+# "BCI Paper" — the only shared token is the generic "paper"). The list
+# is operator-curated for the alpha cohort; a future amendment can ship
+# per-user-typed banlist if abuse appears.
+BRITTLE_TOKENS = {
+    "paper", "project", "task", "work", "thing", "stuff",
+    "time", "plan", "review", "session", "block", "todo",
+    "report", "doc", "note", "writeup",
+}
+
+_NORMALIZE_RE = re.compile(r"[^a-z0-9\s]+")
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_STOPWORDS = {
+    "the", "a", "an", "to", "for", "of", "and", "or", "in", "on",
+    "at", "by", "with", "due", "today", "tomorrow", "deadline",
+    "is", "are", "be",
+}
+
+
+@dataclass
+class HeuristicCandidate:
+    deadline_id: str
+    title: str
+    score: float
+    source: str  # heuristic_exact_title | heuristic_startswith | heuristic_substring
+
+
+@dataclass
+class HeuristicMatch:
+    """Returned to /v1/create. When `auto_bind=True`, the caller writes
+    `task.deadline_id = top.deadline_id` and `deadline_match_source =
+    top.source` synchronously."""
+    candidates: list[HeuristicCandidate]
+    auto_bind: bool
+    rejected_reason: Optional[str]  # debug/audit-only label when auto_bind=False
+
+
+def _normalize(s: str) -> str:
+    return _NORMALIZE_RE.sub(" ", (s or "").lower()).strip()
+
+
+def _meaningful_tokens(s: str) -> set[str]:
+    return {
+        t for t in _TOKEN_RE.findall((s or "").lower())
+        if t not in _STOPWORDS and len(t) >= 3
+    }
+
+
+def _score_one(haystack_norm: str, haystack_tokens: set[str], deadline: Deadline) -> tuple[float, str]:
+    """Return (score, source) for a single deadline match attempt.
+    Source is the highest-confidence component that contributed."""
+    title_norm = _normalize(deadline.title)
+    if not title_norm:
+        return 0.0, "heuristic_substring"
+    title_tokens = _meaningful_tokens(deadline.title)
+
+    if not haystack_norm:
+        return 0.0, "heuristic_substring"
+
+    # Exact title match (haystack contains title as a phrase OR title equals haystack)
+    if haystack_norm == title_norm:
+        return 1.0, "heuristic_exact_title"
+    if title_norm in haystack_norm.split():  # exact-word boundary
+        # If the title is a single token that appears as a word, treat
+        # as exact only when the title is multi-character; single-letter
+        # matches don't qualify.
+        if len(title_norm) >= 3:
+            return 1.0, "heuristic_exact_title"
+
+    # Multi-word phrase match (sliding window word-level)
+    title_phrase = title_norm
+    if title_phrase in haystack_norm and " " in title_phrase:
+        # Multi-word phrase appearing literally → highest confidence
+        return 1.0, "heuristic_exact_title"
+
+    # Startswith (haystack starts with the title)
+    if haystack_norm.startswith(title_norm + " ") or haystack_norm == title_norm:
+        return 0.8, "heuristic_startswith"
+
+    # Single-token title appearing word-boundary in haystack
+    if len(title_norm.split()) == 1 and title_norm in haystack_tokens:
+        return 0.8, "heuristic_startswith"
+
+    # Plain substring match (case-insensitive)
+    if title_norm in haystack_norm:
+        return 0.6, "heuristic_substring"
+
+    # Token overlap fallback
+    if title_tokens and haystack_tokens:
+        overlap = title_tokens & haystack_tokens
+        if not overlap:
+            return 0.0, "heuristic_substring"
+        # Jaccard-like ratio over the deadline title's tokens
+        ratio = len(overlap) / len(title_tokens)
+        if ratio >= 0.5:
+            return min(0.6, 0.4 + 0.2 * (ratio - 0.5)), "heuristic_substring"
+        return 0.4 * ratio, "heuristic_substring"
+
+    return 0.0, "heuristic_substring"
+
+
+def _is_brittle(haystack_tokens: set[str], deadline: Deadline) -> bool:
+    """True when the match would disappear if we removed brittle tokens
+    from the haystack — i.e. the score depends on a generic word like
+    'paper' rather than something semantically distinctive."""
+    title_tokens = _meaningful_tokens(deadline.title)
+    if not title_tokens:
+        return False
+    overlap_with_brittle = haystack_tokens & title_tokens
+    overlap_without_brittle = (haystack_tokens - BRITTLE_TOKENS) & (title_tokens - BRITTLE_TOKENS)
+    if not overlap_with_brittle:
+        return False  # no overlap to be brittle about
+    # If filtering brittle tokens drops overlap to zero AND there were
+    # only 1-2 shared tokens to begin with, the match is brittle.
+    if not overlap_without_brittle and len(overlap_with_brittle) <= 2:
+        return True
+    return False
+
+
+def score_deadlines(
+    title: str,
+    description: Optional[str],
+    deadlines: list[Deadline],
+) -> HeuristicMatch:
+    """Score every deadline against the task's title+description.
+    Returns ranked candidates + auto-bind decision per operator's
+    4-rule guardrail.
+    """
+    if not deadlines:
+        return HeuristicMatch(candidates=[], auto_bind=False, rejected_reason="no_deadlines")
+
+    haystack = f"{title or ''} {description or ''}"
+    haystack_norm = _normalize(haystack)
+    haystack_tokens = _meaningful_tokens(haystack)
+
+    scored: list[HeuristicCandidate] = []
+    for d in deadlines:
+        score, source = _score_one(haystack_norm, haystack_tokens, d)
+        if score > 0.0:
+            scored.append(HeuristicCandidate(
+                deadline_id=d.deadline_id,
+                title=d.title,
+                score=round(score, 3),
+                source=source,
+            ))
+
+    scored.sort(key=lambda c: -c.score)
+
+    # Apply multi-match penalty to the top candidate's effective score
+    # for guardrail evaluation, but report the raw score on the chip
+    # data — the user sees the raw number, the auto-bind logic uses the
+    # adjusted one.
+    competing = sum(1 for c in scored[1:] if c.score >= 0.5)
+    if not scored:
+        return HeuristicMatch(candidates=[], auto_bind=False, rejected_reason="no_score")
+
+    top = scored[0]
+
+    # Guardrail 1: top score must clear minimum
+    if top.score < AUTO_BIND_MIN_SCORE:
+        return HeuristicMatch(candidates=scored, auto_bind=False, rejected_reason="below_min_score")
+
+    # Guardrail 2: uniqueness margin
+    if len(scored) >= 2:
+        margin = top.score - scored[1].score
+        if margin < UNIQUENESS_MARGIN:
+            return HeuristicMatch(candidates=scored, auto_bind=False, rejected_reason="uniqueness_margin")
+
+    # Guardrail 3: at most one competitive candidate
+    if competing > 0:
+        return HeuristicMatch(candidates=scored, auto_bind=False, rejected_reason="multi_competitive")
+
+    # Guardrail 4: brittle match (only generic tokens shared)
+    top_deadline = next((d for d in deadlines if d.deadline_id == top.deadline_id), None)
+    if top_deadline is not None and _is_brittle(haystack_tokens, top_deadline):
+        # Demote brittle exact-token matches but keep showing the chip.
+        # Don't auto-bind something the user might call generic.
+        return HeuristicMatch(candidates=scored, auto_bind=False, rejected_reason="brittle_match")
+
+    return HeuristicMatch(candidates=scored, auto_bind=True, rejected_reason=None)

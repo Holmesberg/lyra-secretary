@@ -116,7 +116,68 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
     return null;
   }
 
-  // User already owns the binding — no question to ask
+  // Trust-not-rewrite alternative-suggestion path (2026-04-28 Phase 1).
+  // When user/heuristic has bound a deadline AND the LLM enrichment found
+  // a stronger alternative, surface it as a soft "possible better match"
+  // — never silent rewrite. User clicks [Switch] to rebind, [Keep] to
+  // dismiss the suggestion. Trust-positive: explicit choice always.
+  if (
+    task.deadline_match_source !== null &&
+    task.deadline_match_source !== "parser_auto" &&
+    task.llm_alternative_suggestion
+  ) {
+    const alt = task.llm_alternative_suggestion;
+    return (
+      <ChipShell error={error}>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Paperclip className="h-3 w-3 shrink-0" />
+          <span className="text-[11px]">
+            <span className="text-dust">Possible better match: </span>
+            <span className="font-medium text-parchment">{alt.title}</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <ChipBtn
+            kind="primary"
+            label="Switch"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true); setError(null);
+              try {
+                await confirmLlmBinding(task.task_id, {
+                  acceptedFields: ["deadline"],
+                  chosenDeadlineId: alt.deadline_id,
+                });
+                setResolved("confirmed");
+                onChanged?.();
+              } catch (e: unknown) {
+                setError(e instanceof Error ? e.message : "Switch failed");
+              } finally { setBusy(false); }
+            }}
+            icon={<Check className="h-3 w-3" />}
+          />
+          <ChipBtn
+            kind="ghost"
+            label="Keep current"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true); setError(null);
+              try {
+                await rejectLlmBinding(task.task_id);
+                setResolved("rejected");
+                onChanged?.();
+              } catch (e: unknown) {
+                setError(e instanceof Error ? e.message : "Reject failed");
+              } finally { setBusy(false); }
+            }}
+          />
+        </div>
+      </ChipShell>
+    );
+  }
+
+  // User already owns the binding without an alternative suggestion —
+  // no question to ask, render nothing.
   if (
     task.deadline_match_source !== null &&
     task.deadline_match_source !== "parser_auto"

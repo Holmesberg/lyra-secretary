@@ -77,6 +77,35 @@ class ConsentIn(BaseModel):
 @router.get("/users/me")
 def get_me(db: Session = Depends(get_db)):
     user = _current_user(db)
+    # Grandfathered-user backfill (2026-04-28 hotfix): re-enabling the
+    # OnboardingFlow gate in C1 blocked /today for users created before
+    # alembic 025 added onboarding_completed_at — that column was stamped
+    # only on FIRST task creation going forward, so pre-existing accounts
+    # with tasks have NULL there and now hit the onboarding screen
+    # instead of their actual data ("WHERE DID THE OLD TASKS GO" report).
+    # Lazy-fix: if the user has any non-voided task, treat them as
+    # already onboarded — stamp onboarding_completed_at to the earliest
+    # task's created_at so retention analyses still see the right
+    # window. Best-effort; errors are non-blocking.
+    try:
+        if user.onboarding_completed_at is None:
+            earliest_task = (
+                db.query(func.min(Task.created_at))
+                .filter(
+                    Task.user_id == user.user_id,
+                    Task.voided_at.is_(None),
+                )
+                .scalar()
+            )
+            if earliest_task is not None:
+                user.onboarding_completed_at = earliest_task
+                # Also stamp first_task_at if alembic 037 has been
+                # applied — same earliest timestamp.
+                if hasattr(user, "first_task_at") and user.first_task_at is None:
+                    user.first_task_at = earliest_task
+                db.commit()
+    except Exception:
+        db.rollback()
     # Alpha funnel (alembic 037, 2026-04-28): d1_return_at lazy-stamp.
     # Approximates "returned next day" — first /users/me call ≥24h after
     # user.created_at when the column is still NULL. Frontend hits this
