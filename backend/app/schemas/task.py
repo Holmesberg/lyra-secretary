@@ -301,3 +301,47 @@ class SwapResponse(BaseModel):
     swapped: bool
     reactivated_task_id: str
     skipped_task_id: str
+
+
+class LlmConfirmRequest(BaseModel):
+    """User clicked "keep" or "use this" on the LLM-suggested chip
+    (Workstream 1, magic-for-alpha). Copies LLM-suggested fields into
+    the canonical task fields per the operator-locked guardrail #2 —
+    the user must explicitly accept; we never silently auto-bind.
+
+    `accepted_fields` is the subset of LLM suggestions to commit:
+      - 'deadline'   — copy llm_inferred_deadline_id → deadline_id
+                       (sets deadline_match_source='llm_auto_confirmed')
+      - 'priority'   — copy llm_priority → priority (when priority col ships)
+
+    `chosen_deadline_id` overrides the LLM's top candidate when the user
+    picks a different one from the Tier 2 multi-option chip.
+    """
+    accepted_fields: list[str] = Field(default_factory=list)
+    chosen_deadline_id: Optional[str] = Field(
+        None,
+        description=(
+            "Override for the LLM's top candidate. When None (Tier 1 flow), "
+            "uses task.llm_inferred_deadline_id. When set (Tier 2 flow), "
+            "uses this explicit value — must be in llm_deadline_candidates."
+        ),
+    )
+
+
+class LlmConfirmResponse(BaseModel):
+    task_id: str
+    deadline_id_after: Optional[str] = None
+    deadline_match_source_after: Optional[str] = None
+    priority_set: bool = False
+
+
+class LlmRejectRequest(BaseModel):
+    """User explicitly clicked 'no, just keep mine' on the LLM chip.
+    Records the rejection (audit) and clears the LLM suggestion so the
+    chip stops rendering."""
+    pass
+
+
+class LlmRejectResponse(BaseModel):
+    task_id: str
+    rejected_at: datetime

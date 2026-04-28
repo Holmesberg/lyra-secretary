@@ -170,13 +170,52 @@ class Task(Base):
     # Re-sampled at complete_task time (before EXECUTED transition).
     scope_bullet_count_at_execute: Mapped[Optional[int]] = mapped_column(Integer)
 
+    # ── LLM enrichment fields (alembic 036, magic-for-alpha 2026-04-28) ──
+    # Populated by the async background `llm_enrichment` worker, NOT by
+    # the fast-path POST /v1/create. Critical guardrails:
+    #   - Regex output (`scope_bullet_count_at_plan`) and parser-based
+    #     `deadline_id` remain canonical. These llm_* fields are a parallel
+    #     signal the user can confirm into canonical via a one-tap chip.
+    #   - `llm_parse_status` flips: pending → enriched | unavailable | failed.
+    #     UI degrades to regex output when status != 'enriched'.
+    #   - `llm_inferred_deadline_id` does NOT replace `deadline_id`;
+    #     `POST /v1/tasks/{id}/llm-confirm` copies it across on user accept.
+    llm_parse_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending"
+    )
+    llm_priority: Mapped[Optional[int]] = mapped_column(Integer)
+    llm_inferred_deadline_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("deadline.deadline_id", ondelete="SET NULL"),
+    )
+    llm_deadline_match_confidence: Mapped[Optional[float]] = mapped_column(Float)
+    # Tier system (operator-locked UX 2026-04-28):
+    #   Tier 1 — top confidence > 0.85: silent auto-chip with confirm
+    #   Tier 2 — top confidence 0.45-0.85: "Related to one of these?"
+    #             rendering top 2-3 candidates from this list
+    #   Tier 3 — top confidence < 0.45: no chip
+    #   Tier 4 — manual override always via DeadlinePickerSlot
+    # Shape: [{"deadline_id": "...", "title": "...", "confidence": 0..1}, ...]
+    llm_deadline_candidates: Mapped[Optional[list]] = mapped_column(JSON)
+    llm_sub_items: Mapped[Optional[list]] = mapped_column(JSON)
+    llm_parsed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Set by POST /v1/tasks/{id}/reject-llm-binding (Workstream 4) when
+    # the user explicitly rejects the LLM-suggested deadline binding.
+    llm_binding_rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
     # Relationships
     stopwatch_sessions: Mapped[list["StopwatchSession"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan"
     )
     deadline: Mapped[Optional["Deadline"]] = relationship(
-        back_populates="tasks"
+        back_populates="tasks",
+        # Explicit FK selection — alembic 036 added a second FK
+        # (llm_inferred_deadline_id) which made the join condition
+        # ambiguous. The canonical user-facing binding stays on
+        # Task.deadline_id; the LLM suggestion lives in
+        # llm_inferred_deadline_id with no ORM relationship traversal.
+        foreign_keys="Task.deadline_id",
     )
     deadline_outcome: Mapped[Optional["TaskDeadlineOutcome"]] = relationship(
         back_populates="task",
@@ -296,7 +335,12 @@ class Deadline(Base):
         default=datetime.utcnow,
     )
 
-    tasks: Mapped[list["Task"]] = relationship(back_populates="deadline")
+    tasks: Mapped[list["Task"]] = relationship(
+        back_populates="deadline",
+        # Symmetric to Task.deadline — only follow the canonical FK,
+        # not the new llm_inferred_deadline_id FK from alembic 036.
+        foreign_keys="Task.deadline_id",
+    )
 
     __table_args__ = (
         CheckConstraint(

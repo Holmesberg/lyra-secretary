@@ -1,6 +1,6 @@
 services:
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
@@ -22,6 +22,19 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      # Magic-for-alpha: Local LLM async parser (Workstream 1, 2026-04-28).
+      # Operator runs Ollama on the host (Windows/WSL2 install). Backend
+      # reaches it via host.docker.internal. If the service is down, the
+      # llm_enrichment job marks tasks as llm_parse_status='unavailable'
+      # and the UI degrades to regex output — task creation never blocks
+      # on this dependency.
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+    extra_hosts:
+      # Required on Linux/WSL2 for host.docker.internal to resolve to the
+      # host. Docker Desktop adds this automatically on Windows/Mac, but
+      # being explicit covers the WSL2 case where it's not always there.
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -32,6 +45,20 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+
+  # NOTE on Ollama: operator runs Ollama natively on the host
+  # (Windows/WSL2). Backend reaches it via host.docker.internal:11434.
+  # No Docker Compose service is needed. To swap to a containerized
+  # Ollama later, uncomment the block below and remove host.docker.internal
+  # config from the backend env above.
+  #
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   restart: unless-stopped
 
 volumes:
   lyra_data:

@@ -13,6 +13,7 @@ from app.workers.jobs.pause_prediction import run_pause_prediction
 from app.workers.jobs.reconcile_responses import run_reconcile_responses
 from app.workers.jobs.reconcile_deadline_outcomes import run_reconcile_deadline_outcomes
 from app.workers.jobs.sweep_missed_deadlines import run_sweep_missed_deadlines
+from app.workers.jobs.llm_enrichment import run_llm_enrichment
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -120,6 +121,20 @@ def start_scheduler():
         id="sweep_missed_deadlines",
         name="Loop 11 — sweep active deadlines past due_at into missed state",
         replace_existing=True
+    )
+
+    # Magic-for-alpha — Workstream 1 (2026-04-28). Pulls tasks where
+    # llm_parse_status='pending' and calls Ollama for semantic enrichment
+    # (priority, deadline candidates, sub-items). Fires every 5s. Per-cycle
+    # cap = 3. Self-throttles when Ollama is down (job runs, marks
+    # 'unavailable', returns fast).
+    scheduler.add_job(
+        run_llm_enrichment,
+        trigger=IntervalTrigger(seconds=5),
+        id="llm_enrichment",
+        name="Magic — LLM async parser; semantic deadline + priority + sub-items",
+        replace_existing=True,
+        max_instances=1,  # critical: single inflight worker so a slow LLM call doesn't pile up
     )
 
     scheduler.start()

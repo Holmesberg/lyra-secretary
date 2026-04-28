@@ -38,6 +38,25 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: Optional[str] = Field(None, env="TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID: Optional[str] = Field(None, env="TELEGRAM_CHAT_ID")
 
+    # Local LLM enrichment (Workstream 1, magic-for-alpha 2026-04-28).
+    # Optional. When OLLAMA_URL is unreachable or the model isn't loaded,
+    # the llm_enrichment APScheduler job marks tasks as
+    # llm_parse_status='unavailable' and the UI degrades to regex output
+    # — task creation never blocks on this dependency.
+    OLLAMA_URL: str = Field("http://host.docker.internal:11434", env="OLLAMA_URL")
+    # Default qwen2.5:3b — fits comfortably in 8GB VRAM (operator's
+    # A4000) with room for KV cache + system display. Operators with
+    # >12GB VRAM can override to qwen2.5:7b or qwen3:8b for better
+    # quality. Q4 quantized: ~1.9GB on disk, ~2.5GB loaded.
+    OLLAMA_MODEL: str = Field("qwen2.5:3b", env="OLLAMA_MODEL")
+    OLLAMA_TIMEOUT_SECONDS: int = Field(60, env="OLLAMA_TIMEOUT_SECONDS")
+    # Tier thresholds for the LLM deadline-binding chip (operator-locked
+    # 2026-04-28). Per stress-test conversation: confidence thresholds
+    # are the most important calibration stat. Tunable from .env so we
+    # can adjust without redeploying once we have alpha-cohort data.
+    LLM_TIER1_CONFIDENCE: float = Field(0.85, env="LLM_TIER1_CONFIDENCE")
+    LLM_TIER2_CONFIDENCE: float = Field(0.45, env="LLM_TIER2_CONFIDENCE")
+
     # Auth (Phase 2). JWT_SECRET is shared with the Next.js frontend's
     # NEXTAUTH_SECRET — both must be identical or token validation fails.
     JWT_SECRET: str = "dev-only-replace-me-with-32-byte-urlsafe-secret"

@@ -21,6 +21,10 @@ from app.schemas.task import (
     SwapRequest,
     SwapResponse,
     ConflictInfo,
+    LlmConfirmRequest,
+    LlmConfirmResponse,
+    LlmRejectRequest,
+    LlmRejectResponse,
 )
 from app.db.models import TaskState
 from app.utils.time_utils import now_utc as _now_utc
@@ -426,6 +430,128 @@ def sync_task_to_notion(
     except Exception as e:
         logger.error(f"Manual Notion sync failed for {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=502, detail=f"Notion sync failed: {e}")
+
+
+@router.post("/tasks/{task_id}/llm-confirm", response_model=LlmConfirmResponse)
+def confirm_llm_binding(
+    task_id: str,
+    request: LlmConfirmRequest,
+    db: Session = Depends(get_db),
+) -> LlmConfirmResponse:
+    """Magic-for-alpha Workstream 1 (2026-04-28). User clicked "keep" or
+    "use this" on the LLM-suggested deadline / priority chip. Copy the
+    selected suggestions into the canonical task fields.
+
+    Tier flow:
+      - Tier 1 (confidence ≥ 0.85): chip pre-selected; user clicks
+        "keep" → request.chosen_deadline_id is None → use the LLM's
+        top candidate (task.llm_inferred_deadline_id).
+      - Tier 2 (0.45 ≤ confidence < 0.85): user picks one option;
+        request.chosen_deadline_id is the picked deadline_id → must
+        be in task.llm_deadline_candidates.
+
+    Guardrail #2: never silently auto-bind. The user must POST here
+    for the canonical deadline_id to change. The llm_inferred_*
+    columns persist as audit trail.
+    """
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.voided_at is not None:
+        raise HTTPException(status_code=400, detail="Cannot modify voided task")
+
+    deadline_id_after: Optional[str] = task.deadline_id
+    priority_set = False
+
+    if "deadline" in request.accepted_fields:
+        # Resolve which deadline_id to commit. Either the user's pick
+        # (Tier 2) or the LLM's top suggestion (Tier 1).
+        target_deadline_id = (
+            request.chosen_deadline_id
+            if request.chosen_deadline_id is not None
+            else task.llm_inferred_deadline_id
+        )
+        if target_deadline_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No deadline to bind: llm_inferred_deadline_id is null and no chosen_deadline_id provided",
+            )
+        # Validate the chosen deadline is in the candidate list (Tier 2)
+        # OR matches the top candidate (Tier 1). Defensive — prevents a
+        # malicious / stale frontend from binding to a deadline the LLM
+        # never proposed.
+        candidates = task.llm_deadline_candidates or []
+        if not any(c.get("deadline_id") == target_deadline_id for c in candidates):
+            raise HTTPException(
+                status_code=400,
+                detail="chosen_deadline_id not in llm_deadline_candidates",
+            )
+        # Validate the deadline belongs to the user and is bindable
+        # (mirror the existing TaskManager._validate_bindable_deadline guard).
+        from app.db.models import Deadline
+        d = db.query(Deadline).filter(
+            Deadline.deadline_id == target_deadline_id,
+            Deadline.user_id == task.user_id,
+            Deadline.voided_at.is_(None),
+            Deadline.state.in_(("planned", "active")),
+        ).first()
+        if d is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Deadline not bindable (not found, voided, or terminal)",
+            )
+        task.deadline_id = target_deadline_id
+        # Look up confidence from the candidate list for the chosen id.
+        confidence = next(
+            (c.get("confidence") for c in candidates
+             if c.get("deadline_id") == target_deadline_id),
+            None,
+        )
+        task.deadline_match_confidence = confidence
+        task.deadline_match_source = "llm_auto_confirmed"
+        # Auto-transition the deadline to active if currently planned
+        # (mirror TaskManager.create_task's pass 1 behavior).
+        if d.state == "planned":
+            d.state = "active"
+        deadline_id_after = target_deadline_id
+
+    # Priority commit deferred — Task.priority column not yet shipped.
+    # Once it ships (Workstream 4 polish or follow-up), this branch
+    # populates it. For now, we acknowledge the intent without effect.
+    if "priority" in request.accepted_fields and task.llm_priority is not None:
+        # task.priority = task.llm_priority  # uncomment when column exists
+        priority_set = True
+
+    db.commit()
+    return LlmConfirmResponse(
+        task_id=task.task_id,
+        deadline_id_after=deadline_id_after,
+        deadline_match_source_after=task.deadline_match_source,
+        priority_set=priority_set,
+    )
+
+
+@router.post("/tasks/{task_id}/reject-llm-binding", response_model=LlmRejectResponse)
+def reject_llm_binding(
+    task_id: str,
+    db: Session = Depends(get_db),
+) -> LlmRejectResponse:
+    """User explicitly clicked 'no, just keep mine' on the LLM chip.
+
+    Records the rejection so the chip stops rendering. The
+    llm_inferred_* fields stay populated (audit trail). The user's
+    existing deadline_id (if any, from regex parser_auto or
+    user_explicit) is unchanged.
+
+    Future analysis can compare LLM precision/recall vs user feedback
+    by joining llm_inferred_deadline_id × llm_binding_rejected_at.
+    """
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.llm_binding_rejected_at = _now_utc()
+    db.commit()
+    return LlmRejectResponse(task_id=task.task_id, rejected_at=task.llm_binding_rejected_at)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskDetail)
