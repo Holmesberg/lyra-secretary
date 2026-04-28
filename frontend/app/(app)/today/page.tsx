@@ -579,6 +579,16 @@ function TodayInner() {
       task_completion_percentage: null,
       voided_reason: null,
       notion_page_id: null,
+      description: null,
+      deadline_id: null,
+      deadline_match_source: null,
+      deadline_match_confidence: null,
+      llm_parse_status: null,
+      llm_inferred_deadline_id: null,
+      llm_deadline_match_confidence: null,
+      llm_deadline_candidates: null,
+      llm_priority: null,
+      llm_binding_rejected_at: null,
     });
   }
 
@@ -818,6 +828,7 @@ function TodayInner() {
                   selected={selectedIds.has(item.task.task_id)}
                   showCheckbox={selectedIds.size > 0}
                   onToggleSelect={toggleSelect}
+                  onLlmChipChanged={refresh}
                 />
                 {/* Inline pause-confirm chips for this task. Rendered
                     under the row, visually attached via gap-1.5. */}

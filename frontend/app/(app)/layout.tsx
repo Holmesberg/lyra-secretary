@@ -8,16 +8,14 @@ import { AppShell } from "@/components/app-shell";
 import { ArchetypeSurvey } from "@/components/archetype-survey";
 import { ConsentModal } from "@/components/consent-modal";
 import { TutorialOverlay } from "@/components/tutorial-overlay";
-// Temporarily disabled 2026-04-21 — the full-screen onboarding surface
-// was first replaced by a backend-seeded starter task, which was itself
-// removed 2026-04-27 because it poisoned the activation funnel (u12 + u14
-// both abandoned the placeholder). Path forward: ship Family F1 chaos
-// capture as the real first-time-user surface (per
-// `memory/project_relief_instrument_reframe.md`). This OnboardingFlow
-// import is preserved as commented dead code for the post-Spring-School
-// re-enable when the richer onboarding flow ships.
-// See docs/strategic_decisions_april_21.md §5.
-// import { OnboardingFlow } from "@/components/onboarding-flow";
+// Re-enabled 2026-04-28 alongside magic-for-alpha W1. The placeholder-
+// abandonment failure mode (u12 + u14 in 2026-04-21 dogfood) was for an
+// EMPTY surface — the brain-dump now feeds the LLM enrichment worker, so
+// bullets / deadlines / scope mentioned in the description surface as
+// chips on /today within ~10s of redirect. The friction-vs-value trade
+// flipped. See docs/strategic_decisions_april_28.md (TBD) and
+// `memory/feedback_logging_friction.md` for the reframe.
+import { OnboardingFlow } from "@/components/onboarding-flow";
 
 type Me = {
   user_id: number;
@@ -178,19 +176,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     !me.tutorial_completed_at &&
     !me.tutorial_skipped_at;
 
-  // Temporarily disabled 2026-04-21 — full-screen onboarding surface
-  // replaced by a backend-seeded starter task on first sign-in.
-  // Re-enable post-Spring-School when the richer onboarding flow
-  // (archetype instrument battery + import ingestion) is ready to ship.
-  // const needsOnboarding = !needsConsent && !me.onboarding_completed_at;
-  // if (needsOnboarding) {
-  //   return (
-  //     <OnboardingFlow
-  //       userEmail={me.email}
-  //       onCompleted={() => api<Me>("/v1/users/me").then(setMe)}
-  //     />
-  //   );
-  // }
+  // Re-enabled 2026-04-28 alongside magic-for-alpha W1. The brain-dump
+  // surface gates the entire (app) routing tree until the user either
+  // creates their first task OR explicitly skips. Both paths stamp
+  // user.onboarding_completed_at via createTask / POST /users/me/skip-
+  // onboarding respectively. The skip path is structural-invariant:
+  // user can always bypass; the column flip distinguishes "skipped" from
+  // "completed via task" for the 2026-05-21 retention kill-criterion
+  // query. With the LLM async parser shipped, brain-dump bullets become
+  // chip data on /today within ~10s of redirect — the friction now buys
+  // visible value, which the empty placeholder did not.
+  const needsOnboarding = !needsConsent && !me.onboarding_completed_at;
+  if (needsOnboarding) {
+    return (
+      <OnboardingFlow
+        userEmail={me.email}
+        onCompleted={refetchMe}
+      />
+    );
+  }
 
   return (
     <AppShell>

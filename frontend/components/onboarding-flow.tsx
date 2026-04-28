@@ -2,53 +2,29 @@
 /**
  * Onboarding surface — Path B first-session planning ritual.
  *
- * ╔══════════════════════════════════════════════════════════════════╗
- * ║ TEMPORARILY DISABLED 2026-04-21                                  ║
- * ║                                                                  ║
- * ║ Not rendered anywhere — the (app)/layout.tsx conditional that    ║
- * ║ mounted this component has been commented out.                   ║
- * ║                                                                  ║
- * ║ History (2026-04-27 update):                                     ║
- * ║ The original 2026-04-21 reversal replaced this surface with a    ║
- * ║ backend-seeded starter task (`_seed_starter_task`). That seed    ║
- * ║ was itself REMOVED 2026-04-27 — operator dogfood found u12 + u14 ║
- * ║ both abandoned the placeholder rather than engaging. Current     ║
- * ║ first-time-user surface: empty /today (intentional gap until     ║
- * ║ Family F1 chaos capture ships per                                ║
- * ║ memory/project_relief_instrument_reframe.md).                    ║
- * ║                                                                  ║
- * ║ Re-enable post-Spring-School when the richer onboarding flow is  ║
- * ║ ready to ship:                                                   ║
- * ║  - Archetype instrument battery (MEQ-5, BFI-10, BSCS, GP-Short)  ║
- * ║  - Import ingestion (ICS drag-drop, Google Calendar OAuth)       ║
- * ║  - Progressive revelation (the original "your archetype: Planner║
- * ║    at N=5-7" framing has shifted toward dynamic-posterior reveal ║
- * ║    per VT-25 mitigation — re-confirm the surface design before   ║
- * ║    re-enabling)                                                  ║
- * ║                                                                  ║
- * ║ See docs/strategic_decisions_april_21.md §5 for the reversal     ║
- * ║ rationale.                                                       ║
- * ║                                                                  ║
- * ║ Code below is intact and passes TSC — do not let it bit-rot.     ║
- * ║ Run the build on every merge so a framework or API shift breaks  ║
- * ║ loudly rather than silently when we re-enable it.                ║
- * ╚══════════════════════════════════════════════════════════════════╝
+ * REVIVED 2026-04-28 (magic-for-alpha). The 2026-04-21 disablement
+ * (operator dogfood: u12 + u14 abandoned the placeholder) was justified
+ * for an *empty* placeholder. With the LLM async parser shipped in W1
+ * (commit bed7010 backend + this commit's chip), the brain-dump now has
+ * a return on entry: bullets become llm_sub_items, deadline mentions
+ * become Tier 1/2 chips, descriptions become measurable scope_density
+ * signals (Rule 12 mediation). The surface earns its place.
  *
- * Original design (preserved for reference):
+ * The createTask call below is unchanged — task flows through the same
+ * fast-path POST /v1/create (<500ms, regex output stays canonical) and
+ * the async llm_enrichment APScheduler job picks it up in the next
+ * 5s cycle. By the time /today renders post-redirect, the chip is
+ * (or shortly will be) on the row.
  *
- * Shown when the authenticated user has `onboarding_completed_at`
- * null on the `/users/me` response (see backend migration 025 and
- * docs/strategic_decisions_april_21.md). The backend stamps the
- * field atomically when the user creates their first task, so the
- * flow auto-exits as soon as submit succeeds.
+ * Architectural rule (operator-locked): this is enrichment, not
+ * critical-path. Onboarding never blocks on Ollama. If Ollama is down,
+ * task creation succeeds with regex output and the chip simply doesn't
+ * render — UI degrades gracefully.
  *
  * - Structural invariant, not a behavioral gate. The "Skip for now"
  *   link calls POST /users/me/skip-onboarding which stamps the same
  *   field, so the user can always bypass — but we record that they
  *   chose to, which the 2026-05-21 kill-criterion query reads.
- * - No LLM, no OpenClaw, no Telegram. Pure Lyra-codebase work
- *   (see memory: OpenClaw is operator-only until components are
- *   integrated).
  * - Category = "planning" (the un-merged slot, shipped 2026-04-21).
  *   Default start is now + 5min rounded, 30 min duration, brain-dump
  *   textarea focused on mount.

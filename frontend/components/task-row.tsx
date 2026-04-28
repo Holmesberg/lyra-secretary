@@ -5,6 +5,7 @@ import type { TaskRow as TaskRowType } from "@/lib/tasks";
 import { getCategoryColor, STATE_STYLES } from "@/lib/categories";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { LlmEnrichmentChip } from "@/components/llm-enrichment-chip";
 
 
 interface Props {
@@ -22,6 +23,9 @@ interface Props {
   // owner uses this to surface a contextual orphan-warning when a paused
   // timer is present (see ActiveTimerBanner orphan-warning prop).
   onStartHover?: () => void;
+  // Fires after the LLM enrichment chip has confirmed/rejected a binding.
+  // Page-level owner refetches /tasks/query so the chip stops rendering.
+  onLlmChipChanged?: () => void;
 }
 
 // Research layer: readiness X → focus Y ±Nmin
@@ -64,7 +68,7 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
 
 export function TaskRow({
   task, disableStart, onStart, onStop, onSkip, onDelete, onEdit,
-  selected, showCheckbox, onToggleSelect, onStartHover,
+  selected, showCheckbox, onToggleSelect, onStartHover, onLlmChipChanged,
 }: Props) {
   // P1-1: 12-hour format.
   const start = task.start ? format(new Date(task.start), "h:mm a") : "—";
@@ -103,6 +107,16 @@ export function TaskRow({
         onClick={() => state === "PLANNED" && onEdit?.(task)}
       >
         <div className="truncate text-sm text-parchment">{task.title}</div>
+        {/* LLM enrichment chip — magic-for-alpha W1, 2026-04-28.
+            Only renders when llm_parse_status is 'enriched' AND the user
+            hasn't already taken ownership of the binding. Self-suppresses
+            otherwise. Stops the row's PLANNED-edit click from bubbling so
+            chip clicks don't open the edit modal. */}
+        {state === "PLANNED" && (
+          <div onClick={(e) => e.stopPropagation()} className="mt-1.5">
+            <LlmEnrichmentChip task={task} onChanged={onLlmChipChanged} />
+          </div>
+        )}
       </div>
       <ResearchLayer task={task} />
       {cat && catColor && (

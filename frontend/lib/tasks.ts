@@ -13,9 +13,18 @@ export type TaskState =
   | "SKIPPED"
   | "DELETED";
 
+export interface LlmDeadlineCandidate {
+  deadline_id: string;
+  title: string;
+  confidence: number;
+}
+
+export type LlmParseStatus = "pending" | "enriched" | "unavailable" | "failed";
+
 export interface TaskRow {
   task_id: string;
   title: string;
+  description: string | null;
   start: string | null;
   end: string | null;
   state: TaskState;
@@ -39,6 +48,17 @@ export interface TaskRow {
   task_completion_percentage: number | null;
   voided_reason: string | null;
   notion_page_id: string | null;
+  // Loop 11 deadline binding (alembic 033)
+  deadline_id: string | null;
+  deadline_match_source: string | null;
+  deadline_match_confidence: number | null;
+  // Workstream 1 LLM enrichment (alembic 036, 2026-04-28)
+  llm_parse_status: LlmParseStatus | null;
+  llm_inferred_deadline_id: string | null;
+  llm_deadline_match_confidence: number | null;
+  llm_deadline_candidates: LlmDeadlineCandidate[] | null;
+  llm_priority: number | null;
+  llm_binding_rejected_at: string | null;
 }
 
 export interface QueryResponse {
@@ -484,4 +504,61 @@ export function createRetroactive(input: RetroactiveInput) {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+// ─── Workstream 1 LLM enrichment chip clients (2026-04-28) ─────────────
+
+export interface LlmConfirmInput {
+  /** Subset of {'deadline', 'priority'}. */
+  acceptedFields: ("deadline" | "priority")[];
+  /** For Tier 2 MCQ — the deadline_id the user picked from the
+   * candidate list. Omit for Tier 1 (auto-uses LLM's top candidate). */
+  chosenDeadlineId?: string;
+}
+
+export interface LlmConfirmResult {
+  task_id: string;
+  deadline_id_after: string | null;
+  deadline_match_source_after: string | null;
+  priority_set: boolean;
+}
+
+/**
+ * User clicked "keep" (Tier 1) or picked an option (Tier 2) on the
+ * LlmEnrichmentChip. Sends an X-Idempotency-Key header to deduplicate
+ * double-taps within a 30s window — mirrors the existing /create
+ * idempotency pattern.
+ */
+export function confirmLlmBinding(
+  taskId: string,
+  input: LlmConfirmInput
+): Promise<LlmConfirmResult> {
+  const idem =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return api<LlmConfirmResult>(`/v1/tasks/${taskId}/llm-confirm`, {
+    method: "POST",
+    headers: { "X-Idempotency-Key": idem },
+    body: JSON.stringify({
+      accepted_fields: input.acceptedFields,
+      chosen_deadline_id: input.chosenDeadlineId,
+    }),
+  });
+}
+
+/**
+ * User clicked "Not relevant" on the chip — teaches the model that the
+ * inferred binding was wrong. The user's existing deadline_id (if any)
+ * stays unchanged; only `llm_binding_rejected_at` is stamped, which
+ * tells the chip to stop rendering and feeds future precision/recall
+ * analysis.
+ */
+export function rejectLlmBinding(
+  taskId: string
+): Promise<{ task_id: string; rejected_at: string }> {
+  return api<{ task_id: string; rejected_at: string }>(
+    `/v1/tasks/${taskId}/reject-llm-binding`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
 }

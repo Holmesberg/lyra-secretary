@@ -373,13 +373,19 @@ class TaskManager:
         # create, so there's no window where the user has one task AND
         # a null onboarding_completed_at (which would silently re-show
         # the onboarding surface on next layout-level fetch of /users/me).
+        # Alpha funnel (alembic 037, 2026-04-28): first_task_at stamp,
+        # lazy-once. Drives the North Star metric task_created+timer_started
+        # within first 3 min via /v1/analytics/alpha_funnel.
         try:
             from app.db.models import User
             u = self.db.query(User).filter(User.user_id == uid).first()
-            if u is not None and u.onboarding_completed_at is None:
-                u.onboarding_completed_at = created_at_ts
+            if u is not None:
+                if u.onboarding_completed_at is None:
+                    u.onboarding_completed_at = created_at_ts
+                if u.first_task_at is None:
+                    u.first_task_at = created_at_ts
         except Exception as e:
-            logger.warning(f"Onboarding stamp failed (non-blocking): {e}")
+            logger.warning(f"Onboarding/funnel stamp failed (non-blocking): {e}")
         self.db.commit()
         self.db.refresh(task)
 
@@ -494,13 +500,18 @@ class TaskManager:
         self.db.flush()
         # Path B onboarding stamp (see create_task): retroactive is also a
         # first-interaction path that completes the ritual.
+        # Alpha funnel (alembic 037, 2026-04-28): also stamps
+        # first_task_at — retroactive task creation is still task creation.
         try:
             from app.db.models import User
             u = self.db.query(User).filter(User.user_id == uid).first()
-            if u is not None and u.onboarding_completed_at is None:
-                u.onboarding_completed_at = created_at_ts
+            if u is not None:
+                if u.onboarding_completed_at is None:
+                    u.onboarding_completed_at = created_at_ts
+                if u.first_task_at is None:
+                    u.first_task_at = created_at_ts
         except Exception as e:
-            logger.warning(f"Onboarding stamp failed (non-blocking): {e}")
+            logger.warning(f"Onboarding/funnel stamp failed (non-blocking): {e}")
         self.db.commit()
         self.db.refresh(task)
 

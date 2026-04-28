@@ -131,6 +131,7 @@ def query_tasks(
             task_list.append({
                 "task_id": t.task_id,
                 "title": t.title,
+                "description": t.description,
                 "start": to_local(t.planned_start_utc).isoformat() if t.planned_start_utc else None,
                 "end": to_local(t.planned_end_utc).isoformat() if t.planned_end_utc else None,
                 "state": t.state.value if hasattr(t.state, 'value') else str(t.state),
@@ -154,6 +155,21 @@ def query_tasks(
                 "task_completion_percentage": agg.get("task_completion_percentage"),
                 "voided_reason": t.voided_reason,
                 "notion_page_id": t.notion_page_id,
+                # Loop 11 deadline binding fields (alembic 033).
+                "deadline_id": t.deadline_id,
+                "deadline_match_source": t.deadline_match_source,
+                "deadline_match_confidence": t.deadline_match_confidence,
+                # Workstream 1 LLM enrichment (alembic 036, 2026-04-28).
+                # Without these, the LlmEnrichmentChip cannot render.
+                "llm_parse_status": t.llm_parse_status,
+                "llm_inferred_deadline_id": t.llm_inferred_deadline_id,
+                "llm_deadline_match_confidence": t.llm_deadline_match_confidence,
+                "llm_deadline_candidates": t.llm_deadline_candidates,
+                "llm_priority": t.llm_priority,
+                "llm_binding_rejected_at": (
+                    to_local(t.llm_binding_rejected_at).isoformat()
+                    if t.llm_binding_rejected_at else None
+                ),
             })
 
         return {"tasks": task_list, "total": total_count, "truncated": truncated}

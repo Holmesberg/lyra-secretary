@@ -49,7 +49,11 @@ class Settings(BaseSettings):
     # >12GB VRAM can override to qwen2.5:7b or qwen3:8b for better
     # quality. Q4 quantized: ~1.9GB on disk, ~2.5GB loaded.
     OLLAMA_MODEL: str = Field("qwen2.5:3b", env="OLLAMA_MODEL")
-    OLLAMA_TIMEOUT_SECONDS: int = Field(60, env="OLLAMA_TIMEOUT_SECONDS")
+    # Cut from 60s → 10s 2026-04-28 (stress-test P1 #4): qwen2.5:3b runs
+    # 5-8s warm; 10s leaves 25-50% headroom while a hung Ollama can no
+    # longer pin the APScheduler thread for a full minute (was blocking
+    # reminders, pause prediction, stale_session_recovery alongside).
+    OLLAMA_TIMEOUT_SECONDS: int = Field(10, env="OLLAMA_TIMEOUT_SECONDS")
     # Tier thresholds for the LLM deadline-binding chip (operator-locked
     # 2026-04-28). Per stress-test conversation: confidence thresholds
     # are the most important calibration stat. Tunable from .env so we

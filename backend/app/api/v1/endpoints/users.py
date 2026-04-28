@@ -77,6 +77,21 @@ class ConsentIn(BaseModel):
 @router.get("/users/me")
 def get_me(db: Session = Depends(get_db)):
     user = _current_user(db)
+    # Alpha funnel (alembic 037, 2026-04-28): d1_return_at lazy-stamp.
+    # Approximates "returned next day" — first /users/me call ≥24h after
+    # user.created_at when the column is still NULL. Frontend hits this
+    # endpoint on every page load via the layout, so this fires reliably
+    # without a dedicated event-tracking surface. Best-effort: errors
+    # are non-blocking (the funnel stamp must never break sign-in).
+    try:
+        if (
+            user.d1_return_at is None
+            and (now_utc() - user.created_at).total_seconds() >= 86400
+        ):
+            user.d1_return_at = now_utc()
+            db.commit()
+    except Exception:
+        db.rollback()
     # Archetype-survey eligibility (Phase D, 2026-04-22 clustering ship).
     # True → post-launch user who should see the survey between consent
     # and starter-task reveal. False → pre-launch user who bypasses the
@@ -358,6 +373,27 @@ def skip_tutorial(db: Session = Depends(get_db)):
     return {
         "ok": True,
         "tutorial_skipped_at": user.tutorial_skipped_at.isoformat(),
+    }
+
+
+@router.post("/users/me/skip-onboarding")
+def skip_onboarding(db: Session = Depends(get_db)):
+    """Stamp onboarding_completed_at. Idempotent — first call wins.
+
+    Re-introduced 2026-04-28 alongside the OnboardingFlow revival
+    (alembic 037 magic-for-alpha). The endpoint is the structural-invariant
+    bypass for users who don't want to brain-dump on signup — it stamps
+    the completion timestamp without creating a task. The 2026-05-21
+    retention query reads onboarding_completed_at as a binary signal,
+    not as "task created", so this skip is honest.
+    """
+    user = _current_user(db)
+    if user.onboarding_completed_at is None:
+        user.onboarding_completed_at = datetime.utcnow()
+        db.commit()
+    return {
+        "ok": True,
+        "onboarding_completed_at": user.onboarding_completed_at.isoformat(),
     }
 
 

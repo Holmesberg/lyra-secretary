@@ -268,3 +268,152 @@ def _count_users_with_pause_history(db: Session, days: int) -> int:
         or 0
     )
     return result
+
+
+@router.get("/admin/alpha_funnel")
+def alpha_funnel(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Alpha North Star + funnel snapshot.
+
+    The North Star (operator-set 2026-04-28): % of new users who create a
+    task AND start a timer within their first 3 minutes. Without this
+    measurement, the magic-for-alpha features are flying blind — we can't
+    tell if onboarding revival actually worked. Built from three lazy-stamp
+    columns on User: `first_task_at`, `first_timer_started_at`,
+    `d1_return_at` (alembic 037, 2026-04-28).
+
+    Research-integrity caveats (per docs/manifesto_alignment_audit_2026_04_28.md
+    audit item #7):
+      - Per VT-15 (anonymized retention trust-correlated bias), report
+        opt-out rate alongside any aggregate finding from this endpoint.
+      - Per VT-16 (cross-population methodology error), this is Population 2
+        (product research) data, NOT Population 1 (H1 hypothesis research).
+        Cross-population contamination is forbidden — DO NOT feed funnel
+        statistics into H1 correlation analyses.
+
+    Operator-only.
+
+    Response shape:
+      {
+        "calculated_at": ISO-8601,
+        "north_star": {
+          "metric": "task_created+timer_started within 3min",
+          "n_eligible": int,         # users with both stamps
+          "n_met": int,              # users who hit the 3-min target
+          "rate": float,             # n_met / n_eligible
+        },
+        "funnel": {
+          "signed_up": int,
+          "completed_onboarding": int,
+          "first_task_within_60s": int,
+          "first_timer_within_180s": int,
+          "returned_d1": int,
+        },
+        "users": [
+          { user_id, email_hash, created_at, onboarding_completed_at,
+            first_task_at, first_timer_started_at, d1_return_at,
+            seconds_to_first_task, seconds_to_first_timer, met_north_star },
+          ...
+        ],
+      }
+    """
+    _require_operator(db)
+    original_uid = get_current_user_id()
+    set_current_user_id(None)
+    try:
+        users = (
+            db.query(User)
+            .filter(User.is_operator.is_(False))  # exclude operator from cohort metrics
+            .order_by(User.user_id.asc())
+            .all()
+        )
+
+        rows: list[dict[str, Any]] = []
+        signed_up = len(users)
+        completed_onboarding = 0
+        first_task_within_60s = 0
+        first_timer_within_180s = 0
+        returned_d1 = 0
+        n_eligible = 0
+        n_met = 0
+
+        import hashlib as _hashlib
+
+        for u in users:
+            secs_to_task: Optional[int] = None
+            secs_to_timer: Optional[int] = None
+            if u.first_task_at:
+                secs_to_task = int((u.first_task_at - u.created_at).total_seconds())
+            if u.first_timer_started_at:
+                secs_to_timer = int(
+                    (u.first_timer_started_at - u.created_at).total_seconds()
+                )
+
+            if u.onboarding_completed_at is not None:
+                completed_onboarding += 1
+            if secs_to_task is not None and secs_to_task <= 60:
+                first_task_within_60s += 1
+            if secs_to_timer is not None and secs_to_timer <= 180:
+                first_timer_within_180s += 1
+            if u.d1_return_at is not None:
+                returned_d1 += 1
+
+            met_north_star = (
+                secs_to_task is not None
+                and secs_to_timer is not None
+                and secs_to_task <= 180
+                and secs_to_timer <= 180
+            )
+            if u.first_task_at and u.first_timer_started_at:
+                n_eligible += 1
+                if met_north_star:
+                    n_met += 1
+
+            rows.append({
+                "user_id": u.user_id,
+                "email_hash": _hashlib.sha256(
+                    (u.email or "").encode("utf-8")
+                ).hexdigest()[:12],
+                "created_at": u.created_at.isoformat(),
+                "onboarding_completed_at": (
+                    u.onboarding_completed_at.isoformat()
+                    if u.onboarding_completed_at else None
+                ),
+                "first_task_at": (
+                    u.first_task_at.isoformat() if u.first_task_at else None
+                ),
+                "first_timer_started_at": (
+                    u.first_timer_started_at.isoformat()
+                    if u.first_timer_started_at else None
+                ),
+                "d1_return_at": (
+                    u.d1_return_at.isoformat() if u.d1_return_at else None
+                ),
+                "seconds_to_first_task": secs_to_task,
+                "seconds_to_first_timer": secs_to_timer,
+                "met_north_star": met_north_star,
+            })
+
+        return {
+            "calculated_at": now_utc().isoformat(),
+            "north_star": {
+                "metric": "task_created+timer_started within 3min",
+                "n_eligible": n_eligible,
+                "n_met": n_met,
+                "rate": (n_met / n_eligible) if n_eligible > 0 else None,
+            },
+            "funnel": {
+                "signed_up": signed_up,
+                "completed_onboarding": completed_onboarding,
+                "first_task_within_60s": first_task_within_60s,
+                "first_timer_within_180s": first_timer_within_180s,
+                "returned_d1": returned_d1,
+            },
+            "users": rows,
+            "research_integrity_note": (
+                "Population 2 (product research) only. Per VT-15/VT-16, do NOT "
+                "feed these statistics into H1 hypothesis-research analyses. "
+                "Report opt-out rate alongside any aggregate finding."
+            ),
+        }
+    finally:
+        set_current_user_id(original_uid)

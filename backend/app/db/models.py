@@ -553,6 +553,22 @@ class User(Base):
     # revoked access.
     google_refresh_token: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    # Alpha funnel instrumentation (alembic 037, 2026-04-28). Tracks the
+    # operator's North Star metric: task_created + timer_started within
+    # the user's first 3 minutes. All three columns are lazily stamped
+    # — written once on first occurrence, never updated. NULL = event
+    # not yet occurred.
+    #   first_task_at — set in TaskManager.create_task on first call per user
+    #   first_timer_started_at — set in StopwatchManager.start on first call per user
+    #   d1_return_at — set in /users/me when called ≥24h after created_at and
+    #     this column is still NULL; approximates "returned next day"
+    # Per VT-15/VT-16 (research-integrity audit 2026-04-28): these are
+    # Population 2 (product research) signals only, not Population 1 (H1
+    # hypothesis research). Cross-population contamination forbidden —
+    # do not feed funnel statistics into H1 correlation analyses.
+    first_task_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    first_timer_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    d1_return_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
 
 class Archetype(Base):

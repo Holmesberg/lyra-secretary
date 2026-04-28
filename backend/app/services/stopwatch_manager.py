@@ -485,6 +485,17 @@ class StopwatchManager:
             task.initiation_delay_minutes = delay
         self.db.add(task)
 
+        # Alpha funnel (alembic 037, 2026-04-28): first_timer_started_at
+        # stamp, lazy-once. Drives the North Star metric task_created +
+        # timer_started within first 3 min via /v1/analytics/alpha_funnel.
+        try:
+            from app.db.models import User
+            u = self.db.query(User).filter(User.user_id == uid).first()
+            if u is not None and u.first_timer_started_at is None:
+                u.first_timer_started_at = actual_start
+        except Exception as e:
+            logger.warning(f"first_timer_started_at stamp failed (non-blocking): {e}")
+
         self.db.commit()
         self.db.refresh(session)
         self.db.refresh(task)

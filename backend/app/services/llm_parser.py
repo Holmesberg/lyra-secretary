@@ -45,6 +45,14 @@ logger = logging.getLogger(__name__)
 # Pydantic schema the LLM is asked to emit. We validate the response
 # against this; on ValidationError the task is marked 'failed' (after
 # 1 retry).
+#
+# Research-integrity guard (2026-04-28 audit, MANIFESTO Rule 11/12):
+# DO NOT surface `scope_estimate_minutes` as a user-visible chip or
+# planned-duration suggestion without first amending Rule 11
+# stratification + Rule 12 mediation test. The field is audit-only at
+# present. Surfacing it would constitute a calibration_nudge analog and
+# trigger VT-21 narrative-internalization risk on planned_duration.
+# See docs/manifesto_alignment_audit_2026_04_28.md §6.
 class LlmParseResult(BaseModel):
     priority: Optional[int] = Field(
         None,
@@ -277,11 +285,28 @@ def enrich_task_via_llm(db: Session, task_id: str) -> str:
     Caller (background worker) doesn't need to act on the return value;
     the value is also written to `task.llm_parse_status` in the same DB
     transaction.
+
+    P0 stress-test guards (2026-04-28):
+      - voided_at re-check on refetch: task can be voided between worker
+        SELECT and this UPDATE. Without re-check, enrichment writes
+        contaminate a soft-deleted row (silent audit-trail corruption).
+      - deadline-write guard: only writes deadline_id-affecting fields
+        when `deadline_match_source IN (NULL, 'parser_auto')`. If the
+        user already confirmed (`'llm_auto_confirmed'`) or set explicit
+        (`'user_explicit'`, `'user_corrected'`), enrichment leaves the
+        canonical deadline alone but still populates audit fields.
+        User intent always wins over async LLM.
     """
-    task = db.query(Task).filter(Task.task_id == task_id).first()
+    task = db.query(Task).filter(
+        Task.task_id == task_id,
+        Task.voided_at.is_(None),
+    ).first()
     if task is None:
-        logger.warning("enrich_task_via_llm: task_id=%s not found", task_id)
-        return "missing"
+        logger.info(
+            "enrich_task_via_llm: task_id=%s not found or voided — skipping",
+            task_id,
+        )
+        return "voided_or_missing"
     if task.llm_parse_status in ("enriched", "unavailable", "failed"):
         # Idempotent — already terminal. The background worker shouldn't
         # have selected this row but guard anyway.
@@ -356,20 +381,41 @@ def enrich_task_via_llm(db: Session, task_id: str) -> str:
         deadlines,
     )
 
+    # Audit-trail fields: ALWAYS write these. They never affect the
+    # canonical user-facing binding; they're the LLM's record of what it
+    # saw, used by analytics + the chip render decision.
     task.llm_priority = validated.priority
-    task.llm_deadline_candidates = candidates
-    if candidates:
-        # Top entry is the canonical "single best" candidate for query
-        # convenience — the JSON list is the authoritative source.
-        task.llm_inferred_deadline_id = candidates[0]["deadline_id"]
-        task.llm_deadline_match_confidence = candidates[0]["confidence"]
-    else:
-        task.llm_inferred_deadline_id = None
-        task.llm_deadline_match_confidence = None
     task.llm_sub_items = [
         {"text": s, "scope_bullet": True} for s in validated.sub_items if s.strip()
     ]
     task.llm_parsed_at = now_utc()
+
+    # Deadline-write guard (P0 stress-test 2026-04-28): only write
+    # deadline-related fields when the user hasn't already taken
+    # ownership of the binding. If `deadline_match_source` is set by
+    # user_explicit, user_corrected, or llm_auto_confirmed (the user
+    # already accepted a previous LLM suggestion — possible if
+    # enrichment retries on a re-queued row), DO NOT overwrite with
+    # async LLM output. User intent wins.
+    user_owns_deadline = task.deadline_match_source not in (None, "parser_auto")
+    if user_owns_deadline:
+        # Skip deadline-related writes; preserve nullability of the
+        # candidate fields (not a confidence, not a misleading list).
+        task.llm_deadline_candidates = None
+        task.llm_inferred_deadline_id = None
+        task.llm_deadline_match_confidence = None
+    else:
+        task.llm_deadline_candidates = candidates
+        if candidates:
+            # Top entry is the canonical "single best" candidate for
+            # query convenience — the JSON list is the authoritative
+            # source.
+            task.llm_inferred_deadline_id = candidates[0]["deadline_id"]
+            task.llm_deadline_match_confidence = candidates[0]["confidence"]
+        else:
+            task.llm_inferred_deadline_id = None
+            task.llm_deadline_match_confidence = None
+
     task.llm_parse_status = "enriched"
     db.commit()
     return "enriched"

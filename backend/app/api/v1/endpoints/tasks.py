@@ -437,6 +437,7 @@ def confirm_llm_binding(
     task_id: str,
     request: LlmConfirmRequest,
     db: Session = Depends(get_db),
+    x_idempotency_key: Optional[str] = Header(None),
 ) -> LlmConfirmResponse:
     """Magic-for-alpha Workstream 1 (2026-04-28). User clicked "keep" or
     "use this" on the LLM-suggested deadline / priority chip. Copy the
@@ -453,7 +454,23 @@ def confirm_llm_binding(
     Guardrail #2: never silently auto-bind. The user must POST here
     for the canonical deadline_id to change. The llm_inferred_*
     columns persist as audit trail.
+
+    Idempotency (P1 stress-test 2026-04-28): pass an X-Idempotency-Key
+    header to deduplicate double-taps within a 30-second window. Mirrors
+    the existing /create pattern. Without this, a flaky network +
+    eager user double-tap can cause two writes to deadline_match_source
+    interleaving with async LLM enrichment.
     """
+    redis = RedisClient()
+    if x_idempotency_key:
+        cached = redis.check_idempotency(f"llm_confirm:{task_id}:{x_idempotency_key}")
+        if cached:
+            logger.info(
+                "llm-confirm idempotency hit for task=%s key=%s",
+                task_id, x_idempotency_key,
+            )
+            return LlmConfirmResponse(**json.loads(cached))
+
     task = db.query(Task).filter(Task.task_id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -523,12 +540,19 @@ def confirm_llm_binding(
         priority_set = True
 
     db.commit()
-    return LlmConfirmResponse(
+    response = LlmConfirmResponse(
         task_id=task.task_id,
         deadline_id_after=deadline_id_after,
         deadline_match_source_after=task.deadline_match_source,
         priority_set=priority_set,
     )
+    if x_idempotency_key:
+        redis.set_idempotency(
+            f"llm_confirm:{task_id}:{x_idempotency_key}",
+            response.model_dump_json(),
+            ttl_seconds=30,
+        )
+    return response
 
 
 @router.post("/tasks/{task_id}/reject-llm-binding", response_model=LlmRejectResponse)
