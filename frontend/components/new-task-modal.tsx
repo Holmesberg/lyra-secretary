@@ -403,6 +403,12 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setCategoryMode(
       (CATEGORIES as readonly string[]).includes(editCat) ? "picker" : "custom"
     );
+    // Edit-modal parity (2026-04-28): load description + deadline_id
+    // from the task. Without this, opening edit + saving would silently
+    // wipe both fields — DATA LOSS bug.
+    setDescription(editingTask.description ?? "");
+    setShowDescription(!!editingTask.description);
+    setDeadlineId(editingTask.deadline_id ?? null);
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
@@ -491,6 +497,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           new_end: endDate.toISOString(),
           title: title.trim(),
           category,
+          // Edit-modal parity (2026-04-28): description + deadline_id
+          // now editable. Backend resets llm_parse_status='pending' on
+          // description change so the chip refreshes.
+          description: description.trim() || undefined,
+          // null = no change for backend (per Optional default), so use
+          // the explicit value here. Frontend can clear by setting to
+          // null via the deadline-picker's "clear" affordance — backend
+          // treats `deadline_id: null` as no-change in this commit; an
+          // explicit clear endpoint is a follow-up.
+          deadline_id: deadlineId ?? undefined,
         });
         resetForm();
         onCreated();
@@ -813,45 +829,47 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             )}
           </div>
 
-          {!isEdit && (
-            <div className="flex flex-col gap-1.5">
-              {!showDescription ? (
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-xs text-dust-deep transition-colors hover:text-dust"
-                  onClick={() => setShowDescription(true)}
-                >
-                  <span>Add details</span>
-                  <span className="text-[10px]">▾</span>
-                </button>
-              ) : (
-                <>
-                  <Label htmlFor="description">What does this involve? <span className="text-dust-deep font-normal">(optional)</span></Label>
-                  <textarea
-                    id="description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="- Step one&#10;- Step two&#10;- Step three"
-                    rows={3}
-                    className="rounded-sm border border-hairline-signal/30 bg-transparent px-3 py-2 text-sm text-parchment placeholder:text-dust-deep resize-none"
-                  />
-                  {(() => {
-                    const items = description.split("\n").filter((l) => /^\s*[-*•]\s|^\s*\d+[.)]\s/.test(l));
-                    const planned = durHours * 60 + durMinutes;
-                    if (items.length >= 2 && planned > 0) {
-                      const perItem = Math.round((planned / items.length) * 10) / 10;
-                      return (
-                        <span className="text-[11px] text-dust-deep">
-                          {items.length} items, ~{perItem} min each based on your estimate
-                        </span>
-                      );
-                    }
-                    return null;
-                  })()}
-                </>
-              )}
-            </div>
-          )}
+          {/* Edit-modal parity (2026-04-28): description was previously
+              gated to create-only. Now editable on edit too — the
+              reschedule endpoint resets llm_parse_status='pending' on
+              change so the chip refreshes. */}
+          <div className="flex flex-col gap-1.5">
+            {!showDescription ? (
+              <button
+                type="button"
+                className="flex items-center gap-1 text-xs text-dust-deep transition-colors hover:text-dust"
+                onClick={() => setShowDescription(true)}
+              >
+                <span>{isEdit ? "Edit details" : "Add details"}</span>
+                <span className="text-[10px]">▾</span>
+              </button>
+            ) : (
+              <>
+                <Label htmlFor="description">What does this involve? <span className="text-dust-deep font-normal">(optional)</span></Label>
+                <textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="- Step one&#10;- Step two&#10;- Step three"
+                  rows={3}
+                  className="rounded-sm border border-hairline-signal/30 bg-transparent px-3 py-2 text-sm text-parchment placeholder:text-dust-deep resize-none"
+                />
+                {(() => {
+                  const items = description.split("\n").filter((l) => /^\s*[-*•]\s|^\s*\d+[.)]\s/.test(l));
+                  const planned = durHours * 60 + durMinutes;
+                  if (items.length >= 2 && planned > 0) {
+                    const perItem = Math.round((planned / items.length) * 10) / 10;
+                    return (
+                      <span className="text-[11px] text-dust-deep">
+                        {items.length} items, ~{perItem} min each based on your estimate
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+              </>
+            )}
+          </div>
 
           {endBeforeStart && (
             <div className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
@@ -937,11 +955,15 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               Three modes:
                 1. deadlineId set → show "Bound to X" with a clear button
                 2. parserSuggestion present (and no manual choice) → soft suggestion
-                3. neither → "+ pick deadline" link (opens manual picker) */}
-          {!isEdit && !softConflict && !pausedConflict && !error && (
+                3. neither → "+ pick deadline" link (opens manual picker)
+              Edit-modal parity (2026-04-28): rendered in edit mode too.
+              parserSuggestion is suppressed in edit (only fires on first
+              create via parser preview), but the manual picker stays
+              available so users can rebind. */}
+          {!softConflict && !pausedConflict && !error && (
             <DeadlinePickerSlot
               deadlineId={deadlineId}
-              suggestion={parserSuggestion}
+              suggestion={isEdit ? null : parserSuggestion}
               showPicker={showDeadlinePicker}
               onConfirmSuggestion={() => {
                 if (parserSuggestion?.deadline_id) {

@@ -92,6 +92,18 @@ class TaskRescheduleRequest(BaseModel):
     new_end: Optional[datetime] = None  # If None, preserves duration
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     category: Optional[str] = Field(None, max_length=100)
+    # Edit-modal parity (2026-04-28): description + deadline_id were
+    # write-only via /v1/create; the edit modal could not change them.
+    # Now reschedule accepts both. When description changes,
+    # llm_parse_status is reset to 'pending' so the enrichment worker
+    # re-runs against the new text. deadline_id binding mirrors /create:
+    # validates ownership + bindable state, sets deadline_match_source
+    # to 'user_explicit'.
+    description: Optional[str] = Field(None, max_length=2000)
+    deadline_id: Optional[str] = Field(
+        None, min_length=36, max_length=36,
+        description="Optional UUID of the deadline to bind to. None = no change.",
+    )
 
     @validator('new_end')
     def end_after_start(cls, v, values):

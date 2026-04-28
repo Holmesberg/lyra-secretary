@@ -56,7 +56,15 @@ const LLM_TIER1 = 0.85;
 const LLM_TIER2 = 0.45;
 // Bullets / deadline keywords trigger the Tier 3 quiet "still learning"
 // fallback — only when the user clearly expected intelligence.
+// Tested against title + description (2026-04-28): operator pointed out
+// most users won't fill in description, so title-only signals like
+// "BCI paper writeup due Friday" must also light the Tier 3 line.
 const RICH_DESCRIPTION_RE = /(^[\s]*[-*•·]|due\b|deadline\b|by\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)|\bnext\s+\w+)/im;
+
+function expectsIntelligence(task: { title: string; description: string | null }): boolean {
+  const haystack = `${task.title}\n${task.description ?? ""}`;
+  return RICH_DESCRIPTION_RE.test(haystack);
+}
 
 export interface LlmEnrichmentChipProps {
   task: TaskRow;
@@ -93,8 +101,7 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
     if (
       task.llm_parse_status === "enriched" &&
       (resolved !== "confirmed") &&
-      task.description &&
-      RICH_DESCRIPTION_RE.test(task.description) &&
+      expectsIntelligence(task) &&
       ((task.llm_deadline_match_confidence ?? 0) < LLM_TIER2 ||
         (task.llm_deadline_candidates?.length ?? 0) === 0) &&
       task.llm_binding_rejected_at === null &&
@@ -132,8 +139,7 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
 
   if (!top || topConfidence < LLM_TIER2) {
     if (
-      task.description &&
-      RICH_DESCRIPTION_RE.test(task.description) &&
+      expectsIntelligence(task) &&
       resolved !== "confirmed"
     ) {
       return (

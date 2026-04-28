@@ -166,6 +166,8 @@ def reschedule_task(
             new_end=request.new_end,
             title=request.title,
             category=request.category,
+            description=request.description,
+            deadline_id=request.deadline_id,
         )
         
         conflict_info = [

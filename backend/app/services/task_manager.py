@@ -766,15 +766,24 @@ class TaskManager:
         new_end: Optional[datetime] = None,
         title: Optional[str] = None,
         category: Optional[str] = None,
+        description: Optional[str] = None,
+        deadline_id: Optional[str] = None,
     ) -> tuple[Task, list[Task]]:
         """
         Reschedule a task (preserves TaskID).
-        
+
         Args:
             task_id: Task to reschedule
             new_start: New start time (UTC)
             new_end: New end time (UTC), or None to preserve duration
-            
+            title, category: optional field updates (None = no change)
+            description: optional new description (None = no change). When
+                changed, resets llm_parse_status='pending' so the enrichment
+                worker re-runs against the new text.
+            deadline_id: optional new explicit deadline binding. Validates
+                ownership + bindable state; sets deadline_match_source =
+                'user_explicit', confidence = 1.0. None = no change.
+
         Returns:
             (updated_task, conflicts)
         """
@@ -786,7 +795,7 @@ class TaskManager:
 
         if not task.is_mutable:
             raise ImmutableTaskError("Cannot reschedule immutable task")
-        
+
         # Convert naive local times (Cairo) to UTC before storing
         new_start = to_utc(new_start)
 
@@ -806,7 +815,7 @@ class TaskManager:
             new_end,
             exclude_task_id=task.task_id,
         ).all_conflicts()
-        
+
         # Update task
         task.planned_start_utc = new_start
         task.planned_end_utc = new_end
@@ -815,6 +824,44 @@ class TaskManager:
             task.title = title
         if category is not None:
             task.category = category
+        # Description edit-mode parity (2026-04-28): when description
+        # changes, reset LLM enrichment so the worker re-runs against
+        # the new text. Stale candidates from prior content shouldn't
+        # linger. We keep llm_binding_rejected_at sticky — if user
+        # rejected once, the re-enrichment audits the data without
+        # re-popping the chip.
+        # Normalize both sides before comparing so whitespace-only
+        # diffs don't trigger unnecessary re-enrichment churn.
+        def _norm(s: Optional[str]) -> str:
+            return (s or "").strip()
+        if description is not None and _norm(description) != _norm(task.description):
+            task.description = description
+            task.llm_parse_status = "pending"
+            task.llm_inferred_deadline_id = None
+            task.llm_deadline_match_confidence = None
+            task.llm_deadline_candidates = None
+            task.llm_priority = None
+            task.llm_sub_items = None
+            task.llm_parsed_at = None
+        # Explicit deadline rebind via the editor — mirrors create_task's
+        # user_explicit path. Validates ownership + bindable state.
+        # KNOWN GAP (2026-04-28): clearing an existing binding via the
+        # editor (passing deadline_id=null) silently does nothing because
+        # we can't distinguish "no change" from "explicit clear" without a
+        # sentinel. Workaround: chip's [Not relevant] path stamps
+        # llm_binding_rejected_at; existing user_explicit bindings have
+        # no clear-via-modal path yet. Follow-up: add `clear_deadline:
+        # bool = False` to TaskRescheduleRequest.
+        if deadline_id is not None and deadline_id != task.deadline_id:
+            bound = self._validate_bindable_deadline(deadline_id)
+            if bound.user_id != task.user_id:
+                raise ValueError("Deadline does not belong to current user")
+            task.deadline_id = deadline_id
+            task.deadline_match_source = "user_explicit"
+            task.deadline_match_confidence = 1.0
+            # Auto-transition planned → active on first explicit bind
+            if bound.state == "planned":
+                bound.state = "active"
         task.reschedule_count = (task.reschedule_count or 0) + 1
         task.last_modified_at = now_utc()
         self.db.commit()

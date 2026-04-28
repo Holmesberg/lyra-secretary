@@ -105,10 +105,16 @@ def _seed_pause_history(
     (category, time_of_day=morning) cell. Spread back in time so the
     HISTORY_GATE_DAYS≥7 gate passes.
     """
-    base = datetime.utcnow() - timedelta(days=days_back_anchor)
+    # Anchor at 06:00 UTC — Cairo is UTC+3, so this is 09:00 local =
+    # morning per _time_of_day. Use `.replace(hour=6, ...)` to actually
+    # set the hour, NOT `+ timedelta(hours=6)` (which would add 6h to the
+    # current wall-clock UTC and land the pauses in the wrong tod cell —
+    # passes-by-luck flake observed 2026-04-28).
+    base = (datetime.utcnow() - timedelta(days=days_back_anchor)).replace(
+        hour=6, minute=0, second=0, microsecond=0
+    )
     for i, d in enumerate(durations_minutes):
-        # Anchor at 9am local-equivalent UTC (06:00 UTC for Cairo ≈ 09:00 local)
-        paused = (base + timedelta(days=i, hours=6, minutes=0))
+        paused = base + timedelta(days=i)
         resumed = paused + timedelta(minutes=d)
         # Each pause needs an associated task + session
         t = Task(

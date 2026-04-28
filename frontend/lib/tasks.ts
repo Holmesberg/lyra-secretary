@@ -323,6 +323,13 @@ export interface RescheduleInput {
   new_end: string;
   title?: string;
   category?: string;
+  /** Edit-modal parity (2026-04-28). When changed, backend resets
+   * llm_parse_status='pending' so the chip's candidate list refreshes
+   * against the new text. */
+  description?: string;
+  /** Explicit deadline rebind via the edit modal. Sets
+   * deadline_match_source='user_explicit' with confidence=1.0. */
+  deadline_id?: string | null;
 }
 
 export function rescheduleTask(input: RescheduleInput) {
