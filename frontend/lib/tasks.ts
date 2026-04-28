@@ -258,8 +258,24 @@ export function switchStopwatch(target_task_id: string) {
   );
 }
 
-export function startStopwatch(task_id: string, pre_task_readiness: number) {
-  return api<{ session_id: string; task_id: string; start_time: string }>(
+export interface StartStopwatchResponse {
+  session_id: string;
+  task_id: string;
+  start_time: string;
+  // LYR-097 (2026-04-28): backend returns is_future_task=true when the
+  // task's planned_start is >5min in the future. Frontend uses this to
+  // surface a one-line "started early" hint so the user knows the
+  // session timestamp will diverge from the calendar slot.
+  is_future_task?: boolean;
+  planned_start?: string | null;
+  pre_task_readiness?: number | null;
+  initiation_delay_minutes?: number | null;
+  parent_task_id?: string | null;
+  interruption_type?: string | null;
+}
+
+export function startStopwatch(task_id: string, pre_task_readiness: number): Promise<StartStopwatchResponse> {
+  return api<StartStopwatchResponse>(
     "/v1/stopwatch/start",
     {
       method: "POST",
@@ -378,6 +394,24 @@ export interface PausePredictionNotification {
   confidence: number;
   sample_size: number;
   active_task_id?: string;
+}
+
+/** W2 magic-for-alpha (alembic 038, 2026-04-28). Fires when a paused
+ * session's paused-for duration approaches the user's historical p75
+ * for the (category, time_of_day) cell — or hits the cold-start
+ * 30-min flat cap when training data is sparse. */
+export interface ResumePredictionNotification {
+  type: "resume_prediction";
+  firing_id: string;
+  session_id: string;
+  task_id: string;
+  task_title: string;
+  category: string | null;
+  paused_for_minutes: number;
+  /** Null when mechanism === 'cold_start_synthetic' (no historical p75). */
+  p75_pause_minutes: number | null;
+  mechanism: "category_tod" | "cold_start_synthetic";
+  confidence: number;
 }
 
 export interface PendingNotificationsResponse {

@@ -17,6 +17,8 @@ import {
   type StopResponse,
   type StopwatchStatus,
   type PausePredictionNotification,
+  type ResumePredictionNotification,
+  resumeStopwatch,
 } from "@/lib/tasks";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import { TaskRow } from "@/components/task-row";
@@ -29,6 +31,7 @@ import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
 import { PausePredictionBanner } from "@/components/pause-prediction-banner";
+import { ResumePredictionBanner } from "@/components/resume-prediction-banner";
 import { DeadlineRow } from "@/components/deadline-row";
 import { DeadlineModal } from "@/components/deadline-modal";
 import { listDeadlines, type DeadlineResponse } from "@/lib/deadlines";
@@ -211,6 +214,17 @@ function TodayInner() {
     for (const n of notifQ.data?.notifications ?? []) {
       if (n.type === "pause_prediction" && typeof n.firing_id === "string" && !dismissedFirings.has(n.firing_id)) {
         return n as unknown as PausePredictionNotification;
+      }
+    }
+    return null;
+  })();
+  // W2 magic-for-alpha (alembic 038, 2026-04-28). Mirrors pause-prediction
+  // selection above. Banner mounts when status?.paused === true and a
+  // matching firing hasn't been dismissed.
+  const resumePrediction: ResumePredictionNotification | null = (() => {
+    for (const n of notifQ.data?.notifications ?? []) {
+      if (n.type === "resume_prediction" && typeof n.firing_id === "string" && !dismissedFirings.has(n.firing_id)) {
+        return n as unknown as ResumePredictionNotification;
       }
     }
     return null;
@@ -456,7 +470,32 @@ function TodayInner() {
     );
     setReadinessFor(null);
     try {
-      await startStopwatch(task.task_id, readiness);
+      const startResp = await startStopwatch(task.task_id, readiness);
+      // LYR-097 (2026-04-28): surface "started early" hint when backend
+      // flags the task as future. Inline 4s toast — non-blocking,
+      // visible-once acknowledgment so the user knows the session
+      // timestamp diverges from the calendar slot.
+      if (startResp.is_future_task && startResp.planned_start) {
+        try {
+          const planned = new Date(startResp.planned_start);
+          const minutesEarly = Math.max(
+            0,
+            Math.round((planned.getTime() - Date.now()) / 60000)
+          );
+          const timeLabel = planned.toLocaleTimeString([], {
+            hour: "numeric", minute: "2-digit",
+          });
+          setErrorMsg(
+            `Heads up — this was scheduled for ${timeLabel}, you started ${minutesEarly} min early. The session will record from now.`
+          );
+          // Auto-clear so it doesn't hover indefinitely
+          setTimeout(() => setErrorMsg((prev) =>
+            prev?.startsWith("Heads up — this was scheduled") ? null : prev
+          ), 5000);
+        } catch {
+          // Defensive — bad date string shouldn't break the start flow
+        }
+      }
       refresh();
     } catch (e: any) {
       if (snapshot !== undefined) {
@@ -743,6 +782,28 @@ function TodayInner() {
           }}
           onDismissed={() =>
             setDismissedFirings((s) => new Set(s).add(pausePrediction!.firing_id))
+          }
+        />
+      )}
+
+      {/* W2 resume prediction banner (only when paused). Operator-locked
+          2026-04-28: surfaces "you usually resume by now" or cold-start
+          "Lyra hasn't seen enough yet" copy. Resume button hits
+          /v1/stopwatch/resume; dismiss is local-state. */}
+      {resumePrediction && status?.active && status?.paused && (
+        <ResumePredictionBanner
+          prediction={resumePrediction}
+          onResume={async () => {
+            setDismissedFirings((s) => new Set(s).add(resumePrediction!.firing_id));
+            try {
+              await resumeStopwatch();
+              refresh();
+            } catch (e: any) {
+              setErrorMsg(e?.message ?? "Failed to resume");
+            }
+          }}
+          onDismissed={() =>
+            setDismissedFirings((s) => new Set(s).add(resumePrediction!.firing_id))
           }
         />
       )}
