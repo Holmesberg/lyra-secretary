@@ -4,15 +4,19 @@
  *
  * Renders post-create on a TaskRow when the LLM enrichment worker has
  * populated `task.llm_*` fields. Three tiers of progressive revelation
- * (operator-locked 2026-04-28):
+ * (operator-locked 2026-04-28; Tier 2 copy restored to operator's
+ * Q2 preview verbatim 2026-04-28 evening after I drifted to "Possible
+ * match" without explicit re-confirmation):
  *
  *   Tier 1 — confidence ≥ LLM_TIER1 (0.85): silent auto-bind chip
  *     "📎 Bound to {top.title} · {pct}% match · [Confirm] [Change]"
- *   Tier 2 — 0.45 ≤ confidence < 0.85: soft MCQ
- *     "📎 Possible match — pick one or none"
- *     • {candidate[0].title}    {pct}%
- *     • {candidate[1].title}    {pct}%   (if exists, up to 5)
- *     • None of these
+ *   Tier 2 — 0.45 ≤ confidence < 0.85: soft MCQ radio list
+ *     "📎 Related to one of these?                   [×]"
+ *     "   ○ {candidate[0].title}        87%"
+ *     "   ○ {candidate[1].title}        52%   (up to 5)"
+ *     "   ○ None of these"
+ *     Each radio is clickable — click binds (or rejects). No separate
+ *     Confirm button at this tier; selection IS the action.
  *   Tier 3 — confidence < 0.45 OR no candidates:
  *     If user description had bullets / deadline-token keywords, show
  *     ONE quiet grey line: "Still learning from your patterns."
@@ -42,7 +46,7 @@
  * captured by absence of llm_binding_rejected_at when llm_parse_status
  * is 'enriched' for an old task).
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Paperclip, Check, X, ChevronDown, ChevronRight } from "lucide-react";
 
 import {
@@ -77,10 +81,32 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
   const [busy, setBusy] = useState(false);
   const [resolved, setResolved] = useState<"confirmed" | "rejected" | "dismissed" | null>(null);
   const [expanded, setExpanded] = useState(false);
+
+  // Bug Hunt #24 cleanup: without this, the resolved=confirmed ack chip
+  // ("Bound. Thanks for confirming.") never clears even after the parent
+  // refetches new task data, because resolved is local state checked
+  // FIRST in the render dispatch. After 1100ms reset confirmed/rejected
+  // so the chip falls through to the post-resolution suppress logic
+  // (deadline_match_source != null/parser_auto → returns null cleanly).
+  //
+  // Bug Hunt #36 (caught in same edit): dismissed must NOT auto-reset.
+  // Dismiss = "hide for this session, no DB write" — if we reset it
+  // after 1.1s the chip re-appears 1 second later, defeating the
+  // dismiss UX. Dismissed persists for the component's lifetime.
+  useEffect(() => {
+    if (resolved === null || resolved === "dismissed") return;
+    const t = setTimeout(() => setResolved(null), 1100);
+    return () => clearTimeout(t);
+  }, [resolved]);
   const [error, setError] = useState<string | null>(null);
 
-  // ── Pending state — quiet "Lyra is reading..." dust hint, no actions
-  if (task.llm_parse_status === "pending") {
+  // ── Pending state with no candidate data → "Lyra is reading…"
+  // When pending but heuristic has pre-populated candidates (operator's
+  // 2026-04-28 instant-tier directive), fall through to render the
+  // chip immediately. The async LLM may refresh candidates later.
+  const hasCandidateData =
+    (task.llm_deadline_candidates?.length ?? 0) > 0;
+  if (task.llm_parse_status === "pending" && !hasCandidateData) {
     return (
       <div className="text-[10px] text-dust-deep italic">
         Lyra is reading this…
@@ -89,8 +115,14 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
   }
 
   // ── Kill-switch conditions — no chip at all
+  // Note: 'pending' status with candidates falls through (handled above)
+  // so the chip can render Tier 1/2/3 from heuristic data while LLM
+  // enrichment is still in flight.
+  const llmAvailable =
+    task.llm_parse_status === "enriched" ||
+    (task.llm_parse_status === "pending" && hasCandidateData);
   if (
-    task.llm_parse_status !== "enriched" ||
+    !llmAvailable ||
     task.llm_binding_rejected_at !== null ||
     resolved === "rejected" ||
     resolved === "dismissed"
@@ -299,37 +331,52 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
     );
   }
 
-  // ── Tier 2 (medium-confidence, soft MCQ)
-  // Hedged copy per feedback_trust_copy_register: drop numeric framing.
+  // ── Tier 2 (medium-confidence, soft MCQ radio list)
+  // Operator-approved copy 2026-04-28: question header + radio list.
+  // Each radio click is the action — no separate Confirm button.
+  // Percentages stay on each candidate (operator's preview shows them);
+  // they help disambiguate. Dismiss × is the only button — local-state
+  // hide, no DB write, per feedback_dismiss_not_mute. "None of these"
+  // is the model-teaching reject signal (calls /reject-llm-binding).
   return (
     <ChipShell error={error}>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Paperclip className="h-3 w-3 shrink-0" />
-        <span className="text-[11px]">
-          <span className="text-dust">Possible match — </span>
-          <span className="font-medium text-parchment">{top.title}</span>
-          {candidates.length > 1 && (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="ml-1.5 text-[10px] text-dust-deep underline-offset-2 hover:underline"
-            >
-              {expanded ? "fewer" : `or ${candidates.length - 1} more`}
-            </button>
-          )}
-        </span>
-      </div>
-      <div className="flex items-center gap-1">
-        <ChipBtn
-          kind="primary"
-          label="Confirm"
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <Paperclip className="h-3 w-3 shrink-0" />
+          <span className="text-[11px] font-medium text-parchment">
+            Related to one of these?
+          </span>
+        </div>
+        <button
+          type="button"
+          aria-label="Dismiss this once"
           disabled={busy}
-          onClick={() => onPickCandidate(top)}
-          icon={<Check className="h-3 w-3" />}
-        />
-        <ChipBtn
-          kind="ghost"
-          label="None of these"
+          onClick={() => setResolved("dismissed")}
+          className="text-dust-deep transition-colors hover:text-parchment disabled:opacity-50"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="flex flex-col gap-0.5 pt-0.5">
+        {candidates.map((c) => (
+          <button
+            key={c.deadline_id}
+            type="button"
+            disabled={busy}
+            onClick={() => onPickCandidate(c)}
+            className="flex items-center justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-[11px] text-dust transition-colors hover:bg-void-2/60 hover:text-parchment disabled:opacity-50"
+          >
+            <span className="flex items-center gap-1.5 truncate">
+              <span className="text-dust-deep">○</span>
+              <span className="truncate">{c.title}</span>
+            </span>
+            <span className="shrink-0 text-[10px] text-dust-deep">
+              {Math.round(c.confidence * 100)}%
+            </span>
+          </button>
+        ))}
+        <button
+          type="button"
           disabled={busy}
           onClick={async () => {
             setBusy(true); setError(null);
@@ -341,24 +388,12 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
               setError(e instanceof Error ? e.message : "Reject failed");
             } finally { setBusy(false); }
           }}
-        />
-        <button
-          type="button"
-          aria-label="Dismiss this once"
-          disabled={busy}
-          onClick={() => setResolved("dismissed")}
-          className="text-dust-deep transition-colors hover:text-parchment disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-[11px] text-dust-deep transition-colors hover:bg-void-2/60 hover:text-dust disabled:opacity-50"
         >
-          <X className="h-3 w-3" />
+          <span>○</span>
+          <span>None of these</span>
         </button>
       </div>
-      {expanded && candidates.length > 1 && (
-        <CandidateList
-          candidates={candidates.slice(1)}
-          disabled={busy}
-          onPick={(d) => onPickCandidate(d)}
-        />
-      )}
     </ChipShell>
   );
 

@@ -237,6 +237,11 @@ class TaskManager:
         bound_via_heuristic = False
         heuristic_source: Optional[str] = None
         bound_confidence: Optional[float] = None
+        # Tracked so we can pre-populate task.llm_deadline_candidates
+        # below — operator's "ensure deadline aware with tiers" directive
+        # wants tiers to fire INSTANTLY at create time when heuristic
+        # produces candidates, not after the 5-9s LLM wait.
+        heuristic_match_for_candidates = None
         if deadline_id is not None:
             bound_deadline = self._validate_bindable_deadline(deadline_id)
             bound_confidence = 1.0
@@ -264,6 +269,7 @@ class TaskManager:
             )
             if candidates:
                 heuristic_match = score_deadlines(title, description, candidates)
+                heuristic_match_for_candidates = heuristic_match
                 if heuristic_match.auto_bind and heuristic_match.candidates:
                     top = heuristic_match.candidates[0]
                     bound_deadline = next(
@@ -331,6 +337,39 @@ class TaskManager:
         # (rejected by _validate_bindable_deadline above).
         if bound_deadline is not None and bound_deadline.state == "planned":
             bound_deadline.state = "active"
+
+        # Pre-populate llm_deadline_candidates from the heuristic match so
+        # the chip's Tier 1/2/3 dispatch fires INSTANTLY at create time
+        # rather than waiting for async LLM enrichment (5-9s, sometimes
+        # longer cold). Operator-locked 2026-04-28: "ensure deadline
+        # aware with tiers we discussed."
+        # Skipped when:
+        #   - User passed explicit deadline_id (chip suppressed via
+        #     user_explicit source guard anyway)
+        #   - Heuristic produced no candidates (Tier 3 quiet line will
+        #     fire from the chip's expectsIntelligence check; LLM may
+        #     populate later)
+        # The async LLM worker may overwrite these fields with stronger
+        # signal — that's intentional. The candidate-list refresh is
+        # softer than canonical-deadline rewrite (covered by trust-not-
+        # rewrite contract); user sees suggestions update but their
+        # chosen binding is never silently changed.
+        if (
+            deadline_id is None
+            and heuristic_match_for_candidates is not None
+            and heuristic_match_for_candidates.candidates
+        ):
+            task.llm_deadline_candidates = [
+                {
+                    "deadline_id": c.deadline_id,
+                    "title": c.title,
+                    "confidence": c.score,
+                }
+                for c in heuristic_match_for_candidates.candidates
+            ]
+            top_candidate = heuristic_match_for_candidates.candidates[0]
+            task.llm_inferred_deadline_id = top_candidate.deadline_id
+            task.llm_deadline_match_confidence = top_candidate.score
 
         self.db.add(task)
         self.db.flush()  # Get task_id
