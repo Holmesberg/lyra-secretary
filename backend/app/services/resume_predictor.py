@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import PauseEvent, StopwatchSession, Task
 from app.services.bias_factor_service import _time_of_day
-from app.utils.time_utils import now_utc, to_local
+from app.utils.time_utils import now_utc, strip_tz, to_local
 
 HISTORY_GATE_DAYS = 7
 MIN_SAMPLES = 5
@@ -90,6 +90,9 @@ class ResumePredictor:
         if now is None:
             now = now_utc()
 
+        # strip_tz: paused_at_utc may come from DB (Supabase TIMESTAMPTZ)
+        # — see time_utils.strip_tz docstring.
+        paused_at_utc = strip_tz(paused_at_utc)
         paused_for = (now - paused_at_utc).total_seconds() / 60.0
         if paused_for <= 0:
             return None
@@ -165,7 +168,7 @@ class ResumePredictor:
         )
         if earliest is None:
             return False
-        return (now - earliest).days >= HISTORY_GATE_DAYS
+        return (now - strip_tz(earliest)).days >= HISTORY_GATE_DAYS
 
     def _collect_cell_pauses(
         self,

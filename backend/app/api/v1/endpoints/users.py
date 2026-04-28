@@ -23,7 +23,7 @@ from app.services.archetype_service import (
     score_meq,
 )
 from app.services.calendar_sync import store_refresh_token
-from app.utils.time_utils import now_utc
+from app.utils.time_utils import now_utc, strip_tz
 
 # Phase D archetype-survey eligibility gate. Users created on or after
 # this timestamp see the survey during onboarding (after consent, before
@@ -98,6 +98,10 @@ def get_me(db: Session = Depends(get_db)):
                 .scalar()
             )
             if earliest_task is not None:
+                # Strip tz: Supabase TIMESTAMPTZ default returns aware
+                # even when SQLAlchemy says DateTime — see time_utils
+                # strip_tz docstring.
+                earliest_task = strip_tz(earliest_task)
                 user.onboarding_completed_at = earliest_task
                 # Also stamp first_task_at if alembic 037 has been
                 # applied — same earliest timestamp.
@@ -115,7 +119,7 @@ def get_me(db: Session = Depends(get_db)):
     try:
         if (
             user.d1_return_at is None
-            and (now_utc() - user.created_at).total_seconds() >= 86400
+            and (now_utc() - strip_tz(user.created_at)).total_seconds() >= 86400
         ):
             user.d1_return_at = now_utc()
             db.commit()

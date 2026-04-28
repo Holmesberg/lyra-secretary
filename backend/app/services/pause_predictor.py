@@ -40,7 +40,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.models import PauseEvent, StopwatchSession, Task
-from app.utils.time_utils import now_utc
+from app.utils.time_utils import now_utc, strip_tz
 
 HISTORY_GATE_DAYS = 7
 MIN_SAMPLES = 5
@@ -122,7 +122,8 @@ class PausePredictor:
         )
         if earliest is None:
             return False
-        span_days = (now - earliest).total_seconds() / 86400.0
+        # strip_tz: Supabase TIMESTAMPTZ default returns aware
+        span_days = (now - strip_tz(earliest)).total_seconds() / 86400.0
         return span_days >= HISTORY_GATE_DAYS
 
     # ------------------------------------------------------------------

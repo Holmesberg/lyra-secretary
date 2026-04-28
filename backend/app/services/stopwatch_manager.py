@@ -11,7 +11,7 @@ from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
 from app.db.scoping import get_current_user_id
 from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
-from app.utils.time_utils import now_utc, to_local
+from app.utils.time_utils import now_utc, to_local, strip_tz
 
 logger = logging.getLogger(__name__)
 
@@ -265,12 +265,18 @@ class StopwatchManager:
 
         The status payload exposes both. Banner uses seconds as its tick
         basis so resume-after-swap doesn't snap to the last whole minute.
+
+        Tz hotfix (2026-04-28): strip_tz on every datetime reaching the
+        subtraction — Supabase TIMESTAMPTZ + Redis-ISO-with-offset both
+        produce aware datetimes that crash against now_utc()'s naive
+        return. See time_utils.strip_tz docstring.
         """
         now = now_utc()
-        total_seconds = (now - session.start_time_utc).total_seconds()
+        session_start = strip_tz(session.start_time_utc)
+        total_seconds = (now - session_start).total_seconds() if session_start else 0.0
         paused_seconds = (session.total_paused_minutes or 0.0) * 60.0
         if pause_state:
-            paused_at = datetime.fromisoformat(pause_state["paused_at"])
+            paused_at = strip_tz(datetime.fromisoformat(pause_state["paused_at"]))
             paused_seconds += (now - paused_at).total_seconds()
         active_seconds = max(0.0, total_seconds - paused_seconds)
         return int(active_seconds)
@@ -618,7 +624,8 @@ class StopwatchManager:
             raise StopwatchNotPausedError("Stopwatch is not paused")
 
         now = now_utc()
-        paused_at = datetime.fromisoformat(pause_state["paused_at"])
+        # strip_tz: Redis-stored ISO may parse to aware (see time_utils).
+        paused_at = strip_tz(datetime.fromisoformat(pause_state["paused_at"]))
         # Float minutes — no sub-minute truncation (LYR-094).
         pause_duration = (now - paused_at).total_seconds() / 60.0
 
@@ -969,7 +976,11 @@ class StopwatchManager:
                 # happen under normal flow). Surface only the most-recently-
                 # paused one.
                 continue
-            paused_at = session.paused_at_utc
+            # Strip tz defensively: Supabase may return aware datetimes
+            # for these DateTime columns (TIMESTAMPTZ default). See
+            # time_utils.strip_tz docstring.
+            paused_at = strip_tz(session.paused_at_utc)
+            session_start = strip_tz(session.start_time_utc)
             paused_mins = (
                 int((now_utc() - paused_at).total_seconds() / 60)
                 if paused_at else 0
@@ -980,8 +991,8 @@ class StopwatchManager:
             # the banner doesn't display 0:00 during the swap round-trip
             # (Apr 25: operator reported 16s "counting up from 0:00"
             # over Cloudflare Tunnel + Supabase before refetch reconciled).
-            if paused_at and session.start_time_utc:
-                wall_sec = (paused_at - session.start_time_utc).total_seconds()
+            if paused_at and session_start:
+                wall_sec = (paused_at - session_start).total_seconds()
                 paused_sec = (session.total_paused_minutes or 0.0) * 60.0
                 elapsed_sec = int(max(0.0, wall_sec - paused_sec))
                 elapsed_min = elapsed_sec // 60
@@ -1080,7 +1091,7 @@ class StopwatchManager:
         # If paused, auto-resume: count final pause duration
         pause_state = self.redis.get_pause_state(user_id)
         if pause_state:
-            paused_at = datetime.fromisoformat(pause_state["paused_at"])
+            paused_at = strip_tz(datetime.fromisoformat(pause_state["paused_at"]))
             final_pause = (stop_time - paused_at).total_seconds() / 60.0  # float
             session.total_paused_minutes += final_pause
             session.paused_at_utc = None
@@ -1195,7 +1206,7 @@ class StopwatchManager:
         if orphan:
             parent_task = self.db.query(Task).filter(Task.task_id == orphan.task_id).first()
             if parent_task:
-                paused_at = orphan.paused_at_utc
+                paused_at = strip_tz(orphan.paused_at_utc)
                 paused_mins = int((now_utc() - paused_at).total_seconds() / 60) if paused_at else 0
                 paused_parent = {
                     "task_id": parent_task.task_id,
@@ -1293,7 +1304,9 @@ class StopwatchManager:
         total_paused = session.total_paused_minutes if session else 0
         is_paused = pause_state is not None
 
-        start_time = datetime.fromisoformat(active["start_time"])
+        # Strip tz defensively: ISO strings stored in Redis may parse to
+        # aware datetimes if the original isoformat included tz info.
+        start_time = strip_tz(datetime.fromisoformat(active["start_time"]))
         # elapsed = active work time only (current pause not counted until resumed)
         if session:
             elapsed_seconds = self._active_elapsed_seconds(session, pause_state)
@@ -1318,7 +1331,7 @@ class StopwatchManager:
         current_pause_started_at: Optional[str] = None
         if is_paused and pause_state and pause_state.get("paused_at"):
             try:
-                paused_at_dt = datetime.fromisoformat(pause_state["paused_at"])
+                paused_at_dt = strip_tz(datetime.fromisoformat(pause_state["paused_at"]))
                 delta = (now_utc() - paused_at_dt).total_seconds()
                 current_pause_seconds = max(0, int(delta))
                 current_pause_started_at = pause_state["paused_at"]
