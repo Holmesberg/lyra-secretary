@@ -19,7 +19,11 @@
  */
 import { api } from "./api";
 
-export type IntegrationId = "google_calendar" | "notion" | "ics";
+export type IntegrationId =
+  | "google_calendar"
+  | "moodle"
+  | "notion"
+  | "ics";
 
 export type IntegrationStatus =
   | "connected"
@@ -74,6 +78,27 @@ export const INTEGRATIONS: IntegrationDef[] = [
     monogram: "GC",
     monogramClass:
       "bg-signal/15 text-signal border border-signal/30",
+  },
+  {
+    // Moodle LMS — alpha-cohort priority since trusted users are
+    // college students (operator dogfood read 2026-04-28: most
+    // deadlines come from course pages they manually re-type into
+    // Lyra). Surfaced as "coming soon" until the import shape is
+    // designed (likely an .ics calendar URL pull from Moodle's
+    // calendar export, since most installations expose one).
+    id: "moodle",
+    name: "Moodle",
+    description:
+      "Pull course deadlines straight from your school's Moodle.",
+    capabilityLine:
+      "Read-only — assignments and quiz due dates appear as Lyra deadlines. We won't create posts or modify your courses.",
+    scopes: [],
+    authShape: "url_subscription",
+    available: false,
+    comingSoonNote: "Coming soon — alpha-cohort priority.",
+    monogram: "Mo",
+    monogramClass:
+      "bg-ember/15 text-ember border border-ember/30",
   },
   {
     id: "notion",

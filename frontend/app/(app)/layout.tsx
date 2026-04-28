@@ -8,13 +8,12 @@ import { AppShell } from "@/components/app-shell";
 import { ArchetypeSurvey } from "@/components/archetype-survey";
 import { ConsentModal } from "@/components/consent-modal";
 import { TutorialOverlay } from "@/components/tutorial-overlay";
-// Re-enabled 2026-04-28 alongside magic-for-alpha W1. The placeholder-
-// abandonment failure mode (u12 + u14 in 2026-04-21 dogfood) was for an
-// EMPTY surface — the brain-dump now feeds the LLM enrichment worker, so
-// bullets / deadlines / scope mentioned in the description surface as
-// chips on /today within ~10s of redirect. The friction-vs-value trade
-// flipped. See docs/strategic_decisions_april_28.md (TBD) and
-// `memory/feedback_logging_friction.md` for the reframe.
+// Brain-dump onboarding kept — operator: "catches the user from the get
+// go." Implementation pivoted 2026-04-28 evening to multi-parse + auto-
+// bind + one-tap confirmation block: user types free text, LLM splits
+// into real tasks + deadlines, heuristic suggests bindings, user
+// confirms via one-tap questions, all rows commit in a single
+// transaction. No more meta "Plan your week" task at the end.
 import { OnboardingFlow } from "@/components/onboarding-flow";
 
 type Me = {
@@ -26,6 +25,10 @@ type Me = {
   // security.py). Drives the 2026-05-21 kill-criterion query regardless
   // of whether the onboarding surface is live.
   onboarding_completed_at: string | null;
+  // True if the user has any non-voided, non-SKIPPED task. False keeps
+  // the brain-dump gate visible even after onboarding_completed_at is
+  // stamped — re-engagement check (operator-locked 2026-04-29).
+  has_active_task_history: boolean;
   // Guided tour stamps (alembic 029, 2026-04-22). Both null AND
   // onboarding_completed_at NOT NULL triggers the TutorialOverlay
   // render below. Either stamp set prevents re-fire.
@@ -166,27 +169,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // have an ArchetypeAssignment row → archetype_survey_eligible=false,
   // so they don't re-fire.
   const needsArchetypeSurvey = !needsConsent && me.archetype_survey_eligible;
-  // Tour gate: onboarding done AND neither tutorial stamp set AND
-  // archetype-survey gate has passed (so we don't stack three modals
-  // on first-run).
-  const needsTutorial =
-    !needsConsent &&
-    !needsArchetypeSurvey &&
-    !!me.onboarding_completed_at &&
-    !me.tutorial_completed_at &&
-    !me.tutorial_skipped_at;
+  // Tutorial gate disabled 2026-04-28 evening per operator: "remove the
+  // tutorial we'll make a better more advanced one." Component file
+  // and stamp columns kept in tree for the future revival; gate logic
+  // stays in this comment block as the canonical reference shape when
+  // the new tutorial ships.
+  //   const needsTutorial =
+  //     !needsConsent &&
+  //     !needsArchetypeSurvey &&
+  //     !!me.onboarding_completed_at &&
+  //     !me.tutorial_completed_at &&
+  //     !me.tutorial_skipped_at;
+  const needsTutorial = false;
 
-  // Re-enabled 2026-04-28 alongside magic-for-alpha W1. The brain-dump
-  // surface gates the entire (app) routing tree until the user either
-  // creates their first task OR explicitly skips. Both paths stamp
-  // user.onboarding_completed_at via createTask / POST /users/me/skip-
-  // onboarding respectively. The skip path is structural-invariant:
-  // user can always bypass; the column flip distinguishes "skipped" from
-  // "completed via task" for the 2026-05-21 retention kill-criterion
-  // query. With the LLM async parser shipped, brain-dump bullets become
-  // chip data on /today within ~10s of redirect — the friction now buys
-  // visible value, which the empty placeholder did not.
-  const needsOnboarding = !needsConsent && !me.onboarding_completed_at;
+  // Brain-dump onboarding gate — operator-locked 2026-04-28 evening:
+  // "catches the user from the get go." Refactored implementation
+  // (multi-parse + auto-bind + one-tap confirmation) replaces the
+  // single-meta-task version.
+  //
+  // 2026-04-29 amendment (operator): a user who stamped
+  // onboarding_completed_at but never created a real (non-skipped,
+  // non-voided) task should re-see the brain-dump on next visit. Bug
+  // case: empty-commit stamps onboarding, leaving the user inside the
+  // app with nothing to do. The has_active_task_history flag from /me
+  // catches this and resets the gate.
+  const needsOnboarding =
+    !needsConsent &&
+    (!me.onboarding_completed_at || !me.has_active_task_history);
   if (needsOnboarding) {
     return (
       <OnboardingFlow
@@ -201,6 +210,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {needsConsent && <ConsentModal onAccepted={refetchMe} />}
       {!needsConsent && children}
       {needsArchetypeSurvey && <ArchetypeSurvey onFinished={refetchMe} />}
+      {/* Tutorial overlay removed 2026-04-28 — operator: "we'll make a
+          better more advanced one." Component file kept in tree for
+          future revival. */}
       {needsTutorial && <TutorialOverlay onFinished={refetchMe} />}
     </AppShell>
   );

@@ -16,8 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { IntegrationsSection } from "@/components/integrations-section";
-import { ArchetypeProfileSection } from "@/components/archetype-profile-section";
-import { FeedbackLink } from "@/components/feedback-link";
+import { ArchetypeSurvey } from "@/components/archetype-survey";
 
 type MeArchetype = {
   archetype_id: string | null;
@@ -40,18 +39,15 @@ export default function SettingsPage() {
   const { data: session } = useSession();
   const userEmail = session?.user?.email ?? "";
 
-  // --- Archetype profile section (2026-04-22 clustering ship) ---
-  // Persistent Settings surface showing current archetype state + a
-  // retake affordance. Replaces the earlier retrofit banner —
-  // operator asked 2026-04-22 for: (a) button always available, (b)
-  // emphasis retake after 3 months. See
-  // docs/strategic_decisions_april_22.md §5.
+  // --- Survey retake affordance (slimmed 2026-04-29) ---
+  // Earlier this section embedded the full ArchetypeProfileSection
+  // (radar percentages, two-week comparison, dynamic-vs-survey
+  // narrative). Operator marked that as redundant — the same content
+  // already lives on /insights. Settings keeps only the retake CTA
+  // below the integrations section.
   //
-  // Apr 25 perf fix: shared cache key ["me"] with (app)/layout.tsx and
-  // archetype-insights-card.tsx. By the time the user navigates to
-  // /settings, the layout has already populated the cache — this read
-  // is instant. Previously did its own useEffect+api() round-trip,
-  // which paid the full ~1s /me cost (3+s on cold pool) on every visit.
+  // Cache key ["me"] still shared with (app)/layout.tsx and the
+  // /insights archetype card so the retake-button render is instant.
   const meQ = useQuery<MeArchetype>({
     queryKey: ["me"],
     queryFn: () => api<MeArchetype>("/v1/users/me"),
@@ -64,6 +60,12 @@ export default function SettingsPage() {
   function refreshArchetypeMe() {
     qc.invalidateQueries({ queryKey: ["me"] });
   }
+  const [surveyOpen, setSurveyOpen] = useState(false);
+  // Button label — never-completed users see "Take", returning users
+  // see "Retake". Same modal opens either way.
+  const surveyButtonLabel = archetypeMe?.archetype_assignment_completed
+    ? "Retake survey"
+    : "Take the survey";
 
   // --- Export ---
   const [exporting, setExporting] = useState(false);
@@ -146,32 +148,48 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold tracking-tight text-parchment">Settings</h1>
 
-      {/* --- Archetype profile section (2026-04-22) ---
-          Persistent Settings surface handling 4 states:
-            - no_assignment: primary Take-survey CTA
-            - skipped: primary Take-survey CTA
-            - recent (<90d): secondary Retake CTA
-            - aged (≥90d): primary Retake CTA (operator's 3-month
-              retry rule)
-          Survey inline-opens the ArchetypeSurvey modal. Retakes
-          write NEW ArchetypeAssignment rows (historical preserved
-          for Gate 5 stability analysis). */}
-      {archetypeMe && (
-        <ArchetypeProfileSection
-          archetypeId={archetypeMe.archetype_id}
-          completed={archetypeMe.archetype_assignment_completed}
-          latestAssignmentAt={archetypeMe.archetype_latest_assignment_at}
-          executedSessionCount={archetypeMe.executed_session_count ?? 0}
-          onChanged={refreshArchetypeMe}
-        />
-      )}
-
       {/* --- Integrations card (2026-04-22) ---
           Third-party connections live above data ops (Export / Delete).
           Identity is separate from authorization — sign-in requests no
           sensitive scopes; each integration asks for its own permission
           when the user connects it. See docs/integrations_architecture.md. */}
       <IntegrationsSection />
+
+      {/* --- Survey retake card (slimmed 2026-04-29) ---
+          Replaces the prior full ArchetypeProfileSection. The radar
+          breakdown + dynamic-vs-survey narrative already render on
+          /insights; surfacing them again here was duplicating content.
+          Settings keeps only the retake affordance, placed below
+          Integrations per operator screenshot mark-up. */}
+      {archetypeMe && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile survey</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-4">
+            <p className="text-sm text-dust">
+              {archetypeMe.archetype_assignment_completed
+                ? "A fresh survey re-anchors Lyra's starting point. Your dynamic profile on /insights still updates from your behavior either way."
+                : "A 4-minute survey gives Lyra a head start. You can take it anytime."}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setSurveyOpen(true)}
+            >
+              {surveyButtonLabel}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {surveyOpen && (
+        <ArchetypeSurvey
+          onFinished={() => {
+            setSurveyOpen(false);
+            refreshArchetypeMe();
+          }}
+        />
+      )}
 
       {/* --- Export card --- */}
       <Card>
@@ -196,25 +214,10 @@ export default function SettingsPage() {
         )}
       </Card>
 
-      {/* --- Help improve Lyra (alpha feedback channel) ---
-          Operator-locked 2026-04-28: alpha cohort needs a fast path to
-          report bugs / suggestions without leaving the app. Feedback
-          fans out to operator email + Telegram. */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Help improve Lyra</CardTitle>
-        </CardHeader>
-        <CardContent className="flex items-center justify-between gap-4">
-          <p className="text-sm text-dust">
-            Found a bug, have a suggestion, or stuck on something? Send it
-            straight to Ali.
-          </p>
-          <FeedbackLink
-            className="!text-xs"
-            label="Send feedback"
-          />
-        </CardContent>
-      </Card>
+      {/* "Help improve Lyra" card removed 2026-04-29 — feedback now
+          lives on the right edge of every page's nav strip via
+          FeedbackLink in app-shell.tsx, so the duplicate settings
+          card was just redundant. */}
 
       {/* --- Delete account card --- */}
       <Card>

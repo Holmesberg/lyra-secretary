@@ -157,6 +157,22 @@ def get_me(db: Session = Depends(get_db)):
         .scalar()
         or 0
     )
+    # Engagement signal — drives the layout's onboarding gate. A user
+    # who completed onboarding but has zero non-skipped, non-voided
+    # tasks is treated as never-onboarded so we re-show the brain-dump
+    # surface (operator-locked 2026-04-29 after the omar/pbassem read:
+    # legacy SKIPPED meta-tasks alone don't count as engagement).
+    active_task_count = (
+        db.query(func.count(Task.task_id))
+        .filter(
+            Task.user_id == user.user_id,
+            Task.voided_at.is_(None),
+            Task.state.notin_([TaskState.SKIPPED, TaskState.DELETED]),
+        )
+        .scalar()
+        or 0
+    )
+    has_active_task_history = active_task_count > 0
     return {
         "user_id": user.user_id,
         "email": user.email,
@@ -186,6 +202,11 @@ def get_me(db: Session = Depends(get_db)):
         "terms_accepted_at": user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
         "research_consent_at": user.research_consent_at.isoformat() if user.research_consent_at else None,
         "onboarding_completed_at": user.onboarding_completed_at.isoformat() if user.onboarding_completed_at else None,
+        # Drives the onboarding gate — when False AND onboarding is
+        # stamped, layout still re-shows the brain-dump (the user
+        # bounced before any real engagement). Excludes voided + SKIPPED
+        # rows so legacy "Plan your week" meta-tasks don't count.
+        "has_active_task_history": has_active_task_history,
         # Guided tour stamps — surface so the frontend can gate the
         # TutorialOverlay render on (both null AND onboarding_completed_at
         # NOT NULL).

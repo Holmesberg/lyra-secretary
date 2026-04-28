@@ -69,15 +69,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
           <div className="flex items-center gap-4">
-            {/* Email + feedback link stack — operator-locked 2026-04-28:
-                tiny grey "Report a bug · Send feedback" sits BENEATH
-                the email so alpha users have a one-click path to tell
-                us what they hit. */}
+            {/* Email-only on the right of the header — feedback moved
+                2026-04-29 into the nav strip's right edge per operator
+                screenshot mark-up; previous "beneath the email" stack
+                read as small print, the nav-strip placement reads as
+                a primary affordance. */}
             <div className="hidden flex-col items-end leading-tight sm:flex">
               <span className="font-mono text-[10px] tracking-wider text-dust-deep">
                 {session?.user?.email}
               </span>
-              <FeedbackLink />
             </div>
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
@@ -141,6 +141,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          {/* Feedback affordance pinned to the right of the nav strip
+              (operator screenshot 2026-04-29). ml-auto pushes it past
+              the trailing nav items into the empty horizontal space.
+              Same FeedbackLink component the Settings card uses, just
+              styled to sit on the strip baseline. */}
+          <div className="ml-auto flex items-center pr-1">
+            <FeedbackLink
+              className="!text-[11px] !uppercase !tracking-widest"
+              label="Report a bug · Send feedback"
+            />
+          </div>
         </nav>
         {/* Mobile dropdown panel — slides open below the header when the
            hamburger is tapped. Uses the same // terminal-prefix pattern
