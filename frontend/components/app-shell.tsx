@@ -2,6 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
+import { FeedbackLink } from "@/components/feedback-link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
@@ -68,9 +69,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
           <div className="flex items-center gap-4">
-            <span className="hidden font-mono text-[10px] tracking-wider text-dust-deep sm:inline">
-              {session?.user?.email}
-            </span>
+            {/* Email + feedback link stack — operator-locked 2026-04-28:
+                tiny grey "Report a bug · Send feedback" sits BENEATH
+                the email so alpha users have a one-click path to tell
+                us what they hit. */}
+            <div className="hidden flex-col items-end leading-tight sm:flex">
+              <span className="font-mono text-[10px] tracking-wider text-dust-deep">
+                {session?.user?.email}
+              </span>
+              <FeedbackLink />
+            </div>
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
               className="hidden font-mono text-[10px] uppercase tracking-widest text-dust transition-colors hover:text-signal md:inline"
@@ -174,10 +182,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </li>
                 );
               })}
+              {/* Email + feedback link in mobile drawer (operator-locked
+                  2026-04-28: tiny grey link beneath email). */}
+              <li className="mt-1 border-t border-hairline-signal/20 px-6 py-2">
+                <div className="flex flex-col gap-0.5 leading-tight">
+                  <span className="font-mono text-[10px] tracking-wider text-dust-deep">
+                    {session?.user?.email}
+                  </span>
+                  <FeedbackLink />
+                </div>
+              </li>
               {/* Mobile sign-out sits at the bottom of the panel since the
                  header row hides the desktop "Sign out" button on mobile
                  (gained horizontal space for the hamburger). */}
-              <li className="mt-1 border-t border-hairline-signal/20 pt-2">
+              <li className="border-t border-hairline-signal/20 pt-2">
                 <button
                   type="button"
                   onClick={() => {

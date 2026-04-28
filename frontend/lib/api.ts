@@ -20,6 +20,21 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Rolling buffer of the last 5 API errors (path + status + message).
+ * Read by the feedback widget when the user opts in to "include
+ * recent errors" — gives operator a 1-screen reproduction context.
+ * Buffer lives on `window.__lyraLastErrors` so it survives across
+ * route changes; lost on hard refresh which is fine.
+ */
+function _pushRecentError(entry: { path: string; status: number; message: string }) {
+  if (typeof window === "undefined") return;
+  const w = window as unknown as { __lyraLastErrors?: typeof entry[] };
+  if (!Array.isArray(w.__lyraLastErrors)) w.__lyraLastErrors = [];
+  w.__lyraLastErrors.unshift({ ...entry, ...({ at: new Date().toISOString() } as object) });
+  if (w.__lyraLastErrors.length > 5) w.__lyraLastErrors.length = 5;
+}
+
 export async function api<T = unknown>(
   path: string,
   init: RequestInit = {}
@@ -41,6 +56,7 @@ export async function api<T = unknown>(
       if (typeof detail === "string") msg = detail;
       else if (detail?.message) msg = detail.message;
     } catch {}
+    _pushRecentError({ path, status: res.status, message: msg.slice(0, 300) });
     throw new ApiError(msg, res.status);
   }
   return (await res.json()) as T;

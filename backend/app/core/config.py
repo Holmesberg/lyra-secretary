@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: Optional[str] = Field(None, env="TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID: Optional[str] = Field(None, env="TELEGRAM_CHAT_ID")
 
+    # Alpha feedback widget (alembic 040, 2026-04-28). Resend is the
+    # primary channel; Telegram (above) is the fallback. Either or both
+    # can be unconfigured — submission still commits the feedback row.
+    RESEND_API_KEY: Optional[str] = Field(None, env="RESEND_API_KEY")
+    OPERATOR_EMAIL: Optional[str] = Field(None, env="OPERATOR_EMAIL")
+    FEEDBACK_FROM_EMAIL: str = Field(
+        "onboarding@resend.dev", env="FEEDBACK_FROM_EMAIL"
+    )
+
     # Local LLM enrichment (Workstream 1, magic-for-alpha 2026-04-28).
     # Optional. When OLLAMA_URL is unreachable or the model isn't loaded,
     # the llm_enrichment APScheduler job marks tasks as

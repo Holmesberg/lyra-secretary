@@ -17,6 +17,7 @@ import {
 import { api } from "@/lib/api";
 import { IntegrationsSection } from "@/components/integrations-section";
 import { ArchetypeProfileSection } from "@/components/archetype-profile-section";
+import { FeedbackLink } from "@/components/feedback-link";
 
 type MeArchetype = {
   archetype_id: string | null;
@@ -193,6 +194,26 @@ export default function SettingsPage() {
         {exportError && (
           <p className="px-6 pb-4 text-sm text-ember">{exportError}</p>
         )}
+      </Card>
+
+      {/* --- Help improve Lyra (alpha feedback channel) ---
+          Operator-locked 2026-04-28: alpha cohort needs a fast path to
+          report bugs / suggestions without leaving the app. Feedback
+          fans out to operator email + Telegram. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Help improve Lyra</CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between gap-4">
+          <p className="text-sm text-dust">
+            Found a bug, have a suggestion, or stuck on something? Send it
+            straight to Ali.
+          </p>
+          <FeedbackLink
+            className="!text-xs"
+            label="Send feedback"
+          />
+        </CardContent>
       </Card>
 
       {/* --- Delete account card --- */}

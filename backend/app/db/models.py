@@ -931,3 +931,46 @@ class ReflectionViewLog(Base):
     __table_args__ = (
         Index("idx_reflection_view_user_fired_at", "user_id", "fired_at"),
     )
+
+
+class Feedback(Base):
+    """Alpha-cohort feedback channel (alembic 040, 2026-04-28).
+
+    Operator-facing triage queue. Users submit via the in-app feedback
+    widget; rows here flow to operator email + Telegram (best-effort
+    notifiers). Operator triages via GET /v1/admin/feedback +
+    POST /v1/admin/feedback/{id}/resolve.
+
+    `kind` enum: 'bug' | 'suggestion' | 'confused' | 'other'
+    `status` enum: 'unread' | 'read' | 'acted_on' | 'dismissed'
+
+    Optional context fields (page_url, user_agent, error_context) help
+    operator reproduce; user opts in via a checkbox at submit time.
+    """
+
+    __tablename__ = "feedback"
+
+    feedback_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("user.user_id", ondelete="SET NULL")
+    )
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    page_url: Mapped[Optional[str]] = mapped_column(String(500))
+    user_agent: Mapped[Optional[str]] = mapped_column(String(500))
+    error_context: Mapped[Optional[list]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="unread"
+    )
+    operator_note: Mapped[Optional[str]] = mapped_column(Text)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_feedback_status_submitted", "status", "submitted_at"),
+    )

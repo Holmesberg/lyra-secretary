@@ -1,6 +1,6 @@
 """V1 API Router."""
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines
+from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines, feedback
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -20,3 +20,5 @@ api_router.include_router(integrations.router, tags=["integrations"])
 api_router.include_router(admin.router, tags=["admin"])
 # Loop 11 — deadline mechanism CRUD (Phase F, 2026-04-26).
 api_router.include_router(deadlines.router, tags=["deadlines"])
+# Alpha feedback widget (alembic 040, 2026-04-28).
+api_router.include_router(feedback.router, tags=["feedback"])
