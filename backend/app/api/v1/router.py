@@ -1,6 +1,6 @@
 """V1 API Router."""
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines, feedback
+from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines, feedback, brain_dump
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -22,3 +22,5 @@ api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(deadlines.router, tags=["deadlines"])
 # Alpha feedback widget (alembic 040, 2026-04-28).
 api_router.include_router(feedback.router, tags=["feedback"])
+# Onboarding brain-dump multi-parse (2026-04-28 evening, post-tutorial-removal).
+api_router.include_router(brain_dump.router, tags=["brain_dump"])

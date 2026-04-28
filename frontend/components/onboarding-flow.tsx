@@ -1,117 +1,181 @@
 "use client";
 /**
- * Onboarding surface — Path B first-session planning ritual.
+ * Onboarding surface — two-step brain-dump.
  *
- * REVIVED 2026-04-28 (magic-for-alpha). The 2026-04-21 disablement
- * (operator dogfood: u12 + u14 abandoned the placeholder) was justified
- * for an *empty* placeholder. With the LLM async parser shipped in W1
- * (commit bed7010 backend + this commit's chip), the brain-dump now has
- * a return on entry: bullets become llm_sub_items, deadline mentions
- * become Tier 1/2 chips, descriptions become measurable scope_density
- * signals (Rule 12 mediation). The surface earns its place.
+ * REWRITE 2026-04-28 evening (operator-locked: "less magic, more
+ * deterministic; catches the user from the get-go").
  *
- * The createTask call below is unchanged — task flows through the same
- * fast-path POST /v1/create (<500ms, regex output stays canonical) and
- * the async llm_enrichment APScheduler job picks it up in the next
- * 5s cycle. By the time /today renders post-redirect, the chip is
- * (or shortly will be) on the row.
+ * Step 1 — Brain dump
+ *   Single textarea. The user pastes everything that's on their mind
+ *   (deadlines, tasks, half-thoughts) in any format. NO title field,
+ *   NO start/end picker, NO category. The parser splits on commas /
+ *   newlines / semicolons / "then" and classifies each segment as
+ *   task or deadline. Multiple times in the dump are parsed to each
+ *   item's anchor.
  *
- * Architectural rule (operator-locked): this is enrichment, not
- * critical-path. Onboarding never blocks on Ollama. If Ollama is down,
- * task creation succeeds with regex output and the chip simply doesn't
- * render — UI degrades gracefully.
+ * Step 2 — Confirm
+ *   Cards for every parsed item — kind chip (task/deadline), title,
+ *   when_local, confidence. Suggested task→deadline bindings render
+ *   beneath each task as one-tap [Yes] / [No] pills. User submits the
+ *   block; the commit endpoint writes deadlines first, then tasks
+ *   bound to confirmed deadlines, all in one transaction.
  *
- * - Structural invariant, not a behavioral gate. The "Skip for now"
- *   link calls POST /users/me/skip-onboarding which stamps the same
- *   field, so the user can always bypass — but we record that they
- *   chose to, which the 2026-05-21 kill-criterion query reads.
- * - Category = "planning" (the un-merged slot, shipped 2026-04-21).
- *   Default start is now + 5min rounded, 30 min duration, brain-dump
- *   textarea focused on mount.
- * - Copy pitches measurement, not productivity. The promise is
- *   "Lyra starts learning your pattern here," not "we'll teach you
- *   to plan better."
+ * No meta "Plan your week" task is created — that prior implementation
+ * was the wrong abstraction. The user just planned; we don't need to
+ * tell them to plan again.
+ *
+ * Skip path is preserved via POST /v1/users/me/skip-onboarding so the
+ * user can always bypass. The 2026-05-21 kill-criterion query reads
+ * onboarding_completed_at as a binary signal regardless of which path
+ * stamped it.
  */
-import { useEffect, useRef, useState } from "react";
-import { createTask } from "@/lib/tasks";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  BrainDumpBindingSuggestion,
+  BrainDumpCommitBinding,
+  BrainDumpCommitItem,
+  BrainDumpParsedItem,
+  commitBrainDump,
+  parseBrainDump,
+} from "@/lib/brain-dump";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-
-function formatLocal(d: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
-}
-
-/** Round up to next 5-minute mark — matches new-task-modal defaults. */
-function nextFiveMin(from: Date = new Date()) {
-  const d = new Date(from);
-  const mins = d.getMinutes();
-  const next5 = Math.ceil(mins / 5) * 5;
-  if (next5 >= 60) d.setHours(d.getHours() + 1, 0, 0, 0);
-  else d.setMinutes(next5, 0, 0);
-  return d;
-}
 
 interface Props {
   userEmail: string;
   onCompleted: () => void;
 }
 
-export function OnboardingFlow({ userEmail, onCompleted }: Props) {
-  // Meta-task defaults: NOW + 30 min. The planning ritual IS happening
-  // right now during onboarding; scheduling it tomorrow (prior behavior)
-  // told the user "plan again tomorrow" which is senseless when they're
-  // mid-plan. User can still edit the times before submit.
-  const defaults = (() => {
-    const s = nextFiveMin();
-    const e = new Date(s);
-    e.setMinutes(e.getMinutes() + 30);
-    return { start: formatLocal(s), end: formatLocal(e) };
-  })();
+type Step = "dump" | "confirm";
 
-  const [title, setTitle] = useState("Plan your week — brain dump and triage");
-  const [description, setDescription] = useState("");
-  const [start, setStart] = useState(defaults.start);
-  const [end, setEnd] = useState(defaults.end);
-  const [submitting, setSubmitting] = useState(false);
+function localIsoNow(): string {
+  // Naive local-time ISO (no offset). The backend reinterprets via
+  // settings.USER_TIMEZONE; matches Lyra's naive-internal convention.
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
+function formatWhen(iso: string | null): string {
+  if (!iso) return "no date";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function OnboardingFlow({ userEmail, onCompleted }: Props) {
+  const [step, setStep] = useState<Step>("dump");
+  const [rawText, setRawText] = useState("");
+  const [items, setItems] = useState<BrainDumpParsedItem[]>([]);
+  const [bindings, setBindings] = useState<BrainDumpBindingSuggestion[]>(
+    [],
+  );
+  // task_item_id → "yes" | "no" | null (null = not answered yet).
+  // Pre-populated from parser tier: tier1_auto starts "yes",
+  // tier2_ask starts unanswered (block requires resolution).
+  const [bindingChoices, setBindingChoices] = useState<
+    Record<string, "yes" | "no">
+  >({});
+  const [parsing, setParsing] = useState(false);
+  const [committing, setCommitting] = useState(false);
   const [skipping, setSkipping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    // Focus the brain-dump textarea on mount — that's the
-    // measurement-critical field (scope density, VT-22) and where we
-    // want the user's attention to land, not the title (which has a
-    // sensible default).
-    textareaRef.current?.focus();
-  }, []);
+    if (step === "dump") textareaRef.current?.focus();
+  }, [step]);
 
-  async function handleCreate() {
-    if (submitting || skipping) return;
+  // Bindings grouped by task_item_id for fast lookup in the preview.
+  const bindingsForTask = useMemo(() => {
+    const map: Record<string, BrainDumpBindingSuggestion[]> = {};
+    for (const b of bindings) {
+      (map[b.task_item_id] ||= []).push(b);
+    }
+    return map;
+  }, [bindings]);
+
+  async function handleParse() {
+    if (parsing) return;
     setError(null);
-    setSubmitting(true);
+    if (!rawText.trim()) {
+      setError("Type something first — at least one task or deadline.");
+      return;
+    }
+    setParsing(true);
     try {
-      await createTask({
-        title: title.trim() || "Plan your week",
-        start,
-        end,
-        category: "planning",
-        description: description.trim() || undefined,
-      });
-      // Backend stamped onboarding_completed_at atomically with the
-      // task insert — the parent layout will re-fetch /users/me on
-      // onCompleted and drop this surface.
+      const res = await parseBrainDump(rawText, localIsoNow());
+      setItems(res.items);
+      setBindings(res.bindings);
+
+      // Tier 1 auto-bindings start pre-checked "yes". Tier 2 asks
+      // start unanswered — user must explicitly tap.
+      const initial: Record<string, "yes" | "no"> = {};
+      for (const b of res.bindings) {
+        if (b.tier === "tier1_auto") {
+          initial[b.task_item_id] = "yes";
+        }
+      }
+      setBindingChoices(initial);
+
+      if (res.items.length === 0) {
+        setError(
+          "Couldn't pull anything out of that. Try one item per line: " +
+            "'submit assignment Friday', 'read chapter 3 tomorrow', etc.",
+        );
+        setParsing(false);
+        return;
+      }
+      setStep("confirm");
+    } catch (e: unknown) {
+      setError(
+        e instanceof Error ? e.message : "Parse failed. Try again.",
+      );
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  async function handleCommit() {
+    if (committing) return;
+    setError(null);
+    setCommitting(true);
+    try {
+      const commitItems: BrainDumpCommitItem[] = items.map((i) => ({
+        item_id: i.item_id,
+        kind: i.kind,
+        title: i.title,
+        description: i.description,
+        when_local: i.when_local,
+        duration_minutes: i.duration_minutes,
+      }));
+      const commitBindings: BrainDumpCommitBinding[] = bindings
+        .filter((b) => bindingChoices[b.task_item_id] === "yes")
+        .map((b) => ({
+          task_item_id: b.task_item_id,
+          deadline_item_id: b.deadline_item_id,
+        }));
+      await commitBrainDump(commitItems, commitBindings);
       onCompleted();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to create task");
-      setSubmitting(false);
+      setError(
+        e instanceof Error ? e.message : "Couldn't save your plan.",
+      );
+      setCommitting(false);
     }
   }
 
   async function handleSkip() {
-    if (submitting || skipping) return;
+    if (parsing || committing || skipping) return;
     setError(null);
     setSkipping(true);
     try {
@@ -131,95 +195,180 @@ export function OnboardingFlow({ userEmail, onCompleted }: Props) {
             Onboarding · operative-{userEmail.split("@")[0].slice(0, 8)}
           </p>
           <h1 className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-parchment md:text-4xl">
-            Lyra starts learning from the first plan you write.
+            {step === "dump"
+              ? "Lyra starts learning from the first plan you write."
+              : "Look right? Lock it in."}
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-dust md:text-base">
-            Plan your week. Brain dump everything that&apos;s on your mind —
-            tasks, commitments, half-formed ideas. Lyra records what you
-            expected and what actually happened. Patterns surface on their own,
-            starting now.
+            {step === "dump"
+              ? "Brain dump everything that's on your mind — tasks, " +
+                "deadlines, half-thoughts. Times and dates inside the " +
+                "text get parsed automatically. You'll review before " +
+                "anything saves."
+              : "Lyra split your dump into tasks and deadlines. " +
+                "Confirm any links between them, then save."}
           </p>
         </div>
 
-        <div className="terminal-panel p-6">
-          <div className="mb-5 flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-signal motion-safe:animate-pulse-glow" />
-            <span className="font-mono text-[10px] uppercase tracking-widest text-signal">
-              Your first planning task
-            </span>
+        {step === "dump" && (
+          <div className="terminal-panel p-6">
+            <div className="mb-5 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-signal motion-safe:animate-pulse-glow" />
+              <span className="font-mono text-[10px] uppercase tracking-widest text-signal">
+                Brain dump
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <textarea
+                  ref={textareaRef}
+                  value={rawText}
+                  onChange={(e) => setRawText(e.target.value)}
+                  placeholder={
+                    "submit assignment Friday\n" +
+                    "read chapter 3 tomorrow\n" +
+                    "midterm next Wednesday 10am\n" +
+                    "call mom this weekend\n" +
+                    "finish presentation by Thursday"
+                  }
+                  rows={9}
+                  className="resize-none rounded-sm border border-hairline-signal/30 bg-transparent px-3 py-2 text-sm text-parchment placeholder:text-dust-deep focus-visible:border-signal/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal/40"
+                />
+                <p className="text-[11px] text-dust-deep">
+                  One item per line works best. Commas, semicolons, and
+                  &ldquo;then&rdquo; also split.
+                </p>
+              </div>
+
+              {error && (
+                <div className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
+                  {error}
+                </div>
+              )}
+
+              <div className="mt-2 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  onClick={handleSkip}
+                  disabled={parsing || skipping}
+                  className={cn(
+                    "font-mono text-[10px] uppercase tracking-widest text-dust transition-colors hover:text-parchment",
+                    (parsing || skipping) && "opacity-40",
+                  )}
+                >
+                  {skipping ? "Skipping…" : "Skip for now"}
+                </button>
+                <button
+                  onClick={handleParse}
+                  disabled={parsing || skipping || !rawText.trim()}
+                  className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
+                >
+                  {parsing ? "Parsing…" : "Parse my plan →"}
+                </button>
+              </div>
+            </div>
           </div>
+        )}
 
+        {step === "confirm" && (
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="onb-title"
-                className="font-mono text-[10px] font-medium uppercase tracking-widest text-dust"
-              >
-                Title
-              </label>
-              <input
-                id="onb-title"
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="h-9 rounded-sm border border-hairline-signal/30 bg-transparent px-3 text-sm text-parchment focus-visible:border-signal/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal/40"
-              />
-            </div>
+            {items.map((it) => {
+              const taskBindings = bindingsForTask[it.item_id] || [];
+              const choice = bindingChoices[it.item_id] ?? null;
+              return (
+                <div key={it.item_id} className="terminal-panel p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "font-mono text-[9px] uppercase tracking-widest",
+                            it.kind === "deadline"
+                              ? "text-ember"
+                              : "text-signal",
+                          )}
+                        >
+                          {it.kind}
+                        </span>
+                        {it.confidence < 0.6 && (
+                          <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                            · low confidence
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-sm font-medium text-parchment">
+                        {it.title}
+                      </div>
+                      <div className="mt-0.5 text-xs text-dust">
+                        {formatWhen(it.when_local)}
+                        {it.kind === "task" &&
+                          it.duration_minutes != null && (
+                            <span className="text-dust-deep">
+                              {" "}
+                              · {it.duration_minutes} min
+                            </span>
+                          )}
+                      </div>
+                    </div>
+                  </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="onb-description"
-                className="font-mono text-[10px] font-medium uppercase tracking-widest text-dust"
-              >
-                Brain dump <span className="font-normal text-dust-deep">(what&apos;s on your mind?)</span>
-              </label>
-              <textarea
-                id="onb-description"
-                ref={textareaRef}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="- Deadline X on Friday&#10;- Call Y about Z&#10;- Finish the draft on N&#10;- Groceries this weekend"
-                rows={6}
-                className="resize-none rounded-sm border border-hairline-signal/30 bg-transparent px-3 py-2 text-sm text-parchment placeholder:text-dust-deep focus-visible:border-signal/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal/40"
-              />
-              <p className="text-[11px] text-dust-deep">
-                Bulleted items will feed scope-density measurement later. For
-                now: just dump. Nothing is committed yet.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label
-                  htmlFor="onb-start"
-                  className="font-mono text-[10px] font-medium uppercase tracking-widest text-dust"
-                >
-                  Starts
-                </label>
-                <input
-                  id="onb-start"
-                  type="datetime-local"
-                  value={start}
-                  onChange={(e) => setStart(e.target.value)}
-                  className="h-9 rounded-sm border border-hairline-signal/30 bg-transparent px-3 text-sm text-parchment focus-visible:border-signal/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal/40"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label
-                  htmlFor="onb-end"
-                  className="font-mono text-[10px] font-medium uppercase tracking-widest text-dust"
-                >
-                  Ends
-                </label>
-                <input
-                  id="onb-end"
-                  type="datetime-local"
-                  value={end}
-                  onChange={(e) => setEnd(e.target.value)}
-                  className="h-9 rounded-sm border border-hairline-signal/30 bg-transparent px-3 text-sm text-parchment focus-visible:border-signal/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal/40"
-                />
-              </div>
-            </div>
+                  {it.kind === "task" && taskBindings.length > 0 && (
+                    <div className="mt-3 border-t border-hairline-signal/20 pt-3">
+                      {taskBindings.map((b) => (
+                        <div
+                          key={b.deadline_item_id}
+                          className="flex items-center justify-between gap-2"
+                        >
+                          <p className="text-xs text-dust">
+                            Link to deadline{" "}
+                            <span className="text-parchment">
+                              &ldquo;{b.deadline_title}&rdquo;
+                            </span>
+                            ?
+                          </p>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setBindingChoices((s) => ({
+                                  ...s,
+                                  [b.task_item_id]: "yes",
+                                }))
+                              }
+                              className={cn(
+                                "rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-colors",
+                                choice === "yes"
+                                  ? "border-signal bg-signal/15 text-signal"
+                                  : "border-hairline-signal/30 text-dust hover:text-parchment",
+                              )}
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setBindingChoices((s) => ({
+                                  ...s,
+                                  [b.task_item_id]: "no",
+                                }))
+                              }
+                              className={cn(
+                                "rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-colors",
+                                choice === "no"
+                                  ? "border-ember bg-ember/15 text-ember"
+                                  : "border-hairline-signal/30 text-dust hover:text-parchment",
+                              )}
+                            >
+                              No
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {error && (
               <div className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
@@ -229,25 +378,28 @@ export function OnboardingFlow({ userEmail, onCompleted }: Props) {
 
             <div className="mt-2 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
               <button
-                onClick={handleSkip}
-                disabled={submitting || skipping}
+                onClick={() => {
+                  setStep("dump");
+                  setError(null);
+                }}
+                disabled={committing}
                 className={cn(
                   "font-mono text-[10px] uppercase tracking-widest text-dust transition-colors hover:text-parchment",
-                  (submitting || skipping) && "opacity-40"
+                  committing && "opacity-40",
                 )}
               >
-                {skipping ? "Skipping…" : "Skip for now"}
+                ← Edit dump
               </button>
               <button
-                onClick={handleCreate}
-                disabled={submitting || skipping}
+                onClick={handleCommit}
+                disabled={committing || items.length === 0}
                 className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
-                {submitting ? "Creating…" : "Lock in my first plan →"}
+                {committing ? "Saving…" : "Lock in"}
               </button>
             </div>
           </div>
-        </div>
+        )}
 
         <p className="mt-10 text-center font-mono text-[10px] uppercase tracking-widest text-dust-deep">
           :: planning ritual · session 0 · patterns emerge from here
