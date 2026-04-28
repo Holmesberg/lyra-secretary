@@ -438,9 +438,9 @@ def test_update_completion_keeps_timer_running(state_env, client):
 # ---------------------------------------------------------------
 
 def test_apscheduler_job_count():
-    """All 11 background jobs must be registered in scheduler.py.
+    """All 12 background jobs must be registered in scheduler.py.
 
-    Count (as of 2026-04-28 — magic-for-alpha Workstream 1):
+    Count (as of 2026-04-28 — magic-for-alpha Workstream 2):
       1. reminders
       2. notion_sync
       3. timer_overflow
@@ -451,7 +451,8 @@ def test_apscheduler_job_count():
       8. reconcile_responses
       9. reconcile_deadline_outcomes  (Loop 11)
      10. sweep_missed_deadlines        (Loop 11)
-     11. llm_enrichment                 (magic-for-alpha)
+     11. llm_enrichment                 (magic-for-alpha W1)
+     12. resume_prediction              (magic-for-alpha W2)
 
     Update this when adding/removing a job — this is the gate.
     """
@@ -471,8 +472,8 @@ def test_apscheduler_job_count():
         and isinstance(getattr(node, "func", None), ast.Attribute)
         and getattr(node.func, "attr", "") == "add_job"
     )
-    assert add_job_calls == 11, (
-        f"Expected 11 add_job calls in scheduler.py, found {add_job_calls}. "
+    assert add_job_calls == 12, (
+        f"Expected 12 add_job calls in scheduler.py, found {add_job_calls}. "
         f"A background job may have been added or removed without updating "
         f"the state consistency gate."
     )

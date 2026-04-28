@@ -14,6 +14,7 @@ from app.workers.jobs.reconcile_responses import run_reconcile_responses
 from app.workers.jobs.reconcile_deadline_outcomes import run_reconcile_deadline_outcomes
 from app.workers.jobs.sweep_missed_deadlines import run_sweep_missed_deadlines
 from app.workers.jobs.llm_enrichment import run_llm_enrichment
+from app.workers.jobs.resume_prediction import run_resume_prediction
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -135,6 +136,20 @@ def start_scheduler():
         name="Magic — LLM async parser; semantic deadline + priority + sub-items",
         replace_existing=True,
         max_instances=1,  # critical: single inflight worker so a slow LLM call doesn't pile up
+    )
+
+    # Magic-for-alpha — Workstream 2 (2026-04-28). Sibling of pause_prediction.
+    # Runs every 2 minutes for each PAUSED session — when paused-for duration
+    # approaches the user's historical p75 for the (category, time_of_day)
+    # cell, fires "you usually resume by now" banner. Cold-start fallback at
+    # 30min flat cap with synthetic mechanism. Per-session cooldown 5min.
+    scheduler.add_job(
+        run_resume_prediction,
+        trigger=IntervalTrigger(minutes=2),
+        id="resume_prediction",
+        name="W2 magic — fire resume banner when paused-for >= historical p75",
+        replace_existing=True,
+        max_instances=1,
     )
 
     scheduler.start()

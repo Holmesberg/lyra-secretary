@@ -744,6 +744,61 @@ class PausePredictionLog(Base):
     )
 
 
+class ResumePredictionLog(Base):
+    """W2 (alembic 038, 2026-04-28) — magic-for-alpha resume prediction.
+
+    Sibling of PausePredictionLog. One row per resume-banner firing. The
+    predictor checks active paused sessions every 2min — if the user's
+    paused-for duration approaches their historical p75 for the active
+    task's (category, time_of_day) cell, fire a banner: "You usually
+    resume by now."
+
+    Cold-start: when fewer than 5 samples exist for the cell OR the
+    user has <7 days of pause history, mechanism='cold_start_synthetic'
+    and the trigger is a flat 30-min cap with observational copy
+    "Lyra hasn't seen enough yet — picking it up?".
+
+    Pre-registered footprint: VT-17 sibling (instrument-intervention
+    threats apply symmetrically — anchor drift + induced-resume risk).
+    Per docs/manifesto_alignment_audit_2026_04_28.md item #4: at
+    n ≥ 30 firings per user, run VT-17a/b parallel analysis with
+    pause→resume substitution. No new MANIFESTO rule yet (sample-size
+    threshold not crossed).
+    """
+
+    __tablename__ = "resume_prediction_log"
+
+    firing_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("stopwatch_session.session_id", ondelete="CASCADE"), nullable=False
+    )
+    task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("task.task_id", ondelete="CASCADE"), nullable=False
+    )
+    fired_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    paused_for_minutes: Mapped[float] = mapped_column(Float, nullable=False)
+    # NULL when cold_start_synthetic (no historical p75 to display).
+    p75_pause_minutes: Mapped[Optional[float]] = mapped_column(Float)
+    # 'category_tod' | 'cold_start_synthetic'
+    mechanism: Mapped[str] = mapped_column(String(40), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    # NULL at fire time. 'resumed_within_window' | 'ignored' | 'snoozed' | 'no_response'.
+    user_response: Mapped[Optional[str]] = mapped_column(String(20))
+    response_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_resume_pred_user_fired_at", "user_id", "fired_at"),
+        Index("idx_resume_pred_session", "session_id"),
+    )
+
+
 class CalibrationNudgeEvent(Base):
     """Per-fire calibration nudge event + decision + outcome (Loop 1).
 
