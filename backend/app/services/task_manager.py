@@ -18,7 +18,7 @@ from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector, ConflictResult
 from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
-from app.utils.time_utils import to_utc, now_utc
+from app.utils.time_utils import to_utc, now_utc, strip_tz
 from app.core.exceptions import ImmutableTaskError
 
 logger = logging.getLogger(__name__)
@@ -216,6 +216,20 @@ class TaskManager:
         # Convert naive local times (Cairo) to UTC before storing
         start = to_utc(start)
         end = to_utc(end)
+
+        # Boundary normalization for tz-aware datetime input from
+        # Pydantic-deserialized ISO strings with offsets (e.g. the
+        # "...Z" that the LlmEnrichmentChip + frontend nudge surfaces
+        # send for nudge_viewed_at). Internal convention is naive UTC
+        # per project timezone contract — see strip_tz docstring +
+        # docs/root_cause_analysis_2026_04_29.md "tz drift family".
+        # Without this strip, line 411's
+        #   `(created_at_ts - nudge_viewed_at).total_seconds()`
+        # raises TypeError: can't subtract offset-naive and
+        # offset-aware datetimes whenever a calibration nudge fired
+        # on the task. Surfaced by /pulse Capture flow 2026-04-29.
+        if nudge_viewed_at is not None:
+            nudge_viewed_at = strip_tz(nudge_viewed_at)
 
         # P4: Reject tasks with start time in the past (5 min buffer)
         if start < now_utc() - timedelta(minutes=5):
