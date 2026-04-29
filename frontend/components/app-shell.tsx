@@ -21,6 +21,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { FeedbackLink } from "@/components/feedback-link";
+import { clearPersistedCache } from "@/lib/clear-persisted-cache";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -179,7 +180,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <button
             type="button"
-            onClick={() => signOut({ callbackUrl: "/" })}
+            onClick={() => {
+              clearPersistedCache();
+              signOut({ callbackUrl: "/" });
+            }}
             className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 font-mono text-[10px] uppercase tracking-widest text-dust-deep transition-colors hover:bg-ember/10 hover:text-ember"
           >
             <LogOut className="h-3.5 w-3.5 transition-colors group-hover:text-ember" />

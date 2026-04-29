@@ -1,5 +1,6 @@
 "use client";
 import { signOut, useSession } from "next-auth/react";
+import { clearPersistedCache } from "@/lib/clear-persisted-cache";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -107,6 +108,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     console.error("users/me fetch failed:", meError);
     if (meQ.error instanceof ApiError && meQ.error.status === 401) {
       setAutoSigningOut(true);
+      clearPersistedCache();
       signOut({ callbackUrl: "/" });
     }
   }, [meQ.error, meError]);
@@ -149,7 +151,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="mt-6">
             <button
               type="button"
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={() => {
+                clearPersistedCache();
+                signOut({ callbackUrl: "/" });
+              }}
               className="rounded-sm border border-hairline-signal/40 bg-void-2/60 px-3 py-1.5 text-xs text-parchment transition-colors hover:bg-signal/10 hover:text-signal"
             >
               Sign out
