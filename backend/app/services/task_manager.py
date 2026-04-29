@@ -491,10 +491,10 @@ class TaskManager:
                 "title": task.title
             }, user_id=uid)
             self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=uid)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("create_task: undo cache write failed (non-blocking): %s", e)
         return task, [], notion_synced
-    
+
     def create_retroactive_task(
         self,
         title: str,
@@ -686,10 +686,10 @@ class TaskManager:
 
         try:
             self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("complete_task: last_task cache write failed (non-blocking): %s", e)
         return task, notion_synced
-    
+
     def skip_task(self, task_id: str, reason: Optional[str] = None) -> Task:
         """
         Mark task as skipped.
@@ -754,8 +754,8 @@ class TaskManager:
                 "title": task.title,
                 "previous_state": state_value
             }, user_id=str(get_current_user_id() or 1))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("delete_task: undo cache write failed (non-blocking): %s", e)
 
         return task
     
@@ -822,8 +822,8 @@ class TaskManager:
                 logger.error(f"Notion sync failed on swap for {t.task_id}: {e}", exc_info=True)
                 try:
                     self.redis.queue_notion_sync(t.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
-                except Exception:
-                    pass
+                except Exception as queue_err:
+                    logger.warning("swap: notion redis-queue fallback also failed (non-blocking): %s", queue_err)
 
         return skipped, planned
 
@@ -944,6 +944,6 @@ class TaskManager:
 
         try:
             self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("reschedule_task: last_task cache write failed (non-blocking): %s", e)
         return task, conflicts

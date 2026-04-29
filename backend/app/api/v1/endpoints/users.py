@@ -1,7 +1,10 @@
 """User account endpoints (Phase 2): /me, consent, export, data-summary, hard delete."""
 import hashlib
+import logging
 from datetime import datetime
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -108,7 +111,11 @@ def get_me(db: Session = Depends(get_db)):
                 if hasattr(user, "first_task_at") and user.first_task_at is None:
                     user.first_task_at = earliest_task
                 db.commit()
-    except Exception:
+    except Exception as e:
+        # Non-blocking but logged — silent except hid LYR-113 family
+        # debugging context. See root_cause_analysis_2026_04_29.md
+        # observability-shortfall pattern.
+        logger.warning("/me onboarding backfill failed (non-blocking): %s", e)
         db.rollback()
     # Alpha funnel (alembic 037, 2026-04-28): d1_return_at lazy-stamp.
     # Approximates "returned next day" — first /users/me call ≥24h after
@@ -123,7 +130,9 @@ def get_me(db: Session = Depends(get_db)):
         ):
             user.d1_return_at = now_utc()
             db.commit()
-    except Exception:
+    except Exception as e:
+        # Non-blocking but logged — see root_cause_analysis_2026_04_29.md.
+        logger.warning("/me d1 stamp failed (non-blocking): %s", e)
         db.rollback()
     # Archetype-survey eligibility (Phase D, 2026-04-22 clustering ship).
     # True → post-launch user who should see the survey between consent

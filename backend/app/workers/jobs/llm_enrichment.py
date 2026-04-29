@@ -83,7 +83,8 @@ def run_llm_enrichment() -> None:
                     if task and task.llm_parse_status == "pending":
                         task.llm_parse_status = "failed"
                         db.commit()
-                except Exception:
+                except Exception as e:
+                    logger.warning("llm_enrichment: status flip to 'failed' rolled back (non-blocking): %s", e)
                     db.rollback()
     finally:
         db.close()

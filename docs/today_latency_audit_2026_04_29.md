@@ -43,11 +43,9 @@ The two COUNTs hit the same `task` table without a composite `(user_id, state, v
 
 **Recommendation:** add `idx_task_user_state_voided(user_id, state, voided_at)`. Even at current scale this would shave the worst-case cold-pool latency by avoiding two separate index-then-filter passes.
 
-### 2. `GET /v1/calendar/events` — synchronous Google Calendar API call
+### 2. ~~`GET /v1/calendar/events` — synchronous Google Calendar API call~~ — **ERRATUM**
 
-The endpoint comment line 59 explicitly states the intention to cache events in Redis for 60s, **but the implementation never reads from Redis before calling Google**. Every request triggers a fresh `fetch_google_events()` round-trip which adds 1-3s of unpredictable latency (Google's edge varies).
-
-**Recommendation:** wire the Redis cache that the docstring promises. Read-through pattern: check Redis with TTL=60s, miss → fetch Google → write back. This single fix would drop the warm-load cost of /today by 1-3 seconds for users with calendar connected.
+> **2026-04-29 erratum:** the original Explore-agent finding here was wrong. Re-inspected `backend/app/services/calendar_sync.py`: the Redis cache IS fully wired — read at line 154, write-back at line 243-247, 60s TTL. The agent didn't read the full `fetch_google_events` body and missed the cache-hit branch. No fix needed. Calendar warm-load latency is whatever the Redis lookup cost is (~5ms) plus the response-building cost; the Google API call only fires on cache miss. See `docs/root_cause_analysis_2026_04_29.md` §4 for the full re-investigation.
 
 ### 3. `GET /v1/stopwatch/status` — cold-path joins without composite index
 
