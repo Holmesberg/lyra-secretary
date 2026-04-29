@@ -785,3 +785,103 @@ against. The fact that we already flagged `external_source` and
 pre-registered VT-29 (External-Deadline Contamination) means the
 autoplanner inherits the right research-integrity scaffolding from
 day one.
+
+---
+
+## LMS submission timestamps via Moodle Web Services (Path B)
+*Captured: 2026-04-29 evening (operator: "a nice to have addition would
+be to add ALL LMS deadlines (even submitted ones) for data, especially
+seeing when the user submitted their tasks, is that possible?"). Yes —
+feasible, parked because the iCal-only path A shipped an hour ago and
+needs validation before adding more LMS surface.*
+
+**Idea.** Pull not just future + recent due dates (current iCal feed)
+but every assignment's full lifecycle metadata: submission timestamp,
+grade, attempt count, late flag. Per-user submission timestamps are the
+single highest-signal procrastination data point we don't have today —
+"deadline was 23:59, user submitted 23:54" tells us things `delay_minutes`
+alone cannot.
+
+**Why iCal can't do this.** The `/calendar/export_execute.php` feed only
+exposes calendar events (assignment due dates as future VEVENTs). Once
+an assignment passes its due date the row stays in the feed but never
+acquires submission status — that data lives in Moodle's gradebook
+tables (`mdl_assign_submission`, `mdl_grade_grades`), not the calendar.
+No combination of `preset_what` / `preset_time` will surface it.
+
+**Path B architecture (when ready to build).**
+- **Auth surface.** User generates a personal Moodle Web Services token
+  in Moodle → Preferences → User account → Security keys. (Some schools
+  disable this and require admin issuance — handle that error path.)
+  Backend stores per-user `moodle_ws_token` (Text, plaintext v1, same
+  trust class as `moodle_ics_url` and `google_refresh_token`).
+- **API endpoints.** Moodle's standard REST surface (works on the same
+  ASU Engineering Moodle 3.7 we tested):
+    - `core_enrol_get_users_courses(userid)` — user's enrolled courses
+    - `mod_assign_get_assignments(courseids[])` — assignments per course
+    - `mod_assign_get_submissions(assignmentids[])` — submission rows
+      (status, timecreated, timemodified, gradingstatus)
+    - `gradereport_user_get_grade_items(courseid, userid)` — grades
+- **Schema additions** (alembic 042 candidate):
+    - New `lms_submission` table:
+      `(id, user_id, external_source='moodle_ws', external_assignment_id,
+       external_submission_id, deadline_id (FK nullable), submitted_at_utc,
+       grade, late, attempt_count, voided_at, fetched_at)`
+    - Backlink to `deadline` so the existing OVERDUE banner can grey out
+      submitted-on-time imports (they're no longer pending action).
+    - `WHERE external_source IS NULL` filters extend to the new table —
+      same VT-29 contamination pattern.
+- **Sync job.** New APScheduler job every 6h per user with non-NULL
+  `moodle_ws_token`. Pulls course list → assignments → submissions for
+  each user. Per-cycle cap (200 assignments) so a heavy semester load
+  doesn't pile up.
+- **UX surface.** Two visible payoffs:
+    - `/today` OVERDUE banner: count drops the moment a submission lands
+      — instant gratification, "Lyra noticed I just submitted."
+    - `/insights` new card: "Submission lead time" — distribution of
+      `(submitted_at - due_at)` in minutes, stratified by course code.
+      Negative values cluster near zero = procrastination signal; large
+      negative = preparedness signal. Per-user histogram is the
+      academic-procrastination instrument the operator is asking for.
+
+**Research value.** This is genuinely new measurement we can't get any
+other way:
+- `submission_lead_time = submitted_at - due_at` (signed minutes;
+  negative = on time, positive = late)
+- Cross with `bias_factor_observed` per category from H1 work — does
+  high planning-overrun correlate with last-minute submission?
+- Cross with VT-22 scope inflation: do users who under-scope ALSO
+  submit closer to deadline?
+- All without any user logging burden — Moodle does the recording.
+
+**Why parked, not built now.**
+- Path A (iCal sync) shipped 6h ago. Validate the wedge with real
+  alpha-cohort users first — if Q12 of the post-week-1-2 survey
+  (Appendix B of strategic plan) shows <50% interest in LMS sync,
+  Path B is wasted effort.
+- Path B is per-school-fragile: some Moodle admins disable user-level
+  WS tokens. Need to know how many of the trusted alpha cohort can
+  actually generate one before building the auth surface.
+- Adds a second credential per user (token, not just URL). Doubles the
+  key-rotation / disconnect / re-consent surface area.
+- Submission lead time is rich research signal but not retention-critical
+  in the way the iCal wedge is. Phase 6+ work, not pre-alpha polish.
+
+**Trigger to revisit.** When ALL of:
+- Path A iCal sync has 5+ active alpha users for ≥2 weeks
+- Q12 of post-week-1-2 survey returns ≥4/7 enthusiastic
+- One alpha student has confirmed they can self-issue a Moodle WS token
+  on their school's install
+- Operator has 3+ free days for a Phase 2 LMS push (post-alpha-launch
+  stabilization)
+
+**Implementation estimate at trigger time.** ~3-4 days for Path B MVP:
+schema + WS client + sync job + frontend token-paste flow + insights
+card. Reuses the credential storage, sync-job, and external-source
+patterns already shipped for Path A.
+
+**Cite when revisiting.** `docs/moodle_lms_integration.md` (Path A
+architecture this extends), MANIFESTO.md §VT-29 (contamination test
+that already covers Path B's writes by virtue of the external_source
+filter), and `services/moodle_ics_sync.py` (the sync-service shape to
+mirror for the WS variant).
