@@ -360,23 +360,50 @@ function TodayInner() {
       if (d.voided_at) return [];
       const due = new Date(d.due_at_utc);
       const dueLocalKey = format(due, "yyyy-MM-dd");
+      // OVERDUE definition unifies two paths:
+      //   (a) post-sweep: sweep_missed_deadlines transitioned the row to
+      //       state='missed' (every 1h job in workers/scheduler.py).
+      //   (b) pre-sweep: state still 'planned'/'active' but due_at has
+      //       passed — the sweep just hasn't run yet (up to ~1h window).
+      // Both paths render the loud OVERDUE pill + pin to /today until
+      // the user explicitly handles them. Operator-flagged 2026-04-29:
+      // missed academic deadlines are the highest-signal procrastination
+      // data point and must be impossible to miss in the UI.
       const isOverdue =
-        (d.state === "planned" || d.state === "active") &&
-        due.getTime() < nowMs;
+        d.state === "missed" ||
+        ((d.state === "planned" || d.state === "active") &&
+          due.getTime() < nowMs);
       // Show on the deadline's actual due day (any past/future day the
-      // operator views). The OVERDUE pill is independent of which day is
-      // being viewed — it reflects whether the deadline is past-due AND
-      // still pending action.
+      // operator views). The OVERDUE pill only fires on today-view —
+      // browsing a past day where a deadline missed should show the
+      // historical "MISSED" state, not the action-prompt "OVERDUE"
+      // (which implies "act now" — false on a past-day view).
       if (dueLocalKey === viewedDate) {
-        return [{ deadline: d, overdue: isOverdue }];
+        return [{ deadline: d, overdue: isViewingToday && isOverdue }];
       }
       // Pin overdue items to today so they stay visible until resolved.
+      // Covers both the pre-sweep (planned/active+past) and post-sweep
+      // (missed) cases — without this, a deadline that misses by >1h
+      // (when sweep flips it to missed) silently disappears from /today.
       if (isViewingToday && isOverdue) {
         return [{ deadline: d, overdue: true }];
       }
       return [];
     });
   })();
+
+  // Overdue aggregate for the top banner. Only surfaces on /today (don't
+  // pollute past/future-day views with action prompts about today). LMS
+  // breakout shows the "from your school" sub-count when imported rows
+  // are present — academic stakes get explicit emphasis per operator
+  // call 2026-04-29 evening.
+  const overdueDeadlines = isViewingToday
+    ? dueDeadlines.filter((x) => x.overdue)
+    : [];
+  const overdueCount = overdueDeadlines.length;
+  const overdueFromLms = overdueDeadlines.filter(
+    (x) => x.deadline.external_source === "moodle_ics"
+  ).length;
 
   const feed = ((): { top: FeedItem[]; bottom: FeedItem[] } => {
     if (!tasksQ.data) return { top: [], bottom: [] };
@@ -824,6 +851,34 @@ function TodayInner() {
       {errorMsg && (
         <div className="mb-4 rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
           {errorMsg}
+        </div>
+      )}
+
+      {overdueCount > 0 && (
+        <div
+          role="alert"
+          className="mb-4 flex items-center gap-3 rounded-sm border-2 border-ember bg-ember/10 px-4 py-3 text-ember"
+        >
+          <span
+            aria-hidden
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ember/20 font-mono text-sm font-bold"
+          >
+            {overdueCount}
+          </span>
+          <div className="flex flex-1 flex-col gap-0.5">
+            <p className="text-sm font-semibold uppercase tracking-wide">
+              {overdueCount === 1 ? "Overdue" : `${overdueCount} overdue`}
+            </p>
+            <p className="text-[11px] text-ember/80">
+              {overdueFromLms > 0
+                ? `${overdueFromLms} from your school${
+                    overdueFromLms < overdueCount
+                      ? `, ${overdueCount - overdueFromLms} other`
+                      : ""
+                  }. Handle these first.`
+                : "Past due — handle these first."}
+            </p>
+          </div>
         </div>
       )}
 
