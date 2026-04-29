@@ -26,6 +26,7 @@ from app.services.archetype_service import (
     score_meq,
 )
 from app.services.calendar_sync import store_refresh_token
+from app.utils.me_cache import get_cached_me, invalidate_me, set_cached_me
 from app.utils.time_utils import now_utc, strip_tz
 
 # Phase D archetype-survey eligibility gate. Users created on or after
@@ -80,6 +81,15 @@ class ConsentIn(BaseModel):
 @router.get("/users/me")
 def get_me(db: Session = Depends(get_db)):
     user = _current_user(db)
+    # Cache fast-path (me_cache 2026-04-29 latency sweep). 30s TTL.
+    # Bust on user-row mutations + TaskManager.create_task. See
+    # `app/utils/me_cache.py` for the rationale: lazy-stamp side effects
+    # below (d1_return_at, onboarding backfill) are one-time stamps so
+    # missing them on cache hits is harmless — the next miss after the
+    # 30s window handles the next eligible call.
+    cached = get_cached_me(user.user_id)
+    if cached is not None:
+        return cached
     # Grandfathered-user backfill (2026-04-28 hotfix): re-enabling the
     # OnboardingFlow gate in C1 blocked /today for users created before
     # alembic 025 added onboarding_completed_at — that column was stamped
@@ -182,7 +192,7 @@ def get_me(db: Session = Depends(get_db)):
         or 0
     )
     has_active_task_history = active_task_count > 0
-    return {
+    payload = {
         "user_id": user.user_id,
         "email": user.email,
         "google_id": user.google_id,
@@ -227,6 +237,8 @@ def get_me(db: Session = Depends(get_db)):
         "google_calendar_connected": user.google_refresh_token is not None,
         "created_at": user.created_at.isoformat(),
     }
+    set_cached_me(user.user_id, payload)
+    return payload
 
 
 class StoreRefreshTokenIn(BaseModel):
@@ -252,6 +264,7 @@ def post_google_refresh_token(body: StoreRefreshTokenIn, db: Session = Depends(g
     if not body.refresh_token:
         raise HTTPException(status_code=400, detail="refresh_token required")
     store_refresh_token(user.user_id, body.refresh_token)
+    invalidate_me(user.user_id)  # google_calendar_connected flips
     return {"ok": True, "google_calendar_connected": True}
 
 
@@ -266,6 +279,7 @@ def delete_google_refresh_token(db: Session = Depends(get_db)):
     user = _current_user(db)
     user.google_refresh_token = None
     db.commit()
+    invalidate_me(user.user_id)  # google_calendar_connected flips
     return {"ok": True, "google_calendar_connected": False}
 
 
@@ -319,6 +333,7 @@ def submit_archetype_survey(
     db.add(assignment)
     user.archetype_id = archetype_id
     db.commit()
+    invalidate_me(user.user_id)  # archetype_id, archetype_*_at flip
 
     return ArchetypeAssignmentOut(
         archetype_id=archetype_id,
@@ -375,6 +390,7 @@ def skip_archetype_survey(db: Session = Depends(get_db)) -> ArchetypeAssignmentO
     db.add(assignment)
     user.archetype_id = DIFFUSE_AVERAGE_ID
     db.commit()
+    invalidate_me(user.user_id)  # archetype_id flips
 
     return ArchetypeAssignmentOut(
         archetype_id=DIFFUSE_AVERAGE_ID,
@@ -397,6 +413,7 @@ def dismiss_archetype_retrofit(db: Session = Depends(get_db)) -> dict:
     if user.archetype_retrofit_dismissed_at is None:
         user.archetype_retrofit_dismissed_at = datetime.utcnow()
         db.commit()
+        invalidate_me(user.user_id)  # archetype_retrofit_dismissed_at flips
     return {
         "ok": True,
         "archetype_retrofit_dismissed_at": (
@@ -414,6 +431,7 @@ def complete_tutorial(db: Session = Depends(get_db)):
     if user.tutorial_completed_at is None:
         user.tutorial_completed_at = datetime.utcnow()
         db.commit()
+        invalidate_me(user.user_id)  # tutorial_completed_at flips
     return {
         "ok": True,
         "tutorial_completed_at": user.tutorial_completed_at.isoformat(),
@@ -433,6 +451,7 @@ def skip_tutorial(db: Session = Depends(get_db)):
     if user.tutorial_skipped_at is None:
         user.tutorial_skipped_at = datetime.utcnow()
         db.commit()
+        invalidate_me(user.user_id)  # tutorial_skipped_at flips
     return {
         "ok": True,
         "tutorial_skipped_at": user.tutorial_skipped_at.isoformat(),
@@ -454,6 +473,7 @@ def skip_onboarding(db: Session = Depends(get_db)):
     if user.onboarding_completed_at is None:
         user.onboarding_completed_at = datetime.utcnow()
         db.commit()
+        invalidate_me(user.user_id)  # onboarding_completed_at flips
     return {
         "ok": True,
         "onboarding_completed_at": user.onboarding_completed_at.isoformat(),
@@ -501,6 +521,7 @@ def post_consent(body: ConsentIn, db: Session = Depends(get_db)):
     if body.research_consent:
         user.research_consent_at = now
     db.commit()
+    invalidate_me(user.user_id)  # terms_accepted_at, research_consent_at flip
     return {"ok": True, "terms_accepted_at": now.isoformat(), "research_consent": body.research_consent}
 
 

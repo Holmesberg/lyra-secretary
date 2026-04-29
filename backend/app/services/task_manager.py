@@ -457,6 +457,20 @@ class TaskManager:
         self.db.commit()
         self.db.refresh(task)
 
+        # Invalidate the /me cache (me_cache 2026-04-29). First task per
+        # user flips has_active_task_history false→true and may stamp
+        # onboarding_completed_at + first_task_at — frontend gates the
+        # onboarding screen on these so 30s stale would be jarring.
+        # Subsequent creates also bump executed_session_count counters
+        # in /me; invalidate on every call (cheap — one Redis DELETE).
+        try:
+            from app.utils.me_cache import invalidate_me
+            uid = get_current_user_id()
+            if uid is not None:
+                invalidate_me(uid)
+        except Exception as e:
+            logger.warning("create_task: me_cache invalidate failed (non-blocking): %s", e)
+
         # Notion sync deferred to Redis queue — inline call cost user 1-8s per
         # create on the hot path. Queue drains via APScheduler worker.
         notion_synced = False
@@ -582,6 +596,20 @@ class TaskManager:
             logger.warning(f"Onboarding/funnel stamp failed (non-blocking): {e}")
         self.db.commit()
         self.db.refresh(task)
+
+        # Invalidate the /me cache (me_cache 2026-04-29). First task per
+        # user flips has_active_task_history false→true and may stamp
+        # onboarding_completed_at + first_task_at — frontend gates the
+        # onboarding screen on these so 30s stale would be jarring.
+        # Subsequent creates also bump executed_session_count counters
+        # in /me; invalidate on every call (cheap — one Redis DELETE).
+        try:
+            from app.utils.me_cache import invalidate_me
+            uid = get_current_user_id()
+            if uid is not None:
+                invalidate_me(uid)
+        except Exception as e:
+            logger.warning("create_task: me_cache invalidate failed (non-blocking): %s", e)
 
         # Sync to Notion
         notion_synced = False

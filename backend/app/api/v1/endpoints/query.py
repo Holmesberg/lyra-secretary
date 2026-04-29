@@ -94,14 +94,33 @@ def query_tasks(
         if initiation_status:
             query = query.filter(Task.initiation_status == initiation_status)
 
-        # Count before limit for truncation warning.
-        total_count = query.count()
-        truncated = total_count > limit
-
+        # Combined count + page in one SQL pass via window function
+        # (me_cache 2026-04-29 latency sweep). The previous shape did
+        # `query.count()` then `query.all()` — two Cairo→eu-west-1
+        # round-trips at ~600ms each. `count() OVER ()` ships the total
+        # alongside every row in a single query. Standard Postgres
+        # window function; SQLite (test backend) supports it from 3.25+
+        # which the project requires for other features.
+        #
         # Order by start time descending (newest first for table view).
-        # Legacy callers that relied on ascending order use date/days mode
-        # which naturally returns a small window — reordering is harmless.
-        tasks = query.order_by(Task.planned_start_utc.desc()).limit(limit).all()
+        # Legacy callers that relied on ascending order use date/days
+        # mode which naturally returns a small window — reordering is
+        # harmless.
+        rows = (
+            query
+            .add_columns(func.count().over().label("total_count"))
+            .order_by(Task.planned_start_utc.desc())
+            .limit(limit)
+            .all()
+        )
+        if rows:
+            # Each row is a (Task, total_count) tuple per add_columns.
+            tasks = [r[0] for r in rows]
+            total_count = int(rows[0][1])
+        else:
+            tasks = []
+            total_count = 0
+        truncated = total_count > limit
 
         # Batch-load session aggregates to avoid N+1.
         task_ids = [t.task_id for t in tasks]
