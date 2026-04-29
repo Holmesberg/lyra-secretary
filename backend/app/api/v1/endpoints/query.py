@@ -30,6 +30,7 @@ def query_tasks(
     state: Optional[str] = Query("planned", description="Filter by state. Pass 'all' to return every state (PLANNED, EXECUTING, PAUSED, EXECUTED, SKIPPED, DELETED). The 'all' sentinel skips the state filter entirely — it is not a real TaskState enum value."),
     initiation_status: Optional[str] = Query(None, description="Filter by initiation_status (e.g. system_error, retroactive)"),
     limit: int = Query(ROW_LIMIT, ge=1, le=ROW_LIMIT, description=f"Max rows returned (hard cap {ROW_LIMIT})."),
+    include_voided: bool = Query(False, description="Include soft-voided rows. Default false (per voided_at_guard discipline). Audit/admin tools opt in by setting true."),
     db: Session = Depends(get_db)
 ):
     """
@@ -60,6 +61,7 @@ def query_tasks(
             and category is None
             and initiation_status is None
             and limit == ROW_LIMIT
+            and include_voided is False
         )
         if cache_eligible:
             uid = get_current_user_id()
@@ -70,6 +72,16 @@ def query_tasks(
                     return cached
 
         query = db.query(Task)
+
+        # voided_at_guard discipline (per feedback memory): every Task
+        # query/mutation must filter `voided_at IS NULL` by default.
+        # Voiding doesn't change state — state-only filters leak voided
+        # rows into research analytics + UI surfaces. The /v1/tasks/query
+        # endpoint historically lacked this filter, leaking voided rows
+        # to /pulse aggregations + /today + /table. Audit-flagged
+        # 2026-04-30. Opt-in `include_voided=true` for admin/audit tools.
+        if not include_voided:
+            query = query.filter(Task.voided_at.is_(None))
 
         # Filter by state — 'all' sentinel skips the filter.
         if state and state.lower() != "all":
