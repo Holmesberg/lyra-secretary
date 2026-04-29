@@ -143,3 +143,30 @@ export function previewDeadlineBinding(
     }),
   });
 }
+
+/**
+ * Pure helper extracted from /today's dueDeadlines filter (2026-04-29
+ * /pulse ship). Same overdue semantics: post-sweep state='missed' OR
+ * pre-sweep planned/active+past_due. Returns the same shape /today uses
+ * so consumers can render the polished OVERDUE pill via DeadlineRow.
+ *
+ * `pinToToday`: when true, deadlines that aren't on the viewed day but
+ * ARE overdue still appear (they pin to today until handled). Mirrors
+ * the /today view's "if isViewingToday && isOverdue → include" branch.
+ */
+export function computeOverdueDeadlines(
+  all: DeadlineResponse[],
+  opts: { pinToToday?: boolean; nowMs?: number } = {}
+): { deadline: DeadlineResponse; overdue: boolean }[] {
+  const nowMs = opts.nowMs ?? Date.now();
+  return all.flatMap((d) => {
+    if (d.voided_at) return [];
+    if (d.state === "completed" || d.state === "skipped") return [];
+    const isOverdue =
+      d.state === "missed" ||
+      ((d.state === "planned" || d.state === "active") &&
+        new Date(d.due_at_utc).getTime() < nowMs);
+    if (isOverdue) return [{ deadline: d, overdue: true }];
+    return [];
+  });
+}

@@ -10,6 +10,12 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/today", label: "Today" },
+  // /pulse is a Neural Noir dashboard prototype shipped 2026-04-29
+  // for operator review. Listed in nav so moriartyholmesberg can
+  // navigate; the (preview) suffix tells anyone else who wanders by
+  // that it's experimental. If operator promotes /pulse → /today,
+  // remove this line + the (app)/pulse/ directory in one cleanup commit.
+  { href: "/pulse", label: "Pulse (preview)" },
   { href: "/calendar", label: "Calendar" },
   { href: "/deadlines", label: "Deadlines" },
   { href: "/table", label: "Table" },
