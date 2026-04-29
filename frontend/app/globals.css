@@ -155,6 +155,65 @@
     }
   }
 
+  /* Cyan-themed range slider — used by the Pulse focus card's
+     readiness + reflection sliders. Mobile-friendly thumb sizing
+     (≥20px = comfortable touch target). Default browser range looks
+     generic; this matches Neural Noir's signal cyan with subtle glow.
+     Shipped 2026-04-30 with the inline timer flow. */
+  .lyra-range {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .lyra-range::-webkit-slider-runnable-track {
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      rgba(77, 212, 232, 0.55) 0%,
+      rgba(77, 212, 232, 0.25) 100%
+    );
+    border-radius: 2px;
+  }
+  .lyra-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    margin-top: -8px;
+    border-radius: 50%;
+    background: #00e5ff;
+    border: 2px solid #05070c;
+    box-shadow:
+      0 0 0 1px rgba(0, 229, 255, 0.6),
+      0 0 12px rgba(0, 229, 255, 0.45);
+    cursor: pointer;
+    transition: transform 120ms ease;
+  }
+  .lyra-range::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+  }
+  .lyra-range::-moz-range-track {
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      rgba(77, 212, 232, 0.55) 0%,
+      rgba(77, 212, 232, 0.25) 100%
+    );
+    border-radius: 2px;
+  }
+  .lyra-range::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #00e5ff;
+    border: 2px solid #05070c;
+    box-shadow:
+      0 0 0 1px rgba(0, 229, 255, 0.6),
+      0 0 12px rgba(0, 229, 255, 0.45);
+    cursor: pointer;
+  }
+
   /* Status-dot — small pulsing indicator for inline status pills.
      `--dot-color` controls the hue. Used in the per-row OVERDUE pill
      so the row reads as a live status readout, not a tag. */

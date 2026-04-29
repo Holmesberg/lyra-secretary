@@ -162,7 +162,7 @@ export default function PulsePage() {
           <PulseTodaysPlanV2 tasks={tasksToday} />
         </div>
         <div className="lg:col-span-5">
-          <PulseFocusCard />
+          <PulseFocusCard todaysTasks={tasksToday} />
         </div>
         <div className="lg:col-span-4">
           <PulseDeadlinesV2 deadlines={deadlines} />
