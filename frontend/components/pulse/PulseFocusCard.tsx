@@ -68,7 +68,14 @@ function fmtTime(iso: string | null | undefined): string {
   }
 }
 
-const READINESS_LABELS = ["Drained", "Low", "Steady", "Sharp", "Peak"];
+// "Drained" was audit-flagged 2026-04-30 (CAUTION) as identity-cementing
+// when used post-task as the reflection label too — picking it after
+// finishing a session reads as "the work drained me." Swapped for "Tired,"
+// which is universally accepted as a transient state not a trait. Same
+// scale used for pre-task readiness + post-task reflection so the swap
+// applies to both surfaces. Established 5-point energy scales (Karolinska,
+// Stanford) use state words, not identity words — this aligns with that.
+const READINESS_LABELS = ["Tired", "Low", "Steady", "Sharp", "Peak"];
 
 export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const qc = useQueryClient();

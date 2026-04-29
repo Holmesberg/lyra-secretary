@@ -18,7 +18,19 @@ from app.workers.jobs.resume_prediction import run_resume_prediction
 from app.workers.jobs.moodle_ics_sync import run_moodle_ics_sync
 
 logger = logging.getLogger(__name__)
-scheduler = BackgroundScheduler()
+
+# APScheduler default misfire_grace_time is 30s — any job that should
+# have fired more than 30s ago is silently dropped. Operator runs the
+# backend on a laptop that sleeps overnight, which means hours of
+# missed jobs (Moodle sync, Notion retry, etc.) get DROPPED on wake
+# instead of replayed. Audit-flagged 2026-04-30. Setting a global
+# 24h grace via job_defaults so misfired jobs catch up on wake. Each
+# job is internally idempotent (Notion retry queue is queue-based,
+# Moodle sync upserts by external_uid, sweep jobs query current state)
+# so replaying once on wake is harmless.
+scheduler = BackgroundScheduler(
+    job_defaults={"misfire_grace_time": 60 * 60 * 24, "coalesce": True}
+)
 
 def start_scheduler():
     """Start background scheduler."""
