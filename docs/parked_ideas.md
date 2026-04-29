@@ -670,3 +670,118 @@ Sequential execution → cascade_score (intra-task)
 variables, it is an isolated addition. Redesign to integrate or park until
 integration path is clear. See `docs/design_patterns/rules_vs_agency.md`
 §Integration-not-isolation principle.
+
+---
+
+## Autonomous planning — the relief-instrument endgame
+*Captured: 2026-04-29 evening (operator-proposed during the LMS-wedge ship —
+"later on we can manage people's plans autonomously using their patterns,
+deadlines and given tasks. Plan for them basically.")*
+
+**Idea.** A fourth intelligence mode beyond Full / Light / Manual (see
+`feedback_graduated_intelligence_controls.md`): **Auto**. Lyra observes
+the user's tasks, deadlines, bias_factor cells, pause patterns, cascade
+signatures, archetype priors, and externally-imported data (Moodle
+deadlines via alembic 041, future Google Cal context, etc.) and
+proposes — then, with consent, executes — a daily/weekly plan on the
+user's behalf. The user wakes up to "here's what I'd plan for tomorrow,
+confirm or edit." Eventually: silent overnight commit with morning
+summary.
+
+**Why this is the natural endpoint, not a separate product.** Per
+`project_relief_instrument_reframe.md` the user-facing mechanism is
+chaos→structure. Today the user provides the chaos (brain-dump,
+deadlines, manual scheduling) and Lyra applies the structure
+heuristically. Autonomous planning collapses the user side too — Lyra
+provides BOTH the chaos translation AND the structure. It is the
+furthest extension of "make planning disappear" that the LMS sync
+already started.
+
+**Preconditions before this ships:**
+1. **Dense per-user data.** Per `project_logging_friction.md` even the
+   operator forgets to log after 3 weeks; an autoplanner trained on
+   sparse data is just generic heuristics with someone's name on it.
+   Floor: ≥30 EXECUTED tasks per user across ≥3 categories with
+   pre/post readiness on ≥60% of them. The Moodle import (alembic 041)
+   is exactly the right pre-cursor because it pulls dense deadline
+   data without asking the user to type it.
+2. **Trust runway from smaller wins first.** Sequencing matters more
+   than capability:
+   - Step 1 (DONE): LMS sync — pulls deadlines correctly, no agency.
+   - Step 2: Calibration nudge accuracy at user-visible level (see
+     `services/bias_factor_service.py` Rule 13 blend) — proves Lyra's
+     suggestions are calibrated before it's allowed to act on its own.
+   - Step 3: One-task-at-a-time autonomous reschedule with explicit
+     confirmation ("Lyra moved your debugging block from 11am to 2pm
+     because you usually under-perform mornings on dev work — undo?").
+   - Step 4: End-of-day "tomorrow's plan" preview surface, requires
+     one-tap confirm.
+   - Step 5: Silent overnight autoplan, morning summary, undo per
+     block.
+   Skipping to Step 5 without 1–4 risks the creepy-smart fear before
+   the user has seen the system get smaller things right.
+3. **Pre-registered VT for autonomous-action contamination.** Once
+   Lyra is moving tasks on its own, every signal (planned_duration,
+   readiness, delta) is partly a function of Lyra's own decisions —
+   the Hawthorne / instrument-intervention threats compound. Need a
+   sibling to VT-21 (narrative internalization) and VT-25 (label
+   reinforcement): VT-XX "autonomous-decision contamination of H1."
+   Distinguishing test: Lyra-planned blocks vs user-planned blocks,
+   stratified bias_factor; if they diverge >0.20 effect size,
+   autoplanning is intervening on the very variable it's trying to
+   measure.
+4. **Reversibility per action.** Every autonomous action must produce
+   an undo signal — not just an undo button, but an undo that itself
+   becomes training data ("Lyra moved this; user undid; never do this
+   pattern again"). Fits the existing undo-cache pattern
+   (`utils/redis_client.py` 30s TTL) extended to 24h for autoplan
+   actions.
+
+**Architectural slot.** Add to `feedback_graduated_intelligence_controls.md`
+3-mode ladder as a fourth mode: Full / Light / Manual / **Auto**. Auto
+is opt-in only, never default for new users. Probably gated on
+`user.first_task_at + 60 days` AND `≥30 EXECUTED tasks` AND user
+explicit toggle. New service: `services/auto_planner.py` consuming
+the same bias_factor cells + cascade_score + scope_density that
+calibration nudge already reads — no new measurement instruments,
+just a different consumer of the existing ones.
+
+**Method (sketch — do not build before preconditions).**
+- Daily cron at user's local 22:00 (per `user.timezone`): query active
+  deadlines + brain-dump backlog + bias_factor cells + pause patterns.
+- Solve the schedule as constrained optimization: minimize expected
+  delay_minutes (per Rule 14 H2 prediction) + minimize cascade
+  fragmentation, subject to deadline constraints.
+- Write proposal to a new `plan_proposal` table (NOT `task` — proposals
+  aren't tasks until accepted). Frontend renders "Tomorrow's plan" card
+  on `/today`.
+- One-tap accept → tasks created via existing `TaskManager.create_task`
+  with `task_source='auto_planned'` flag (new TaskSource enum value).
+  One-tap reject → row deleted, training signal logged.
+
+**Trigger to revisit.**
+- After Phase 6+ (post-Jun-18-25 retention checkpoint) AND ≥30 users
+  AND median ≥30 EXECUTED tasks per active user AND H1 has resolved
+  one way or the other (so we know if delta is the right metric to
+  optimize).
+- Also conditional on: Step 2 (visible calibration accuracy) shipped
+  and validated against user qualitative read first ("did Lyra's
+  nudges help you or annoy you?").
+
+**Do not:**
+- Build before n ≥ 30 users with dense data — autoplanner trained on
+  sparse data IS the failure mode.
+- Skip Steps 2–4 of the trust runway — silent overnight autoplan as
+  v1 of autonomy is exactly the creepy-smart fear from
+  `feedback_check_cognitive_load_layer.md` realized in production.
+- Default to Auto for new users at any phase. Always opt-in, with the
+  warm-tone framing per `feedback_warm_tone_copy.md`.
+
+**Connection to current work.** The Moodle LMS sync (alembic 041,
+2026-04-29) is structurally the first step toward this — it pulls
+dense external data without user friction. Every Moodle-imported
+deadline becomes a constraint the autoplanner will eventually optimize
+against. The fact that we already flagged `external_source` and
+pre-registered VT-29 (External-Deadline Contamination) means the
+autoplanner inherits the right research-integrity scaffolding from
+day one.
