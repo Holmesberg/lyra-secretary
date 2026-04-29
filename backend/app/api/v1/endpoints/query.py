@@ -11,6 +11,7 @@ from app.db.models import Task, TaskState, StopwatchSession
 from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_utc, to_local
 from app.utils.redis_client import RedisClient
+from app.utils.tasks_range_cache import get_cached_range, set_cached_range
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -44,6 +45,30 @@ def query_tasks(
     3. Neither set → no date filter (all tasks matching other filters).
     """
     try:
+        # Cache fast-path for range queries (date_from set). The /pulse
+        # v2 dashboard fires a 14-day range every page load to power
+        # the Recovery + System Insight charts; this is the single
+        # heaviest query on first paint. 60s TTL is invisible to the
+        # chart aggregations (they resample at day-boundaries client-
+        # side) and busts on TaskManager.create_task. See
+        # `app/utils/tasks_range_cache.py` for the full rationale.
+        # Only cache the canonical "state=all + no extra filters" shape
+        # /pulse uses — otherwise we'd thrash the cache on every variant.
+        cache_eligible = (
+            date_from is not None
+            and (state is None or state == "all")
+            and category is None
+            and initiation_status is None
+            and limit == ROW_LIMIT
+        )
+        if cache_eligible:
+            uid = get_current_user_id()
+            if uid is not None:
+                effective_to = date_to or datetime.utcnow().strftime("%Y-%m-%d")
+                cached = get_cached_range(uid, date_from, effective_to)
+                if cached is not None:
+                    return cached
+
         query = db.query(Task)
 
         # Filter by state — 'all' sentinel skips the filter.
@@ -196,7 +221,19 @@ def query_tasks(
                 "llm_alternative_suggestion": t.llm_alternative_suggestion,
             })
 
-        return {"tasks": task_list, "total": total_count, "truncated": truncated}
+        response_payload = {
+            "tasks": task_list,
+            "total": total_count,
+            "truncated": truncated,
+        }
+        # Cache the canonical-shape range response (computed lazily so
+        # the cache miss path stays simple). Bust on TaskManager.create_task.
+        if cache_eligible:
+            uid = get_current_user_id()
+            if uid is not None:
+                effective_to = date_to or datetime.utcnow().strftime("%Y-%m-%d")
+                set_cached_range(uid, date_from, effective_to, response_payload)
+        return response_payload
 
     except Exception as e:
         logger.error(f"Query error: {e}", exc_info=True)

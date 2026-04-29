@@ -479,11 +479,15 @@ class TaskManager:
         # in /me; invalidate on every call (cheap — one Redis DELETE).
         try:
             from app.utils.me_cache import invalidate_me
+            from app.utils.tasks_range_cache import invalidate_user_ranges
             uid = get_current_user_id()
             if uid is not None:
                 invalidate_me(uid)
+                # Bust any cached /tasks/query range payloads so the new
+                # task appears in /pulse charts within the next render.
+                invalidate_user_ranges(uid)
         except Exception as e:
-            logger.warning("create_task: me_cache invalidate failed (non-blocking): %s", e)
+            logger.warning("create_task: cache invalidate failed (non-blocking): %s", e)
 
         # Notion sync deferred to Redis queue — inline call cost user 1-8s per
         # create on the hot path. Queue drains via APScheduler worker.
@@ -619,11 +623,15 @@ class TaskManager:
         # in /me; invalidate on every call (cheap — one Redis DELETE).
         try:
             from app.utils.me_cache import invalidate_me
+            from app.utils.tasks_range_cache import invalidate_user_ranges
             uid = get_current_user_id()
             if uid is not None:
                 invalidate_me(uid)
+                # Bust any cached /tasks/query range payloads so the new
+                # task appears in /pulse charts within the next render.
+                invalidate_user_ranges(uid)
         except Exception as e:
-            logger.warning("create_task: me_cache invalidate failed (non-blocking): %s", e)
+            logger.warning("create_task: cache invalidate failed (non-blocking): %s", e)
 
         # Sync to Notion
         notion_synced = False
