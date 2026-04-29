@@ -1,32 +1,40 @@
 "use client";
 /**
- * PulseFocusCard — inline timer command surface (2026-04-30 ship).
+ * PulseFocusCard — inline timer command surface (revised 2026-04-30).
  *
- * Operator narrowing on the v2 dashboard plan: this card has to
- * absorb the full daily action loop so /pulse becomes a daily-driver
- * without exiting to /today. Minimum interaction set per operator:
- *   - Start (with task picker + readiness slider)
- *   - Pause (one-tap, defaults to intentional_break)
- *   - Resume
- *   - Stop (with inline reflection slider)
- *   - Quick-pick next PLANNED task after stop
+ * Operator preference revision: "revert the current focus session to
+ * the timer, was much more cooler." → the radial timer is the visual
+ * hero in EVERY state (including idle, where it shows dimmed 00:00),
+ * and the task picker / readiness / reflection chrome lives BELOW it
+ * compactly. The previous A1 ship hid the timer in idle and let the
+ * picker dominate the card; that wasn't the vibe.
  *
- * Deliberately NOT included (operator scope cut):
- *   - Switch-to-other-paused
- *   - Reason picker on pause (default 'intentional_break' is fine)
- *   - Early-stop confirmation modal (handled via inline confirm button
- *     when backend returns requires_confirmation)
- *   - Scope outcome / completion percentage on stop
+ * Operator-narrowed action set still applies (no Switch button, no
+ * pause-reason picker, no scope-outcome). The interactivity from the
+ * inline shipped as A1 stays — just visually subordinated to the
+ * timer-as-hero composition.
  *
- * Mobile-first sizing: every interactive target is ≥44px (Apple HIG
- * touch threshold). Slider thumb is generous. No hover-only affordances
- * — every state visible without hovering.
+ * State machine:
+ *   - mode='idle' (default): timer dimmed at 00:00 + compact
+ *     picker/readiness/start chrome below (or "nothing planned" hint)
+ *   - mode='reflection' (after Stop): timer still showing the final
+ *     elapsed + reflection slider + Finish below
+ *   - mode='next-prompt' (after Finish): summary card replaces picker
  *
- * State source-of-truth split:
- *   - Active session state (running, paused, elapsed) → server
- *     /v1/stopwatch/status query, polls every 5s
- *   - Local mode (which sub-UI is showing) → useState
- *     'idle' | 'readiness' | 'reflection'
+ * Active session UI (running, paused) derives from the server
+ * stopwatch-status query — local mode doesn't switch.
+ *
+ * Bugs fixed in this revision (caught via ultrathink pass):
+ *   1. requires_confirmation handling no longer string-matches
+ *      `errorMsg.includes("early")` — uses a typed boolean state flag
+ *      `requiresConfirm`. Less fragile, works regardless of what
+ *      copy the backend's `confirmation_message` returns.
+ *   2. Orphan reflection mode — if another tab stops the session
+ *      while we're in mode='reflection', server status flips
+ *      inactive but our local mode stays. Without cleanup, user
+ *      hits Finish on a non-existent session → 4xx error. useEffect
+ *      now resets mode→'idle' when status flips inactive while in
+ *      reflection AND no in-flight stop mutation.
  */
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -44,14 +52,9 @@ import {
 } from "@/lib/tasks";
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
 
-type Mode =
-  | "idle" // no session, picker + readiness shown
-  | "reflection" // stopping, reflection slider shown
-  | "next-prompt"; // after finish, "Start next?" suggestion
+type Mode = "idle" | "reflection" | "next-prompt";
 
 export interface PulseFocusCardProps {
-  /** Today's tasks from the parent's already-fetched query. Used to
-   *  populate the task picker (PLANNED only) and the next-task prompt. */
   todaysTasks: TaskRow[];
 }
 
@@ -80,13 +83,11 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const isActive = !!status?.active;
   const isPaused = !!status?.paused;
 
-  // Local mode — only meaningful when status is NOT active. When status
-  // flips active, we render the running view regardless of local mode.
-  // After stop completes (status flips back to inactive), we set mode
-  // to 'next-prompt' so the user sees "Start next?".
   const [mode, setMode] = useState<Mode>("idle");
+  // Typed flag for the early-stop confirmation gate. Replaces the
+  // fragile `errorMsg.includes("early")` heuristic in A1's first cut.
+  const [requiresConfirm, setRequiresConfirm] = useState(false);
 
-  // Picker / readiness state
   const plannedTasks = todaysTasks
     .filter((t) => t.state === "PLANNED" && !t.voided_at)
     .sort((a, b) => {
@@ -94,11 +95,10 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       const bx = b.start ? new Date(b.start).getTime() : Infinity;
       return ax - bx;
     });
+
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [readiness, setReadiness] = useState<number>(3);
 
-  // Default selection — first planned task, refreshed when the list
-  // changes.
   useEffect(() => {
     if (selectedTaskId && plannedTasks.some((t) => t.task_id === selectedTaskId)) {
       return;
@@ -106,26 +106,32 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     setSelectedTaskId(plannedTasks[0]?.task_id ?? null);
   }, [plannedTasks, selectedTaskId]);
 
-  // Reflection state
   const [reflection, setReflection] = useState<number>(3);
   const [stoppedSummary, setStoppedSummary] = useState<{
     minutes: number;
     delta: number | null;
   } | null>(null);
-
-  // Error surface
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  // Track which task we just stopped so the "next" prompt can exclude it.
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
-  // ─── Mutations ────────────────────────────────────────────────────
+  // Bug fix #2 (ultrathink): if status flips inactive while we're
+  // in reflection mode (e.g. another tab stopped the session), reset
+  // local mode so Finish doesn't 4xx on a non-existent session.
+  useEffect(() => {
+    if (mode === "reflection" && !isActive && !stopM_isPendingRef.current) {
+      setMode("idle");
+      setRequiresConfirm(false);
+      setErrorMsg(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, mode]);
 
+  // Mutations
   const startM = useMutation<StartStopwatchResponse, Error, { taskId: string; readiness: number }>({
     mutationFn: ({ taskId, readiness }) => startStopwatch(taskId, readiness),
     onSuccess: () => {
-      setMode("idle"); // running view derives from server
+      setMode("idle");
       setErrorMsg(null);
-      // Snappy refetch — don't wait for the 5s poll.
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
     },
@@ -134,17 +140,13 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
 
   const pauseM = useMutation<unknown, Error, void>({
     mutationFn: () => pauseStopwatch("intentional_break"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["stopwatch-status"] }),
     onError: (e) => setErrorMsg(e.message ?? "Failed to pause"),
   });
 
   const resumeM = useMutation<unknown, Error, void>({
     mutationFn: () => resumeStopwatch(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["stopwatch-status"] }),
     onError: (e) => setErrorMsg(e.message ?? "Failed to resume"),
   });
 
@@ -152,8 +154,8 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     mutationFn: ({ reflection, confirmed }) => stopStopwatch(reflection, { confirmed }),
     onSuccess: (res) => {
       if (res.requires_confirmation) {
-        // Backend wants explicit confirm (early-stop gate). Surface
-        // inline; user clicks Finish-anyway to retry with confirmed=true.
+        // Bug fix #1 (ultrathink): typed flag, not string match.
+        setRequiresConfirm(true);
         setErrorMsg(res.confirmation_message ?? "Stopping early — finish anyway?");
         return;
       }
@@ -163,8 +165,8 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
         delta: res.delta_minutes ?? null,
       });
       setMode("next-prompt");
+      setRequiresConfirm(false);
       setErrorMsg(null);
-      // Reset for next session.
       setReflection(3);
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
@@ -174,79 +176,79 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     onError: (e) => setErrorMsg(e.message ?? "Failed to stop"),
   });
 
-  // When a session genuinely STOPS server-side (status flips active→
-  // inactive while we're in 'reflection' mode), the onSuccess above
-  // already moved us to 'next-prompt'. If the user dismisses the
-  // prompt and another session starts via /today (or some external
-  // path), the running view simply re-derives from status — no local
-  // mode reset needed.
+  // Pending-ref so the orphan-reflection useEffect can read the latest
+  // mutation state without re-subscribing every render.
+  const stopM_isPendingRef = useRef(stopM.isPending);
+  useEffect(() => {
+    stopM_isPendingRef.current = stopM.isPending;
+  }, [stopM.isPending]);
 
-  // ─── Render branches ──────────────────────────────────────────────
-
-  // Running view — server says we're active and not paused, AND we're
-  // not in reflection-input mode (which renders the slider over the
-  // running state during the brief stop transaction).
+  // Render branches
   const showRunning = isActive && !isPaused && mode !== "reflection";
   const showPaused = isActive && isPaused && mode !== "reflection";
   const showReflection = mode === "reflection" || (stopM.isPending && isActive);
   const showNextPrompt = mode === "next-prompt" && !isActive;
   const showIdle = !isActive && mode === "idle";
 
+  // Eyebrow copy
+  const eyebrow = showRunning
+    ? "Focus session"
+    : showPaused
+      ? "Session paused"
+      : showReflection
+        ? "How was it?"
+        : showNextPrompt
+          ? "Session complete"
+          : "Current focus session";
+
+  // Title above timer
+  const title =
+    showRunning || showPaused || showReflection
+      ? status?.task_title ?? null
+      : showNextPrompt
+        ? "Start the next one?"
+        : plannedTasks.length > 0
+          ? "Ready when you are"
+          : "Ready when you are";
+
   return (
     <div className="terminal-panel relative flex flex-col items-center overflow-hidden px-5 py-6 sm:px-6 sm:py-7">
       {/* Eyebrow */}
       <div className="mb-3 font-display text-[10px] font-medium uppercase tracking-macro text-dust">
         <span className="opacity-50">[ </span>
-        {showRunning
-          ? "Focus session"
-          : showPaused
-            ? "Session paused"
-            : showReflection
-              ? "How was it?"
-              : showNextPrompt
-                ? "Session complete"
-                : "Current focus session"}
+        {eyebrow}
         <span className="opacity-50"> ]</span>
       </div>
 
-      {/* Active task title (above timer when running/paused/reflecting) */}
-      {(showRunning || showPaused || showReflection) && status?.task_title && (
+      {/* Title — task title (active) or "Ready when you are" (idle) */}
+      {title && (
         <h2
-          className="mb-2 line-clamp-2 max-w-md text-center text-lg font-semibold tracking-tight text-parchment"
-          title={status.task_title}
+          className={`mb-3 line-clamp-2 max-w-md text-center text-lg font-semibold tracking-tight ${
+            showIdle && !status?.task_title ? "text-dust" : "text-parchment"
+          }`}
+          title={title}
         >
-          {status.task_title}
+          {title}
         </h2>
       )}
 
-      {/* Idle / next-prompt shows different headlines */}
-      {showIdle && (
-        <h2 className="mb-2 text-center text-lg font-semibold tracking-tight text-dust">
-          {plannedTasks.length > 0
-            ? "Pick what you're starting"
-            : "Nothing planned yet"}
-        </h2>
-      )}
-      {showNextPrompt && (
-        <h2 className="mb-2 text-center text-lg font-semibold tracking-tight text-parchment">
-          Start the next one?
-        </h2>
-      )}
-
-      {/* Radial timer — always present when active or running, hidden
-          when in idle picker mode + when in next-prompt for visual
-          calm (stoppedSummary takes its place). */}
-      {(showRunning || showPaused || showReflection) && (
+      {/* RADIAL TIMER — visual hero in EVERY state.
+          - Idle: status undefined or active=false → dimmed 00:00
+          - Active: live ticking
+          - Paused: frozen, ember tone (handled inside RadialFocusTimer)
+          - Reflection: shows final elapsed
+          - Next-prompt: hidden (replaced by stop summary) */}
+      {!showNextPrompt && (
         <div className="my-1">
           <RadialFocusTimer status={status} />
         </div>
       )}
 
-      {/* Idle: task picker + readiness slider + Start button */}
+      {/* IDLE — compact picker + readiness + Start, BELOW the timer. */}
       {showIdle && plannedTasks.length > 0 && (
-        <div className="flex w-full max-w-md flex-col gap-4 px-1">
-          {/* Picker */}
-          <ul className="flex max-h-[180px] flex-col gap-1 overflow-y-auto rounded-sm border border-hairline bg-void/40 p-1">
+        <div className="mt-5 flex w-full max-w-md flex-col gap-3 px-1">
+          {/* Compact picker — caps at 120px scrollable */}
+          <ul className="flex max-h-[120px] flex-col gap-1 overflow-y-auto rounded-sm border border-hairline bg-void/40 p-1">
             {plannedTasks.map((t) => {
               const selected = t.task_id === selectedTaskId;
               return (
@@ -254,7 +256,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
                   <button
                     type="button"
                     onClick={() => setSelectedTaskId(t.task_id)}
-                    className={`flex min-h-[44px] w-full items-center gap-3 rounded-sm px-3 py-2 text-left transition-colors ${
+                    className={`flex min-h-[40px] w-full items-center gap-2.5 rounded-sm px-2.5 py-1.5 text-left transition-colors ${
                       selected
                         ? "bg-signal/15 text-parchment ring-1 ring-signal/40"
                         : "text-dust hover:bg-void-2/60 hover:text-parchment"
@@ -262,8 +264,10 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
                   >
                     <span
                       aria-hidden
-                      className={`inline-block h-2 w-2 shrink-0 rounded-full transition-colors ${
-                        selected ? "bg-signal shadow-[0_0_8px_rgba(77,212,232,0.7)]" : "bg-dust-deep"
+                      className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full transition-colors ${
+                        selected
+                          ? "bg-signal shadow-[0_0_8px_rgba(77,212,232,0.7)]"
+                          : "bg-dust-deep"
                       }`}
                     />
                     <span className="flex-1 truncate text-[12px]">{t.title}</span>
@@ -279,16 +283,11 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
             })}
           </ul>
 
-          {/* Readiness slider */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between font-display text-[10px] uppercase tracking-macro text-dust">
-              <span>
-                <span className="opacity-50">[ </span>
-                Readiness
-                <span className="opacity-50"> ]</span>
-              </span>
-              <span className="text-signal">{READINESS_LABELS[readiness - 1]}</span>
-            </div>
+          {/* Readiness — single inline row to keep it compact */}
+          <div className="flex items-center gap-3">
+            <span className="font-display text-[9px] uppercase tracking-macro text-dust-deep shrink-0">
+              READY
+            </span>
             <input
               type="range"
               min={1}
@@ -296,22 +295,14 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               step={1}
               value={readiness}
               onChange={(e) => setReadiness(Number(e.target.value))}
-              className="lyra-range h-2 w-full"
+              className="lyra-range h-2 flex-1"
               aria-label="Pre-task readiness 1 to 5"
             />
-            <div className="flex justify-between font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <span
-                  key={n}
-                  className={n === readiness ? "text-signal" : ""}
-                >
-                  {n}
-                </span>
-              ))}
-            </div>
+            <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
+              {READINESS_LABELS[readiness - 1]}
+            </span>
           </div>
 
-          {/* Start button */}
           <button
             type="button"
             onClick={() =>
@@ -319,7 +310,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               startM.mutate({ taskId: selectedTaskId, readiness })
             }
             disabled={!selectedTaskId || startM.isPending}
-            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-5 py-3 font-mono text-[12px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-5 py-2.5 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon disabled:opacity-50"
           >
             {startM.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -331,16 +322,15 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
         </div>
       )}
 
-      {/* Idle with no PLANNED tasks — point user at brain dump */}
+      {/* IDLE — no PLANNED tasks. Calmer empty state under the timer. */}
       {showIdle && plannedTasks.length === 0 && (
-        <div className="flex w-full flex-col items-center gap-3 px-2 text-center">
-          <p className="text-xs text-dust">
-            Brain-dump in the footer to add what you're working on.
-          </p>
-        </div>
+        <p className="mt-4 max-w-xs text-center text-xs text-dust">
+          Nothing planned yet. Brain-dump in the footer to add what you're
+          working on.
+        </p>
       )}
 
-      {/* Running: Pause + Stop */}
+      {/* RUNNING — Pause + Stop */}
       {showRunning && (
         <div className="mt-5 flex w-full max-w-md items-center justify-center gap-3 px-1">
           <button
@@ -367,7 +357,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
         </div>
       )}
 
-      {/* Paused: Resume + Stop */}
+      {/* PAUSED — Resume + Stop */}
       {showPaused && (
         <div className="mt-5 flex w-full max-w-md items-center justify-center gap-3 px-1">
           <button
@@ -394,18 +384,13 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
         </div>
       )}
 
-      {/* Reflection mode: slider + Finish */}
+      {/* REFLECTION — slider + Finish, below the timer */}
       {showReflection && (
-        <div className="mt-5 flex w-full max-w-md flex-col gap-4 px-1">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between font-display text-[10px] uppercase tracking-macro text-dust">
-              <span>
-                <span className="opacity-50">[ </span>
-                Reflection
-                <span className="opacity-50"> ]</span>
-              </span>
-              <span className="text-signal">{READINESS_LABELS[reflection - 1]}</span>
-            </div>
+        <div className="mt-4 flex w-full max-w-md flex-col gap-3 px-1">
+          <div className="flex items-center gap-3">
+            <span className="font-display text-[9px] uppercase tracking-macro text-dust-deep shrink-0">
+              FELT
+            </span>
             <input
               type="range"
               min={1}
@@ -413,21 +398,21 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               step={1}
               value={reflection}
               onChange={(e) => setReflection(Number(e.target.value))}
-              className="lyra-range h-2 w-full"
+              className="lyra-range h-2 flex-1"
               aria-label="Post-task reflection 1 to 5"
             />
-            <div className="flex justify-between font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <span key={n} className={n === reflection ? "text-signal" : ""}>
-                  {n}
-                </span>
-              ))}
-            </div>
+            <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
+              {READINESS_LABELS[reflection - 1]}
+            </span>
           </div>
           <div className="flex items-center justify-center gap-3">
             <button
               type="button"
-              onClick={() => setMode("idle")}
+              onClick={() => {
+                setMode("idle");
+                setRequiresConfirm(false);
+                setErrorMsg(null);
+              }}
               disabled={stopM.isPending}
               className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-dust transition-colors hover:border-signal/40 hover:text-parchment disabled:opacity-50"
             >
@@ -438,42 +423,44 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               onClick={() =>
                 stopM.mutate({
                   reflection,
-                  // If we already saw requires_confirmation in errorMsg,
-                  // resend with confirmed=true.
-                  confirmed: errorMsg?.toLowerCase().includes("early") ? true : undefined,
+                  confirmed: requiresConfirm ? true : undefined,
                 })
               }
               disabled={stopM.isPending}
               className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon disabled:opacity-50"
             >
               {stopM.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {errorMsg?.toLowerCase().includes("early") ? "Finish anyway" : "Finish"}
+              {requiresConfirm ? "Finish anyway" : "Finish"}
             </button>
           </div>
         </div>
       )}
 
-      {/* Next-prompt: post-stop summary + suggestion */}
+      {/* NEXT-PROMPT — replaces the timer with a summary card. */}
       {showNextPrompt && (
-        <div className="flex w-full max-w-md flex-col items-center gap-4 px-1">
+        <div className="my-2 flex w-full max-w-md flex-col items-center gap-4 px-1">
           {stoppedSummary && (
-            <div className="flex items-baseline gap-3 text-center">
-              <span className="font-display text-3xl font-semibold tabular-nums neon-cyan">
-                {stoppedSummary.minutes}
-                <span className="text-base text-signal/85">m</span>
-              </span>
-              <span className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-                protected focus
-              </span>
+            <div className="flex flex-col items-center gap-1 text-center">
+              <div className="flex items-baseline gap-2">
+                <span className="font-display text-5xl font-semibold tabular-nums neon-cyan">
+                  {stoppedSummary.minutes}
+                  <span className="text-xl text-signal/85">m</span>
+                </span>
+              </div>
+              <div className="font-display text-[10px] uppercase tracking-macro text-dust">
+                <span className="opacity-50">[ </span>
+                Protected focus
+                <span className="opacity-50"> ]</span>
+              </div>
               {stoppedSummary.delta !== null && (
-                <span
+                <div
                   className={`font-mono text-[10px] uppercase tracking-widest ${
                     stoppedSummary.delta <= 0 ? "text-signal" : "text-ember"
                   }`}
                 >
                   {stoppedSummary.delta > 0 ? "+" : ""}
                   {stoppedSummary.delta}m vs plan
-                </span>
+                </div>
               )}
             </div>
           )}
@@ -485,7 +472,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
             if (!next) {
               return (
                 <p className="text-center text-xs text-dust">
-                  Nothing else on the plan. Brain-dump in the footer to add more.
+                  Nothing else on the plan. Brain-dump in the footer for more.
                 </p>
               );
             }
@@ -519,13 +506,12 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
                     onClick={() => {
                       setSelectedTaskId(next.task_id);
                       setStoppedSummary(null);
-                      setMode("idle"); // surfaces the readiness path
-                      // No auto-start — readiness needs human intent.
+                      setMode("idle");
                     }}
                     className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-signal hover:bg-signal/25 hover:text-signal-neon"
                   >
                     <Play className="h-3.5 w-3.5" />
-                    Start
+                    Pick this
                   </button>
                 </div>
               </div>
@@ -534,11 +520,14 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
         </div>
       )}
 
-      {/* Error surface — bottom of card, dismissible by clicking */}
+      {/* Error surface — bottom of card, dismissible by tap */}
       {errorMsg && (
         <button
           type="button"
-          onClick={() => setErrorMsg(null)}
+          onClick={() => {
+            setErrorMsg(null);
+            setRequiresConfirm(false);
+          }}
           className="mt-3 w-full max-w-md rounded-sm border border-ember/40 bg-ember/5 px-3 py-1.5 text-left text-[11px] text-ember"
         >
           {errorMsg} <span className="text-ember/60">· tap to dismiss</span>
