@@ -84,18 +84,32 @@ export function DeadlineRow({ deadline, overdue, onEdit }: Props) {
           Moodle
         </span>
       )}
-      <span
-        className={cn(
-          "rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide",
-          overdue
-            ? "border-ember/40 bg-ember/10 text-ember"
-            : deadline.state === "active"
+      {overdue ? (
+        // Live status readout, not a tag. Pulsing dot + bracketed
+        // cyber-display label = system alert vibe.
+        <span
+          className="inline-flex items-center gap-1.5 font-display text-[10px] font-semibold uppercase tracking-macro text-ember"
+          style={{ ["--dot-color" as string]: "#FF8A3D" }}
+        >
+          <span aria-hidden className="status-dot" />
+          <span>
+            <span className="opacity-50">[ </span>
+            OVERDUE
+            <span className="opacity-50"> ]</span>
+          </span>
+        </span>
+      ) : (
+        <span
+          className={cn(
+            "rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide",
+            deadline.state === "active"
               ? "border-signal/40 bg-signal/10 text-signal"
               : "border-hairline bg-void-2 text-dust"
-        )}
-      >
-        {stateLabel}
-      </span>
+          )}
+        >
+          {stateLabel}
+        </span>
+      )}
     </div>
   );
 }

@@ -84,6 +84,101 @@
       0 0 32px rgba(245, 169, 106, 0.15);
   }
 
+  /* Ember-toned terminal panel — sibling of .terminal-panel for ALERT
+     contexts on authenticated surfaces (OVERDUE assignments, missed
+     LMS deadlines). Same corner-tick anatomy, ember accent colors, and
+     a soft ember bottom-bloom that pulls the eye without being noisy.
+     Use with `.alert-bar-ember` for the pulsing left edge.
+     Shipped 2026-04-29 as part of the OVERDUE polish pass. */
+  .terminal-panel-ember {
+    position: relative;
+    background: linear-gradient(
+      180deg,
+      rgba(245, 169, 106, 0.07) 0%,
+      rgba(20, 27, 42, 0.55) 65%,
+      rgba(245, 169, 106, 0.04) 100%
+    );
+    border: 1px solid rgba(245, 169, 106, 0.4);
+    box-shadow: 0 0 28px -10px rgba(245, 169, 106, 0.45);
+  }
+  .terminal-panel-ember::before,
+  .terminal-panel-ember::after {
+    content: "";
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 1px solid #f5a96a;
+    opacity: 0.9;
+  }
+  .terminal-panel-ember::before {
+    top: -1px;
+    left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+  .terminal-panel-ember::after {
+    bottom: -1px;
+    right: -1px;
+    border-left: none;
+    border-top: none;
+  }
+
+  /* Pulsing left-edge slash bar — pairs with .terminal-panel-ember to
+     mark high-priority readouts. Slow 2.4 s cycle so it draws the eye
+     without flashing. */
+  .alert-bar-ember {
+    position: relative;
+  }
+  .alert-bar-ember::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    top: -1px;
+    bottom: -1px;
+    width: 3px;
+    background: linear-gradient(
+      180deg,
+      #ff8a3d 0%,
+      #f5a96a 50%,
+      #ff8a3d 100%
+    );
+    box-shadow: 0 0 12px rgba(255, 138, 61, 0.55);
+    animation: alert-bar-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes alert-bar-pulse {
+    0%,
+    100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  /* Status-dot — small pulsing indicator for inline status pills.
+     `--dot-color` controls the hue. Used in the per-row OVERDUE pill
+     so the row reads as a live status readout, not a tag. */
+  .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--dot-color, #f5a96a);
+    box-shadow: 0 0 8px var(--dot-color, rgba(245, 169, 106, 0.7));
+    animation: status-dot-pulse 2s ease-in-out infinite;
+  }
+  @keyframes status-dot-pulse {
+    0%,
+    100% {
+      opacity: 0.7;
+      transform: scale(0.95);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+  }
+
   /* Cyber pill CTAs — replace the generic SaaS pill with something that
      has presence. On landing used at full size; on app surfaces use the
      `.cyber-pill-compact` sibling for a shrunk variant appropriate for

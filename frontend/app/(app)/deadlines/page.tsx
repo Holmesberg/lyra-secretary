@@ -163,19 +163,41 @@ function Section({
 }: SectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   if (deadlines.length === 0) return null;
-  const headerCls =
-    tone === "ember"
-      ? "text-ember hover:text-ember/80"
-      : "text-dust hover:text-parchment";
-  const countCls = tone === "ember" ? "text-ember/70" : "text-dust-deep";
+  const isEmber = tone === "ember";
+  const headerCls = isEmber
+    ? "text-ember hover:text-ember/80"
+    : "text-dust hover:text-parchment";
+  const countCls = isEmber ? "text-ember/70" : "text-dust-deep";
+  // Ember (Overdue) gets the cyber-display treatment to match the /today
+  // banner and the per-row pill — bracketed readout in Chakra Petch.
+  // Dust (default) keeps the existing terminal-prefix style.
   return (
     <div className="space-y-3">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`flex items-center gap-2 text-left text-[11px] font-medium uppercase tracking-widest ${headerCls}`}
+        className={`flex items-center gap-2 text-left text-[11px] font-semibold uppercase ${
+          isEmber
+            ? `font-display tracking-macro ${headerCls}`
+            : `tracking-widest ${headerCls}`
+        }`}
       >
-        <span className="terminal-prefix">{title}</span>
+        {isEmber ? (
+          <span className="inline-flex items-center gap-2">
+            <span
+              aria-hidden
+              className="status-dot"
+              style={{ ["--dot-color" as string]: "#FF8A3D" }}
+            />
+            <span>
+              <span className="opacity-50">[ </span>
+              {title}
+              <span className="opacity-50"> ]</span>
+            </span>
+          </span>
+        ) : (
+          <span className="terminal-prefix">{title}</span>
+        )}
         <span className={countCls}>({deadlines.length})</span>
         <span className={countCls}>{open ? "−" : "+"}</span>
       </button>
@@ -306,13 +328,15 @@ export default function DeadlinesPage() {
       )}
 
       {!isLoading && overdue.length > 0 && (
-        <Section
-          title="Overdue"
-          deadlines={overdue}
-          onEdit={openEdit}
-          onVoid={handleVoid}
-          tone="ember"
-        />
+        <div className="terminal-panel-ember alert-bar-ember rounded-sm p-4">
+          <Section
+            title="Overdue"
+            deadlines={overdue}
+            onEdit={openEdit}
+            onVoid={handleVoid}
+            tone="ember"
+          />
+        </div>
       )}
 
       {!isLoading && active.length > 0 && (

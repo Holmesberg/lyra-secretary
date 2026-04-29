@@ -857,25 +857,37 @@ function TodayInner() {
       {overdueCount > 0 && (
         <div
           role="alert"
-          className="mb-4 flex items-center gap-3 rounded-sm border-2 border-ember bg-ember/10 px-4 py-3 text-ember"
+          className="terminal-panel-ember alert-bar-ember mb-4 flex items-stretch gap-5 px-5 py-4"
         >
-          <span
+          {/* Hero count — cyber-display digits, neon-ember glow.
+              Reads as a system readout, not a counter chip. */}
+          <div className="flex shrink-0 items-center pl-2">
+            <span
+              aria-hidden
+              className="font-display text-[2.75rem] font-semibold leading-none neon-ember tabular-nums"
+            >
+              {overdueCount.toString().padStart(2, "0")}
+            </span>
+          </div>
+          {/* Vertical separator — anchors the readout structure. */}
+          <div
             aria-hidden
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ember/20 font-mono text-sm font-bold"
-          >
-            {overdueCount}
-          </span>
-          <div className="flex flex-1 flex-col gap-0.5">
-            <p className="text-sm font-semibold uppercase tracking-wide">
-              {overdueCount === 1 ? "Overdue" : `${overdueCount} overdue`}
+            className="my-1 w-px shrink-0 bg-gradient-to-b from-transparent via-ember/40 to-transparent"
+          />
+          {/* Copy stack — bracketed eyebrow + warm body line. */}
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+            <p className="font-display text-[11px] font-medium uppercase tracking-macro text-ember">
+              <span className="opacity-50">[ </span>
+              {overdueCount === 1 ? "Overdue assignment" : "Overdue assignments"}
+              <span className="opacity-50"> ]</span>
             </p>
-            <p className="text-[11px] text-ember/80">
+            <p className="text-xs text-ember/85">
               {overdueFromLms > 0
                 ? `${overdueFromLms} from your school${
                     overdueFromLms < overdueCount
                       ? `, ${overdueCount - overdueFromLms} other`
                       : ""
-                  }. Handle these first.`
+                  } — handle these first.`
                 : "Past due — handle these first."}
             </p>
           </div>
