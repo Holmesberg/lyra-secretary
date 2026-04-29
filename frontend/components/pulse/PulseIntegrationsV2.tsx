@@ -1,27 +1,25 @@
 "use client";
 /**
- * IntegrationPulse — compact "data sources" status card for /pulse.
+ * PulseIntegrationsV2 — compact data-source status row for /pulse v2.
  *
- * Surfaces which integrations are alive + when each last synced. The
- * Moodle row gets the most data because it's the wedge — a stale or
- * disconnected feed is the user's #1 reason imported deadlines stop
- * appearing. Reads the existing `IntegrationsResponse` shape extended
- * with `last_synced_at` / `disconnect_reason` (alembic 041 fields).
+ * Smaller than v1 IntegrationPulse — single-line rows with monogram
+ * + name + live-status dot + sync-age in mono. Designed to live in
+ * the bottom row of the dashboard alongside System Insight + Recovery.
  */
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import type { IntegrationState } from "@/lib/integrations";
 
-export interface IntegrationPulseProps {
+export interface PulseIntegrationsV2Props {
   integrations: IntegrationState[];
 }
 
 const SOURCE_META: Record<
   string,
-  { label: string; monogram: string; color: string }
+  { label: string; monogram: string; color: "ember" | "signal" | "dust" }
 > = {
   moodle: { label: "Moodle", monogram: "Mo", color: "ember" },
-  google_calendar: { label: "Google Calendar", monogram: "GC", color: "signal" },
+  google_calendar: { label: "Google Cal", monogram: "GC", color: "signal" },
   notion: { label: "Notion", monogram: "N", color: "dust" },
   ics: { label: "ICS", monogram: "iC", color: "dust" },
 };
@@ -29,16 +27,13 @@ const SOURCE_META: Record<
 function fmtSynced(iso: string | null | undefined): string {
   if (!iso) return "never synced";
   try {
-    return `synced ${formatDistanceToNow(new Date(iso), { addSuffix: true })}`;
+    return formatDistanceToNow(new Date(iso), { addSuffix: true });
   } catch {
     return "synced recently";
   }
 }
 
-export function IntegrationPulse({ integrations }: IntegrationPulseProps) {
-  // Always show Moodle + Google first (in that order) — the wedge +
-  // the existing live integration. Other sources only appear if
-  // available && status !== coming_soon.
+export function PulseIntegrationsV2({ integrations }: PulseIntegrationsV2Props) {
   const ordered = [...integrations].sort((a, b) => {
     const order: Record<string, number> = {
       moodle: 0,
@@ -51,25 +46,26 @@ export function IntegrationPulse({ integrations }: IntegrationPulseProps) {
   const visible = ordered.filter((i) => i.available);
 
   return (
-    <div className="terminal-panel p-4">
+    <div className="terminal-panel flex h-full flex-col p-5">
       <div className="mb-3 flex items-baseline justify-between">
-        <div className="font-display text-[11px] font-medium uppercase tracking-macro text-dust">
-          <span className="text-signal/70">{">>"}</span>{" "}
-          <span className="ml-1">Data sources</span>
+        <div className="font-display text-[10px] font-medium uppercase tracking-macro text-dust">
+          <span className="opacity-50">[ </span>
+          Integrations
+          <span className="opacity-50"> ]</span>
         </div>
         <Link
           href="/settings"
-          className="font-mono text-[10px] uppercase tracking-widest text-dust-deep hover:text-signal"
+          className="font-mono text-[10px] uppercase tracking-widest text-dust-deep transition-colors hover:text-signal"
         >
           Manage →
         </Link>
       </div>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-1 flex-col gap-1.5">
         {visible.map((it) => {
           const meta = SOURCE_META[it.id] ?? {
             label: it.id,
             monogram: "??",
-            color: "dust",
+            color: "dust" as const,
           };
           const connected = it.status === "connected";
           const reconnect = !!it.disconnect_reason;
@@ -96,16 +92,16 @@ export function IntegrationPulse({ integrations }: IntegrationPulseProps) {
               >
                 {meta.monogram}
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs text-parchment">{meta.label}</span>
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] text-parchment">{meta.label}</span>
                   <span
                     aria-hidden
                     className="status-dot"
                     style={{ ["--dot-color" as string]: dotColor }}
                   />
                 </div>
-                <div className="font-mono text-[10px] text-dust-deep">
+                <div className="font-mono text-[9px] text-dust-deep">
                   {reconnect
                     ? "reconnect needed"
                     : connected
@@ -116,7 +112,7 @@ export function IntegrationPulse({ integrations }: IntegrationPulseProps) {
               {!connected && (
                 <Link
                   href="/settings"
-                  className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal/80 hover:text-signal-neon"
+                  className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-signal/85 hover:text-signal-neon"
                 >
                   Connect →
                 </Link>
