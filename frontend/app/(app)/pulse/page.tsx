@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react/no-unescaped-entities */
 /**
  * /pulse v2 — Neural Noir command surface (2026-04-29 evening).
  *
@@ -27,6 +28,7 @@
  */
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
 import { api } from "@/lib/api";
 import {
   queryTasks,
@@ -78,6 +80,7 @@ function fourteenDaysAgoKey(): string {
 export default function PulsePage() {
   const today = todayKey();
   const fortnightStart = fourteenDaysAgoKey();
+  const { data: session } = useSession();
 
   const meQ = useQuery<MeLite>({
     queryKey: ["me"],
@@ -129,11 +132,19 @@ export default function PulsePage() {
   const todaysFocusMinutes = focusMinutesToday(tasksToday);
   const todaysWins = winsToday(tasksToday);
 
-  const firstName = meQ.data?.email
+  // Prefer Google's display name from the NextAuth session ('Mohamed
+  // El Hammady' → 'Mohamed') over parsing email-before-the-@ since
+  // 'mohamed.elhammady25' isn't a name a human wants to be greeted by.
+  // Falls back to email parse only if the session lacks a name.
+  const sessionName = session?.user?.name?.trim() ?? null;
+  const fallbackName = meQ.data?.email
     ? meQ.data.email.split("@")[0].split(".")[0]
     : null;
-  const displayName = firstName
-    ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()
+  const rawFirst = sessionName
+    ? sessionName.split(/\s+/)[0]
+    : fallbackName;
+  const displayName = rawFirst
+    ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase()
     : null;
 
   return (
