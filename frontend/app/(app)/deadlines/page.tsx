@@ -148,21 +148,36 @@ interface SectionProps {
   onEdit: (d: DeadlineResponse) => void;
   onVoid: (d: DeadlineResponse) => void;
   defaultOpen?: boolean;
+  /** 'ember' colors the section header red for high-attention groupings
+   *  (Overdue). Default 'dust' is the calm neutral treatment. */
+  tone?: "dust" | "ember";
 }
 
-function Section({ title, deadlines, onEdit, onVoid, defaultOpen = true }: SectionProps) {
+function Section({
+  title,
+  deadlines,
+  onEdit,
+  onVoid,
+  defaultOpen = true,
+  tone = "dust",
+}: SectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   if (deadlines.length === 0) return null;
+  const headerCls =
+    tone === "ember"
+      ? "text-ember hover:text-ember/80"
+      : "text-dust hover:text-parchment";
+  const countCls = tone === "ember" ? "text-ember/70" : "text-dust-deep";
   return (
     <div className="space-y-3">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 text-left text-[11px] font-medium uppercase tracking-widest text-dust hover:text-parchment"
+        className={`flex items-center gap-2 text-left text-[11px] font-medium uppercase tracking-widest ${headerCls}`}
       >
         <span className="terminal-prefix">{title}</span>
-        <span className="text-dust-deep">({deadlines.length})</span>
-        <span className="text-dust-deep">{open ? "−" : "+"}</span>
+        <span className={countCls}>({deadlines.length})</span>
+        <span className={countCls}>{open ? "−" : "+"}</span>
       </button>
       {open && (
         <div className="space-y-2">
@@ -200,8 +215,36 @@ export default function DeadlinesPage() {
     });
   }, [deadlines]);
 
+  // OVERDUE bucket — surfaced at the TOP, ember-toned, expanded by
+  // default. Catches both the post-sweep `missed` rows AND the
+  // pre-sweep `planned`/`active` rows whose due_at_utc has passed
+  // (sweep_missed_deadlines runs hourly so there's a window where
+  // state hasn't transitioned yet). Operator-flagged 2026-04-29:
+  // overdue items must be impossible to overlook even on the
+  // browsing surface — the /today banner alone isn't enough since
+  // users come here to plan and triage. Sorted most-recently-overdue
+  // first (closest to now at the top of the section).
+  const nowMs = Date.now();
+  const overdue = sorted
+    .filter((d) => {
+      if (d.state === "missed") return true;
+      if (d.state === "planned" || d.state === "active") {
+        return new Date(d.due_at_utc).getTime() < nowMs;
+      }
+      return false;
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.due_at_utc).getTime() - new Date(a.due_at_utc).getTime()
+    );
+  const overdueIds = new Set(overdue.map((d) => d.deadline_id));
+
+  // Active = planned/active but NOT yet overdue. Prevents double-render
+  // (overdue planned rows would otherwise appear in both buckets).
   const active = sorted.filter(
-    (d) => d.state === "planned" || d.state === "active"
+    (d) =>
+      (d.state === "planned" || d.state === "active") &&
+      !overdueIds.has(d.deadline_id)
   );
   const completed = sorted
     .filter((d) => d.state === "completed")
@@ -210,8 +253,11 @@ export default function DeadlinesPage() {
         new Date(b.completed_at ?? b.due_at_utc).getTime() -
         new Date(a.completed_at ?? a.due_at_utc).getTime()
     );
-  const missedOrSkipped = sorted
-    .filter((d) => d.state === "missed" || d.state === "skipped")
+  // Skipped only — `missed` rows are now in the Overdue bucket above.
+  // Keeping skipped separate because skipping is a deliberate user
+  // signal (intentional abandonment), not a procrastination data point.
+  const skippedOnly = sorted
+    .filter((d) => d.state === "skipped")
     .sort(
       (a, b) =>
         new Date(b.due_at_utc).getTime() - new Date(a.due_at_utc).getTime()
@@ -259,6 +305,16 @@ export default function DeadlinesPage() {
         </p>
       )}
 
+      {!isLoading && overdue.length > 0 && (
+        <Section
+          title="Overdue"
+          deadlines={overdue}
+          onEdit={openEdit}
+          onVoid={handleVoid}
+          tone="ember"
+        />
+      )}
+
       {!isLoading && active.length > 0 && (
         <Section
           title="Active deadlines"
@@ -278,10 +334,10 @@ export default function DeadlinesPage() {
         />
       )}
 
-      {!isLoading && missedOrSkipped.length > 0 && (
+      {!isLoading && skippedOnly.length > 0 && (
         <Section
-          title="Missed / Skipped"
-          deadlines={missedOrSkipped}
+          title="Skipped"
+          deadlines={skippedOnly}
           onEdit={openEdit}
           onVoid={handleVoid}
           defaultOpen={false}
