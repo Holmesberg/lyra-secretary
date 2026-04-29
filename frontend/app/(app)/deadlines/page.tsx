@@ -78,6 +78,14 @@ function DeadlineRow({ deadline, onEdit, onVoid }: DeadlineRowProps) {
           >
             {STATE_LABEL[deadline.state]}
           </span>
+          {deadline.external_source === "moodle_ics" && (
+            <span
+              title="Imported from Moodle"
+              className="rounded border border-ember/30 bg-ember/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ember"
+            >
+              Moodle
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-dust">
           <span>{formatAbsolute(deadline.due_at_utc)}</span>

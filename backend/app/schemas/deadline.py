@@ -70,6 +70,12 @@ class DeadlineResponse(BaseModel):
     completed_at: Optional[datetime]
     voided_at: Optional[datetime]
     created_at: datetime
+    # External-source flagging (alembic 041, 2026-04-29). Non-NULL on
+    # rows imported from a third-party source (Moodle iCal, etc.).
+    # Frontend uses this to render a "from {source}" badge.
+    external_source: Optional[str] = None
+    external_id: Optional[str] = None
+    imported_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -82,7 +88,9 @@ class DeadlineResponse(BaseModel):
     # Cairo (15:00 UTC) renders as 3:00 PM Cairo. Stamp every datetime
     # field with explicit UTC on the way out so the frontend can
     # disambiguate.
-    @field_serializer("due_at_utc", "completed_at", "voided_at", "created_at")
+    @field_serializer(
+        "due_at_utc", "completed_at", "voided_at", "created_at", "imported_at"
+    )
     def _serialize_utc(self, v: Optional[datetime]) -> Optional[str]:
         if v is None:
             return None

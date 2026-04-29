@@ -80,12 +80,12 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "bg-signal/15 text-signal border border-signal/30",
   },
   {
-    // Moodle LMS — alpha-cohort priority since trusted users are
-    // college students (operator dogfood read 2026-04-28: most
-    // deadlines come from course pages they manually re-type into
-    // Lyra). Surfaced as "coming soon" until the import shape is
-    // designed (likely an .ics calendar URL pull from Moodle's
-    // calendar export, since most installations expose one).
+    // Moodle LMS — shipped 2026-04-29 (alembic 041) as the LMS-wedge
+    // headline integration. Paste a private .ics subscription URL from
+    // Moodle's "Export calendar" page; backend syncs every 6h and
+    // upserts assignment due dates as Lyra deadlines flagged with
+    // external_source='moodle_ics'. Tested against ASU Engineering
+    // Moodle (lms.eng.asu.edu.eg, Moodle 3.7).
     id: "moodle",
     name: "Moodle",
     description:
@@ -94,8 +94,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Read-only — assignments and quiz due dates appear as Lyra deadlines. We won't create posts or modify your courses.",
     scopes: [],
     authShape: "url_subscription",
-    available: false,
-    comingSoonNote: "Coming soon — alpha-cohort priority.",
+    available: true,
     monogram: "Mo",
     monogramClass:
       "bg-ember/15 text-ember border border-ember/30",
@@ -137,6 +136,13 @@ export interface IntegrationState {
   status: IntegrationStatus;
   available: boolean;
   scopes: string[];
+  /** Moodle-specific: last successful sync timestamp (ISO). Surfaced
+   *  in the card to reassure the user sync is alive. */
+  last_synced_at?: string | null;
+  /** Moodle-specific: set when the URL was auto-cleared due to a
+   *  permanent failure (4xx). Frontend uses this to render
+   *  "Reconnect needed" copy instead of plain "Not connected". */
+  disconnect_reason?: string | null;
 }
 
 export interface IntegrationsResponse {
@@ -156,5 +162,71 @@ export async function disconnectIntegration(id: IntegrationId): Promise<void> {
     await api("/v1/users/me/google-refresh-token", { method: "DELETE" });
     return;
   }
+  if (id === "moodle") {
+    await api("/v1/integrations/moodle/disconnect", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ void_imported: false }),
+    });
+    return;
+  }
   throw new Error(`disconnect not implemented for ${id}`);
+}
+
+// ─── Moodle connect-flow API surface ───────────────────────────────────
+
+export interface MoodlePreviewEvent {
+  external_id: string;
+  title: string;
+  due_at_utc: string; // naive UTC ISO
+  category_hint: string | null;
+}
+
+export interface MoodlePreviewResponse {
+  ok: boolean;
+  error: string | null;
+  count: number;
+  sample: MoodlePreviewEvent[];
+}
+
+export interface MoodleConnectResponse {
+  ok: boolean;
+  preview_count: number;
+  sync: {
+    fetched: number;
+    created: number;
+    updated: number;
+    unchanged: number;
+    skipped_voided: number;
+    skipped_unparseable: number;
+    error: string | null;
+  };
+}
+
+export async function previewMoodle(
+  ics_url: string
+): Promise<MoodlePreviewResponse> {
+  return api<MoodlePreviewResponse>("/v1/integrations/moodle/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ics_url }),
+  });
+}
+
+export async function connectMoodle(
+  ics_url: string
+): Promise<MoodleConnectResponse> {
+  return api<MoodleConnectResponse>("/v1/integrations/moodle/connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ics_url }),
+  });
+}
+
+export async function syncMoodleNow(): Promise<MoodleConnectResponse["sync"]> {
+  const r = await api<MoodleConnectResponse["sync"]>(
+    "/v1/integrations/moodle/sync-now",
+    { method: "POST" }
+  );
+  return r;
 }

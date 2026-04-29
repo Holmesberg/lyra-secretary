@@ -19,3 +19,8 @@ psycopg2-binary==2.9.10
 # Calendar API v3. See services/calendar_sync.py.
 google-api-python-client==2.143.0
 google-auth==2.34.0
+# Moodle LMS .ics subscription import (2026-04-29, alembic 041). Parses
+# the iCal feed Moodle exposes at /calendar/export_execute.php — handles
+# RFC 5545 line-folding, escape sequences, RRULE expansion, and TZ
+# normalization. See services/moodle_ics_sync.py.
+icalendar==5.0.11

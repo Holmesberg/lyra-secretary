@@ -17,11 +17,13 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IntegrationCard } from "@/components/integration-card";
+import { MoodleConnectModal } from "@/components/integrations/MoodleConnectModal";
 import {
   INTEGRATIONS,
   disconnectIntegration,
   getIntegrations,
   type IntegrationId,
+  type IntegrationState,
   type IntegrationStatus,
 } from "@/lib/integrations";
 
@@ -90,15 +92,17 @@ export function IntegrationsSection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [moodleModalOpen, setMoodleModalOpen] = useState(false);
+
   const statusQ = useQuery({
     queryKey: ["integrations"],
     queryFn: getIntegrations,
     staleTime: 30_000,
   });
 
-  const statusById = new Map<IntegrationId, IntegrationStatus>();
+  const stateById = new Map<IntegrationId, IntegrationState>();
   for (const row of statusQ.data?.integrations ?? []) {
-    statusById.set(row.id as IntegrationId, row.status);
+    stateById.set(row.id as IntegrationId, row);
   }
 
   async function handleDisconnect(id: IntegrationId) {
@@ -167,10 +171,14 @@ export function IntegrationsSection() {
         )}
 
         {INTEGRATIONS.map((def) => {
-          const serverStatus = statusById.get(def.id);
+          const serverState = stateById.get(def.id);
           const status: IntegrationStatus = !def.available
             ? "coming_soon"
-            : serverStatus ?? "disconnected";
+            : serverState?.status ?? "disconnected";
+          const onConnectClick =
+            def.id === "moodle" && def.authShape === "url_subscription"
+              ? () => setMoodleModalOpen(true)
+              : undefined;
           return (
             <IntegrationCard
               key={def.id}
@@ -182,9 +190,36 @@ export function IntegrationsSection() {
                   ? () => handleDisconnect(def.id)
                   : undefined
               }
+              onConnectClick={onConnectClick}
+              disconnectReason={serverState?.disconnect_reason ?? null}
+              lastSyncedAt={serverState?.last_synced_at ?? null}
             />
           );
         })}
+
+        <MoodleConnectModal
+          open={moodleModalOpen}
+          onOpenChange={setMoodleModalOpen}
+          onConnected={(createdCount) => {
+            qc.invalidateQueries({ queryKey: ["integrations"] });
+            qc.invalidateQueries({ queryKey: ["deadlines"] });
+            qc.invalidateQueries({
+              predicate: (q) =>
+                typeof q.queryKey[0] === "string" &&
+                (q.queryKey[0] as string).startsWith("deadline"),
+            });
+            setBanner({
+              kind: "success",
+              title: `Moodle connected.`,
+              detail:
+                createdCount > 0
+                  ? `${createdCount} ${
+                      createdCount === 1 ? "deadline" : "deadlines"
+                    } imported.`
+                  : "No deadlines yet — the next sync will catch new ones.",
+            });
+          }}
+        />
       </CardContent>
     </Card>
   );

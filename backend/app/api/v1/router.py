@@ -1,6 +1,6 @@
 """V1 API Router."""
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines, feedback, brain_dump
+from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines, feedback, brain_dump, moodle
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -24,3 +24,5 @@ api_router.include_router(deadlines.router, tags=["deadlines"])
 api_router.include_router(feedback.router, tags=["feedback"])
 # Onboarding brain-dump multi-parse (2026-04-28 evening, post-tutorial-removal).
 api_router.include_router(brain_dump.router, tags=["brain_dump"])
+# Moodle LMS .ics subscription import (alembic 041, 2026-04-29 — the LMS wedge).
+api_router.include_router(moodle.router, tags=["moodle"])

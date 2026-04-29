@@ -58,6 +58,14 @@ def list_integrations(db: Session = Depends(get_db)) -> dict[str, Any]:
         "connected" if user.google_refresh_token else "disconnected"
     )
 
+    # Moodle LMS — connected iff a moodle_ics_url is on file. The
+    # disconnect_reason field is surfaced separately so the frontend
+    # can show "Reconnect needed" copy when the token went stale and
+    # the URL was auto-cleared. (Apr 29 2026, alembic 041 wedge.)
+    moodle_status = (
+        "connected" if user.moodle_ics_url else "disconnected"
+    )
+
     # Notion write-direction sync is shipped but operator-only. All
     # non-operator users see it as "Coming soon" — we're building user-
     # facing Notion (schema-mapping UI, OAuth) in Phase 7+. When that
@@ -76,6 +84,18 @@ def list_integrations(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "status": google_calendar_status,
                 "available": True,
                 "scopes": ["https://www.googleapis.com/auth/calendar.readonly"],
+            },
+            {
+                "id": "moodle",
+                "status": moodle_status,
+                "available": True,
+                "scopes": [],
+                "last_synced_at": (
+                    user.moodle_last_synced_at.isoformat()
+                    if user.moodle_last_synced_at
+                    else None
+                ),
+                "disconnect_reason": user.moodle_disconnect_reason,
             },
             {
                 "id": "notion",

@@ -851,6 +851,27 @@ acceptance_rate_permissive := acceptance_count_permissive / total_fires_permissi
 
 **Status:** Drafted April 23, 2026 after Day-18 operator-data pass (n=5 firings, below threshold for 27a/b/c). Activates empirically once pause_prediction_log per-bucket n reaches 30 across the active cohort.
 
+### VT-29: External-Deadline Contamination of H2 (Imported LMS Deadlines)
+*Added April 29, 2026 — pre-registered before any Moodle iCal data lands. Implemented in alembic 041 (deadline.external_source flag + analytics filter). The Moodle LMS sync wedge (Tier A1 of strategic plan Apr 29) imports assignment due dates as Lyra deadlines, opening a contamination pathway for H2 measurement.*
+
+**Threat:** H2 (Rules 14–16) tests "deadline-distance predicts task overrun" using user-specified deadlines. Imported deadlines fundamentally differ in three ways:
+- **Zero user agency in the timestamp.** A Moodle deadline at 23:59:00 on a Sunday isn't a user planning artifact; it's an external constraint. The user didn't *choose* the time, so deadline-distance becomes a function of the LMS's policy, not the user's planning behavior.
+- **Different distribution of (deadline_distance, met_or_missed).** Imported assignments cluster at end-of-week / midnight; user-specified deadlines spread across business hours. Mixing the two inflates variance in `delay_minutes` driven by source rather than by the hypothesized mechanism.
+- **Different bias_factor regime per Rule 15.** Per-deadline `bias_factor_observed` for imported deadlines reflects how the user planned around an external constraint, not how they reasoned about a self-set goal.
+
+**Distinguishing analyses — frozen at April 29, 2026 drafting:**
+- **29a. Effect-size diff with vs without external rows.** At n≥30 deadline-bound EXECUTED tasks per user (Rule 14 floor), compute Spearman ρ(`delay_minutes`, signed `duration_delta_minutes`) twice: once with `WHERE external_source IS NULL` (default), once with all rows (`?include_external=true`). **Contamination detected:** absolute ρ-difference > 0.30 OR sign reversal between the two runs. If detected, force-include the filter in the H2 publication and report the imported subset as a separate descriptive analysis.
+- **29b. Per-source distribution comparison.** Stratify the per-deadline `bias_factor_observed` distribution by `external_source` (NULL vs 'moodle_ics' vs future sources). Kolmogorov-Smirnov test for distribution equality. **Different populations confirmed:** p < 0.05 → never pool sources in any H2 quantitative claim; report side-by-side only.
+- **29c. Time-of-day clustering check.** Plot due_at_utc hour-of-day histograms for native vs imported deadlines. If imported deadlines cluster ≥80% in 22:00–00:00 UTC band (typical LMS midnight-due policy), it confirms the structural difference the threat names. Document as a known feature of the imported population, not a confound to fix.
+
+**Mitigation:**
+- `deadline.external_source` column flags every imported row (alembic 041, 2026-04-29). Default value NULL = native (operator-/user-typed). Non-NULL = imported.
+- All H2 read endpoints filter `WHERE external_source IS NULL` by default. The `/v1/analytics/deadline-shape?include_external=true` opt-in is the operator-only switch for running 29a.
+- The reconcile_deadline_outcomes job processes BOTH native and imported deadlines (data preserved); filtering happens at analysis read time only — this is what enables the 29a contamination test.
+- VT-29 distinguishing tests run BEFORE H2 publication, regardless of N. If the alpha cohort never accumulates enough imported deadlines to power 29a/b, document that as a limitation in any H2 writeup; do not mix sources to inflate N.
+
+**Status:** Pre-registered April 29, 2026. Implemented in alembic 041 (`deadline.external_source`, `external_id`, `imported_at` columns + `uq_deadline_external` partial unique index). Analytics filter live in `analytics/deadline-shape` with the `include_external` opt-in. Activates with the first imported Moodle deadline.
+
 ## Anonymized Retention Policy
 
 Anonymized retention serves product research only:

@@ -27,6 +27,15 @@ export interface IntegrationCardProps {
   onDisconnect?: () => Promise<void> | void;
   /** Fires on transient errors surfaced from the parent. */
   errorMessage?: string | null;
+  /** For non-OAuth integrations (e.g., Moodle url_subscription), the
+   *  Connect button fires this callback so the parent can open a modal.
+   *  OAuth integrations use def.connectHref instead. */
+  onConnectClick?: () => void;
+  /** Optional disconnect-reason flag (Moodle: 'token_invalid_401' etc).
+   *  Surfaces "Reconnect needed" copy on the card. */
+  disconnectReason?: string | null;
+  /** Optional last-synced ISO for cadence-aware integrations. */
+  lastSyncedAt?: string | null;
 }
 
 export function IntegrationCard({
@@ -34,6 +43,9 @@ export function IntegrationCard({
   status,
   onDisconnect,
   errorMessage,
+  onConnectClick,
+  disconnectReason,
+  lastSyncedAt,
 }: IntegrationCardProps) {
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -42,6 +54,7 @@ export function IntegrationCard({
   const isComingSoon = status === "coming_soon";
   const isConnected = status === "connected";
   const isDisconnected = status === "disconnected";
+  const reconnectNeeded = isDisconnected && Boolean(disconnectReason);
 
   async function handleDisconnect() {
     if (!onDisconnect) return;
@@ -92,6 +105,22 @@ export function IntegrationCard({
               {def.comingSoonNote}
             </p>
           )}
+          {reconnectNeeded && (
+            <p className="mt-1 text-[11px] text-ember">
+              Reconnect needed — your URL stopped working. Get a fresh one and connect again.
+            </p>
+          )}
+          {isConnected && lastSyncedAt && (
+            <p className="mt-1 text-[11px] text-dust-deep">
+              Last synced{" "}
+              {new Date(lastSyncedAt).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </p>
+          )}
 
           {/* Scope disclosure — collapsible to keep the card tight */}
           {def.scopes.length > 0 && !isComingSoon && (
@@ -130,9 +159,22 @@ export function IntegrationCard({
                 href={def.connectHref}
                 className="inline-flex h-8 items-center justify-center rounded-sm border border-signal/40 bg-signal/10 px-3 text-xs font-medium text-signal transition-colors hover:bg-signal/20 hover:text-signal-neon"
               >
-                Connect
+                {reconnectNeeded ? "Reconnect" : "Connect"}
               </a>
             )}
+
+            {isDisconnected &&
+              !def.connectHref &&
+              def.authShape === "url_subscription" &&
+              onConnectClick && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={onConnectClick}
+                >
+                  {reconnectNeeded ? "Reconnect" : "Connect"}
+                </Button>
+              )}
 
             {isConnected && !confirmingDisconnect && (
               <Button

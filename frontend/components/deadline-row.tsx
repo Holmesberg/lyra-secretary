@@ -76,6 +76,14 @@ export function DeadlineRow({ deadline, overdue, onEdit }: Props) {
           {deadline.category_hint.replace("_", " ")}
         </span>
       )}
+      {deadline.external_source === "moodle_ics" && (
+        <span
+          title="Imported from Moodle"
+          className="rounded border border-ember/30 bg-ember/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ember"
+        >
+          Moodle
+        </span>
+      )}
       <span
         className={cn(
           "rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide",

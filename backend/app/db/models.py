@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -344,6 +345,15 @@ class Deadline(Base):
         nullable=False,
         default=datetime.utcnow,
     )
+    # External-source flagging (alembic 041, 2026-04-29). NULL on
+    # native deadlines (operator/user-typed). Non-NULL means the row
+    # was imported from a third-party source (Moodle iCal, future:
+    # Canvas/Blackboard/etc). H2 research queries (Rules 14-16) MUST
+    # filter `WHERE external_source IS NULL` to keep native-only.
+    # Mirrors `external_event_outcome` template (line 654).
+    external_source: Mapped[Optional[str]] = mapped_column(String(32))
+    external_id: Mapped[Optional[str]] = mapped_column(String(256))
+    imported_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="deadline",
@@ -358,6 +368,19 @@ class Deadline(Base):
             name="check_deadline_state",
         ),
         Index("idx_deadline_user_state", "user_id", "state", "voided_at"),
+        # Partial unique index for upsert keying — only enforced for
+        # imported rows. Native deadlines have NULL external_*, so they
+        # don't participate in uniqueness. See alembic 041 for the
+        # postgresql_where/sqlite_where partial-index spec.
+        Index(
+            "uq_deadline_external",
+            "user_id",
+            "external_source",
+            "external_id",
+            unique=True,
+            postgresql_where=text("external_source IS NOT NULL"),
+            sqlite_where=text("external_source IS NOT NULL"),
+        ),
     )
 
     @property
@@ -562,6 +585,19 @@ class User(Base):
     # Null = user has not completed calendar OAuth consent yet OR
     # revoked access.
     google_refresh_token: Mapped[Optional[str]] = mapped_column(Text)
+    # Moodle LMS read-only integration (alembic 041, 2026-04-29).
+    # moodle_ics_url is the user's private Moodle calendar subscription
+    # URL (contains a per-user authtoken — credential-equivalent). Same
+    # trust class as google_refresh_token: plaintext in v1, Fernet
+    # encryption deferred to Phase 6+. NEVER returned in any API
+    # response, NEVER logged in full. NULL = user has not connected
+    # Moodle yet OR explicitly disconnected.
+    moodle_ics_url: Mapped[Optional[str]] = mapped_column(Text)
+    moodle_last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Set when sync fails permanently (4xx, malformed feed, etc.).
+    # Frontend reads this to surface "Reconnect needed" instead of
+    # silently failing. Cleared when user reconnects.
+    moodle_disconnect_reason: Mapped[Optional[str]] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     # Alpha funnel instrumentation (alembic 037, 2026-04-28). Tracks the
     # operator's North Star metric: task_created + timer_started within

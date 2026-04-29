@@ -32,6 +32,11 @@ export interface DeadlineResponse {
   completed_at: string | null;
   voided_at: string | null;
   created_at: string;
+  /** Non-null on deadlines imported from a third-party source (Moodle
+   *  iCal, etc.). Frontend renders a "from {source}" badge when set. */
+  external_source?: string | null;
+  external_id?: string | null;
+  imported_at?: string | null;
 }
 
 export interface DeadlineListResponse {

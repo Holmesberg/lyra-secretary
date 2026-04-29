@@ -1302,7 +1302,10 @@ def get_pause_prediction(db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/analytics/deadline-shape")
-def get_deadline_shape(db: Session = Depends(get_db)) -> dict:
+def get_deadline_shape(
+    db: Session = Depends(get_db),
+    include_external: bool = False,
+) -> dict:
     """Loop 11 — per-user deadline-met distribution (MANIFESTO Rules 14, 15).
 
     Pre-registered at MANIFESTO v1.12 (2026-04-26). Reads
@@ -1323,6 +1326,14 @@ def get_deadline_shape(db: Session = Depends(get_db)) -> dict:
     every query in this endpoint filters voided rows from BOTH
     `task_deadline_outcome.voided_at IS NULL` AND the underlying
     `task` and `deadline` rows.
+
+    External-source filter (MANIFESTO VT-29, alembic 041, 2026-04-29):
+    by default, deadlines imported from third-party sources (Moodle
+    iCal, future LMS integrations) are EXCLUDED — H2 is a hypothesis
+    about user-specified deadlines, and imported rows have no user
+    agency in the deadline timestamp. Pass `?include_external=true` to
+    run the VT-29 contamination test (effect size with vs without
+    imported rows; threshold 0.30).
 
     Response shape:
       {
@@ -1379,6 +1390,10 @@ def get_deadline_shape(db: Session = Depends(get_db)) -> dict:
     )
     if uid is not None:
         rows = rows.filter(TaskDeadlineOutcome.user_id == uid)
+    # VT-29 default: native-only. Toggle with ?include_external=true to
+    # run the contamination test.
+    if not include_external:
+        rows = rows.filter(Deadline.external_source.is_(None))
     results = rows.all()
 
     total = len(results)

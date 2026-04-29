@@ -15,6 +15,7 @@ from app.workers.jobs.reconcile_deadline_outcomes import run_reconcile_deadline_
 from app.workers.jobs.sweep_missed_deadlines import run_sweep_missed_deadlines
 from app.workers.jobs.llm_enrichment import run_llm_enrichment
 from app.workers.jobs.resume_prediction import run_resume_prediction
+from app.workers.jobs.moodle_ics_sync import run_moodle_ics_sync
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -148,6 +149,21 @@ def start_scheduler():
         trigger=IntervalTrigger(minutes=2),
         id="resume_prediction",
         name="W2 magic — fire resume banner when paused-for >= historical p75",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Moodle LMS .ics sync — every 6h per connected user. Iterates
+    # users with non-NULL moodle_ics_url, fetches the .ics, upserts
+    # imported events as Deadline rows with external_source='moodle_ics'.
+    # See services/moodle_ics_sync.py and workers/jobs/moodle_ics_sync.py
+    # for the implementation. Cadence matches Moodle's "several hours"
+    # propagation window from the docs. (alembic 041, 2026-04-29.)
+    scheduler.add_job(
+        run_moodle_ics_sync,
+        trigger=IntervalTrigger(hours=6),
+        id="moodle_ics_sync",
+        name="Moodle LMS — pull .ics deadlines per connected user",
         replace_existing=True,
         max_instances=1,
     )

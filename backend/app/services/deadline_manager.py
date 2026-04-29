@@ -152,6 +152,86 @@ class DeadlineManager:
         self.db.refresh(deadline)
         return deadline
 
+    def upsert_external_deadline(
+        self,
+        external_source: str,
+        external_id: str,
+        title: str,
+        due_at_utc: datetime,
+        description: Optional[str] = None,
+        category_hint: Optional[str] = None,
+    ) -> str:
+        """Create-or-update a deadline imported from a third-party source.
+
+        Used by the LMS sync job (alembic 041, 2026-04-29) to ingest
+        Moodle iCal events as Lyra deadlines. Keyed on
+        (user_id, external_source, external_id) — the partial unique
+        index `uq_deadline_external` is the DB-level guarantee.
+
+        Returns one of: 'created', 'updated', 'unchanged', 'skipped_voided'.
+
+        Voided rows are NOT resurrected — if a user explicitly voided an
+        imported deadline, a subsequent sync sees it and skips. The user
+        can manually disconnect + reconnect Moodle to reset.
+        """
+        uid = _require_current_user("upsert_external_deadline")
+
+        # Deliberately INCLUDE voided rows in this lookup so we don't
+        # double-create what the user already explicitly voided. The
+        # state/voided_at check below decides what to do.
+        existing = (
+            self.db.query(Deadline)
+            .filter(
+                Deadline.user_id == uid,
+                Deadline.external_source == external_source,
+                Deadline.external_id == external_id,
+            )
+            .first()
+        )
+
+        if existing is None:
+            now = datetime.utcnow()
+            deadline = Deadline(
+                deadline_id=str(uuid4()),
+                user_id=uid,
+                title=title,
+                description=description,
+                due_at_utc=due_at_utc,
+                category_hint=category_hint,
+                state="planned",
+                created_at=now,
+                external_source=external_source,
+                external_id=external_id,
+                imported_at=now,
+            )
+            self.db.add(deadline)
+            self.db.commit()
+            return "created"
+
+        if existing.voided_at is not None:
+            # User explicitly voided this imported row. Don't resurrect.
+            return "skipped_voided"
+
+        # Compare canonical fields. due_at_utc is the most likely to
+        # change (Moodle deadline extension); title less so but possible.
+        # description + category_hint we update silently if they drift.
+        changed = (
+            existing.title != title
+            or existing.due_at_utc != due_at_utc
+            or (existing.description or "") != (description or "")
+            or (existing.category_hint or "") != (category_hint or "")
+        )
+        if not changed:
+            return "unchanged"
+
+        existing.title = title
+        existing.due_at_utc = due_at_utc
+        existing.description = description
+        existing.category_hint = category_hint
+        # imported_at is the FIRST-import timestamp; don't overwrite.
+        self.db.commit()
+        return "updated"
+
     def update_deadline(
         self,
         deadline_id: str,
