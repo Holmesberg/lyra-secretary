@@ -86,7 +86,7 @@ def start_stopwatch(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Stopwatch start error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/pause", response_model=StopwatchPauseResponse)
@@ -123,7 +123,7 @@ def pause_stopwatch(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Stopwatch pause error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/resume", response_model=StopwatchResumeResponse)
@@ -141,7 +141,7 @@ def resume_stopwatch(db: Session = Depends(get_db)) -> StopwatchResumeResponse:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Stopwatch resume error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/stop", response_model=StopwatchStopResponse)
@@ -245,7 +245,7 @@ def stop_stopwatch(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Stopwatch stop error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/status", response_model=StopwatchStatusResponse)
@@ -261,7 +261,7 @@ def stopwatch_status(db: Session = Depends(get_db)) -> StopwatchStatusResponse:
         return StopwatchStatusResponse(**status)
     except Exception as e:
         logger.error(f"Stopwatch status error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/switch/{task_id}", response_model=StopwatchSwitchResponse)
@@ -299,7 +299,7 @@ def switch_stopwatch(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Stopwatch switch error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/update-completion", response_model=UpdateCompletionResponse)
@@ -327,7 +327,7 @@ def update_completion(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Update completion error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/correct-readiness", response_model=ReadinessCorrectionResponse)
@@ -349,7 +349,7 @@ def correct_readiness(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Readiness correction error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/retroactive", response_model=RetroactiveResponse)
@@ -421,4 +421,4 @@ def retroactive_log(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Retroactive log error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

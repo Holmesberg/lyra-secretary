@@ -68,7 +68,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [autoSigningOut, setAutoSigningOut] = useState(false);
 
   useEffect(() => {
-    if (status === "unauthenticated") router.replace("/");
+    if (status === "unauthenticated") {
+      // Wipe React Query localStorage on session expiry / passive
+      // logout BEFORE redirecting. Without this, next user on the
+      // same browser sees prior user's persisted cache flash on first
+      // paint (audit-flagged 2026-04-30, RISK-5: shared family device
+      // = high probability mom forgets explicit logout).
+      clearPersistedCache();
+      router.replace("/");
+    }
   }, [status, router]);
 
   // Calendar refresh-token handshake was here (2026-04-21 → 2026-04-22).

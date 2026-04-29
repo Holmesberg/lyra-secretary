@@ -148,7 +148,7 @@ def create_task(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Task creation error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/reschedule", response_model=TaskRescheduleResponse)
@@ -193,7 +193,7 @@ def reschedule_task(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Reschedule error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/delete", response_model=TaskDeleteResponse)
@@ -215,7 +215,7 @@ def delete_task(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Delete error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/tasks/{task_id}/void", response_model=TaskVoidResponse)
@@ -365,7 +365,7 @@ def swap_tasks(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Swap error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/schedule/clear")
