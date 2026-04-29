@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS='--dns-result-order=ipv4first' next dev",
-    "build": "next build",
-    "start": "NODE_OPTIONS='--dns-result-order=ipv4first' next start",
+    "dev": "NODE_OPTIONS='--dns-result-order=ipv4first --no-network-family-autoselection' next dev",
+    "build": "NODE_OPTIONS='--dns-result-order=ipv4first --no-network-family-autoselection' next build",
+    "start": "NODE_OPTIONS='--dns-result-order=ipv4first --no-network-family-autoselection' next start",
     "lint": "next lint"
   },
   "dependencies": {
