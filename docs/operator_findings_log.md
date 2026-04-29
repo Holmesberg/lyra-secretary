@@ -221,3 +221,84 @@ the structure is load-bearing.
 - `docs/dogfood_findings_living.md` — where (a) actions land
 - `MANIFESTO.md §The Validity Register` — where (b) actions land
 - `docs/building_phases.md` §Phase 5 / 5.5 — milestone gates
+
+---
+
+## Day 12 — 2026-04-29 — cohort: trusted (n=7)
+
+### Expected
+
+Pre-launch sprint check on the trusted cohort to validate that the
+re-onboarding gate (commit `67fa1fd`) applies correctly and that the
+Apr 28 brain-dump rewrite hasn't lost any active users.
+
+### Observed
+
+Retention pull on the 7 trusted users:
+
+| uid | email | signup | days | onb | tasks | exec sessions | days active | last seen |
+|---|---|---|---|---|---|---|---|---|
+| 3 | mariamnasser415 | 4/16 | 12 | ❌ | 0 | 0 | 0 | never |
+| 4 | ghadatawfik85 | 4/16 | 12 | ✅ | 3 | 3 | 2 | 6d ago |
+| 5 | t90seegg2006 | 4/17 | 11 | ✅ | 3 | 4 | 3 | today |
+| 6 | medo.tamer1610 | 4/17 | 11 | ✅ | 11 | 11 | 4 | 3d ago |
+| 7 | meroo0jj | 4/18 | 10 | ✅ | 3 | 1 | 1 | 2d ago |
+| 12 | omar4reading | 4/22 | 6 | ✅ | 1 (SKIPPED meta-task) | 0 | 0 | never |
+| 14 | pbassem04 | 4/23 | 5 | ✅ | 1 (SKIPPED meta-task) | 0 | 0 | never |
+
+Aggregates (n=7):
+- Onboarded: 6/7 (86%)
+- D1 return stamp: **0/7 (0%)** — measurement bug, not behavior signal
+- Multi-active (≥2 distinct executed days): 3/7 (43%) — ghada, t90seegg, medo
+- Active in last 7d: 4/7 (57%) — same 4 + meroo
+
+### Surprising
+
+1. **D1 return stamp = 0 across the board.** The `d1_return_at` stamp
+   logic in `endpoints/users.py` should fire on the first /me call
+   ≥24h after signup. Multi-active and last-seen data confirm real
+   returners exist (ghada, t90seegg, medo, meroo) so the stamp is
+   broken, not the behavior. Action (a) — added to dogfood_findings_living.
+2. **Two onboarded-never-executed users** (omar Day 6, pbassem Day 5)
+   match the "onboarded but never logged a real task" failure mode
+   the operator named. Their only "task" is the SKIPPED legacy "Plan
+   your week" meta-task from the pre-rewrite onboarding.
+3. **medo.tamer is the power user** (11 sessions, 4 active days, last
+   3d ago). His engagement profile is what we'd want to be modal for
+   the cohort.
+
+### Actions taken in this pass
+
+- Hard-deleted user_id 3, 12, 14 via the existing `retain_for_research=
+  False` sequence (no useful behavioral data to retain). Operator will
+  reach out to invite them to sign up fresh under the rewritten brain-
+  dump onboarding.
+- Shipped the **re-onboarding gate** (commit `67fa1fd`): /me returns
+  `has_active_task_history` (count of non-voided non-SKIPPED non-
+  DELETED tasks > 0); `(app)/layout.tsx` re-shows the brain-dump
+  whenever this flag is false. Future pbassem/omar-style cases get
+  the brain-dump again automatically; no manual deletion needed.
+
+### Bugs encountered + documented this pass
+
+- **LYR-113** — Google OAuth login broken on every cold-restart.
+  Recurring P0; this was the third occurrence of the same symptom.
+  Fixed at the Node-flag layer (`--no-network-family-autoselection`
+  Node 20.4+). Documented in LYRA_BUGS.md with full incident timeline
+  and drop-when conditions.
+- **D1 stamp logic** — confirmed broken across all 7 trusted users
+  despite real returners. Root cause TBD; likely a tz-naive vs tz-
+  aware datetime comparison issue (parallel to LYR-103/H0 hotfix
+  family). Action (a) — opening as a dogfood item.
+
+### Out of scope, but worth noting
+
+- Operator landed on the conclusion that **bug rate is too high this
+  session**: "DOCUMENT THE BUGS, they should not happen this often."
+  Three P0s within 24h (LYR-113 OAuth, the Apr 28 tz hotfix family,
+  and the brain-dump default-time-in-past edge case). Pattern: each
+  was caused by an environment assumption (IPv6 reachable, datetime
+  naive matches DB, server clock matches user clock) that had only
+  been verified once. Going forward: every environment assumption
+  documented in CLAUDE.md or memory must have a verification command
+  the operator can run before declaring "fixed."
