@@ -759,7 +759,7 @@ function TodayInner() {
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-parchment">
+            <h1 className="text-base font-semibold tracking-tight text-parchment sm:text-2xl">
               {format(viewedDateObj, "EEEE, MMMM d")}
             </h1>
             {!isToday && (
@@ -857,14 +857,16 @@ function TodayInner() {
       {overdueCount > 0 && (
         <div
           role="alert"
-          className="terminal-panel-ember alert-bar-ember mb-4 flex items-stretch gap-5 px-5 py-4"
+          className="terminal-panel-ember alert-bar-ember mb-4 flex items-stretch gap-3 px-3 py-2.5 sm:gap-5 sm:px-5 sm:py-4"
         >
           {/* Hero count — cyber-display digits, neon-ember glow.
-              Reads as a system readout, not a counter chip. */}
-          <div className="flex shrink-0 items-center pl-2">
+              Reads as a system readout, not a counter chip.
+              Mobile step-down: 2.75rem → 1.75rem so the alert
+              consumes ~50% less vertical real estate on phones. */}
+          <div className="flex shrink-0 items-center pl-1 sm:pl-2">
             <span
               aria-hidden
-              className="font-display text-[2.75rem] font-semibold leading-none neon-ember tabular-nums"
+              className="font-display text-[1.75rem] font-semibold leading-none neon-ember tabular-nums sm:text-[2.75rem]"
             >
               {overdueCount.toString().padStart(2, "0")}
             </span>

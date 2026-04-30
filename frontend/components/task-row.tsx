@@ -82,7 +82,7 @@ export function TaskRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-4 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 transition-colors",
+        "group flex items-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-2.5 py-2 transition-colors sm:gap-4 sm:px-4 sm:py-3",
         selected && "border-signal/40 bg-signal/5",
         isLive && !selected && "border-signal/30 bg-signal/[0.03]"
       )}

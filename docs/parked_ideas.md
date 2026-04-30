@@ -1234,3 +1234,111 @@ contamination, instrumented + pre-registered intervention = data.
 The goal isn't to avoid proactivity — it's to contain it inside the
 experiment design." Captured to preserve the insight without
 disrupting reactive Lyra dogfood.
+
+---
+
+## Lyra-as-OpenClaw — copy the agent-OS architecture into Lyra core
+
+*Captured: 2026-04-30 evening. Operator observation while validating
+the GLM-5.1 swap in OpenClaw: "the real endgame is copying part of
+openclaw's architecture and integrating it into our system. something
+like the skill.md, etc."*
+
+**The core insight.** OpenClaw isn't just a chat bot — it's a small
+agent OS. Each capability the agent has is declared in a `SKILL.md`
+file (the same file Lyra exposes to OpenClaw at
+`openclaw/skills/lyra-secretary/SKILL.md`). The skill file declares:
+verification preamble, hard rules, endpoints, expected behaviors,
+required fields. The agent reads the skill, the runtime enforces it,
+and the LLM operates within those constraints. Same shape:
+declarative rules + runtime enforcement + LLM acting inside the
+sandbox.
+
+The Lyra-side parallel: a Lyra agent (the chat surface we just shipped
+2026-04-30) has tools defined in `backend/app/services/jarvis_tools.py`
+as Python schemas. That's one notation; OpenClaw's SKILL.md is
+another, friendlier-to-write notation. The two architectures could
+converge — Lyra gains the declarative `.md`-based skill format,
+OpenClaw can read native Lyra skills.
+
+**Why this matters strategically.**
+
+1. **Skill ecosystem.** If Lyra ships skills as `SKILL.md` files,
+   third-party integrators (and eventually users) can write skills
+   without touching Python. OpenClaw already proves the model works
+   for non-trivial tooling — the operator's `lyra-secretary` skill
+   is a working example that drives 12+ endpoints declaratively.
+2. **Cross-runtime portability.** A skill written for Lyra could run
+   under OpenClaw's runtime (already does) AND under Lyra's own
+   agent runtime (the Lyra-the-assistant chat surface). Operator
+   wouldn't have to maintain two sets of tool definitions.
+3. **User-facing skill catalog.** Phase 6+ thinking: users could
+   browse a skill catalog (Moodle skill, Notion skill, GCal skill,
+   each their own SKILL.md) and toggle them on/off, similar to how
+   OpenClaw manages its plugin allow-list. The operator could ship
+   first-party skills + open the door to community skills later.
+4. **Reduces Lyra's surface to a kernel.** If skills live as
+   `.md`-declared bundles, the core Lyra codebase shrinks — most of
+   what's currently in `backend/app/services/*` becomes a skill, not
+   a hardcoded service. Mom/sister/students can install only the
+   skills they need (no Moodle skill if they don't have an LMS).
+
+**What this is NOT.** Not "copy OpenClaw's whole architecture into
+Lyra." OpenClaw has a lot of agent-OS surface area (sandboxes, exec
+approvals, multi-agent coordination, browser automation, etc.) that
+Lyra doesn't need at v1. The candidate to copy first is JUST the
+skill declaration format + the runtime that loads them. Everything
+else stays in OpenClaw's stack.
+
+**Concrete first-ship sketch (when revisited).**
+
+1. Define a Lyra `SKILL.md` schema (verification preamble + hard
+   rules + tool list + endpoints + invariants — mirroring the
+   format already at `openclaw/skills/lyra-secretary/SKILL.md`)
+2. Write a Python loader that reads `SKILL.md` files from a
+   `skills/` directory + emits OpenAI-style tool schemas
+3. Migrate ONE existing service (probably brain dump or pattern
+   summary) from `jarvis_tools.py` Python definitions to a
+   `skills/brain_dump/SKILL.md` file
+4. Verify Lyra's chat surface picks up the migrated skill as a
+   first-class tool with no behavior change
+5. Document the migration path so additional services can follow
+6. Long-term: ship a `/settings/skills` UI for users to enable/disable
+   skills (post-retention checkpoint)
+
+**Why parked, not built now.**
+
+1. **Brain dump P0s come first.** LYR-114 (silent partial-commit) and
+   LYR-115 (durations ignored) are pre-alpha blockers per the
+   2026-04-30 stress test. Skill-architecture refactor is a code
+   reorganization, not a user-facing fix. Land the bugs first.
+2. **Need the JARVIS-renamed-Lyra-chat surface to dogfood first.**
+   The chat surface shipped 2026-04-30 with 6 read tools + 4 write
+   tools. Need 2-4 weeks of operator usage to know which tool
+   shapes worked + which need refactor. Migrating to skill.md before
+   we know the right tool shapes would lock in the wrong abstraction.
+3. **Skill catalog UI is a Phase 6+ concern.** Multi-skill
+   management is meaningful only when there are ≥5 skills + multiple
+   users. Today there are ~6 internal tool-shaped surfaces and 1
+   user (operator). Build the abstraction when the inventory
+   justifies it.
+
+**Trigger to revisit.**
+
+Whichever fires first:
+- ≥5 distinct tool-shaped capabilities exist in `jarvis_tools.py`
+  AND maintaining them in Python becomes the friction point (e.g.,
+  "we need to add a 7th tool, and it would benefit from being
+  declarative")
+- An external integrator (or operator's mom!) asks to write a Lyra
+  skill without touching Python — the .md format becomes the
+  ergonomic answer
+- Phase 6+ work begins on user-facing skill catalog
+- OpenClaw publishes a stable, externally-maintained skill-runtime
+  package that Lyra could import directly instead of re-implementing
+
+**Source.** Operator 2026-04-30 evening, immediately after validating
+GLM-5.1 swap in OpenClaw. Original phrasing: "the real endgame is
+copying part of openclaw's architecture and integrating it into our
+system. something like the skill.md, etc." Captured to preserve the
+direction without disrupting current pre-alpha sprint priorities.

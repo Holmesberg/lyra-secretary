@@ -342,6 +342,12 @@ export default function CalendarPage() {
   const [detailsTask, setDetailsTask] = useState<TaskRowType | null>(null);
   const [editingDeadline, setEditingDeadline] = useState<DeadlineResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // View-toggle state — drives the explicit Day/Week/Month button bar
+  // we render above the calendar, since Schedule-X v4 conditionally
+  // mounts its own selector items only when the dropdown is open
+  // (the prior CSS-flatten attempt was dead because the items list
+  // wasn't in the DOM to style). 2026-04-30 mobile-fix recovery.
+  const [currentView, setCurrentView] = useState<"day" | "week" | "month-grid">("week");
 
   // Deadlines render as Schedule-X events on their actual due day.
   // No state filter — completed/missed/skipped deadlines also surface
@@ -563,6 +569,14 @@ export default function CalendarPage() {
       calendars: STATE_CALENDARS,
       isDark: true,
       timezone: TIMEZONE,
+      // Crop the visible day to 06:00–23:00 (operator-active hours).
+      // Schedule-X default is 00:00–24:00 — on mobile this means the
+      // top of the visible grid is midnight, and the operator has to
+      // scroll a long way to reach their actual tasks. Cropping shows
+      // ~17 productive hours instead of 24, which fits ~2x more of the
+      // day in viewport at the same zoom level.
+      // 2026-04-30 mobile-density fix per operator screenshot review.
+      dayBoundaries: { start: "06:00", end: "23:00" },
       // Schedule-X default (eventOverlap: true) cascades overlapping events
       // at horizontal offsets but extends each to the right edge — titles
       // obscured by neighbors. false makes them split into equal sub-columns,
@@ -697,6 +711,54 @@ export default function CalendarPage() {
         silently re-clips the grid. If you need to remove the border
         or rounding, keep `overflow-y-auto` in place.
       */}
+      {/* View-toggle pill bar — explicit JSX so the buttons are
+          always rendered (Schedule-X v4's built-in selector
+          conditionally mounts items only when the dropdown is open,
+          so a CSS-flatten approach can't show them inline). The
+          buttons drive Schedule-X's calendarState.setView via the
+          $app handle, which is marked private but is the only stable
+          public API surface for programmatic view switching in v4.x. */}
+      {calendar && (
+        <div className="mb-3 flex flex-wrap gap-1">
+          {(
+            [
+              { id: "day", label: "Day" },
+              { id: "week", label: "Week" },
+              { id: "month-grid", label: "Month" },
+            ] as const
+          ).map((opt) => {
+            const isActive = currentView === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  setCurrentView(opt.id);
+                  // Schedule-X internal API — public surface in v5 per
+                  // their roadmap; until then we reach into $app.
+                  const c = calendar as unknown as {
+                    $app: {
+                      calendarState: { setView: (n: string, d: unknown) => void };
+                      datePickerState: { selectedDate: { value: unknown } };
+                    };
+                  };
+                  c.$app.calendarState.setView(
+                    opt.id,
+                    c.$app.datePickerState.selectedDate.value,
+                  );
+                }}
+                className={`rounded-sm border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+                  isActive
+                    ? "border-signal/60 bg-signal/15 text-signal shadow-[0_0_8px_rgba(0,229,255,0.2)]"
+                    : "border-hairline-signal/30 bg-void-2/60 text-dust hover:bg-signal/10 hover:text-parchment"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="sx-react-calendar-wrapper h-[calc(100vh-220px)] overflow-y-auto rounded-sm border border-hairline-signal/30">
         {calendar && <ScheduleXCalendar calendarApp={calendar} />}
       </div>

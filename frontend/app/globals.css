@@ -413,74 +413,15 @@ section#live-data .recharts-default-legend {
   color: #f0efea !important;
 }
 
-/* Schedule-X v4 ships the view-selector as a CLOSED dropdown by
-   default — `.sx__view-selection-selected-item` is the trigger, and
-   `.sx__view-selection-items` is the absolutely-positioned popup that
-   only appears when the user taps the trigger. On mobile the operator
-   reported only seeing the trigger ("Day"), no way to switch.
-   2026-04-30 fix: flatten the dropdown into an always-visible inline
-   button group across every viewport. The trigger is hidden, the
-   items are positioned static, and they live as a horizontal flex row
-   on top of the calendar. Applies to the authenticated /calendar
-   route only (scoped under .sx-react-calendar-wrapper). */
+/* Schedule-X v4 view-selector: HIDE the built-in dropdown entirely
+   on the authenticated /calendar route — replaced by an explicit
+   JSX button bar in calendar/page.tsx that programmatically calls
+   Schedule-X's setView API. Why: v4 conditionally mounts the
+   .sx__view-selection-items list only when the dropdown is open,
+   so a CSS-only flatten can't make them always-visible (the prior
+   2026-04-29 attempt was effectively dead). Hiding the native
+   selector + rendering our own buttons gives consistent mobile +
+   desktop behavior with no Schedule-X internals dependency. */
 .sx-react-calendar-wrapper .sx__view-selection {
-  position: relative;
-}
-/* Hide the "current view" trigger button entirely — items below
-   render the full set of toggles inline. */
-.sx-react-calendar-wrapper .sx__view-selection-selected-item,
-.sx-react-calendar-wrapper .sx__view-selection-chevron,
-.sx-react-calendar-wrapper .sx__view-selection-label {
   display: none !important;
-}
-/* Items: position static (not absolute), always visible, render as
-   a horizontal pill bar that wraps on the narrowest screens. */
-.sx-react-calendar-wrapper .sx__view-selection-items {
-  position: static !important;
-  display: flex !important;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  background: transparent !important;
-  box-shadow: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  z-index: auto !important;
-  border-radius: 0 !important;
-}
-/* Each item: button-shaped, touchable target, parchment text on
-   void background, signal-cyan when selected (matches the active
-   sidebar nav vocabulary). */
-.sx-react-calendar-wrapper .sx__view-selection-item {
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  padding: 0.375rem 0.875rem !important;
-  border-radius: 2px;
-  border: 1px solid rgba(240, 239, 234, 0.08);
-  background: rgba(10, 14, 24, 0.55);
-  color: #8a92a3;
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
-}
-.sx-react-calendar-wrapper .sx__view-selection-item:hover,
-.sx-react-calendar-wrapper .sx__view-selection-item:focus {
-  background: rgba(77, 212, 232, 0.1) !important;
-  color: #f0efea !important;
-  border-color: rgba(77, 212, 232, 0.4);
-}
-.sx-react-calendar-wrapper .sx__view-selection-item.is-selected {
-  background: rgba(77, 212, 232, 0.15) !important;
-  color: #4dd4e8 !important;
-  border-color: rgba(77, 212, 232, 0.6);
-  box-shadow: 0 0 8px rgba(77, 212, 232, 0.25);
-}
-.sx-react-calendar-wrapper .sx__view-selection-item.is-selected:hover,
-.sx-react-calendar-wrapper .sx__view-selection-item.is-selected:focus {
-  background: rgba(77, 212, 232, 0.2) !important;
-  color: #00e5ff !important;
 }
