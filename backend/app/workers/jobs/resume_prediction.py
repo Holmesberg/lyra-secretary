@@ -142,6 +142,17 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
     )
 
     _enqueue_notification(user, row, task)
+    # Operator fanout (2026-04-30): mirror to telegram. Sibling of
+    # pause_prediction's existing telegram fire — operator wanted
+    # consistent coverage across both predictors.
+    if user.is_operator:
+        from app.services.operator_notifier import notify_operator
+        notify_operator(
+            f"Resume nudge — *{task.title}* paused {row.paused_for_minutes:.0f} min "
+            f"(your usual is ~{row.p75_pause_minutes:.0f} min for this kind of session).",
+            source="scheduler.resume-prediction",
+            severity="alert",
+        )
 
 
 def _enqueue_notification(user: User, row: ResumePredictionLog, task: Task) -> None:

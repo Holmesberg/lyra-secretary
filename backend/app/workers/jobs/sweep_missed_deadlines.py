@@ -74,3 +74,13 @@ def _run_for_one_user(db, user: User):
         f"sweep_missed_deadlines: user_id={user.user_id} "
         f"swept={swept_count}"
     )
+    # Operator-only fanout (2026-04-30): deadlines transitioning
+    # active → missed is a load-bearing event the operator wants
+    # to see in the unified Telegram inbox.
+    if swept_count and user.is_operator:
+        from app.services.operator_notifier import notify_operator
+        notify_operator(
+            f"*{swept_count}* deadline(s) just transitioned to missed — past due_at without completion.",
+            source="scheduler.missed-deadlines",
+            severity="warn",
+        )

@@ -1,7 +1,15 @@
 """Notification polling endpoints — per-user scoped."""
 import json
-from fastapi import APIRouter, Request
+from typing import Literal, Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db
+from app.db.models import User
+from app.db.scoping import get_current_user_id
+from app.services.operator_notifier import notify_operator
 from app.utils.redis_client import RedisClient
 
 router = APIRouter()
@@ -44,3 +52,50 @@ def get_pending(request: Request):
             break
         items.append(json.loads(item))
     return {"notifications": items, "count": len(items)}
+
+
+# ---------------------------------------------------------------------------
+# Operator-only Telegram mirror (2026-04-30)
+# ---------------------------------------------------------------------------
+
+
+class OperatorNotifyRequest(BaseModel):
+    """Frontend-driven Telegram mirror payload.
+
+    Frontend toasts/errors/critical-state-changes call this endpoint
+    (operator-only) so the OpenClaw Telegram chat sees the same signal
+    the in-browser UI does. Per operator request 2026-04-30 — "make
+    all notifications, toasts, nudges, ALL go through my telegram
+    openclaw bot."
+    """
+    message: str = Field(..., min_length=1, max_length=2000)
+    severity: Literal["info", "warn", "error", "alert"] = "info"
+    source: str = Field("frontend", max_length=64)
+
+
+@router.post("/operator")
+def post_operator_notification(
+    payload: OperatorNotifyRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Mirror a frontend signal into the operator's Telegram.
+
+    Operator-only — 403 to non-operators. The endpoint is deliberately
+    non-blocking on telegram delivery failures (notify_operator returns
+    False but doesn't raise) so the UI never crashes when telegram is
+    down or rate-limited.
+    """
+    uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    user = db.query(User).filter(User.user_id == uid).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="user not found")
+    if not user.is_operator:
+        raise HTTPException(status_code=403, detail="operator only")
+    sent = notify_operator(
+        payload.message,
+        source=payload.source,
+        severity=payload.severity,
+    )
+    return {"sent": sent}

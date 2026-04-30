@@ -1,6 +1,7 @@
 "use client";
 import { signOut, useSession } from "next-auth/react";
 import { clearPersistedCache } from "@/lib/clear-persisted-cache";
+import { notifyOperator } from "@/lib/operator-notify";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -114,10 +115,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!meQ.error) return;
     console.error("users/me fetch failed:", meError);
+    // Mirror to operator Telegram per 2026-04-30 ALL-routes ask.
+    // Severity is "error" for backend-unreachable, "warn" for
+    // session-expired (recoverable by re-signing in).
     if (meQ.error instanceof ApiError && meQ.error.status === 401) {
+      notifyOperator({
+        message: `Session expired — auto-signing out. (${meError ?? "401 from /v1/users/me"})`,
+        severity: "warn",
+        source: "frontend.session-expired",
+      });
       setAutoSigningOut(true);
       clearPersistedCache();
       signOut({ callbackUrl: "/" });
+    } else {
+      notifyOperator({
+        message: `Backend unreachable from /v1/users/me: \`${meError ?? "unknown"}\`. Check tunnel + backend container.`,
+        severity: "error",
+        source: "frontend.backend-down",
+      });
     }
   }, [meQ.error, meError]);
 

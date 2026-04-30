@@ -153,6 +153,16 @@ def _run_for_one_user(db, user: User):
             f"stale_session_recovery: closed {closed}/{len(stale)} stale sessions "
             f"for user_id={user.user_id}"
         )
+        # Operator fanout (2026-04-30): stale session recovery means
+        # a stopwatch was running for >12h with no stop signal — almost
+        # always a browser-crash artifact, but operator should see.
+        if closed and user.is_operator:
+            from app.services.operator_notifier import notify_operator
+            notify_operator(
+                f"Auto-closed *{closed}* stale stopwatch session(s) (open >12h).",
+                source="scheduler.stale-sessions",
+                severity="warn",
+            )
     except Exception as e:
         logger.error(
             f"stale_session_recovery: commit failed for user_id={user.user_id}: {e}",

@@ -69,6 +69,16 @@ def _run_for_one_user(db, user: User):
                 f"orphan_task_recovery: recovered {recovered} orphan tasks "
                 f"for user_id={user.user_id}"
             )
+            # Operator fanout (2026-04-30): orphan recovery indicates
+            # the system caught a state-machine drift (task EXECUTING
+            # without an open session). Operator should know.
+            if user.is_operator:
+                from app.services.operator_notifier import notify_operator
+                notify_operator(
+                    f"Recovered *{recovered}* orphan task(s) — EXECUTING with no open session, marked SKIPPED.",
+                    source="scheduler.orphan-recovery",
+                    severity="warn",
+                )
         except Exception as e:
             logger.error(
                 f"orphan_task_recovery: commit failed for user_id={user.user_id}: {e}",
