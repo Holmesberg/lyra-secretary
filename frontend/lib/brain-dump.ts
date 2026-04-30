@@ -60,12 +60,32 @@ export interface BrainDumpCommitBinding {
   deadline_item_id: string;
 }
 
+/** LYR-114 surface (2026-04-30): per-item failure shape so the
+ *  frontend can render a retry-or-edit panel instead of silently
+ *  dropping items the backend rejected. */
+export interface BrainDumpFailedItem {
+  item_id: string;
+  kind: BrainDumpItemKind;
+  title: string;
+  /** Machine-readable reason — see backend BrainDumpFailedItem schema:
+   *  "past_time" | "missing_when" | "deadline_terminal_state"
+   *  | "deadline_not_found" | "validation" | "conflict_blocked" | "internal" */
+  reason: string;
+  detail: string;
+  /** UX hint — what the frontend should offer as a one-click recovery:
+   *  "schedule_tomorrow_same_time" | "edit_when_local"
+   *  | "remove_deadline_binding" | null */
+  retry_hint: string | null;
+}
+
 export interface BrainDumpCommitResponse {
   tasks_created: number;
   deadlines_created: number;
   bindings_applied: number;
   task_ids: string[];
   deadline_ids: string[];
+  /** LYR-114 fix 2026-04-30: empty when all items committed cleanly. */
+  failed_items: BrainDumpFailedItem[];
 }
 
 export async function parseBrainDump(

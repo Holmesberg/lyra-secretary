@@ -76,9 +76,44 @@ class BrainDumpCommitRequest(BaseModel):
     bindings: list[BrainDumpCommitBinding] = Field(default_factory=list)
 
 
+class BrainDumpFailedItem(BaseModel):
+    """An item in the commit batch that couldn't be created.
+
+    Surfaced in BrainDumpCommitResponse.failed_items so the frontend
+    can render a retry-or-edit panel instead of silently dropping the
+    user's input. LYR-114 fix 2026-04-30 — pre-fix the endpoint logged
+    failures + returned 200 with no per-item failure surface, so the
+    user thought 5 tasks committed when actually 2 did.
+    """
+    item_id: str
+    kind: ItemKind
+    title: str
+    # Stable machine-readable reason code for branchable UX:
+    #   - "past_time"      → start time was in the past (TaskManager 5-min guard)
+    #   - "missing_when"   → deadline had no when_local
+    #   - "deadline_terminal_state" → bound deadline already completed/missed
+    #   - "deadline_not_found" → bound deadline_id didn't resolve
+    #   - "validation"     → other ValueError
+    #   - "internal"       → unexpected exception (catch-all; logged with exc_info)
+    reason: str
+    # Human-readable detail for tooltip / debug context
+    detail: str
+    # UX hint — what the frontend should offer as a one-click recovery
+    # action. None when no obvious retry exists (e.g., internal errors).
+    #   - "schedule_tomorrow_same_time"
+    #   - "edit_when_local"
+    #   - "remove_deadline_binding"
+    #   - None
+    retry_hint: Optional[str] = None
+
+
 class BrainDumpCommitResponse(BaseModel):
     tasks_created: int
     deadlines_created: int
     bindings_applied: int
     task_ids: list[str]
     deadline_ids: list[str]
+    # LYR-114 fix 2026-04-30: per-item failure surface. Empty when all
+    # items committed cleanly. Frontend renders a dismissible warning
+    # panel listing failures + a retry affordance per item.
+    failed_items: list[BrainDumpFailedItem] = Field(default_factory=list)

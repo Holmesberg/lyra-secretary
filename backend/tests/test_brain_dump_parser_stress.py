@@ -238,33 +238,18 @@ def test_arabic_text_preserved_no_crash():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "P0: explicit user-provided durations are not extracted into "
-        "duration_minutes. brain_dump_parser.py needs an _extract_duration "
-        "helper that pops '60 min', '30 minutes', '90 min' patterns from "
-        "the segment and into BrainDumpParsedItem.duration_minutes. "
-        "When the fix lands this test turns green (strict=True). "
-        "Surfaced by 2026-04-30 stress test cases D2/D3/D5/D7/D8/E1/E3/E5/E7/E8."
-    ),
-)
-def test_xfail_explicit_duration_extracted():
+def test_explicit_duration_extracted():
+    """LYR-115 fix landed 2026-04-30 — durations now extracted from
+    text. Was an xfail; now a passing snapshot."""
     res = parse_brain_dump("PHM lecture tomorrow at 10am 60 min", NOW_ISO)
     assert len(res.items) == 1
     assert res.items[0].duration_minutes == 60
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "P1: title-strip leaves dangling prepositions ('at', 'for') after "
-        "date-token removal. brain_dump_parser._strip_date_tokens needs to "
-        "peel these connectives. Surfaced by 2026-04-30 stress test cases "
-        "A1/A7/D2/D3/D4/D5/D7/D8."
-    ),
-)
-def test_xfail_title_strip_removes_at_for():
+def test_title_strip_removes_at_for():
+    """LYR-115-adjacent fix landed 2026-04-30 — duration tokens now
+    strip first, exposing trailing 'at'/'for' for the existing
+    trailing-prep peel. Was an xfail; now a passing snapshot."""
     res = parse_brain_dump("Lab 8 problem set tomorrow at 3pm for 30 minutes", NOW_ISO)
     title = res.items[0].title
     assert " at " not in title.lower() and not title.lower().endswith(" at")
@@ -287,16 +272,10 @@ def test_xfail_and_separator_splits_segments():
     assert len(res.items) == 2
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "P1: time-range patterns ('2-4pm', '1:30pm-3pm') aren't parsed as "
-        "ranges. The 'from' hour gets the time but the 'to' hour and "
-        "duration are lost. Title cleanup leaves debris like 'study 1' / "
-        "'break'. Surfaced by 2026-04-30 stress test cases F1, F3, F4."
-    ),
-)
-def test_xfail_time_range_extracts_duration():
+def test_time_range_extracts_duration():
+    """Time-range fix landed 2026-04-30 — '1-5pm' now extracts both
+    start time AND duration via TIME_RANGE_RE pre-pass. Was an xfail;
+    now a passing snapshot."""
     res = parse_brain_dump("study tomorrow 1-5pm", NOW_ISO)
     assert len(res.items) == 1
     item = res.items[0]

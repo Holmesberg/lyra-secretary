@@ -34,10 +34,45 @@ import {
   type BrainDumpBindingSuggestion,
   type BrainDumpCommitBinding,
   type BrainDumpCommitItem,
+  type BrainDumpFailedItem,
   type BrainDumpParsedItem,
 } from "@/lib/brain-dump";
 
-type Step = "dump" | "confirm";
+type Step = "dump" | "confirm" | "review_failures";
+
+/** Map machine-readable failure reason → warm-tone user-facing copy.
+ *  Keep these short; modal real estate is tight. */
+function failureCopy(reason: string): string {
+  switch (reason) {
+    case "past_time":
+      return "the time is already in the past";
+    case "missing_when":
+      return "no due date was parsed";
+    case "deadline_terminal_state":
+      return "the linked deadline is already finished";
+    case "deadline_not_found":
+      return "couldn't find the linked deadline";
+    case "conflict_blocked":
+      return "blocked by a hard conflict with an active session";
+    case "validation":
+      return "didn't pass scheduling rules";
+    default:
+      return "couldn't be saved";
+  }
+}
+
+function retryCopy(hint: string | null): string {
+  switch (hint) {
+    case "schedule_tomorrow_same_time":
+      return "Try scheduling tomorrow at the same time.";
+    case "edit_when_local":
+      return "Open in /today or the calendar to set a new time.";
+    case "remove_deadline_binding":
+      return "Unbind from the deadline and retry.";
+    default:
+      return "";
+  }
+}
 
 function pad2(n: number): string {
   return n.toString().padStart(2, "0");
@@ -89,6 +124,15 @@ export function BrainDumpQuickModal({
 }: BrainDumpQuickModalProps) {
   const qc = useQueryClient();
   const [step, setStep] = useState<Step>("dump");
+  // LYR-114 fix 2026-04-30: failures from /commit surface here so the
+  // user sees what didn't land instead of the modal silently closing
+  // with a partial commit.
+  const [failures, setFailures] = useState<BrainDumpFailedItem[]>([]);
+  const [committedSummary, setCommittedSummary] = useState<{
+    tasks: number;
+    deadlines: number;
+    bindings: number;
+  } | null>(null);
   const [rawText, setRawText] = useState(seedText);
   const [items, setItems] = useState<BrainDumpParsedItem[]>([]);
   const [bindings, setBindings] = useState<BrainDumpBindingSuggestion[]>([]);
@@ -171,7 +215,8 @@ export function BrainDumpQuickModal({
         }));
       const res = await commitBrainDump(commitItems, commitBindings);
       // Invalidate every cache key the dashboard depends on so the
-      // moment the modal closes the new rows appear.
+      // moment the modal closes (or the review_failures step lands)
+      // the new rows are visible behind the modal.
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["deadlines"] });
       qc.invalidateQueries({ queryKey: ["me"] });
@@ -181,6 +226,20 @@ export function BrainDumpQuickModal({
         deadlines: res.deadlines_created,
         bindings: res.bindings_applied,
       });
+      // LYR-114 fix: pause close on failures so the user actually
+      // sees what didn't land. If everything committed cleanly,
+      // close as before.
+      if (res.failed_items && res.failed_items.length > 0) {
+        setFailures(res.failed_items);
+        setCommittedSummary({
+          tasks: res.tasks_created,
+          deadlines: res.deadlines_created,
+          bindings: res.bindings_applied,
+        });
+        setStep("review_failures");
+        setCommitting(false);
+        return;
+      }
       onOpenChange(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Couldn't save. Try again.");
@@ -380,6 +439,50 @@ gym sat morning"
                   Lock in
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {step === "review_failures" && (
+          <div className="flex flex-col gap-4">
+            {committedSummary && (
+              <p className="text-xs text-dust">
+                Saved {committedSummary.tasks} task
+                {committedSummary.tasks === 1 ? "" : "s"}
+                {committedSummary.deadlines > 0 &&
+                  ` + ${committedSummary.deadlines} deadline${committedSummary.deadlines === 1 ? "" : "s"}`}
+                . But{" "}
+                <span className="text-ember">
+                  {failures.length} item{failures.length === 1 ? "" : "s"}{" "}
+                  couldn&apos;t be scheduled
+                </span>
+                :
+              </p>
+            )}
+            <ul className="flex flex-col gap-2 rounded-sm border border-ember/30 bg-ember/[0.04] p-3">
+              {failures.map((f) => (
+                <li key={f.item_id} className="text-xs">
+                  <div className="font-mono text-[11px] text-parchment">
+                    {f.kind === "deadline" ? "📅 " : "▸ "}
+                    {f.title}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-ember/80">
+                    {failureCopy(f.reason)}
+                    {retryCopy(f.retry_hint) && (
+                      <span className="text-dust"> · {retryCopy(f.retry_hint)}</span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="rounded-sm border border-signal/40 bg-signal/10 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20"
+              >
+                Got it
+              </button>
             </div>
           </div>
         )}

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -33,6 +34,7 @@ from app.db.scoping import get_current_user_id
 from app.schemas.brain_dump import (
     BrainDumpCommitRequest,
     BrainDumpCommitResponse,
+    BrainDumpFailedItem,
     BrainDumpParseRequest,
     BrainDumpParseResponse,
 )
@@ -104,18 +106,47 @@ def brain_dump_commit(
     task_id_map: dict[str, str] = {}
     deadline_ids: list[str] = []
     task_ids: list[str] = []
+    # LYR-114 fix 2026-04-30: collect per-item failures for the
+    # response so the frontend can render a retry-or-edit panel.
+    # Pre-fix the endpoint logged + dropped silently.
+    failed_items: list[BrainDumpFailedItem] = []
+
+    def _classify_failure(exc: Exception) -> tuple[str, str, Optional[str]]:
+        """Map a TaskManager / DeadlineManager ValueError into a
+        machine-readable (reason, detail, retry_hint) triple. Anything
+        not recognized falls through to ('internal', repr(exc), None)."""
+        msg = str(exc)
+        if "start_in_past" in msg:
+            return (
+                "past_time",
+                msg,
+                "schedule_tomorrow_same_time",
+            )
+        if "deadline_terminal_state" in msg:
+            return ("deadline_terminal_state", msg, "remove_deadline_binding")
+        if "deadline_not_found" in msg or "deadline_user_mismatch" in msg:
+            return ("deadline_not_found", msg, "remove_deadline_binding")
+        if isinstance(exc, ValueError):
+            return ("validation", msg, "edit_when_local")
+        return ("internal", repr(exc)[:200], None)
 
     # ── 1. Deadlines ─────────────────────────────────────────────────
     for item in request.items:
         if item.kind != "deadline":
             continue
         if item.when_local is None:
-            # UI should have caught this — defense in depth, skip
-            # silently rather than 400 a partially-confirmed batch.
             logger.warning(
                 f"brain_dump commit: skipping deadline '{item.title}' — "
                 f"no when_local"
             )
+            failed_items.append(BrainDumpFailedItem(
+                item_id=item.item_id,
+                kind=item.kind,
+                title=item.title,
+                reason="missing_when",
+                detail="Deadline needs an explicit due date — none was parsed.",
+                retry_hint="edit_when_local",
+            ))
             continue
         try:
             due_at_utc = to_utc(item.when_local)
@@ -132,6 +163,15 @@ def brain_dump_commit(
                 f"'{item.title}': {e}",
                 exc_info=True,
             )
+            reason, detail, retry_hint = _classify_failure(e)
+            failed_items.append(BrainDumpFailedItem(
+                item_id=item.item_id,
+                kind=item.kind,
+                title=item.title,
+                reason=reason,
+                detail=detail,
+                retry_hint=retry_hint,
+            ))
 
     # ── 2. Tasks ─────────────────────────────────────────────────────
     # Build a binding lookup so we can pass deadline_id straight to
@@ -176,12 +216,33 @@ def brain_dump_commit(
                 task_ids.append(task.task_id)
                 if deadline_id is not None:
                     bindings_applied += 1
+            else:
+                # task is None when create_task returns (None, conflict_result, _)
+                # for a soft-conflict rejection — shouldn't happen with
+                # force_conflicts=True, but defense in depth.
+                failed_items.append(BrainDumpFailedItem(
+                    item_id=item.item_id,
+                    kind=item.kind,
+                    title=item.title,
+                    reason="conflict_blocked",
+                    detail="Task creation rejected for conflicts.",
+                    retry_hint="edit_when_local",
+                ))
         except Exception as e:  # noqa: BLE001
             logger.error(
                 f"brain_dump commit: task create failed for "
                 f"'{item.title}': {e}",
                 exc_info=True,
             )
+            reason, detail, retry_hint = _classify_failure(e)
+            failed_items.append(BrainDumpFailedItem(
+                item_id=item.item_id,
+                kind=item.kind,
+                title=item.title,
+                reason=reason,
+                detail=detail,
+                retry_hint=retry_hint,
+            ))
 
     # ── 3. Onboarding stamp ──────────────────────────────────────────
     # TaskManager.create_task already stamps onboarding_completed_at on
@@ -199,4 +260,5 @@ def brain_dump_commit(
         bindings_applied=bindings_applied,
         task_ids=task_ids,
         deadline_ids=deadline_ids,
+        failed_items=failed_items,
     )

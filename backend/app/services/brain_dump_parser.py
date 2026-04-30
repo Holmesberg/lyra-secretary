@@ -120,6 +120,130 @@ DATE_HINTS = re.compile(
 SEGMENT_SPLIT = re.compile(r"[,\n;]+|\s+then\s+|\s+\+\s+", re.IGNORECASE)
 
 
+# LYR-115 fix (2026-04-30): explicit user-provided durations.
+# Surfaced by stress test cases D2/D3/D5/D7/D8/E1/E3/E5/E7/E8 — the
+# parser was ignoring "60 min", "30 minutes", etc. and falling back
+# to the 30-min default, silently breaking the planned-vs-executed
+# measurement contract.
+#
+# Regex is conservative — only matches digit + explicit time unit:
+#   - minute / minutes / min / mins
+#   - hour / hours / hr / hrs
+#   - h (single letter, only word-boundary matched)
+# Optional "for " prefix swallowed so "for 30 min" doesn't leave
+# "for" dangling in the title after duration strip.
+# Excludes single-letter "m" (too prone to false positives in
+# productivity vocab like "for the m..."). Operator can revisit.
+DURATION_RE = re.compile(
+    r"\b(?:for\s+)?(\d{1,3}(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?|h)\b",
+    re.IGNORECASE,
+)
+
+
+# Time-range parsing fix (2026-04-30): inputs like "2-4pm",
+# "1:30-3:30pm", "2-2:30pm" weren't extracting duration AND were
+# leaving title debris like "study 1" / "break". Surfaced by stress
+# test cases F1, F3, F4. End am/pm is required to anchor the range;
+# start am/pm is inferred from end if missing.
+TIME_RANGE_RE = re.compile(
+    r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-–]\s*"
+    r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_duration(segment: str) -> Optional[int]:
+    """Extract user-provided duration in minutes. Returns None when no
+    explicit duration is present (caller falls back to default).
+
+    Matches patterns like "60 min", "30 minutes", "1 hr", "1.5 hours",
+    "90 mins", "2h" (with word boundary). Caps at the schema's
+    BrainDumpCommitItem.duration_minutes max (720) — values above
+    are clamped (rare; "12 hours" → 720 not 1440).
+    """
+    match = DURATION_RE.search(segment)
+    if match is None:
+        return None
+    value_str, unit = match.group(1), match.group(2).lower()
+    try:
+        value = float(value_str)
+    except (ValueError, TypeError):
+        return None
+    if unit.startswith("min"):
+        minutes = value
+    else:  # hour / hours / hr / hrs / h
+        minutes = value * 60
+    minutes_int = int(round(minutes))
+    if minutes_int < 1:
+        return None
+    return min(720, minutes_int)
+
+
+def _extract_time_range_and_normalize(segment: str) -> tuple[Optional[int], str]:
+    """Detect time-range patterns ("2-4pm", "1:30-3pm") and return:
+      - duration_minutes derived from end-start (or None if no range)
+      - segment with the range replaced by JUST the start time so
+        downstream dateparser can resolve it normally
+
+    The caller uses the normalized segment for both `_extract_when`
+    and `_strip_date_tokens` so date extraction sees a clean single
+    time and the title-strip removes only the start time.
+
+    Edge cases:
+      - End am/pm REQUIRED (anchors the inference); ranges like "2-4"
+        without any am/pm marker aren't parsed (too ambiguous).
+      - Start am/pm inferred from end when omitted ("2-4pm" → both pm).
+      - Crossing midnight (e.g., "11pm-1am") is flagged as duration
+        mod-24h ("11pm-1am" → 120 min, two hours forward).
+      - Invalid ranges (negative or >720 min) → returned as no-match.
+    """
+    match = TIME_RANGE_RE.search(segment)
+    if match is None:
+        return None, segment
+    try:
+        start_h = int(match.group(1))
+        start_m = int(match.group(2) or 0)
+        start_ampm = (match.group(3) or "").lower()
+        end_h = int(match.group(4))
+        end_m = int(match.group(5) or 0)
+        end_ampm = match.group(6).lower()
+    except (ValueError, AttributeError, TypeError):
+        return None, segment
+
+    if not start_ampm:
+        # End-only am/pm: assume start has the same am/pm as end (the
+        # natural reading of "2-4pm" is "2pm to 4pm").
+        start_ampm = end_ampm
+
+    # Convert to 24h.
+    def to_24h(h: int, ampm: str) -> int:
+        if ampm == "pm" and h < 12:
+            return h + 12
+        if ampm == "am" and h == 12:
+            return 0
+        return h
+
+    s24, e24 = to_24h(start_h, start_ampm), to_24h(end_h, end_ampm)
+    start_total = s24 * 60 + start_m
+    end_total = e24 * 60 + end_m
+    duration = end_total - start_total
+    if duration <= 0:
+        # Cross-midnight — wrap around 24h.
+        duration += 24 * 60
+    if duration <= 0 or duration > 720:
+        return None, segment
+
+    # Replace the matched range with the start time as a clean
+    # parseable token (e.g., "2pm" or "1:30pm"). dateparser handles
+    # this format natively.
+    if start_m == 0:
+        start_str = f"{start_h % 12 or 12}{start_ampm}"
+    else:
+        start_str = f"{start_h % 12 or 12}:{start_m:02d}{start_ampm}"
+    new_segment = segment[: match.start()] + start_str + segment[match.end() :]
+    return duration, new_segment
+
+
 def _has_deadline_kw(segment_lower: str) -> bool:
     """True if a deadline keyword appears as a whole word in the
     segment. Substring match ('submit' in 'submitting') would false-
@@ -307,20 +431,29 @@ _LEADING_BULLET_RE = re.compile(
 
 
 def _strip_date_tokens(segment: str) -> str:
-    """Remove date hints from a segment to produce a cleaner title.
+    """Remove date hints + duration tokens from a segment to produce a
+    cleaner title.
 
-    Cleanup passes (in order):
+    Cleanup passes (in order — order matters):
       1. Strip leading bullet markers ("- read", "* write", "1. study").
-      2. Remove every DATE_HINTS span. Phrases like "Friday at 10am"
+      2. Remove duration tokens ("60 min", "1.5 hours", "for 30 minutes")
+         FIRST, before date stripping. If we stripped date first, the
+         "for" in "for 30 min" might already be at end-of-string and
+         not match the trailing-prep peel; doing duration first avoids
+         that ordering trap. (LYR-115 fix 2026-04-30.)
+      3. Remove every DATE_HINTS span. Phrases like "Friday at 10am"
          become "  at  ".
-      3. Strip leading deadline framing words ("deadline:", "due ",
+      4. Strip leading deadline framing words ("deadline:", "due ",
          "by ").
-      4. Strip trailing prepositions left dangling by step 2 ("call
+      5. Strip trailing prepositions left dangling by steps 2-3 ("call
          advisor at" → "call advisor"). Looped — consecutive trailing
-         words like "for the" get peeled in two passes.
-      5. Collapse whitespace + trim punctuation.
+         words like "at for" get peeled in two passes. (LYR-115 also
+         clears the dangling-prep xfail because step 2 removes
+         duration tokens, exposing trailing 'at'/'for' for step 5.)
+      6. Collapse whitespace + trim punctuation.
     """
     cleaned = _LEADING_BULLET_RE.sub("", segment).strip()
+    cleaned = DURATION_RE.sub(" ", cleaned)
     cleaned = DATE_HINTS.sub(" ", cleaned)
     cleaned = re.sub(
         r"^\s*(deadline\s*[:\-]?\s*|due\s+|by\s+)",
@@ -381,9 +514,24 @@ def parse_brain_dump(
     task_default_index = 0
 
     for seg in segments:
-        kind, kind_conf = _classify_kind(seg)
-        when = _extract_when(seg, now_local)
-        title = _strip_date_tokens(seg) or seg
+        # Two-stage extraction (LYR-115 + time-range fix 2026-04-30):
+        # 1. Pull time-range patterns ("2-4pm") FIRST. Returns the
+        #    range duration AND a normalized segment where the range
+        #    is replaced by just the start time so dateparser sees
+        #    a clean single time downstream.
+        # 2. Pull explicit duration tokens ("60 min", "1.5 hours") on
+        #    the normalized segment. Explicit duration wins over the
+        #    range-derived duration if both are somehow present (rare).
+        # 3. Date extraction + title stripping run on the normalized
+        #    segment so the title doesn't get range-debris like
+        #    "study 1" / "break".
+        range_duration, normalized = _extract_time_range_and_normalize(seg)
+        explicit_duration = _extract_duration(normalized)
+        derived_duration = explicit_duration if explicit_duration is not None else range_duration
+
+        kind, kind_conf = _classify_kind(normalized)
+        when = _extract_when(normalized, now_local)
+        title = _strip_date_tokens(normalized) or normalized
         # Cap title length defensively
         if len(title) > 200:
             title = title[:200].rstrip() + "…"
@@ -402,15 +550,14 @@ def parse_brain_dump(
                 conf = max(0.40, conf - 0.20)
 
         if kind == "task":
-            duration = 30  # default; user can edit in preview
+            # Duration precedence: extracted (explicit user value) >
+            # default (30 min). Clamp to schema bounds [1, 720].
+            duration = derived_duration if derived_duration is not None else 30
+            duration = max(1, min(720, duration))
             if when is None:
                 when = _default_when_for_task(now_local, task_default_index)
                 task_default_index += 1
                 conf = max(0.35, conf - 0.10)
-            else:
-                # Tasks with explicit time come with implicit duration
-                # of 30 min unless another signal lands later.
-                duration = 30
             items.append(BrainDumpParsedItem(
                 item_id=str(uuid4()),
                 kind="task",

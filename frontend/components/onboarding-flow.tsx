@@ -34,6 +34,7 @@ import {
   BrainDumpBindingSuggestion,
   BrainDumpCommitBinding,
   BrainDumpCommitItem,
+  BrainDumpFailedItem,
   BrainDumpParsedItem,
   commitBrainDump,
   parseBrainDump,
@@ -46,7 +47,40 @@ interface Props {
   onCompleted: () => void;
 }
 
-type Step = "dump" | "confirm";
+type Step = "dump" | "confirm" | "review_failures";
+
+/** Same vocabulary as BrainDumpQuickModal — keep in sync if changed. */
+function failureCopy(reason: string): string {
+  switch (reason) {
+    case "past_time":
+      return "the time is already in the past";
+    case "missing_when":
+      return "no due date was parsed";
+    case "deadline_terminal_state":
+      return "the linked deadline is already finished";
+    case "deadline_not_found":
+      return "couldn't find the linked deadline";
+    case "conflict_blocked":
+      return "blocked by a hard conflict with an active session";
+    case "validation":
+      return "didn't pass scheduling rules";
+    default:
+      return "couldn't be saved";
+  }
+}
+
+function retryCopy(hint: string | null): string {
+  switch (hint) {
+    case "schedule_tomorrow_same_time":
+      return "Try scheduling tomorrow at the same time.";
+    case "edit_when_local":
+      return "You can edit this in /today after onboarding.";
+    case "remove_deadline_binding":
+      return "Unbind from the deadline and retry.";
+    default:
+      return "";
+  }
+}
 
 function localIsoNow(): string {
   // Naive local-time ISO (no offset). The backend reinterprets via
@@ -89,6 +123,9 @@ export function OnboardingFlow({ userEmail, onCompleted }: Props) {
   const [committing, setCommitting] = useState(false);
   const [skipping, setSkipping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // LYR-114 fix 2026-04-30: failures from /commit surface so the
+  // user knows which items didn't land before exiting onboarding.
+  const [failures, setFailures] = useState<BrainDumpFailedItem[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -164,7 +201,16 @@ export function OnboardingFlow({ userEmail, onCompleted }: Props) {
           task_item_id: b.task_item_id,
           deadline_item_id: b.deadline_item_id,
         }));
-      await commitBrainDump(commitItems, commitBindings);
+      const res = await commitBrainDump(commitItems, commitBindings);
+      // LYR-114 fix: pause exit on failures so the user actually
+      // sees which items didn't land. If everything committed
+      // cleanly, exit onboarding as before.
+      if (res.failed_items && res.failed_items.length > 0) {
+        setFailures(res.failed_items);
+        setStep("review_failures");
+        setCommitting(false);
+        return;
+      }
       onCompleted();
     } catch (e: unknown) {
       setError(
@@ -396,6 +442,46 @@ export function OnboardingFlow({ userEmail, onCompleted }: Props) {
                 className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
                 {committing ? "Saving…" : "Lock in"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "review_failures" && (
+          <div className="flex flex-col gap-6">
+            <p className="text-sm text-dust">
+              Your plan landed.{" "}
+              <span className="text-ember">
+                {failures.length} item{failures.length === 1 ? "" : "s"}{" "}
+                couldn&apos;t be scheduled
+              </span>{" "}
+              and need attention:
+            </p>
+            <ul className="flex flex-col gap-3 rounded-sm border border-ember/30 bg-ember/[0.04] p-4">
+              {failures.map((f) => (
+                <li key={f.item_id} className="text-sm">
+                  <div className="font-mono text-xs text-parchment">
+                    {f.kind === "deadline" ? "📅 " : "▸ "}
+                    {f.title}
+                  </div>
+                  <div className="mt-1 text-xs text-ember/85">
+                    {failureCopy(f.reason)}
+                    {retryCopy(f.retry_hint) && (
+                      <span className="text-dust"> · {retryCopy(f.retry_hint)}</span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={() => {
+                  setFailures([]);
+                  onCompleted();
+                }}
+                className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
+              >
+                Continue to Lyra
               </button>
             </div>
           </div>
