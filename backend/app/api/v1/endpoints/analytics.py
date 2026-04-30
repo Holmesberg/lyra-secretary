@@ -47,6 +47,17 @@ def get_discrepancy(db: Session = Depends(get_db)) -> dict:
         — direction of the miss. Positive = felt better than expected;
         negative = felt worse. Used for typology classification (Phase 6),
         NOT for H1 (abs magnitude is the pre-registered predictor).
+
+    VT-29 note (2026-04-30): this query does NOT yet filter tasks bound
+    to imported deadlines (Moodle .ics, future LMS sources). VT-29's
+    literal text protects H2 (deadline-distance hypothesis), not H1
+    directly — and the H1 contamination question is whether the user's
+    PLANNING affordance differs for imported-deadline-bound tasks
+    (it might: LMS sets the time, user can't shift it). Operator
+    decision pending: should H1 also exclude tasks where
+    `deadline_id IS NOT NULL AND deadline.external_source IS NOT NULL`?
+    Defaulting to no filter today; revisit before first H1 publication
+    once trusted users have populated meaningful imported-deadline data.
     """
     tasks = (
         db.query(Task)
@@ -1094,9 +1105,18 @@ def get_bias_factor(
 
     bias_factor > 1.0 → tasks run longer than planned (underestimates).
     Excludes retroactive sessions (delta=0 by construction; would corrupt the ratio).
+
+    VT-29 filter (added 2026-04-30): exclude tasks bound to externally-
+    imported deadlines (Moodle .ics, future LMS sources). Imported
+    deadlines have a fundamentally different planning context (LMS sets
+    the time, not the user) so their tasks' bias_factor reflects the
+    interaction between user-planning and external-constraint, not
+    user-planning alone. Tasks with no deadline binding stay in (they
+    can never be external by construction).
     """
     tasks = (
         db.query(Task)
+        .outerjoin(Deadline, Task.deadline_id == Deadline.deadline_id)
         .filter(
             Task.state == TaskState.EXECUTED,
             Task.initiation_status != "system_error",
@@ -1104,6 +1124,8 @@ def get_bias_factor(
             Task.initiation_status != "retroactive",
             Task.executed_duration_minutes != None,
             Task.planned_duration_minutes > 0,
+            # VT-29: exclude tasks bound to imported deadlines.
+            (Task.deadline_id.is_(None)) | (Deadline.external_source.is_(None)),
         )
         .all()
     )
@@ -1209,8 +1231,12 @@ def bias_factor_lookup(
     # v1.10 §13): planned_duration_minutes >= 5. The 5-minute floor
     # matches the H1 exclusion threshold (Rule 4) — sub-5-minute tasks
     # are dominated by startup overhead, not planning-fallacy signal.
+    #
+    # VT-29 filter (added 2026-04-30): exclude tasks bound to externally-
+    # imported deadlines. Same rationale as the bias_factor surface above.
     tasks = (
         db.query(Task)
+        .outerjoin(Deadline, Task.deadline_id == Deadline.deadline_id)
         .filter(
             Task.state == TaskState.EXECUTED,
             Task.initiation_status != "system_error",
@@ -1218,6 +1244,8 @@ def bias_factor_lookup(
             Task.initiation_status != "retroactive",
             Task.executed_duration_minutes != None,
             Task.planned_duration_minutes >= 5,
+            # VT-29: exclude tasks bound to imported deadlines.
+            (Task.deadline_id.is_(None)) | (Deadline.external_source.is_(None)),
         )
         .all()
     )

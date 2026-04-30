@@ -98,10 +98,20 @@ def _make_deadline(db, user_id: int, title: str = "BCI paper") -> Deadline:
 
 
 def _stub_ollama(monkeypatch, response: dict):
-    """Replace _call_ollama with a fixed response."""
+    """Replace _call_ollama with a fixed response.
+
+    Also disables NIM (post-2026-04-30 swap) so the Ollama path is
+    exercised — these tests verify guard logic that's backend-agnostic,
+    so stubbing one backend + disabling the other keeps the tests
+    deterministic regardless of which LLM is actually configured.
+    """
     def fake(prompt: str) -> dict:
         return response
     monkeypatch.setattr(llm_parser, "_call_ollama", fake)
+    # Disable NIM so enrich_task_via_llm falls through to Ollama path.
+    monkeypatch.setattr(
+        "app.services.nvidia_nim_client.is_configured", lambda: False
+    )
 
 
 def test_voided_task_is_skipped_no_writes(db, monkeypatch):
