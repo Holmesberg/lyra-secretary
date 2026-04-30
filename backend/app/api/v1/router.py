@@ -1,6 +1,6 @@
 """V1 API Router."""
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines, feedback, brain_dump, moodle
+from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines, feedback, brain_dump, moodle, jarvis
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -26,3 +26,7 @@ api_router.include_router(feedback.router, tags=["feedback"])
 api_router.include_router(brain_dump.router, tags=["brain_dump"])
 # Moodle LMS .ics subscription import (alembic 041, 2026-04-29 — the LMS wedge).
 api_router.include_router(moodle.router, tags=["moodle"])
+# JARVIS chat assistant (NVIDIA NIM-powered, 2026-04-30, operator-only).
+# Endpoints return 403 to non-operators. See docs/jarvis_architecture.md
+# (TODO add) for the privacy-boundary discussion + tool registry.
+api_router.include_router(jarvis.router, tags=["jarvis"])

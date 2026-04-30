@@ -38,6 +38,12 @@ class TaskSource(str, Enum):
     MANUAL = "manual"
     VOICE = "voice"
     WEB = "web"
+    # JARVIS-mediated creation (operator-only, 2026-04-30). Marks tasks
+    # whose origin was a JARVIS tool call (create_task) so the audit
+    # trail can distinguish them from human typing/voice. Future
+    # research-integrity stratifications may want to filter these out
+    # the same way external_source='moodle_ics' deadlines are filtered.
+    JARVIS = "jarvis"
 
 
 # Models
@@ -241,7 +247,7 @@ class Task(Base):
             name="check_state"
         ),
         CheckConstraint(
-            "source IN ('manual', 'voice', 'web')",
+            "source IN ('manual', 'voice', 'web', 'jarvis')",
             name="check_source"
         ),
         CheckConstraint(
@@ -1009,4 +1015,57 @@ class Feedback(Base):
 
     __table_args__ = (
         Index("idx_feedback_status_submitted", "status", "submitted_at"),
+    )
+
+
+class JarvisInvocation(Base):
+    """JARVIS tool-call audit trail (alembic 042, 2026-04-30).
+
+    One row per JARVIS tool call. Read tools insert with status='executed'
+    immediately; write tools insert with status='pending_confirmation'
+    and flip to 'executed' (with confirmed_at stamped) when the user
+    clicks the confirmation chip in the chat UI, or 'rejected' on cancel.
+
+    Defense-in-depth on multi-tenancy: every JARVIS read/write tool
+    already runs under the auto-scoping ContextVar (current_user_id);
+    the user_id column here is a redundant audit field that lets us
+    reconstruct who-did-what after the fact even if the scoping layer
+    were ever bypassed.
+
+    Truncation rule: tool_result_summary is capped at 500 chars by the
+    write path. Storing full results (think: 50-task list responses)
+    would balloon this table. The summary is for human/operator review;
+    the actual tool result lives in the chat session message thread.
+    """
+
+    __tablename__ = "jarvis_invocation"
+
+    invocation_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("user.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tool_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # OpenAI-style tool args dict. Bounded by the tool schema declared in
+    # services/jarvis_tools.py — most args are scalars or short strings.
+    tool_args: Mapped[Optional[dict]] = mapped_column(JSON)
+    tool_result_summary: Mapped[Optional[str]] = mapped_column(String(500))
+    # 'executed' | 'pending_confirmation' | 'rejected' | 'failed'
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="executed"
+    )
+    invoked_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+    # Stamped only when the user explicitly confirms a pending write.
+    # confirmed_at − invoked_at = how long the user took to greenlight
+    # JARVIS to act (a reasoning-time signal we may surface later).
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    __table_args__ = (
+        Index("ix_jarvis_invocation_user_invoked_at", "user_id", "invoked_at"),
     )

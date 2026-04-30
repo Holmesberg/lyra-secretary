@@ -63,6 +63,24 @@ class Settings(BaseSettings):
     # longer pin the APScheduler thread for a full minute (was blocking
     # reminders, pause prediction, stale_session_recovery alongside).
     OLLAMA_TIMEOUT_SECONDS: int = Field(10, env="OLLAMA_TIMEOUT_SECONDS")
+
+    # NVIDIA NIM client (JARVIS, 2026-04-30). Hosted free-tier inference
+    # at build.nvidia.com. When NVIDIA_NIM_API_KEY is set, the LLM
+    # enrichment path tries NIM first and falls back to Ollama on
+    # NimUnavailable. JARVIS endpoints (operator-only) require this to be
+    # set — they 503 otherwise. Default model z-ai/glm-4.7 chosen for
+    # agentic tool use (358B, 131K ctx). Override per env var to swap to
+    # meta/llama-3.3-70b-instruct or nvidia/llama-3.1-nemotron-70b-instruct.
+    NVIDIA_NIM_API_KEY: str = Field("", env="NVIDIA_NIM_API_KEY")
+    NVIDIA_NIM_MODEL: str = Field("z-ai/glm-4.7", env="NVIDIA_NIM_MODEL")
+    NVIDIA_NIM_BASE_URL: str = Field(
+        "https://integrate.api.nvidia.com/v1", env="NVIDIA_NIM_BASE_URL"
+    )
+    # 30s default — NIM free-tier 70B+ models can take 3-15s for a full
+    # response with tool calls. Match the Ollama 10s policy of "fast
+    # enough that one stuck request doesn't pin the worker thread"
+    # but with more headroom for the larger models.
+    NVIDIA_NIM_TIMEOUT_SECONDS: int = Field(30, env="NVIDIA_NIM_TIMEOUT_SECONDS")
     # Tier thresholds for the LLM deadline-binding chip (operator-locked
     # 2026-04-28). Per stress-test conversation: confidence thresholds
     # are the most important calibration stat. Tunable from .env so we

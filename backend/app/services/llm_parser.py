@@ -37,6 +37,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import Deadline, Task
+from app.services import nvidia_nim_client
+from app.services.nvidia_nim_client import NimConfigError, NimUnavailable
 from app.utils.time_utils import now_utc
 
 logger = logging.getLogger(__name__)
@@ -238,6 +240,48 @@ def _strip_markdown_fence(s: str) -> str:
     return s
 
 
+def _call_nim(prompt: str) -> dict:
+    """Single NIM call. Returns parsed JSON dict on success.
+
+    Returns the same dict shape as _call_ollama so the caller doesn't
+    care which backend served the request.
+
+    Raises:
+      - NimUnavailable — service down / 5xx / timeout / 429 (caller falls back to Ollama)
+      - NimConfigError — auth or model error (caller treats as 'failed', no fallback)
+      - json.JSONDecodeError — model returned invalid JSON despite our schema hint
+      - ValidationError — JSON valid but Pydantic schema mismatch (caller's problem)
+    """
+    response = nvidia_nim_client.chat_completion(
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a structured-output parser. You MUST respond with a "
+                    "single JSON object matching the schema described in the user "
+                    "message. No prose, no markdown, no commentary."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        # Force JSON output via OpenAI-compat response_format. NIM's larger
+        # models honor this reliably; combined with Pydantic validation in
+        # the caller it gives us the same robustness as Ollama format=json
+        # without the llama-runner-crash bug we hit on Ollama 0.21.x.
+        response_format={"type": "json_object"},
+        temperature=0.1,
+        max_tokens=512,
+    )
+    raw = (
+        response.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+        .strip()
+    )
+    raw = _strip_markdown_fence(raw)
+    return json.loads(raw)
+
+
 def _call_ollama(prompt: str) -> dict:
     """Single Ollama call. Returns parsed JSON dict on success.
 
@@ -325,7 +369,40 @@ def enrich_task_via_llm(db: Session, task_id: str) -> str:
 
     last_error: Optional[Exception] = None
     parsed: Optional[dict] = None
+    # Try NIM first when configured, fall back to Ollama on transient
+    # failures. NimConfigError (bad key, unknown model) is a developer
+    # action — log + skip Ollama (we don't want to silently mask
+    # configuration mistakes by always falling back).
+    if nvidia_nim_client.is_configured():
+        try:
+            parsed = _call_nim(prompt)
+        except NimUnavailable as e:
+            logger.info(
+                "enrich_task_via_llm: NIM unavailable for task=%s, falling back to Ollama: %s",
+                task_id,
+                e,
+            )
+        except NimConfigError as e:
+            logger.warning(
+                "enrich_task_via_llm: NIM config error for task=%s, marking failed: %s",
+                task_id,
+                e,
+            )
+            task.llm_parse_status = "failed"
+            db.commit()
+            return "failed"
+        except (json.JSONDecodeError, ValueError) as e:
+            # NIM returned malformed JSON — fall through to Ollama as
+            # an auto-retry on a different model.
+            logger.info(
+                "enrich_task_via_llm: NIM bad JSON for task=%s, falling back to Ollama: %s",
+                task_id,
+                e,
+            )
+
     for attempt in (1, 2):
+        if parsed is not None:
+            break
         try:
             parsed = _call_ollama(prompt)
             break
