@@ -1,11 +1,12 @@
 "use client";
 /**
- * JARVIS launcher — floating action button + global Cmd+J shortcut.
+ * Lyra assistant launcher — floating action button + global Alt+L shortcut.
  *
  * Renders only when the parent passes `enabled={true}` (which the parent
  * decides from `me.is_operator`). Backend also enforces the operator gate
- * via 403 on /v1/jarvis/*, so the worst case for a UI bug here is a
- * useless button that returns 403 when clicked.
+ * via 403 on /v1/jarvis/* (endpoint paths kept Jarvis-named for stable
+ * implementation; user-facing copy is Lyra), so the worst case for a UI
+ * bug here is a useless button that returns 403 when clicked.
  *
  * The pulse-glow color is driven by the NIM health probe — cyan when
  * NIM is reachable, ember when it's down or rate-limited. Probe runs
@@ -20,22 +21,22 @@ interface Props {
   enabled: boolean;
 }
 
-// Alt+J chosen over Ctrl/Cmd+J: Chrome/Edge bind Ctrl+J to Downloads,
-// and browser-level shortcuts run BEFORE page handlers — preventDefault
-// on the page doesn't suppress them. Alt+J is unbound across Chrome,
-// Edge, and Firefox on Windows; still mnemonic ("J for JARVIS").
+// Alt+L chosen over Ctrl+L (browser address bar) and Ctrl+J (Downloads).
+// Browser-level shortcuts run BEFORE page handlers — preventDefault on
+// the page can't suppress them. Alt+L is unbound across Chrome, Edge,
+// and Firefox on Windows; mnemonic for Lyra.
 function detectShortcutLabel(): string {
-  if (typeof navigator === "undefined") return "Alt+J";
+  if (typeof navigator === "undefined") return "Alt+L";
   const platform = navigator.platform || "";
   const ua = navigator.userAgent || "";
-  return /Mac|iPhone|iPad/.test(platform) || /Mac OS/.test(ua) ? "⌥+J" : "Alt+J";
+  return /Mac|iPhone|iPad/.test(platform) || /Mac OS/.test(ua) ? "⌥+L" : "Alt+L";
 }
 
 export function JarvisFloatingButton({ enabled }: Props) {
   const [open, setOpen] = useState(false);
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [healthReason, setHealthReason] = useState<string | null>(null);
-  const [shortcutLabel, setShortcutLabel] = useState("Ctrl+J");
+  const [shortcutLabel, setShortcutLabel] = useState("Alt+L");
 
   useEffect(() => {
     setShortcutLabel(detectShortcutLabel());
@@ -67,10 +68,10 @@ export function JarvisFloatingButton({ enabled }: Props) {
   useEffect(() => {
     if (!enabled) return;
     function onKey(e: KeyboardEvent) {
-      // Alt+J on Windows/Linux, Option+J on Mac. Either modifier triggers
-      // — keeps the binding consistent regardless of platform.
-      const isAltJ = e.altKey && e.key.toLowerCase() === "j";
-      if (isAltJ) {
+      // Alt+L on Windows/Linux, Option+L on Mac. Either modifier
+      // triggers — keeps the binding consistent across platforms.
+      const isAltL = e.altKey && e.key.toLowerCase() === "l";
+      if (isAltL) {
         e.preventDefault();
         setOpen((v) => !v);
       }
@@ -96,10 +97,10 @@ export function JarvisFloatingButton({ enabled }: Props) {
       : "bg-dust";
 
   const tooltip = healthy
-    ? `JARVIS · ${shortcutLabel}`
+    ? `Lyra · ${shortcutLabel}`
     : healthy === false
-      ? `JARVIS offline${healthReason ? ` (${healthReason})` : ""}`
-      : "JARVIS · checking";
+      ? `Lyra offline${healthReason ? ` (${healthReason})` : ""}`
+      : "Lyra · checking";
 
   return (
     <>
@@ -111,7 +112,7 @@ export function JarvisFloatingButton({ enabled }: Props) {
         className={`fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border-2 bg-void-2/80 backdrop-blur-md transition-all hover:scale-105 ${ringColor}`}
       >
         <span className="font-mono text-[11px] font-semibold tracking-widest text-parchment">
-          J
+          L
         </span>
         <span
           className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-void ${dotColor}`}

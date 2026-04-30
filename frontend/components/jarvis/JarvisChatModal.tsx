@@ -1,6 +1,6 @@
 "use client";
 /**
- * JARVIS chat dialog — operator-only conversational surface over Lyra data.
+ * Lyra assistant chat dialog — operator-only conversational surface.
  *
  * Architecture:
  *  - Conversation state lives in component-local React state. No DB
@@ -89,7 +89,7 @@ export function JarvisChatModal({ open, onClose }: Props) {
           ? e.message
           : typeof e === "string"
             ? e
-            : "JARVIS request failed";
+            : "Lyra request failed";
       setTurns((prev) => [
         ...prev,
         { id: uid(), role: "system_status", content: msg },
@@ -162,7 +162,7 @@ export function JarvisChatModal({ open, onClose }: Props) {
           <div className="flex items-center gap-2">
             <span className="status-dot bg-signal shadow-[0_0_8px_rgba(0,229,255,0.6)]" />
             <span className="font-mono text-sm tracking-widest text-signal">
-              JARVIS
+              Lyra
             </span>
             <span className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
               · operator console
@@ -172,7 +172,7 @@ export function JarvisChatModal({ open, onClose }: Props) {
             type="button"
             onClick={onClose}
             className="font-mono text-xs text-dust transition-colors hover:text-parchment"
-            aria-label="Close JARVIS"
+            aria-label="Close Lyra"
           >
             ESC ✕
           </button>
@@ -213,7 +213,7 @@ export function JarvisChatModal({ open, onClose }: Props) {
             ))}
             {busy && (
               <div className="text-xs italic text-dust-deep">
-                JARVIS is thinking…
+                Lyra is thinking…
               </div>
             )}
           </div>
@@ -228,7 +228,7 @@ export function JarvisChatModal({ open, onClose }: Props) {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={2}
-              placeholder="Ask JARVIS… (Enter to send, Shift+Enter for newline)"
+              placeholder="Ask Lyra… (Enter to send, Shift+Enter for newline)"
               className="flex-1 resize-none rounded-sm border border-hairline-signal/30 bg-void-2/60 px-3 py-2 font-mono text-xs text-parchment placeholder:text-dust-deep focus:border-signal/60 focus:outline-none"
               disabled={busy}
             />
@@ -273,7 +273,7 @@ function TurnView({
   return (
     <div className="max-w-[90%]">
       <div className="font-mono text-[10px] uppercase tracking-widest text-signal/70">
-        JARVIS
+        Lyra
       </div>
       <div className="mt-1 whitespace-pre-wrap text-parchment">
         {turn.content}
@@ -299,7 +299,7 @@ function TurnView({
               className="alert-bar-ember rounded-sm border border-ember/40 bg-ember/5 px-3 py-2 text-xs"
             >
               <div className="text-ember">
-                JARVIS wants to:{" "}
+                Lyra wants to:{" "}
                 <span className="font-mono">{p.preview}</span>
               </div>
               <div className="mt-2 flex gap-2">
