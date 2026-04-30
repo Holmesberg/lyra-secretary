@@ -20,10 +20,26 @@ interface Props {
   enabled: boolean;
 }
 
+// Alt+J chosen over Ctrl/Cmd+J: Chrome/Edge bind Ctrl+J to Downloads,
+// and browser-level shortcuts run BEFORE page handlers — preventDefault
+// on the page doesn't suppress them. Alt+J is unbound across Chrome,
+// Edge, and Firefox on Windows; still mnemonic ("J for JARVIS").
+function detectShortcutLabel(): string {
+  if (typeof navigator === "undefined") return "Alt+J";
+  const platform = navigator.platform || "";
+  const ua = navigator.userAgent || "";
+  return /Mac|iPhone|iPad/.test(platform) || /Mac OS/.test(ua) ? "⌥+J" : "Alt+J";
+}
+
 export function JarvisFloatingButton({ enabled }: Props) {
   const [open, setOpen] = useState(false);
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [healthReason, setHealthReason] = useState<string | null>(null);
+  const [shortcutLabel, setShortcutLabel] = useState("Ctrl+J");
+
+  useEffect(() => {
+    setShortcutLabel(detectShortcutLabel());
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -51,9 +67,10 @@ export function JarvisFloatingButton({ enabled }: Props) {
   useEffect(() => {
     if (!enabled) return;
     function onKey(e: KeyboardEvent) {
-      const isCmdJ =
-        (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j";
-      if (isCmdJ) {
+      // Alt+J on Windows/Linux, Option+J on Mac. Either modifier triggers
+      // — keeps the binding consistent regardless of platform.
+      const isAltJ = e.altKey && e.key.toLowerCase() === "j";
+      if (isAltJ) {
         e.preventDefault();
         setOpen((v) => !v);
       }
@@ -79,7 +96,7 @@ export function JarvisFloatingButton({ enabled }: Props) {
       : "bg-dust";
 
   const tooltip = healthy
-    ? "JARVIS · Cmd+J"
+    ? `JARVIS · ${shortcutLabel}`
     : healthy === false
       ? `JARVIS offline${healthReason ? ` (${healthReason})` : ""}`
       : "JARVIS · checking";
