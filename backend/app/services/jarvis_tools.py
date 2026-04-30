@@ -144,6 +144,33 @@ READ_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "get_pattern_summary",
+            "description": (
+                "Multi-dimensional cross-cut of the user's recent task data in "
+                "ONE call: totals, top categories with bias_factor, by-time-of-"
+                "day deltas, readiness-vs-outcome signal, skip rate, overdue "
+                "count, and outliers. ALWAYS use this for analytical / pattern "
+                "/ trend / 'how am I doing' / 'compare' questions instead of "
+                "chaining individual tools — it returns the full picture at "
+                "once."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "window_days": {
+                        "type": "integer",
+                        "description": "Look-back window in days (default 14, max 90).",
+                        "minimum": 1,
+                        "maximum": 90,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_active_session",
             "description": (
                 "The currently running stopwatch session, if any (state "
@@ -394,6 +421,174 @@ def _exec_get_top_course(db: Session, user_id: int, args: dict) -> dict:
     return {"top_course": top[0], "task_count": top[1], "all_courses": counts}
 
 
+def _exec_get_pattern_summary(db: Session, user_id: int, args: dict) -> dict:
+    """Multi-dimensional cross-cut for analytical questions.
+
+    Single SQL window, then in-Python aggregation. Returns a structured dict
+    Lyra can read directly to surface both obvious (largest effect size) and
+    subtle (non-headline) patterns. Designed to replace the 4-6 tool chain
+    Llama 3.3 70B was previously firing for 'pattern' questions.
+
+    voided_at_guard: applied at the SQL filter level. Voided rows never
+    enter the aggregations.
+    """
+    window_days = max(1, min(int(args.get("window_days", 14)), 90))
+    now = now_utc()
+    window_start = now - timedelta(days=window_days)
+
+    rows = (
+        db.query(Task)
+        .filter(
+            Task.user_id == user_id,
+            Task.voided_at.is_(None),
+            Task.created_at >= window_start,
+        )
+        .all()
+    )
+    executed = [
+        t for t in rows
+        if t.state == TaskState.EXECUTED
+        and t.executed_duration_minutes is not None
+        and t.planned_duration_minutes is not None
+    ]
+    skipped = [t for t in rows if t.state == TaskState.SKIPPED]
+    active = [
+        t for t in rows
+        if t.state in (TaskState.PLANNED, TaskState.EXECUTING, TaskState.PAUSED)
+    ]
+
+    # Per-category aggregation with bias_factor (executed_min / planned_min).
+    # bf > 1 = systematic overrun in that category, < 1 = systematic underrun.
+    cat_stats: dict[str, dict[str, float]] = {}
+    for t in executed:
+        cat = t.category or "uncategorized"
+        s = cat_stats.setdefault(cat, {"sessions": 0, "exec_min": 0, "plan_min": 0})
+        s["sessions"] += 1
+        s["exec_min"] += t.executed_duration_minutes or 0
+        s["plan_min"] += t.planned_duration_minutes or 0
+    by_category_top5 = []
+    for cat, s in sorted(cat_stats.items(), key=lambda kv: -kv[1]["sessions"])[:5]:
+        bf = round(s["exec_min"] / s["plan_min"], 2) if s["plan_min"] > 0 else None
+        by_category_top5.append({
+            "category": cat,
+            "sessions": int(s["sessions"]),
+            "executed_minutes": int(s["exec_min"]),
+            "bias_factor": bf,
+        })
+
+    # Time-of-day buckets (UTC hour — close-enough for pattern reads;
+    # exact local-tz bucketing is a Phase 6 polish item).
+    def _tod(dt: datetime) -> str:
+        h = dt.hour
+        if h < 6:
+            return "night"
+        if h < 12:
+            return "morning"
+        if h < 18:
+            return "afternoon"
+        return "evening"
+
+    tod_acc: dict[str, list[dict]] = {
+        "morning": [], "afternoon": [], "evening": [], "night": [],
+    }
+    for t in executed:
+        if t.executed_start_utc is None:
+            continue
+        delta = (t.planned_duration_minutes or 0) - (t.executed_duration_minutes or 0)
+        tod_acc[_tod(t.executed_start_utc)].append({
+            "delta": delta,
+            "readiness": t.pre_task_readiness,
+        })
+    by_time_of_day: dict[str, dict | None] = {}
+    for bucket, items in tod_acc.items():
+        if not items:
+            by_time_of_day[bucket] = None
+            continue
+        deltas = [i["delta"] for i in items]
+        rdx = [i["readiness"] for i in items if i["readiness"] is not None]
+        by_time_of_day[bucket] = {
+            "sessions": len(items),
+            "avg_delta_min": round(sum(deltas) / len(deltas), 1),
+            "avg_readiness": round(sum(rdx) / len(rdx), 2) if rdx else None,
+        }
+
+    # Readiness signal — bivariate split. If sharp sessions show LARGER
+    # overruns than drained sessions, that's the VT-22 readiness inversion
+    # the manifesto pre-registered. Surface that delta directly.
+    sharp_rows = [
+        t for t in executed
+        if t.pre_task_readiness is not None and t.pre_task_readiness >= 4
+    ]
+    drained_rows = [
+        t for t in executed
+        if t.pre_task_readiness is not None and t.pre_task_readiness <= 2
+    ]
+
+    def _avg_delta(rs: list[Task]) -> float | None:
+        if not rs:
+            return None
+        return round(
+            sum((r.planned_duration_minutes or 0) - (r.executed_duration_minutes or 0) for r in rs)
+            / len(rs),
+            1,
+        )
+
+    readiness_signal = {
+        "n_with_readiness": len([t for t in executed if t.pre_task_readiness is not None]),
+        "n_sharp_4_or_5": len(sharp_rows),
+        "avg_delta_min_when_sharp": _avg_delta(sharp_rows),
+        "n_drained_1_or_2": len(drained_rows),
+        "avg_delta_min_when_drained": _avg_delta(drained_rows),
+    }
+
+    # Skip rate over terminal sessions in window.
+    terminal_count = len(executed) + len(skipped)
+    skip_rate = round(len(skipped) / terminal_count, 2) if terminal_count else None
+
+    overdue_count = (
+        db.query(Deadline)
+        .filter(
+            Deadline.user_id == user_id,
+            Deadline.voided_at.is_(None),
+            Deadline.state.in_(("planned", "active")),
+            Deadline.due_at_utc < now,
+        )
+        .count()
+    )
+
+    # Outliers — biggest signed deltas (most negative = worst overrun).
+    deltas_with_meta = [
+        ((t.planned_duration_minutes or 0) - (t.executed_duration_minutes or 0), t)
+        for t in executed
+    ]
+    biggest_overrun = min(deltas_with_meta, key=lambda x: x[0]) if deltas_with_meta else None
+    biggest_underrun = max(deltas_with_meta, key=lambda x: x[0]) if deltas_with_meta else None
+    outliers = {
+        "biggest_overrun_min": biggest_overrun[0] if biggest_overrun else None,
+        "biggest_overrun_category": biggest_overrun[1].category if biggest_overrun else None,
+        "biggest_overrun_title": (biggest_overrun[1].title or "")[:60] if biggest_overrun else None,
+        "biggest_underrun_min": biggest_underrun[0] if biggest_underrun else None,
+        "biggest_underrun_category": biggest_underrun[1].category if biggest_underrun else None,
+        "biggest_underrun_title": (biggest_underrun[1].title or "")[:60] if biggest_underrun else None,
+    }
+
+    return {
+        "window_days": window_days,
+        "totals": {
+            "executed_sessions": len(executed),
+            "executed_minutes": int(sum(t.executed_duration_minutes or 0 for t in executed)),
+            "skipped_sessions": len(skipped),
+            "active_sessions": len(active),
+        },
+        "by_category_top5": by_category_top5,
+        "by_time_of_day_utc": by_time_of_day,
+        "readiness_signal": readiness_signal,
+        "skip_rate": skip_rate,
+        "overdue_count": overdue_count,
+        "outliers": outliers,
+    }
+
+
 def _exec_get_active_session(db: Session, user_id: int, args: dict) -> dict:
     session = (
         db.query(StopwatchSession)
@@ -538,6 +733,7 @@ EXECUTORS = {
     "get_overdue_count": _exec_get_overdue_count,
     "get_top_course": _exec_get_top_course,
     "get_active_session": _exec_get_active_session,
+    "get_pattern_summary": _exec_get_pattern_summary,
     # Write
     "create_task": _exec_create_task,
     "start_focus_session": _exec_start_focus_session,
