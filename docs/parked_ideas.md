@@ -885,3 +885,168 @@ architecture this extends), MANIFESTO.md §VT-29 (contamination test
 that already covers Path B's writes by virtue of the external_source
 filter), and `services/moodle_ics_sync.py` (the sync-service shape to
 mirror for the WS variant).
+
+---
+
+## VT-19 quantification — auxiliary diagnostic for H1 contamination
+*Captured 2026-04-30 morning, from ChatGPT manifesto-review pass on
+2026-04-29 evening: VT-19 (post-task anchoring contamination of
+signed_discrepancy) is acknowledged in the manifesto but never
+quantified. Without quantification, we can't tell whether a positive
+H1 ρ is "people mispredict → they overrun" (cognition error model)
+or "people who overrun reconstruct themselves as having been less
+ready" (post-hoc anchoring artifact).*
+
+**Idea.** Add a single auxiliary diagnostic computation to the H1
+analysis path:
+
+```
+ρ_aux = spearman(post_task_reflection, duration_delta_minutes)
+```
+
+Run alongside the primary H1 ρ at every H1 analysis cycle. No design
+disruption — just one more correlation against existing fields.
+
+**Interpretation:**
+- `ρ_aux` low (< 0.20) → VT-19 is a small-magnitude effect; H1's
+  signed-discrepancy construction is meaningful as a forward-looking
+  cognition signal.
+- `ρ_aux` high (≥ 0.40) → VT-19 dominates; signed_discrepancy is
+  partly observational artifact (overrun → anchored low reflection
+  → inflated discrepancy → flips ρ direction). H1 conclusions must
+  be reframed: "rank-order alignment between two outcome-anchored
+  distortions" rather than "overconfidence predicts overrun."
+- `ρ_aux` middle (0.20–0.40) → publish both ρ and ρ_aux, let readers
+  judge.
+
+**Minimal implementation effort.** ~15 LOC in the H1 analysis
+notebook / `analytics/discrepancy.py`. Touches no schema, no API.
+Single Python function added to whatever computes Spearman ρ for H1.
+
+**Why parked, not built now.**
+- The H1 analysis itself is gated on n≥60 paired sessions per the
+  manifesto kill criterion. Currently ~55-60 (operator-heavy). The
+  H1 analysis hasn't fired yet; the auxiliary diagnostic ships as
+  part of the same analysis cycle.
+- Adding it now without H1 firing means the diagnostic sits dormant
+  with no use case. Bundle it with the H1 analysis sprint.
+
+**Trigger to revisit.** When n≥60 H1-eligible paired sessions land
+and the operator runs the pre-registered H1 analysis. Do this fix
+in the SAME session — both ρ and ρ_aux land in the H1 publication
+together.
+
+**Source.** ChatGPT manifesto-review 2026-04-29: "VT-19 is good, but
+incomplete. You are not explicitly testing post_task_reflection ~
+duration_delta. Without this, you cannot quantify VT-19's actual
+magnitude."
+
+---
+
+## H1 learning-rule statistical fix — Δρ ≥ 0.10 → Fisher-z bootstrap CI
+*Captured 2026-04-30 morning, from ChatGPT manifesto-review pass.
+The pre-registered H1 learning rule ("if ρ improves by ≥ 0.10 across
+session halves, declare improvement") is statistically fragile at
+n≈30 per half because Spearman ρ instability at that N is high. A
+0.10 difference is within expected sampling variance and could fire
+spuriously.*
+
+**Idea.** Replace the simple Δρ threshold with a proper bootstrap
+confidence-interval test on the Fisher-z transformed ρ values:
+
+```python
+def split_half_learning_test(pairs_first_half, pairs_second_half,
+                              n_bootstrap=2000, ci=0.95):
+    rho_a = spearmanr(pairs_first_half).correlation
+    rho_b = spearmanr(pairs_second_half).correlation
+    z_a = arctanh(rho_a)
+    z_b = arctanh(rho_b)
+
+    # Bootstrap the difference
+    deltas = []
+    for _ in range(n_bootstrap):
+        sample_a = resample(pairs_first_half)
+        sample_b = resample(pairs_second_half)
+        z_a_boot = arctanh(spearmanr(sample_a).correlation)
+        z_b_boot = arctanh(spearmanr(sample_b).correlation)
+        deltas.append(z_b_boot - z_a_boot)
+
+    lower = percentile(deltas, (1-ci)/2 * 100)
+    upper = percentile(deltas, (1+ci)/2 * 100)
+
+    # "Learning" requires the CI to be entirely above 0
+    learning_detected = lower > 0
+    return learning_detected, (lower, upper), (rho_a, rho_b)
+```
+
+This catches:
+- False positives: if the CI overlaps zero, no learning claim
+  regardless of point-estimate Δρ
+- False negatives: if true difference is < 0.10 but CI is well above
+  zero (true small effect), still detected
+
+**Why parked, not built now.** Same as VT-19 quantification — gated
+on H1 firing at n≥60. Add to the same analysis cycle.
+
+**Trigger to revisit.** Same as VT-19: H1 analysis sprint at n≥60.
+
+**Source.** ChatGPT manifesto-review 2026-04-29: "The Δρ ≥ 0.10 rule
+is within expected sampling variance at n≈30 per half. Better:
+Fisher-z difference with bootstrap CI overlap."
+
+---
+
+## H3 priority — keep S3 + S4, defer S1 + S2 instrumentation
+*Captured 2026-04-30 morning, from ChatGPT manifesto-review pass on
+H3 (multi-faction control model with five signatures S1-S5). ChatGPT's
+read: S3 (post-overrun trajectory classification) and S4 (cross-
+category variance decomposition) are the genuinely interesting parts
+that may survive contact with real data; S1 (latency = avoidance) and
+S2 (switching = escape policy) are confound-sensitive enough that
+they'll likely collapse into "context effects" under multi-user data.*
+
+**Idea (no code change, just prioritization).** When H3 instrumentation
+ships in Phase 6+, build S3 + S4 first; defer S1 + S2 until S3/S4
+results are in.
+
+**Why S3 is high-value.**
+> "Tests policy update behavior, not static prediction. Distinguishes
+> correction / inertia / avoidance. Close to a real control-system
+> property: 'Does error propagate into future parameter adjustment
+> or behavioral suppression?'"
+
+**Why S4 is high-value.**
+> "Tests separability by task manifold. Low separability → single
+> global controller. High separability → context-conditioned
+> policies. A real question in behavioral modeling."
+
+**Why S1 + S2 are likely to collapse.**
+> S1 (latency = avoidance): "Latency ≠ avoidance unless you control
+> for scheduled vs unscheduled initiation, external interruption
+> risk, cognitive load of category. Underidentified with current
+> observables."
+>
+> S2 (switching = escape policy): "Switching is context-driven, not
+> escape policy" likely interpretation under multi-user data.
+
+**Risk to acknowledge if shipping S3 + S4 first.** ChatGPT also
+flagged the over-attribution risk: "factions" vs "conditional
+policy structure" are observationally similar but ontologically
+different. To distinguish, eventually need intervention experiments
+(forced-delay perturbations, randomized constraint manipulations).
+Pure correlation mining of S3/S4 is "high-resolution behavioral
+decomposition," not "validated internal-architecture model."
+
+**Why parked, not actioned now.** H3 instrumentation isn't shipped
+yet — no schema, no analysis path, no kill criteria gates fired.
+This is a Phase 6+ priority note for when that work begins.
+
+**Trigger to revisit.** When the operator queues H3 instrumentation
+work — likely after the Jun 18-25 retention checkpoint validates
+that the alpha is producing dense enough data to power any factional
+analysis at all.
+
+**Source.** ChatGPT manifesto-review 2026-04-29 (third pass on H3):
+"S3 and S4 are the only parts likely to survive contact with real
+data. S1 and S2 are highly confound-sensitive and will likely
+collapse or become 'context effects.'"
