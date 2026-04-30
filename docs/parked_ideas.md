@@ -1050,3 +1050,187 @@ analysis at all.
 "S3 and S4 are the only parts likely to survive contact with real
 data. S1 and S2 are highly confound-sensitive and will likely
 collapse or become 'context effects.'"
+
+---
+
+## Proactive Lyra — chat-thread interventions, instrumented
+
+*Captured: 2026-04-30 evening. Operator-prompted by ChatGPT critique
+of the JARVIS/Lyra ship: "deep behavior analysis is only valuable if
+it changes behavior — otherwise you've built a sophisticated mirror."
+Reframed mid-conversation by operator: the boundary isn't
+"proactive = contamination" but "uncontrolled intervention =
+contamination, instrumented + pre-registered intervention = data."
+The existing manifesto already proves this with VT-17, VT-21, Rule 11.
+Captured here, not built — Lyra-the-assistant stays reactive (chat-
+on-demand) for now while we accumulate enough operator dogfood data
+to estimate baselines for each proposed intervention's acceptance
+threshold.*
+
+**Why now (concept), but not now (build).**
+
+Reactive Lyra (what shipped 2026-04-30) is a high-resolution
+introspection engine: ask a question, get a multi-cut read of your
+data, decide what to do. Useful for the operator's stated rationale
+("analyze my behavior DEEPLY") but vulnerable to ChatGPT's critique
+— insight without leverage = mirror. The natural next axis is
+proactive intervention: Lyra speaks first when patterns cross a
+pre-registered threshold, the user accepts/dismisses, the system
+measures whether intervention shifted behavior, kill criterion fires
+if acceptance rate fails or if the intervention contaminates the
+H1/H2/H3 measurement set.
+
+**The shape of three pre-registrable interventions** (each a
+candidate VT-30 / VT-31 / VT-32 — sequence is illustrative, not
+locked):
+
+### Pause cluster intervention (VT-30 candidate, extends VT-17)
+
+**Trigger.** ≥3 EXECUTING sessions in a 24-hour window where the
+user stopped at <50% planned duration (the existing early-stop gate
+in `services/stopwatch_manager.py`).
+
+**Lyra fire.** Single chat-thread message: "I noticed three early
+stops today. Cut next session to 15 min?" — opens an action chip
+that pre-fills the next planned task at 15 min planned duration.
+Operator can accept / dismiss / mute-this-pattern.
+
+**Pre-registered acceptance formula** (frozen at intervention launch
+under VT-17's existing precedent):
+```
+acceptance_count(user, window=14d) := count of chat-thread fires
+  WHERE acceptance_chip clicked within 1 hour of fire
+total_fires(user, window=14d) := count of chat-thread fires
+  WHERE parent_firing_id IS NULL
+acceptance_rate := acceptance_count / total_fires
+```
+Per-user thresholds: ≥ 0.40 = ship; < 0.20 = kill the intervention
+type (chat fires of this kind suppressed for that user — pattern
+still shows in /insights but Lyra doesn't volunteer it).
+
+**Distinguishing analyses** (frozen at launch):
+- VT-30a — Sessions following an accepted intervention should show
+  ≥10% reduction in early-stop rate vs the user's own baseline.
+  Detected: feedback loop is closed. Not detected: intervention
+  produces compliance without behavior change (theatrical click).
+- VT-30b — Sessions following ANY fire (accepted OR dismissed)
+  should not show systematic shift in `planned_duration_minutes`
+  beyond the chip-driven adjustment. If they do, intervention is
+  internalizing as a planning anchor (VT-21 narrative-internalization
+  mechanism, applied to interventions instead of nudges).
+
+### Readiness inversion forecast (VT-31 candidate, wires bias_factor → preemptive plan suggestion)
+
+**Trigger.** User about to plan a session in a (category, time-of-
+day) cell where the existing `bias_factor_service.blend()` produces
+a personal_weight ≥ 0.5 estimate of bias_factor ≥ 1.5 — i.e., the
+operator has enough personal data in the cell AND historical pattern
+shows systematic ≥50% overrun.
+
+**Lyra fire.** Inline chat suggestion at task-creation time (not the
+existing calibration_nudge modal — Lyra speaks alongside it): "Your
+last 4 development tasks at this time of day overran by 40+ min on
+average. Plan for 60 instead of 40?" Operator accepts (replaces
+duration) / dismisses (keeps original) / explains-why (free text
+captured for VT-22 scope-inflation analysis).
+
+**Why parallel to calibration_nudge, not replacement.** The
+calibration_nudge is a system-driven suggestion ("we suggest 83 min
+based on your bias_factor 1.8"). Lyra's version is a conversational
+framing of the same underlying signal — testing whether identical
+data delivered conversationally vs. modally produces different
+acceptance rates. This is the missing A/B in the manifesto's existing
+calibration_nudge vs creation-suggestion distinction.
+
+**Pre-registered analysis.** Within-user split: half of qualifying
+sessions get the calibration_nudge modal only (control), half get
+both modal + Lyra chat fire (treatment). At n ≥ 30 paired sessions
+per user, compare: (a) acceptance rate of the duration adjustment,
+(b) post-session delta. If chat-fire arm shows higher acceptance AND
+better delta, ship Lyra-as-replacement for the modal. If chat-fire
+arm shows higher acceptance but no delta improvement, the chat
+surface is a compliance theater and should not replace the modal.
+
+### Cascade morning-skip intervention (VT-32 candidate, operationalizes the cascade hypothesis)
+
+**Trigger.** First planned task of the user's day (lowest
+`planned_start_utc` for that local-date) transitions to SKIPPED.
+
+**Lyra fire.** Chat-thread message within 30 min of the skip:
+"Mornings where the first task skips, you tend to skip 2.3× more
+through the rest of the day. Want me to clear your next 2 hours so
+you can reset?" — accepts triggers a /v1/today/clear-window endpoint
+(does not exist yet, would be a small ship) that voids all PLANNED
+tasks in the next 2 hours. Operator accepts / dismisses / asks Lyra
+to elaborate.
+
+**Pre-registered analysis (combines intervention + Paper 2 cascade
+falsification).** This is the FIRST intervention test of the cascade
+hypothesis (manifesto Paper 2). If accepting the clear-window
+intervention produces ≥30% reduction in skip rate over the
+subsequent 6 hours vs the user's own historical post-morning-skip
+baseline, the cascade is intervention-responsive (i.e., real and
+correctable). If acceptance produces no reduction, cascade is either
+not real OR not correctable via window-clearing — both are
+findings, the second more interesting because it suggests morning
+skips trigger something deeper than schedule disruption.
+
+**Why parked, not built now.**
+
+Three structural reasons:
+1. **Insufficient baseline data per intervention type.** Each
+   intervention's acceptance threshold needs a pre-registration that
+   can only be set defensibly after observing baseline rates. VT-17
+   was set with reference to existing pause-prediction behavior;
+   VT-30/31/32 need similar precedent. Operator has 43 EXECUTED
+   sessions as of 2026-04-30 — enough for reactive Lyra to be
+   useful, not enough to estimate intervention acceptance rates with
+   confidence.
+2. **Reactive Lyra needs dogfood time.** Operator stated the
+   primary purpose is dogfooding for usability before shipping as a
+   premium feature. Reactive Lyra hasn't accumulated enough operator
+   conversation history to know which questions the operator
+   actually asks vs which the operator avoids. That answer determines
+   what proactive interventions matter.
+3. **Premium framing depends on this distinction.** ChatGPT's
+   "we manage your execution for you" framing was rejected as
+   commodity-positioning that erases Lyra's research-credibility
+   differentiation. The right premium framing — "your data, your
+   pattern, surfaced when it matters" — requires the proactive layer
+   to exist AND be measurably effective. Building the layer first
+   and discovering the framing doesn't sell would burn the operator's
+   most limited resource (time).
+
+**Trigger to revisit.**
+
+Whichever fires first:
+- Operator dogfood passes 200 EXECUTED sessions (enough to set
+  baseline acceptance thresholds for VT-30/31/32).
+- Reactive Lyra usage shows operator asking the SAME pattern question
+  ≥3 times in a week (signal that proactive surfacing of that
+  pattern would have value) — measurable from the
+  `jarvis_invocation` audit table by tool_name + tool_args.
+- Retention checkpoint (Jun 18-25) validates that any non-operator
+  user ever crosses the activity threshold where these interventions
+  would fire.
+
+**Operationalization checklist when revisited.**
+
+For each VT (30/31/32) before ship:
+- Pre-register the acceptance formula in MANIFESTO.md alongside the
+  existing VT-17 / VT-17d formulas
+- Pre-register at least two distinguishing analyses (one for
+  intervention efficacy, one for VT-21-class internalization risk)
+- Wire the chat fire to write a `reflection_view_log` row with
+  `reflection_type='proactive_lyra_<vt_id>'`
+- Add a per-user opt-out toggle in /settings under the existing
+  graduated intelligence controls (Full / Light / Manual)
+- Add a kill-switch flag in the relevant service so the intervention
+  can be retracted without code revert if a per-user analysis trips
+
+**Source.** ChatGPT critique 2026-04-30 evening + operator
+reframing in same conversation: "uncontrolled intervention =
+contamination, instrumented + pre-registered intervention = data.
+The goal isn't to avoid proactivity — it's to contain it inside the
+experiment design." Captured to preserve the insight without
+disrupting reactive Lyra dogfood.
