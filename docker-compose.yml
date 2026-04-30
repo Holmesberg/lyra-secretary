@@ -30,6 +30,13 @@ services:
       # on this dependency.
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+      # JARVIS — NVIDIA NIM (operator-only, 2026-04-30). When unset, JARVIS
+      # endpoints return graceful 'offline' responses; LLM enrichment falls
+      # back to Ollama. Default model z-ai/glm4.7 (358B agentic tool use).
+      - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY:-}
+      - NVIDIA_NIM_MODEL=${NVIDIA_NIM_MODEL:-meta/llama-3.3-70b-instruct}
+      - NVIDIA_NIM_BASE_URL=${NVIDIA_NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      - NVIDIA_NIM_TIMEOUT_SECONDS=${NVIDIA_NIM_TIMEOUT_SECONDS:-30}
     extra_hosts:
       # Required on Linux/WSL2 for host.docker.internal to resolve to the
       # host. Docker Desktop adds this automatically on Windows/Mac, but

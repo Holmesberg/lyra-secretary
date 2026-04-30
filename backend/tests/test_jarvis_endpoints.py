@@ -64,7 +64,7 @@ def _make_user(db, *, is_operator: bool = False) -> User:
     return u
 
 
-def _nim_response(*, content=None, tool_calls=None, model="z-ai/glm-4.7"):
+def _nim_response(*, content=None, tool_calls=None, model="meta/llama-3.3-70b-instruct"):
     """Construct an OpenAI-shaped chat-completion response dict."""
     message = {"role": "assistant"}
     if content is not None:

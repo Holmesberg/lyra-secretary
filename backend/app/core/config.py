@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     # agentic tool use (358B, 131K ctx). Override per env var to swap to
     # meta/llama-3.3-70b-instruct or nvidia/llama-3.1-nemotron-70b-instruct.
     NVIDIA_NIM_API_KEY: str = Field("", env="NVIDIA_NIM_API_KEY")
-    NVIDIA_NIM_MODEL: str = Field("z-ai/glm-4.7", env="NVIDIA_NIM_MODEL")
+    NVIDIA_NIM_MODEL: str = Field("meta/llama-3.3-70b-instruct", env="NVIDIA_NIM_MODEL")
     NVIDIA_NIM_BASE_URL: str = Field(
         "https://integrate.api.nvidia.com/v1", env="NVIDIA_NIM_BASE_URL"
     )

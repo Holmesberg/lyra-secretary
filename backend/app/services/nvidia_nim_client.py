@@ -9,7 +9,7 @@ Trust class boundary (operator-locked 2026-04-30, JARVIS plan):
   - Privacy: every call sends user task content to NVIDIA. Mom + sister +
     students stay on the Ollama-only enrichment path; only is_operator=True
     accounts hit this client via JARVIS endpoints
-  - Default model z-ai/glm-4.7 chosen for agentic + tool-use specialty
+  - Default model z-ai/glm4.7 chosen for agentic + tool-use specialty
     (358B params, 131K ctx, native function-calling). Llama 3.3 70B
     available as snappier fallback via NVIDIA_NIM_MODEL override
 
@@ -61,8 +61,8 @@ class NimConfigError(NimError):
 
 # Stable JARVIS-related model defaults. Operator can override per env var
 # without touching code. Updated 2026-04-30 after WebSearch confirmed
-# z-ai/glm-4.7 is on the free tier (358B, 131K ctx, agentic tool use).
-DEFAULT_MODEL = "z-ai/glm-4.7"
+# z-ai/glm4.7 is on the free tier (358B, 131K ctx, agentic tool use).
+DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 
