@@ -24,7 +24,11 @@ from app.db.models import (
     TaskState,
     User,
 )
-from app.services.resume_predictor import COOLDOWN_MINUTES, ResumePredictor
+from app.services.resume_predictor import (
+    COOLDOWN_MINUTES,
+    MAX_FIRES_PER_SESSION,
+    ResumePredictor,
+)
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
 
@@ -89,6 +93,17 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
     if pause is None:
         return
 
+    # Cap total fires per session — operator decision 2026-05-01 to
+    # stop hourly nagging on sessions the user has clearly abandoned.
+    # After MAX_FIRES_PER_SESSION nudges, stay quiet; stale_session_
+    # recovery will close the session at 12h regardless.
+    fire_count_for_session = (
+        db.query(ResumePredictionLog)
+        .filter(ResumePredictionLog.session_id == session.session_id)
+        .count()
+    )
+    if fire_count_for_session >= MAX_FIRES_PER_SESSION:
+        return
     # Cooldown: skip if we already fired for this session recently.
     recent = (
         db.query(ResumePredictionLog)
@@ -142,14 +157,38 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
     )
 
     _enqueue_notification(user, row, task)
-    # Operator fanout (2026-04-30): mirror to telegram. Sibling of
-    # pause_prediction's existing telegram fire — operator wanted
-    # consistent coverage across both predictors.
+    # Operator fanout (2026-04-30 + 2026-05-01 escalation refinement):
+    # message changes with fire-count so the user isn't getting the
+    # same "your usual is X" line after they've blown past X by 5×.
+    # Fire 1 is the gentle nudge, fire 2 acknowledges the miss, fire 3
+    # asks if the session should be abandoned. After fire 3 the
+    # MAX_FIRES_PER_SESSION cap above keeps it quiet entirely.
     if user.is_operator:
         from app.services.operator_notifier import notify_operator
+        # fire_count_for_session was the count BEFORE this fire landed,
+        # so this fire is number (fire_count_for_session + 1).
+        fire_n = fire_count_for_session + 1
+        paused_min = int(round(row.paused_for_minutes))
+        usual_min = int(round(row.p75_pause_minutes))
+        if fire_n == 1:
+            msg = (
+                f"Resume nudge — *{task.title}* paused {paused_min} min "
+                f"(your usual is ~{usual_min} min for this kind of session)."
+            )
+        elif fire_n == 2:
+            msg = (
+                f"*{task.title}* — still paused at {paused_min} min, "
+                f"well past your usual ~{usual_min}. Coming back, "
+                f"or want to mark it abandoned?"
+            )
+        else:  # fire_n == 3 (and final per MAX_FIRES_PER_SESSION cap)
+            msg = (
+                f"Last nudge on *{task.title}* — {paused_min} min paused "
+                f"(usual ~{usual_min}). Tap to resume from /today, or "
+                f"mark abandoned. I'll stay quiet on this one now."
+            )
         notify_operator(
-            f"Resume nudge — *{task.title}* paused {row.paused_for_minutes:.0f} min "
-            f"(your usual is ~{row.p75_pause_minutes:.0f} min for this kind of session).",
+            msg,
             source="scheduler.resume-prediction",
             severity="alert",
         )

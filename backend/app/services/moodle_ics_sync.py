@@ -95,11 +95,63 @@ def _redact_url(url: str) -> str:
     return _AUTHTOKEN_RE.sub(r"\1•••", url)
 
 
+def _widen_time_window(url: str) -> str:
+    """Override Moodle's preset_time query param to pull EVERYTHING.
+
+    Why: Moodle's calendar exporter defaults to preset_time=recentupcoming
+    which clips events to roughly [now-14d, now+60d]. Assignments due
+    earlier than 14 days ago drop out of the feed entirely, so any
+    overdue work the user wants to triage is silently invisible to Lyra.
+
+    Operator complaint 2026-05-01 morning: 'overdue tasks were submitted
+    yesterday and they weren't synced.' Root cause was this filter, not
+    the sync job itself. Per-event date validation already happens
+    downstream via _parse_one_event so widening the feed is safe — we
+    just stop dropping the past tail.
+
+    Override applied transparently per-fetch (not stored in the user's
+    URL) so re-pasting the original URL from Moodle works without
+    tedious operator-side editing. preset_what is left alone.
+    """
+    from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+
+    parsed = urlparse(url)
+    pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    rewritten: list[tuple[str, str]] = []
+    seen_preset_time = False
+    for k, v in pairs:
+        if k == "preset_time":
+            rewritten.append((k, "custom"))
+            seen_preset_time = True
+        else:
+            rewritten.append((k, v))
+    if not seen_preset_time:
+        rewritten.append(("preset_time", "custom"))
+    # Moodle's custom preset uses ABSOLUTE Unix timestamp `time` plus
+    # `timeduration` in seconds. Window: 365 days back from now → 730
+    # days total (1 year past + 1 year forward). Generous bounds —
+    # covers historical overdue + a full academic year ahead. Per-event
+    # date validation happens downstream so feed bloat is bounded.
+    rewritten = [(k, v) for k, v in rewritten if k not in ("time", "timeduration")]
+    import time as _time
+    now_ts = int(_time.time())
+    one_year = 365 * 86400
+    rewritten.append(("time", str(now_ts - one_year)))
+    rewritten.append(("timeduration", str(2 * one_year)))
+    new_query = urlencode(rewritten, doseq=False)
+    return urlunparse(parsed._replace(query=new_query))
+
+
 def fetch_ics(url: str) -> bytes:
     """GET the .ics body. Raises httpx exceptions on transport failure;
-    callers wrap for graceful degradation."""
+    callers wrap for graceful degradation.
+
+    Applies _widen_time_window so the feed includes overdue + far-future
+    events instead of Moodle's default narrow window. Operator URL stays
+    unchanged in the DB — the rewrite is per-request only.
+    """
     with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS, follow_redirects=True) as client:
-        response = client.get(url)
+        response = client.get(_widen_time_window(url))
         response.raise_for_status()
     return response.content
 

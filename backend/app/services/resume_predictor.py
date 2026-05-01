@@ -49,7 +49,17 @@ from app.utils.time_utils import now_utc, strip_tz, to_local
 HISTORY_GATE_DAYS = 7
 MIN_SAMPLES = 5
 LOOKBACK_DAYS = 28
-COOLDOWN_MINUTES = 5
+# Cooldown bumped 5 → 60 min on 2026-05-01 — operator received ~25
+# resume nudges in 8h overnight on a single paused session because
+# the 5-min cooldown re-fired the same prediction every cycle. 60 min
+# matches the operator's stated tolerance ("not even an hour" — they
+# said hourly is fine for now).
+COOLDOWN_MINUTES = 60
+# Per-session max-fire cap — after 3 nudges the user has clearly
+# decided not to engage with this session right now. Stops pinging
+# instead of nagging hourly until stale_session_recovery (12h) closes
+# the session. Operator decision 2026-05-01 morning.
+MAX_FIRES_PER_SESSION = 3
 COLD_START_FLAT_CAP = 30  # minutes
 MIN_CONFIDENCE = 0.40
 
