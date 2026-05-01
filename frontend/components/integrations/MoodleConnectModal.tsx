@@ -16,7 +16,7 @@
  * complete when you submit") before asking for credentials.
  */
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -216,48 +216,59 @@ export function MoodleConnectModal({
         {step === "instructions" && (
           <div className="flex flex-col gap-4">
             <p className="text-sm text-dust">
-              Lyra connects to Moodle in two ways — both optional. We
-              never write back to Moodle, never modify your courses.
+              Lyra reads from Moodle in two ways. We never write back, never
+              modify your courses.
             </p>
 
             {showUrlInput && (
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-parchment">
-                  1. Calendar URL <span className="text-dust">— imports your deadlines</span>
+              <div className="rounded-sm border border-hairline bg-void-2/30 px-3 py-2.5">
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-parchment">
+                  {showWsInput && (
+                    <span className="mr-1.5 font-mono text-signal/60">01</span>
+                  )}
+                  Calendar URL{" "}
+                  <span className="font-normal normal-case tracking-normal text-dust">
+                    — imports your deadlines
+                  </span>
                 </p>
-                <ol className="ml-4 list-decimal space-y-1.5 text-xs text-dust">
+                <ol className="ml-4 list-decimal space-y-1 text-xs text-dust">
                   <li>Log in to your Moodle, open the Calendar.</li>
                   <li>
-                    Click <span className="font-medium text-parchment">Export calendar</span> on the right.
+                    Click <span className="text-parchment">Export calendar</span> on the right.
                   </li>
                   <li>
-                    Choose <span className="font-medium text-parchment">Events: All</span>,{" "}
-                    <span className="font-medium text-parchment">Time: Recent and upcoming</span>.
+                    Choose <span className="text-parchment">Events: All</span>,{" "}
+                    <span className="text-parchment">Time: Recent and upcoming</span>.
                   </li>
                   <li>
-                    Click <span className="font-medium text-parchment">Get calendar URL</span> and copy it.
+                    Click <span className="text-parchment">Get calendar URL</span> and copy it.
                   </li>
                 </ol>
               </div>
             )}
 
             {showWsInput && (
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-parchment">
-                  {showUrlInput ? "2. " : "1. "}Web Services token{" "}
-                  <span className="text-dust">— auto-marks complete on submission</span>
+              <div className="rounded-sm border border-hairline bg-void-2/30 px-3 py-2.5">
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-parchment">
+                  {showUrlInput && (
+                    <span className="mr-1.5 font-mono text-signal/60">02</span>
+                  )}
+                  Web Services token{" "}
+                  <span className="font-normal normal-case tracking-normal text-dust">
+                    — auto-marks complete + backfills past assignments
+                  </span>
                 </p>
-                <ol className="ml-4 list-decimal space-y-1.5 text-xs text-dust">
+                <ol className="ml-4 list-decimal space-y-1 text-xs text-dust">
                   <li>
-                    Top-right avatar → <span className="font-medium text-parchment">Preferences</span>.
+                    Top-right avatar → <span className="text-parchment">Preferences</span>.
                   </li>
                   <li>
-                    Under <span className="font-medium text-parchment">User account</span>, click{" "}
-                    <span className="font-medium text-parchment">Security keys</span>.
+                    Under <span className="text-parchment">User account</span>, click{" "}
+                    <span className="text-parchment">Security keys</span>.
                   </li>
                   <li>
                     Copy the token next to{" "}
-                    <span className="font-medium text-parchment">Moodle mobile web service</span>{" "}
+                    <span className="text-parchment">Moodle mobile web service</span>{" "}
                     (32 chars).
                   </li>
                 </ol>
@@ -305,8 +316,7 @@ export function MoodleConnectModal({
             {showWsInput && (
               <div className="flex flex-col gap-2">
                 <label htmlFor="moodle-ws-token" className="text-xs font-semibold uppercase tracking-wide text-parchment">
-                  Web Services token{" "}
-                  {showUrlInput && <span className="font-normal normal-case tracking-normal text-dust">(optional)</span>}
+                  Web Services token
                 </label>
                 <input
                   id="moodle-ws-token"
@@ -325,8 +335,19 @@ export function MoodleConnectModal({
                   <p className="text-xs text-ember">{copyForError(wsErrorCode)}</p>
                 )}
                 <p className="text-[11px] text-dust">
-                  Lets Lyra check Moodle every 6h and auto-mark deadlines complete when you submit. Stored as-is for now (encrypted-at-rest in v2).
+                  Lets Lyra check Moodle every 6h to auto-mark deadlines complete when you submit, and import past assignments Lyra missed.
                 </p>
+                {/* Encryption claim — operator request 2026-05-01 to surface
+                    this prominently so users feel safe. Bright-white here is
+                    intentional (only place in the modal that gets the
+                    parchment treatment). Backed by Fernet at-rest via
+                    utils/encryption.py (alembic 044). */}
+                <div className="mt-1 flex items-center gap-1.5 rounded-sm border border-signal/25 bg-signal/5 px-2.5 py-1.5">
+                  <Lock className="h-3 w-3 shrink-0 text-signal" aria-hidden />
+                  <p className="text-[11px] font-medium text-parchment">
+                    Encrypted before saving · stays on Lyra&apos;s server, never shared.
+                  </p>
+                </div>
               </div>
             )}
 

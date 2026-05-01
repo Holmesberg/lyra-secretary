@@ -11,16 +11,25 @@
  * COPY; the backend endpoint (/v1/integrations) supplies per-user
  * STATE. When a registry entry has no server match, we trust the
  * registry's `available: false` and fall through to "coming_soon".
+ *
+ * Moodle row (2026-05-01 redesign — operator: "I didn't notice the
+ * button below moodle, could u bundle both in a single button?"):
+ * one Connect button → bundled MoodleConnectModal (handles both URL
+ * + WS token in one paste step). After connect, the row blooms into
+ * a "Data feeds" panel showing Calendar + Submissions side-by-side
+ * with their own sync states + Sync-now actions. Replaces the prior
+ * sub-row + standalone WS modal.
  */
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IntegrationCard } from "@/components/integration-card";
 import { MoodleConnectModal } from "@/components/integrations/MoodleConnectModal";
-import { MoodleWSConnectModal } from "@/components/integrations/MoodleWSConnectModal";
 import {
   disconnectMoodleWS,
+  syncMoodleNow,
   syncMoodleWSNow,
 } from "@/lib/integrations";
 import {
@@ -98,8 +107,9 @@ export function IntegrationsSection() {
   }, []);
 
   const [moodleModalOpen, setMoodleModalOpen] = useState(false);
-  const [moodleWSModalOpen, setMoodleWSModalOpen] = useState(false);
-  const [wsBusy, setWsBusy] = useState(false);
+  const [icalSyncBusy, setIcalSyncBusy] = useState(false);
+  const [wsSyncBusy, setWsSyncBusy] = useState(false);
+  const [wsDisconnectBusy, setWsDisconnectBusy] = useState(false);
 
   const statusQ = useQuery({
     queryKey: ["integrations"],
@@ -118,9 +128,6 @@ export function IntegrationsSection() {
       await disconnectIntegration(id);
       qc.invalidateQueries({ queryKey: ["integrations"] });
       qc.invalidateQueries({ queryKey: ["me"] });
-      // Also invalidate calendar event queries so /today and /calendar
-      // drop the stale GCal events on next render — user expects
-      // disconnect to have an immediate visible effect.
       qc.invalidateQueries({
         predicate: (q) =>
           typeof q.queryKey[0] === "string" &&
@@ -169,7 +176,7 @@ export function IntegrationsSection() {
                 type="button"
                 onClick={() => setBanner(null)}
                 aria-label="Dismiss"
-                className="text-dust-deep transition-colors hover:text-parchment"
+                className="text-dust transition-colors hover:text-parchment"
               >
                 ×
               </button>
@@ -182,10 +189,18 @@ export function IntegrationsSection() {
           const status: IntegrationStatus = !def.available
             ? "coming_soon"
             : serverState?.status ?? "disconnected";
+          const isMoodle = def.id === "moodle";
           const onConnectClick =
-            def.id === "moodle" && def.authShape === "url_subscription"
+            isMoodle && def.authShape === "url_subscription"
               ? () => setMoodleModalOpen(true)
               : undefined;
+          // For Moodle, suppress the card's built-in "Last synced X" line
+          // — the Data feeds panel below presents both iCal + WS freshness
+          // in one place, with bright labels and Sync-now controls.
+          const lastSyncedAt = isMoodle
+            ? null
+            : serverState?.last_synced_at ?? null;
+
           return (
             <div key={def.id} className="flex flex-col gap-2">
               <IntegrationCard
@@ -199,22 +214,48 @@ export function IntegrationsSection() {
                 }
                 onConnectClick={onConnectClick}
                 disconnectReason={serverState?.disconnect_reason ?? null}
-                lastSyncedAt={serverState?.last_synced_at ?? null}
+                lastSyncedAt={lastSyncedAt}
               />
-              {/* Moodle Web Services sub-row — only shown when iCal is
-                  connected (sub-capability of the Moodle integration).
-                  Operator request 2026-05-01: zero-input submission
-                  detection so they don't have to manually mark imported
-                  deadlines complete. */}
-              {def.id === "moodle" && status === "connected" && (
-                <MoodleWSSubRow
+              {isMoodle && status === "connected" && (
+                <MoodleDataFeeds
+                  icalLastSyncedAt={serverState?.last_synced_at ?? null}
+                  icalSyncBusy={icalSyncBusy}
                   wsConnected={!!serverState?.ws_connected}
                   wsLastSyncedAt={serverState?.ws_last_synced_at ?? null}
                   wsDisconnectReason={serverState?.ws_disconnect_reason ?? null}
-                  busy={wsBusy}
-                  onConnect={() => setMoodleWSModalOpen(true)}
-                  onSyncNow={async () => {
-                    setWsBusy(true);
+                  wsSyncBusy={wsSyncBusy}
+                  wsDisconnectBusy={wsDisconnectBusy}
+                  onIcalSyncNow={async () => {
+                    setIcalSyncBusy(true);
+                    try {
+                      const res = await syncMoodleNow();
+                      qc.invalidateQueries({ queryKey: ["integrations"] });
+                      qc.invalidateQueries({ queryKey: ["deadlines"] });
+                      const created = res.created ?? 0;
+                      const updated = res.updated ?? 0;
+                      const parts: string[] = [];
+                      if (created) parts.push(`${created} new`);
+                      if (updated) parts.push(`${updated} updated`);
+                      setBanner({
+                        kind: "success",
+                        title:
+                          parts.length > 0
+                            ? `Calendar synced — ${parts.join(", ")}.`
+                            : `Calendar synced — nothing new.`,
+                      });
+                    } catch (e) {
+                      setBanner({
+                        kind: "error",
+                        title: "Calendar sync failed",
+                        detail: e instanceof Error ? e.message : String(e),
+                      });
+                    } finally {
+                      setIcalSyncBusy(false);
+                    }
+                  }}
+                  onWsEnable={() => setMoodleModalOpen(true)}
+                  onWsSyncNow={async () => {
+                    setWsSyncBusy(true);
                     try {
                       const res = await syncMoodleWSNow();
                       qc.invalidateQueries({ queryKey: ["integrations"] });
@@ -243,27 +284,27 @@ export function IntegrationsSection() {
                         kind: "success",
                         title:
                           parts.length > 0
-                            ? `Synced — ${parts.join(" · ")}.`
-                            : `Synced — nothing new to mark complete.`,
+                            ? `Submissions synced — ${parts.join(" · ")}.`
+                            : `Submissions synced — nothing new.`,
                       });
                     } catch (e) {
                       setBanner({
                         kind: "error",
-                        title: "WS sync failed",
+                        title: "Submissions sync failed",
                         detail: e instanceof Error ? e.message : String(e),
                       });
                     } finally {
-                      setWsBusy(false);
+                      setWsSyncBusy(false);
                     }
                   }}
-                  onDisconnect={async () => {
-                    setWsBusy(true);
+                  onWsDisconnect={async () => {
+                    setWsDisconnectBusy(true);
                     try {
                       await disconnectMoodleWS();
                       qc.invalidateQueries({ queryKey: ["integrations"] });
                       setBanner({
                         kind: "success",
-                        title: "Moodle Web Services disconnected.",
+                        title: "Submission auto-detect disconnected.",
                       });
                     } catch (e) {
                       setBanner({
@@ -272,7 +313,7 @@ export function IntegrationsSection() {
                         detail: e instanceof Error ? e.message : String(e),
                       });
                     } finally {
-                      setWsBusy(false);
+                      setWsDisconnectBusy(false);
                     }
                   }}
                 />
@@ -284,6 +325,10 @@ export function IntegrationsSection() {
         <MoodleConnectModal
           open={moodleModalOpen}
           onOpenChange={setMoodleModalOpen}
+          existingIcalConnected={
+            stateById.get("moodle")?.status === "connected"
+          }
+          existingWSConnected={!!stateById.get("moodle")?.ws_connected}
           onConnected={(result) => {
             qc.invalidateQueries({ queryKey: ["integrations"] });
             qc.invalidateQueries({ queryKey: ["deadlines"] });
@@ -310,19 +355,6 @@ export function IntegrationsSection() {
             });
           }}
         />
-        <MoodleWSConnectModal
-          open={moodleWSModalOpen}
-          onOpenChange={setMoodleWSModalOpen}
-          onConnected={() => {
-            qc.invalidateQueries({ queryKey: ["integrations"] });
-            setBanner({
-              kind: "success",
-              title: "Moodle Web Services connected.",
-              detail:
-                "Submitted assignments will auto-mark complete on the next sync.",
-            });
-          }}
-        />
       </CardContent>
     </Card>
   );
@@ -333,86 +365,301 @@ function humanName(id: string): string {
   return def?.name ?? id;
 }
 
+// ---------------------------------------------------------------------------
+// MoodleDataFeeds — telemetry strip rendered under the Moodle card after
+// connect. Two parallel rows (Calendar / Submissions) — bright labels,
+// dust freshness, signal-green Sync-now buttons. Refinement of the prior
+// sub-row design that operator missed; here both feeds are co-present
+// and the 6h cadence is explicit per row.
+// ---------------------------------------------------------------------------
 
-/** Sub-row rendered under the Moodle integration card when iCal is
- *  connected. Surfaces the Web Services token state + connect / sync
- *  / disconnect actions. Phase B 2026-05-01. */
-function MoodleWSSubRow({
-  wsConnected,
-  wsLastSyncedAt,
-  wsDisconnectReason,
-  busy,
-  onConnect,
-  onSyncNow,
-  onDisconnect,
-}: {
+interface MoodleDataFeedsProps {
+  icalLastSyncedAt: string | null;
+  icalSyncBusy: boolean;
   wsConnected: boolean;
   wsLastSyncedAt: string | null;
   wsDisconnectReason: string | null;
-  busy: boolean;
-  onConnect: () => void;
-  onSyncNow: () => void;
-  onDisconnect: () => void;
-}) {
-  const lastSyncedLabel = wsLastSyncedAt
-    ? new Date(wsLastSyncedAt).toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : null;
+  wsSyncBusy: boolean;
+  wsDisconnectBusy: boolean;
+  onIcalSyncNow: () => void;
+  onWsEnable: () => void;
+  onWsSyncNow: () => void;
+  onWsDisconnect: () => void;
+}
 
+function MoodleDataFeeds({
+  icalLastSyncedAt,
+  icalSyncBusy,
+  wsConnected,
+  wsLastSyncedAt,
+  wsDisconnectReason,
+  wsSyncBusy,
+  wsDisconnectBusy,
+  onIcalSyncNow,
+  onWsEnable,
+  onWsSyncNow,
+  onWsDisconnect,
+}: MoodleDataFeedsProps) {
+  // Indent matches IntegrationCard body (40px monogram + 16px gap = 56px).
+  //
+  // Aesthetic notes (operator design pass 2026-05-01, ref:
+  // docs/Screenshots/ChatGPT Image Apr 29, 2026, 10_25_37 PM.png +
+  // operator follow-up "aim for the middle ground"): subtle gradient
+  // for slight depth, status dots as a functional pulse, but skip
+  // heavy console flourishes (no bracket labels, no ring glow). Same
+  // dark palette, lightly refined.
   return (
-    <div className="ml-4 rounded-sm border border-hairline bg-void-2/30 px-3 py-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-parchment">
-            Auto-detect submitted assignments
-          </p>
-          <p className="mt-0.5 text-[10px] text-dust-deep">
-            {wsConnected
-              ? wsDisconnectReason
-                ? "Token rejected — reconnect to resume."
-                : lastSyncedLabel
-                  ? `Connected · last sync ${lastSyncedLabel}`
-                  : "Connected · no sync yet"
-              : "Optional: auto-mark deadlines complete when Moodle confirms submission."}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-1">
-          {wsConnected ? (
-            <>
-              <button
-                type="button"
-                onClick={onSyncNow}
-                disabled={busy}
-                className="rounded-sm border border-signal/40 bg-signal/5 px-2 py-1 text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/15 disabled:opacity-40"
-              >
+    <div
+      className="
+        ml-14 relative overflow-hidden rounded-sm
+        border border-hairline
+        bg-gradient-to-b from-void-2/50 to-void-2/30
+        px-4 py-3.5
+      "
+    >
+      <div className="mb-2.5 flex items-baseline justify-between">
+        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-dust">
+          Data feeds
+        </p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-dust">
+          auto-sync · 6h
+        </p>
+      </div>
+
+      <FeedRow
+        label="Calendar"
+        description="Imports upcoming deadlines from Moodle"
+        dotState={dotStateFor(icalLastSyncedAt, false, icalSyncBusy)}
+        statusLine={
+          <>
+            <span>synced {relativeAge(icalLastSyncedAt)}</span>
+          </>
+        }
+        primaryAction={
+          <SignalButton onClick={onIcalSyncNow} busy={icalSyncBusy}>
+            Sync now
+          </SignalButton>
+        }
+      />
+
+      <Divider />
+
+      {wsConnected ? (
+        <FeedRow
+          label="Submissions"
+          description={
+            wsDisconnectReason
+              ? "Token rejected — reconnect to resume auto-marking."
+              : "Auto-marks complete on submission · backfills past assignments"
+          }
+          dotState={
+            wsDisconnectReason
+              ? "error"
+              : dotStateFor(wsLastSyncedAt, false, wsSyncBusy)
+          }
+          statusLine={
+            wsDisconnectReason ? (
+              <span className="text-ember">action required</span>
+            ) : (
+              <span>synced {relativeAge(wsLastSyncedAt)}</span>
+            )
+          }
+          primaryAction={
+            wsDisconnectReason ? (
+              <SignalButton onClick={onWsEnable}>Reconnect</SignalButton>
+            ) : (
+              <SignalButton onClick={onWsSyncNow} busy={wsSyncBusy}>
                 Sync now
-              </button>
-              <button
-                type="button"
-                onClick={onDisconnect}
-                disabled={busy}
-                className="rounded-sm border border-hairline bg-void-2 px-2 py-1 text-[10px] uppercase tracking-widest text-dust transition-colors hover:border-ember/40 hover:text-ember disabled:opacity-40"
-              >
-                Disconnect
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={onConnect}
-              className="rounded-sm border border-signal/40 bg-signal/10 px-2 py-1 text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20"
+              </SignalButton>
+            )
+          }
+          secondaryAction={
+            <GhostButton
+              onClick={onWsDisconnect}
+              busy={wsDisconnectBusy}
+              variant="warn"
             >
-              Connect
-            </button>
-          )}
+              Disconnect
+            </GhostButton>
+          }
+        />
+      ) : (
+        <FeedRow
+          label="Submissions"
+          description="Auto-mark complete when you submit · imports past assignments Lyra missed"
+          dotState="idle"
+          statusLine={<span>not enabled</span>}
+          primaryAction={
+            <SignalButton onClick={onWsEnable} variant="filled">
+              Enable
+            </SignalButton>
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+type DotState = "live" | "syncing" | "stale" | "idle" | "error";
+
+function dotStateFor(
+  iso: string | null,
+  _connected: boolean,
+  busy: boolean,
+): DotState {
+  if (busy) return "syncing";
+  if (!iso) return "idle";
+  const ageMs = Date.now() - new Date(iso).getTime();
+  if (ageMs < 6 * 60 * 60 * 1000 + 30 * 60 * 1000) return "live"; // within 6.5h cadence
+  return "stale";
+}
+
+function StatusDot({ state }: { state: DotState }) {
+  // Tiny breathing indicator left of each feed label — gives the panel
+  // a pulse that signals "this thing is alive" without adding noise.
+  // Inline color tokens keep the dot consistent with feed semantics.
+  const cls =
+    state === "live"
+      ? "bg-signal shadow-[0_0_8px_rgba(56,189,182,0.55)] animate-pulse"
+      : state === "syncing"
+        ? "bg-signal animate-ping"
+        : state === "error"
+          ? "bg-ember shadow-[0_0_8px_rgba(255,120,90,0.55)]"
+          : state === "stale"
+            ? "bg-dust"
+            : "bg-dust/40 ring-1 ring-dust/40 ring-inset";
+  return (
+    <span
+      aria-hidden
+      className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${cls}`}
+    />
+  );
+}
+
+function FeedRow({
+  label,
+  description,
+  statusLine,
+  dotState,
+  primaryAction,
+  secondaryAction,
+}: {
+  label: string;
+  description: string;
+  statusLine: React.ReactNode;
+  dotState: DotState;
+  primaryAction: React.ReactNode;
+  secondaryAction?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-4 py-2.5 first-of-type:pt-0 last-of-type:pb-0">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <StatusDot state={dotState} />
+          <p className="text-xs font-semibold tracking-tight text-parchment">
+            {label}
+          </p>
         </div>
+        <p className="mt-1 text-[11px] leading-relaxed text-dust">
+          {description}
+        </p>
+        <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-dust">
+          {statusLine}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+        {primaryAction}
+        {secondaryAction}
       </div>
     </div>
   );
+}
+
+function Divider() {
+  // Hairline separator between feed rows — fades to transparent at the
+  // edges for a console-y feel.
+  return (
+    <div
+      aria-hidden
+      className="my-1.5 h-px w-full bg-gradient-to-r from-transparent via-hairline to-transparent"
+    />
+  );
+}
+
+function SignalButton({
+  children,
+  onClick,
+  busy,
+  variant = "outline",
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  busy?: boolean;
+  variant?: "outline" | "filled";
+}) {
+  const base =
+    "inline-flex items-center gap-1 rounded-sm px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors disabled:opacity-40";
+  const styles =
+    variant === "filled"
+      ? "border border-signal/40 bg-signal/15 text-signal hover:bg-signal/25"
+      : "border border-signal/40 bg-signal/5 text-signal hover:bg-signal/15";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className={`${base} ${styles}`}
+    >
+      {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+      {children}
+    </button>
+  );
+}
+
+function GhostButton({
+  children,
+  onClick,
+  busy,
+  variant = "default",
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  busy?: boolean;
+  variant?: "default" | "warn";
+}) {
+  const base =
+    "inline-flex items-center gap-1 rounded-sm border border-hairline bg-transparent px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors disabled:opacity-40";
+  const styles =
+    variant === "warn"
+      ? "text-dust hover:border-ember/40 hover:text-ember"
+      : "text-dust hover:border-parchment/40 hover:text-parchment";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className={`${base} ${styles}`}
+    >
+      {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+      {children}
+    </button>
+  );
+}
+
+// Relative-age formatter — "5h ago", "just now", "3d ago". Operator
+// scans /settings to check freshness; relative reads faster than an
+// absolute clock string.
+function relativeAge(iso: string | null): string {
+  if (!iso) return "never";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return "just now";
+  if (ms < 60_000) return "just now";
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
 }
 
 function cleanQueryParams() {
