@@ -62,6 +62,22 @@ COOLDOWN_MINUTES = 60
 MAX_FIRES_PER_SESSION = 3
 COLD_START_FLAT_CAP = 30  # minutes
 MIN_CONFIDENCE = 0.40
+# Absolute lower bound on paused_for before resume prediction can fire.
+# Operator hit a redundant-notification bug 2026-05-01 mid-build:
+#   11:22 — pause-prediction fired ("Pause predicted in ~2 min")
+#   11:24 — user paused (within the predicted window)
+#   11:24 — resume-prediction fired with "paused 2 min · usual is ~1
+#           min for this kind of session"
+# The operator's historical p75 for build sessions was ~1 min, so the
+# `paused_for >= p75` gate triggered immediately. Telling someone their
+# usual pause is over when they LITERALLY just sat down is exactly the
+# rule-based-system failure the operator called out.
+#
+# This floor protects against firing on a fresh pause regardless of how
+# short the per-cell p75 is. The effective fire threshold becomes
+# max(ABSOLUTE_FLOOR_MINUTES, p75) — for users with longer p75 (e.g.
+# 30 min), p75 still dominates so this is a no-op.
+ABSOLUTE_FLOOR_MINUTES = 10
 
 
 @dataclass
@@ -107,6 +123,11 @@ class ResumePredictor:
         if paused_for <= 0:
             return None
 
+        # Universal floor — never nudge a fresh pause regardless of p75.
+        # See ABSOLUTE_FLOOR_MINUTES docstring for the operator incident.
+        if paused_for < ABSOLUTE_FLOOR_MINUTES:
+            return None
+
         # Cold-start path: insufficient history → 30min flat cap
         if not self._has_sufficient_history(user_id, now=now):
             return self._cold_start(
@@ -123,8 +144,10 @@ class ResumePredictor:
             return self._cold_start(user_id, session, task, paused_for, now)
 
         p75 = _percentile(cell_pauses, 0.75)
-        if paused_for < p75:
-            return None  # not yet at the historical median dwell
+        # max(p75, floor) keeps the universal floor in play even when
+        # p75 is very short (operator's "usual is 1 min" case).
+        if paused_for < max(p75, ABSOLUTE_FLOOR_MINUTES):
+            return None  # not yet at the effective dwell threshold
 
         # Confidence rises with sample size; saturates at n=30
         confidence = min(1.0, MIN_CONFIDENCE + 0.02 * n)

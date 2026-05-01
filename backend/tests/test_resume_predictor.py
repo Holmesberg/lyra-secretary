@@ -22,7 +22,11 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import set_current_user_id
-from app.services.resume_predictor import COLD_START_FLAT_CAP, ResumePredictor
+from app.services.resume_predictor import (
+    ABSOLUTE_FLOOR_MINUTES,
+    COLD_START_FLAT_CAP,
+    ResumePredictor,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -228,6 +232,42 @@ def test_warm_fires_when_paused_above_p75(db):
     assert pred.mechanism == "category_tod"
     assert pred.p75_pause_minutes is not None
     assert pred.sample_size >= 5
+
+
+def test_absolute_floor_blocks_fire_when_p75_is_very_short(db):
+    """Operator repro 2026-05-01: build session with historical p75 ≈ 1 min.
+    A fresh 2-min pause shouldn't trigger 'usual is ~1 min for this kind of
+    session' — that's the rule-based-system failure the operator called out.
+    The ABSOLUTE_FLOOR_MINUTES guard keeps the predictor quiet until the
+    pause is actually unusually long in absolute terms."""
+    user = _make_user(db)
+    # Seed history with very short pauses so p75 ≈ 1 min.
+    _seed_pause_history(db, user.user_id, [0.5, 0.8, 1.0, 1.0, 1.2, 1.5])
+    task = _make_task(db, user.user_id)
+    session = _make_session(db, task)
+    morning_local = datetime.utcnow().replace(hour=6, minute=0, second=0, microsecond=0)
+    paused_at = morning_local
+
+    # Paused 2 min — above p75 (~1.2) but well under the 10-min floor.
+    pred = ResumePredictor(db).predict(
+        user_id=user.user_id,
+        session=session,
+        task=task,
+        paused_at_utc=paused_at,
+        now=morning_local + timedelta(minutes=2),
+    )
+    assert pred is None  # floor blocks the fire
+
+    # Same session, paused for floor + 1 min → fires (p75 long since exceeded).
+    pred2 = ResumePredictor(db).predict(
+        user_id=user.user_id,
+        session=session,
+        task=task,
+        paused_at_utc=paused_at,
+        now=morning_local + timedelta(minutes=ABSOLUTE_FLOOR_MINUTES + 1),
+    )
+    assert pred2 is not None
+    assert pred2.mechanism == "category_tod"
 
 
 def test_retroactive_pauses_excluded_from_training(db):

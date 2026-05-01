@@ -42,7 +42,19 @@ logger = logging.getLogger(__name__)
 
 # Grace period after predicted_at during which a pause_event still counts
 # as acceptance. See docstring for why the window is anchored here.
-ACCEPTANCE_WINDOW_MINUTES = 5
+#
+# Bumped 5 → 15 on 2026-05-01 per operator request: "increase the
+# prediction threshold to be within +-15 mins ... if user pauses during
+# a 30 min window of the pause prediction, confidence increases." The
+# implicit "30 min window" reads as predicted_at ± 15 min; we anchor
+# the back side at predicted_at + 15 min and let fired_at (always 2-3
+# min before predicted_at) act as the natural floor on the front side.
+# Net effect: predictions that were directionally right but a few
+# minutes late on timing now count as accepted, which feeds VT-17's
+# acceptance_rate denominator the operator's intuition. NB: changes
+# computed acceptance_rate going forward; rows reconciled before this
+# bump keep their prior outcome (frozen per pre-registration).
+ACCEPTANCE_WINDOW_MINUTES = 15
 
 
 def run_reconcile_responses():

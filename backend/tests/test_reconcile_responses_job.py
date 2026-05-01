@@ -150,8 +150,11 @@ def test_window_still_open_row_untouched(db, user):
 
 
 def test_closed_window_with_matching_pause_marks_accepted(db, user):
-    """A pause_event inside [fired_at, predicted_at+window] → 'pause_now'."""
-    row = _seed_prediction(db, fired_minutes_ago=15, predicted_minutes_ago=12)
+    """A pause_event inside [fired_at, predicted_at+window] → 'pause_now'.
+    Timing tuned for ACCEPTANCE_WINDOW_MINUTES=15: predicted_at 20 min
+    ago means window_end is 5 min ago (closed); pause 10 min ago is
+    inside [23 min ago, 5 min ago]."""
+    row = _seed_prediction(db, fired_minutes_ago=23, predicted_minutes_ago=20)
     evt = _seed_pause_event(db, paused_minutes_ago=10)
 
     _run_for_one_user(db, user)
@@ -163,7 +166,7 @@ def test_closed_window_with_matching_pause_marks_accepted(db, user):
 
 def test_closed_window_without_pause_marks_no_response(db, user):
     """No matching pause_event → 'no_response' with response_at set to now."""
-    row = _seed_prediction(db, fired_minutes_ago=15, predicted_minutes_ago=12)
+    row = _seed_prediction(db, fired_minutes_ago=23, predicted_minutes_ago=20)
 
     _run_for_one_user(db, user)
 
@@ -204,7 +207,7 @@ def test_other_user_pause_does_not_count(db, user):
     db.add(other)
     db.commit()
 
-    row = _seed_prediction(db, user_id=USER_ID, fired_minutes_ago=15, predicted_minutes_ago=12)
+    row = _seed_prediction(db, user_id=USER_ID, fired_minutes_ago=23, predicted_minutes_ago=20)
     _seed_pause_event(db, user_id=OTHER_USER_ID, paused_minutes_ago=10)
 
     _run_for_one_user(db, user)
@@ -213,11 +216,31 @@ def test_other_user_pause_does_not_count(db, user):
     assert row.user_response == "no_response"
 
 
-def test_pause_outside_window_does_not_count(db, user):
-    """A pause after predicted_at + ACCEPTANCE_WINDOW_MINUTES is too late."""
-    # Window: predicted_at is 20 min ago, window closed 15 min ago.
+def test_late_pause_inside_widened_window_now_counts(db, user):
+    """Regression for 2026-05-01 ACCEPTANCE_WINDOW 5→15 bump (operator
+    request: 'if user pauses during a 30 min window of the pause
+    prediction, confidence increases'). A pause 10 min after predicted_at
+    used to fall outside the old 5-min window and got recorded as
+    'no_response'; with the wider window it correctly counts as
+    'pause_now'."""
+    # predicted_at 20 min ago → window_end is 5 min ago (closed under
+    # window=15). pause 10 min ago is 10 min AFTER predicted_at —
+    # outside the old 5-min window, inside the new 15-min one.
     row = _seed_prediction(db, fired_minutes_ago=23, predicted_minutes_ago=20)
-    # Pause happened 10 min ago — 5 min after window closed.
+    evt = _seed_pause_event(db, paused_minutes_ago=10)
+
+    _run_for_one_user(db, user)
+
+    db.refresh(row)
+    assert row.user_response == "pause_now"
+    assert row.response_at == evt.paused_at_utc
+
+
+def test_pause_outside_window_does_not_count(db, user):
+    """A pause after predicted_at + ACCEPTANCE_WINDOW_MINUTES is too late.
+    Timing tuned for the 15-min window: predicted 40 min ago → window
+    closed 25 min ago. A pause 10 min ago is 15 min PAST window close."""
+    row = _seed_prediction(db, fired_minutes_ago=43, predicted_minutes_ago=40)
     _seed_pause_event(db, paused_minutes_ago=10)
 
     _run_for_one_user(db, user)

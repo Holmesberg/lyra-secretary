@@ -687,6 +687,27 @@ Thresholds (per-user, not aggregate): acceptance_rate ≥ 0.40 = ship; < 0.20 = 
 
 **Status:** VT-17 documented April 14, 2026. Pre-registered before any pause_prediction_log data lands. Distinguishing analyses and acceptance-rate formula are immutable.
 
+### VT-17e: Widened acceptance window (re-registration)
+*Added: 2026-05-01. New pre-registration with its own window start. Does NOT modify VT-17's original formula — that remains frozen and continues to be reported alongside this v2 metric.*
+
+**Motivation.** Operator request 2026-05-01 after observing a directionally-correct prediction recorded as `no_response` because the user paused 10 min after `predicted_at` (outside the original 5-min back edge): "increase the prediction threshold to be within +-15 mins ... if user pauses during a 30 min window of the pause prediction, confidence increases." The original 5-min window was set conservatively pre-data; with first-week operator data showing late-but-correct predictions, the window appears too tight to capture the predictor's real signal.
+
+**v2 acceptance-rate formula (parallel to VT-17 original, not replacing):**
+```
+acceptance_count_v2(user, window=7d)
+  := count of pause_prediction_log rows where
+       fired_at ∈ window
+       AND EXISTS a pause_event with paused_at_utc
+           ∈ [fired_at, predicted_at + 15 min]
+       AND user_id matches
+       (excludes pause_events with self_reported_retroactively=TRUE
+        — same VT-17d discipline applies)
+acceptance_rate_v2 := acceptance_count_v2 / total_fires
+```
+Thresholds: same as VT-17 (≥ 0.40 ship, < 0.20 kill). v2 window start: 2026-05-01 (date of this re-registration). Rows reconciled before this date keep their original `user_response` per the formula-freeze rule; new rows under v2 use the wider window. Code change in commit shipping this re-registration: `ACCEPTANCE_WINDOW_MINUTES = 5 → 15` in `app/workers/jobs/reconcile_responses.py`.
+
+**Decision rule for VT-17 vs VT-17e at write-up time.** Report both. If VT-17 (original) ships AND VT-17e (widened) ships, the predictor passes — both formulas agree it's predictive. If they disagree (e.g., v2 ships but original kills), the disagreement IS the finding — the predictor is directionally right but timing-late, which informs whether the 5-min or 15-min window matches the actual phenomenon being measured. Don't pick one formula post-hoc to rescue the result.
+
 ### VT-17d: Retroactive self-report stratification (permissive acceptance rate)
 *Added: April 22, 2026. Separate pre-registration with its own window start. Does NOT modify VT-17's frozen formula — parallel secondary analysis only.*
 
