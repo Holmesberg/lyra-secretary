@@ -111,7 +111,7 @@ def _make_task(db, *, state="PLANNED", voided=False, **overrides):
 def _make_session(db, task, *, stale=False, **overrides):
     """Create a StopwatchSession for a task."""
     sid = str(uuid4())
-    start = NOW - timedelta(hours=24) if stale else NOW - timedelta(minutes=30)
+    start = NOW - timedelta(hours=49) if stale else NOW - timedelta(minutes=30)
     defaults = dict(
         session_id=sid,
         task_id=task.task_id,

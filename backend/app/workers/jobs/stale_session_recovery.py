@@ -1,36 +1,38 @@
 """Stale session recovery background job.
 
-Sweeps unclosed StopwatchSession rows whose start_time is more than
-12 hours old and auto-closes them. Prevents the class of incident where
-a browser crash mid-pause, container restart before resume, or voided
-task leaves an orphan session that the banner surfaces forever (the 65h
-CO-block ghost, Apr 11 — LYR-103).
+Sweeps unclosed StopwatchSession rows and resolves them based on whether
+the user actually walked away vs. is mid-deep-work. Two distinct branches:
 
-Conservative by design:
-  * 12h threshold — catches forgotten paused sessions before compounding
-    while producing near-zero false positives for legitimate long tasks.
-    Lowered from 24h after Apr 12 dogfood evidence (16h 41m paused
-    session went undetected by auto-cleanup).
-  * **Skip currently-active session.** Apr 25 2026: the multi-tasking
-    swap fix introduced a path where a paused-with-open-session task gets
-    resumed (Redis active reset to it) even though its session.start_time
-    is well past the 12h cutoff. The recovery must not close a session the
-    user just deliberately resumed. Long deep-work sessions are also
-    legitimately old; same skip logic protects them.
-  * end_time_utc = start_time_utc + max(planned_duration, 1) min so the
-    row has a defensible duration rather than extending to "now".
-  * **Defense-in-depth task-state transition.** Apr 25 2026: when closing
-    an orphan session, also transition Task.state EXECUTING|PAUSED →
-    SKIPPED with initiation_status='orphaned_recovery' if the task has no
-    OTHER open session. Previously this transition was deferred to
-    orphan_task_recovery (a separate 15-min job), creating a window where
-    the task showed "Stop" but the stop endpoint returned "no active
-    stopwatch." Single-pass recovery closes the window.
-  * Per-user iteration via for_each_user so a bad row on one tenant
-    doesn't poison the sweep for everyone else.
+  * Paused-and-abandoned (session.paused_at_utc < now - 48h):
+      - executed_so_far ≥ 0.5 * planned → EXECUTED  (honest work, forgot to stop)
+      - executed_so_far <  0.5 * planned → SKIPPED  (early-stop gate)
+      Session ends at paused_at_utc; pause_event closed with duration=0.
+
+  * Active-and-abandoned (no pause, session.start_time_utc < now - 48h):
+      Always → SKIPPED. An unattended always-running timer cannot honestly
+      claim executed time; mark abandoned.
+
+48h chosen as the floor where Redis active-stopwatch state and the
+multi-tasking swap path start producing edge cases (stale rehydrated
+banners, ghost active keys). Higher thresholds were considered but
+deferred — paused state can't sit indefinitely without Redis-side risk.
+
+History:
+  * 2026-04-11 LYR-103: original 24h sweep landed (CO-block ghost incident).
+  * 2026-04-12: lowered to 12h after a 16h paused session went undetected.
+  * 2026-04-25: skip-active-session protection + defense-in-depth task-state
+    transition to SKIPPED to close the "Stop works but session is gone" window.
+  * 2026-05-01: reworked. The blanket 12h trigger killed a real 6h build
+    session paused for context-switch (operator incident, restored manually).
+    New policy distinguishes paused vs active, raises threshold to 48h on
+    both branches (Redis state can't tolerate forever-paused), and applies
+    the 50% early-stop gate so honest work resolves to EXECUTED instead of
+    SKIPPED. Negative pause_event.duration_minutes bug fixed in same pass.
 """
 import logging
 from datetime import timedelta
+
+import sqlalchemy as sa
 
 from app.db.models import PauseEvent, StopwatchSession, Task, TaskState, User
 from app.utils.redis_client import RedisClient
@@ -39,7 +41,9 @@ from app.workers.jobs._per_user import for_each_user
 
 logger = logging.getLogger(__name__)
 
-STALE_THRESHOLD_HOURS = 12
+STALE_PAUSE_HOURS = 48
+STALE_ACTIVE_HOURS = 48
+EARLY_STOP_FRACTION = 0.5  # mirrors stopwatch_manager early-stop gate
 
 
 def run_stale_session_recovery():
@@ -47,23 +51,17 @@ def run_stale_session_recovery():
 
 
 def _run_for_one_user(db, user: User):
-    cutoff = now_utc() - timedelta(hours=STALE_THRESHOLD_HOURS)
+    now = now_utc()
+    pause_cutoff = now - timedelta(hours=STALE_PAUSE_HOURS)
+    active_cutoff = now - timedelta(hours=STALE_ACTIVE_HOURS)
     redis = RedisClient()
 
-    stale = db.query(StopwatchSession).filter(
+    open_sessions = db.query(StopwatchSession).filter(
         StopwatchSession.end_time_utc.is_(None),
-        StopwatchSession.start_time_utc < cutoff,
     ).all()
-
-    if not stale:
+    if not open_sessions:
         return
 
-    # Read Redis active ONCE per user; the recovery loop uses it to skip
-    # the currently-active session (Apr 25 multi-tasking swap fix).
-    # Defensive: if Redis is unreachable (CI without redis service, network
-    # blip), the skip-active optimization is lost but recovery still runs
-    # correctly. The previous iteration-level try/except in the for-loop
-    # absorbed Redis failures the same way; this preserves that contract.
     try:
         active = redis.get_active_stopwatch(user.user_id)
         active_session_id = active.get("session_id") if active else None
@@ -75,11 +73,12 @@ def _run_for_one_user(db, user: User):
         active_session_id = None
 
     closed = 0
-    for session in stale:
+    executed_count = 0
+    skipped_count = 0
+
+    for session in open_sessions:
         try:
-            # Skip currently-active session — operator just resumed it
-            # via swap, or is in a long deep-work session. Closing the
-            # pointed-to session would clear Redis underneath the user.
+            # Skip currently-active session — operator deliberately on it.
             if active_session_id and session.session_id == active_session_id:
                 logger.info(
                     f"stale_session_recovery: skipping currently-active "
@@ -90,16 +89,36 @@ def _run_for_one_user(db, user: User):
             task = db.query(Task).filter(Task.task_id == session.task_id).first()
             if task and task.voided_at is not None:
                 continue
+
+            is_paused_branch = (
+                session.paused_at_utc is not None
+                and session.paused_at_utc < pause_cutoff
+            )
+            is_active_branch = (
+                session.paused_at_utc is None
+                and session.start_time_utc < active_cutoff
+            )
+            if not (is_paused_branch or is_active_branch):
+                continue  # threshold not tripped
+
             planned = max((task.planned_duration_minutes if task else None) or 60, 1)
-            end_time = session.start_time_utc + timedelta(minutes=planned)
+
+            if is_paused_branch:
+                # Honest end_time = the moment the user paused (intent-to-resume
+                # never realized). Executed time excludes prior closed pauses.
+                end_time = session.paused_at_utc
+            else:
+                # Active branch: synthetic end_time = start + planned. SKIPPED
+                # regardless, so this is for session-row data integrity only.
+                end_time = session.start_time_utc + timedelta(minutes=planned)
+
             session.end_time_utc = end_time
             session.auto_closed = True
             session.paused_at_utc = None
 
-            # Close any open pause_event rows for this session so pause-history
-            # analytics don't carry dangling opens. Clean-data filters still key
-            # off stopwatch_session.auto_closed (see _close_orphan_session in
-            # stopwatch_manager.py for the reasoning).
+            # Close any open pause_event rows. Clamp resumed_at >= paused_at and
+            # duration >= 0 — fixes Apr 30 bug where blindly setting
+            # resumed_at = end_time wrote negative durations when paused_at > end_time.
             open_events = (
                 db.query(PauseEvent)
                 .filter(
@@ -109,16 +128,31 @@ def _run_for_one_user(db, user: User):
                 .all()
             )
             for evt in open_events:
-                evt.resumed_at_utc = end_time
-                evt.duration_minutes = (
-                    (end_time - evt.paused_at_utc).total_seconds() / 60.0
+                evt.resumed_at_utc = max(evt.paused_at_utc, end_time)
+                evt.duration_minutes = max(
+                    0.0,
+                    (evt.resumed_at_utc - evt.paused_at_utc).total_seconds() / 60.0,
                 )
+            db.flush()
 
-            # Defense-in-depth: transition Task.state if it's still abandoned-shaped.
-            # Confirms there's no OTHER open session (multi-tasking case where
-            # this task somehow has multiple sessions across resume cycles —
-            # unlikely but defensive). Only transitions when this is the LAST
-            # open session for the task.
+            total_pause_minutes = float(
+                db.query(sa.func.coalesce(sa.func.sum(PauseEvent.duration_minutes), 0))
+                .filter(PauseEvent.session_id == session.session_id)
+                .scalar()
+                or 0
+            )
+            executed_minutes = max(
+                0.0,
+                (end_time - session.start_time_utc).total_seconds() / 60.0
+                - total_pause_minutes,
+            )
+
+            resolution = (
+                "EXECUTED"
+                if is_paused_branch and executed_minutes >= EARLY_STOP_FRACTION * planned
+                else "SKIPPED"
+            )
+
             if task and task.voided_at is None and task.state in (TaskState.EXECUTING, TaskState.PAUSED):
                 other_open = (
                     db.query(StopwatchSession)
@@ -130,14 +164,25 @@ def _run_for_one_user(db, user: User):
                     .first()
                 )
                 if not other_open:
-                    task.state = TaskState.SKIPPED
-                    task.initiation_status = "orphaned_recovery"
-                    task.last_modified_at = end_time
+                    if resolution == "EXECUTED":
+                        task.state = TaskState.EXECUTED
+                        task.executed_duration_minutes = int(round(executed_minutes))
+                        task.initiation_status = task.initiation_status or "initiated"
+                        task.last_modified_at = end_time
+                        executed_count += 1
+                    else:
+                        task.state = TaskState.SKIPPED
+                        task.initiation_status = "orphaned_recovery"
+                        task.last_modified_at = end_time
+                        skipped_count += 1
 
             closed += 1
             logger.warning(
                 f"stale_session_recovery: closed session_id={session.session_id} "
-                f"task_id={session.task_id} started_at={session.start_time_utc.isoformat()} "
+                f"task_id={session.task_id} "
+                f"branch={'paused' if is_paused_branch else 'active'} "
+                f"resolution={resolution} executed_min={executed_minutes:.1f} "
+                f"planned_min={planned} started_at={session.start_time_utc.isoformat()} "
                 f"user_id={user.user_id}"
             )
         except Exception as e:
@@ -150,16 +195,21 @@ def _run_for_one_user(db, user: User):
     try:
         db.commit()
         logger.info(
-            f"stale_session_recovery: closed {closed}/{len(stale)} stale sessions "
+            f"stale_session_recovery: closed {closed}/{len(open_sessions)} stale sessions "
+            f"({executed_count} EXECUTED, {skipped_count} SKIPPED) "
             f"for user_id={user.user_id}"
         )
-        # Operator fanout (2026-04-30): stale session recovery means
-        # a stopwatch was running for >12h with no stop signal — almost
-        # always a browser-crash artifact, but operator should see.
         if closed and user.is_operator:
             from app.services.operator_notifier import notify_operator
+            parts = []
+            if executed_count:
+                parts.append(f"{executed_count} EXECUTED (≥50% planned)")
+            if skipped_count:
+                parts.append(f"{skipped_count} SKIPPED")
+            detail = ", ".join(parts) if parts else "session-only"
             notify_operator(
-                f"Auto-closed *{closed}* stale stopwatch session(s) (open >12h).",
+                f"Auto-closed *{closed}* stale stopwatch session(s) "
+                f"(paused>24h or unattended>24h): {detail}.",
                 source="scheduler.stale-sessions",
                 severity="warn",
             )

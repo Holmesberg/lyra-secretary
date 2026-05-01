@@ -323,7 +323,7 @@ def test_stale_session_recovery_closes_open_pause_events(clean_state):
     user = db.query(User).filter(User.user_id == 1).first()
     assert user is not None, "fixture must seed user_id=1"
 
-    started = datetime.now(timezone.utc) - timedelta(hours=20)
+    started = datetime.now(timezone.utc) - timedelta(hours=49)
     task = Task(
         task_id=str(uuid4()),
         user_id=1,
