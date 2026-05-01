@@ -52,6 +52,11 @@ export interface TaskRow {
   deadline_id: string | null;
   deadline_match_source: string | null;
   deadline_match_confidence: number | null;
+  /** Operator-visibility chip 2026-05-01: bound deadline's title so
+   *  the /today + /calendar UI can show "↳ Lab 8 due Fri" inline,
+   *  letting the user verify auto-bindings landed correctly without
+   *  cross-referencing the /deadlines page. Null when unbound. */
+  deadline_title: string | null;
   // Workstream 1 LLM enrichment (alembic 036, 2026-04-28)
   llm_parse_status: LlmParseStatus | null;
   llm_inferred_deadline_id: string | null;

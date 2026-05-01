@@ -161,6 +161,20 @@ def query_tasks(
 
         # Batch-load session aggregates to avoid N+1.
         task_ids = [t.task_id for t in tasks]
+        # Batch-load deadline titles for any tasks that have a binding.
+        # Operator request 2026-05-01: surface the bound deadline title
+        # in /today so the user can verify the auto-bind landed on the
+        # right deadline. Single SQL — same trick as session_agg.
+        deadline_titles: dict[str, str] = {}
+        bound_deadline_ids = [t.deadline_id for t in tasks if t.deadline_id]
+        if bound_deadline_ids:
+            from app.db.models import Deadline
+            for did, title in (
+                db.query(Deadline.deadline_id, Deadline.title)
+                .filter(Deadline.deadline_id.in_(bound_deadline_ids))
+                .all()
+            ):
+                deadline_titles[did] = title
         session_agg: dict[str, dict] = {}
         if task_ids:
             agg_rows = (
@@ -215,6 +229,13 @@ def query_tasks(
                 "deadline_id": t.deadline_id,
                 "deadline_match_source": t.deadline_match_source,
                 "deadline_match_confidence": t.deadline_match_confidence,
+                # Operator request 2026-05-01: bound deadline title so
+                # /today + /calendar can render an inline chip
+                # ("↳ Lab 8 due Fri") proving the auto-bind landed.
+                "deadline_title": (
+                    deadline_titles.get(t.deadline_id)
+                    if t.deadline_id else None
+                ),
                 # Workstream 1 LLM enrichment (alembic 036, 2026-04-28).
                 # Without these, the LlmEnrichmentChip cannot render.
                 "llm_parse_status": t.llm_parse_status,

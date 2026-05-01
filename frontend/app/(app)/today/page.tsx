@@ -649,6 +649,7 @@ function TodayInner() {
       deadline_id: null,
       deadline_match_source: null,
       deadline_match_confidence: null,
+      deadline_title: null,
       llm_parse_status: null,
       llm_inferred_deadline_id: null,
       llm_deadline_match_confidence: null,
@@ -989,6 +990,7 @@ function TodayInner() {
                 deadline={item.deadline}
                 overdue={item.overdue}
                 onEdit={(d) => setEditingDeadline(d)}
+                onChanged={() => qc.invalidateQueries({ queryKey: ["deadlines"] })}
               />
             )
           )}

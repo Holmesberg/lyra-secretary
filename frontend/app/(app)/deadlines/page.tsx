@@ -5,6 +5,7 @@ import {
   type DeadlineResponse,
   type DeadlineState,
   listDeadlines,
+  updateDeadline,
   voidDeadline,
 } from "@/lib/deadlines";
 import { DeadlineModal } from "@/components/deadline-modal";
@@ -59,10 +60,27 @@ interface DeadlineRowProps {
   deadline: DeadlineResponse;
   onEdit: () => void;
   onVoid: () => void;
+  /** Fires after a successful inline state change (mark-done). Owner
+   *  refetches /v1/deadlines so the row updates. (2026-05-01) */
+  onChanged?: () => void;
 }
 
-function DeadlineRow({ deadline, onEdit, onVoid }: DeadlineRowProps) {
+function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) {
   const [confirming, setConfirming] = useState(false);
+  const [marking, setMarking] = useState(false);
+  const canMarkDone =
+    deadline.state === "planned" || deadline.state === "active";
+
+  async function handleMarkDone() {
+    if (marking) return;
+    setMarking(true);
+    try {
+      await updateDeadline(deadline.deadline_id, { state: "completed" });
+      onChanged?.();
+    } catch {
+      setMarking(false);
+    }
+  }
   return (
     <div className="terminal-panel flex items-start gap-3 p-4">
       <div className="flex-1 space-y-1">
@@ -103,6 +121,23 @@ function DeadlineRow({ deadline, onEdit, onVoid }: DeadlineRowProps) {
         )}
       </div>
       <div className="flex shrink-0 flex-col gap-1">
+        {/* One-click mark-done — operator pain point 2026-05-01 with
+            Moodle-imported overdue assignments they submitted out-of-
+            band but Lyra had no way to know about (iCal carries due
+            dates, NOT submission status). Surfaced on planned/active
+            deadlines only — terminal states (completed/missed/skipped)
+            don't get the button. */}
+        {canMarkDone && (
+          <button
+            type="button"
+            onClick={handleMarkDone}
+            disabled={marking}
+            title="Mark this deadline as completed"
+            className="rounded-sm border border-signal/40 bg-signal/10 px-2 py-1 text-[11px] text-signal transition-colors hover:bg-signal/20 disabled:opacity-40"
+          >
+            {marking ? "Saving…" : "✓ Done"}
+          </button>
+        )}
         <button
           type="button"
           onClick={onEdit}
@@ -147,6 +182,9 @@ interface SectionProps {
   deadlines: DeadlineResponse[];
   onEdit: (d: DeadlineResponse) => void;
   onVoid: (d: DeadlineResponse) => void;
+  /** Fires after an inline mark-done from DeadlineRow (2026-05-01).
+   *  Page-level owner re-fetches /v1/deadlines so the row updates. */
+  onChanged?: () => void;
   defaultOpen?: boolean;
   /** 'ember' colors the section header red for high-attention groupings
    *  (Overdue). Default 'dust' is the calm neutral treatment. */
@@ -158,6 +196,7 @@ function Section({
   deadlines,
   onEdit,
   onVoid,
+  onChanged,
   defaultOpen = true,
   tone = "dust",
 }: SectionProps) {
@@ -209,6 +248,7 @@ function Section({
               deadline={d}
               onEdit={() => onEdit(d)}
               onVoid={() => onVoid(d)}
+              onChanged={onChanged}
             />
           ))}
         </div>
@@ -334,6 +374,7 @@ export default function DeadlinesPage() {
             deadlines={overdue}
             onEdit={openEdit}
             onVoid={handleVoid}
+            onChanged={handleSaved}
             tone="ember"
           />
         </div>
@@ -345,6 +386,7 @@ export default function DeadlinesPage() {
           deadlines={active}
           onEdit={openEdit}
           onVoid={handleVoid}
+          onChanged={handleSaved}
         />
       )}
 
@@ -354,6 +396,7 @@ export default function DeadlinesPage() {
           deadlines={completed}
           onEdit={openEdit}
           onVoid={handleVoid}
+          onChanged={handleSaved}
           defaultOpen={false}
         />
       )}
@@ -364,6 +407,7 @@ export default function DeadlinesPage() {
           deadlines={skippedOnly}
           onEdit={openEdit}
           onVoid={handleVoid}
+          onChanged={handleSaved}
           defaultOpen={false}
         />
       )}

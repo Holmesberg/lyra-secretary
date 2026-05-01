@@ -12,12 +12,20 @@
  * dust text. A deadline is a marker, not an executable. The category
  * badge reuses `getCategoryColor` so user-customs match the rest of
  * the app.
+ *
+ * 2026-05-01 addition: inline "Mark done" button on non-terminal
+ * deadlines. Operator pain point with Moodle-imported overdue
+ * assignments — they submit in Moodle but Lyra has no way to know
+ * (iCal feeds carry due dates, not submission status). Inline
+ * one-click finish replaces the previous 4-click path through the
+ * edit modal. Click bubbling stopped so it doesn't open the modal.
  */
+import { useState } from "react";
 import { format } from "date-fns";
-import { Flag } from "lucide-react";
+import { Check, Flag, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCategoryColor } from "@/lib/categories";
-import type { DeadlineResponse } from "@/lib/deadlines";
+import { updateDeadline, type DeadlineResponse } from "@/lib/deadlines";
 
 interface Props {
   deadline: DeadlineResponse;
@@ -25,13 +33,33 @@ interface Props {
    *  active/planned. Renders an "overdue" pill so the operator notices. */
   overdue?: boolean;
   onEdit: (deadline: DeadlineResponse) => void;
+  /** Fires after a successful inline state change (mark-done). Page-level
+   *  owner refetches /v1/deadlines so the row updates. */
+  onChanged?: () => void;
 }
 
-export function DeadlineRow({ deadline, overdue, onEdit }: Props) {
+export function DeadlineRow({ deadline, overdue, onEdit, onChanged }: Props) {
   const due = deadline.due_at_utc ? new Date(deadline.due_at_utc) : null;
   const timeStr = due ? format(due, "h:mm a") : "—";
   const catColor = getCategoryColor(deadline.category_hint);
   const stateLabel = overdue ? "OVERDUE" : deadline.state.toUpperCase();
+  const [marking, setMarking] = useState(false);
+  const canMarkDone =
+    deadline.state === "planned" || deadline.state === "active";
+
+  async function handleMarkDone(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (marking) return;
+    setMarking(true);
+    try {
+      await updateDeadline(deadline.deadline_id, { state: "completed" });
+      onChanged?.();
+    } catch {
+      // Surface failure non-blockingly — operator will notice the row
+      // didn't transition + can retry via the edit modal.
+      setMarking(false);
+    }
+  }
 
   return (
     <div
@@ -109,6 +137,26 @@ export function DeadlineRow({ deadline, overdue, onEdit }: Props) {
         >
           {stateLabel}
         </span>
+      )}
+      {/* Inline mark-done. Surfaces on planned/active deadlines so the
+          operator can one-click finish a Moodle assignment they
+          submitted out-of-band. (Moodle iCal feeds carry due dates,
+          NOT submission status — Lyra has no other way to know.) */}
+      {canMarkDone && (
+        <button
+          type="button"
+          onClick={handleMarkDone}
+          disabled={marking}
+          title="Mark this deadline as completed"
+          className="inline-flex items-center gap-1 rounded-sm border border-signal/40 bg-signal/5 px-2 py-0.5 text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/15 disabled:opacity-40"
+        >
+          {marking ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Check className="h-3 w-3" />
+          )}
+          <span>{marking ? "saving" : "done"}</span>
+        </button>
       )}
     </div>
   );

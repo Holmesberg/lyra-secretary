@@ -107,6 +107,18 @@ export function TaskRow({
         onClick={() => state === "PLANNED" && onEdit?.(task)}
       >
         <div className="truncate text-sm text-parchment">{task.title}</div>
+        {/* Operator-visibility chip 2026-05-01: render the bound
+            deadline title inline so the user can verify the auto-bind
+            landed on the right deadline (the LlmEnrichmentChip below
+            only fires when the binding is in question — high-confidence
+            tier1_auto bindings auto-confirm silently and there's no
+            other surface that proves they bound until now). */}
+        {task.deadline_title && (
+          <div className="mt-0.5 flex items-center gap-1 truncate font-mono text-[10px] text-signal/70">
+            <span aria-hidden>↳</span>
+            <span className="truncate">due: {task.deadline_title}</span>
+          </div>
+        )}
         {/* LLM enrichment chip — magic-for-alpha W1, 2026-04-28.
             Only renders when llm_parse_status is 'enriched' AND the user
             hasn't already taken ownership of the binding. Self-suppresses

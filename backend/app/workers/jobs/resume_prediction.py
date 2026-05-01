@@ -172,20 +172,18 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
         usual_min = int(round(row.p75_pause_minutes))
         if fire_n == 1:
             msg = (
-                f"Resume nudge — *{task.title}* paused {paused_min} min "
-                f"(your usual is ~{usual_min} min for this kind of session)."
+                f"*{task.title}* paused {paused_min} min · usual is "
+                f"~{usual_min} min for this kind of session. No rush."
             )
         elif fire_n == 2:
             msg = (
-                f"*{task.title}* — still paused at {paused_min} min, "
-                f"well past your usual ~{usual_min}. Coming back, "
-                f"or want to mark it abandoned?"
+                f"*{task.title}* still paused at {paused_min} min · "
+                f"whenever you're ready."
             )
-        else:  # fire_n == 3 (and final per MAX_FIRES_PER_SESSION cap)
+        else:  # fire_n == 3 (final per MAX_FIRES_PER_SESSION cap)
             msg = (
-                f"Last nudge on *{task.title}* — {paused_min} min paused "
-                f"(usual ~{usual_min}). Tap to resume from /today, or "
-                f"mark abandoned. I'll stay quiet on this one now."
+                f"Last check on *{task.title}* — {paused_min} min paused. "
+                f"I'll stay quiet on this one now."
             )
         notify_operator(
             msg,
