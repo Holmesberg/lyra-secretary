@@ -219,11 +219,31 @@ export function IntegrationsSection() {
                       const res = await syncMoodleWSNow();
                       qc.invalidateQueries({ queryKey: ["integrations"] });
                       qc.invalidateQueries({ queryKey: ["deadlines"] });
+                      const backfilled =
+                        res.backfilled_completed +
+                        res.backfilled_planned +
+                        res.backfilled_missed;
+                      const parts: string[] = [];
+                      if (res.marked_complete > 0) {
+                        parts.push(
+                          `marked ${res.marked_complete} complete`
+                        );
+                      }
+                      if (backfilled > 0) {
+                        const segs: string[] = [];
+                        if (res.backfilled_completed > 0)
+                          segs.push(`${res.backfilled_completed} done`);
+                        if (res.backfilled_missed > 0)
+                          segs.push(`${res.backfilled_missed} missed`);
+                        if (res.backfilled_planned > 0)
+                          segs.push(`${res.backfilled_planned} upcoming`);
+                        parts.push(`imported ${segs.join(", ")}`);
+                      }
                       setBanner({
                         kind: "success",
                         title:
-                          res.marked_complete > 0
-                            ? `Auto-marked ${res.marked_complete} deadline${res.marked_complete === 1 ? "" : "s"} complete.`
+                          parts.length > 0
+                            ? `Synced — ${parts.join(" · ")}.`
                             : `Synced — nothing new to mark complete.`,
                       });
                     } catch (e) {
@@ -264,7 +284,7 @@ export function IntegrationsSection() {
         <MoodleConnectModal
           open={moodleModalOpen}
           onOpenChange={setMoodleModalOpen}
-          onConnected={(createdCount) => {
+          onConnected={(result) => {
             qc.invalidateQueries({ queryKey: ["integrations"] });
             qc.invalidateQueries({ queryKey: ["deadlines"] });
             qc.invalidateQueries({
@@ -272,15 +292,21 @@ export function IntegrationsSection() {
                 typeof q.queryKey[0] === "string" &&
                 (q.queryKey[0] as string).startsWith("deadline"),
             });
+            const ical = result?.ical ?? null;
+            const wsOn = !!result?.ws;
+            const parts: string[] = [];
+            if (ical !== null) {
+              parts.push(
+                ical > 0
+                  ? `${ical} ${ical === 1 ? "deadline" : "deadlines"} imported`
+                  : "no new deadlines yet"
+              );
+            }
+            if (wsOn) parts.push("auto-mark on submission enabled");
             setBanner({
               kind: "success",
               title: `Moodle connected.`,
-              detail:
-                createdCount > 0
-                  ? `${createdCount} ${
-                      createdCount === 1 ? "deadline" : "deadlines"
-                    } imported.`
-                  : "No deadlines yet — the next sync will catch new ones.",
+              detail: parts.length ? parts.join(" · ") : undefined,
             });
           }}
         />

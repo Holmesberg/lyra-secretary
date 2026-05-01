@@ -117,3 +117,26 @@ Per `feedback_migration_first` memory: SQL migration on Supabase BEFORE pulling 
 6. **Verify the job.** `docker-compose logs backend | grep moodle` should show `moodle: user N sync ok` lines after the first 6h tick.
 
 If anything blocks, the rollback is: `DELETE FROM "user" WHERE moodle_ics_url IS NOT NULL` (clears all Moodle data) + revert the commit. Imported deadlines are still Lyra rows so they persist with `external_source='moodle_ics'` — the `WHERE external_source IS NULL` filters keep H2 safe even if the integration is rolled back.
+
+---
+
+## v1.1 — Web Services submission detection + backfill (2026-05-01)
+
+`backend/app/services/moodle_submissions_sync.py` adds a second sync layer using Moodle's REST API (token from Moodle → Preferences → Security keys, stored on `user.moodle_ws_token` per alembic 043). Runs every 6h alongside the iCal job.
+
+**Two responsibilities:**
+
+1. **Mark complete.** Match each active iCal-imported deadline to a Moodle assignment (course-code constrained — see operator decision below — then title-fuzzy + due-date proximity); if Moodle reports `submission.status='submitted'` or any non-null grade, transition the deadline to `state='completed'` with `completed_at=now()`.
+
+2. **Backfill (operator request 2026-05-01).** For Moodle assignments that don't match any existing Lyra deadline (because the iCal feed's "Recent and upcoming" filter excluded them), create new deadlines tagged `external_source='moodle_ws_backfill'`:
+   - Submitted → `state='completed'`, `completed_at` from Moodle's `submission.timemodified`
+   - Unsubmitted + past due → `state='missed'`
+   - Unsubmitted + future due → `state='planned'`
+
+   Window: 90 days back + all future. Dedup against any existing iCal/backfill deadline (including voided rows so explicit user voids aren't resurrected) via three tiers: exact `external_id`, course-code + due-date within 6h, fuzzy title + course-code + due-date within 24h.
+
+**Course-code constraint.** Match logic requires the same course code (regex `\b[A-Z]{2,5}\d{2,4}\b` against `category_hint` for Lyra side and `course.shortname` for Moodle side) before considering title similarity. Came from the operator's false-positive: "Formative quiz 1 closes" (CSE281) was matching "Quiz 1 (5 marks)" (PHM112) on text alone. Course code is the structural noise filter; title is the within-course tie-breaker.
+
+**Research integrity (VT-29 / H1).** Backfilled deadlines carry `external_source='moodle_ws_backfill'`, so research queries filtering `WHERE external_source IS NULL` continue to exclude them — same template as the iCal layer.
+
+**Operator-only today.** Resolves Moodle's userid from env `MOODLE_WS_USERID` (single global). Multi-user requires a per-user `moodle_userid` column — Phase B+1 work.

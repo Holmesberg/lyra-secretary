@@ -257,7 +257,11 @@ export interface MoodleWSSyncResponse {
   marked_complete: number;
   skipped_no_match: number;
   skipped_not_submitted: number;
+  backfilled_completed: number;
+  backfilled_planned: number;
+  backfilled_missed: number;
   marked_titles: string[];
+  backfilled_titles: string[];
   error: string | null;
 }
 

@@ -296,3 +296,282 @@ def test_sync_user_skips_terminal_state_deadlines(db, monkeypatch):
     # Terminal state filters out from the candidate set entirely.
     assert res.matched == 0
     assert d.state == "completed"  # unchanged
+
+
+# ---------------------------------------------------------------------------
+# Backfill — operator request 2026-05-01: "submitted tasks pop up" +
+# "could Lyra pick up other unsubmitted as overdue".
+# ---------------------------------------------------------------------------
+
+
+def test_sync_user_backfills_submitted_assignment_as_completed(db, monkeypatch):
+    """Operator's primary ask: when WS sees a submitted assignment that
+    isn't represented in Lyra (iCal feed dropped it), create a completed
+    deadline so it shows up on the Done tab."""
+    from app.db.models import Deadline as DeadlineModel
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+
+    submitted_at = datetime(2026, 4, 20, 14, 30, 0)
+    courses = [{"id": 100, "shortname": "CSE281 (UG2023)"}]
+    assignments_by_course = {
+        100: [{
+            "id": 44612,
+            "name": "HandsOn1 Lab2",
+            "duedate": int(datetime(2026, 2, 23, 21, 59).timestamp()),
+        }],
+    }
+    submission_status_by_assign = {
+        44612: {
+            "lastattempt": {
+                "submission": {
+                    "status": "submitted",
+                    "timemodified": int(submitted_at.timestamp()),
+                }
+            }
+        }
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+    res = sync_user(user, "https://lms.test/", db)
+    db.commit()
+
+    assert res.backfilled_completed == 1
+    assert res.backfilled_missed == 0
+    assert res.backfilled_planned == 0
+
+    backfilled = db.query(DeadlineModel).filter(
+        DeadlineModel.external_source == "moodle_ws_backfill"
+    ).all()
+    assert len(backfilled) == 1
+    bf = backfilled[0]
+    assert bf.state == "completed"
+    assert bf.completed_at == submitted_at
+    assert bf.title == "HandsOn1 Lab2"
+    assert bf.external_id == "44612"
+    assert bf.category_hint == "CSE281"
+
+
+def test_sync_user_backfills_overdue_unsubmitted_as_missed(db, monkeypatch):
+    """Operator's secondary ask: pick up unsubmitted past-due
+    assignments as missed deadlines so they're visible."""
+    from app.db.models import Deadline as DeadlineModel
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+
+    past_due = datetime.utcnow() - timedelta(days=10)
+    courses = [{"id": 100, "shortname": "CSE221"}]
+    assignments_by_course = {
+        100: [{
+            "id": 45630,
+            "name": "Lab 0 Mars Assignment",
+            "duedate": int(past_due.timestamp()),
+        }],
+    }
+    submission_status_by_assign = {
+        45630: {"lastattempt": {"submission": {"status": "new"}}}
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+    res = sync_user(user, "https://lms.test/", db)
+    db.commit()
+
+    assert res.backfilled_missed == 1
+    assert res.backfilled_completed == 0
+    bf = db.query(DeadlineModel).filter(
+        DeadlineModel.external_source == "moodle_ws_backfill"
+    ).first()
+    assert bf is not None
+    assert bf.state == "missed"
+    assert bf.completed_at is None
+
+
+def test_sync_user_backfills_future_unsubmitted_as_planned(db, monkeypatch):
+    """Future-due unsubmitted assignment with no Lyra deadline → create
+    as planned (the iCal feed missed it)."""
+    from app.db.models import Deadline as DeadlineModel
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+
+    future_due = datetime.utcnow() + timedelta(days=14)
+    courses = [{"id": 100, "shortname": "CSE242"}]
+    assignments_by_course = {
+        100: [{
+            "id": 44864,
+            "name": "Term Project milestone 3",
+            "duedate": int(future_due.timestamp()),
+        }],
+    }
+    submission_status_by_assign = {
+        44864: {"lastattempt": {"submission": {"status": "new"}}}
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+    res = sync_user(user, "https://lms.test/", db)
+    db.commit()
+
+    assert res.backfilled_planned == 1
+    bf = db.query(DeadlineModel).filter(
+        DeadlineModel.external_source == "moodle_ws_backfill"
+    ).first()
+    assert bf is not None
+    assert bf.state == "planned"
+
+
+def test_sync_user_backfill_dedupes_against_existing_ical_deadline(db, monkeypatch):
+    """Critical: don't double-create when iCal already imported the
+    same assignment under a different external_id."""
+    from app.db.models import Deadline as DeadlineModel
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+
+    due = datetime(2026, 4, 24, 20, 59, 0)
+    # Simulate existing iCal deadline (state=planned). The one in the
+    # operator's actual DB.
+    existing = _make_deadline(
+        db, user.user_id,
+        title="HandsOn Lab8 is due",
+        due_at=due,
+        category_hint="CSE281",
+        state="planned",
+    )
+
+    courses = [{"id": 100, "shortname": "CSE281"}]
+    assignments_by_course = {
+        100: [{"id": 45928, "name": "HandsOn Lab8", "duedate": int(due.timestamp())}],
+    }
+    submission_status_by_assign = {
+        45928: {"lastattempt": {"submission": {"status": "submitted"}}}
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+    res = sync_user(user, "https://lms.test/", db)
+    db.commit()
+    db.refresh(existing)
+
+    # iCal deadline got marked complete via matched_pairs; no backfill.
+    assert res.matched == 1
+    assert res.marked_complete == 1
+    assert res.backfilled_completed == 0
+    assert existing.state == "completed"
+    bf = db.query(DeadlineModel).filter(
+        DeadlineModel.external_source == "moodle_ws_backfill"
+    ).all()
+    assert bf == []
+
+
+def test_sync_user_backfill_skips_assignments_without_duedate(db, monkeypatch):
+    """duedate=0 means a Moodle 'info' assignment (lecture notes,
+    course contents). Never useful to backfill."""
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+
+    courses = [{"id": 100, "shortname": "PHM112"}]
+    assignments_by_course = {
+        100: [
+            {"id": 1, "name": "Lecture notes 1", "duedate": 0},
+            {"id": 2, "name": "Course contents", "duedate": 0},
+        ],
+    }
+    submission_status_by_assign = {
+        1: {"lastattempt": {"submission": {"status": "submitted"}}},
+        2: {"lastattempt": {"submission": {"status": "submitted"}}},
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+    res = sync_user(user, "https://lms.test/", db)
+    assert res.backfilled_completed == 0
+    assert res.backfilled_planned == 0
+    assert res.backfilled_missed == 0
+
+
+def test_sync_user_backfill_skips_outside_window(db, monkeypatch):
+    """Backfill window is 90d back. Assignments older than that get
+    skipped to avoid dragging in last semester's noise."""
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+
+    very_old = datetime.utcnow() - timedelta(days=200)
+    courses = [{"id": 100, "shortname": "CSE243"}]
+    assignments_by_course = {
+        100: [{"id": 99, "name": "Old assignment", "duedate": int(very_old.timestamp())}],
+    }
+    submission_status_by_assign = {
+        99: {"lastattempt": {"submission": {"status": "submitted"}}}
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+    res = sync_user(user, "https://lms.test/", db)
+    assert res.backfilled_completed == 0
+
+
+def test_sync_user_backfill_is_idempotent(db, monkeypatch):
+    """Running sync twice shouldn't create two copies of the same
+    backfilled deadline (external_id dedup)."""
+    from app.db.models import Deadline as DeadlineModel
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+
+    due = datetime.utcnow() - timedelta(days=20)
+    courses = [{"id": 100, "shortname": "CSE221"}]
+    assignments_by_course = {
+        100: [{"id": 12345, "name": "Some assignment", "duedate": int(due.timestamp())}],
+    }
+    submission_status_by_assign = {
+        12345: {
+            "lastattempt": {
+                "submission": {
+                    "status": "submitted",
+                    "timemodified": int(due.timestamp()),
+                }
+            }
+        }
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+    res1 = sync_user(user, "https://lms.test/", db)
+    db.commit()
+    res2 = sync_user(user, "https://lms.test/", db)
+    db.commit()
+
+    assert res1.backfilled_completed == 1
+    assert res2.backfilled_completed == 0  # second run dedups
+    bf = db.query(DeadlineModel).filter(
+        DeadlineModel.external_source == "moodle_ws_backfill"
+    ).all()
+    assert len(bf) == 1

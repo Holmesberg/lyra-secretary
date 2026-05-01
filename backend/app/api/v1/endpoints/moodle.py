@@ -290,11 +290,27 @@ def post_moodle_ws_sync_now(db: Session = Depends(get_db)) -> dict[str, Any]:
     # Telegram fanout if anything changed (operator-only — mirrors
     # the existing scheduler.moodle pattern, prevents non-operator
     # noise post-multi-user expansion).
-    if user.is_operator and result.marked_complete:
+    backfilled_total = (
+        result.backfilled_completed
+        + result.backfilled_planned
+        + result.backfilled_missed
+    )
+    if user.is_operator and (result.marked_complete or backfilled_total):
         from app.services.operator_notifier import notify_operator
+        lines = []
+        if result.marked_complete:
+            lines.append(f"Auto-marked *{result.marked_complete}* deadline(s) complete:")
+            lines.extend(f"• {t}" for t in result.marked_titles)
+        if backfilled_total:
+            lines.append(
+                f"Backfilled *{backfilled_total}* assignment(s) "
+                f"({result.backfilled_completed} done, "
+                f"{result.backfilled_missed} missed, "
+                f"{result.backfilled_planned} planned):"
+            )
+            lines.extend(f"• {t}" for t in result.backfilled_titles)
         notify_operator(
-            f"Moodle submissions sync — auto-marked *{result.marked_complete}* deadline(s) complete:\n"
-            + "\n".join(f"• {t}" for t in result.marked_titles),
+            "Moodle WS sync —\n" + "\n".join(lines),
             source="moodle.ws-sync",
             severity="info",
         )
@@ -305,7 +321,11 @@ def post_moodle_ws_sync_now(db: Session = Depends(get_db)) -> dict[str, Any]:
         "marked_complete": result.marked_complete,
         "skipped_no_match": result.skipped_no_match,
         "skipped_not_submitted": result.skipped_not_submitted,
+        "backfilled_completed": result.backfilled_completed,
+        "backfilled_planned": result.backfilled_planned,
+        "backfilled_missed": result.backfilled_missed,
         "marked_titles": result.marked_titles,
+        "backfilled_titles": result.backfilled_titles,
         "error": result.error,
     }
 
