@@ -608,15 +608,26 @@ class User(Base):
     # automatic submission detection — when set, the
     # moodle_submissions_sync job queries WS for each task-bound
     # imported deadline and auto-marks completed when Moodle confirms
-    # submission/grading. Same trust class as moodle_ics_url
-    # (plaintext, Fernet deferred to Phase 6+). NEVER returned in any
-    # API response (only "is set: bool" via /v1/integrations).
+    # submission/grading. Encrypted-at-rest via Fernet from alembic 044
+    # — see utils/encryption.py. Stored format: `"fernet:" + base64`
+    # for new connections; legacy operator row may be raw plaintext
+    # (the prefix-sniffing decryptor handles both transparently).
+    # NEVER returned in any API response (only "is set: bool" via
+    # /v1/integrations).
     moodle_ws_token: Mapped[Optional[str]] = mapped_column(Text)
     moodle_ws_last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     # Set on permanent WS failure (e.g., 'invalidtoken' — operator
     # rotated the token in Moodle). Frontend surfaces "Reconnect Web
     # Services" prompt; cleared on successful reconnect.
     moodle_ws_disconnect_reason: Mapped[Optional[str]] = mapped_column(String(64))
+    # Per-user Moodle userid + base URL (alembic 044, 2026-05-01).
+    # Captured at WS connect from core_webservice_get_site_info; the
+    # WS token is bound to its user and Moodle rejects cross-user
+    # queries with accessexception. Pre-044 operator row may have NULL
+    # values; sync_user falls back to env (MOODLE_WS_USERID,
+    # MOODLE_WS_BASE_URL) for that case.
+    moodle_userid: Mapped[Optional[int]] = mapped_column(Integer)
+    moodle_base_url: Mapped[Optional[str]] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     # Alpha funnel instrumentation (alembic 037, 2026-04-28). Tracks the
     # operator's North Star metric: task_created + timer_started within

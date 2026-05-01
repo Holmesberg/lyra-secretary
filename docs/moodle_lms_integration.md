@@ -139,4 +139,32 @@ If anything blocks, the rollback is: `DELETE FROM "user" WHERE moodle_ics_url IS
 
 **Research integrity (VT-29 / H1).** Backfilled deadlines carry `external_source='moodle_ws_backfill'`, so research queries filtering `WHERE external_source IS NULL` continue to exclude them — same template as the iCal layer.
 
-**Operator-only today.** Resolves Moodle's userid from env `MOODLE_WS_USERID` (single global). Multi-user requires a per-user `moodle_userid` column — Phase B+1 work.
+## v1.2 — Multi-user + Fernet encryption (2026-05-01, alembic 044)
+
+Discovered while answering operator's question "would [WS backfill] also work for users too?" — answer was no, the v1.1 ship resolved Moodle's userid from a single global env (`MOODLE_WS_USERID`). Any non-operator user connecting WS would hit Moodle's permission model: a wstoken is bound to its user, so `core_enrol_get_users_courses(userid=<other>)` raises `accessexception` → my code flips `moodle_ws_disconnect_reason='invalidtoken'` even though the token is valid. Net effect: alpha-blocking.
+
+**Schema (alembic 044):**
+- `user.moodle_userid INTEGER` — captured from `core_webservice_get_site_info`'s response at WS connect.
+- `user.moodle_base_url VARCHAR(512)` — per-user (different schools = different Moodle hosts; ASU is `lms.eng.asu.edu.eg`, but the column makes us host-agnostic for future cohorts).
+
+**Resolution chain at connect time** (in priority order):
+1. Body param `base_url` (explicit override)
+2. Derive from `user.moodle_ics_url` host (works whenever the user has connected the iCal calendar)
+3. Env `MOODLE_WS_BASE_URL` (legacy operator fallback)
+
+For the alpha (ASU only), the env fallback handles users who paste only the WS token without the calendar URL — they're all on the same Moodle host. Once the cohort expands, the iCal-derive path covers any school the user has connected; the env can be retired.
+
+**Encryption (Fernet, `utils/encryption.py`):**
+Token stored as `"fernet:" + base64(encrypted)`. Key derived from `SECRET_KEY` via SHA-256 → urlsafe-base64. The legacy operator's plaintext token continues to work via prefix-sniff: `decrypt_secret()` returns the value unchanged if it doesn't carry the `fernet:` prefix. No forced re-connect, no data migration.
+
+Future rotation: rotating `SECRET_KEY` invalidates all Fernet-encrypted tokens. Phase 6+ will add an HKDF salt + key-version column for safe rotation; for v1.2 the trade-off is "encrypt the WS token now, accept that key rotation = forced re-connect."
+
+**Sync_user resolution chain** (similar pattern):
+- `moodle_userid`: `user.moodle_userid` → env fallback (`MOODLE_WS_USERID`)
+- `base_url`: `user.moodle_base_url` → env fallback (`MOODLE_WS_BASE_URL`)
+- token: decrypt if `fernet:`-prefixed, else raw
+
+**Tests** (`test_moodle_submissions_sync.py`):
+- `test_sync_user_uses_per_user_moodle_userid_when_set` — two users with different IDs each get their own
+- `test_sync_user_falls_back_to_env_when_per_user_userid_null` — legacy operator path
+- `test_sync_user_decrypts_fernet_prefixed_token` — round-trip through encryption

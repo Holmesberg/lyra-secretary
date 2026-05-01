@@ -24,3 +24,8 @@ google-auth==2.34.0
 # RFC 5545 line-folding, escape sequences, RRULE expansion, and TZ
 # normalization. See services/moodle_ics_sync.py.
 icalendar==5.0.11
+# Fernet symmetric encryption for credential-class secrets (Moodle WS
+# token from 2026-05-01 multi-user ship; google_refresh_token + iCal URL
+# remain plaintext per existing trust class — Phase 6+ work). Key derived
+# from SECRET_KEY at module init. See utils/encryption.py.
+cryptography==42.0.5

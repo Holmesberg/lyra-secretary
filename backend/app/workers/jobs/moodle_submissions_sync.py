@@ -30,10 +30,12 @@ def run_moodle_submissions_sync() -> None:
 def _run_for_one_user(db, user: User) -> None:
     if not user.moodle_ws_token:
         return
-    base_url = os.environ.get("MOODLE_WS_BASE_URL", "")
+    # Per-user base URL (alembic 044), env fallback for legacy operator
+    # row pre-044.
+    base_url = user.moodle_base_url or os.environ.get("MOODLE_WS_BASE_URL", "")
     if not base_url:
         logger.warning(
-            "moodle_ws: MOODLE_WS_BASE_URL not set — cannot sync user %s",
+            "moodle_ws: no base URL for user %s (column NULL + env unset)",
             user.user_id,
         )
         return
@@ -56,21 +58,38 @@ def _run_for_one_user(db, user: User) -> None:
             )
         return
 
+    backfilled = (
+        result.backfilled_completed
+        + result.backfilled_planned
+        + result.backfilled_missed
+    )
     logger.info(
         "moodle_ws: user %s sync ok — matched=%d marked_complete=%d "
-        "skipped_no_match=%d skipped_not_submitted=%d",
+        "skipped_no_match=%d skipped_not_submitted=%d backfilled=%d",
         user.user_id,
         result.matched,
         result.marked_complete,
         result.skipped_no_match,
         result.skipped_not_submitted,
+        backfilled,
     )
 
-    if user.is_operator and result.marked_complete:
+    if user.is_operator and (result.marked_complete or backfilled):
+        lines = []
+        if result.marked_complete:
+            lines.append(
+                f"Auto-marked *{result.marked_complete}* deadline(s) complete:"
+            )
+            lines.extend(f"• {t}" for t in result.marked_titles)
+        if backfilled:
+            lines.append(
+                f"Backfilled *{backfilled}* assignment(s) "
+                f"({result.backfilled_completed} done, "
+                f"{result.backfilled_missed} missed, "
+                f"{result.backfilled_planned} planned)."
+            )
         notify_operator(
-            f"Moodle auto-mark — *{result.marked_complete}* deadline(s) "
-            f"completed after submission detection:\n"
-            + "\n".join(f"• {t}" for t in result.marked_titles),
+            "Moodle WS sync —\n" + "\n".join(lines),
             source="scheduler.moodle-ws",
             severity="info",
         )

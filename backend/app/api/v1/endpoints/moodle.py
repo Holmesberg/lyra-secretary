@@ -216,23 +216,41 @@ def post_moodle_ws_connect(
 ) -> dict[str, Any]:
     """Store the Moodle Web Services token. Validates by hitting
     `core_webservice_get_site_info` once before persisting — bad
-    tokens fail with 400 and never reach the DB."""
+    tokens fail with 400 and never reach the DB.
+
+    Multi-user safe (alembic 044, 2026-05-01): captures the Moodle
+    userid from site_info and stores it on `user.moodle_userid` so
+    sync_user uses each user's own ID instead of a global env. Also
+    persists the per-user base URL (Moodle hosts differ across schools).
+
+    Token is encrypted via Fernet before storage (utils/encryption.py).
+    Stored as `"fernet:" + base64`; the prefix-sniff decryptor in
+    sync_user handles both encrypted and legacy plaintext rows.
+    """
     user = _current_user(db)
     token = body.ws_token.strip()
     if len(token) < 16:  # Moodle tokens are 32 chars; sanity floor
         raise HTTPException(status_code=400, detail="ws_token_too_short")
 
-    # Resolve base URL: explicit body param wins, else env, else
-    # require operator to have it set somewhere.
+    # Resolve base URL: explicit body param wins, else derive from the
+    # user's iCal URL (same Moodle instance), else env fallback for the
+    # legacy operator row.
     import os
-    base_url = (body.base_url or os.environ.get("MOODLE_WS_BASE_URL", "")).strip()
+    base_url = (body.base_url or "").strip()
+    if not base_url and user.moodle_ics_url:
+        from urllib.parse import urlparse
+        parsed = urlparse(user.moodle_ics_url)
+        if parsed.scheme and parsed.netloc:
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+    if not base_url:
+        base_url = os.environ.get("MOODLE_WS_BASE_URL", "").strip()
     if not base_url:
         raise HTTPException(
             status_code=400,
-            detail="moodle_ws_base_url_missing — set MOODLE_WS_BASE_URL env or pass base_url in request",
+            detail="moodle_ws_base_url_missing — connect Moodle calendar first or pass base_url in request",
         )
 
-    # Validate the token live before persisting.
+    # Validate the token live + capture the userid in one round-trip.
     import httpx
     try:
         r = httpx.get(
@@ -251,6 +269,12 @@ def post_moodle_ws_connect(
                 status_code=400,
                 detail=f"ws_token_rejected: {body_json.get('errorcode', '?')}",
             )
+        moodle_userid = body_json.get("userid") if isinstance(body_json, dict) else None
+        if not isinstance(moodle_userid, int) or moodle_userid <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="ws_validation_failed: site_info returned no userid",
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -259,7 +283,10 @@ def post_moodle_ws_connect(
             detail=f"ws_validation_failed: {type(e).__name__}",
         )
 
-    user.moodle_ws_token = token
+    from app.utils.encryption import encrypt_secret
+    user.moodle_ws_token = encrypt_secret(token)
+    user.moodle_userid = moodle_userid
+    user.moodle_base_url = base_url
     user.moodle_ws_disconnect_reason = None
     db.commit()
     return {"ok": True}
@@ -277,8 +304,10 @@ def post_moodle_ws_sync_now(db: Session = Depends(get_db)) -> dict[str, Any]:
     if not user.moodle_ws_token:
         raise HTTPException(status_code=400, detail="moodle_ws_not_connected")
 
+    # Per-user base URL (alembic 044), env fallback for legacy operator
+    # row pre-044.
     import os
-    base_url = os.environ.get("MOODLE_WS_BASE_URL", "")
+    base_url = user.moodle_base_url or os.environ.get("MOODLE_WS_BASE_URL", "")
     if not base_url:
         raise HTTPException(
             status_code=500, detail="moodle_ws_base_url_missing"

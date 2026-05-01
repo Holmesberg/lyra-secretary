@@ -535,6 +535,91 @@ def test_sync_user_backfill_skips_outside_window(db, monkeypatch):
     assert res.backfilled_completed == 0
 
 
+def test_sync_user_uses_per_user_moodle_userid_when_set(db, monkeypatch):
+    """Multi-user safety (alembic 044): two users with different
+    moodle_userid values must each query Moodle with their own ID,
+    not a global env. Without this, user B's sync would query user A's
+    Moodle data and break with accessexception."""
+    user_a = _make_user(db, ws_token="tok-aaaaaaaaaaaaaaaa")
+    user_a.moodle_userid = 100
+    user_b = _make_user(db, ws_token="tok-bbbbbbbbbbbbbbbb")
+    user_b.moodle_userid = 200
+    db.commit()
+
+    seen_userids: list[int] = []
+
+    def _spy_call(self, fn, **params):
+        if fn == "core_enrol_get_users_courses":
+            seen_userids.append(int(params["userid"]))
+            return []
+        return {"courses": []}
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "9999"  # would be used as fallback
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call", _spy_call
+    )
+    set_current_user_id(user_a.user_id)
+    sync_user(user_a, "https://lms.test/", db)
+    set_current_user_id(user_b.user_id)
+    sync_user(user_b, "https://lms.test/", db)
+
+    assert seen_userids == [100, 200]  # NOT [9999, 9999]
+
+
+def test_sync_user_falls_back_to_env_when_per_user_userid_null(db, monkeypatch):
+    """Pre-044 operator row has NULL moodle_userid; sync must still
+    work via env fallback so we don't break the operator on deploy."""
+    user = _make_user(db)
+    user.moodle_userid = None
+    db.commit()
+    set_current_user_id(user.user_id)
+
+    seen_userids: list[int] = []
+
+    def _spy_call(self, fn, **params):
+        if fn == "core_enrol_get_users_courses":
+            seen_userids.append(int(params["userid"]))
+            return []
+        return {"courses": []}
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call", _spy_call
+    )
+    sync_user(user, "https://lms.test/", db)
+    assert seen_userids == [34554]
+
+
+def test_sync_user_decrypts_fernet_prefixed_token(db, monkeypatch):
+    """Tokens stored as `fernet:...` must decrypt before passing to
+    Moodle. Plaintext rows (legacy operator) keep working."""
+    from app.utils.encryption import encrypt_secret
+
+    encrypted = encrypt_secret("the-real-token-1234567890ab")
+    assert encrypted.startswith("fernet:")
+    user = _make_user(db, ws_token=encrypted)
+    user.moodle_userid = 100
+    db.commit()
+    set_current_user_id(user.user_id)
+
+    seen_tokens: list[str] = []
+
+    def _spy_call(self, fn, **params):
+        seen_tokens.append(self.token)
+        return [] if fn == "core_enrol_get_users_courses" else {"courses": []}
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "100"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call", _spy_call
+    )
+    sync_user(user, "https://lms.test/", db)
+    assert seen_tokens
+    assert seen_tokens[0] == "the-real-token-1234567890ab"
+
+
 def test_sync_user_backfill_is_idempotent(db, monkeypatch):
     """Running sync twice shouldn't create two copies of the same
     backfilled deadline (external_id dedup)."""

@@ -318,22 +318,23 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
     # path below is the operator's main case (iCal feed is sparse, WS
     # has the full submission history).
 
-    ws = _MoodleWS(base_url, user.moodle_ws_token)
+    # Decrypt token (returns raw if legacy plaintext, decrypts if
+    # `fernet:`-prefixed). None on decrypt failure → treat as needs
+    # reconnect.
+    from app.utils.encryption import decrypt_secret
+    token_plain = decrypt_secret(user.moodle_ws_token)
+    if not token_plain:
+        user.moodle_ws_disconnect_reason = "token_decrypt_failed"
+        result.error = "token_decrypt_failed"
+        return result
+    ws = _MoodleWS(base_url, token_plain)
 
-    # Resolve MOODLE userid (NOT Lyra user_id — the two are different).
-    # For Phase B v1 we only support the operator (1 user) with an
-    # explicit MOODLE_WS_USERID env. Multi-user requires a per-user
-    # moodle_userid column on `user` — Phase B+1 work.
-    #
-    # Bug fix 2026-05-01: prior code passed user.user_id (Lyra ID, =1
-    # for operator) to core_enrol_get_users_courses. Moodle returned
-    # empty list (no courses for Moodle user 1) and the broken
-    # `isinstance(courses, list)` fallback didn't catch it because the
-    # empty list IS a list. Result: all syncs returned matched=0 with
-    # no error surfaced. Fix: resolve moodle_userid up-front + always
-    # pass it to WS calls.
+    # Resolve Moodle userid: prefer per-user column (alembic 044), fall
+    # back to env for the legacy operator row pre-044. Token is bound
+    # to its user — passing the wrong userid raises Moodle's
+    # accessexception, so this MUST be the user's own Moodle ID.
     import os
-    moodle_userid = int(os.environ.get("MOODLE_WS_USERID") or 0)
+    moodle_userid = user.moodle_userid or int(os.environ.get("MOODLE_WS_USERID") or 0)
     if not moodle_userid:
         result.error = "no_moodle_userid"
         return result
