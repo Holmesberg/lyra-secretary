@@ -56,6 +56,21 @@ AUTO_BIND_MIN_SCORE = 0.6
 UNIQUENESS_MARGIN = 0.2
 BRITTLE_FLOOR = 0.5
 
+# Course-code constraint (operator decision 2026-05-01 after a false-
+# positive cross-subject match: a CSE221 task bound to a PHM112
+# deadline because the brittle-token guard didn't catch a multi-
+# generic overlap). When both task title AND deadline title carry a
+# parseable course code (regex below) and the codes differ, the match
+# is structurally rejected — score = 0. When only one side has a
+# code, fall through to title-only matching (degraded mode for
+# manually-created deadlines without a code in the title).
+#
+# Same regex shape as moodle_submissions_sync._COURSE_CODE_RE; kept
+# duplicated rather than extracted to a shared util because the two
+# systems have different downstream use of the match (matcher vs
+# category derivation) and a future refactor may want to diverge.
+_COURSE_CODE_RE = re.compile(r"\b([A-Z]{2,5}\d{2,4})\b")
+
 # Generic tokens that should NOT be the sole semantic anchor for an
 # auto-bind. If removing these from the input drops the score below
 # BRITTLE_FLOOR, the match is brittle (e.g. "paper reading" vs deadline
@@ -159,6 +174,37 @@ def _score_one(haystack_norm: str, haystack_tokens: set[str], deadline: Deadline
     return 0.0, "heuristic_substring"
 
 
+def _course_code_of(s: Optional[str]) -> Optional[str]:
+    """First parseable course code in `s` (e.g., 'CSE281' from
+    'HandsOn CSE281 Lab8 is due'). Returns None if no code present —
+    callers treat None as 'unconstrained' rather than 'no match'."""
+    if not s:
+        return None
+    m = _COURSE_CODE_RE.search(s)
+    return m.group(1) if m else None
+
+
+def _course_codes_collide(haystack: str, deadline: Deadline) -> bool:
+    """True when both the task haystack AND the deadline title have a
+    parseable course code AND they are different. False when either
+    side lacks a code (degraded mode — no constraint applied) OR the
+    codes match. Operator-locked structural noise filter — see
+    _COURSE_CODE_RE comment for incident context.
+
+    The deadline's category_hint is also consulted because Moodle iCal
+    imports stash the course code there (e.g. 'CSE221'); the deadline
+    title itself often omits it ('Major Task - Phase II is due')."""
+    haystack_code = _course_code_of(haystack)
+    if haystack_code is None:
+        return False
+    deadline_code = _course_code_of(deadline.title) or _course_code_of(
+        getattr(deadline, "category_hint", None)
+    )
+    if deadline_code is None:
+        return False
+    return haystack_code != deadline_code
+
+
 def _is_brittle(haystack_tokens: set[str], deadline: Deadline) -> bool:
     """True when the match would disappear if we removed brittle tokens
     from the haystack — i.e. the score depends on a generic word like
@@ -195,6 +241,11 @@ def score_deadlines(
 
     scored: list[HeuristicCandidate] = []
     for d in deadlines:
+        # Subject-code constraint: if both sides carry course codes
+        # and they differ, structural reject before scoring tokens.
+        # See _course_codes_collide docstring for incident context.
+        if _course_codes_collide(haystack, d):
+            continue
         score, source = _score_one(haystack_norm, haystack_tokens, d)
         if score > 0.0:
             scored.append(HeuristicCandidate(

@@ -15,11 +15,12 @@ from app.db.models import Deadline
 from app.services.deadline_heuristic import score_deadlines
 
 
-def _d(title: str) -> Deadline:
+def _d(title: str, *, category_hint: str | None = None) -> Deadline:
     return Deadline(
         deadline_id=str(uuid4()),
         user_id=1,
         title=title,
+        category_hint=category_hint,
         due_at_utc=datetime.utcnow() + timedelta(days=7),
         state="planned",
     )
@@ -110,3 +111,54 @@ def test_description_contributes_to_haystack():
     # Should at least produce a candidate
     assert len(m.candidates) >= 1
     assert m.candidates[0].title == "BCI Paper"
+
+
+# ---------------------------------------------------------------------------
+# Course-code constraint (operator request 2026-05-01 — "matched a project
+# with an unrelated subject ... I think building the categories on subject
+# codes is more reliable")
+# ---------------------------------------------------------------------------
+
+
+def test_cross_subject_codes_block_match():
+    """Task references CSE221, deadline references PHM112 — even with
+    strong title-token overlap, the structural code-mismatch must
+    reject before scoring."""
+    deadlines = [_d("Major Task - Phase II is due", category_hint="PHM112")]
+    m = score_deadlines("CSE221 Major Task Phase II build", "", deadlines)
+    assert m.candidates == []
+    assert m.auto_bind is False
+
+
+def test_same_subject_codes_allow_match():
+    """Same code on both sides → constraint satisfied, normal scoring runs."""
+    deadlines = [_d("Major Task - Phase II is due", category_hint="CSE221")]
+    m = score_deadlines("CSE221 Major Task Phase II build", "", deadlines)
+    assert len(m.candidates) >= 1
+    assert m.candidates[0].title == "Major Task - Phase II is due"
+
+
+def test_no_code_either_side_falls_through_to_title_match():
+    """Backward-compatible: deadlines with no code (manual user-created)
+    still match via the existing title-only logic."""
+    deadlines = [_d("BCI Paper")]
+    m = score_deadlines("BCI Paper writeup", "", deadlines)
+    assert len(m.candidates) >= 1
+    assert m.auto_bind is True
+
+
+def test_only_one_side_has_code_falls_through_to_title_match():
+    """Task has no code, deadline has CSE221 → no constraint applied,
+    normal scoring proceeds."""
+    deadlines = [_d("Major Task - Phase II is due", category_hint="CSE221")]
+    m = score_deadlines("Major Task Phase II build", "", deadlines)
+    assert len(m.candidates) >= 1
+
+
+def test_deadline_code_in_title_also_constrains():
+    """Course code may live in the deadline.title (not just category_hint)
+    — e.g. user-created deadline 'CSE281 Sheet 5'. Constraint reads from
+    title too."""
+    deadlines = [_d("CSE281 Sheet 5")]
+    m = score_deadlines("PHM112 Sheet 5 review", "", deadlines)
+    assert m.candidates == []

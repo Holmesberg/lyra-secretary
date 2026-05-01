@@ -575,20 +575,47 @@ def reject_llm_binding(
     task_id: str,
     db: Session = Depends(get_db),
 ) -> LlmRejectResponse:
-    """User explicitly clicked 'no, just keep mine' on the LLM chip.
+    """User clicked 'Not relevant' / 'None of these' on the binding chip.
 
-    Records the rejection so the chip stops rendering. The
-    llm_inferred_* fields stay populated (audit trail). The user's
-    existing deadline_id (if any, from regex parser_auto or
-    user_explicit) is unchanged.
+    Records the rejection (`llm_binding_rejected_at = now()`) so the chip
+    stops rendering. Then, source-aware unbind:
 
-    Future analysis can compare LLM precision/recall vs user feedback
-    by joining llm_inferred_deadline_id × llm_binding_rejected_at.
+      - If `deadline_match_source` is system-auto — `heuristic_*`,
+        `llm_auto_confirmed`, or legacy `parser_auto` — also clear
+        `task.deadline_id` and reset `task.deadline_match_source` to
+        NULL. The user is rejecting a binding the SYSTEM made, so
+        "Not relevant" must actually unbind.
+      - If source is `user_explicit` or `manual_user`, leave the
+        binding alone — user owns it; the chip rejection only stops
+        the LLM suggestion from re-appearing.
+
+    Bug fix 2026-05-01 (operator: "I clicked no deadline, still
+    binded"): prior version only set the rejection flag and left
+    deadline_id intact for ALL sources, so heuristic-auto bindings
+    quietly persisted after explicit user rejection.
+
+    `llm_inferred_*` fields stay populated (audit trail) so future
+    analysis can join llm_inferred_deadline_id × llm_binding_rejected_at
+    × deadline_match_source for precision/recall by binding origin.
     """
     task = db.query(Task).filter(Task.task_id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     task.llm_binding_rejected_at = _now_utc()
+
+    src = task.deadline_match_source
+    SYSTEM_AUTO_SOURCES = {
+        "heuristic_exact_title",
+        "heuristic_startswith",
+        "heuristic_substring",
+        "heuristic_alias",
+        "llm_auto_confirmed",
+        "parser_auto",
+    }
+    if src in SYSTEM_AUTO_SOURCES:
+        task.deadline_id = None
+        task.deadline_match_source = None
+
     db.commit()
     return LlmRejectResponse(task_id=task.task_id, rejected_at=task.llm_binding_rejected_at)
 
