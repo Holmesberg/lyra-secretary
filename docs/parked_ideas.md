@@ -1342,3 +1342,136 @@ GLM-5.1 swap in OpenClaw. Original phrasing: "the real endgame is
 copying part of openclaw's architecture and integrating it into our
 system. something like the skill.md, etc." Captured to preserve the
 direction without disrupting current pre-alpha sprint priorities.
+
+---
+
+## Dynamic Moodle-synced categories
+
+*Captured: 2026-05-01. Operator while planning the Moodle Web
+Services submission-detection ship: "you know what would REALLY be
+smart? creating dynamic categories that update with Moodle, e.g
+CSE281 creates a category for it, when semester ends, it stops being
+a category."*
+
+**The shape.** Lyra's `category_mapping` table is currently a static
+keyword→category seed (40+ keywords across 9 categories: fitness,
+academic, study, development, meeting, prayer, planning, network,
+personal, health, work). Adding a course like CSE281 to the brain
+dump matcher today requires a manual code edit + alembic migration.
+Operator wants the LMS to drive this:
+
+When the iCal sync (or future Web Services course poll) discovers
+the user is enrolled in a course, Lyra auto-creates a category for
+it. When the user un-enrolls (semester ends, course drops from the
+feed), the category transitions to inactive — kept for historical
+analytics, hidden from the active brain-dump matcher.
+
+**Why this is high-leverage.**
+
+1. **Eliminates manual category overhead.** Today, when operator
+   types "CSE281 problem set tomorrow at 3pm" the brain dump can't
+   auto-categorize it because CSE281 isn't in the keyword seed.
+   Operator either edits seed data (friction) or accepts the
+   uncategorized fallback (data quality loss).
+2. **Keeps the matcher current.** Universities reshape course
+   catalogs every term. Static seeds drift. Dynamic seeds always
+   reflect the user's CURRENT enrollment.
+3. **Lifecycle alignment.** Categories matching the academic
+   calendar feel right — the operator stops thinking about CSE281
+   when the semester ends, so it stops appearing in autocomplete
+   too. Old data stays queryable but doesn't pollute new task
+   creation.
+4. **Zero-input scaling.** Onboarding a new student → they connect
+   Moodle → suddenly all their course codes are valid categories
+   for brain dump + LLM enrichment + bias_factor analytics. No
+   manual category editing per user.
+
+**Concrete first-ship sketch (when revisited):**
+
+1. New table `dynamic_category` with:
+   - `category_id` (UUID PK)
+   - `user_id` (FK)
+   - `slug` (e.g., "CSE281", indexed for matcher lookup)
+   - `display_name` (e.g., "CSE281 — Software Engineering")
+   - `source` ('moodle_ics' | 'moodle_ws' | 'gcal' | 'user' for
+     manual additions later)
+   - `created_at`, `last_seen_at`, `inactive_at` (set when source
+     stops returning the course)
+2. Iteration in `services/moodle_ics_sync.py` (and the future WS
+   sync): for each unique CATEGORIES tag in the iCal feed, upsert a
+   `dynamic_category` row + bump `last_seen_at`. Sweep job marks
+   categories `inactive_at = now()` when not seen in N consecutive
+   sync cycles (e.g., 14 days = ~2 weeks of misses).
+3. Brain dump matcher (`brain_dump_parser.py`): extend the keyword
+   seed lookup to UNION dynamic_category.slug for the current user
+   (only `inactive_at IS NULL` rows). Tokens like "CSE281" / "cse281"
+   / "PHM123" auto-match.
+4. Frontend: surface dynamic categories in the new-task category
+   picker as a "Your courses" section, distinct from the static
+   built-ins. Inactive categories appear in a collapsible "Past
+   semesters" section on /settings.
+5. Analytics: bias_factor + Rule 13 archetype priors keyed off
+   category — dynamic categories play nicely IF they get enough
+   sample data per cell (at least 5 sessions per Rule 13 footer).
+   For just-added course categories, archetype-prior fallback applies
+   normally.
+
+**Why parked, not built now.**
+
+1. **Phase B (submission detection) ships first.** Operator's
+   higher-priority pain right now is "I submitted Lab 8 in Moodle
+   but Lyra still shows overdue." Dynamic categories are a polish
+   item for the brain dump path; submission detection is a measurement
+   path. Submissions block alpha; categories don't.
+2. **Need real category drift data.** Dynamic categories are a
+   change to the matcher — needs operator dogfood data over a real
+   semester transition to validate the lifecycle (inactive timing,
+   re-activation when courses come back, history-preservation
+   behavior). At single-user with no semester transition yet,
+   shipping the lifecycle code without seeing it operate is
+   premature optimization.
+3. **Course-code matching for Phase B uses category_hint already.**
+   The submission-detection ship landing today uses
+   `Deadline.category_hint == Moodle assignment course_short` for
+   matching. That work surfaces the value of course-keyed semantics
+   without a new schema. If this lands well, dynamic categories
+   become the natural extension.
+
+**Trigger to revisit.**
+
+Whichever fires first:
+- Operator (or any trusted user) submits brain dumps with course
+  codes ≥3 times in a week and the matcher misses (signal that the
+  static seed is the bottleneck).
+- A user complains about category drift between semesters (e.g.,
+  "CSE281 doesn't appear in autocomplete anymore but I'm taking it
+  again").
+- Phase B (submission detection) data shows that course-keyed
+  matching is materially more accurate than title-only — promotes
+  the schema-level investment.
+- Multi-LMS support work begins (Canvas, Blackboard, etc.) — by
+  that point, course catalogs need an integration-layer abstraction
+  anyway, dynamic categories become load-bearing.
+
+**Operationalization checklist when revisited.**
+
+- New schema: `dynamic_category` table + `task.dynamic_category_id`
+  optional FK
+- Migration alembic 0XX (number TBD)
+- Iteration of `moodle_ics_sync.py` (and WS sync if shipped) to
+  upsert categories
+- New APScheduler job `sweep_inactive_categories` (every 24h)
+- Brain dump matcher integration
+- Frontend: category picker grouping + Past semesters section in
+  /settings
+- Tests: lifecycle (active → seen → inactive → re-activated), brain
+  dump matching with dynamic seeds, analytics behavior with
+  inactivated categories
+
+**Source.** Operator 2026-05-01 mid-morning while reviewing the
+Phase B (Moodle Web Services submission detection) build. Original
+phrasing: "you know what would REALLY be smart? creating dynamic
+categories that update with Moodle, e.g CSE281 creates a category
+for it, when semester ends, it stops being a category." Captured to
+preserve the direction without disrupting the in-flight Phase B
+ship.

@@ -37,6 +37,13 @@ services:
       - NVIDIA_NIM_MODEL=${NVIDIA_NIM_MODEL:-meta/llama-3.3-70b-instruct}
       - NVIDIA_NIM_BASE_URL=${NVIDIA_NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}
       - NVIDIA_NIM_TIMEOUT_SECONDS=${NVIDIA_NIM_TIMEOUT_SECONDS:-30}
+      # Moodle Web Services — auto-detect assignment submission status
+      # (operator-only Phase 1 validation 2026-05-01). When unset,
+      # submission detection is disabled and operator falls back to the
+      # inline "✓ Done" button shipped earlier today.
+      - MOODLE_WS_TOKEN=${MOODLE_WS_TOKEN:-}
+      - MOODLE_WS_BASE_URL=${MOODLE_WS_BASE_URL:-}
+      - MOODLE_WS_USERID=${MOODLE_WS_USERID:-}
     extra_hosts:
       # Required on Linux/WSL2 for host.docker.internal to resolve to the
       # host. Docker Desktop adds this automatically on Windows/Mac, but

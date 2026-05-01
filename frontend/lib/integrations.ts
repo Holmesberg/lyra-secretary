@@ -136,13 +136,21 @@ export interface IntegrationState {
   status: IntegrationStatus;
   available: boolean;
   scopes: string[];
-  /** Moodle-specific: last successful sync timestamp (ISO). Surfaced
-   *  in the card to reassure the user sync is alive. */
+  /** Moodle-specific: last successful iCal sync timestamp (ISO).
+   *  Surfaced in the card to reassure the user sync is alive. */
   last_synced_at?: string | null;
   /** Moodle-specific: set when the URL was auto-cleared due to a
    *  permanent failure (4xx). Frontend uses this to render
    *  "Reconnect needed" copy instead of plain "Not connected". */
   disconnect_reason?: string | null;
+  /** Moodle Web Services token state (alembic 043, 2026-05-01).
+   *  Optional sub-capability: when true, the submission-detection
+   *  sync auto-marks deadlines complete when Moodle confirms.
+   *  Boolean (never the token itself) so the API never echoes
+   *  the credential. */
+  ws_connected?: boolean;
+  ws_last_synced_at?: string | null;
+  ws_disconnect_reason?: string | null;
 }
 
 export interface IntegrationsResponse {
@@ -229,4 +237,47 @@ export async function syncMoodleNow(): Promise<MoodleConnectResponse["sync"]> {
     { method: "POST" }
   );
   return r;
+}
+
+
+// -----------------------------------------------------------------------
+// Moodle Web Services token (Phase B 2026-05-01) — auto-detect submission
+// status. Sub-capability of the Moodle integration; iCal can stay
+// connected without WS, and vice versa. Backend gates the WS sync to
+// users who have set the token.
+// -----------------------------------------------------------------------
+
+export interface MoodleWSConnectResponse {
+  ok: boolean;
+}
+
+export interface MoodleWSSyncResponse {
+  ok: boolean;
+  matched: number;
+  marked_complete: number;
+  skipped_no_match: number;
+  skipped_not_submitted: number;
+  marked_titles: string[];
+  error: string | null;
+}
+
+export async function connectMoodleWS(
+  ws_token: string,
+  base_url?: string,
+): Promise<MoodleWSConnectResponse> {
+  return api<MoodleWSConnectResponse>("/v1/integrations/moodle/ws-connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ws_token, ...(base_url ? { base_url } : {}) }),
+  });
+}
+
+export async function syncMoodleWSNow(): Promise<MoodleWSSyncResponse> {
+  return api<MoodleWSSyncResponse>("/v1/integrations/moodle/ws-sync-now", {
+    method: "POST",
+  });
+}
+
+export async function disconnectMoodleWS(): Promise<void> {
+  await api("/v1/integrations/moodle/ws-disconnect", { method: "DELETE" });
 }

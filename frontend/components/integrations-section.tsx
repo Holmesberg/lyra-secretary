@@ -18,6 +18,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IntegrationCard } from "@/components/integration-card";
 import { MoodleConnectModal } from "@/components/integrations/MoodleConnectModal";
+import { MoodleWSConnectModal } from "@/components/integrations/MoodleWSConnectModal";
+import {
+  disconnectMoodleWS,
+  syncMoodleWSNow,
+} from "@/lib/integrations";
 import {
   INTEGRATIONS,
   disconnectIntegration,
@@ -93,6 +98,8 @@ export function IntegrationsSection() {
   }, []);
 
   const [moodleModalOpen, setMoodleModalOpen] = useState(false);
+  const [moodleWSModalOpen, setMoodleWSModalOpen] = useState(false);
+  const [wsBusy, setWsBusy] = useState(false);
 
   const statusQ = useQuery({
     queryKey: ["integrations"],
@@ -180,20 +187,77 @@ export function IntegrationsSection() {
               ? () => setMoodleModalOpen(true)
               : undefined;
           return (
-            <IntegrationCard
-              key={def.id}
-              def={def}
-              status={status}
-              errorMessage={cardErrors[def.id] ?? null}
-              onDisconnect={
-                status === "connected"
-                  ? () => handleDisconnect(def.id)
-                  : undefined
-              }
-              onConnectClick={onConnectClick}
-              disconnectReason={serverState?.disconnect_reason ?? null}
-              lastSyncedAt={serverState?.last_synced_at ?? null}
-            />
+            <div key={def.id} className="flex flex-col gap-2">
+              <IntegrationCard
+                def={def}
+                status={status}
+                errorMessage={cardErrors[def.id] ?? null}
+                onDisconnect={
+                  status === "connected"
+                    ? () => handleDisconnect(def.id)
+                    : undefined
+                }
+                onConnectClick={onConnectClick}
+                disconnectReason={serverState?.disconnect_reason ?? null}
+                lastSyncedAt={serverState?.last_synced_at ?? null}
+              />
+              {/* Moodle Web Services sub-row — only shown when iCal is
+                  connected (sub-capability of the Moodle integration).
+                  Operator request 2026-05-01: zero-input submission
+                  detection so they don't have to manually mark imported
+                  deadlines complete. */}
+              {def.id === "moodle" && status === "connected" && (
+                <MoodleWSSubRow
+                  wsConnected={!!serverState?.ws_connected}
+                  wsLastSyncedAt={serverState?.ws_last_synced_at ?? null}
+                  wsDisconnectReason={serverState?.ws_disconnect_reason ?? null}
+                  busy={wsBusy}
+                  onConnect={() => setMoodleWSModalOpen(true)}
+                  onSyncNow={async () => {
+                    setWsBusy(true);
+                    try {
+                      const res = await syncMoodleWSNow();
+                      qc.invalidateQueries({ queryKey: ["integrations"] });
+                      qc.invalidateQueries({ queryKey: ["deadlines"] });
+                      setBanner({
+                        kind: "success",
+                        title:
+                          res.marked_complete > 0
+                            ? `Auto-marked ${res.marked_complete} deadline${res.marked_complete === 1 ? "" : "s"} complete.`
+                            : `Synced — nothing new to mark complete.`,
+                      });
+                    } catch (e) {
+                      setBanner({
+                        kind: "error",
+                        title: "WS sync failed",
+                        detail: e instanceof Error ? e.message : String(e),
+                      });
+                    } finally {
+                      setWsBusy(false);
+                    }
+                  }}
+                  onDisconnect={async () => {
+                    setWsBusy(true);
+                    try {
+                      await disconnectMoodleWS();
+                      qc.invalidateQueries({ queryKey: ["integrations"] });
+                      setBanner({
+                        kind: "success",
+                        title: "Moodle Web Services disconnected.",
+                      });
+                    } catch (e) {
+                      setBanner({
+                        kind: "error",
+                        title: "Disconnect failed",
+                        detail: e instanceof Error ? e.message : String(e),
+                      });
+                    } finally {
+                      setWsBusy(false);
+                    }
+                  }}
+                />
+              )}
+            </div>
           );
         })}
 
@@ -220,6 +284,19 @@ export function IntegrationsSection() {
             });
           }}
         />
+        <MoodleWSConnectModal
+          open={moodleWSModalOpen}
+          onOpenChange={setMoodleWSModalOpen}
+          onConnected={() => {
+            qc.invalidateQueries({ queryKey: ["integrations"] });
+            setBanner({
+              kind: "success",
+              title: "Moodle Web Services connected.",
+              detail:
+                "Submitted assignments will auto-mark complete on the next sync.",
+            });
+          }}
+        />
       </CardContent>
     </Card>
   );
@@ -228,6 +305,88 @@ export function IntegrationsSection() {
 function humanName(id: string): string {
   const def = INTEGRATIONS.find((d) => d.id === id);
   return def?.name ?? id;
+}
+
+
+/** Sub-row rendered under the Moodle integration card when iCal is
+ *  connected. Surfaces the Web Services token state + connect / sync
+ *  / disconnect actions. Phase B 2026-05-01. */
+function MoodleWSSubRow({
+  wsConnected,
+  wsLastSyncedAt,
+  wsDisconnectReason,
+  busy,
+  onConnect,
+  onSyncNow,
+  onDisconnect,
+}: {
+  wsConnected: boolean;
+  wsLastSyncedAt: string | null;
+  wsDisconnectReason: string | null;
+  busy: boolean;
+  onConnect: () => void;
+  onSyncNow: () => void;
+  onDisconnect: () => void;
+}) {
+  const lastSyncedLabel = wsLastSyncedAt
+    ? new Date(wsLastSyncedAt).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+
+  return (
+    <div className="ml-4 rounded-sm border border-hairline bg-void-2/30 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-parchment">
+            Auto-detect submitted assignments
+          </p>
+          <p className="mt-0.5 text-[10px] text-dust-deep">
+            {wsConnected
+              ? wsDisconnectReason
+                ? "Token rejected — reconnect to resume."
+                : lastSyncedLabel
+                  ? `Connected · last sync ${lastSyncedLabel}`
+                  : "Connected · no sync yet"
+              : "Optional: auto-mark deadlines complete when Moodle confirms submission."}
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-1">
+          {wsConnected ? (
+            <>
+              <button
+                type="button"
+                onClick={onSyncNow}
+                disabled={busy}
+                className="rounded-sm border border-signal/40 bg-signal/5 px-2 py-1 text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/15 disabled:opacity-40"
+              >
+                Sync now
+              </button>
+              <button
+                type="button"
+                onClick={onDisconnect}
+                disabled={busy}
+                className="rounded-sm border border-hairline bg-void-2 px-2 py-1 text-[10px] uppercase tracking-widest text-dust transition-colors hover:border-ember/40 hover:text-ember disabled:opacity-40"
+              >
+                Disconnect
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onConnect}
+              className="rounded-sm border border-signal/40 bg-signal/10 px-2 py-1 text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20"
+            >
+              Connect
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function cleanQueryParams() {

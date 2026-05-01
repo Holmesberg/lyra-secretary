@@ -16,6 +16,7 @@ from app.workers.jobs.sweep_missed_deadlines import run_sweep_missed_deadlines
 from app.workers.jobs.llm_enrichment import run_llm_enrichment
 from app.workers.jobs.resume_prediction import run_resume_prediction
 from app.workers.jobs.moodle_ics_sync import run_moodle_ics_sync
+from app.workers.jobs.moodle_submissions_sync import run_moodle_submissions_sync
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,22 @@ def start_scheduler():
         trigger=IntervalTrigger(hours=6),
         id="moodle_ics_sync",
         name="Moodle LMS — pull .ics deadlines per connected user",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Moodle Web Services submission detection (alembic 043, 2026-05-01).
+    # For each user with moodle_ws_token set, queries
+    # mod_assign_get_submission_status for matched assignments and
+    # auto-marks Lyra deadlines complete when Moodle confirms.
+    # Solves operator complaint: "I submitted in Moodle but Lyra
+    # still shows overdue." 6h cadence matches the iCal sync so the
+    # operator-Telegram thread carries both updates together.
+    scheduler.add_job(
+        run_moodle_submissions_sync,
+        trigger=IntervalTrigger(hours=6),
+        id="moodle_submissions_sync",
+        name="Moodle LMS — auto-mark deadlines complete on submission",
         replace_existing=True,
         max_instances=1,
     )

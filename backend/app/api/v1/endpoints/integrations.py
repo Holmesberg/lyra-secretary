@@ -96,6 +96,18 @@ def list_integrations(db: Session = Depends(get_db)) -> dict[str, Any]:
                     else None
                 ),
                 "disconnect_reason": user.moodle_disconnect_reason,
+                # Moodle Web Services token (alembic 043, 2026-05-01).
+                # Optional sub-capability: when set, the submissions
+                # auto-detection sync runs every 6h alongside iCal.
+                # Boolean (not the token itself) so /v1/integrations
+                # never echoes the credential.
+                "ws_connected": bool(user.moodle_ws_token),
+                "ws_last_synced_at": (
+                    user.moodle_ws_last_synced_at.isoformat()
+                    if user.moodle_ws_last_synced_at
+                    else None
+                ),
+                "ws_disconnect_reason": user.moodle_ws_disconnect_reason,
             },
             {
                 "id": "notion",

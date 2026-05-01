@@ -604,6 +604,19 @@ class User(Base):
     # Frontend reads this to surface "Reconnect needed" instead of
     # silently failing. Cleared when user reconnects.
     moodle_disconnect_reason: Mapped[Optional[str]] = mapped_column(String(64))
+    # Moodle Web Services token (alembic 043, 2026-05-01). Powers
+    # automatic submission detection — when set, the
+    # moodle_submissions_sync job queries WS for each task-bound
+    # imported deadline and auto-marks completed when Moodle confirms
+    # submission/grading. Same trust class as moodle_ics_url
+    # (plaintext, Fernet deferred to Phase 6+). NEVER returned in any
+    # API response (only "is set: bool" via /v1/integrations).
+    moodle_ws_token: Mapped[Optional[str]] = mapped_column(Text)
+    moodle_ws_last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Set on permanent WS failure (e.g., 'invalidtoken' — operator
+    # rotated the token in Moodle). Frontend surfaces "Reconnect Web
+    # Services" prompt; cleared on successful reconnect.
+    moodle_ws_disconnect_reason: Mapped[Optional[str]] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     # Alpha funnel instrumentation (alembic 037, 2026-04-28). Tracks the
     # operator's North Star metric: task_created + timer_started within

@@ -438,9 +438,9 @@ def test_update_completion_keeps_timer_running(state_env, client):
 # ---------------------------------------------------------------
 
 def test_apscheduler_job_count():
-    """All 13 background jobs must be registered in scheduler.py.
+    """All 14 background jobs must be registered in scheduler.py.
 
-    Count (as of 2026-04-29 — Moodle LMS sync, alembic 041):
+    Count (as of 2026-05-01 — Moodle WS submissions sync, alembic 043):
       1. reminders
       2. notion_sync
       3. timer_overflow
@@ -454,6 +454,7 @@ def test_apscheduler_job_count():
      11. llm_enrichment                 (magic-for-alpha W1)
      12. resume_prediction              (magic-for-alpha W2)
      13. moodle_ics_sync                (LMS wedge, alembic 041)
+     14. moodle_submissions_sync        (LMS WS auto-detect, alembic 043)
 
     Update this when adding/removing a job — this is the gate.
     """
@@ -473,8 +474,8 @@ def test_apscheduler_job_count():
         and isinstance(getattr(node, "func", None), ast.Attribute)
         and getattr(node.func, "attr", "") == "add_job"
     )
-    assert add_job_calls == 13, (
-        f"Expected 13 add_job calls in scheduler.py, found {add_job_calls}. "
+    assert add_job_calls == 14, (
+        f"Expected 14 add_job calls in scheduler.py, found {add_job_calls}. "
         f"A background job may have been added or removed without updating "
         f"the state consistency gate."
     )
