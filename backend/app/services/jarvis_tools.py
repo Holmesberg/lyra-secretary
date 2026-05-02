@@ -198,11 +198,19 @@ READ_TOOLS: list[dict[str, Any]] = [
                 "initiator), recovery latency by pause reason, hesitation "
                 "chain (creation→planned-start→executed-start latencies), "
                 "schedule volatility (reschedule distribution), context-"
-                "switch graph (parent_task_id transitions), snooze chains, "
-                "reflection engagement (dwell + outcome per reflection_type), "
-                "and per-signal confidence tiers. Use this when the operator "
-                "asks 'what patterns do you see', 'discover something', "
-                "'what's surprising' — the discovery counterpart to "
+                "switch graph (parent_task_id transitions), POST_PAUSE_"
+                "TRANSITIONS (pause_reason → next-task category, answers "
+                "'after distraction what do I switch to'), VALENCE_DISTRIBUTION "
+                "(per-task friction|flow|scope_creep|under_plan|neutral classes), "
+                "DISAGREEMENT_EVENTS (optimism_collapse=pre≥4+post≤2, "
+                "capacity_surprise=pre≤2+post≥4, flow_overrun=high_focus+big_"
+                "overrun, friction_completion=low_focus+on_time — the explicit-"
+                "vs-implicit axis), snooze chains, reflection engagement "
+                "(dwell + outcome per reflection_type), and per-signal "
+                "confidence tiers. Use this when the operator asks 'what "
+                "patterns do you see', 'discover something', 'what's surprising', "
+                "'where do my ratings disagree with my behavior', 'what do I "
+                "switch to after X' — the discovery counterpart to "
                 "get_pattern_summary's productivity headline. NEVER call both "
                 "in one turn."
             ),
@@ -821,6 +829,104 @@ def _tod_bucket(dt: datetime) -> str:
     return "evening"
 
 
+def _classify_task_valence(t: Task) -> str:
+    """Classify a task's valence per docs/calibration_contract.md R9.
+
+    Returns one of: friction | flow | scope_creep | under_plan | neutral.
+
+    Naive 'implicit wins on disagreement' breaks at flow state (overrun + high
+    focus = success not friction). The valence classifier runs BEFORE any
+    implicit-vs-explicit resolution, distinguishing structural classes:
+
+    - friction: overrun + low focus (≤2) + ≥3 pauses + scope unchanged
+    - flow: overrun + high focus (≥4) + ≤1 pause
+    - scope_creep: overrun + medium focus (3) + scope grew ≥50%
+    - under_plan: underrun + high focus + ≤1 pause
+    - neutral: within ±15% of plan, focus 3, pauses ≤2
+
+    When focus rating is unavailable (NULL post_task_reflection), valence
+    defaults to 'neutral' regardless of duration outcome — we don't have
+    the explicit signal needed for resolution.
+    """
+    if t.executed_duration_minutes is None or t.planned_duration_minutes is None:
+        return "neutral"
+    if t.planned_duration_minutes <= 0:
+        return "neutral"
+
+    delta = t.executed_duration_minutes - t.planned_duration_minutes
+    delta_pct = delta / t.planned_duration_minutes
+    focus = t.post_task_reflection
+    pauses = t.pause_count or 0
+
+    # Need an explicit focus signal for any non-neutral classification.
+    if focus is None:
+        return "neutral"
+
+    overrun = delta_pct > 0.15
+    underrun = delta_pct < -0.15
+    high_focus = focus >= 4
+    low_focus = focus <= 2
+    medium_focus = focus == 3
+
+    if overrun and high_focus and pauses <= 1:
+        return "flow"
+    if overrun and low_focus and pauses >= 3:
+        return "friction"
+    if overrun and medium_focus:
+        # True scope_creep ideally checks scope_bullet_count delta ≥ 50%, but
+        # the column may not be populated for every task. Surface the
+        # presumptive scope_creep and let JARVIS validate it via
+        # query_dark_columns(task.scope_bullet_count_at_execute) if needed.
+        return "scope_creep"
+    if underrun and high_focus and pauses <= 1:
+        return "under_plan"
+
+    return "neutral"
+
+
+def _classify_disagreement(t: Task) -> str | None:
+    """Classify explicit-vs-implicit disagreement type per task.
+
+    The R9 valence classifier handles the *outcome-side* resolution. This
+    helper surfaces the *input-vs-outcome* disagreement axis specifically:
+    where the operator's pre-task self-report (readiness) didn't match the
+    post-task self-report (focus) or the implicit execution behavior.
+
+    Returns one of:
+    - 'optimism_collapse': pre_readiness ≥4, post_reflection ≤2
+       (felt sharp, executed poorly — most useful primitive for self-cal)
+    - 'capacity_surprise': pre_readiness ≤2, post_reflection ≥4
+       (felt drained, executed well — under-trusted state)
+    - 'flow_overrun': post_reflection ≥4, executed ≥1.3× planned
+       (high focus + big overrun — implicit looks like friction, isn't)
+    - 'friction_completion': post_reflection ≤2, |delta| ≤15%
+       (low focus + on-time delivery — forced through; cost not visible
+       in duration metrics alone)
+    - None: no disagreement detected
+    """
+    if t.pre_task_readiness is None and t.post_task_reflection is None:
+        return None
+    pre = t.pre_task_readiness
+    post = t.post_task_reflection
+    planned = t.planned_duration_minutes or 0
+    executed = t.executed_duration_minutes or 0
+
+    if pre is not None and post is not None:
+        if pre >= 4 and post <= 2:
+            return "optimism_collapse"
+        if pre <= 2 and post >= 4:
+            return "capacity_surprise"
+
+    if post is not None and planned > 0 and executed > 0:
+        ratio = executed / planned
+        if post >= 4 and ratio >= 1.3:
+            return "flow_overrun"
+        if post <= 2 and abs(ratio - 1.0) <= 0.15:
+            return "friction_completion"
+
+    return None
+
+
 def _exec_analyze_behavioral_signature(db: Session, user_id: int, args: dict) -> dict:
     """Comprehensive behavioral fingerprint for operator-side pattern discovery.
 
@@ -1046,6 +1152,117 @@ def _exec_analyze_behavioral_signature(db: Session, user_id: int, args: dict) ->
         bag["p75_dwell_seconds"] = _percentile(dws, 75)
         bag["confidence"] = _confidence_tier(bag["n_fired"])
 
+    # ----- Valence classification per task (per docs/calibration_contract.md R9)
+    valence_counts: dict[str, int] = {
+        "friction": 0, "flow": 0, "scope_creep": 0, "under_plan": 0, "neutral": 0,
+    }
+    for t in executed:
+        valence_counts[_classify_task_valence(t)] += 1
+    valence_distribution = {
+        "counts": valence_counts,
+        "n_classified": sum(valence_counts.values()),
+        "confidence": _confidence_tier(sum(valence_counts.values())),
+        "interpretation": (
+            "Per R9: 'friction'=overrun+low_focus+≥3pauses; 'flow'=overrun+"
+            "high_focus+≤1pause (success state, NOT friction); 'scope_creep'="
+            "overrun+medium_focus (route to VT-22 scope analysis); 'under_plan'="
+            "underrun+high_focus; 'neutral'=within ±15% plan."
+        ),
+    }
+
+    # ----- Explicit-vs-implicit disagreement events
+    disagreement_buckets: dict[str, list[dict]] = {
+        "optimism_collapse": [],
+        "capacity_surprise": [],
+        "flow_overrun": [],
+        "friction_completion": [],
+    }
+    for t in executed:
+        kind = _classify_disagreement(t)
+        if kind is None:
+            continue
+        disagreement_buckets[kind].append({
+            "category": t.category or "uncategorized",
+            "pre_readiness": t.pre_task_readiness,
+            "post_reflection": t.post_task_reflection,
+            "delta_min": (t.executed_duration_minutes or 0) - (t.planned_duration_minutes or 0),
+        })
+    disagreement_events = {}
+    for kind, items in disagreement_buckets.items():
+        if not items:
+            disagreement_events[kind] = {"n": 0}
+            continue
+        # Cross-tab by category to find which categories drive each disagreement.
+        cat_counts: dict[str, int] = {}
+        for it in items:
+            cat_counts[it["category"]] = cat_counts.get(it["category"], 0) + 1
+        top_cat = max(cat_counts.items(), key=lambda kv: kv[1])
+        disagreement_events[kind] = {
+            "n": len(items),
+            "top_category": top_cat[0],
+            "top_category_count": top_cat[1],
+            "all_categories": cat_counts,
+        }
+    # Description text for the LLM.
+    disagreement_events["_descriptions"] = {
+        "optimism_collapse": "pre_readiness≥4 + post_reflection≤2 — felt sharp, executed poorly. High-value calibration primitive.",
+        "capacity_surprise": "pre_readiness≤2 + post_reflection≥4 — felt drained, executed well. Under-trusted state.",
+        "flow_overrun": "post_reflection≥4 + executed≥1.3×planned — high focus AND big overrun (positive valence, not friction).",
+        "friction_completion": "post_reflection≤2 + within ±15% of plan — forced through despite friction. Cost not visible in duration metrics alone.",
+    }
+
+    # ----- Post-pause transitions: pause_reason → next-task category
+    # Answers "after pauses for reason X, what category does the user pick up?"
+    # Distinct from context_switch_graph which only tracks parent_task_id
+    # (formal /v1/stopwatch/switch). This catches natural cross-task
+    # transitions where the user simply stops one task and starts another.
+    sessions = (
+        db.query(StopwatchSession)
+        .join(Task, Task.task_id == StopwatchSession.task_id)
+        .filter(
+            Task.user_id == user_id,
+            Task.voided_at.is_(None),
+            StopwatchSession.start_time_utc >= window_start,
+        )
+        .all()
+    )
+    sessions_by_id = {s.session_id: s for s in sessions}
+    sessions_sorted = sorted(sessions, key=lambda s: s.start_time_utc)
+    tasks_by_id = {t.task_id: t for t in tasks}
+
+    post_pause_edges: dict[tuple[str, str], int] = {}
+    for pe in pause_events:
+        if pe.resumed_at_utc is None:
+            continue
+        pe_session = sessions_by_id.get(pe.session_id)
+        if pe_session is None:
+            continue
+        # Find next session by same user that starts AFTER this pause's resume,
+        # and is on a DIFFERENT task (cross-task transition only).
+        next_s = None
+        for s in sessions_sorted:
+            if s.start_time_utc <= pe.resumed_at_utc:
+                continue
+            if s.task_id == pe_session.task_id:
+                continue
+            next_s = s
+            break
+        if next_s is None:
+            continue
+        next_task = tasks_by_id.get(next_s.task_id)
+        if next_task is None:
+            continue
+        next_cat = next_task.category or "uncategorized"
+        key = (pe.pause_reason, next_cat)
+        post_pause_edges[key] = post_pause_edges.get(key, 0) + 1
+    post_pause_transitions = sorted(
+        [
+            {"pause_reason": k[0], "next_category": k[1], "count": v}
+            for k, v in post_pause_edges.items()
+        ],
+        key=lambda d: -d["count"],
+    )[:20]
+
     # ----- Confidence per top-level signal (rolled up)
     confidence_per_signal = {
         "pause_distribution": _confidence_tier(n_pause_events),
@@ -1057,6 +1274,11 @@ def _exec_analyze_behavioral_signature(db: Session, user_id: int, args: dict) ->
         "context_switch_graph": _confidence_tier(sum(switch_edges.values())),
         "snooze_chains": _confidence_tier(len(pause_predictions)),
         "reflection_engagement": _confidence_tier(len(reflections)),
+        "valence_distribution": _confidence_tier(sum(valence_counts.values())),
+        "disagreement_events": _confidence_tier(
+            sum(v["n"] for k, v in disagreement_events.items() if k != "_descriptions")
+        ),
+        "post_pause_transitions": _confidence_tier(sum(post_pause_edges.values())),
     }
 
     return {
@@ -1068,9 +1290,47 @@ def _exec_analyze_behavioral_signature(db: Session, user_id: int, args: dict) ->
         "hesitation_chain": hesitation_chain,
         "schedule_volatility": schedule_volatility,
         "context_switch_graph": context_switch_graph,
+        "post_pause_transitions": post_pause_transitions,
+        "valence_distribution": valence_distribution,
+        "disagreement_events": disagreement_events,
         "snooze_chains": snooze_chains,
         "reflection_engagement": reflection_engagement,
         "confidence_per_signal": confidence_per_signal,
+        # Explicit grounding for the LLM — what this tool DOES and DOES NOT
+        # cover. Anti-hallucination defense added 2026-05-02 after operator
+        # caught JARVIS inventing onboarding-fingerprint insights it had no
+        # data for.
+        "coverage": {
+            "covered_signal_categories": [
+                "pause behavior (reason distribution, initiator, time-of-day)",
+                "recovery latency by pause reason",
+                "task hesitation (creation→planned-start, planned→executed-start)",
+                "schedule volatility (reschedule counts)",
+                "context-switch graph via parent_task_id (formal /switch endpoint)",
+                "post-pause cross-task transitions (pause_reason → next-task category)",
+                "task valence classification (friction/flow/scope_creep/under_plan/neutral)",
+                "explicit-vs-implicit disagreements (optimism_collapse, capacity_surprise, flow_overrun, friction_completion)",
+                "pause-prediction snooze chains and mechanism",
+                "reflection-surface engagement (dwell + outcome per reflection_type)",
+            ],
+            "NOT_covered_dont_speculate_about_these": [
+                "onboarding fingerprint (integration-connect order, skipped steps, archetype-survey response patterns) — NOT INSTRUMENTED",
+                "modal dwell / typing latency / hesitation-before-clicking — NOT INSTRUMENTED (Phase 6 telemetry)",
+                "calendar/Moodle integration retry patterns or reconnect cadence",
+                "per-archetype-item survey timings or response variance",
+                "deadline-binding decision history",
+                "daily / weekly cascade chains across days",
+                "user demographics, age, schooling level",
+                "external-event attendance vs no-show patterns",
+            ],
+            "hallucination_rule": (
+                "If the operator asks about a signal in NOT_covered, you MUST say "
+                "explicitly: 'I don't have that signal in my tool output — I can only "
+                "speak to the categories in covered_signal_categories.' Do NOT invent "
+                "patterns from data you don't have. Confident-sounding fabrication is "
+                "worse than honest 'I can't answer that with current tools.'"
+            ),
+        },
     }
 
 
