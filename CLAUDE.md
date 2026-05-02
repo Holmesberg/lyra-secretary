@@ -123,6 +123,8 @@ Before adding any user-facing surface that displays inferred behavior, read `doc
 
 The 2026-05-02 reframe: the system's actual problem is data utilization, not complexity. Lyra is a behavioral inference engine, not a productivity app — sensing layer over-built, cortex layer under-built. Every reflection surface added must metabolize signal into user-visible value, with calibrated confidence. See `docs/complexity_stress_test_2026_05_01.md` for the original audit (now postscripted with the reframe).
 
+**Endgame (Phase 7+, Under Provision):** the inference engine is substrate for a calibrated secretary that autonomously plans/recalibrates user time around deadlines. Phase 3 inference outputs must be planning-layer-compatible. Reflection surfaces are the Phase 4 user-visible NOW; the planning layer is the user-visible LATER. Don't lock the inference engine into UI-display shape only.
+
 ## Configuration
 
 Copy `.env.example` to `.env`. Required vars: `DATABASE_URL`, `REDIS_URL`, `NOTION_API_KEY`, `NOTION_DATABASE_ID`, `USER_TIMEZONE` (IANA, e.g. `Africa/Cairo`). `SECRET_KEY` must be ≥ 32 chars. All times are stored as UTC internally; `USER_TIMEZONE` controls display conversion via `utils/time_utils.py`.
