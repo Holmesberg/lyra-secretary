@@ -41,6 +41,9 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     Deadline,
     JarvisInvocation,
+    PauseEvent,
+    PausePredictionLog,
+    ReflectionViewLog,
     StopwatchSession,
     Task,
     TaskSource,
@@ -178,6 +181,162 @@ READ_TOOLS: list[dict[str, Any]] = [
                 "active. Use to answer 'what am I working on right now?'"
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    # ----- Phase 2 discovery layer (2026-05-02) -----
+    # Operator-only behavioral pattern discovery. These tools expose the
+    # ~24 PROMOTE-TO-JARVIS signals from docs/data_utilization_inventory_2026_05_02.md
+    # so JARVIS can synthesize hypotheses from the operator's own data.
+    # Per docs/calibration_contract.md and project_lyra_is_behavioral_inference_engine.
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_behavioral_signature",
+            "description": (
+                "Operator's deep behavioral fingerprint over a window. Returns "
+                "pause-reason distribution (overall + by time-of-day + by "
+                "initiator), recovery latency by pause reason, hesitation "
+                "chain (creation→planned-start→executed-start latencies), "
+                "schedule volatility (reschedule distribution), context-"
+                "switch graph (parent_task_id transitions), snooze chains, "
+                "reflection engagement (dwell + outcome per reflection_type), "
+                "and per-signal confidence tiers. Use this when the operator "
+                "asks 'what patterns do you see', 'discover something', "
+                "'what's surprising' — the discovery counterpart to "
+                "get_pattern_summary's productivity headline. NEVER call both "
+                "in one turn."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "window_days": {
+                        "type": "integer",
+                        "description": "Lookback window in days (default 14, max 90).",
+                        "minimum": 1,
+                        "maximum": 90,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_dark_columns",
+            "description": (
+                "Targeted aggregation over a specific 'dark' column (data "
+                "Lyra collects but doesn't normally surface). Whitelist-"
+                "scoped — only columns from docs/data_utilization_inventory_"
+                "2026_05_02.md PROMOTE-TO-JARVIS list are queryable. Returns "
+                "distribution / percentiles / counts (never raw rows). Use "
+                "for hypothesis-specific drill-downs after analyze_behavioral_"
+                "signature surfaces something interesting."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": (
+                            "One of the whitelisted column refs: "
+                            "'task.reschedule_count', 'task.scope_bullet_count_at_execute', "
+                            "'stopwatch_session.original_pre_task_readiness', "
+                            "'stopwatch_session.task_completion_percentage', "
+                            "'pause_event.active_elapsed_at_pause_seconds', "
+                            "'pause_prediction_log.mechanism', 'pause_prediction_log.snooze_chain_depth', "
+                            "'reflection_view_log.dwell_seconds', 'reflection_view_log.outcome', "
+                            "'jarvis_invocation.tool_name_distribution', 'jarvis_invocation.reasoning_time_seconds'."
+                        ),
+                    },
+                    "window_days": {
+                        "type": "integer",
+                        "description": "Lookback window in days (default 30, max 90).",
+                        "minimum": 1,
+                        "maximum": 90,
+                    },
+                },
+                "required": ["column_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "propose_pattern_hypothesis",
+            "description": (
+                "Record a candidate behavioral pattern hypothesis you've "
+                "found in the operator's data. Writes a structured proposal "
+                "to the audit log so the operator can later validate or "
+                "reject it. EVERY proposed hypothesis must have a falsifier "
+                "(what would kill it) and a valence_class (per "
+                "docs/calibration_contract.md R9). Tag generality_tag "
+                "honestly: most operator-data patterns are operator-only "
+                "(topology-specific traits like introspection appetite, "
+                "instrumentation tolerance) — only behavioral primitives "
+                "(transition friction, recovery latency, abandonment "
+                "topology) are 'potentially-general'. Use after analyze_"
+                "behavioral_signature reveals a pattern; do NOT call this "
+                "for every observation, only ones with predictive structure."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "observation": {
+                        "type": "string",
+                        "description": "Pattern description in one or two sentences. Cite specific numbers from tool output.",
+                    },
+                    "signals_used": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Names of signals from analyze_behavioral_signature or query_dark_columns this hypothesis rests on.",
+                    },
+                    "predicted_outcome": {
+                        "type": "string",
+                        "description": "What the operator (or future user) should expect to see if this hypothesis is true.",
+                    },
+                    "falsifier": {
+                        "type": "string",
+                        "description": "Specific observation that would kill the hypothesis. Required.",
+                    },
+                    "generality_tag": {
+                        "type": "string",
+                        "enum": ["operator-only", "potentially-general"],
+                        "description": (
+                            "'operator-only' for topology-specific traits "
+                            "(introspection appetite, instrumentation tolerance, "
+                            "archetype fascination); 'potentially-general' for "
+                            "behavioral primitives (friction, recovery, "
+                            "abandonment, divergence)."
+                        ),
+                    },
+                    "valence_class": {
+                        "type": "string",
+                        "enum": ["friction", "flow", "scope_creep", "under_plan", "neutral"],
+                        "description": (
+                            "Per R9: 'friction' (overrun + low focus + many "
+                            "pauses + scope unchanged), 'flow' (overrun + high "
+                            "focus + few pauses), 'scope_creep' (scope grew "
+                            "≥50%), 'under_plan' (underrun + high focus), "
+                            "'neutral' (within ±15% of plan)."
+                        ),
+                    },
+                    "n_at_proposal": {
+                        "type": "integer",
+                        "description": "Sample size supporting this hypothesis at proposal time.",
+                        "minimum": 1,
+                    },
+                },
+                "required": [
+                    "observation",
+                    "signals_used",
+                    "predicted_outcome",
+                    "falsifier",
+                    "generality_tag",
+                    "valence_class",
+                    "n_at_proposal",
+                ],
+            },
         },
     },
 ]
@@ -618,6 +777,718 @@ def _exec_get_active_session(db: Session, user_id: int, args: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Phase 2 discovery-layer executors (operator-only behavioral pattern
+# discovery, 2026-05-02). Whitelisted access to the ~24 PROMOTE-TO-JARVIS
+# signals from docs/data_utilization_inventory_2026_05_02.md.
+# ---------------------------------------------------------------------------
+
+
+def _confidence_tier(n: int, low: int = 5, high: int = 30) -> str:
+    """Default confidence tier per docs/calibration_contract.md R2.
+
+    Per-signal overrides (R2.1) handled by callers passing custom thresholds.
+    """
+    if n < low:
+        return "cold_start"
+    if n < high:
+        return "tentative"
+    return "confirmed"
+
+
+def _percentile(values: list[float], p: float) -> float | None:
+    """Simple percentile (no scipy dependency). p in [0, 100]."""
+    if not values:
+        return None
+    s = sorted(values)
+    if len(s) == 1:
+        return round(s[0], 2)
+    k = (len(s) - 1) * (p / 100.0)
+    lo = int(k)
+    hi = min(lo + 1, len(s) - 1)
+    frac = k - lo
+    return round(s[lo] * (1 - frac) + s[hi] * frac, 2)
+
+
+def _tod_bucket(dt: datetime) -> str:
+    """Time-of-day bucket. UTC-only for now (matches get_pattern_summary)."""
+    h = dt.hour
+    if h < 6:
+        return "night"
+    if h < 12:
+        return "morning"
+    if h < 18:
+        return "afternoon"
+    return "evening"
+
+
+def _exec_analyze_behavioral_signature(db: Session, user_id: int, args: dict) -> dict:
+    """Comprehensive behavioral fingerprint for operator-side pattern discovery.
+
+    Joins task + stopwatch_session + pause_event + pause_prediction_log +
+    reflection_view_log over a window. Returns aggregated structures JARVIS
+    can reason over.
+
+    Single SQL window pulls; in-Python aggregation. <500ms target on
+    operator-scale data (~100 sessions, ~200 pause events per 30 days).
+
+    voided_at_guard: applied at every filter level — voided rows never
+    enter the aggregations.
+    """
+    window_days = max(1, min(int(args.get("window_days", 14)), 90))
+    now = now_utc()
+    window_start = now - timedelta(days=window_days)
+
+    # ----- Tasks in window (executed only for productivity-substrate metrics)
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.user_id == user_id,
+            Task.voided_at.is_(None),
+            Task.created_at >= window_start,
+        )
+        .all()
+    )
+    executed = [
+        t for t in tasks
+        if t.state == TaskState.EXECUTED
+        and t.executed_duration_minutes is not None
+    ]
+    n_sessions = len(executed)
+
+    # ----- Pause events in window (joined via session ownership)
+    pause_events = (
+        db.query(PauseEvent)
+        .filter(
+            PauseEvent.user_id == user_id,
+            PauseEvent.paused_at_utc >= window_start,
+        )
+        .all()
+    )
+    n_pause_events = len(pause_events)
+
+    # ----- Pause distribution: by reason × time-of-day × initiator
+    pause_by_reason: dict[str, int] = {}
+    pause_by_initiator: dict[str, int] = {}
+    pause_by_tod_reason: dict[str, dict[str, int]] = {
+        "morning": {}, "afternoon": {}, "evening": {}, "night": {},
+    }
+    for pe in pause_events:
+        pause_by_reason[pe.pause_reason] = pause_by_reason.get(pe.pause_reason, 0) + 1
+        pause_by_initiator[pe.pause_initiator] = pause_by_initiator.get(pe.pause_initiator, 0) + 1
+        bucket = _tod_bucket(pe.paused_at_utc)
+        pause_by_tod_reason[bucket][pe.pause_reason] = (
+            pause_by_tod_reason[bucket].get(pe.pause_reason, 0) + 1
+        )
+
+    def _normalize(d: dict[str, int]) -> dict[str, float]:
+        total = sum(d.values()) or 1
+        return {k: round(v / total, 3) for k, v in d.items()}
+
+    pause_distribution = {
+        "by_reason_overall": _normalize(pause_by_reason),
+        "by_reason_x_tod": {
+            tod: _normalize(reasons) for tod, reasons in pause_by_tod_reason.items()
+            if reasons
+        },
+        "by_initiator": _normalize(pause_by_initiator),
+        "n_pause_events": n_pause_events,
+    }
+
+    # ----- Recovery latency by pause_reason (resumed_at - paused_at)
+    recovery_by_reason: dict[str, dict] = {}
+    latencies_by_reason: dict[str, list[float]] = {}
+    for pe in pause_events:
+        if pe.resumed_at_utc is None or pe.duration_minutes is None:
+            continue
+        latencies_by_reason.setdefault(pe.pause_reason, []).append(float(pe.duration_minutes))
+    for reason, vals in latencies_by_reason.items():
+        n = len(vals)
+        recovery_by_reason[reason] = {
+            "n": n,
+            "p50_min": _percentile(vals, 50),
+            "p75_min": _percentile(vals, 75),
+            "confidence": _confidence_tier(n),
+        }
+
+    # ----- Hesitation chain: created_at vs planned_start_utc vs executed_start_utc
+    creation_to_planned: list[float] = []
+    planned_to_executed: list[float] = []
+    for t in tasks:
+        if t.planned_start_utc and t.created_at:
+            delta = (t.planned_start_utc - t.created_at).total_seconds() / 60.0
+            if delta >= 0:
+                creation_to_planned.append(delta)
+        if t.executed_start_utc and t.planned_start_utc:
+            delta = (t.executed_start_utc - t.planned_start_utc).total_seconds() / 60.0
+            planned_to_executed.append(delta)
+    hesitation_chain = {
+        "creation_to_planned_start_minutes": {
+            "p50": _percentile(creation_to_planned, 50),
+            "p75": _percentile(creation_to_planned, 75),
+            "n": len(creation_to_planned),
+            "confidence": _confidence_tier(len(creation_to_planned)),
+        } if creation_to_planned else None,
+        "planned_to_executed_start_minutes": {
+            "p50": _percentile(planned_to_executed, 50),
+            "p75": _percentile(planned_to_executed, 75),
+            "n": len(planned_to_executed),
+            "confidence": _confidence_tier(len(planned_to_executed)),
+        } if planned_to_executed else None,
+    }
+
+    # ----- Schedule volatility: reschedule_count distribution
+    rc_buckets = {"0": 0, "1": 0, "2": 0, "3+": 0}
+    rc_values: list[int] = []
+    for t in tasks:
+        rc = t.reschedule_count or 0
+        rc_values.append(rc)
+        if rc == 0:
+            rc_buckets["0"] += 1
+        elif rc == 1:
+            rc_buckets["1"] += 1
+        elif rc == 2:
+            rc_buckets["2"] += 1
+        else:
+            rc_buckets["3+"] += 1
+    schedule_volatility = {
+        "reschedule_count_distribution": rc_buckets,
+        "median_reschedule_count": (
+            _percentile([float(v) for v in rc_values], 50) if rc_values else None
+        ),
+        "max_reschedule_count": max(rc_values) if rc_values else 0,
+        "n_tasks": len(tasks),
+    }
+
+    # ----- Context-switch graph (parent_task_id linkage + task_switch pauses)
+    switch_edges: dict[tuple[str, str], int] = {}
+    for t in tasks:
+        if t.parent_task_id is None:
+            continue
+        parent = next((p for p in tasks if p.task_id == t.parent_task_id), None)
+        if parent is None:
+            continue
+        from_cat = parent.category or "uncategorized"
+        to_cat = t.category or "uncategorized"
+        key = (from_cat, to_cat)
+        switch_edges[key] = switch_edges.get(key, 0) + 1
+    context_switch_graph = sorted(
+        [
+            {"from_category": k[0], "to_category": k[1], "count": v}
+            for k, v in switch_edges.items()
+        ],
+        key=lambda d: -d["count"],
+    )[:10]
+
+    # ----- Snooze chains via parent_firing_id
+    pause_predictions = (
+        db.query(PausePredictionLog)
+        .filter(
+            PausePredictionLog.user_id == user_id,
+            PausePredictionLog.fired_at >= window_start,
+        )
+        .all()
+    )
+    snooze_count = sum(1 for pp in pause_predictions if pp.parent_firing_id is not None)
+    # Compute max chain depth by following parent_firing_id links.
+    pp_by_id = {pp.firing_id: pp for pp in pause_predictions}
+    max_depth = 0
+    for pp in pause_predictions:
+        depth = 0
+        cur = pp
+        while cur.parent_firing_id and cur.parent_firing_id in pp_by_id:
+            depth += 1
+            cur = pp_by_id[cur.parent_firing_id]
+            if depth > 20:
+                break  # cycle defense
+        max_depth = max(max_depth, depth)
+    snooze_chains = {
+        "n_pause_predictions": len(pause_predictions),
+        "n_snoozes": snooze_count,
+        "max_chain_depth": max_depth,
+        "by_mechanism": {},
+    }
+    for pp in pause_predictions:
+        m = pp.mechanism
+        bag = snooze_chains["by_mechanism"].setdefault(m, {"n": 0, "snoozes": 0})
+        bag["n"] += 1
+        if pp.parent_firing_id is not None:
+            bag["snoozes"] += 1
+
+    # ----- Reflection engagement: dwell + outcome per reflection_type
+    reflections = (
+        db.query(ReflectionViewLog)
+        .filter(
+            ReflectionViewLog.user_id == user_id,
+            ReflectionViewLog.fired_at >= window_start,
+            ReflectionViewLog.event_class == "impression",  # exclude telemetry
+        )
+        .all()
+    )
+    reflection_engagement: dict[str, dict] = {}
+    for r in reflections:
+        rt = r.reflection_type
+        bag = reflection_engagement.setdefault(rt, {
+            "n_fired": 0, "n_viewed": 0, "n_dismissed": 0,
+            "dwell_seconds": [], "outcomes": {},
+        })
+        bag["n_fired"] += 1
+        if r.viewed_at:
+            bag["n_viewed"] += 1
+        if r.dismissed_at:
+            bag["n_dismissed"] += 1
+        if r.dwell_seconds is not None:
+            bag["dwell_seconds"].append(float(r.dwell_seconds))
+        if r.outcome:
+            bag["outcomes"][r.outcome] = bag["outcomes"].get(r.outcome, 0) + 1
+    for rt, bag in reflection_engagement.items():
+        dws = bag.pop("dwell_seconds")
+        bag["p50_dwell_seconds"] = _percentile(dws, 50)
+        bag["p75_dwell_seconds"] = _percentile(dws, 75)
+        bag["confidence"] = _confidence_tier(bag["n_fired"])
+
+    # ----- Confidence per top-level signal (rolled up)
+    confidence_per_signal = {
+        "pause_distribution": _confidence_tier(n_pause_events),
+        "recovery_latency": _confidence_tier(
+            sum(len(v) for v in latencies_by_reason.values())
+        ),
+        "hesitation_chain": _confidence_tier(len(creation_to_planned)),
+        "schedule_volatility": _confidence_tier(len(tasks)),
+        "context_switch_graph": _confidence_tier(sum(switch_edges.values())),
+        "snooze_chains": _confidence_tier(len(pause_predictions)),
+        "reflection_engagement": _confidence_tier(len(reflections)),
+    }
+
+    return {
+        "window_days": window_days,
+        "n_sessions": n_sessions,
+        "n_pause_events": n_pause_events,
+        "pause_distribution": pause_distribution,
+        "recovery_latency_by_reason": recovery_by_reason,
+        "hesitation_chain": hesitation_chain,
+        "schedule_volatility": schedule_volatility,
+        "context_switch_graph": context_switch_graph,
+        "snooze_chains": snooze_chains,
+        "reflection_engagement": reflection_engagement,
+        "confidence_per_signal": confidence_per_signal,
+    }
+
+
+# Whitelist of dark columns queryable via query_dark_columns. Each entry maps
+# to a handler that returns aggregated stats only — never raw rows. Privacy
+# (no leaking individual events to LLM context) + token efficiency.
+_DARK_COLUMN_QUERIES: set[str] = {
+    "task.reschedule_count",
+    "task.scope_bullet_count_at_execute",
+    "stopwatch_session.original_pre_task_readiness",
+    "stopwatch_session.task_completion_percentage",
+    "pause_event.active_elapsed_at_pause_seconds",
+    "pause_prediction_log.mechanism",
+    "pause_prediction_log.snooze_chain_depth",
+    "reflection_view_log.dwell_seconds",
+    "reflection_view_log.outcome",
+    "jarvis_invocation.tool_name_distribution",
+    "jarvis_invocation.reasoning_time_seconds",
+}
+
+
+def _exec_query_dark_columns(db: Session, user_id: int, args: dict) -> dict:
+    """Targeted dark-column drill-down. Whitelist-only.
+
+    Per docs/data_utilization_inventory_2026_05_02.md: each PROMOTE-TO-JARVIS
+    column has a dedicated handler. Returns distribution / percentiles —
+    never raw rows. SQL injection prevented by column whitelist (no string
+    interpolation into SQL; explicit ORM filters per case).
+    """
+    column = args.get("column_name", "")
+    if column not in _DARK_COLUMN_QUERIES:
+        return {
+            "ok": False,
+            "reason": "column_not_whitelisted",
+            "column": column,
+            "whitelist": sorted(_DARK_COLUMN_QUERIES),
+        }
+    window_days = max(1, min(int(args.get("window_days", 30)), 90))
+    now = now_utc()
+    window_start = now - timedelta(days=window_days)
+
+    # Per-column dispatch. Each branch returns its own structured result.
+    if column == "task.reschedule_count":
+        rows = (
+            db.query(Task)
+            .filter(
+                Task.user_id == user_id,
+                Task.voided_at.is_(None),
+                Task.created_at >= window_start,
+            )
+            .all()
+        )
+        vals = [t.reschedule_count or 0 for t in rows]
+        return {
+            "ok": True,
+            "column": column,
+            "n": len(vals),
+            "p50": _percentile([float(v) for v in vals], 50),
+            "p75": _percentile([float(v) for v in vals], 75),
+            "p95": _percentile([float(v) for v in vals], 95),
+            "max": max(vals) if vals else None,
+            "n_with_at_least_one_reschedule": sum(1 for v in vals if v > 0),
+            "confidence": _confidence_tier(len(vals)),
+        }
+
+    if column == "task.scope_bullet_count_at_execute":
+        rows = (
+            db.query(Task)
+            .filter(
+                Task.user_id == user_id,
+                Task.voided_at.is_(None),
+                Task.state == TaskState.EXECUTED,
+                Task.created_at >= window_start,
+                Task.scope_bullet_count_at_execute.isnot(None),
+            )
+            .all()
+        )
+        vals = [float(t.scope_bullet_count_at_execute) for t in rows]
+        # Compare against scope_bullet_count_at_plan for drift signal.
+        deltas = []
+        for t in rows:
+            if t.scope_bullet_count_at_plan is not None:
+                deltas.append(
+                    float(t.scope_bullet_count_at_execute) - float(t.scope_bullet_count_at_plan)
+                )
+        return {
+            "ok": True,
+            "column": column,
+            "n": len(vals),
+            "execute_p50": _percentile(vals, 50),
+            "execute_p75": _percentile(vals, 75),
+            "delta_vs_plan_n": len(deltas),
+            "delta_vs_plan_p50": _percentile(deltas, 50),
+            "delta_vs_plan_p75": _percentile(deltas, 75),
+            "confidence": _confidence_tier(len(deltas)),
+        }
+
+    if column == "stopwatch_session.original_pre_task_readiness":
+        # Readiness drift signal: original_pre_task_readiness is snapshotted at
+        # pause time. Compare against the task's pre_task_readiness (set at start)
+        # to detect within-session readiness drift.
+        rows = (
+            db.query(StopwatchSession)
+            .join(Task, Task.task_id == StopwatchSession.task_id)
+            .filter(
+                Task.user_id == user_id,
+                Task.voided_at.is_(None),
+                StopwatchSession.start_time_utc >= window_start,
+                StopwatchSession.original_pre_task_readiness.isnot(None),
+            )
+            .all()
+        )
+        vals = [float(s.original_pre_task_readiness) for s in rows]
+        # Drift = original_pre_task_readiness (at pause) - task.pre_task_readiness (at start)
+        drifts = []
+        for s in rows:
+            t = db.query(Task).filter(Task.task_id == s.task_id).first()
+            if t and t.pre_task_readiness is not None:
+                drifts.append(float(s.original_pre_task_readiness - t.pre_task_readiness))
+        return {
+            "ok": True,
+            "column": column,
+            "n_with_snapshot": len(vals),
+            "snapshot_p50": _percentile(vals, 50),
+            "snapshot_p75": _percentile(vals, 75),
+            "drift_n": len(drifts),
+            "drift_p50": _percentile(drifts, 50),
+            "drift_p75": _percentile(drifts, 75),
+            "interpretation": "Negative drift = readiness dropped between start and pause (engagement decay). Positive = sharpened up.",
+            "confidence": _confidence_tier(len(drifts)),
+        }
+
+    if column == "stopwatch_session.task_completion_percentage":
+        # Early-stop estimate. Useful as cross-check vs Task.task_completion_percentage
+        # (set at final stop). Captured during early-stop confirmation.
+        rows = (
+            db.query(StopwatchSession)
+            .join(Task, Task.task_id == StopwatchSession.task_id)
+            .filter(
+                Task.user_id == user_id,
+                Task.voided_at.is_(None),
+                StopwatchSession.start_time_utc >= window_start,
+                StopwatchSession.task_completion_percentage.isnot(None),
+            )
+            .all()
+        )
+        vals = [float(s.task_completion_percentage) for s in rows]
+        # Compare against final completion %.
+        diffs = []
+        for s in rows:
+            t = db.query(Task).filter(Task.task_id == s.task_id).first()
+            if t and t.task_completion_percentage is not None:
+                diffs.append(
+                    float(t.task_completion_percentage - s.task_completion_percentage)
+                )
+        return {
+            "ok": True,
+            "column": column,
+            "n_early_stop_estimates": len(vals),
+            "early_p50": _percentile(vals, 50),
+            "early_p75": _percentile(vals, 75),
+            "diff_vs_final_n": len(diffs),
+            "diff_vs_final_p50": _percentile(diffs, 50),
+            "diff_vs_final_p75": _percentile(diffs, 75),
+            "interpretation": "Positive diff = final completion % higher than early-stop estimate (recovered after pause). Near-zero = early estimate accurate.",
+            "confidence": _confidence_tier(len(vals)),
+        }
+
+    if column == "pause_event.active_elapsed_at_pause_seconds":
+        rows = (
+            db.query(PauseEvent)
+            .filter(
+                PauseEvent.user_id == user_id,
+                PauseEvent.paused_at_utc >= window_start,
+                PauseEvent.active_elapsed_at_pause_seconds.isnot(None),
+            )
+            .all()
+        )
+        # Cross-tab by pause_reason
+        by_reason: dict[str, list[float]] = {}
+        for pe in rows:
+            by_reason.setdefault(pe.pause_reason, []).append(
+                float(pe.active_elapsed_at_pause_seconds)
+            )
+        out = {}
+        for reason, vals in by_reason.items():
+            out[reason] = {
+                "n": len(vals),
+                "p50_seconds": _percentile(vals, 50),
+                "p75_seconds": _percentile(vals, 75),
+                "confidence": _confidence_tier(len(vals)),
+            }
+        return {
+            "ok": True,
+            "column": column,
+            "n_total": sum(len(v) for v in by_reason.values()),
+            "by_pause_reason": out,
+        }
+
+    if column == "pause_prediction_log.mechanism":
+        rows = (
+            db.query(PausePredictionLog)
+            .filter(
+                PausePredictionLog.user_id == user_id,
+                PausePredictionLog.fired_at >= window_start,
+            )
+            .all()
+        )
+        # Cross-tab mechanism × user_response
+        by_mech: dict[str, dict] = {}
+        for pp in rows:
+            bag = by_mech.setdefault(pp.mechanism, {"n": 0, "by_response": {}})
+            bag["n"] += 1
+            resp = pp.user_response or "no_response"
+            bag["by_response"][resp] = bag["by_response"].get(resp, 0) + 1
+        return {
+            "ok": True,
+            "column": column,
+            "n_total": len(rows),
+            "by_mechanism": by_mech,
+            "confidence": _confidence_tier(len(rows)),
+        }
+
+    if column == "pause_prediction_log.snooze_chain_depth":
+        rows = (
+            db.query(PausePredictionLog)
+            .filter(
+                PausePredictionLog.user_id == user_id,
+                PausePredictionLog.fired_at >= window_start,
+            )
+            .all()
+        )
+        rows_by_id = {r.firing_id: r for r in rows}
+        chain_depths: list[int] = []
+        seen_root: set[str] = set()
+        for r in rows:
+            # Walk up to find chain root
+            cur = r
+            depth = 0
+            while cur.parent_firing_id and cur.parent_firing_id in rows_by_id:
+                cur = rows_by_id[cur.parent_firing_id]
+                depth += 1
+                if depth > 20:
+                    break
+            if cur.firing_id not in seen_root:
+                seen_root.add(cur.firing_id)
+                # Walk down to count chain depth from root
+                # (simpler: use the depth from r upward, but inverted)
+                chain_depths.append(depth)
+        return {
+            "ok": True,
+            "column": column,
+            "n_chains": len(chain_depths),
+            "max_depth": max(chain_depths) if chain_depths else 0,
+            "median_depth": _percentile([float(d) for d in chain_depths], 50),
+            "n_with_snooze": sum(1 for d in chain_depths if d > 0),
+        }
+
+    if column == "reflection_view_log.dwell_seconds":
+        rows = (
+            db.query(ReflectionViewLog)
+            .filter(
+                ReflectionViewLog.user_id == user_id,
+                ReflectionViewLog.fired_at >= window_start,
+                ReflectionViewLog.event_class == "impression",
+                ReflectionViewLog.dwell_seconds.isnot(None),
+            )
+            .all()
+        )
+        by_type: dict[str, list[float]] = {}
+        for r in rows:
+            by_type.setdefault(r.reflection_type, []).append(float(r.dwell_seconds))
+        out = {}
+        for rt, vals in by_type.items():
+            out[rt] = {
+                "n": len(vals),
+                "p50_seconds": _percentile(vals, 50),
+                "p75_seconds": _percentile(vals, 75),
+                "p95_seconds": _percentile(vals, 95),
+                "confidence": _confidence_tier(len(vals)),
+            }
+        return {
+            "ok": True,
+            "column": column,
+            "n_total": sum(len(v) for v in by_type.values()),
+            "by_reflection_type": out,
+        }
+
+    if column == "reflection_view_log.outcome":
+        rows = (
+            db.query(ReflectionViewLog)
+            .filter(
+                ReflectionViewLog.user_id == user_id,
+                ReflectionViewLog.fired_at >= window_start,
+                ReflectionViewLog.event_class == "impression",
+                ReflectionViewLog.outcome.isnot(None),
+            )
+            .all()
+        )
+        by_type: dict[str, dict[str, int]] = {}
+        for r in rows:
+            bag = by_type.setdefault(r.reflection_type, {})
+            bag[r.outcome] = bag.get(r.outcome, 0) + 1
+        return {
+            "ok": True,
+            "column": column,
+            "n_total": len(rows),
+            "by_reflection_type_x_outcome": by_type,
+            "confidence": _confidence_tier(len(rows)),
+        }
+
+    if column == "jarvis_invocation.tool_name_distribution":
+        rows = (
+            db.query(JarvisInvocation)
+            .filter(
+                JarvisInvocation.user_id == user_id,
+                JarvisInvocation.invoked_at >= window_start,
+            )
+            .all()
+        )
+        counts: dict[str, int] = {}
+        for r in rows:
+            counts[r.tool_name] = counts.get(r.tool_name, 0) + 1
+        sorted_counts = dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+        return {
+            "ok": True,
+            "column": column,
+            "n_total": len(rows),
+            "tool_name_counts": sorted_counts,
+            "interpretation": "Operator's question patterns. Most-asked tools reveal what the operator cares about.",
+            "confidence": _confidence_tier(len(rows)),
+        }
+
+    if column == "jarvis_invocation.reasoning_time_seconds":
+        rows = (
+            db.query(JarvisInvocation)
+            .filter(
+                JarvisInvocation.user_id == user_id,
+                JarvisInvocation.invoked_at >= window_start,
+                JarvisInvocation.confirmed_at.isnot(None),
+            )
+            .all()
+        )
+        deltas = [
+            (r.confirmed_at - r.invoked_at).total_seconds()
+            for r in rows
+            if r.confirmed_at and r.invoked_at
+        ]
+        return {
+            "ok": True,
+            "column": column,
+            "n": len(deltas),
+            "p50_seconds": _percentile(deltas, 50),
+            "p75_seconds": _percentile(deltas, 75),
+            "max_seconds": max(deltas) if deltas else None,
+            "interpretation": "Operator's reasoning time on confirmable JARVIS write tools (a meta-signal about cognitive load when JARVIS proposes).",
+            "confidence": _confidence_tier(len(deltas)),
+        }
+
+    # Fallthrough — should never hit because of whitelist check above.
+    return {"ok": False, "reason": "no_handler", "column": column}
+
+
+def _exec_propose_pattern_hypothesis(db: Session, user_id: int, args: dict) -> dict:
+    """Record a structured hypothesis proposal in JarvisInvocation audit log.
+
+    Validates required fields + valence_class + generality_tag enum values.
+    Returns the invocation_id so the operator can later cite specific
+    hypotheses by ID in the docs/jarvis_hypothesis_log.md when promoting
+    or rejecting.
+    """
+    required = [
+        "observation", "signals_used", "predicted_outcome", "falsifier",
+        "generality_tag", "valence_class", "n_at_proposal",
+    ]
+    missing = [f for f in required if f not in args or args[f] in (None, "", [])]
+    if missing:
+        return {"ok": False, "reason": "missing_required_fields", "missing": missing}
+
+    valid_generality = {"operator-only", "potentially-general"}
+    if args["generality_tag"] not in valid_generality:
+        return {
+            "ok": False,
+            "reason": "invalid_generality_tag",
+            "value": args["generality_tag"],
+            "allowed": sorted(valid_generality),
+        }
+
+    valid_valence = {"friction", "flow", "scope_creep", "under_plan", "neutral"}
+    if args["valence_class"] not in valid_valence:
+        return {
+            "ok": False,
+            "reason": "invalid_valence_class",
+            "value": args["valence_class"],
+            "allowed": sorted(valid_valence),
+        }
+
+    # The hypothesis itself lives in tool_args of the audit row written by
+    # write_invocation in execute_read_tool. We just return a structured
+    # confirmation so the agent can describe what it just recorded.
+    return {
+        "ok": True,
+        "recorded": True,
+        "observation": args["observation"][:200],
+        "generality_tag": args["generality_tag"],
+        "valence_class": args["valence_class"],
+        "n_at_proposal": args["n_at_proposal"],
+        "next_step": (
+            "Operator reviews via JARVIS in /v1/jarvis/ask later or via "
+            "the docs/jarvis_hypothesis_log.md companion doc. Promotion "
+            "to Phase 3 inference_engine requires (a) operator validation, "
+            "(b) re-derivability via rule-based math, (c) generality_tag "
+            "= 'potentially-general' for non-operator user surfaces."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Write-tool executors. These run AFTER user confirmation. The pre-confirm
 # path returns a "queued" stub so the agent can describe the proposed action.
 # ---------------------------------------------------------------------------
@@ -734,6 +1605,10 @@ EXECUTORS = {
     "get_top_course": _exec_get_top_course,
     "get_active_session": _exec_get_active_session,
     "get_pattern_summary": _exec_get_pattern_summary,
+    # Phase 2 discovery layer (2026-05-02)
+    "analyze_behavioral_signature": _exec_analyze_behavioral_signature,
+    "query_dark_columns": _exec_query_dark_columns,
+    "propose_pattern_hypothesis": _exec_propose_pattern_hypothesis,
     # Write
     "create_task": _exec_create_task,
     "start_focus_session": _exec_start_focus_session,

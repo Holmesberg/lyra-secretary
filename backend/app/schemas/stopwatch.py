@@ -69,10 +69,13 @@ PAUSE_REASONS = {
     "external_interruption",
     "intentional_break",
     "prayer",
-    # System-initiated when operator switches to another paused task via
-    # /v1/stopwatch/switch (Apr 25 multi-tasking swap fix). Not surfaced
-    # in the user-facing pause-reason picker — the frontend never sets
-    # this directly, only the switch endpoint does.
+    # Originally system-only (Apr 25 multi-tasking swap fix — written by
+    # /v1/stopwatch/switch). Surfaced in the user-facing picker on
+    # 2026-05-02 (operator request, Phase 2 system transition) — a
+    # distinct primitive from distraction/external_interruption: the user
+    # is intentionally swapping context, but the swap still breaks flow.
+    # Tracking it as its own reason lets context-switch-cost analysis
+    # distinguish operator-initiated swaps from involuntary disruptions.
     "task_switch",
 }
 PAUSE_INITIATORS = {"self", "external"}
@@ -82,7 +85,7 @@ class StopwatchPauseRequest(BaseModel):
     # Required — no silent defaults permitted on research-relevant fields.
     # See do_not_add.md §Hardcoded default values. The endpoint MUST reject
     # pauses without both fields supplied.
-    pause_reason: str = Field(..., description="Required. One of: mental_fatigue, distraction, task_difficulty, external_interruption, intentional_break, prayer")
+    pause_reason: str = Field(..., description="Required. One of: mental_fatigue, distraction, task_difficulty, external_interruption, intentional_break, prayer, task_switch")
     pause_initiator: str = Field(..., description="Required. self or external")
 
 

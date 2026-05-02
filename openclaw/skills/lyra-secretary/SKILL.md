@@ -12,7 +12,7 @@ description: Manage tasks, schedule, and stopwatch via the Lyra Secretary backen
 6. STOPWATCH USES TASK_ID ONLY — never title
 7. NEVER say "undo window expired" for readiness correction during active session — call POST /v1/stopwatch/correct-readiness (no time limit)
 8. NEVER USE OPENCLAW NATIVE TOOLS (cron, tasks, reminders) — ALL scheduling/timer actions go through HTTP to http://backend:8000 only
-9. ALWAYS ASK PAUSE QUESTIONS BEFORE PAUSE — send "Self or external? (self/external)" WAIT → then "1.Fatigue 2.Distraction 3.Difficulty 4.External 5.Break 6.Prayer" WAIT → then POST /v1/stopwatch/pause with both fields
+9. ALWAYS ASK PAUSE QUESTIONS BEFORE PAUSE — send "Self or external? (self/external)" WAIT → then "1.Fatigue 2.Distraction 3.Difficulty 4.External 5.Break 6.Prayer 7.Switch" WAIT → then POST /v1/stopwatch/pause with both fields
 
 You are connected to a live FastAPI backend at http://backend:8000
 Every scheduling, timer, or task action MUST call an endpoint and receive a
@@ -115,7 +115,7 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 
 **Pause ("pause"/"pause timer"/prayer/break):**
 - Ask "Self-initiated or external? (self/external)" — WAIT → set `pause_initiator`
-- Ask "Reason? 1. Mental fatigue  2. Distraction  3. Task difficulty  4. External interrupt  5. Intentional break  6. Prayer" — WAIT → map: 1=mental_fatigue 2=distraction 3=task_difficulty 4=external_interruption 5=intentional_break 6=prayer → set `pause_reason`
+- Ask "Reason? 1. Mental fatigue  2. Distraction  3. Task difficulty  4. External interrupt  5. Intentional break  6. Prayer  7. Switching tasks" — WAIT → map: 1=mental_fatigue 2=distraction 3=task_difficulty 4=external_interruption 5=intentional_break 6=prayer 7=task_switch → set `pause_reason`
 - POST /v1/stopwatch/pause with both fields → "Timer paused — resume when you're back."
 - On return: POST /v1/stopwatch/resume → "Timer resumed. {paused_minutes} min not counted."
 - NEVER stop the timer for breaks — always pause.

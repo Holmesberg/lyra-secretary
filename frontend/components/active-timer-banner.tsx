@@ -13,7 +13,16 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // Matches backend PAUSE_REASONS enum in
-// backend/app/schemas/stopwatch.py:58. Keep in sync.
+// backend/app/schemas/stopwatch.py:65. Keep in sync.
+//
+// `task_switch` exposed to the user-facing picker on 2026-05-02 (operator
+// request during Phase 2 system transition). Previously it was system-only,
+// written by /v1/stopwatch/switch when the operator swapped between paused
+// tasks. Surfacing it lets the user explicitly attribute pauses caused by
+// switching contexts — a distinct primitive from "distraction" or
+// "external_interruption" (it's user-driven and intentional, but breaks
+// flow). Captured separately so context-switch-cost analysis can
+// distinguish operator-initiated swaps from involuntary disruptions.
 const PAUSE_REASON_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "mental_fatigue", label: "Low focus" },
   { value: "distraction", label: "Distraction" },
@@ -21,6 +30,7 @@ const PAUSE_REASON_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "external_interruption", label: "External interruption" },
   { value: "intentional_break", label: "Intentional break" },
   { value: "prayer", label: "Prayer" },
+  { value: "task_switch", label: "Switching to another task" },
 ];
 
 // Silent default on click-outside was removed Apr 16 — pause_reason is
