@@ -975,8 +975,20 @@ class ReflectionViewLog(Base):
     # 'micro_mirror' | 'calibration_nudge' (stop-time toast)
     # | 'creation_nudge' (task-creation modal, alembic 035)
     # | 'pause_prediction' (forward) | 'archetype_proximity' (forward)
+    # | 'telemetry_*' (Phase 6 behavioral telemetry — per
+    #   docs/calibration_contract.md R7; payload schemas in
+    #   docs/reflection_view_log_schemas.md when Phase 6 lands)
     # — enforced at application layer.
     reflection_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    # Promoted from JSON payload to top-level column in alembic 045
+    # (Phase 1.5, 2026-05-02). 'impression' (UI surface viewed by user)
+    # vs 'telemetry' (Phase 6 behavioral capture). Btree-indexed for
+    # WHERE event_class = 'impression' filters in VT-21 stratified
+    # analysis paths post-Phase-6. Application-layer-enforced enum.
+    # See docs/calibration_contract.md R7.1.
+    event_class: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="impression"
+    )
     task_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("task.task_id", ondelete="SET NULL")
     )
@@ -996,6 +1008,7 @@ class ReflectionViewLog(Base):
 
     __table_args__ = (
         Index("idx_reflection_view_user_fired_at", "user_id", "fired_at"),
+        Index("idx_reflection_view_event_class", "event_class"),
     )
 
 
