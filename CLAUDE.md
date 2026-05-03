@@ -125,6 +125,44 @@ The 2026-05-02 reframe: the system's actual problem is data utilization, not com
 
 **Endgame (Phase 7+, Under Provision):** the inference engine is substrate for a calibrated secretary that autonomously plans/recalibrates user time around deadlines. Phase 3 inference outputs must be planning-layer-compatible. Reflection surfaces are the Phase 4 user-visible NOW; the planning layer is the user-visible LATER. Don't lock the inference engine into UI-display shape only.
 
+## System transition — rigorous gates (memory contract)
+
+**These gates are non-negotiable for Claude Code (and any agent using this repo).** Do not advance to the next transition phase by renaming docs or “calling it done.” Verify each criterion against files in git.
+
+**Two calendars:** `docs/building_phases.md` (product/alpha) and the May 2026 **transition** below use **different** phase numbers — reconcile explicitly when you ship (`docs/AGENT_HANDOFF.md` §2).
+
+### Transition phases ↔ hard gates
+
+| Trans. phase | Gate name | Must be true before advancing | Verify in repo |
+|--------------|-----------|------------------------------|----------------|
+| **0** | Calibration doctrine | No user-facing inferred-behavior change ships without `docs/calibration_contract.md` compliance | Every reflection/telemetry PR: Enforcement checklist at bottom of calibration doc (R1–R10 + R11 where applicable) |
+| **1** | Data utilization inventory | Operator disposition table signed | `docs/data_utilization_inventory_2026_05_02.md` §7 (checkboxes + sign-off note) |
+| **2** | JARVIS discovery soak | Hypothesis log shows **≥3 PROMOTED** and **≥2 REJECTED**, rejections show **discrimination** (not silent agrees) | `docs/jarvis_hypothesis_log.md` — count **Promoted** vs **Rejected** sections; empty = gate **closed** |
+| **3** | Inference engine (expand) | **`docs/inference_engine_architecture.md`** exists and matches code **before** adding new user-facing writers or analytics contracts | Stub forbidden for merge if PR adds inference outputs — at minimum **DRAFT** with threshold table + signal registry |
+| **3→4** | Operator-overfit (R8) | Before non-operator reflection copy from promoted hypotheses: **operator + 2 trusted users** show **discrimination**, not signature clone | `docs/calibration_contract.md` R8; halt until operator signs analysis |
+| **4** | Reflection surfaces | **R11:** no new blocking round-trips on render paths; prefetched `/me` / `tasks/query`; PR notes **<50ms** smoke vs baseline | `docs/calibration_contract.md` R11 |
+| **5** | Dark-column retirement | Writers retired per inventory; **`docs/dark_column_retirement_log.md`** updated when columns drop writers | `docs/data_utilization_inventory_2026_05_02.md` RETIRE rows |
+| **6** | Implicit telemetry | Each new `telemetry_*` type documented **before** first write; `ReflectionViewLog` **fire-and-forget** (client never awaits) | `docs/reflection_view_log_schemas.md` (create/update in same PR as schema) |
+
+**Existing code anchors:** `backend/app/services/inference_engine.py` holds **valence + disagreement + R2 tier helpers** — any duplicate classification logic elsewhere must stay in sync or call this module. JARVIS remains **403** for non-operators (`backend/app/api/v1/endpoints/jarvis.py`).
+
+### Mandatory halt conditions (do not “just ship”)
+
+1. **Measurement / research fields touched** → Structural Investigation Rule (`docs/design_patterns/structural_investigation_rule.md`) **before** code — no bypass.
+2. **New reflection_type or telemetry** → schema doc + `event_class` discipline (`calibration_contract` R6–R7).
+3. **Phase 2 gate empty** → do **not** claim Phase 3 “complete” for user-facing inference — complete **PROMOTED/REJECTED** log first.
+4. **Banned vocabulary** on user strings (`calibration_contract` R4) — grep/copy-review on any new UI or API copy.
+
+### Quick verification commands
+
+```bash
+# JARVIS / inference primitives (isolated; avoids full tests/conftest if needed)
+cd backend && set PYTHONPATH=. && pytest tests_inference_engine/ --confcutdir=tests_inference_engine -q
+
+# Full backend slice (requires venv with deps, e.g. Python 3.11)
+cd backend && set PYTHONPATH=. && pytest tests/test_jarvis_phase2_discovery_tools.py tests/test_jarvis_endpoints.py -q
+```
+
 ## Configuration
 
 Copy `.env.example` to `.env`. Required vars: `DATABASE_URL`, `REDIS_URL`, `NOTION_API_KEY`, `NOTION_DATABASE_ID`, `USER_TIMEZONE` (IANA, e.g. `Africa/Cairo`). `SECRET_KEY` must be ≥ 32 chars. All times are stored as UTC internally; `USER_TIMEZONE` controls display conversion via `utils/time_utils.py`.

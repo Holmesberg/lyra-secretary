@@ -2,7 +2,7 @@
 
 **Purpose:** Onboarding for any autonomous or agentic AI (Cursor, Copilot, Claude Code, etc.). Read this **before** editing code or docs. Cross-check claims against the repo; docs sometimes lag.
 
-**Last updated:** 2026-03-29 (replace date when you materially change reality).
+**Last updated:** 2026-03-29 — gates mirrored in **`CLAUDE.md` → System transition — rigorous gates** (replace date when you materially change reality).
 
 ---
 
@@ -38,10 +38,10 @@ Check these **facts** on checkout:
 | **0 — Calibration doctrine** | `docs/calibration_contract.md` exists, used as gate for UI | Read R1–R11 |
 | **1 — Data utilization inventory** | Operator sign-off in inventory doc §7 | `docs/data_utilization_inventory_2026_05_02.md` |
 | **2 — JARVIS discovery soak** | ≥3 **PROMOTED** + ≥2 **REJECTED** hypotheses with real discrimination | `docs/jarvis_hypothesis_log.md` |
-| **3 — Inference engine** | Valence + tiers in code; full user-facing writers TBD | **`backend/app/services/inference_engine.py` — classifies valence, disagreement, R2 tiers; not yet the full Phase 3 surface API** |
-| **4+** | Surfaces, retirement, telemetry | Per transition doc; don’t start Phase 4 reflection coding until Phase 0 doctrine + Phase 3 API strategy are settled |
+| **3 — Inference engine** | Valence + tiers in code; full user-facing writers TBD | **`backend/app/services/inference_engine.py`** — valence, disagreement, R2 tiers; expand only with `docs/inference_engine_architecture.md` |
+| **4+** | Surfaces, retirement, telemetry | Per transition doc; follow **`CLAUDE.md` → System transition — rigorous gates** before merging reflection work |
 
-**Inference engine:** Referenced throughout `calibration_contract.md`; implementation is **not** present until someone adds `inference_engine.py` and tests. **Do not** assume it exists.
+**Inference engine:** `inference_engine.py` exists (shared classification math). **Rigorous gates** for every phase live in **`CLAUDE.md` (System transition — rigorous gates)** — do not skip.
 
 **JARVIS tools (backend):** `backend/app/services/jarvis_tools.py` — includes `analyze_behavioral_signature`, `query_dark_columns`, `propose_pattern_hypothesis` among read tools; write tools are separate. Tests: `backend/tests/test_jarvis_phase2_discovery_tools.py`, `test_jarvis_endpoints.py`.
 
@@ -74,7 +74,7 @@ Check these **facts** on checkout:
 
 ### C. Phase 3 (only after B)
 
-1. Add `backend/app/services/inference_engine.py` + tests + **`GET`** analytics endpoint as specified in transition plan — **design in `docs/inference_engine_architecture.md` first**.
+1. **`inference_engine.py` exists** — extend with new writers / **`GET`** analytics only per **`docs/inference_engine_architecture.md`** (land or update in the same PR).
 2. **No** Bayesian DL stacks, **no** new tables for core loop if transition anti-step-10 fence still applies — reuse existing tables + `ReflectionViewLog` patterns unless operator expands scope.
 
 ### D. Phase 4 surfaces
@@ -125,10 +125,10 @@ Docker and frontend workflows: **`CLAUDE.md`** Commands section.
 
 ## 9. Handoff checklist for the next agent
 
-- [ ] Read `CLAUDE.md` + `docs/calibration_contract.md` end-to-end.
-- [ ] Read `docs/jarvis_hypothesis_log.md` — confirm gate status.
-- [ ] Grep for `inference_engine` — confirm file absent/present.
+- [ ] Read `CLAUDE.md` (**including System transition — rigorous gates**) + `docs/calibration_contract.md` end-to-end.
+- [ ] Read `docs/jarvis_hypothesis_log.md` — confirm Phase 2 gate (PROMOTED/REJECTED counts).
+- [ ] Confirm `backend/app/services/inference_engine.py` and follow **CLAUDE.md** gates before expanding inference.
 - [ ] Run JARVIS-related pytest slice.
-- [ ] Only then implement Phase 3 or expand Phase 4.
+- [ ] Only then implement Phase 3 expansion or Phase 4 surfaces.
 
 When you finish a major milestone, **update the “Last updated” line at top** and **§3 table** so the next agent inherits truth.

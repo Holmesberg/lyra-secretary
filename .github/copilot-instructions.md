@@ -6,6 +6,8 @@ Use these instructions when working in this repository.
 
 **Start here:** [`docs/AGENT_HANDOFF.md`](../docs/AGENT_HANDOFF.md) — comprehensive transition context, dual planning tracks, phase gates, file map, verification commands, and a checklist. This file is the short standing instruction set.
 
+**Hard gates (do not skip):** [`CLAUDE.md`](../CLAUDE.md) → section **System transition — rigorous gates (memory contract)** — mirrors transition phases 0–6 with verification sources and halt conditions.
+
 ## What This Repo Is
 
 Lyra Secretary is not a generic productivity app. It is a behavioral inference system with productivity as the interaction surface. The project is currently in the May 2 transition from a sensor-heavy design toward a cortex-deep design.
