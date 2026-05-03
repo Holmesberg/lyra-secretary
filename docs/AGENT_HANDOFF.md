@@ -2,7 +2,7 @@
 
 **Purpose:** Onboarding for any autonomous or agentic AI (Cursor, Copilot, Claude Code, etc.). Read this **before** editing code or docs. Cross-check claims against the repo; docs sometimes lag.
 
-**Last updated:** 2026-03-29 — gates mirrored in **`CLAUDE.md` → System transition — rigorous gates** (replace date when you materially change reality).
+**Last updated:** 2026-05-03 — gates mirrored in **`CLAUDE.md` → System transition — rigorous gates** (replace date when you materially change reality).
 
 ---
 
@@ -54,7 +54,7 @@ Check these **facts** on checkout:
 - **`docs/building_phases.md`** may still say “Phase 4.5 active” from April 2026 while May transition docs describe JARVIS/inference — **update explicitly** when you touch either.
 - **`docs/complexity_stress_test_2026_05_01.md`** — early sections push kill/substrate reduction; **read the 2026-05-02 postscript** for the reframe (utilization > raw complexity; JARVIS discovery kept).
 - **`CLAUDE.md` table count vs audits** — CLAUDE may list a subset; migrations evolve — trust `alembic/versions/` + `models.py` for truth.
-- **Missing files still referenced:** `docs/inference_engine_architecture.md`, `docs/dark_column_retirement_log.md`, `docs/reflection_view_log_schemas.md` — either create stubs or remove references from `CLAUDE.md` / calibration doc until they exist.
+- **Missing / partial docs:** `docs/inference_engine_architecture.md` (**DRAFT** — Phase C landed); still missing: `docs/dark_column_retirement_log.md`, `docs/reflection_view_log_schemas.md` — create or trim references when touched.
 
 ---
 

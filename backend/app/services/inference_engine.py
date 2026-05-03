@@ -7,9 +7,12 @@ payloads for `/v1/users/me` enrichment per R11.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from app.db.models import Task
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 ValenceClass = Literal["friction", "flow", "scope_creep", "under_plan", "neutral"]
 
@@ -121,3 +124,24 @@ def classify_disagreement(t: Task) -> str | None:
             return "friction_completion"
 
     return None
+
+
+def behavioral_signature_for_operator(
+    db: "Session",
+    user_id: int,
+    *,
+    window_days: int = 14,
+) -> dict:
+    """Aggregated behavioral fingerprint for operator analytics (HTTP + tooling).
+
+    Delegates to JARVIS ``_exec_analyze_behavioral_signature`` — single aggregation
+    implementation. Exposed as ``GET /v1/analytics/behavioral_signature`` (403
+    non-operator) per ``docs/calibration_contract.md`` R11: not used for
+    user-facing page render paths.
+
+    See: ``docs/inference_engine_architecture.md``.
+    """
+    from app.services.jarvis_tools import _exec_analyze_behavioral_signature
+
+    wd = max(1, min(90, int(window_days)))
+    return _exec_analyze_behavioral_signature(db, user_id, {"window_days": wd})

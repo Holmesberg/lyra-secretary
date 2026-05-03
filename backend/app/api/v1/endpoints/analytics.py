@@ -868,6 +868,37 @@ def get_insights(
     }
 
 
+def _require_operator_analytics(db: Session) -> User:
+    uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    user = db.query(User).filter(User.user_id == uid).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="user not found")
+    if not user.is_operator:
+        raise HTTPException(status_code=403, detail="operator only")
+    return user
+
+
+@router.get("/analytics/behavioral_signature")
+def get_behavioral_signature(
+    window_days: int = Query(14, ge=1, le=90, description="Look-back window in days"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Operator-only aggregated fingerprint (pause mix, valence, reflection dwell, …).
+
+    Same computation as JARVIS ``analyze_behavioral_signature``. Per
+    ``docs/calibration_contract.md`` R11 — **not** for Today/Insights rendering;
+    use for operator dashboards, scripts, and JARVIS-equivalent HTTP access.
+    """
+    op = _require_operator_analytics(db)
+    from app.services.inference_engine import behavioral_signature_for_operator
+
+    return behavioral_signature_for_operator(
+        db, op.user_id, window_days=window_days
+    )
+
+
 # ---------------------------------------------------------------------------
 # Cascade Analytics
 # ---------------------------------------------------------------------------

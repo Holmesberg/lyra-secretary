@@ -186,6 +186,7 @@ All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopw
 | GET | `/v1/notifications/pending` | Poll and drain notification queue (agent-facing) |
 | GET | `/v1/analytics/discrepancy` | Discrepancy measurement data — readiness, reflection, initiation stats |
 | GET | `/v1/analytics/insights` | Behavioral insights — pattern detection after sufficient sessions |
+| GET | `/v1/analytics/behavioral_signature` | Operator-only: aggregated fingerprint (pause/valence/reflection dwell) — **not** for Today/Insights first paint (`calibration_contract` R11) |
 | GET | `/v1/analytics/cascade` | Cascade failure analysis — sequential abandonment patterns |
 | GET | `/v1/analytics/bias_factor` | Per-category bias_factor with Bayesian shrinkage (Phase 6 surface) |
 | GET | `/v1/analytics/pause_prediction` | VT-17 pause-prediction dashboard: firing volume, acceptance_rate, per-mechanism breakdown |
