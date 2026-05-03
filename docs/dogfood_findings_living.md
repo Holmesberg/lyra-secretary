@@ -292,6 +292,8 @@ All CI green on `4740475`.**
 
 - **Interruption chain visualization deferred to Phase 6.** Backend stores `parent_task_id` and `interruption_type` (commit 2f4abed); frontend never renders the graph. Phase 6 ships a designed visualization (`/insights` card or subroute) once the view has real layout thought behind it — a flat-list v1 for trusted alpha users would prime users to read "Lyra notices interruptions" without delivering enough payoff to influence behavior. Design spec: `docs/phase_6_architecture_backlog.md` §"Interruption Chain Visualization (Phase 6)". *Disposition Apr 14.*
 
+- **Implicit signal: Incomplete task description before deadline.** A crucial behavioral pattern identified during dogfooding: if a user fails to finish writing a task description before its associated deadline arrives, it strongly signals a misaligned priority measurement (the task was assigned a deadline but lacked the priority to even be fully planned). This is a high-value implicit signal for the Phase 6 inference engine. *Added May 2.*
+
 ---
 
 ## How operator uses this doc

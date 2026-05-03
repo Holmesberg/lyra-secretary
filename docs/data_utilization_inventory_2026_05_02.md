@@ -288,15 +288,33 @@ The remaining ~70 deferred signals stay in this doc as the backlog. They are not
 
 This disposition table is the gate for Phase 2. Before JARVIS gets the new tools, operator confirms:
 
-- [ ] The ~12 SURFACE items are the right Phase 4 candidates
-- [ ] The ~24 PROMOTE-TO-JARVIS items are the right discovery substrate
-- [ ] The Phase 6 INSTRUMENT list of 5 is correct (not 7 — items 6/7 are derivable)
-- [ ] `task.llm_priority` is OK to RETIRE (writer removal; column kept)
-- [ ] The ~70 DEFER items are acceptable as backlog (operator can flag any to promote earlier)
+- [x] The ~12 SURFACE items are the right Phase 4 candidates
+- [x] The ~24 PROMOTE-TO-JARVIS items are the right discovery substrate
+- [x] The Phase 6 INSTRUMENT list of 5 is correct (not 7 — items 6/7 are derivable)
+- [x] `task.llm_priority` is OK to RETIRE (writer removal; column kept)
+- [x] The ~70 DEFER items are acceptable as backlog (operator can flag any to promote earlier)
 
-**Sign-off note from operator:** _(pending — operator review)_
+**Sign-off note from operator:** Confirmed override to proceed with JARVIS soak (2026-05-02).
 
 Once signed, Phase 2 (JARVIS soak window 2026-05-02 → 2026-05-16 minimum) starts. The hypothesis log accumulates in `docs/jarvis_hypothesis_log.md`. Promotion to Phase 3 inference engine requires ≥3 promoted + ≥2 rejected hypotheses with the failure case demonstrating discrimination.
+
+---
+
+## Revision 2 — 2026-03-29
+
+### §R2.1 — Task-level primitive: incomplete description before deadline
+
+Dogfood **May 2** (`docs/dogfood_findings_living.md`): if the user assigns a **deadline** but fails to finish composing the task **description / scope** before the deadline instant, that indicates **declared urgency without planning depth** — a priority-measurement primitive for Phase 6 inference.
+
+| Signal id | Class | Disposition | Capture notes |
+|-----------|-------|-------------|----------------|
+| `description_incomplete_at_deadline` | **NOT-INSTRUMENTED** → **INSTRUMENT** (Phase 6 candidate; inference_engine substrate) | Same tier as other behavioral primitives in §5 | **High fidelity:** boundary snapshot at or before `Deadline.due_at_utc` (telemetry or server-side). **Proxies for JARVIS:** `deadline_id`, `Deadline.due_at_utc`, `Task.description`, `scope_bullet_count_at_plan`, `Task.last_modified_at`. |
+
+This revision **adds one named row** to the triage set. It does **not** re-total the §Methodology passes (the **≥208** figure remains the documented floor; overlap across passes is unchanged).
+
+### Cross-reference
+
+Narrative journey spine + definitions: `docs/journey_signal_counts.md`.
 
 ---
 

@@ -38,6 +38,11 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.services.inference_engine import (
+    classify_disagreement as _classify_disagreement,
+    classify_task_valence as _classify_task_valence,
+)
+
 from app.db.models import (
     Deadline,
     JarvisInvocation,
@@ -827,104 +832,6 @@ def _tod_bucket(dt: datetime) -> str:
     if h < 18:
         return "afternoon"
     return "evening"
-
-
-def _classify_task_valence(t: Task) -> str:
-    """Classify a task's valence per docs/calibration_contract.md R9.
-
-    Returns one of: friction | flow | scope_creep | under_plan | neutral.
-
-    Naive 'implicit wins on disagreement' breaks at flow state (overrun + high
-    focus = success not friction). The valence classifier runs BEFORE any
-    implicit-vs-explicit resolution, distinguishing structural classes:
-
-    - friction: overrun + low focus (≤2) + ≥3 pauses + scope unchanged
-    - flow: overrun + high focus (≥4) + ≤1 pause
-    - scope_creep: overrun + medium focus (3) + scope grew ≥50%
-    - under_plan: underrun + high focus + ≤1 pause
-    - neutral: within ±15% of plan, focus 3, pauses ≤2
-
-    When focus rating is unavailable (NULL post_task_reflection), valence
-    defaults to 'neutral' regardless of duration outcome — we don't have
-    the explicit signal needed for resolution.
-    """
-    if t.executed_duration_minutes is None or t.planned_duration_minutes is None:
-        return "neutral"
-    if t.planned_duration_minutes <= 0:
-        return "neutral"
-
-    delta = t.executed_duration_minutes - t.planned_duration_minutes
-    delta_pct = delta / t.planned_duration_minutes
-    focus = t.post_task_reflection
-    pauses = t.pause_count or 0
-
-    # Need an explicit focus signal for any non-neutral classification.
-    if focus is None:
-        return "neutral"
-
-    overrun = delta_pct > 0.15
-    underrun = delta_pct < -0.15
-    high_focus = focus >= 4
-    low_focus = focus <= 2
-    medium_focus = focus == 3
-
-    if overrun and high_focus and pauses <= 1:
-        return "flow"
-    if overrun and low_focus and pauses >= 3:
-        return "friction"
-    if overrun and medium_focus:
-        # True scope_creep ideally checks scope_bullet_count delta ≥ 50%, but
-        # the column may not be populated for every task. Surface the
-        # presumptive scope_creep and let JARVIS validate it via
-        # query_dark_columns(task.scope_bullet_count_at_execute) if needed.
-        return "scope_creep"
-    if underrun and high_focus and pauses <= 1:
-        return "under_plan"
-
-    return "neutral"
-
-
-def _classify_disagreement(t: Task) -> str | None:
-    """Classify explicit-vs-implicit disagreement type per task.
-
-    The R9 valence classifier handles the *outcome-side* resolution. This
-    helper surfaces the *input-vs-outcome* disagreement axis specifically:
-    where the operator's pre-task self-report (readiness) didn't match the
-    post-task self-report (focus) or the implicit execution behavior.
-
-    Returns one of:
-    - 'optimism_collapse': pre_readiness ≥4, post_reflection ≤2
-       (felt sharp, executed poorly — most useful primitive for self-cal)
-    - 'capacity_surprise': pre_readiness ≤2, post_reflection ≥4
-       (felt drained, executed well — under-trusted state)
-    - 'flow_overrun': post_reflection ≥4, executed ≥1.3× planned
-       (high focus + big overrun — implicit looks like friction, isn't)
-    - 'friction_completion': post_reflection ≤2, |delta| ≤15%
-       (low focus + on-time delivery — forced through; cost not visible
-       in duration metrics alone)
-    - None: no disagreement detected
-    """
-    if t.pre_task_readiness is None and t.post_task_reflection is None:
-        return None
-    pre = t.pre_task_readiness
-    post = t.post_task_reflection
-    planned = t.planned_duration_minutes or 0
-    executed = t.executed_duration_minutes or 0
-
-    if pre is not None and post is not None:
-        if pre >= 4 and post <= 2:
-            return "optimism_collapse"
-        if pre <= 2 and post >= 4:
-            return "capacity_surprise"
-
-    if post is not None and planned > 0 and executed > 0:
-        ratio = executed / planned
-        if post >= 4 and ratio >= 1.3:
-            return "flow_overrun"
-        if post <= 2 and abs(ratio - 1.0) <= 0.15:
-            return "friction_completion"
-
-    return None
 
 
 def _exec_analyze_behavioral_signature(db: Session, user_id: int, args: dict) -> dict:

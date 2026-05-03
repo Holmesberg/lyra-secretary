@@ -2,6 +2,10 @@
 
 Use these instructions when working in this repository.
 
+## Full brief for new agents
+
+**Start here:** [`docs/AGENT_HANDOFF.md`](../docs/AGENT_HANDOFF.md) — comprehensive transition context, dual planning tracks, phase gates, file map, verification commands, and a checklist. This file is the short standing instruction set.
+
 ## What This Repo Is
 
 Lyra Secretary is not a generic productivity app. It is a behavioral inference system with productivity as the interaction surface. The project is currently in the May 2 transition from a sensor-heavy design toward a cortex-deep design.
@@ -12,6 +16,7 @@ The important idea is simple: the repo already collects a lot of signal. The nex
 
 Before making changes, read:
 
+- `docs/AGENT_HANDOFF.md` (handoff + gates)
 - `CLAUDE.md`
 - `MANIFESTO.md`
 - `docs/building_phases.md`
@@ -39,7 +44,7 @@ The active plan is the 2026-05-02 system transition:
 6. Dark-column retirement
 7. Lightweight telemetry only for the highest-value implicit signals
 
-Do not assume an older phase doc is current if the May 2 docs or code say otherwise.
+Do not assume an older phase doc is current if the May 2 docs or code say otherwise. Product roadmap lives in `docs/building_phases.md`; reconcile both — see `docs/AGENT_HANDOFF.md` §2.
 
 ## Ground Rules
 
@@ -81,7 +86,3 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
 - Rebuilding systems that already exist
 - Expanding scope just because the repository is rich in data and docs
 - Violating operator-only boundaries
-
-## If You Need A Handoff
-
-Use `docs/copilot_handoff_prompt.md` as the longer takeover brief. This file is the short standing instruction set; the handoff prompt is the deeper read for a new agent.
