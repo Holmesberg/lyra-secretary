@@ -30,6 +30,7 @@ MANIFEST
 .env
 .env.backup*
 .venv
+.venv*/
 env/
 venv/
 ENV/

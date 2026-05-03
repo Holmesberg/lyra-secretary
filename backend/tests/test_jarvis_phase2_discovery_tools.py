@@ -75,9 +75,17 @@ def test_analyze_behavioral_signature_cold_start(db):
     # Phase 2.1 additions present even at cold start
     assert "valence_distribution" in result
     assert result["valence_distribution"]["n_classified"] == 0
+    assert "valence_preconditions" in result
     assert "disagreement_events" in result
     assert "post_pause_transitions" in result
+    assert "post_pause_transitions_lift_vs_baseline" in result
+    assert "post_pause_category_jump" in result
+    assert "big_overrun_next_valence" in result
+    assert "reschedule_escape_valves" in result
     assert result["post_pause_transitions"] == []
+    assert result["coverage"]["n_by_covered_signal"][
+        "post-pause transition lift vs baseline category frequency"
+    ] == 0
     # Confidence tiers all cold_start (including new signals)
     confidences = result["confidence_per_signal"]
     assert all(v == "cold_start" for v in confidences.values()), (
@@ -86,6 +94,9 @@ def test_analyze_behavioral_signature_cold_start(db):
     assert "valence_distribution" in confidences
     assert "disagreement_events" in confidences
     assert "post_pause_transitions" in confidences
+    assert "valence_preconditions" in confidences
+    assert "big_overrun_next_valence" in confidences
+    assert "reschedule_escape_valves" in confidences
 
 
 def test_analyze_behavioral_signature_with_pauses(db):
@@ -368,6 +379,8 @@ def test_signature_includes_coverage_field(db):
     assert "covered_signal_categories" in result["coverage"]
     assert "NOT_covered_dont_speculate_about_these" in result["coverage"]
     assert "hallucination_rule" in result["coverage"]
+    assert "answering_rule" in result["coverage"]
+    assert "n_by_covered_signal" in result["coverage"]
     # Onboarding fingerprint MUST be in NOT_covered (caught operator's 2026-05-02
     # hallucination — JARVIS invented onboarding insights with no data).
     not_covered_str = " ".join(result["coverage"]["NOT_covered_dont_speculate_about_these"]).lower()
@@ -378,6 +391,7 @@ def test_signature_includes_coverage_field(db):
     assert "valence" in covered_str
     assert "disagreement" in covered_str
     assert "post-pause" in covered_str
+    assert "valence preconditions" in covered_str
 
 
 def test_post_pause_transitions_distraction_to_study(db):
@@ -439,3 +453,13 @@ def test_post_pause_transitions_distraction_to_study(db):
     ]
     assert len(matches) == 1
     assert matches[0]["count"] == 1
+
+    lift_matches = [
+        t for t in result["post_pause_transitions_lift_vs_baseline"]
+        if t["pause_reason"] == "distraction" and t["next_category"] == "study"
+    ]
+    assert len(lift_matches) == 1
+    assert lift_matches[0]["count"] == 1
+    assert lift_matches[0]["baseline_category_frequency"] > 0
+    assert "distraction" in result["post_pause_category_jump"]
+    assert result["post_pause_category_jump"]["distraction"]["category_jump"] == 1
