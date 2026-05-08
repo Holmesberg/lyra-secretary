@@ -1,0 +1,101 @@
+# 02 Architecture Layers
+
+**Purpose:** Classify implementation into explicit layers and identify leaks.
+
+## Layer Definitions
+
+1. **Substrate:** persistence, auth, scoping, time utilities, Redis, state machine.
+2. **Instrumentation:** task creation, stopwatch, pause/resume, self-report
+   capture, deadline outcomes.
+3. **Derived metrics:** ratios, deltas, aggregates, confidence tiers.
+4. **Cortex:** measurement governance and read-time canonicalization.
+5. **Inference:** valence, disagreement, bias factor, predictors, archetype
+   proximity.
+6. **Exposure/intervention:** nudges, predictions, micro-mirrors, insights,
+   reflection view logs.
+7. **Operator tooling:** JARVIS, admin dashboards, notebooks, scripts.
+8. **Integrations:** Notion, Google Calendar, Moodle, Telegram/OpenClaw.
+9. **UI/product:** Next.js pages and components.
+10. **Research/speculative:** docs, hypothesis logs, parked ideas, notebooks.
+11. **Legacy/archive:** old specs, backups, manual migration SQL.
+
+## Current Layer Map
+
+| Layer | Primary files | Grade | Alignment notes |
+| --- | --- | --- | --- |
+| substrate | `models.py`, `scoping.py`, `session.py`, `state_machine.py`, `redis_client.py`, `time_utils.py` | strong | Scoping is explicit but raw SQL can bypass it |
+| instrumentation | `task_manager.py`, `stopwatch_manager.py`, `deadlines.py`, `pause_predictions.py`, frontend modals | strong but dense | Generates highest-value data; also where contamination begins |
+| derived metrics | `cortex.py`, `analytics.py`, `bias_factor_service.py`, frontend aggregations | mixed | Multiple metric conventions coexist |
+| cortex | `docs/cortex_contract_v0.md`, `services/cortex.py`, `test_cortex_contract_v0.py` | emerging | Correctly read-only in v0 |
+| inference | `inference_engine.py`, `bias_factor_service.py`, predictors, archetype proximity | research-grade | Uses heuristic and statistical labels with mixed confidence semantics |
+| exposure/intervention | `ReflectionViewLog`, micro-mirrors, nudges, pause/resume banners, insights | partially governed | Exposure ledger is not implemented yet |
+| operator tooling | `jarvis_agent.py`, `jarvis_tools.py`, `analytics/behavioral_signature`, notebooks | powerful/prototype | High risk of AI-generated semantic sediment |
+| integrations | Notion, Google Calendar, Moodle, Telegram/OpenClaw | production/prototype mix | External imports need strict exclusion from H1 analyses |
+| UI/product | frontend app/components/lib | production/prototype mix | UI copy can overclaim model meaning |
+| research/speculative | docs, MANIFESTO, parked ideas, audits | valuable but unstable | Must not be treated as code truth |
+| legacy/archive | archive, backups, old migration SQL | archive | Keep for lineage; do not execute casually |
+
+## Layer Leaks
+
+### Leak 1: Inference inside analytics endpoint
+
+`backend/app/api/v1/endpoints/analytics.py` contains insight generation,
+confidence tiers, cascade analysis, bias-factor endpoints, deadline-shape
+analysis, archetype endpoints, and Cortex diagnostics. This blends endpoint
+transport with derived metrics and inference.
+
+**Status:** Active legacy. Do not expand. Prefer moving new shared math into
+`services/cortex.py` or `services/inference_engine.py`, depending on layer.
+
+### Leak 2: Latent labels in shared inference
+
+`inference_engine.py` returns `friction`, `flow`, `scope_creep`, `under_plan`,
+and `neutral`. Cortex v0 classifies these as latent/inferred hypotheses, not
+observables.
+
+**Status:** Conceptually useful, semantically dangerous if surfaced as truth.
+
+### Leak 3: Exposure and measurement cohabiting in frontend
+
+`today/page.tsx`, `new-task-modal.tsx`, `pause-prediction-banner.tsx`, and
+`reflection-modal.tsx` can both collect data and influence future data.
+
+**Status:** Expected in product, but Phase 1 exposure ledger is required before
+adaptive inference can use these streams safely.
+
+### Leak 4: JARVIS operator tooling imports inference classifications
+
+`jarvis_tools.py` imports `classify_task_valence` and `classify_disagreement`.
+JARVIS is operator-only, but its pattern proposals can become future doctrine.
+
+**Status:** Contained by operator-only gate, but governance must prevent direct
+promotion to cohort-facing copy.
+
+### Leak 5: Integrations create research-shaped rows
+
+Moodle iCal creates `Deadline` rows with `external_source='moodle_ics'`.
+Google Calendar uses external event outcome rows. These are legitimate product
+features but contaminated for native planning calibration.
+
+**Status:** Partially mitigated by external-source filters.
+
+## Circularity Risks
+
+- `bias_factor_service.py` says `_time_of_day` is duplicated from
+  `analytics.py` and must stay in lockstep. This is a duplicate abstraction,
+  not a clean layer boundary.
+- `behavioral_signature_for_operator()` delegates back into JARVIS tools,
+  making `inference_engine.py` depend on operator tooling for an aggregate.
+- Frontend displays insights generated by backend analytics, then the user's
+  future behavior becomes exposed data without a complete exposure ledger.
+
+## Layer Governance Rule
+
+New code must declare which layer it belongs to. If it crosses layers, the pull
+request must document:
+
+- source layer
+- target layer
+- data profile
+- whether user behavior can be affected
+- whether the output is observed, derived, inferred, or latent
