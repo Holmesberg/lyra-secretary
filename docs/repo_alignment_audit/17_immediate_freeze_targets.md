@@ -29,6 +29,7 @@ until validation/governance catches up.
 | confidence | overloaded; must be typed before expansion |
 | discrepancy | overloaded; avoid new uses |
 | scope creep | proxy validity unresolved |
+| user-burden variables | frozen unless offset by product simplification and explicit identifiability gain |
 
 ## Heuristic Freeze Targets
 
@@ -48,6 +49,9 @@ until validation/governance catches up.
 - Do not add new reflection/telemetry types without schema docs.
 - Do not add non-operator JARVIS access.
 - Do not add Cortex schema fields in Phase 0.
+- Do not add new required user inputs for research purposes.
+- Do not add new subjective scales, questionnaires, or check-ins before a
+  successor product-research contract justifies the burden.
 
 ## Structural Refactor Freeze Gate
 

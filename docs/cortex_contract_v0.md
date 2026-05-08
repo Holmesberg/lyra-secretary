@@ -13,6 +13,9 @@ transformations are forbidden because they would corrupt measurement validity.
 Structural refactor sequencing is governed by
 `docs/cortex_refactor_guardrails.md`.
 
+The product/research boundary is governed by
+`docs/cortex_product_research_contract_v0.md`.
+
 ---
 
 ## 1. Phase Boundary

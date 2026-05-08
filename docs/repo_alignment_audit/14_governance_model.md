@@ -30,6 +30,12 @@ If these cannot be answered, the concept is not admitted.
   suspicious.
 - External imports and retroactive data must stay out of native calibration
   unless the profile allows them.
+- Research value alone cannot justify new required user inputs. Any
+  user-burdening variable requires a successor contract or explicit amendment
+  documenting identifiability gain, retention risk, clean-data impact, and
+  burden offset.
+- Retention is a research precondition: without longitudinal usage, the
+  inference layer loses the data stream it claims to model.
 
 ## Documentation Requirements
 
@@ -73,6 +79,8 @@ Before merge:
 - Does it change a clean-data filter?
 - Does it expose a user to a claim that future learning will consume?
 - Does it rely on docs that code does not verify?
+- Does it add a user-burden variable for research value rather than product
+  completion, accessibility, latency, clarity, or bug repair?
 - Does it convert `unknown` into neutral, bounded, zero, average, or
   no-exposure?
 - Does a structural move alter a metric, threshold, clean-data filter, or
