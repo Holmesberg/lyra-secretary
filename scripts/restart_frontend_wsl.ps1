@@ -1,0 +1,114 @@
+param(
+    [switch]$NoBuild,
+    [switch]$SkipPublicCheck
+)
+
+$ErrorActionPreference = "Stop"
+
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$wslRepoRoot = (& wsl.exe wslpath -a $repoRoot.Path).Trim()
+if (-not $wslRepoRoot) {
+    throw "Could not resolve repo root inside WSL."
+}
+
+$noBuildValue = if ($NoBuild) { "1" } else { "0" }
+$skipPublicValue = if ($SkipPublicCheck) { "1" } else { "0" }
+$safeWslRepoRoot = $wslRepoRoot.Replace("'", "'\''")
+
+$bashScript = @"
+set -euo pipefail
+
+FRONTEND_DIR='$safeWslRepoRoot/frontend'
+NO_BUILD='$noBuildValue'
+SKIP_PUBLIC_CHECK='$skipPublicValue'
+SESSION='lyra-frontend'
+START_SCRIPT='/tmp/start_lyra_frontend.sh'
+FRONTEND_LOG='/tmp/frontend.log'
+
+source ~/.nvm/nvm.sh
+
+cd "`$FRONTEND_DIR"
+export NEXT_TELEMETRY_DISABLED=1
+
+echo '== Lyra frontend WSL restart =='
+echo "frontend_dir=`$FRONTEND_DIR"
+echo "node=`$(which node) `$(`$(which node) -v)"
+echo "npm=`$(which npm) `$(`$(which npm) -v)"
+
+echo '== stopping stale frontend sessions/processes =='
+tmux kill-session -t "`$SESSION" 2>/dev/null || true
+
+mapfile -t pids < <(
+  ps -eo pid=,args= |
+    grep -E 'next-server|next build|next start|npm run build|npm run start' |
+    grep -v grep |
+    awk '{print `$1}'
+)
+
+if [ "`${#pids[@]}" -gt 0 ]; then
+  echo "terminating: `${pids[*]}"
+  kill -TERM "`${pids[@]}" 2>/dev/null || true
+  sleep 2
+  kill -KILL "`${pids[@]}" 2>/dev/null || true
+else
+  echo 'no stale next/npm frontend processes found'
+fi
+
+if [ "`$NO_BUILD" != '1' ]; then
+  echo '== rebuilding .next from scratch =='
+  rm -rf .next
+  npm run build
+else
+  echo '== skipping build; validating existing .next =='
+fi
+
+if [ ! -s .next/BUILD_ID ]; then
+  echo 'ERROR: .next/BUILD_ID is missing. Refusing to start incomplete production artifact.' >&2
+  exit 42
+fi
+
+echo "build_id=`$(cat .next/BUILD_ID)"
+
+cat > "`$START_SCRIPT" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+source ~/.nvm/nvm.sh
+cd "__FRONTEND_DIR__"
+export NEXT_TELEMETRY_DISABLED=1
+exec npm run start > /tmp/frontend.log 2>&1
+EOS
+
+python3 - <<PY
+from pathlib import Path
+path = Path("`$START_SCRIPT")
+text = path.read_text()
+text = text.replace("__FRONTEND_DIR__", "$safeWslRepoRoot/frontend")
+path.write_text(text)
+PY
+
+chmod +x "`$START_SCRIPT"
+: > "`$FRONTEND_LOG"
+
+echo '== starting next start in tmux =='
+tmux new-session -d -s "`$SESSION" "`$START_SCRIPT"
+sleep 8
+
+echo '== frontend log tail =='
+tail -30 "`$FRONTEND_LOG"
+
+echo '== local health =='
+tmux has-session -t "`$SESSION"
+pgrep -af 'next-server' >/dev/null
+curl -s -o /dev/null -w 'wsl_localhost:%{http_code},time=%{time_total}\n' --max-time 10 http://localhost:3000/
+
+if [ "`$SKIP_PUBLIC_CHECK" != '1' ]; then
+  echo '== public health =='
+  curl -s -o /dev/null -w 'lyraos_org:%{http_code},time=%{time_total}\n' --max-time 20 https://lyraos.org/
+fi
+"@
+
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bashScript))
+& wsl.exe -e bash -lc "echo $encoded | base64 -d | bash"
+if ($LASTEXITCODE -ne 0) {
+    throw "WSL frontend restart failed with exit code $LASTEXITCODE."
+}

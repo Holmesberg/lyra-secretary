@@ -90,7 +90,7 @@ Supabase holds the data *off* the laptop so:
 |---|---|---|
 | Tunnel down (cloudflared killed) | `https://lyraos.org` → 1033 / no response | `cloudflared tunnel run lyra-prod` on laptop |
 | Backend container down | `https://api.lyraos.org/v1/health` → 502 | `docker compose up -d backend` |
-| Frontend process killed | `https://lyraos.org` → 502 | `cd frontend && npm run dev` (cold restart with `rm -rf .next` if HMR wedged) |
+| Frontend process killed or incomplete `.next` artifact | `https://lyraos.org` → 502 while `https://api.lyraos.org/v1/health` stays 200 | From Windows repo root: `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | Supabase outage | API returns 5xx; connection errors in backend log | Flip `.env` back to SQLite backup + restart backend. Supabase data preserved, new writes go to SQLite until resolved. Manual reconciliation needed after. |
 | Domain issue (registrar lock, DNS break) | `lyraos.org` DNS fails | Cloudflare dashboard → Registrar + DNS tab. `oslyra.com` is the name-swap candidate if lyraos.org becomes unusable (see dogfood P2 entry). |
 | `cert.pem` lost / revoked | `cloudflared` operations fail auth | `cloudflared tunnel login` on laptop, re-authenticate 24p0248@eng.asu.edu.eg |
@@ -127,7 +127,7 @@ survive sleep vs require manual restart:
 |---------|----------------|----------|
 | Docker (backend + Redis) | Usually yes (containers stay up) | `docker-compose ps` → restart if "Exited" |
 | Cloudflared tunnel | **No** (foreground process dies) | `pgrep cloudflared \|\| cloudflared tunnel run lyra-prod &` |
-| Next.js (frontend) | **No** (nohup process may die) | `pgrep -f next-server \|\| (cd frontend && npm start &)` |
+| Next.js (frontend) | **No** (nohup process may die; `.next` can be left incomplete if a build is interrupted) | `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | APScheduler | Yes (restarts with backend) | Automatic — fires missed jobs on wake |
 | Supabase connection pool | Yes (pool_pre_ping reconnects stale conns) | Automatic |
 | Redis data | Yes (persistent volume) | Automatic |
@@ -143,8 +143,9 @@ pgrep cloudflared || (cloudflared tunnel run lyra-prod &)
 sleep 2 && curl -sf https://api.lyraos.org/v1/health || echo "TUNNEL DOWN"
 
 # 3. Frontend
-pgrep -f "next-server" || (cd frontend && nohup npm start &)
-sleep 4 && curl -sf https://lyraos.org/ || echo "FRONTEND DOWN"
+# Stops stale next/npm processes, removes .next, rebuilds, verifies BUILD_ID,
+# then starts `next start` inside WSL tmux session `lyra-frontend`.
+powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1
 
 # 4. Orphan check
 curl -s -H "X-User-Id: 1" localhost:8000/v1/tasks/query?state=all | \
