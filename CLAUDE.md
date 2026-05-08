@@ -129,6 +129,8 @@ The 2026-05-02 reframe: the system's actual problem is data utilization, not com
 
 Before touching Cortex, behavioral metrics, measurement logic, clean-data filters,
 or inference-adjacent analytics, read `docs/cortex_contract_v0.md`.
+For product/research boundary changes, also read
+`docs/cortex_product_research_contract_v0.md`.
 
 Cortex v0 is measurement governance, not intelligence. It freezes canonical
 measurement names, clean-data profiles, provenance semantics, topology
@@ -163,6 +165,16 @@ Hard rules from the contract:
 - Do not continue broad structural refactors before characterization tests,
   dependency DAG checks, centralized clean-data profiles, unknown propagation,
   evaluation-version checks, and read-only Cortex checks exist.
+- LyraOS is a controlled observational system embedded in a product. Optimize
+  for information gain per unit user friction.
+- Do not add required user inputs for research convenience. New user-burden
+  variables require a successor contract or explicit amendment documenting
+  identifiability gain, retention risk, clean-data impact, burden offset, and
+  sunset criteria.
+- Passive/internal signals may expand only if they do not increase user burden.
+- Product behavior is allowed to change for task completion, accessibility,
+  latency, clarity, or bug repair; research value alone is insufficient.
+- Retention is a research precondition, not product polish.
 
 ## Repository publish and documentation discipline
 

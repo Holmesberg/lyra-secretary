@@ -57,6 +57,8 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
 - If a doc is stale, note the drift instead of silently following it.
 - Before touching Cortex, behavioral metrics, clean-data filters, or
   inference-adjacent analytics, obey `docs/cortex_contract_v0.md`.
+- Before changing the user interaction surface for research reasons, obey
+  `docs/cortex_product_research_contract_v0.md`.
 - Always document changes that touch measurement, inference, clean-data
   profiles, provenance, topology, or user-facing claims.
 - Never infer missing semantics; mark `unknown`.
@@ -71,6 +73,11 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
 - Do not continue broad structural refactors before characterization tests,
   dependency DAG checks, centralized clean-data profiles, unknown-propagation
   tests, evaluation-version checks, and read-only Cortex checks exist.
+- Do not add required user inputs for research convenience. New user-burden
+  variables require explicit contract amendment with identifiability gain,
+  retention risk, clean-data impact, burden offset, and sunset criteria.
+- Optimize for information gain per unit user friction; passive/internal signal
+  expansion is preferred over expanding the user input surface.
 - Push completed repository changes to GitHub in structured commits unless the
   operator explicitly says not to.
 - Stage explicit paths only. Never bundle unrelated dirty-worktree files.
