@@ -157,10 +157,10 @@ export function Hero() {
                 </div>
                 <div className="scan-lines">
                   <Image
-                    src="/insights-v1.png"
-                    alt="LyraOS insights dashboard — 45 sessions analyzed across estimation, time-of-day, abandonment, pause pattern, and category dimensions."
-                    width={1160}
-                    height={980}
+                    src="/insights-v2.png"
+                    alt="LyraOS insights dashboard - 83 sessions analyzed with archetype proximity plus readiness, time-of-day, abandonment, pause, and category insight cards."
+                    width={1392}
+                    height={868}
                     priority
                     quality={95}
                     sizes="(max-width: 1024px) 100vw, 56vw"

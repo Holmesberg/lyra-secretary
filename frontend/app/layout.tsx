@@ -39,10 +39,10 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/insights-v1.png",
-        width: 1160,
-        height: 980,
-        alt: "LyraOS insights dashboard — 45 sessions analyzed across estimation, time-of-day, abandonment, pause, and category dimensions.",
+        url: "/insights-v2.png",
+        width: 1392,
+        height: 868,
+        alt: "LyraOS insights dashboard - 83 sessions analyzed with archetype proximity plus readiness, time-of-day, abandonment, pause, and category insight cards.",
       },
     ],
   },
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
     title: "LyraOS — Your Cognitive Operating System",
     description:
       "Adaptive scheduling instrument. See your hidden execution patterns in 7 days.",
-    images: ["/insights-v1.png"],
+    images: ["/insights-v2.png"],
   },
   robots: {
     index: true,
