@@ -207,7 +207,7 @@ def test_cn_fires_at_n3_exact_format(db):
     assert nudge == (
         "t ran 15 min over plan. "
         "Your 'dev' category avg: -10 min across 3 sessions. "
-        "Underestimated 3/3 times."
+        "Prior 'dev' sessions ran over plan 3/3 times."
     )
 
 
@@ -270,7 +270,7 @@ def test_cn_underestimate_count_mixed(db):
         _seed(db, delta=d)
     nudge = _compute_calibration_nudge(current, db)
     assert nudge is not None
-    assert "Underestimated 3/5 times." in nudge
+    assert "Prior 'dev' sessions ran over plan 3/5 times." in nudge
 
 
 def test_cn_no_category_returns_none(db):

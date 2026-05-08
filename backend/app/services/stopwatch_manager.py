@@ -115,7 +115,7 @@ def _compute_calibration_nudge(task: Task, db: Session) -> Optional[str]:
     return (
         f"{task.title} ran {abs(delta)} min {direction} plan. "
         f"Your '{task.category}' category avg: {avg_delta:+.0f} min across {n} sessions. "
-        f"Underestimated {underestimate_count}/{n} times."
+        f"Prior '{task.category}' sessions ran over plan {underestimate_count}/{n} times."
     )
 
 
