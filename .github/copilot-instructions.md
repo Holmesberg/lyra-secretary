@@ -23,6 +23,7 @@ Before making changes, read:
 - `MANIFESTO.md`
 - `docs/building_phases.md`
 - `docs/calibration_contract.md`
+- `docs/cortex_contract_v0.md`
 - `docs/data_utilization_inventory_2026_05_02.md`
 - `docs/jarvis_hypothesis_log.md`
 - `docs/complexity_stress_test_2026_05_01.md`
@@ -54,7 +55,18 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
 - Do not invent data, signals, or phase progress.
 - If a signal is not computed in code, say so.
 - If a doc is stale, note the drift instead of silently following it.
+- Before touching Cortex, behavioral metrics, clean-data filters, or
+  inference-adjacent analytics, obey `docs/cortex_contract_v0.md`.
+- Always document changes that touch measurement, inference, clean-data
+  profiles, provenance, topology, or user-facing claims.
+- Never infer missing semantics; mark `unknown`.
+- Keep observed, derived, and latent layers separate.
 - Keep operator-only discovery separate from non-operator user-facing inference.
+- Push completed repository changes to GitHub in structured commits unless the
+  operator explicitly says not to.
+- Stage explicit paths only. Never bundle unrelated dirty-worktree files.
+- Keep docs either active in `docs/` or intentionally archived under
+  `archive/`; do not create ambiguous documentation sediment.
 - Respect the calibration contract: comparative context before input, confidence tiers, low-confidence retreat, warm tone, and no unnecessary latency.
 - Respect the structural investigation rule before touching measurement, data flow, or research-relevant fields.
 

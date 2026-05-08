@@ -125,6 +125,48 @@ The 2026-05-02 reframe: the system's actual problem is data utilization, not com
 
 **Endgame (Phase 7+, Under Provision):** the inference engine is substrate for a calibrated secretary that autonomously plans/recalibrates user time around deadlines. Phase 3 inference outputs must be planning-layer-compatible. Reflection surfaces are the Phase 4 user-visible NOW; the planning layer is the user-visible LATER. Don't lock the inference engine into UI-display shape only.
 
+## Cortex Contract v0 memory rule
+
+Before touching Cortex, behavioral metrics, measurement logic, clean-data filters,
+or inference-adjacent analytics, read `docs/cortex_contract_v0.md`.
+
+Cortex v0 is measurement governance, not intelligence. It freezes canonical
+measurement names, clean-data profiles, provenance semantics, topology
+hypotheses, and forbidden transformations before adaptive inference expands.
+
+Hard rules from the contract:
+
+- Never infer missing semantics; mark `unknown`.
+- Always document Cortex changes. A code change without a measurement-contract
+  note, invariant note, clean-data profile note, or explicit "not applicable" is
+  incomplete.
+- Keep observed, derived, and latent layers separate.
+- Do not persist derived metrics or latent constructs as observed truth.
+- Use `execution_multiplier = executed / planned`; never use
+  `planned / executed` for Cortex inference.
+- Never use `1 / execution_multiplier`.
+- Never create a unified productivity, performance, worth, or quality score.
+- Every Cortex analysis declares exactly one clean-data profile.
+- Topology labels are execution-shape hypotheses, not psychology.
+- Readiness and reflection are self-report inputs, not direct measurements.
+- Open epistemic debt in the contract is binding context, not optional polish.
+
+## Repository publish and documentation discipline
+
+- When a task produces repository changes and verification passes, push to
+  GitHub before final handoff unless the operator explicitly says not to.
+- Use structured commits. Separate measurement contracts, backend/runtime code,
+  audit artifacts, and agent-governance updates instead of bundling them.
+- Never stage unrelated dirty-worktree files. Stage explicit paths only and
+  leave operator scratch files untouched unless the operator names them.
+- If a push is blocked, report the exact blocker, local commit SHAs, and the
+  recovery path.
+- Documentation is part of the artifact. Changes that affect architecture,
+  measurement, governance, inference, or user-facing semantics must update the
+  relevant docs in the same structured commit series.
+- Docs should be either active in `docs/` or intentionally archived under
+  `archive/`. Do not create ambiguous documentation sediment.
+
 ## System transition — rigorous gates (memory contract)
 
 **These gates are non-negotiable for Claude Code (and any agent using this repo).** Do not advance to the next transition phase by renaming docs or “calling it done.” Verify each criterion against files in git.
