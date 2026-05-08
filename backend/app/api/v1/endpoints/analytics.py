@@ -899,6 +899,22 @@ def get_behavioral_signature(
     )
 
 
+@router.get("/analytics/cortex/diagnostics")
+def get_cortex_diagnostics(
+    window_days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Operator-only Cortex Core v0 contract diagnostics.
+
+    Read-time instrument audit only. This endpoint does not write state, does
+    not infer psychology, and must not be used by user-facing first-paint paths.
+    """
+    op = _require_operator_analytics(db)
+    from app.services.cortex import cortex_diagnostics
+
+    return cortex_diagnostics(db, user_id=op.user_id, window_days=window_days)
+
+
 # ---------------------------------------------------------------------------
 # Cascade Analytics
 # ---------------------------------------------------------------------------
