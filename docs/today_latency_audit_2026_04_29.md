@@ -2,7 +2,8 @@
 
 **Trigger:** operator reported slow load on /today even with warm cache.
 **Method:** two parallel Explore-agent passes (frontend network sequence + backend hot-path query cost) plus an attempted live curl probe (interrupted by the LYR-113 OAuth incident — full numbers TBD).
-**Status:** diagnosis complete, fixes not yet applied. Recommendations queued for the post-launch perf sprint.
+**Status:** diagnosis complete. A small frontend cache/animation patch landed
+2026-05-08; backend index work remains open.
 
 ---
 
@@ -91,6 +92,25 @@ Plus the GCal sync at 1-3s (offender #2) → realistic warm-load is **1-3 second
 3. **Bump `staleTime` on queries 2/3/6** to a small value like 5-10s — kills duplicate fetches when the user navigates away and back quickly. Stopwatch status arguably needs to stay 0 (it's used for the timer banner; staleness here visibly desyncs the UI), but tasks-query and notifications-pending could safely be 5s.
 4. **Audit other user-scoped tables** for `(user_id, ...)`-leading indexes; add where missing.
 5. **(Out of scope for app-layer)** Cloudflare Tunnel hop is the floor — only fix is moving the host out of the operator's laptop. Per existing `strategic_decisions_april_24.md`, that decision is gated on Stage-2 retention.
+
+---
+
+## 2026-05-08 Applied Frontend Patch
+
+Scope deliberately stayed outside measurement semantics:
+
+- `/today` task query now has `staleTime: 5_000`.
+- `/today` notification and pause-confirmation queries now have
+  `staleTime: 10_000`.
+- `stopwatch-status` remains uncached at the query level because it drives the
+  live timer banner.
+- Shared Radix dialog overlay/content animation duration was reduced from
+  200ms to 75ms to reduce perceived modal close lag.
+
+This does not solve network-bound submit flows that wait for create/update
+responses before closing. Those need per-modal optimistic close decisions, and
+must be handled case-by-case because task creation can return conflicts and
+validation failures that need to stay inside the modal.
 
 ---
 

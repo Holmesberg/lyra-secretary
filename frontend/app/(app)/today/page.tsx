@@ -116,6 +116,11 @@ function TodayInner() {
   const tasksQ = useQuery({
     queryKey: ["tasks", viewedDate],
     queryFn: () => queryTasks(viewedDate),
+    // 2026-05-08 latency pass: /today remounts and quick nav were paying a
+    // fresh tunnel round-trip for task data even when the cache was seconds
+    // old. Mutations below still invalidate/refetch explicitly, so this only
+    // suppresses redundant mount/focus fetches.
+    staleTime: 5_000,
   });
   const statusQ = useQuery({
     queryKey: ["stopwatch-status"],
@@ -162,6 +167,7 @@ function TodayInner() {
   const notifQ = useQuery({
     queryKey: ["notifications-pending"],
     queryFn: getPendingNotifications,
+    staleTime: 10_000,
     refetchInterval: 30_000,
   });
 
@@ -172,6 +178,7 @@ function TodayInner() {
   const pauseConfirmQ = useQuery({
     queryKey: ["pause-predictions-pending-confirmation"],
     queryFn: listPendingConfirmations,
+    staleTime: 10_000,
     refetchInterval: 120_000,
   });
   const [dismissedConfirms, setDismissedConfirms] = useState<Set<string>>(new Set());
