@@ -371,7 +371,7 @@ Items with explicit deferral decisions and reasons. Not rejected — just not ye
 | Prayer-time pause prediction | Phase 7+ | Can inform pause anticipation, but prayer/body-process anchors must stay outside cognitive calibration |
 | Recurring lecture/task schedules | Phase 7+ | Needs recurrence contract, expansion rules, and duplicate-protection before implementation |
 | Brain-dump sequential allocation with estimates | Phase 6/7 | Requires provenance for LLM-estimated duration/time; deadlines remain unchanged |
-| Overdue PLANNED task done affordance | Phase 6/7 | Needs retrospective-completion contract; deadline `done` already exists |
+| ~~Overdue PLANNED/SKIPPED task done affordance~~ | **Shipped 2026-05-08** | One-click retrospective `done` marks overdue tasks EXECUTED with `initiation_status='retroactive'`; excluded from Cortex measured-execution profiles. See `docs/cortex_product_research_contract_v0.md` §4.5. |
 | Native mobile apps | Post-PWA | PWA proves 80% of form factor at 10% cost |
 | sleep_hours field | v1.5+ | Leading indicator for cascade, but adds daily friction |
 | Multi-user collaboration | Post-retention | Social-obligation confound, irrelevant until single-user value proven |

@@ -302,6 +302,21 @@ class MarkAbandonedResponse(BaseModel):
     new_state: TaskState
 
 
+class MarkDoneResponse(BaseModel):
+    """Response from retroactively marking an overdue task done.
+
+    This is deliberately separate from stopwatch completion: it is a
+    retrospective product affordance for overdue PLANNED/SKIPPED rows, not a
+    measured execution trace.
+    """
+    task_id: str
+    done: bool
+    retrospective: bool
+    previous_state: TaskState
+    new_state: TaskState
+    initiation_status: str
+
+
 class SwapRequest(BaseModel):
     """Request to swap a SKIPPED task and a PLANNED task."""
     task_a_id: str

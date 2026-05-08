@@ -10,6 +10,7 @@ import {
   startStopwatch,
   stopStopwatch,
   markAbandoned,
+  markDone,
   deleteTask,
   voidTask,
   getPendingNotifications,
@@ -688,6 +689,39 @@ function TodayInner() {
     }
   }
 
+  async function handleDone(task: TaskRowType) {
+    setErrorMsg(null);
+    await qc.cancelQueries({ queryKey: ["tasks", viewedDate] });
+    const snapshot = qc.getQueryData<TaskRowType[]>(["tasks", viewedDate]);
+    const executedStart = task.start;
+    const executedEnd = task.end;
+    const planned = task.planned_duration_minutes;
+    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+      old?.map((t) =>
+        t.task_id === task.task_id
+          ? {
+              ...t,
+              state: "EXECUTED",
+              initiation_status: "retroactive",
+              executed_start: executedStart,
+              executed_end: executedEnd,
+              executed_duration_minutes: planned,
+              duration_delta_minutes: planned != null ? 0 : t.duration_delta_minutes,
+            }
+          : t
+      )
+    );
+    try {
+      await markDone(task.task_id);
+      refresh();
+    } catch (e: any) {
+      if (snapshot !== undefined) {
+        qc.setQueryData(["tasks", viewedDate], snapshot);
+      }
+      setErrorMsg(e?.message ?? "Failed to mark task done");
+    }
+  }
+
   async function handleDelete(task: TaskRowType) {
     if (!window.confirm("Delete this task? Cancelled plans are recorded as a behavioral signal.")) return;
     setErrorMsg(null);
@@ -962,6 +996,7 @@ function TodayInner() {
                   }
                   onStop={() => setReflectionOpen(true)}
                   onSkip={isPast ? undefined : handleSkip}
+                  onDone={handleDone}
                   onDelete={isPast ? undefined : handleDelete}
                   onEdit={(task) => setEditingTask(task)}
                   selected={selectedIds.has(item.task.task_id)}

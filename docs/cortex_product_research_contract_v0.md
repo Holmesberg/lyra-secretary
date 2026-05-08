@@ -116,6 +116,8 @@ The product layer may:
 - reduce latency
 - simplify screens
 - remove unnecessary prompts
+- add one-click recovery affordances when they reduce user friction and preserve
+  provenance
 
 ### 4.3 Product Must Not
 
@@ -134,6 +136,26 @@ User interaction schema may change only when the primary justification is user
 task completion, accessibility, latency, clarity, or bug repair.
 
 Research value alone is insufficient.
+
+### 4.5 Retrospective Done Affordance
+
+The product may let a user mark an overdue PLANNED or SKIPPED task as done
+without reopening the task or requiring additional fields.
+
+Rules:
+
+- It must not create a measured stopwatch trace.
+- It must stamp `initiation_status='retroactive'`.
+- It must remain excluded from Cortex measured-execution and planning-
+  calibration clean-data profiles.
+- It must not collect new required readiness, reflection, duration, or scope
+  inputs.
+- It may use the planned start/end as a retrospective placeholder only because
+  this is a product recovery action, not research evidence.
+
+Rationale: the user already expressed the semantic outcome ("done"). Forcing
+the task back to PLANNED before completion adds friction without improving
+measurement validity.
 
 ---
 

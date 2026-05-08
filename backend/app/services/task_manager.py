@@ -767,6 +767,93 @@ class TaskManager:
             logging.getLogger(__name__).error(f"Notion queue failed during skip_task: {e}", exc_info=True)
 
         return task
+
+    def mark_overdue_task_done_retroactively(self, task_id: str) -> Task:
+        """
+        Mark an overdue PLANNED/SKIPPED task as done without reopening it.
+
+        This is an explicit retrospective reconciliation path for the product
+        affordance "I did this, but Lyra auto-skipped or left it overdue." It
+        intentionally bypasses the normal stopwatch state-machine path because
+        no measured execution trace exists. To protect research metrics, the
+        row is stamped initiation_status='retroactive' so Cortex
+        measured_execution/planning_calibration profiles exclude it.
+        """
+        task = self.db.query(Task).filter(Task.task_id == task_id).first()
+        if not task:
+            raise ValueError("Task not found")
+        if task.voided_at is not None:
+            raise ValueError("Cannot mark a voided task done")
+
+        current_state = TaskState(task.state) if isinstance(task.state, str) else task.state
+        if current_state not in (TaskState.PLANNED, TaskState.SKIPPED):
+            raise ValueError(
+                f"Only PLANNED or SKIPPED overdue tasks can be marked done this way "
+                f"(current state: {task.state})"
+            )
+
+        # Do not overwrite partial measured execution. If a timer captured any
+        # active work, the user needs the existing stopwatch/retroactive flow
+        # rather than this one-click overdue cleanup.
+        if task.executed_duration_minutes is not None:
+            raise ValueError(
+                "Cannot retroactively mark done because this task already has "
+                "execution data"
+            )
+
+        planned_end = strip_tz(task.planned_end_utc)
+        if planned_end is None or planned_end > now_utc():
+            raise ValueError("Only overdue tasks can be marked done retroactively")
+
+        now_ts = now_utc()
+        previous_status = task.initiation_status
+
+        task.executed_start_utc = strip_tz(task.planned_start_utc)
+        task.executed_end_utc = planned_end
+        task.executed_duration_minutes = task.planned_duration_minutes
+        task.scope_bullet_count_at_execute = extract_scope_bullets(task.description)
+        task.state = TaskState.EXECUTED
+        task.initiation_status = "retroactive"
+        task.last_modified_at = now_ts
+        note = (
+            "retrospective_done: overdue task marked done without measured "
+            f"timer data; previous_status={previous_status or 'unknown'}"
+        )
+        task.notes = f"{task.notes or ''}\n{note}".strip()
+
+        self.db.commit()
+        self.db.refresh(task)
+
+        try:
+            from app.utils.me_cache import invalidate_me
+            from app.utils.tasks_range_cache import invalidate_user_ranges
+            uid = get_current_user_id()
+            if uid is not None:
+                invalidate_me(uid)
+                invalidate_user_ranges(uid)
+        except Exception as e:
+            logger.warning("mark_done: cache invalidate failed (non-blocking): %s", e)
+
+        try:
+            self.redis.queue_notion_sync(
+                task.task_id,
+                {"action": "sync"},
+                user_id=str(get_current_user_id() or 1),
+            )
+        except Exception as e:
+            logger.error("Notion queue failed during mark_done: %s", e, exc_info=True)
+
+        try:
+            self.redis.set_last_task(
+                task.task_id,
+                task.title,
+                task.state.value if hasattr(task.state, "value") else str(task.state),
+                user_id=str(get_current_user_id() or 1),
+            )
+        except Exception as e:
+            logger.warning("mark_done: last_task cache write failed (non-blocking): %s", e)
+
+        return task
     
     def delete_task(self, task_id: str) -> Task:
         """
@@ -816,8 +903,10 @@ class TaskManager:
         The SKIPPED task is reactivated as PLANNED at the other task's time slot.
         The PLANNED task is marked SKIPPED with initiation_status='user_skipped'.
 
-        Intentionally bypasses state machine immutability — this is the only
-        operation allowed to do so, and only for SKIPPED↔PLANNED pairs.
+        Intentionally bypasses state machine immutability for SKIPPED↔PLANNED
+        pairs. The other documented bypass is
+        mark_overdue_task_done_retroactively(), which stamps retroactive
+        provenance and never creates measured execution data.
         """
         task_a = self.db.query(Task).filter(Task.task_id == task_a_id).first()
         task_b = self.db.query(Task).filter(Task.task_id == task_b_id).first()

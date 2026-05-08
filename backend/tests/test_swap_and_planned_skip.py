@@ -14,7 +14,14 @@ from tests.conftest import TestingSession
 client = TestClient(app, raise_server_exceptions=False)
 
 
-def _seed(task_id: str, state: TaskState, hours_from_now: int = 1):
+def _seed(
+    task_id: str,
+    state: TaskState,
+    hours_from_now: int = 1,
+    *,
+    initiation_status: str = "not_started",
+    executed_duration_minutes: int | None = None,
+):
     db = TestingSession()
     t = Task(
         task_id=task_id,
@@ -22,8 +29,10 @@ def _seed(task_id: str, state: TaskState, hours_from_now: int = 1):
         planned_start_utc=now_utc() + timedelta(hours=hours_from_now),
         planned_end_utc=now_utc() + timedelta(hours=hours_from_now + 1),
         planned_duration_minutes=60,
+        executed_duration_minutes=executed_duration_minutes,
         state=state,
         source=TaskSource.MANUAL,
+        initiation_status=initiation_status,
         user_id=1,
     )
     db.add(t)
@@ -164,3 +173,67 @@ def test_executed_task_cannot_be_mark_abandoned():
 
     r = client.post("/v1/tasks/exec-skip/mark-abandoned")
     assert r.status_code == 400
+
+
+# ── overdue done affordance ────────────────────────────────────────────────
+
+def test_skipped_overdue_task_can_be_marked_done_retroactively():
+    _seed(
+        "done-skipped-overdue",
+        TaskState.SKIPPED,
+        hours_from_now=-2,
+        initiation_status="abandoned",
+    )
+
+    r = client.post("/v1/tasks/done-skipped-overdue/mark-done")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["done"] is True
+    assert body["retrospective"] is True
+    assert body["previous_state"] == "SKIPPED"
+    assert body["new_state"] == "EXECUTED"
+    assert body["initiation_status"] == "retroactive"
+
+    db = TestingSession()
+    t = db.query(Task).filter(Task.task_id == "done-skipped-overdue").first()
+    db.close()
+    assert t.state == TaskState.EXECUTED
+    assert t.initiation_status == "retroactive"
+    assert t.executed_start_utc == t.planned_start_utc
+    assert t.executed_end_utc == t.planned_end_utc
+    assert t.executed_duration_minutes == t.planned_duration_minutes
+
+
+def test_planned_overdue_task_can_be_marked_done_retroactively():
+    _seed("done-planned-overdue", TaskState.PLANNED, hours_from_now=-2)
+
+    r = client.post("/v1/tasks/done-planned-overdue/mark-done")
+    assert r.status_code == 200
+
+    db = TestingSession()
+    t = db.query(Task).filter(Task.task_id == "done-planned-overdue").first()
+    db.close()
+    assert t.state == TaskState.EXECUTED
+    assert t.initiation_status == "retroactive"
+
+
+def test_future_task_cannot_be_marked_done_retroactively():
+    _seed("done-future", TaskState.PLANNED, hours_from_now=2)
+
+    r = client.post("/v1/tasks/done-future/mark-done")
+    assert r.status_code == 400
+    assert "overdue" in r.json()["detail"]
+
+
+def test_skipped_task_with_existing_execution_data_cannot_be_overwritten():
+    _seed(
+        "done-partial",
+        TaskState.SKIPPED,
+        hours_from_now=-2,
+        initiation_status="abandoned",
+        executed_duration_minutes=5,
+    )
+
+    r = client.post("/v1/tasks/done-partial/mark-done")
+    assert r.status_code == 400
+    assert "execution data" in r.json()["detail"]

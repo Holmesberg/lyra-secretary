@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { Play, Square, Ban, Trash2 } from "lucide-react";
+import { Play, Square, Ban, Trash2, Check } from "lucide-react";
 import type { TaskRow as TaskRowType } from "@/lib/tasks";
 import { getCategoryColor, STATE_STYLES } from "@/lib/categories";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ interface Props {
   onStart: (task: TaskRowType) => void;
   onStop: () => void;
   onSkip?: (task: TaskRowType) => void;
+  onDone?: (task: TaskRowType) => void;
   onDelete?: (task: TaskRowType) => void;
   onEdit?: (task: TaskRowType) => void;
   selected?: boolean;
@@ -67,7 +68,7 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
 }
 
 export function TaskRow({
-  task, disableStart, onStart, onStop, onSkip, onDelete, onEdit,
+  task, disableStart, onStart, onStop, onSkip, onDone, onDelete, onEdit,
   selected, showCheckbox, onToggleSelect, onStartHover, onLlmChipChanged,
 }: Props) {
   // P1-1: 12-hour format.
@@ -78,6 +79,13 @@ export function TaskRow({
   const state = task.state;
   const isLive = state === "EXECUTING" || state === "PAUSED";
   const isTerminal = state === "EXECUTED" || state === "SKIPPED";
+  const isOverdue =
+    task.end != null && new Date(task.end).getTime() < Date.now();
+  const canMarkDone =
+    !!onDone &&
+    isOverdue &&
+    (state === "PLANNED" ||
+      (state === "SKIPPED" && task.executed_duration_minutes == null));
 
   return (
     <div
@@ -173,6 +181,16 @@ export function TaskRow({
                 <Ban className="h-3.5 w-3.5" />
               </Button>
             )}
+            {canMarkDone && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onDone(task)}
+                title="Mark done retroactively"
+              >
+                <Check className="h-3.5 w-3.5" />
+              </Button>
+            )}
             {onDelete && (
               <Button
                 size="sm"
@@ -185,6 +203,16 @@ export function TaskRow({
               </Button>
             )}
           </>
+        )}
+        {state === "SKIPPED" && canMarkDone && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onDone(task)}
+            title="Mark done retroactively"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </Button>
         )}
         {isLive && (
           <>
@@ -203,7 +231,7 @@ export function TaskRow({
             )}
           </>
         )}
-        {isTerminal && <div className="w-8" />}
+        {isTerminal && !canMarkDone && <div className="w-8" />}
       </div>
     </div>
   );

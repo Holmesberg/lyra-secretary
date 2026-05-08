@@ -348,6 +348,21 @@ export function markAbandoned(task_id: string, reason?: string) {
   });
 }
 
+export interface MarkDoneResponse {
+  task_id: string;
+  done: boolean;
+  retrospective: boolean;
+  previous_state: TaskState;
+  new_state: TaskState;
+  initiation_status: string;
+}
+
+export function markDone(task_id: string) {
+  return api<MarkDoneResponse>(`/v1/tasks/${task_id}/mark-done`, {
+    method: "POST",
+  });
+}
+
 export interface RescheduleInput {
   task_id: string;
   new_start: string;

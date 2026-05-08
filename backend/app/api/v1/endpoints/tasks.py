@@ -18,6 +18,7 @@ from app.schemas.task import (
     TaskVoidResponse,
     MarkAbandonedRequest,
     MarkAbandonedResponse,
+    MarkDoneResponse,
     SwapRequest,
     SwapResponse,
     ConflictInfo,
@@ -341,6 +342,38 @@ def mark_abandoned(
     )
 
 
+@router.post("/tasks/{task_id}/mark-done", response_model=MarkDoneResponse)
+def mark_done(
+    task_id: str,
+    db: Session = Depends(get_db),
+) -> MarkDoneResponse:
+    """
+    Mark an overdue PLANNED/SKIPPED task as done without reopening it.
+
+    This is not stopwatch completion. It is a one-click retrospective
+    reconciliation affordance for overdue rows; TaskManager stamps
+    initiation_status='retroactive' so Cortex learning profiles exclude the
+    fabricated duration.
+    """
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    previous = task.state
+    try:
+        task = TaskManager(db).mark_overdue_task_done_retroactively(task_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return MarkDoneResponse(
+        task_id=task.task_id,
+        done=True,
+        retrospective=True,
+        previous_state=previous,
+        new_state=task.state,
+        initiation_status=task.initiation_status,
+    )
+
+
 @router.post("/tasks/swap", response_model=SwapResponse)
 def swap_tasks(
     request: SwapRequest,
@@ -648,4 +681,3 @@ def get_task(
         duration_delta_minutes=task.duration_delta_minutes,
         is_mutable=task.is_mutable
     )
-
