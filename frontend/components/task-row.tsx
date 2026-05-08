@@ -165,7 +165,7 @@ export function TaskRow({
               variant="secondary"
               onMouseEnter={onStartHover}
               onFocus={onStartHover}
-              onClick={() => { onStartHover?.(); onStart(task); }}
+              onClick={(e) => { e.stopPropagation(); onStartHover?.(); onStart(task); }}
               disabled={disableStart}
               title={disableStart ? "Another timer is active" : "Start timer"}
             >
@@ -175,7 +175,7 @@ export function TaskRow({
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => onSkip(task)}
+                onClick={(e) => { e.stopPropagation(); onSkip(task); }}
                 title="Mark skipped"
               >
                 <Ban className="h-3.5 w-3.5" />
@@ -185,7 +185,7 @@ export function TaskRow({
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => onDone(task)}
+                onClick={(e) => { e.stopPropagation(); onDone(task); }}
                 title="Mark done retroactively"
               >
                 <Check className="h-3.5 w-3.5" />
@@ -195,7 +195,7 @@ export function TaskRow({
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => onDelete(task)}
+                onClick={(e) => { e.stopPropagation(); onDelete(task); }}
                 title="Delete task"
                 className="text-dust-deep hover:text-ember"
               >
@@ -208,7 +208,7 @@ export function TaskRow({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => onDone(task)}
+            onClick={(e) => { e.stopPropagation(); onDone(task); }}
             title="Mark done retroactively"
           >
             <Check className="h-3.5 w-3.5" />
@@ -216,14 +216,19 @@ export function TaskRow({
         )}
         {isLive && (
           <>
-            <Button size="sm" variant="secondary" onClick={onStop} title="Stop timer">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={(e) => { e.stopPropagation(); onStop(); }}
+              title="Stop timer"
+            >
               <Square className="h-3.5 w-3.5" />
             </Button>
             {onSkip && (
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => onSkip(task)}
+                onClick={(e) => { e.stopPropagation(); onSkip(task); }}
                 title="Stop and skip"
               >
                 <Ban className="h-3.5 w-3.5" />

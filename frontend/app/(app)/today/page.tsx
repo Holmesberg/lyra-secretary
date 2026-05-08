@@ -675,6 +675,10 @@ function TodayInner() {
       : "Skip this task?";
     if (!window.confirm(msg)) return;
     setErrorMsg(null);
+    await qc.cancelQueries({ queryKey: ["tasks", viewedDate] });
+    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
+    const tasksSnapshot = qc.getQueryData<TaskRowType[]>(["tasks", viewedDate]);
+    const statusSnapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
     qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
       old?.map((t) => t.task_id === task.task_id ? { ...t, state: "SKIPPED" } : t)
     );
@@ -685,6 +689,12 @@ function TodayInner() {
       await markAbandoned(task.task_id, isLive ? "abandoned mid-session from Today view" : "user_skipped from Today view");
       refresh();
     } catch (e: any) {
+      if (tasksSnapshot !== undefined) {
+        qc.setQueryData(["tasks", viewedDate], tasksSnapshot);
+      }
+      if (statusSnapshot !== undefined) {
+        qc.setQueryData(["stopwatch-status"], statusSnapshot);
+      }
       setErrorMsg(e?.message ?? "Failed to skip task");
     }
   }
@@ -995,7 +1005,17 @@ function TodayInner() {
                       : undefined
                   }
                   onStop={() => setReflectionOpen(true)}
-                  onSkip={isPast ? undefined : handleSkip}
+                  // Live rows must stay skippable even when the operator is
+                  // viewing a past planned day. This is the crossed-circle
+                  // PAUSED/EXECUTING recovery path; disabling it leaves a
+                  // paused task trapped behind date navigation.
+                  onSkip={
+                    isPast &&
+                    item.task.state !== "EXECUTING" &&
+                    item.task.state !== "PAUSED"
+                      ? undefined
+                      : handleSkip
+                  }
                   onDone={handleDone}
                   onDelete={isPast ? undefined : handleDelete}
                   onEdit={(task) => setEditingTask(task)}
