@@ -60,8 +60,17 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
 - Always document changes that touch measurement, inference, clean-data
   profiles, provenance, topology, or user-facing claims.
 - Never infer missing semantics; mark `unknown`.
+- Preserve `unknown`; never silently convert it into neutral, bounded, zero,
+  average, clean, or no-exposure.
 - Keep observed, derived, and latent layers separate.
 - Keep operator-only discovery separate from non-operator user-facing inference.
+- Cortex is read-only and must not mutate ORM, Redis, external sync, or
+  notification state.
+- Derived metrics must be functions of raw observables unless the Cortex
+  contract names the transformation.
+- Do not continue broad structural refactors before characterization tests,
+  dependency DAG checks, centralized clean-data profiles, unknown-propagation
+  tests, evaluation-version checks, and read-only Cortex checks exist.
 - Push completed repository changes to GitHub in structured commits unless the
   operator explicitly says not to.
 - Stage explicit paths only. Never bundle unrelated dirty-worktree files.

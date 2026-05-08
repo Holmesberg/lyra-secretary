@@ -150,6 +150,19 @@ Hard rules from the contract:
 - Topology labels are execution-shape hypotheses, not psychology.
 - Readiness and reflection are self-report inputs, not direct measurements.
 - Open epistemic debt in the contract is binding context, not optional polish.
+- Cortex projections that leave the current process or become research artifacts
+  must carry `cortex_schema_version_at_evaluation`.
+- `unknown` must propagate. Never silently convert it to neutral, bounded, zero,
+  average, clean, or no-exposure.
+- Cortex is read-only. It must not write ORM state, Redis state, external sync
+  state, notifications, or repaired data.
+- Derived metrics are functions of raw observables only unless the contract
+  names the transformation.
+- Inference must not read service-layer caches, Redis stopwatch state, UI state,
+  or generated summaries as behavioral evidence.
+- Do not continue broad structural refactors before characterization tests,
+  dependency DAG checks, centralized clean-data profiles, unknown propagation,
+  evaluation-version checks, and read-only Cortex checks exist.
 
 ## Repository publish and documentation discipline
 
