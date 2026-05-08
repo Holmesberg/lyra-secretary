@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pause, Play, X, ArrowLeftRight } from "lucide-react";
+import { Ban, Pause, Play, X, ArrowLeftRight } from "lucide-react";
 import {
+  markAbandoned,
   pauseStopwatch,
   resumeStopwatch,
   switchStopwatch,
@@ -384,6 +385,63 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     }
   }
 
+  async function doSkipActiveTask() {
+    if (!status.task_id || busy) return;
+    const ok = window.confirm(
+      paused
+        ? "Skip this paused task? The paused session will be closed."
+        : "Stop and skip this task? The active session will be closed."
+    );
+    if (!ok) return;
+
+    setErr(null);
+    setBusy(true);
+    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
+    const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+
+    // Product recovery affordance: PAUSED/EXECUTING -> SKIPPED must be
+    // reachable from the always-visible timer banner, not only from the task
+    // row. The backend keeps TaskManager/state-machine authority and clears
+    // Redis/session state; this optimistic layer only removes UI friction.
+    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], { active: false });
+    qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+      Array.isArray(old)
+        ? old.map((t: Record<string, unknown>) =>
+            t.task_id === status.task_id ? { ...t, state: "SKIPPED" } : t
+          )
+        : old
+    );
+
+    try {
+      await markAbandoned(
+        status.task_id,
+        paused
+          ? "abandoned paused session from active timer banner"
+          : "abandoned active session from active timer banner"
+      );
+      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["tasks-range"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+    } catch (e) {
+      if (snapshot !== undefined) {
+        qc.setQueryData(["stopwatch-status"], snapshot);
+      }
+      qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+        Array.isArray(old)
+          ? old.map((t: Record<string, unknown>) =>
+              t.task_id === status.task_id
+                ? { ...t, state: paused ? "PAUSED" : "EXECUTING" }
+                : t
+            )
+          : old
+      );
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function onPauseButtonClick() {
     if (paused) {
       doResume();
@@ -429,6 +487,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
           </div>
           <div className="relative">
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={onPauseButtonClick}
@@ -470,6 +529,18 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
               </div>
             )}
           </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={doSkipActiveTask}
+            disabled={busy}
+            title={paused ? "Skip paused task" : "Stop and skip task"}
+            className="text-dust-deep hover:text-ember"
+          >
+            <Ban className="mr-1 h-3.5 w-3.5" />
+            Skip
+          </Button>
         </div>
       </div>
       {paused && showOrphanWarning && (
