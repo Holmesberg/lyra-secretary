@@ -23,6 +23,12 @@ and validity risks.
 | Cortex diagnostics | task/session/pause rows | counts/exclusions/topology | read-time projection | Cortex profiles | active governance | not inference; diagnostic only |
 | JARVIS pattern proposal | operator aggregate tools | hypothesis proposal | LLM synthesis | tool schema requires falsifier/general tag | operator-only | AI-generated entropy risk |
 
+## Registered But Not Implemented
+
+| Candidate | Inputs | Intended output | Status | Risk |
+| --- | --- | --- | --- | --- |
+| `description_incomplete_at_deadline` | task/deadline binding, `Deadline.due_at_utc`, task description/scope snapshot, task edit timestamps | implicit planning-depth signal | Phase 6 candidate; registered in `docs/data_utilization_inventory_2026_05_02.md` Revision 2 | description completeness is not scope truth; requires boundary snapshot and provenance |
+
 ## Inference Pretension Warnings
 
 1. `confidence` often means sample-size tier or heuristic score. It must not be

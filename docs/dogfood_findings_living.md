@@ -9,6 +9,41 @@ This document is edited continuously as new findings emerge. Sections of this do
 
 ---
 
+## May 8 Intake - Latency And Scheduling Requests
+
+This intake records operator requests without silently expanding the ontology.
+
+- **Modal perceived close latency.** Low-risk frontend patch applied: shared
+  Radix dialog close/open animation duration reduced from 200ms to 75ms. This
+  changes perceived UI latency only; it does not alter measurement semantics.
+- **/today remount latency.** Low-risk frontend cache patch applied:
+  `tasks` uses 5s `staleTime`; notifications and pause confirmations use 10s.
+  `stopwatch-status` stays fresh because it drives the live timer.
+- **Incomplete task description before deadline.** Already registered as
+  `description_incomplete_at_deadline` in
+  `docs/data_utilization_inventory_2026_05_02.md` Revision 2. No duplicate
+  concept created. It remains a Phase 6 instrumentation candidate, not a v0
+  inferred psychological claim.
+- **Overdue done button.** Existing `DeadlineRow` already has one-click `done`
+  for overdue deadlines. Overdue PLANNED tasks are different: marking them
+  done without a timer would require a retrospective completion contract, not a
+  state-machine bypass.
+- **Recurring tasks.** Open feature request: lecture-style schedules need a
+  recurrence model and expansion rules. Do not squeeze this into ordinary task
+  creation without a recurrence contract.
+- **Fixed-output insight flexibility.** Open copy/logic request: stop-time
+  insights should distinguish current task outcome from reference-class
+  history so an early stop does not read like the task itself was
+  underestimated.
+- **Brain-dump sequential allocation.** Open design request: tasks with no
+  explicit time/duration should allocate from current time sequentially, using
+  estimates only after provenance is explicit. Deadlines remain deadlines.
+- **Prayer pause prediction.** Open integration request: prayer-time API can
+  inform pause anticipation, but prayer/body-process tasks must remain
+  time-anchored/biological and excluded from cognitive calibration by default.
+
+---
+
 ## P0 — must fix before alpha launch
 
 *Ordering follows `docs/building_phases.md` §Phase 4.5 tier structure: Tier 1 retention architecture first (shipping gate), Tier 2 correctness fixes second. The order below reflects that prioritization.*

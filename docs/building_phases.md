@@ -368,6 +368,10 @@ Items with explicit deferral decisions and reasons. Not rejected — just not ye
 | VT-5 parent_session_id | Paper 1 analysis | Acknowledge in limitations rather than fix now |
 | Smart inactivity reminders | Phase 7 | Retention must validate first |
 | Aladhan prayer API | Phase 7+ | Nice-to-have, not measurement-critical |
+| Prayer-time pause prediction | Phase 7+ | Can inform pause anticipation, but prayer/body-process anchors must stay outside cognitive calibration |
+| Recurring lecture/task schedules | Phase 7+ | Needs recurrence contract, expansion rules, and duplicate-protection before implementation |
+| Brain-dump sequential allocation with estimates | Phase 6/7 | Requires provenance for LLM-estimated duration/time; deadlines remain unchanged |
+| Overdue PLANNED task done affordance | Phase 6/7 | Needs retrospective-completion contract; deadline `done` already exists |
 | Native mobile apps | Post-PWA | PWA proves 80% of form factor at 10% cost |
 | sleep_hours field | v1.5+ | Leading indicator for cascade, but adds daily friction |
 | Multi-user collaboration | Post-retention | Social-obligation confound, irrelevant until single-user value proven |
