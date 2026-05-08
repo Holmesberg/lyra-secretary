@@ -49,6 +49,20 @@ until validation/governance catches up.
 - Do not add non-operator JARVIS access.
 - Do not add Cortex schema fields in Phase 0.
 
+## Structural Refactor Freeze Gate
+
+Do not continue broad folder restructuring until these safeguards exist:
+
+- characterization tests for representative Cortex outputs
+- dependency DAG enforcement for backend layers
+- centralized clean-data profile helpers
+- unknown-propagation tests
+- evaluation-version stamp checks
+- read-only Cortex checks
+
+Reason: moving files before semantic behavior is pinned can create clean-looking
+architecture with inconsistent metric interpretation.
+
 ## What May Continue
 
 - Bug fixes that preserve existing semantics.

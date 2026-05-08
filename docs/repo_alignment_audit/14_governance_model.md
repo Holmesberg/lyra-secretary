@@ -51,6 +51,17 @@ Code without documentation is incomplete for Cortex-adjacent work.
 - No latent persistence as observed fact.
 - No unified productivity/worth score.
 - No user-facing inferred copy without confidence and exposure tracking plan.
+- Cortex projections that leave the current process must carry
+  `cortex_schema_version_at_evaluation`.
+- `unknown` must propagate through projections and aggregations unless a
+  clean-data profile explicitly excludes it and declares denominator semantics.
+- Cortex must remain read-only: no ORM writes, Redis writes, external sync
+  writes, notifications, or state repair.
+- Derived metrics must be functions of raw observables, not other derived
+  metrics, unless the contract defines the transformation.
+- Inference must not consume service-layer caches, Redis stopwatch state, UI
+  state, or generated summaries as behavioral evidence.
+- Dependency direction must be checked as a DAG, not only by direct imports.
 
 ## Semantic Review Checklist
 
@@ -62,6 +73,12 @@ Before merge:
 - Does it change a clean-data filter?
 - Does it expose a user to a claim that future learning will consume?
 - Does it rely on docs that code does not verify?
+- Does it convert `unknown` into neutral, bounded, zero, average, or
+  no-exposure?
+- Does a structural move alter a metric, threshold, clean-data filter, or
+  user-facing inference output?
+- Does Cortex gain a write path or dependency path back into services or
+  inference?
 
 ## AI-Assisted Coding Constraints
 
@@ -71,6 +88,9 @@ Before merge:
 - AI must not promote speculative docs into implementation without operator
   review.
 - AI must not remove research artifacts without classification and archive path.
+- AI must not perform broad module moves before characterization tests,
+  clean-data profile centralization, unknown-propagation tests, and dependency
+  DAG checks exist.
 
 ## Single-Operator Maintainability
 

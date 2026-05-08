@@ -10,6 +10,9 @@ This document is an instrument contract, not a feature spec. It defines what Lyr
 may treat as observed, what must remain derived, what is latent, and which
 transformations are forbidden because they would corrupt measurement validity.
 
+Structural refactor sequencing is governed by
+`docs/cortex_refactor_guardrails.md`.
+
 ---
 
 ## 1. Phase Boundary
@@ -301,22 +304,173 @@ Envelope rules:
 
 ---
 
-## 9. Forbidden Transformations
+## 9. Evaluation Versioning
+
+Cortex projections must identify the contract version used to interpret raw
+events.
+
+`cortex_schema_version_at_evaluation` is an evaluation-time stamp, not a storage
+version. It answers: "Which Cortex contract interpreted this row into metrics,
+profiles, topology, and provenance?"
+
+Rules:
+
+- The stamp is required on diagnostics, exports, and any persisted research
+  artifact produced from Cortex-derived projections.
+- The stamp must not imply the underlying event was originally collected under
+  that version.
+- When a contract changes interpretation semantics, old events may be
+  re-evaluated, but the output must carry the new evaluation version.
+- Never compare Cortex-derived aggregates across evaluation versions without
+  declaring the version boundary.
+
+Current value: `cortex_contract_v0`.
+
+---
+
+## 10. Unknown Propagation
+
+`unknown` is not neutral, bounded, zero, average, or missing-at-random.
+
+Unknown values must survive projection and aggregation unless the analysis
+explicitly declares a resolution rule.
+
+Forbidden silent conversions:
+
+- `unknown -> 0`
+- `unknown -> neutral`
+- `unknown -> bounded`
+- `unknown -> average`
+- `unknown -> clean`
+- `unknown -> no exposure`
+
+Allowed handling:
+
+- preserve `unknown`
+- exclude with a declared clean-data profile
+- report an `unknown_count`
+- resolve with an explicit rule documented next to the analysis
+
+If unknowns are excluded, the denominator must say so.
+
+---
+
+## 11. Read-Only Cortex Boundary
+
+Cortex Core v0 is physically a read-time projection layer.
+
+Rules:
+
+- Cortex modules must not call `db.add`, `db.delete`, `db.commit`,
+  `db.flush`, mutation managers, Redis write methods, Notion clients, or
+  notification senders.
+- Cortex modules may read ORM rows and return derived projections.
+- Cortex modules may raise invariant errors.
+- Cortex modules must not repair data.
+
+If an invariant violation requires data repair, the repair belongs in a
+service, worker, or migration with its own documentation and tests.
+
+---
+
+## 12. Metric Immutability
+
+Derived metrics are functions of raw observables only.
+
+Rules:
+
+- A derived metric must not depend on another derived metric unless the contract
+  defines that dependency as a named transformation.
+- A learning metric must not consume user-facing formatted copy.
+- A learning metric must not consume a prior model output as if it were a raw
+  event.
+- Derived metrics must be recomputable from raw rows plus the evaluation
+  version.
+
+This prevents recursive amplification where one model's output becomes another
+model's ground truth.
+
+---
+
+## 13. Inference Isolation
+
+Inference may consume raw event rows, Cortex projections, and declared
+clean-data profiles. It must not consume service-layer caches or UI state as
+behavioral truth.
+
+Rules:
+
+- Inference code must not read Redis stopwatch/cache keys as training data.
+- Inference code must not depend on TaskManager or StopwatchManager behavior
+  except through persisted observables.
+- Service-layer state may trigger an operational action, but not become
+  evidence in a learning metric unless it is persisted with provenance.
+
+---
+
+## 14. Dependency Direction
+
+Cortex refactors must preserve an acyclic dependency direction.
+
+Allowed direction:
+
+```text
+api -> services -> cortex
+api -> inference
+workers -> services
+workers -> inference
+inference -> cortex
+cortex -> db/models + core/utils only
+```
+
+Forbidden return paths:
+
+```text
+cortex -> services
+cortex -> inference
+inference -> services
+inference -> api
+services -> api
+```
+
+Import checks are not enough; CI must eventually enforce a dependency DAG over
+module imports so indirect loops fail too.
+
+---
+
+## 15. Exposure Split At Inference Time
+
+Exposure state must be available at the point of inference, not only at event
+capture.
+
+Minimum inference-time exposure classes:
+
+- `observed_no_exposure`
+- `observed_exposed_prediction`
+- `observed_intervention`
+- `observed_exposure_unknown`
+
+Until Phase 1 exposure ledger exists, adaptive inference must not treat exposed
+or unknown-exposure behavior as naturalistic training data by default.
+
+---
+
+## 16. Forbidden Transformations
 
 These transformations are forbidden in Cortex code and Cortex-certified
 analytics.
 
-### 9.1 `planned / executed` for Cortex inference
+### 16.1 `planned / executed` for Cortex inference
 
 Use `executed / planned`. The inverse silently flips the meaning of overrun and
 underrun.
 
-### 9.2 `1 / execution_multiplier`
+### 16.2 `1 / execution_multiplier`
 
 This recreates the inversion problem and can reward pathological overruns in
 quality-like formulas.
 
-### 9.3 Mixed measurement spaces
+### 16.3 Mixed measurement spaces
 
 Do not mix raw minutes, ratios, and logs in one model equation. A model must
 choose its space:
@@ -325,29 +479,29 @@ choose its space:
 - ratio-space for direct multipliers
 - log-ratio-space for statistical residuals and multiplicative factors
 
-### 9.4 Single productivity score
+### 16.4 Single productivity score
 
 No unified productivity, performance, worth, or quality score.
 
 Lyra models calibration, topology, adaptation, and prediction error. It does not
 score human worth.
 
-### 9.5 Latent persistence
+### 16.5 Latent persistence
 
 Do not persist `flow`, `friction`, `cognitive_load`, `execution_quality`,
 `readiness_state`, `calibration`, or `self_model_error` as observed facts.
 
-### 9.6 Reflection as truth
+### 16.6 Reflection as truth
 
 Readiness and reflection are self-report inputs. They are not direct measures of
 focus, quality, cognition, or flow.
 
-### 9.7 Silent intervention mixing
+### 16.7 Silent intervention mixing
 
 Do not analyze exposed or nudged behavior as naturalistic observation unless the
 analysis explicitly conditions on exposure state.
 
-### 9.8 Schema mutation without invariant justification
+### 16.8 Schema mutation without invariant justification
 
 No new field is allowed unless the implementation states which invariant is
 impossible without that field. If the invariant can be preserved by read-time
@@ -355,7 +509,7 @@ projection over existing rows, reject the field.
 
 ---
 
-## 10. Review Criteria
+## 17. Review Criteria
 
 Any Cortex v0 implementation must pass these checks before it is treated as
 Cortex-certified:
@@ -371,10 +525,15 @@ Cortex-certified:
   opposite-sign `z` values.
 - Retroactive rows do not update learning metrics.
 - Exposure/adaptation claims are absent from v0.
+- Unknown values propagate or are excluded with declared denominator semantics.
+- Cortex projections carry `cortex_schema_version_at_evaluation` where exported
+  or persisted for research.
+- Cortex modules remain read-only.
+- Dependency DAG checks prevent Cortex/inference return paths into services.
 
 ---
 
-## 11. Implementation Status And Follow-On Work
+## 18. Implementation Status And Follow-On Work
 
 Implemented in Cortex Core v0:
 
@@ -394,16 +553,19 @@ Still deferred:
    typology to Phase 2.
 3. Defer any schema migration until the invariant that requires it is stated in
    this contract or a successor contract.
+4. Add guardrail tests for read-only Cortex, dependency DAG direction,
+   unknown propagation, and evaluation-version stamping before structural
+   module moves continue.
 
 ---
 
-## 12. Open Epistemic Debt
+## 19. Open Epistemic Debt
 
 This contract is a containment layer. It does not validate the behavioral model
 or retire older heuristic systems. The following risks are intentionally visible
 and must not be smoothed over in future Cortex work.
 
-### 12.1 Exposure state is underspecified
+### 19.1 Exposure state is underspecified
 
 The v0 envelope uses `none | exposed | intervention | unknown` only because v0
 does not perform exposure/adaptation inference.
@@ -420,14 +582,14 @@ Phase 1 will likely need finer distinctions, such as:
 
 Until then, exposure claims must stay coarse and conservative.
 
-### 12.2 Topology can become semantic drift
+### 19.2 Topology can become semantic drift
 
 Topology labels must describe execution-shape geometry, not psychology or
 personality. In particular, `fragmented` means the execution trace was materially
 shaped by pauses or interruptions. It does not mean scattered, unfocused,
 undisciplined, or cognitively weak.
 
-### 12.3 Self-report scale semantics can drift
+### 19.3 Self-report scale semantics can drift
 
 Readiness and reflection are self-report inputs. Their meaning can drift across
 users, cohorts, cultures, interventions, and time. Future code should prefer
@@ -435,28 +597,28 @@ explicit names such as `self_assessed_readiness` when adding new Cortex-facing
 interfaces. Existing field names remain legacy and must be interpreted through
 this contract.
 
-### 12.4 Low-n shrinkage is not Bayesian evidence
+### 19.4 Low-n shrinkage is not Bayesian evidence
 
 The existing `personal_weight = min(1.0, n / 30)` rule is a sample-count
 interpolation heuristic, not a Bayesian posterior. At `n = 1`, empirical
 variance is not identifiable. Phase 2 work must either model prior variance and
 stationarity explicitly or avoid presenting low-n values as posterior certainty.
 
-### 12.5 Pause confidence uses an unresolved scale constant
+### 19.5 Pause confidence uses an unresolved scale constant
 
 Existing pause prediction code uses an absolute timing scale such as `stdev / 30`
 in confidence logic. That denominator is a modeling assumption. It is not
 certified by this contract and may be wrong across long tasks, short tasks, and
 different topology classes.
 
-### 12.6 `prior_sigma` is ghost ontology until activated or retired
+### 19.6 `prior_sigma` is ghost ontology until activated or retired
 
 `Archetype.prior_sigma` exists in schema and some proximity logic, but it is not
 part of the canonical Cortex v0 metric layer. Phase 2 must either activate it as
 a real uncertainty parameter or explicitly deprecate it in the modeling
 contract.
 
-### 12.7 Delta sign conventions now coexist
+### 19.7 Delta sign conventions now coexist
 
 `duration_delta_minutes = planned - executed` remains a legacy Lyra convention.
 `active_delta_minutes = executed - planned` is the Cortex minute-space
@@ -465,7 +627,7 @@ the Cortex sign convention explicitly. A future migration should define a
 deprecation path for the legacy sign convention before it reaches new inference
 code.
 
-### 12.8 Scope evidence is not validated truth
+### 19.8 Scope evidence is not validated truth
 
 Bullet-count growth can indicate scope expansion, but it can also indicate
 decomposition, cognitive unloading, planning clarification, or formatting drift.
