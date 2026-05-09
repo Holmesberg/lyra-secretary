@@ -25,6 +25,7 @@ from app.db.models import (
     ReflectionViewLog,
     ResumePredictionLog,
     SuppressionEvent,
+    Task,
 )
 from app.utils.time_utils import strip_tz
 
@@ -294,6 +295,73 @@ def is_exposed(
         horizon_policy_version=horizon_policy_version,
         unknown_reason=None,
         policy_effect_reason="no_relevant_exposure_within_policy_horizon",
+    )
+
+
+def task_signal_time(task: Task, signal_target: str) -> Optional[datetime]:
+    """Return the timestamp to use when gating a task for a signal target."""
+    if signal_target in {"planning_estimate", "deadline_behavior"}:
+        return strip_tz(task.created_at) or strip_tz(task.planned_start_utc)
+    if signal_target == "reflection_self_report":
+        return strip_tz(task.executed_end_utc) or strip_tz(task.planned_end_utc)
+    if signal_target in {
+        "duration_behavior",
+        "readiness_self_report",
+        "pause_behavior",
+    }:
+        return strip_tz(task.executed_start_utc) or strip_tz(task.planned_start_utc)
+    return None
+
+
+def exposure_results_for_task(
+    db: Session,
+    *,
+    task: Task,
+    signal_targets: list[str],
+    horizon_policy_version: str = DEFAULT_HORIZON_POLICY_VERSION,
+) -> list[ExposureContaminationResult]:
+    """Evaluate exposure state for each requested task signal target."""
+    results: list[ExposureContaminationResult] = []
+    for signal_target in signal_targets:
+        event_time = task_signal_time(task, signal_target)
+        if event_time is None:
+            results.append(
+                _unknown(
+                    signal_target=signal_target,
+                    horizon_policy_version=horizon_policy_version,
+                    reason="missing_signal_event_time",
+                    effect="task_signal_time_unavailable",
+                )
+            )
+            continue
+        results.append(
+            is_exposed(
+                db,
+                user_id=task.user_id,
+                event_time=event_time,
+                signal_target=signal_target,
+                horizon_policy_version=horizon_policy_version,
+            )
+        )
+    return results
+
+
+def baseline_clean_task(
+    db: Session,
+    *,
+    task: Task,
+    signal_targets: list[str],
+    horizon_policy_version: str = DEFAULT_HORIZON_POLICY_VERSION,
+) -> bool:
+    """Return True only when every requested exposure gate returns NONE."""
+    return all(
+        result.state == "NONE"
+        for result in exposure_results_for_task(
+            db,
+            task=task,
+            signal_targets=signal_targets,
+            horizon_policy_version=horizon_policy_version,
+        )
     )
 
 

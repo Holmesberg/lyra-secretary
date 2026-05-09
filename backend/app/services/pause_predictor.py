@@ -40,6 +40,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.models import PauseEvent, StopwatchSession, Task
+from app.services.exposure_ledger import is_exposed
 from app.utils.time_utils import now_utc, strip_tz
 
 HISTORY_GATE_DAYS = 7
@@ -160,12 +161,22 @@ class PausePredictor:
         )
 
         # Bucket: same hour-of-day AND same weekday/weekend class
-        minutes_in_bucket = [
-            (paused_at.minute + paused_at.second / 60.0)
-            for (paused_at,) in rows
-            if paused_at.hour == now.hour
-            and (paused_at.weekday() >= 5) == is_weekend
-        ]
+        minutes_in_bucket = []
+        for (paused_at,) in rows:
+            paused_at = strip_tz(paused_at)
+            if paused_at.hour != now.hour or (paused_at.weekday() >= 5) != is_weekend:
+                continue
+            if (
+                is_exposed(
+                    self.db,
+                    user_id=user_id,
+                    event_time=paused_at,
+                    signal_target="pause_behavior",
+                ).state
+                != "NONE"
+            ):
+                continue
+            minutes_in_bucket.append(paused_at.minute + paused_at.second / 60.0)
         if len(minutes_in_bucket) < MIN_SAMPLES:
             return None
 
@@ -231,11 +242,22 @@ class PausePredictor:
             .all()
         )
 
-        deltas = [
-            (first_pause - start).total_seconds() / 60.0
-            for (start, first_pause) in rows
-            if first_pause is not None and start is not None
-        ]
+        deltas = []
+        for (start, first_pause) in rows:
+            if first_pause is None or start is None:
+                continue
+            first_pause = strip_tz(first_pause)
+            if (
+                is_exposed(
+                    self.db,
+                    user_id=user_id,
+                    event_time=first_pause,
+                    signal_target="pause_behavior",
+                ).state
+                != "NONE"
+            ):
+                continue
+            deltas.append((first_pause - strip_tz(start)).total_seconds() / 60.0)
         if len(deltas) < MIN_SAMPLES:
             return None
 

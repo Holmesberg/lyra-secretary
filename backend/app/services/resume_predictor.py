@@ -44,6 +44,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import PauseEvent, StopwatchSession, Task
 from app.services.bias_factor_service import _time_of_day
+from app.services.exposure_ledger import is_exposed
 from app.utils.time_utils import now_utc, strip_tz, to_local
 
 HISTORY_GATE_DAYS = 7
@@ -240,7 +241,18 @@ class ResumePredictor:
                 continue
             if _time_of_day(to_local(pe.paused_at_utc)) != target_tod:
                 continue
-            d = (pe.resumed_at_utc - pe.paused_at_utc).total_seconds() / 60.0
+            paused_at = strip_tz(pe.paused_at_utc)
+            if (
+                is_exposed(
+                    self.db,
+                    user_id=user_id,
+                    event_time=paused_at,
+                    signal_target="pause_behavior",
+                ).state
+                != "NONE"
+            ):
+                continue
+            d = (strip_tz(pe.resumed_at_utc) - paused_at).total_seconds() / 60.0
             if d > 0:
                 durations.append(d)
         return durations

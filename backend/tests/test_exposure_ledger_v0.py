@@ -14,8 +14,11 @@ from app.db.models import (
     ReflectionViewLog,
     ResumePredictionLog,
     SuppressionEvent,
+    Task,
+    TaskState,
     User,
 )
+from app.services.cortex import measured_execution_baseline_tasks
 from app.services import exposure_ledger
 from app.services.exposure_ledger import (
     affected_categories_for_target,
@@ -36,6 +39,7 @@ def _clean(db):
         CalibrationNudgeEvent,
         PausePredictionLog,
         ResumePredictionLog,
+        Task,
         User,
     ):
         db.query(model).delete()
@@ -296,3 +300,45 @@ def test_legacy_pause_prediction_maps_to_predictive_alert(db):
     assert result.state == "EXPOSED"
     assert result.exposure_ids == ["legacy_pause_prediction:legacy-pause-1"]
     assert result.exposure_categories == ["predictive_alert"]
+
+
+def test_cortex_baseline_helper_excludes_exposed_task(db):
+    _clean(db)
+    user = _user(db)
+    start = datetime(2026, 5, 9, 12, 0, 0)
+    task = Task(
+        task_id="task-exposed",
+        user_id=user.user_id,
+        title="Exposed task",
+        planned_start_utc=start,
+        planned_end_utc=start + timedelta(minutes=60),
+        planned_duration_minutes=60,
+        executed_start_utc=start,
+        executed_end_utc=start + timedelta(minutes=90),
+        executed_duration_minutes=90,
+        state=TaskState.EXECUTED,
+        initiation_status="initiated",
+    )
+    db.add(task)
+    decision = record_decision(
+        db,
+        user_id=user.user_id,
+        eligible_at=start - timedelta(minutes=30),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="overrun-summary",
+    )
+    record_render(
+        db,
+        exposure_id=decision.exposure_id,
+        rendered_at=start - timedelta(minutes=30),
+        surface="insights",
+        channel="web",
+        content_snapshot="You overrun this category.",
+        render_policy_version="render_v0",
+        interruptiveness="inline",
+        salience_level="medium",
+    )
+    db.commit()
+
+    assert measured_execution_baseline_tasks(db, user_id=user.user_id) == []

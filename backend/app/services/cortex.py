@@ -26,6 +26,7 @@ from app.db.models import (
     Task,
     TaskState,
 )
+from app.services.exposure_ledger import exposure_results_for_task, is_exposed
 from app.utils.time_utils import now_utc, strip_tz
 
 CortexProvenance = Literal[
@@ -229,6 +230,48 @@ def planning_calibration_query(
     return q
 
 
+def measured_execution_baseline_tasks(
+    db: Session,
+    *,
+    user_id: int,
+    cutoff: Optional[datetime] = None,
+) -> list[Task]:
+    """Measured-execution rows that pass exposure context for duration behavior."""
+    return [
+        task
+        for task in measured_execution_query(db, user_id=user_id, cutoff=cutoff).all()
+        if all(
+            result.state == "NONE"
+            for result in exposure_results_for_task(
+                db,
+                task=task,
+                signal_targets=["duration_behavior"],
+            )
+        )
+    ]
+
+
+def planning_calibration_baseline_tasks(
+    db: Session,
+    *,
+    user_id: int,
+    cutoff: Optional[datetime] = None,
+) -> list[Task]:
+    """Planning-calibration rows that pass exposure context for plan and execution."""
+    return [
+        task
+        for task in planning_calibration_query(db, user_id=user_id, cutoff=cutoff).all()
+        if all(
+            result.state == "NONE"
+            for result in exposure_results_for_task(
+                db,
+                task=task,
+                signal_targets=["planning_estimate", "duration_behavior"],
+            )
+        )
+    ]
+
+
 def pause_process_query(
     db: Session,
     *,
@@ -320,6 +363,12 @@ def cortex_diagnostics(db: Session, *, user_id: int, window_days: int = 30) -> d
 
     measured_tasks = measured_execution_query(db, user_id=user_id, cutoff=cutoff).all()
     planning_tasks = planning_calibration_query(db, user_id=user_id, cutoff=cutoff).all()
+    measured_baseline_tasks = measured_execution_baseline_tasks(
+        db, user_id=user_id, cutoff=cutoff
+    )
+    planning_baseline_tasks = planning_calibration_baseline_tasks(
+        db, user_id=user_id, cutoff=cutoff
+    )
     pause_rows = pause_process_query(db, user_id=user_id, cutoff=cutoff).all()
 
     by_category: dict[str, list[CortexTaskMetrics]] = defaultdict(list)
@@ -374,6 +423,7 @@ def cortex_diagnostics(db: Session, *, user_id: int, window_days: int = 30) -> d
             CalibrationNudgeEvent.decided_at >= cutoff,
         ).count(),
     }
+    exposure_policy_effects = _exposure_policy_effect_counts(db, measured_tasks)
 
     return {
         "schema_version": "cortex_contract_v0",
@@ -382,15 +432,53 @@ def cortex_diagnostics(db: Session, *, user_id: int, window_days: int = 30) -> d
             "tasks_in_window": base.count(),
             "measured_execution": len(measured_tasks),
             "planning_calibration": len(planning_tasks),
+            "baseline_measured_execution": len(measured_baseline_tasks),
+            "baseline_planning_calibration": len(planning_baseline_tasks),
             "pause_process_events": len(pause_rows),
         },
         "exclusions": exclusions,
         "topology_counts": dict(sorted(topology_counts.items())),
         "by_category": category_summary,
         "exposure_counts": exposure_counts,
+        "exposure_policy_effects": exposure_policy_effects,
         "invariant_violations": invariant_violations,
         "notes": [
             "Cortex v0 computes derived metrics at read time; no derived metrics are persisted.",
             "Latent topology labels are conservative hypotheses, not ground truth.",
         ],
     }
+
+
+def _exposure_policy_effect_counts(db: Session, tasks: list[Task]) -> dict[str, Any]:
+    """Operator diagnostic for how the exposure gate affects baseline rows."""
+    out: dict[str, Any] = {}
+    target_map = {
+        "duration_behavior": lambda task: task.executed_start_utc or task.planned_start_utc,
+        "planning_estimate": lambda task: task.created_at or task.planned_start_utc,
+    }
+    for target, get_time in target_map.items():
+        state_counts: Counter[str] = Counter()
+        unknown_reasons: Counter[str] = Counter()
+        policy_reasons: Counter[str] = Counter()
+        exposure_categories: Counter[str] = Counter()
+        for task in tasks:
+            event_time = get_time(task)
+            result = is_exposed(
+                db,
+                user_id=task.user_id,
+                event_time=event_time,
+                signal_target=target,
+            )
+            state_counts[result.state] += 1
+            if result.unknown_reason:
+                unknown_reasons[result.unknown_reason] += 1
+            policy_reasons[result.policy_effect_reason] += 1
+            for category in result.exposure_categories:
+                exposure_categories[category] += 1
+        out[target] = {
+            "states": dict(sorted(state_counts.items())),
+            "unknown_reasons": dict(sorted(unknown_reasons.items())),
+            "policy_effect_reasons": dict(sorted(policy_reasons.items())),
+            "exposure_categories": dict(sorted(exposure_categories.items())),
+        }
+    return out
