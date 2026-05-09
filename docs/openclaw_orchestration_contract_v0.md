@@ -52,6 +52,12 @@ Kimi remains the OpenClaw default because the primary synthesis/adjudication
 layer owns final compression. Codex is wired as a role-specific implementation
 and structural-adversary model, not as the default arbiter.
 
+Agent IDs and model IDs are separate namespaces. The canonical Codex-backed
+execution agent is `lyra-implementation`; the canonical Codex-backed structural
+review agent is `structural-adversary`. A `codex` agent ID may exist only as a
+compatibility spawn target for tools that incorrectly use the model nickname as
+an agent ID.
+
 ---
 
 ## 3. Required Pipeline
@@ -107,7 +113,8 @@ No section may be omitted. If no conflict exists, the conflict log must say so.
 
 ## 6. Implementation Status
 
-As of 2026-05-09, the external OpenClaw runtime is wired with:
+As of 2026-05-09, the external OpenClaw runtime is running OpenClaw `2026.5.7`
+and is wired with:
 
 - default synthesis model: `nvidia/moonshotai/kimi-k2.6`
 - Codex OAuth implementation model: `openai-codex/gpt-5.5`
@@ -118,11 +125,15 @@ As of 2026-05-09, the external OpenClaw runtime is wired with:
   - `exploration-agent`
   - `epistemic-adversary`
   - `memory-agent`
+  - `codex` (compatibility alias; prefer `lyra-implementation` for canonical
+    execution routing)
 
 Verification state:
 
 - `openai-codex/gpt-5.5` is available through OpenAI Codex OAuth, not an API
   key.
+- `agentId="codex"` is allowed as a compatibility spawn target after the
+  2026-05-09 runtime patch.
 - Kimi one-shot inference is verified through the gateway.
 - Codex one-shot inference is verified through local OpenClaw execution.
 - Codex cold-call latency exceeded the gateway one-shot helper's 120-second
