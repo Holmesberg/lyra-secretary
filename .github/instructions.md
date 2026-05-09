@@ -89,6 +89,9 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
 - Stage explicit paths only. Never bundle unrelated dirty-worktree files.
 - Keep docs either active in `docs/` or intentionally archived under
   `archive/`; do not create ambiguous documentation sediment.
+- Archived database SQL migrations named `migration_NNN...` belong in
+  `archive/migrations/`. Do not move Alembic Python version scripts there;
+  active Alembic revisions remain in `backend/alembic/versions/`.
 - Respect the calibration contract: comparative context before input, confidence tiers, low-confidence retreat, warm tone, and no unnecessary latency.
 - Respect the structural investigation rule before touching measurement, data flow, or research-relevant fields.
 
