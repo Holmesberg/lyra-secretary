@@ -113,6 +113,13 @@ Transitions are enforced by `services/state_machine.py`. Completed/skipped/delet
 ### OpenClaw integration
 OpenClaw runs in a separate Docker Compose stack. Connect the two via Docker network bridge (see `docs/architecture.md §3`). The agent skill definition lives at `openclaw/skills/lyra-secretary/SKILL.md` and must be copied to `~/.openclaw/skills/lyra-secretary/`. Notification delivery is poll-based: the backend enqueues payloads into Redis via `POST /v1/notifications/push` (scheduler-internal) and the agent drains `GET /v1/notifications/pending` every 30 s. No direct push channel to the OpenClaw gateway is used.
 
+Operator LLM runtime (May 9, 2026): Lyra JARVIS and the operator OpenClaw
+stack use NVIDIA NIM `moonshotai/kimi-k2.6` for chat turns, with
+model-native thinking enabled where the provider supports it. This is
+operator-only runtime configuration; do not treat it as a research signal or
+as permission to expose JARVIS to non-operators. Structured JSON parser calls
+must disable thinking/reasoning wrappers to keep machine-readable output.
+
 ## Structural Investigation Rule
 
 Before implementing any feature that touches measurement, data flow, or research-relevant fields, read `docs/design_patterns/structural_investigation_rule.md`. The short version: scan the data domain, the implementation domain, and the research-integrity domain; surface findings (spec-vs-reality gaps, design tensions, VT/Hard Rule adjacencies, reusable infrastructure); propose 2–3 options with pro/con including rejected options; pre-register measurement and kill criteria; halt for operator review before writing code. The full rule — including what triggers it, what exceptions exist, and the motivating incident — is in that doc. Non-optional for any feature with measurement implications.

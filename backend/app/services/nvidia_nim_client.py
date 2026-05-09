@@ -9,9 +9,9 @@ Trust class boundary (operator-locked 2026-04-30, JARVIS plan):
   - Privacy: every call sends user task content to NVIDIA. Mom + sister +
     students stay on the Ollama-only enrichment path; only is_operator=True
     accounts hit this client via JARVIS endpoints
-  - Default model z-ai/glm4.7 chosen for agentic + tool-use specialty
-    (358B params, 131K ctx, native function-calling). Llama 3.3 70B
-    available as snappier fallback via NVIDIA_NIM_MODEL override
+  - Default model switched 2026-05-09 to moonshotai/kimi-k2.6 with
+    chat_template_kwargs.thinking enabled for operator JARVIS turns.
+    Structured parser calls disable thinking explicitly to preserve JSON.
 
 Graceful-degradation contract (matches the existing Ollama contract in
 llm_parser.py so callers can swap with a feature flag):
@@ -60,9 +60,8 @@ class NimConfigError(NimError):
 
 
 # Stable JARVIS-related model defaults. Operator can override per env var
-# without touching code. Updated 2026-04-30 after WebSearch confirmed
-# z-ai/glm4.7 is on the free tier (358B, 131K ctx, agentic tool use).
-DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
+# without touching code.
+DEFAULT_MODEL = "moonshotai/kimi-k2.6"
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 
@@ -85,6 +84,22 @@ def _build_headers() -> dict[str, str]:
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
+
+
+def _effective_chat_template_kwargs(
+    override: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    """Return NVIDIA chat_template_kwargs for this request.
+
+    Kimi K2.6 uses {"thinking": true} to enable its reasoning mode. The default
+    is controlled by env, but callers that need strict structured output can
+    pass an explicit override such as {"thinking": false}.
+    """
+    if override is not None:
+        return override
+    if getattr(settings, "NVIDIA_NIM_ENABLE_THINKING", False):
+        return {"thinking": True}
+    return None
 
 
 def _classify_http_error(status_code: int, body_text: str) -> NimError:
@@ -111,6 +126,7 @@ def chat_completion(
     temperature: float = 0.2,
     max_tokens: int = 1024,
     response_format: Optional[dict[str, Any]] = None,
+    chat_template_kwargs: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Single-shot chat completion. Returns the parsed JSON response dict.
 
@@ -136,6 +152,9 @@ def chat_completion(
         payload["tool_choice"] = tool_choice
     if response_format:
         payload["response_format"] = response_format
+    template_kwargs = _effective_chat_template_kwargs(chat_template_kwargs)
+    if template_kwargs:
+        payload["chat_template_kwargs"] = template_kwargs
 
     url = f"{settings.NVIDIA_NIM_BASE_URL.rstrip('/')}/chat/completions"
     timeout = settings.NVIDIA_NIM_TIMEOUT_SECONDS
@@ -166,6 +185,7 @@ def chat_completion_stream(
     tool_choice: str | dict[str, Any] = "auto",
     temperature: float = 0.2,
     max_tokens: int = 1024,
+    chat_template_kwargs: Optional[dict[str, Any]] = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield OpenAI-style SSE chunks from NIM.
 
@@ -193,6 +213,9 @@ def chat_completion_stream(
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice
+    template_kwargs = _effective_chat_template_kwargs(chat_template_kwargs)
+    if template_kwargs:
+        payload["chat_template_kwargs"] = template_kwargs
 
     url = f"{settings.NVIDIA_NIM_BASE_URL.rstrip('/')}/chat/completions"
     timeout = settings.NVIDIA_NIM_TIMEOUT_SECONDS
@@ -241,7 +264,7 @@ def health_check() -> dict[str, Any]:
     try:
         chat_completion(
             messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1,
+            max_tokens=16,
             temperature=0.0,
         )
         return {

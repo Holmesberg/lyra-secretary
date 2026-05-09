@@ -68,11 +68,11 @@ class Settings(BaseSettings):
     # at build.nvidia.com. When NVIDIA_NIM_API_KEY is set, the LLM
     # enrichment path tries NIM first and falls back to Ollama on
     # NimUnavailable. JARVIS endpoints (operator-only) require this to be
-    # set — they 503 otherwise. Default model z-ai/glm-4.7 chosen for
-    # agentic tool use (358B, 131K ctx). Override per env var to swap to
-    # meta/llama-3.3-70b-instruct or nvidia/llama-3.1-nemotron-70b-instruct.
+    # set — they 503 otherwise. Default model switched 2026-05-09 to
+    # moonshotai/kimi-k2.6 after operator live-model selection; this is
+    # operator-only and does not change any research metric semantics.
     NVIDIA_NIM_API_KEY: str = Field("", env="NVIDIA_NIM_API_KEY")
-    NVIDIA_NIM_MODEL: str = Field("meta/llama-3.3-70b-instruct", env="NVIDIA_NIM_MODEL")
+    NVIDIA_NIM_MODEL: str = Field("moonshotai/kimi-k2.6", env="NVIDIA_NIM_MODEL")
     NVIDIA_NIM_BASE_URL: str = Field(
         "https://integrate.api.nvidia.com/v1", env="NVIDIA_NIM_BASE_URL"
     )
@@ -80,7 +80,14 @@ class Settings(BaseSettings):
     # response with tool calls. Match the Ollama 10s policy of "fast
     # enough that one stuck request doesn't pin the worker thread"
     # but with more headroom for the larger models.
-    NVIDIA_NIM_TIMEOUT_SECONDS: int = Field(30, env="NVIDIA_NIM_TIMEOUT_SECONDS")
+    NVIDIA_NIM_TIMEOUT_SECONDS: int = Field(120, env="NVIDIA_NIM_TIMEOUT_SECONDS")
+    # Kimi K2.6 supports NVIDIA's chat_template_kwargs={"thinking": true}
+    # switch. Keep it env-controlled because structured JSON parsing must
+    # disable it per call.
+    NVIDIA_NIM_ENABLE_THINKING: bool = Field(True, env="NVIDIA_NIM_ENABLE_THINKING")
+    NVIDIA_NIM_JARVIS_MAX_TOKENS: int = Field(
+        16384, env="NVIDIA_NIM_JARVIS_MAX_TOKENS"
+    )
     # Tier thresholds for the LLM deadline-binding chip (operator-locked
     # 2026-04-28). Per stress-test conversation: confidence thresholds
     # are the most important calibration stat. Tunable from .env so we

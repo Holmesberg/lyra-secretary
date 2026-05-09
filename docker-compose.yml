@@ -32,11 +32,13 @@ services:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
       # JARVIS — NVIDIA NIM (operator-only, 2026-04-30). When unset, JARVIS
       # endpoints return graceful 'offline' responses; LLM enrichment falls
-      # back to Ollama. Default model z-ai/glm4.7 (358B agentic tool use).
+      # back to Ollama. Default model is Kimi K2.6 with thinking enabled.
       - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY:-}
-      - NVIDIA_NIM_MODEL=${NVIDIA_NIM_MODEL:-meta/llama-3.3-70b-instruct}
+      - NVIDIA_NIM_MODEL=${NVIDIA_NIM_MODEL:-moonshotai/kimi-k2.6}
       - NVIDIA_NIM_BASE_URL=${NVIDIA_NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}
-      - NVIDIA_NIM_TIMEOUT_SECONDS=${NVIDIA_NIM_TIMEOUT_SECONDS:-30}
+      - NVIDIA_NIM_TIMEOUT_SECONDS=${NVIDIA_NIM_TIMEOUT_SECONDS:-120}
+      - NVIDIA_NIM_ENABLE_THINKING=${NVIDIA_NIM_ENABLE_THINKING:-true}
+      - NVIDIA_NIM_JARVIS_MAX_TOKENS=${NVIDIA_NIM_JARVIS_MAX_TOKENS:-16384}
       # Moodle Web Services — auto-detect assignment submission status
       # (operator-only Phase 1 validation 2026-05-01). When unset,
       # submission detection is disabled and operator falls back to the

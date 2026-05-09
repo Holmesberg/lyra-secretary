@@ -227,7 +227,7 @@ def run_agent(
                 tools=tools,
                 tool_choice="auto",
                 temperature=0.2,
-                max_tokens=900,
+                max_tokens=settings.NVIDIA_NIM_JARVIS_MAX_TOKENS,
             )
         except NimUnavailable as e:
             logger.info("JARVIS: NIM unavailable: %s", e)

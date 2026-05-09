@@ -271,6 +271,7 @@ def _call_nim(prompt: str) -> dict:
         response_format={"type": "json_object"},
         temperature=0.1,
         max_tokens=512,
+        chat_template_kwargs={"thinking": False},
     )
     raw = (
         response.get("choices", [{}])[0]

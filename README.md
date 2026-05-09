@@ -148,6 +148,11 @@ OpenClaw runs as a **separate Docker stack**. To connect it to the Lyra backend:
 
 4. OpenClaw reaches the FastAPI backend at `http://backend:8000` (Docker service DNS).
 
+5. **Operator LLM runtime:** OpenClaw's Docker stack is configured separately
+   from Lyra. The current operator runtime uses NVIDIA NIM
+   `moonshotai/kimi-k2.6` through the OpenClaw `nvidia/*` provider. Keep API
+   keys in OpenClaw's local `.env` or auth profile storage; never commit them.
+
 ## API Endpoints
 
 All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopwatch` (see [`backend/app/api/v1/router.py`](backend/app/api/v1/router.py)).

@@ -1,4 +1,4 @@
-# Lyra Secretary — Manifesto v1.16
+# Lyra Secretary — Manifesto v1.17
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
@@ -7,6 +7,7 @@
 *Revised: April 16, 2026. Day 13 — Rule 11 no-nudge control days (VT-21 detection protocol); Rule 10 reserved.*
 *Revised: April 17, 2026. Day 14 — VT-22 scope inflation hypothesis; Rules 10 & 12 (readiness-direction, mediation test); brain dump field elevated.*
 *Revised: May 9, 2026. Day 36 — manifesto promoted to highest-priority governance artifact; update/exception rule added.*
+*Revised: May 9, 2026. Day 36 — operator-only JARVIS/OpenClaw NVIDIA model wiring updated to Kimi K2.6; research semantics unchanged.*
 
 ---
 
@@ -233,6 +234,13 @@ OpenClaw agent (testing/dev, not alpha)  ─┘                ↕
 - Hard Rules in SKILL.md — AI agent cannot confirm without backend response
 
 **User-facing vs internal interfaces (clarified April 21, 2026):** Alpha users interact via the Web UI only. Telegram and OpenClaw remain operator-only development/testing tools until components are integrated into the Lyra codebase proper. User-facing Telegram + LLM-parsed task creation ship post-retention-validation. See `docs/strategic_decisions_april_21.md §5` and `docs/building_phases.md §Phase 4.5 Tier 4`.
+
+**Operator LLM runtime (clarified May 9, 2026):** JARVIS and the operator's
+OpenClaw stack may use hosted NVIDIA NIM models, currently
+`moonshotai/kimi-k2.6` with model-native thinking enabled for operator chat.
+This is an operator-only runtime choice, not a research signal and not a
+non-operator user-facing inference surface. Structured parser calls must keep
+machine-readable output constraints even when the chat runtime model changes.
 
 **Production deployment (April 16, 2026+):** Postgres via Supabase eu-west-1 (primary); SQLite retained at `.env.backup-sqlite-2026-04-16` for fast revert. Fronted by Cloudflare Tunnel from the operator's laptop at `lyraos.org` + `api.lyraos.org`. See `docs/deployment_architecture.md` for stack + recovery playbook.
 
@@ -977,6 +985,7 @@ The experiment has started. Stay in measurement mode.
 
 *Manifesto v1.15 — revised April 27, 2026 (Rule 17 archetype-proximity math amendment: effective-sample-size correction + bias-factor winsorization. Operator dogfood at 28 EXECUTED tasks returned 100.0% Procrastinator, 0.0% every other archetype — a 1.0000 / 0.0000 split at four decimals after 2 weeks of overrun-heavy data with a few extreme outliers (top observed bf values were 9.2, 3.7, 3.5). Two structural problems with the un-amended math: (1) the iid likelihood assumption was false (tasks within a user's window correlate along user × week × project × measurement-protocol axes; effective sample size by Kish formula is materially smaller than N), and (2) extreme outliers (bf > 3.0) drove tight-σ archetypes to log-likelihood -∞, since a Normal pdf at 30σ is effectively zero — so any archetype wide enough to absorb a 9× overrun (procrastinator σ=0.40) wins by a margin no amount of ESS damping can close. Amendment v1.15 fixes both: per-archetype log-likelihood is divided by `sqrt(N)` (Kish-style ESS treatment, treating the cluster as ~sqrt(N) effective independent observations) AND each task's observed bf is winsorized to `[0.30, 3.0]` before the Normal-pdf evaluation. The cap is principled: bf > 3.0 isn't "estimation error" the archetype model can read — it's scope-inflation territory the existing VT-22 hypothesis already covers, with its own dedicated mediation test (analysis rule 12). §25a metric, kill threshold (15% post-reveal planning inflation), floor (n ≥ 5 fresh-exposure users), and cohort caveat are all unchanged. v1.13/v1.14 analyses produced under the un-damped/un-winsorized formula remain on record and are tagged with their math version. UI display cap (99% maximum displayed) and display floor (2% minimum bar width) added as belt-and-suspenders against future saturation; rendering layer in `archetype-proximity-display.tsx`. Prompted by operator's question "the math behind archetypes might be leaning too hard towards procrastinator no?" — the honest answer was yes, on both counts. Post-amendment, operator's same data reads as 62% lark_low_discipline / 37% procrastinator / 1% diffuse_average — a real distribution rather than identity assertion.)*
 *Manifesto v1.16 — revised May 9, 2026 (Manifesto Governance Rule added. `MANIFESTO.md` is now the highest-priority governance artifact. Research-doctrine, ontology, measurement-semantics, pre-registration, product/research-boundary, and long-term architecture changes must either update the manifesto or explicitly document why no manifesto update is needed. This is a documentation governance rule only; no measurement formulas, thresholds, or product behavior changed.)*
+*Manifesto v1.17 — revised May 9, 2026 (Operator-only LLM runtime note added. Lyra JARVIS and the operator OpenClaw stack now target NVIDIA NIM `moonshotai/kimi-k2.6` with thinking enabled for chat turns. Structured parser calls explicitly disable thinking to preserve JSON. No measurement formulas, thresholds, clean-data profiles, or non-operator user-facing claims changed.)*
 
 ---
 
