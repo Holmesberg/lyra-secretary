@@ -488,6 +488,33 @@ OpenClaw remains operator-only. OpenClaw agent output, operator orchestration,
 and local runtime traces are not Lyra product research data unless a successor
 contract explicitly admits operator-session analysis.
 
+### 10.2 Horizon Policy Auditability
+
+The horizon policy is a hypothesis about contamination, not contamination
+itself. The exposure gate must therefore remain auditable as an instrument.
+
+`exposure_policy_effect_log` is diagnostic meta-instrumentation only. It is not
+behavioral telemetry and must not become an inference input. It exists to
+answer whether the current policy is making coherent baseline decisions over
+time.
+
+Minimum snapshot fields:
+
+- `policy_version`
+- `exposure_category`
+- `signal_target`
+- `state_distribution_counts`
+- `unknown_rate`
+- `ledger_incomplete_rate`
+
+Required interpretation:
+
+- high `UNKNOWN` means the gate cannot safely certify baseline data
+- high `ledger_incomplete_rate` means the ledger chain is structurally weak
+- high `EXPOSED` rate may mean true contamination or an over-broad horizon
+- high `NONE` rate is not proof of truth; it is only no detected exposure under
+  the current policy
+
 ---
 
 ## 11. Product-Research Flow Direction

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from app.db.models import (
     CalibrationNudgeEvent,
     ExposureDecisionEvent,
+    ExposurePolicyEffectLog,
     ExposureRenderEvent,
     PausePredictionLog,
     ReflectionViewLog,
@@ -25,6 +26,7 @@ from app.services.exposure_ledger import (
     is_exposed,
     load_horizon_policy,
     record_decision,
+    record_policy_effect_snapshot,
     record_render,
     record_suppression,
 )
@@ -32,6 +34,7 @@ from app.services.exposure_ledger import (
 
 def _clean(db):
     for model in (
+        ExposurePolicyEffectLog,
         SuppressionEvent,
         ExposureRenderEvent,
         ExposureDecisionEvent,
@@ -342,3 +345,52 @@ def test_cortex_baseline_helper_excludes_exposed_task(db):
     db.commit()
 
     assert measured_execution_baseline_tasks(db, user_id=user.user_id) == []
+
+
+def test_policy_effect_snapshot_records_unknown_ledger_incomplete_rate(db):
+    _clean(db)
+    user = _user(db)
+    start = datetime(2026, 5, 9, 12, 0, 0)
+    task = Task(
+        task_id="task-policy-effect",
+        user_id=user.user_id,
+        title="Policy effect task",
+        planned_start_utc=start,
+        planned_end_utc=start + timedelta(minutes=60),
+        planned_duration_minutes=60,
+        executed_start_utc=start,
+        executed_end_utc=start + timedelta(minutes=90),
+        executed_duration_minutes=90,
+        state=TaskState.EXECUTED,
+        initiation_status="initiated",
+    )
+    db.add(task)
+    record_decision(
+        db,
+        user_id=user.user_id,
+        eligible_at=start - timedelta(minutes=30),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="overrun-summary",
+    )
+    db.commit()
+
+    rows = record_policy_effect_snapshot(
+        db,
+        user_id=user.user_id,
+        tasks=[task],
+        signal_targets=["duration_behavior"],
+        window_start=start - timedelta(days=1),
+        window_end=start + timedelta(days=1),
+    )
+    db.commit()
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.policy_version == "exposure_horizon_v0"
+    assert row.signal_target == "duration_behavior"
+    assert row.exposure_category == "all"
+    assert row.state_distribution_counts == {"UNKNOWN": 1}
+    assert row.unknown_rate == 1.0
+    assert row.ledger_incomplete_rate == 1.0
+    assert row.sample_count == 1

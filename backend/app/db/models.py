@@ -1124,6 +1124,41 @@ class SuppressionEvent(Base):
     )
 
 
+class ExposurePolicyEffectLog(Base):
+    """Diagnostic snapshot of how a horizon policy affects baseline gates.
+
+    This is not behavioral telemetry. It is meta-instrumentation for detecting
+    whether the exposure gate itself drifts into invisible authority: too many
+    false-clean rows, too many unknowns, or widespread ledger incompleteness.
+    """
+
+    __tablename__ = "exposure_policy_effect_log"
+
+    log_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user.user_id"), nullable=False
+    )
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    exposure_category: Mapped[str] = mapped_column(String(40), nullable=False)
+    signal_target: Mapped[str] = mapped_column(String(40), nullable=False)
+    state_distribution_counts: Mapped[dict] = mapped_column(JSON, nullable=False)
+    unknown_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    ledger_incomplete_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_exposure_policy_effect_user_created", "user_id", "created_at"),
+        Index("idx_exposure_policy_effect_policy_target", "policy_version", "signal_target"),
+    )
+
+
 class Feedback(Base):
     """Alpha-cohort feedback channel (alembic 040, 2026-04-28).
 

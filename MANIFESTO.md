@@ -12,6 +12,7 @@
 *Revised: May 9, 2026. Day 36 — observability-repair doctrine added: inferred missing timer transitions may prompt repair but must not become measured truth silently.*
 *Revised: May 9, 2026. Day 36 — observability-repair interruption budget added: repair prompts require confidence thresholds, batching, cooldowns, and silent logging below threshold.*
 *Revised: May 9, 2026. Day 36 — Exposure Ledger v0 doctrine added: no baseline inference without exposure-context evaluation; `UNKNOWN` fails closed.*
+*Revised: May 9, 2026. Day 36 — horizon-policy auditability added: exposure gate policy is a hypothesis and must emit diagnostic effect logs so policy drift stays visible.*
 
 ---
 
@@ -151,6 +152,13 @@ returned `NONE`. `UNKNOWN` is not neutral; it means baseline inference is not
 permitted. "Clean" only means no detected system exposure within the current
 policy-defined horizon. It does not mean metaphysical truth or absence of all
 possible measurement effects.
+
+The horizon policy behind that gate is itself a hypothesis about contamination,
+not contamination itself. Lyra must be able to audit how often the policy
+returns `NONE`, `EXPOSED`, `INTERVENTION`, and `UNKNOWN`, and how often the
+ledger chain is incomplete. `exposure_policy_effect_log` is diagnostic
+meta-instrumentation for the gate; it is not behavioral evidence and must not be
+used as proof that the policy is correct.
 
 **Discrepancy** — the gap between how you felt before a task and how you actually performed during it.
 ```

@@ -915,6 +915,55 @@ def get_cortex_diagnostics(
     return cortex_diagnostics(db, user_id=op.user_id, window_days=window_days)
 
 
+@router.post("/analytics/exposure_policy/effect_log")
+def record_exposure_policy_effect_log(
+    window_days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Operator-only snapshot of exposure gate behavior.
+
+    This writes meta-instrumentation about the horizon policy, not behavioral
+    learning data. It exists so the operator can detect when the gate becomes
+    invisible authority: high UNKNOWN rate, ledger-incomplete drift, or broad
+    EXPOSED collapse.
+    """
+    op = _require_operator_analytics(db)
+    from app.services.cortex import measured_execution_query
+    from app.services.exposure_ledger import (
+        DEFAULT_HORIZON_POLICY_VERSION,
+        record_policy_effect_snapshot,
+    )
+
+    cutoff = now_utc() - timedelta(days=max(1, min(365, int(window_days))))
+    window_end = now_utc()
+    tasks = measured_execution_query(db, user_id=op.user_id, cutoff=cutoff).all()
+    rows = record_policy_effect_snapshot(
+        db,
+        user_id=op.user_id,
+        tasks=tasks,
+        signal_targets=["duration_behavior", "planning_estimate"],
+        window_start=cutoff,
+        window_end=window_end,
+    )
+    db.commit()
+    return {
+        "policy_version": DEFAULT_HORIZON_POLICY_VERSION,
+        "window_days": max(1, min(365, int(window_days))),
+        "rows": [
+            {
+                "log_id": row.log_id,
+                "signal_target": row.signal_target,
+                "exposure_category": row.exposure_category,
+                "state_distribution_counts": row.state_distribution_counts,
+                "unknown_rate": row.unknown_rate,
+                "ledger_incomplete_rate": row.ledger_incomplete_rate,
+                "sample_count": row.sample_count,
+            }
+            for row in rows
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Cascade Analytics
 # ---------------------------------------------------------------------------

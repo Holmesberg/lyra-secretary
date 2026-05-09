@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -20,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     CalibrationNudgeEvent,
     ExposureDecisionEvent,
+    ExposurePolicyEffectLog,
     ExposureRenderEvent,
     PausePredictionLog,
     ReflectionViewLog,
@@ -363,6 +365,57 @@ def baseline_clean_task(
             horizon_policy_version=horizon_policy_version,
         )
     )
+
+
+def record_policy_effect_snapshot(
+    db: Session,
+    *,
+    user_id: int,
+    tasks: list[Task],
+    signal_targets: list[str],
+    window_start: datetime,
+    window_end: datetime,
+    horizon_policy_version: str = DEFAULT_HORIZON_POLICY_VERSION,
+) -> list[ExposurePolicyEffectLog]:
+    """Persist a diagnostic snapshot of gate behavior for operator review.
+
+    This is meta-instrumentation about the exposure policy, not behavioral
+    learning data. It intentionally aggregates counts instead of storing per-row
+    behavioral details.
+    """
+    rows: list[ExposurePolicyEffectLog] = []
+    for signal_target in signal_targets:
+        results = [
+            result
+            for task in tasks
+            for result in exposure_results_for_task(
+                db,
+                task=task,
+                signal_targets=[signal_target],
+                horizon_policy_version=horizon_policy_version,
+            )
+        ]
+        total = len(results)
+        state_counts = Counter(result.state for result in results)
+        ledger_incomplete = sum(
+            1 for result in results if result.unknown_reason == "ledger_incomplete"
+        )
+        row = ExposurePolicyEffectLog(
+            user_id=user_id,
+            policy_version=horizon_policy_version,
+            exposure_category="all",
+            signal_target=signal_target,
+            state_distribution_counts=dict(sorted(state_counts.items())),
+            unknown_rate=(state_counts.get("UNKNOWN", 0) / total) if total else 0.0,
+            ledger_incomplete_rate=(ledger_incomplete / total) if total else 0.0,
+            sample_count=total,
+            window_start=strip_tz(window_start),
+            window_end=strip_tz(window_end),
+        )
+        db.add(row)
+        rows.append(row)
+    db.flush()
+    return rows
 
 
 def _check_v0_events(
