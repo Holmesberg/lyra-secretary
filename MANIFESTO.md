@@ -1,4 +1,4 @@
-# Lyra Secretary — Manifesto v1.11
+# Lyra Secretary — Manifesto v1.16
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
@@ -6,6 +6,7 @@
 *Revised: April 14, 2026. Day 11 — framing clarification (research as QC infrastructure); VT-19 & VT-20; Rules 8 & 9; profile taxonomy methodological note; retention-before-polish scope clarification.*
 *Revised: April 16, 2026. Day 13 — Rule 11 no-nudge control days (VT-21 detection protocol); Rule 10 reserved.*
 *Revised: April 17, 2026. Day 14 — VT-22 scope inflation hypothesis; Rules 10 & 12 (readiness-direction, mediation test); brain dump field elevated.*
+*Revised: May 9, 2026. Day 36 — manifesto promoted to highest-priority governance artifact; update/exception rule added.*
 
 ---
 
@@ -17,6 +18,27 @@ Lyra's core thesis is behavioral correction at scale. Measurement discipline, pr
 This distinction matters for strategic decisions. "Kill H1 if correlation fails" is not abandoning the project; it is identifying that a specific cold-start prediction mechanism didn't work and iterating to the next candidate. "Publish Paper 1" is not the goal; it is a side-effect that simultaneously sharpens the measurement instrument and builds user trust in the product's claims.
 
 All subsequent sections should be read through this framing.
+
+---
+
+## Manifesto Governance Rule
+*Added: May 9, 2026.*
+
+`MANIFESTO.md` is the highest-priority governance document in the repository.
+Other docs may refine implementation details, audits, prompt context, or
+operator history, but they do not silently supersede the manifesto.
+
+Any repository change that touches research doctrine, ontology, measurement
+semantics, pre-registered analysis rules, product/research boundaries, or
+long-term architecture must do one of two things:
+
+1. update the relevant manifesto section in the same change, or
+2. explicitly document why the manifesto does not need an update.
+
+This rule is not a license to make the manifesto noisy. Small implementation
+fixes, UI repairs, latency work, and local bug fixes do not require manifesto
+changes unless they alter what the system claims to measure, infer, expose, or
+pre-register.
 
 ---
 
@@ -954,6 +976,7 @@ The experiment has started. Stay in measurement mode.
 *Manifesto v1.14 — revised April 27, 2026 (Rule 17 §25a framing refinement: renamed detection signal "label-internalization" → "label reinforcement". Operator note: users classified as a high-prior archetype often already self-identify as that archetype, so the 15% post-reveal inflation could be REINFORCEMENT of an existing self-image, RELEASE-FROM-RESTRAINT permission, or genuine INSTALLATION of a new label — three plausible causal stories that produce the same observable signal and cannot be distinguished without a pre-reveal self-classification instrument. The §25a metric, threshold, and floor are unchanged. Mitigation (drop archetype names from reveal copy) applies identically regardless of which causal story is right. Writeup obligation: §25a results must acknowledge the triple-confound; "Lyra caused this" claims require a pre-reveal self-class instrument that does not currently exist.)*
 
 *Manifesto v1.15 — revised April 27, 2026 (Rule 17 archetype-proximity math amendment: effective-sample-size correction + bias-factor winsorization. Operator dogfood at 28 EXECUTED tasks returned 100.0% Procrastinator, 0.0% every other archetype — a 1.0000 / 0.0000 split at four decimals after 2 weeks of overrun-heavy data with a few extreme outliers (top observed bf values were 9.2, 3.7, 3.5). Two structural problems with the un-amended math: (1) the iid likelihood assumption was false (tasks within a user's window correlate along user × week × project × measurement-protocol axes; effective sample size by Kish formula is materially smaller than N), and (2) extreme outliers (bf > 3.0) drove tight-σ archetypes to log-likelihood -∞, since a Normal pdf at 30σ is effectively zero — so any archetype wide enough to absorb a 9× overrun (procrastinator σ=0.40) wins by a margin no amount of ESS damping can close. Amendment v1.15 fixes both: per-archetype log-likelihood is divided by `sqrt(N)` (Kish-style ESS treatment, treating the cluster as ~sqrt(N) effective independent observations) AND each task's observed bf is winsorized to `[0.30, 3.0]` before the Normal-pdf evaluation. The cap is principled: bf > 3.0 isn't "estimation error" the archetype model can read — it's scope-inflation territory the existing VT-22 hypothesis already covers, with its own dedicated mediation test (analysis rule 12). §25a metric, kill threshold (15% post-reveal planning inflation), floor (n ≥ 5 fresh-exposure users), and cohort caveat are all unchanged. v1.13/v1.14 analyses produced under the un-damped/un-winsorized formula remain on record and are tagged with their math version. UI display cap (99% maximum displayed) and display floor (2% minimum bar width) added as belt-and-suspenders against future saturation; rendering layer in `archetype-proximity-display.tsx`. Prompted by operator's question "the math behind archetypes might be leaning too hard towards procrastinator no?" — the honest answer was yes, on both counts. Post-amendment, operator's same data reads as 62% lark_low_discipline / 37% procrastinator / 1% diffuse_average — a real distribution rather than identity assertion.)*
+*Manifesto v1.16 — revised May 9, 2026 (Manifesto Governance Rule added. `MANIFESTO.md` is now the highest-priority governance artifact. Research-doctrine, ontology, measurement-semantics, pre-registration, product/research-boundary, and long-term architecture changes must either update the manifesto or explicitly document why no manifesto update is needed. This is a documentation governance rule only; no measurement formulas, thresholds, or product behavior changed.)*
 
 ---
 

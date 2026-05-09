@@ -52,6 +52,11 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
 ## Ground Rules
 
 - Prefer the repository’s actual state over any pasted narrative.
+- `MANIFESTO.md` is the highest-priority governance document. Any change that
+  touches research doctrine, ontology, measurement semantics, pre-registered
+  analysis rules, product/research boundary, or long-term architecture must
+  either update `MANIFESTO.md` or explicitly document why no manifesto update is
+  needed.
 - Do not invent data, signals, or phase progress.
 - If a signal is not computed in code, say so.
 - If a doc is stale, note the drift instead of silently following it.
