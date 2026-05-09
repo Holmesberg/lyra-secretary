@@ -8,6 +8,7 @@
 *Revised: April 17, 2026. Day 14 — VT-22 scope inflation hypothesis; Rules 10 & 12 (readiness-direction, mediation test); brain dump field elevated.*
 *Revised: May 9, 2026. Day 36 — manifesto promoted to highest-priority governance artifact; update/exception rule added.*
 *Revised: May 9, 2026. Day 36 — operator-only JARVIS/OpenClaw NVIDIA model wiring updated to Kimi K2.6; research semantics unchanged.*
+*Revised: May 9, 2026. Day 36 — OpenClaw multi-agent orchestration contract documented; operator-tooling boundary preserved.*
 
 ---
 
@@ -241,6 +242,16 @@ OpenClaw stack may use hosted NVIDIA NIM models, currently
 This is an operator-only runtime choice, not a research signal and not a
 non-operator user-facing inference surface. Structured parser calls must keep
 machine-readable output constraints even when the chat runtime model changes.
+
+**Operator orchestration runtime (clarified May 9, 2026):** OpenClaw may be
+wired as a multi-agent operator runtime with Kimi K2.6 as the synthesis and
+adjudication layer, Codex/GPT-5.5 as the implementation and structural
+adversary layer, Gemini as the exploration and epistemic adversary layer, and a
+local memory layer for summarization/state persistence. This orchestration is
+operator-only. Agent outputs are not Lyra behavioral observations, are not
+research ground truth, and must not bypass Cortex clean-data, provenance,
+unknown-propagation, or product/research boundary rules. See
+`docs/openclaw_orchestration_contract_v0.md`.
 
 **Production deployment (April 16, 2026+):** Postgres via Supabase eu-west-1 (primary); SQLite retained at `.env.backup-sqlite-2026-04-16` for fast revert. Fronted by Cloudflare Tunnel from the operator's laptop at `lyraos.org` + `api.lyraos.org`. See `docs/deployment_architecture.md` for stack + recovery playbook.
 

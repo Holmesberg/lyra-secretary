@@ -24,6 +24,7 @@ Before making changes, read:
 - `docs/building_phases.md`
 - `docs/calibration_contract.md`
 - `docs/cortex_contract_v0.md`
+- `docs/openclaw_orchestration_contract_v0.md`
 - `docs/data_utilization_inventory_2026_05_02.md`
 - `docs/jarvis_hypothesis_log.md`
 - `docs/complexity_stress_test_2026_05_01.md`
