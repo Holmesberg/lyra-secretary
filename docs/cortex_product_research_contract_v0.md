@@ -119,6 +119,11 @@ The product layer may:
 - add one-click recovery affordances when they reduce user friction and preserve
   provenance
 
+Missed deadlines may be marked completed directly from the overdue surface. This
+is a product recovery affordance, not a claim that the deadline was completed on
+time. Research code must use due time and completion time, not the current state
+alone, when distinguishing late completion from on-time completion.
+
 ### 4.3 Product Must Not
 
 The product layer must not:

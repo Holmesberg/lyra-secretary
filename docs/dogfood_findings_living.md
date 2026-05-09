@@ -24,10 +24,11 @@ This intake records operator requests without silently expanding the ontology.
   `docs/data_utilization_inventory_2026_05_02.md` Revision 2. No duplicate
   concept created. It remains a Phase 6 instrumentation candidate, not a v0
   inferred psychological claim.
-- **Overdue done button.** Existing `DeadlineRow` already has one-click `done`
-  for overdue deadlines. Overdue PLANNED tasks are different: marking them
-  done without a timer would require a retrospective completion contract, not a
-  state-machine bypass.
+- **Overdue done button.** Fixed May 9: missed deadlines now keep the existing
+  one-click `done` affordance instead of forcing `missed -> planned ->
+  completed`. This is a deadline recovery path only; overdue PLANNED tasks are
+  different because marking them done without a timer would require a
+  retrospective completion contract, not a state-machine bypass.
 - **Recurring tasks.** Open feature request: lecture-style schedules need a
   recurrence model and expansion rules. Do not squeeze this into ordinary task
   creation without a recurrence contract.

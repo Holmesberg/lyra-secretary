@@ -7,15 +7,18 @@ deadline rows directly.
 Responsibilities:
 - Validate user ownership (read current_user_id from ContextVar)
 - Enforce voided_at discipline (every read filters voided_at IS NULL by default)
-- Enforce state-transition graph (planned → active/skipped/voided;
-  active → completed/missed/skipped/voided; terminal states reject
-  user-driven transitions)
+- Enforce state-transition graph (planned → active/completed/skipped;
+  active → completed/skipped; missed → completed/planned; recovery
+  from completed/skipped → planned)
 
 State transition graph (user-actionable subset):
     planned ─→ active     (auto on first task bind, OR explicit user action)
+    planned ─→ completed  (manual no-bind/offline completion)
     planned ─→ skipped    (user abandons before starting)
     active  ─→ completed  (user marks done)
     active  ─→ skipped    (user abandons mid-flight)
+    missed  ─→ completed  (late/offline completion after sweeper marked missed)
+    terminal recovery ─→ planned (self-service correction path)
     any     ─→ voided     (soft-delete; via void_deadline, not via update)
 
 Reconciliation-driven (NOT user-actionable here):
@@ -32,8 +35,9 @@ from app.db.scoping import get_current_user_id
 
 
 # State transitions a user is allowed to drive directly via update_deadline.
-# `missed` is reconciliation-only; `voided` flows through void_deadline
-# (which sets voided_at, not state).
+# `missed` itself is reconciliation-driven, but missed -> completed is a
+# user-driven late/offline completion affordance. `voided` flows through
+# void_deadline (which sets voided_at, not state).
 #
 # Apr 27 dogfood: operator accidentally tapped "Mark skipped" in the
 # DeadlineModal and the change auto-persisted with no recovery path.
@@ -54,12 +58,13 @@ USER_TRANSITIONS_FROM: dict[str, set[str]] = {
     # planned → active(auto via bind) → completed. UX dead-end.
     "planned": {"active", "completed", "skipped"},
     "active": {"completed", "skipped"},
-    # Reopen paths from terminal states. Lyra still does NOT distinguish
-    # "freshly created" from "reopened" in the schema — analytics that
-    # care about completion fidelity should look at completed_at /
+    # Reopen paths from terminal states. `missed -> completed` preserves the
+    # one-click offline/late completion path after the sweeper runs. Lyra still
+    # does NOT distinguish "freshly created" from "reopened" in the schema —
+    # analytics that care about completion fidelity should look at completed_at /
     # task_deadline_outcome, not at the current state alone.
     "completed": {"planned"},
-    "missed": {"planned"},
+    "missed": {"completed", "planned"},
     "skipped": {"planned"},
     "voided": set(),
 }

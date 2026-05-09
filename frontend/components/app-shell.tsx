@@ -99,7 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               LyraOS
             </span>
             <span className="mt-1 font-mono text-[9px] uppercase tracking-widest text-signal/70">
-              v0.1 · alpha
+              v1.5 · alpha
             </span>
           </div>
         </Link>

@@ -45,7 +45,9 @@ export function DeadlineRow({ deadline, overdue, onEdit, onChanged }: Props) {
   const stateLabel = overdue ? "OVERDUE" : deadline.state.toUpperCase();
   const [marking, setMarking] = useState(false);
   const canMarkDone =
-    deadline.state === "planned" || deadline.state === "active";
+    deadline.state === "planned" ||
+    deadline.state === "active" ||
+    deadline.state === "missed";
 
   async function handleMarkDone(e: React.MouseEvent) {
     e.stopPropagation();
@@ -138,8 +140,8 @@ export function DeadlineRow({ deadline, overdue, onEdit, onChanged }: Props) {
           {stateLabel}
         </span>
       )}
-      {/* Inline mark-done. Surfaces on planned/active deadlines so the
-          operator can one-click finish a Moodle assignment they
+      {/* Inline mark-done. Surfaces on planned/active/missed deadlines so
+          the operator can one-click finish a Moodle assignment they
           submitted out-of-band. (Moodle iCal feeds carry due dates,
           NOT submission status — Lyra has no other way to know.) */}
       {canMarkDone && (

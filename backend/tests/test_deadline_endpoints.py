@@ -327,6 +327,32 @@ def test_planned_to_completed_no_bind_path(db):
     assert resp.json()["state"] == "completed"
 
 
+def test_missed_to_completed_late_completion_path(db):
+    """A missed deadline can be marked complete without reopening first.
+
+    The sweeper marks overdue active deadlines as `missed`, but that state is
+    not evidence that the real-world obligation was never completed. The user
+    needs the same one-click completion path after the due time passes.
+    """
+    user = _make_user(db, "missed-complete@example.com")
+    set_current_user_id(user.user_id)
+
+    created = client.post("/v1/deadlines", json=_create_deadline_payload()).json()
+    deadline_id = created["deadline_id"]
+    row = db.query(Deadline).filter(Deadline.deadline_id == deadline_id).first()
+    row.state = "missed"
+    row.due_at_utc = datetime.utcnow() - timedelta(days=1)
+    db.commit()
+
+    resp = client.put(
+        f"/v1/deadlines/{deadline_id}", json={"state": "completed"}
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["state"] == "completed"
+    assert data["completed_at"] is not None
+
+
 def test_skipped_reopen_to_planned(db):
     """Apr 27 dogfood — operator misclicked 'Mark skipped' in the
     DeadlineModal and lost the ability to act on the deadline. Reopen

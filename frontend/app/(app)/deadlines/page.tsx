@@ -69,7 +69,9 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
   const [confirming, setConfirming] = useState(false);
   const [marking, setMarking] = useState(false);
   const canMarkDone =
-    deadline.state === "planned" || deadline.state === "active";
+    deadline.state === "planned" ||
+    deadline.state === "active" ||
+    deadline.state === "missed";
 
   async function handleMarkDone() {
     if (marking) return;
@@ -125,8 +127,9 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
             Moodle-imported overdue assignments they submitted out-of-
             band but Lyra had no way to know about (iCal carries due
             dates, NOT submission status). Surfaced on planned/active
-            deadlines only — terminal states (completed/missed/skipped)
-            don't get the button. */}
+            plus missed deadlines, because missed only means the sweeper
+            passed the due time; it does not prove the user failed to
+            complete the real-world obligation. */}
         {canMarkDone && (
           <button
             type="button"

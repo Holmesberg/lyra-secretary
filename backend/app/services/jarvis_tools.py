@@ -506,7 +506,7 @@ def _exec_list_deadlines(db: Session, user_id: int, args: dict) -> dict:
         .filter(
             Deadline.user_id == user_id,
             Deadline.voided_at.is_(None),
-            Deadline.state.in_(("planned", "active")),
+            Deadline.state.in_(("planned", "active", "missed")),
             Deadline.due_at_utc <= horizon,
         )
         .order_by(Deadline.due_at_utc.asc())
@@ -564,7 +564,7 @@ def _exec_get_overdue_count(db: Session, user_id: int, args: dict) -> dict:
         .filter(
             Deadline.user_id == user_id,
             Deadline.voided_at.is_(None),
-            Deadline.state.in_(("planned", "active")),
+            Deadline.state.in_(("planned", "active", "missed")),
             Deadline.due_at_utc < now,
         )
         .count()
@@ -2025,7 +2025,7 @@ def _exec_mark_deadline_done(db: Session, user_id: int, args: dict) -> dict:
     )
     if d is None:
         return {"ok": False, "reason": "deadline_not_found"}
-    if d.state in ("completed", "missed", "skipped"):
+    if d.state in ("completed", "skipped"):
         return {"ok": False, "reason": "terminal_state", "current_state": d.state}
     d.state = "completed"
     d.completed_at = now_utc()

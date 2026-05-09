@@ -110,11 +110,12 @@ def update_deadline(
     """Update editable fields and/or trigger a state transition.
 
     Allowed user-driven transitions:
-        planned → active | skipped
+        planned → active | completed | skipped
         active  → completed | skipped
+        missed  → completed | planned
 
-    Terminal states (completed/missed/skipped) reject further user
-    transitions. Use DELETE /v1/deadlines/{id} to soft-delete instead.
+    Completed/skipped can reopen to planned for self-service correction.
+    Use DELETE /v1/deadlines/{id} to soft-delete instead.
     """
     manager = DeadlineManager(db)
     try:
