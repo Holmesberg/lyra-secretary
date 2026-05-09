@@ -10,6 +10,7 @@
 *Revised: May 9, 2026. Day 36 — operator-only JARVIS/OpenClaw NVIDIA model wiring updated to Kimi K2.6; research semantics unchanged.*
 *Revised: May 9, 2026. Day 36 — OpenClaw multi-agent orchestration contract documented; operator-tooling boundary preserved.*
 *Revised: May 9, 2026. Day 36 — observability-repair doctrine added: inferred missing timer transitions may prompt repair but must not become measured truth silently.*
+*Revised: May 9, 2026. Day 36 — observability-repair interruption budget added: repair prompts require confidence thresholds, batching, cooldowns, and silent logging below threshold.*
 
 ---
 
@@ -135,6 +136,13 @@ not a replacement for observed timers. Confirmed repairs must carry provenance
 and stay out of H1, `bias_factor`, and Cortex `measured_execution` /
 `planning_calibration` defaults unless a successor contract explicitly admits
 them.
+
+Repair prompts are not free. They consume attention and can become cognitive
+noise if the system asks too eagerly. Suspected missing transitions should be
+logged silently until confidence and data-loss risk justify interruption.
+Lower-confidence repairs should be batched for natural recovery moments, and
+dismissed prompts should cool down instead of repeating. If repair prompts train
+the user to ignore Lyra, they damage both retention and measurement quality.
 
 **Discrepancy** — the gap between how you felt before a task and how you actually performed during it.
 ```

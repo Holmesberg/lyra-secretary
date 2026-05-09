@@ -315,6 +315,33 @@ Repair prompts are allowed only when all of the following hold:
 - the proposed transition is labeled as inferred until the user confirms it
 - denial or dismissal is preserved as signal, not treated as user failure
 - the prompt itself is exposure/intervention state for later analysis
+- the prompt passes the repair interruption budget below
+
+### 8.1 Repair Interruption Budget
+
+Repair prompts are interventions. They spend user attention and can become
+cognitive noise if they fire too eagerly.
+
+Default behavior is silent candidate logging, not immediate questioning. A
+suspected missing transition should remain a candidate with explicit
+uncertainty until the system has enough confidence, timing urgency, and user
+context to justify interruption.
+
+Interruption tiers:
+
+- Low confidence: log the candidate silently as `unknown`; do not prompt.
+- Medium confidence: batch the candidate into a later recovery review or
+  natural transition moment.
+- High confidence: prompt only if waiting risks meaningful data loss,
+  operational confusion, or continuity breakage.
+
+Prompt throttling rules:
+
+- Batch nearby repair candidates instead of asking repeatedly.
+- Prefer natural transition boundaries over interrupting active work.
+- Use cooldowns after dismissal, denial, or repeated ignored prompts.
+- Treat prompt frequency as product friction and research contamination.
+- Preserve `unknown` if the user does not answer.
 
 Repair prompts must not:
 
@@ -324,6 +351,7 @@ Repair prompts must not:
 - backfill measured execution rows as if they were real-time observed timers
 - train adaptive metrics unless a successor contract defines the clean-data
   profile and exposure handling
+- become a stream of repeated questions that the user learns to ignore
 
 Confirmed repairs may support product continuity, but they are not equivalent
 to real-time observed transitions. Cortex-certified analysis must preserve the
@@ -426,6 +454,8 @@ Before any product or research change touching Cortex-adjacent behavior:
   polish?
 - If this repairs missing lifecycle state, does it preserve repair provenance
   and exclude repaired durations from default measured-execution learning?
+- If this asks a repair question, does it obey confidence thresholds,
+  batching, cooldowns, and silent logging below threshold?
 
 If any answer is unclear, mark uncertainty and do not smooth it into certainty.
 
