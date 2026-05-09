@@ -401,6 +401,93 @@ Minimum inference-time exposure classes:
 Until Phase 1 exposure ledger exists, exposed and unknown-exposure rows must not
 silently update adaptive learning metrics.
 
+### 10.1 Exposure Ledger v0
+
+Exposure Ledger v0 is a causal firewall and replay boundary. It is not an
+attribution engine, behavioral profiler, influence optimizer, or proof that an
+exposure caused later behavior.
+
+The ledger answers one narrow question:
+
+```text
+Can this measurement still be interpreted as baseline under the current
+exposure horizon policy?
+```
+
+Baseline cleanliness is not the default. A row becomes baseline-clean only when
+exposure context was evaluated and returned `NONE` for the relevant signal
+target. `UNKNOWN`, `EXPOSED`, and `INTERVENTION` are fail-closed states for
+baseline learning unless a successor contract explicitly defines a stratified
+analysis profile.
+
+`clean` means:
+
+```text
+no detected exposure within the current policy-defined contamination horizon
+```
+
+It does not mean true, uncontaminated in all possible ways, or immune to ambient
+measurement effects.
+
+Minimum `is_exposed` contract:
+
+```text
+is_exposed(user_id, event_time, signal_target, horizon_policy_version)
+  -> ExposureContaminationResult
+```
+
+The result must include:
+
+- `state`: `NONE | EXPOSED | INTERVENTION | UNKNOWN`
+- `exposure_ids`
+- `exposure_categories`
+- `signal_target`
+- `checked_window_start`
+- `checked_window_end`
+- `horizon_policy_version`
+- `unknown_reason`
+- `policy_effect_reason`
+
+`NONE` requires proof that the exposure ledger, suppression layer, legacy
+exposure adapters, and horizon policy were all checked. Missing ledger state
+must return `UNKNOWN`, never `NONE`.
+
+Minimum v0 event atoms:
+
+- `exposure_decision_event`: candidate generation, eligibility, suppression,
+  delay, failure, or show decision.
+- `exposure_render_event`: exact user-visible stimulus, including rendered
+  content snapshot and hash.
+- `suppression_event`: eligible exposure withheld from the user and why.
+
+Deferred atoms:
+
+- attention proxies
+- temporal associations
+
+The deferred temporal association atom must not be named response linkage or
+described as causal evidence.
+
+Existing partial exposure sources are legacy inputs to the gate, not obsolete
+tables:
+
+- `ReflectionViewLog`
+- `CalibrationNudgeEvent`
+- `PausePredictionLog`
+- `ResumePredictionLog`
+
+No physical backfill is required for v0. Historical coverage may be adapter-
+based and must preserve source uncertainty.
+
+`repair_prompt` means a system prompt asking the user to confirm or deny a
+suspected missing lifecycle transition. It is both a user-facing exposure and a
+measurement repair attempt, so it must preserve repair provenance and obey the
+repair interruption budget.
+
+OpenClaw remains operator-only. OpenClaw agent output, operator orchestration,
+and local runtime traces are not Lyra product research data unless a successor
+contract explicitly admits operator-session analysis.
+
 ---
 
 ## 11. Product-Research Flow Direction
@@ -447,6 +534,8 @@ Before any product or research change touching Cortex-adjacent behavior:
 - Is the added signal passive, derived, or user-burdening?
 - If user-burdening, what existing burden is being removed?
 - Does this expose a claim that future learning will consume?
+- If this consumes baseline data, did it call exposure context and fail closed
+  on `UNKNOWN`, `EXPOSED`, or `INTERVENTION`?
 - Does this preserve unknown propagation?
 - Does this preserve clean-data profile declarations?
 - Does this keep product behavior stable while research evolves?

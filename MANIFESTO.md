@@ -11,6 +11,7 @@
 *Revised: May 9, 2026. Day 36 — OpenClaw multi-agent orchestration contract documented; operator-tooling boundary preserved.*
 *Revised: May 9, 2026. Day 36 — observability-repair doctrine added: inferred missing timer transitions may prompt repair but must not become measured truth silently.*
 *Revised: May 9, 2026. Day 36 — observability-repair interruption budget added: repair prompts require confidence thresholds, batching, cooldowns, and silent logging below threshold.*
+*Revised: May 9, 2026. Day 36 — Exposure Ledger v0 doctrine added: no baseline inference without exposure-context evaluation; `UNKNOWN` fails closed.*
 
 ---
 
@@ -143,6 +144,13 @@ logged silently until confidence and data-loss risk justify interruption.
 Lower-confidence repairs should be batched for natural recovery moments, and
 dismissed prompts should cool down instead of repeating. If repair prompts train
 the user to ignore Lyra, they damage both retention and measurement quality.
+
+**Exposure context gate** — no behavior row may be treated as clean baseline
+for learning unless the exposure ledger was checked for the relevant signal and
+returned `NONE`. `UNKNOWN` is not neutral; it means baseline inference is not
+permitted. "Clean" only means no detected system exposure within the current
+policy-defined horizon. It does not mean metaphysical truth or absence of all
+possible measurement effects.
 
 **Discrepancy** — the gap between how you felt before a task and how you actually performed during it.
 ```
