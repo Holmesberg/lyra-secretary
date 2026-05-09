@@ -1,0 +1,46 @@
+{
+  "policies": {
+    "exposure_horizon_v0": {
+      "version": "exposure_horizon_v0",
+      "description": "Conservative v0 contamination horizons for Exposure Ledger baseline gating.",
+      "all_supported_targets": [
+        "duration_behavior",
+        "planning_estimate",
+        "readiness_self_report",
+        "reflection_self_report",
+        "pause_behavior",
+        "deadline_behavior"
+      ],
+      "horizons_minutes": {
+        "predictive_alert": {
+          "pause_behavior": 45
+        },
+        "behavioral_insight": {
+          "planning_estimate": 4320,
+          "duration_behavior": 4320
+        },
+        "scheduling_suggestion": {
+          "planning_estimate": 1440,
+          "deadline_behavior": 1440
+        },
+        "meta_inference": {
+          "readiness_self_report": 10080,
+          "reflection_self_report": 10080
+        },
+        "repair_prompt": {
+          "duration_behavior": 1440,
+          "planning_estimate": 1440,
+          "reflection_self_report": 1440
+        },
+        "onboarding": {
+          "all_supported_targets": 20160
+        }
+      },
+      "unmeasured_targets": {
+        "meta_system": [
+          "system_trust"
+        ]
+      }
+    }
+  }
+}

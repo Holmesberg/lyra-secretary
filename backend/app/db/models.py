@@ -1012,6 +1012,118 @@ class ReflectionViewLog(Base):
     )
 
 
+class ExposureDecisionEvent(Base):
+    """Exposure Ledger v0 decision atom.
+
+    Append-only record that a system-generated information injection was
+    eligible, shown, delayed, suppressed, failed, or left unknown. This is not
+    a causal attribution table. It exists so baseline-learning paths can prove
+    exposure context was checked before treating downstream behavior as clean.
+    """
+
+    __tablename__ = "exposure_decision_event"
+
+    exposure_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user.user_id"), nullable=False
+    )
+    task_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("task.task_id", ondelete="SET NULL")
+    )
+    eligible_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    decision_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    initiative: Mapped[str] = mapped_column(String(20), nullable=False, default="unknown")
+    exposure_category: Mapped[str] = mapped_column(String(40), nullable=False)
+    content_template_id: Mapped[Optional[str]] = mapped_column(String(120))
+    trigger_source: Mapped[str] = mapped_column(String(40), nullable=False, default="unknown")
+    generating_model: Mapped[Optional[str]] = mapped_column(String(120))
+    generating_version: Mapped[Optional[str]] = mapped_column(String(120))
+    prompt_hash: Mapped[Optional[str]] = mapped_column(String(128))
+    data_snapshot_hash: Mapped[Optional[str]] = mapped_column(String(128))
+    randomization_arm: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
+    randomization_policy_version: Mapped[Optional[str]] = mapped_column(String(80))
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_exposure_decision_user_eligible", "user_id", "eligible_at"),
+        Index("idx_exposure_decision_task", "task_id"),
+        Index("idx_exposure_decision_category", "exposure_category"),
+    )
+
+
+class ExposureRenderEvent(Base):
+    """Exposure Ledger v0 render atom.
+
+    Captures the exact rendered stimulus that could enter the user's decision
+    context. Interruptiveness and salience live here because they are
+    properties of the rendering surface, not the decision to generate content.
+    """
+
+    __tablename__ = "exposure_render_event"
+
+    render_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    exposure_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("exposure_decision_event.exposure_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rendered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    surface: Mapped[str] = mapped_column(String(80), nullable=False)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    content_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    render_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    interruptiveness: Mapped[str] = mapped_column(String(20), nullable=False)
+    salience_level: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_exposure_render_exposure", "exposure_id"),
+        Index("idx_exposure_render_rendered", "rendered_at"),
+    )
+
+
+class SuppressionEvent(Base):
+    """Exposure Ledger v0 suppression atom.
+
+    Records an eligible exposure that was withheld. Suppression is not user
+    exposure, but it is required to distinguish "nothing eligible" from
+    "eligible but intentionally not shown".
+    """
+
+    __tablename__ = "suppression_event"
+
+    suppression_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    exposure_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("exposure_decision_event.exposure_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    suppressed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    suppression_reason: Mapped[str] = mapped_column(String(40), nullable=False)
+    would_have_rendered_template_id: Mapped[Optional[str]] = mapped_column(String(120))
+    generating_confidence: Mapped[Optional[float]] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_suppression_exposure", "exposure_id"),
+        Index("idx_suppression_suppressed", "suppressed_at"),
+    )
+
+
 class Feedback(Base):
     """Alpha-cohort feedback channel (alembic 040, 2026-04-28).
 

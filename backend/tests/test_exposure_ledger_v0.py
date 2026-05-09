@@ -1,0 +1,298 @@
+"""Exposure Ledger v0 contract tests.
+
+The ledger is a causal firewall for baseline inference. These tests protect
+the fail-closed rule: missing or incomplete exposure context must never become
+clean baseline by accident.
+"""
+from datetime import datetime, timedelta
+
+from app.db.models import (
+    CalibrationNudgeEvent,
+    ExposureDecisionEvent,
+    ExposureRenderEvent,
+    PausePredictionLog,
+    ReflectionViewLog,
+    ResumePredictionLog,
+    SuppressionEvent,
+    User,
+)
+from app.services import exposure_ledger
+from app.services.exposure_ledger import (
+    affected_categories_for_target,
+    is_exposed,
+    load_horizon_policy,
+    record_decision,
+    record_render,
+    record_suppression,
+)
+
+
+def _clean(db):
+    for model in (
+        SuppressionEvent,
+        ExposureRenderEvent,
+        ExposureDecisionEvent,
+        ReflectionViewLog,
+        CalibrationNudgeEvent,
+        PausePredictionLog,
+        ResumePredictionLog,
+        User,
+    ):
+        db.query(model).delete()
+    db.commit()
+
+
+def _user(db, user_id: int = 7101):
+    user = User(user_id=user_id, email=f"exposure-{user_id}@example.test")
+    db.add(user)
+    db.commit()
+    return user
+
+
+def test_horizon_policy_loaded_from_versioned_config(db):
+    _clean(db)
+    policy = load_horizon_policy("exposure_horizon_v0")
+
+    assert policy["version"] == "exposure_horizon_v0"
+    assert affected_categories_for_target(policy, "planning_estimate") == {
+        "behavioral_insight": 4320,
+        "scheduling_suggestion": 1440,
+        "repair_prompt": 1440,
+        "onboarding": 20160,
+    }
+
+
+def test_no_relevant_exposure_returns_none(db):
+    _clean(db)
+    user = _user(db)
+    event_time = datetime(2026, 5, 9, 12, 0, 0)
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=event_time,
+        signal_target="duration_behavior",
+    )
+
+    assert result.state == "NONE"
+    assert result.baseline_clean is True
+    assert result.unknown_reason is None
+
+
+def test_rendered_relevant_exposure_returns_exposed(db):
+    _clean(db)
+    user = _user(db)
+    event_time = datetime(2026, 5, 9, 12, 0, 0)
+    decision = record_decision(
+        db,
+        user_id=user.user_id,
+        eligible_at=event_time - timedelta(hours=1),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="overrun-summary",
+    )
+    record_render(
+        db,
+        exposure_id=decision.exposure_id,
+        rendered_at=event_time - timedelta(hours=1),
+        surface="insights",
+        channel="web",
+        content_snapshot="You overran similar tasks by 47.3 minutes.",
+        render_policy_version="render_v0",
+        interruptiveness="inline",
+        salience_level="medium",
+    )
+    db.commit()
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=event_time,
+        signal_target="duration_behavior",
+    )
+
+    assert result.state == "EXPOSED"
+    assert result.baseline_clean is False
+    assert result.exposure_ids == [decision.exposure_id]
+    assert result.policy_effect_reason == "render_event_in_policy_horizon_attention_unconfirmed"
+
+
+def test_decision_without_render_or_suppression_returns_unknown(db):
+    _clean(db)
+    user = _user(db)
+    event_time = datetime(2026, 5, 9, 12, 0, 0)
+    record_decision(
+        db,
+        user_id=user.user_id,
+        eligible_at=event_time - timedelta(hours=1),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="overrun-summary",
+    )
+    db.commit()
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=event_time,
+        signal_target="duration_behavior",
+    )
+
+    assert result.state == "UNKNOWN"
+    assert result.unknown_reason == "ledger_incomplete"
+    assert result.baseline_clean is False
+
+
+def test_suppressed_decision_does_not_count_as_user_exposure(db):
+    _clean(db)
+    user = _user(db)
+    event_time = datetime(2026, 5, 9, 12, 0, 0)
+    decision = record_decision(
+        db,
+        user_id=user.user_id,
+        eligible_at=event_time - timedelta(hours=1),
+        decision_status="suppressed",
+        exposure_category="behavioral_insight",
+        content_template_id="overrun-summary",
+    )
+    record_suppression(
+        db,
+        exposure_id=decision.exposure_id,
+        suppressed_at=event_time - timedelta(hours=1),
+        suppression_reason="cooldown",
+        would_have_rendered_template_id="overrun-summary",
+    )
+    db.commit()
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=event_time,
+        signal_target="duration_behavior",
+    )
+
+    assert result.state == "NONE"
+    assert result.policy_effect_reason == "no_relevant_exposure_within_policy_horizon"
+
+
+def test_meta_system_does_not_pretend_to_gate_unmeasured_system_trust(db):
+    _clean(db)
+    user = _user(db)
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=datetime(2026, 5, 9, 12, 0, 0),
+        signal_target="system_trust",
+    )
+
+    assert result.state == "UNKNOWN"
+    assert result.unknown_reason == "unsupported_or_unmeasured_signal_target"
+
+
+def test_policy_unavailable_fails_closed(monkeypatch, db):
+    _clean(db)
+    user = _user(db)
+
+    def broken_policy(_version):
+        raise FileNotFoundError("policy missing")
+
+    monkeypatch.setattr(exposure_ledger, "load_horizon_policy", broken_policy)
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=datetime(2026, 5, 9, 12, 0, 0),
+        signal_target="duration_behavior",
+    )
+
+    assert result.state == "UNKNOWN"
+    assert result.unknown_reason == "policy_unavailable"
+
+
+def test_legacy_reflection_impression_maps_to_exposure(db):
+    _clean(db)
+    user = _user(db)
+    event_time = datetime(2026, 5, 9, 12, 0, 0)
+    db.add(
+        ReflectionViewLog(
+            view_id="legacy-view-1",
+            user_id=user.user_id,
+            reflection_type="micro_mirror",
+            event_class="impression",
+            payload="You usually overrun development tasks.",
+            fired_at=event_time - timedelta(hours=2),
+        )
+    )
+    db.commit()
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=event_time,
+        signal_target="duration_behavior",
+    )
+
+    assert result.state == "EXPOSED"
+    assert result.exposure_ids == ["legacy_reflection:legacy-view-1"]
+    assert result.exposure_categories == ["behavioral_insight"]
+
+
+def test_legacy_calibration_nudge_acceptance_maps_to_intervention(db):
+    _clean(db)
+    user = _user(db)
+    event_time = datetime(2026, 5, 9, 12, 0, 0)
+    db.add(
+        CalibrationNudgeEvent(
+            event_id="legacy-nudge-1",
+            user_id=user.user_id,
+            task_id="task-x",
+            suggested_duration_minutes=90,
+            user_planned_duration_minutes=60,
+            bias_factor=1.5,
+            sample_size=12,
+            user_decision="accepted",
+            decided_at=event_time - timedelta(minutes=20),
+        )
+    )
+    db.commit()
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=event_time,
+        signal_target="planning_estimate",
+    )
+
+    assert result.state == "INTERVENTION"
+    assert result.exposure_ids == ["legacy_calibration_nudge:legacy-nudge-1"]
+
+
+def test_legacy_pause_prediction_maps_to_predictive_alert(db):
+    _clean(db)
+    user = _user(db)
+    event_time = datetime(2026, 5, 9, 12, 0, 0)
+    db.add(
+        PausePredictionLog(
+            firing_id="legacy-pause-1",
+            user_id=user.user_id,
+            fired_at=event_time - timedelta(minutes=10),
+            predicted_at=event_time - timedelta(minutes=8),
+            mechanism="clock_anchor",
+            confidence=0.8,
+            lead_minutes=2,
+            sample_size=10,
+        )
+    )
+    db.commit()
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=event_time,
+        signal_target="pause_behavior",
+    )
+
+    assert result.state == "EXPOSED"
+    assert result.exposure_ids == ["legacy_pause_prediction:legacy-pause-1"]
+    assert result.exposure_categories == ["predictive_alert"]
