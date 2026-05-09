@@ -63,6 +63,7 @@ def run_migrations_online() -> None:
             connection.exec_driver_sql("SET statement_timeout = 0")
             connection.exec_driver_sql("SET lock_timeout = 0")
             connection.exec_driver_sql("SET idle_in_transaction_session_timeout = 0")
+            connection.commit()
 
         context.configure(
             connection=connection, target_metadata=target_metadata
