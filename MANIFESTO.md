@@ -9,6 +9,7 @@
 *Revised: May 9, 2026. Day 36 — manifesto promoted to highest-priority governance artifact; update/exception rule added.*
 *Revised: May 9, 2026. Day 36 — operator-only JARVIS/OpenClaw NVIDIA model wiring updated to Kimi K2.6; research semantics unchanged.*
 *Revised: May 9, 2026. Day 36 — OpenClaw multi-agent orchestration contract documented; operator-tooling boundary preserved.*
+*Revised: May 9, 2026. Day 36 — observability-repair doctrine added: inferred missing timer transitions may prompt repair but must not become measured truth silently.*
 
 ---
 
@@ -108,7 +109,32 @@ Practical implication: clean the data pipeline before routing `micro_mirror`, `c
 ```
 delta = planned_duration - executed_duration
 ```
-This is ground truth. It cannot lie. It is the thing you trust.
+This is ground truth only when the relevant lifecycle transitions were captured
+as real-time observed events. If start, pause, resume, or stop was forgotten,
+the row is not "truth"; it is a damaged trace with missing instrumentation.
+Those gaps must be repaired or labeled, not smoothed over.
+
+Lyra therefore treats manual timer data as measured truth under a clean-data
+profile, not metaphysical truth. A confirmed stopwatch trace is the thing you
+trust. A reconstructed or repaired trace is product continuity evidence unless
+a later contract defines a separate repaired-data profile.
+
+**Observability repair** — inference may detect likely missing lifecycle events
+and ask the user to confirm them, but it may not silently write inferred
+duration as measured execution.
+
+Examples:
+
+- "You likely started this task about 14 minutes ago, but no timer is active.
+  Did you forget to start it?"
+- "This pause looks like it may have ended; did you resume?"
+- "This session appears stale; should it be stopped, paused, or left running?"
+
+The repair layer is a consistency checker for missing instrumentation. It is
+not a replacement for observed timers. Confirmed repairs must carry provenance
+and stay out of H1, `bias_factor`, and Cortex `measured_execution` /
+`planning_calibration` defaults unless a successor contract explicitly admits
+them.
 
 **Discrepancy** — the gap between how you felt before a task and how you actually performed during it.
 ```

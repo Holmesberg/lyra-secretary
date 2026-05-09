@@ -280,7 +280,64 @@ Not allowed without successor contract:
 
 ---
 
-## 8. Retention As Research Constraint
+## 8. Observability Repair
+
+Manual lifecycle tracking is high-value instrumentation, but it is not
+perfect ground truth when it depends on continuous human attention under
+cognitive load.
+
+The product may detect likely missing lifecycle events only as observability
+repair. This means inference may notice possible gaps in instrumentation, but
+must not silently write inferred state as measured truth.
+
+Allowed repair targets:
+
+- possible forgotten timer start
+- possible forgotten pause
+- possible forgotten resume
+- possible forgotten stop
+- possible overdue task state repair
+
+Allowed detection sources:
+
+- existing task lifecycle state
+- planned task timing and overdue state
+- active stopwatch or pause state
+- existing pause/resume prediction signals
+- app interaction timestamps already emitted by normal use
+- existing operator-only tooling signals for operator sessions only
+
+Repair prompts are allowed only when all of the following hold:
+
+- the prompt is optional and low-friction
+- the prompt asks about a specific missing transition, not a new subjective
+  variable
+- the proposed transition is labeled as inferred until the user confirms it
+- denial or dismissal is preserved as signal, not treated as user failure
+- the prompt itself is exposure/intervention state for later analysis
+
+Repair prompts must not:
+
+- create a new required user input surface
+- ask for a new rating scale
+- silently infer duration as observed truth
+- backfill measured execution rows as if they were real-time observed timers
+- train adaptive metrics unless a successor contract defines the clean-data
+  profile and exposure handling
+
+Confirmed repairs may support product continuity, but they are not equivalent
+to real-time observed transitions. Cortex-certified analysis must preserve the
+repair provenance and exclude repaired durations from `measured_execution` and
+`planning_calibration` unless a successor contract explicitly defines a
+validated repaired-data profile.
+
+Rationale: the system should not assume humans are reliable instrumentation
+devices during deep, fragmented work. The correct upgrade is not more tracking
+burden; it is human-in-the-loop repair for missing instrumentation.
+
+---
+
+## 9. Retention As Research Constraint
 
 Retention is not a vanity metric in this system.
 
@@ -298,7 +355,7 @@ depth loses unless a successor contract explicitly justifies the trade.
 
 ---
 
-## 9. Exposure Separation
+## 10. Exposure Separation
 
 Any prediction, nudge, insight, or behavioral reflection shown to the user is an
 intervention candidate.
@@ -318,7 +375,7 @@ silently update adaptive learning metrics.
 
 ---
 
-## 10. Product-Research Flow Direction
+## 11. Product-Research Flow Direction
 
 Strict flow:
 
@@ -337,7 +394,7 @@ through a deterministic rule with:
 
 ---
 
-## 11. Forbidden System Behaviors
+## 12. Forbidden System Behaviors
 
 Cortex Product-Research work must not:
 
@@ -349,10 +406,11 @@ Cortex Product-Research work must not:
 - learn from its own interventions without exposure modeling
 - describe self-report as measured cognition
 - add UI prompts because a model wants cleaner data
+- silently convert inferred missing transitions into observed lifecycle events
 
 ---
 
-## 12. Review Checklist
+## 13. Review Checklist
 
 Before any product or research change touching Cortex-adjacent behavior:
 
@@ -366,12 +424,14 @@ Before any product or research change touching Cortex-adjacent behavior:
 - Does this keep product behavior stable while research evolves?
 - Does this treat retention as a research precondition rather than product
   polish?
+- If this repairs missing lifecycle state, does it preserve repair provenance
+  and exclude repaired durations from default measured-execution learning?
 
 If any answer is unclear, mark uncertainty and do not smooth it into certainty.
 
 ---
 
-## 13. Final Principle
+## 14. Final Principle
 
 Cortex does not learn from users by making them change.
 
