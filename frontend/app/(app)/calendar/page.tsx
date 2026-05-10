@@ -38,6 +38,7 @@ import {
   type ExternalCalendarEvent,
 } from "@/lib/calendar";
 import { NewTaskModal } from "@/components/new-task-modal";
+import { ExecutionCorrectionDialog } from "@/components/execution-correction-dialog";
 import { DeadlineModal } from "@/components/deadline-modal";
 import { listDeadlines, type DeadlineResponse } from "@/lib/deadlines";
 import {
@@ -340,6 +341,7 @@ export default function CalendarPage() {
 
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
   const [detailsTask, setDetailsTask] = useState<TaskRowType | null>(null);
+  const [correctionTask, setCorrectionTask] = useState<TaskRowType | null>(null);
   const [editingDeadline, setEditingDeadline] = useState<DeadlineResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // View-toggle state — drives the explicit Day/Week/Month button bar
@@ -615,6 +617,8 @@ export default function CalendarPage() {
           if (!task) return;
           if (task.state === "PLANNED") {
             setEditingTask(task);
+          } else if (task.state === "EXECUTED") {
+            setCorrectionTask(task);
           } else {
             setDetailsTask(task);
           }
@@ -775,6 +779,12 @@ export default function CalendarPage() {
       <TaskDetailsDialog
         task={detailsTask}
         onClose={() => setDetailsTask(null)}
+      />
+
+      <ExecutionCorrectionDialog
+        task={correctionTask}
+        onClose={() => setCorrectionTask(null)}
+        onSaved={refreshAll}
       />
 
       <DeadlineModal

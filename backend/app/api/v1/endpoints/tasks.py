@@ -19,6 +19,8 @@ from app.schemas.task import (
     MarkAbandonedRequest,
     MarkAbandonedResponse,
     MarkDoneResponse,
+    ExecutionCorrectionRequest,
+    ExecutionCorrectionResponse,
     SwapRequest,
     SwapResponse,
     ConflictInfo,
@@ -374,6 +376,52 @@ def mark_done(
     )
 
 
+@router.post(
+    "/tasks/{task_id}/execution-correction",
+    response_model=ExecutionCorrectionResponse,
+)
+def correct_execution_duration(
+    task_id: str,
+    request: ExecutionCorrectionRequest,
+    db: Session = Depends(get_db),
+) -> ExecutionCorrectionResponse:
+    """
+    Append a retroactive timer-stop correction for an EXECUTED task.
+
+    This repairs the common "forgot to stop the timer" case without
+    overwriting observed state-machine history. Clean research baselines
+    exclude corrected sessions; user-facing history can display effective
+    duration via the query endpoint.
+    """
+    try:
+        correction = TaskManager(db).correct_execution_duration(
+            task_id,
+            corrected_end_time=request.corrected_end_time,
+            corrected_duration_minutes=request.corrected_duration_minutes,
+            reason=request.reason,
+            note=request.note,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    assert task is not None
+    return ExecutionCorrectionResponse(
+        task_id=task.task_id,
+        correction_id=correction.correction_id,
+        corrected=True,
+        provenance=correction.provenance,
+        reason=correction.reason,
+        original_executed_end=to_local(correction.original_executed_end_utc),
+        original_executed_duration_minutes=correction.original_executed_duration_minutes,
+        corrected_executed_end=to_local(correction.corrected_executed_end_utc),
+        corrected_executed_duration_minutes=correction.corrected_executed_duration_minutes,
+        effective_duration_delta_minutes=task.planned_duration_minutes
+        - correction.corrected_executed_duration_minutes,
+        vt17_eligible=correction.vt17_eligible,
+    )
+
+
 @router.post("/tasks/swap", response_model=SwapResponse)
 def swap_tasks(
     request: SwapRequest,
@@ -672,6 +720,17 @@ def get_task(
         executed_start=to_local(task.executed_start_utc) if task.executed_start_utc else None,
         executed_end=to_local(task.executed_end_utc) if task.executed_end_utc else None,
         executed_duration_minutes=task.executed_duration_minutes,
+        effective_executed_end=(
+            to_local(task.effective_executed_end_utc)
+            if task.effective_executed_end_utc else None
+        ),
+        effective_executed_duration_minutes=task.effective_executed_duration_minutes,
+        effective_duration_delta_minutes=task.effective_duration_delta_minutes,
+        execution_duration_provenance=task.execution_duration_provenance,
+        execution_correction_id=(
+            task.latest_execution_correction.correction_id
+            if task.latest_execution_correction else None
+        ),
         state=task.state,
         source=task.source,
         confidence_score=task.confidence_score,

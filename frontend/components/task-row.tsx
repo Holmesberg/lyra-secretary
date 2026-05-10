@@ -32,7 +32,7 @@ interface Props {
 // Research layer: readiness X → focus Y ±Nmin
 // Typography kept subordinate to title (text-[11px] white/40).
 function ResearchLayer({ task }: { task: TaskRowType }) {
-  const { state, pre_task_readiness, post_task_reflection, duration_delta_minutes } = task;
+  const { state, pre_task_readiness, post_task_reflection } = task;
 
   if (state === "SKIPPED") {
     return <span className="font-mono text-[11px] text-dust-deep">—</span>;
@@ -50,7 +50,7 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
 
   // EXECUTED
   if (pre_task_readiness == null && post_task_reflection == null) return null;
-  const delta = duration_delta_minutes;
+  const delta = task.effective_duration_delta_minutes ?? task.duration_delta_minutes;
   const deltaStr =
     delta == null
       ? ""
@@ -79,6 +79,7 @@ export function TaskRow({
   const state = task.state;
   const isLive = state === "EXECUTING" || state === "PAUSED";
   const isTerminal = state === "EXECUTED" || state === "SKIPPED";
+  const clickOpensTask = (state === "PLANNED" || state === "EXECUTED") && !!onEdit;
   const isOverdue =
     task.end != null && new Date(task.end).getTime() < Date.now();
   const canMarkDone =
@@ -111,8 +112,8 @@ export function TaskRow({
         {start}–{end}
       </div>
       <div
-        className={cn("min-w-0 flex-1", state === "PLANNED" && onEdit && "cursor-pointer")}
-        onClick={() => state === "PLANNED" && onEdit?.(task)}
+        className={cn("min-w-0 flex-1", clickOpensTask && "cursor-pointer")}
+        onClick={() => clickOpensTask && onEdit?.(task)}
       >
         <div className="truncate text-sm text-parchment">{task.title}</div>
         {/* Operator-visibility chip 2026-05-01: render the bound

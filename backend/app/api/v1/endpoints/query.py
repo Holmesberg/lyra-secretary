@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 import logging
 
 from app.api.deps import get_db
-from app.db.models import Task, TaskState, StopwatchSession
+from app.db.models import Task, TaskExecutionCorrection, TaskState, StopwatchSession
 from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_utc, to_local
 from app.utils.redis_client import RedisClient
@@ -195,9 +195,44 @@ def query_tasks(
                     "task_completion_percentage": row.task_completion_percentage,
                 }
 
+        latest_correction: dict[str, TaskExecutionCorrection] = {}
+        if task_ids:
+            correction_rows = (
+                db.query(TaskExecutionCorrection)
+                .filter(TaskExecutionCorrection.task_id.in_(task_ids))
+                .order_by(
+                    TaskExecutionCorrection.task_id,
+                    TaskExecutionCorrection.created_at.desc(),
+                )
+                .all()
+            )
+            for row in correction_rows:
+                latest_correction.setdefault(row.task_id, row)
+
         task_list = []
         for t in tasks:
             agg = session_agg.get(t.task_id, {})
+            correction = latest_correction.get(t.task_id)
+            effective_executed_end = (
+                correction.corrected_executed_end_utc
+                if correction is not None
+                else t.executed_end_utc
+            )
+            effective_executed_duration = (
+                correction.corrected_executed_duration_minutes
+                if correction is not None
+                else t.executed_duration_minutes
+            )
+            effective_delta = (
+                t.planned_duration_minutes - effective_executed_duration
+                if effective_executed_duration is not None
+                else None
+            )
+            execution_duration_provenance = (
+                "retroactive"
+                if correction is not None or t.initiation_status == "retroactive"
+                else "observed"
+            )
             task_list.append({
                 "task_id": t.task_id,
                 "title": t.title,
@@ -215,6 +250,16 @@ def query_tasks(
                 "duration_delta_minutes": t.duration_delta_minutes,
                 "executed_start": to_local(t.executed_start_utc).isoformat() if t.executed_start_utc else None,
                 "executed_end": to_local(t.executed_end_utc).isoformat() if t.executed_end_utc else None,
+                "effective_executed_duration_minutes": effective_executed_duration,
+                "effective_duration_delta_minutes": effective_delta,
+                "effective_executed_end": (
+                    to_local(effective_executed_end).isoformat()
+                    if effective_executed_end else None
+                ),
+                "execution_duration_provenance": execution_duration_provenance,
+                "execution_correction_id": (
+                    correction.correction_id if correction is not None else None
+                ),
                 "voided_at": to_local(t.voided_at).isoformat() if t.voided_at else None,
                 # Extended fields for CSV export / research schema
                 "discrepancy_score": t.discrepancy_score,

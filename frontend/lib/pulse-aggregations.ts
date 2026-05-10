@@ -47,12 +47,16 @@ export function focusMinutesByDay(
   for (const t of tasks) {
     if (t.voided_at) continue;
     if (t.state !== "EXECUTED") continue;
-    if (!t.executed_end) continue;
-    const end = new Date(t.executed_end);
+    const executedEnd = t.effective_executed_end ?? t.executed_end;
+    if (!executedEnd) continue;
+    const end = new Date(executedEnd);
     end.setHours(0, 0, 0, 0);
     const key = dateKey(end);
     const slot = byDate.get(key) ?? { minutes: 0, count: 0 };
-    slot.minutes += Math.max(0, t.executed_duration_minutes ?? 0);
+    slot.minutes += Math.max(
+      0,
+      t.effective_executed_duration_minutes ?? t.executed_duration_minutes ?? 0
+    );
     slot.count += 1;
     byDate.set(key, slot);
   }
@@ -79,9 +83,15 @@ export function focusMinutesToday(tasks: TaskRow[]): number {
   const today = dateKey(new Date());
   let total = 0;
   for (const t of tasks) {
-    if (t.voided_at || t.state !== "EXECUTED" || !t.executed_end) continue;
-    const k = dateKey(new Date(t.executed_end));
-    if (k === today) total += Math.max(0, t.executed_duration_minutes ?? 0);
+    const executedEnd = t.effective_executed_end ?? t.executed_end;
+    if (t.voided_at || t.state !== "EXECUTED" || !executedEnd) continue;
+    const k = dateKey(new Date(executedEnd));
+    if (k === today) {
+      total += Math.max(
+        0,
+        t.effective_executed_duration_minutes ?? t.executed_duration_minutes ?? 0
+      );
+    }
   }
   return Math.round(total);
 }
@@ -95,13 +105,14 @@ export function winsToday(tasks: TaskRow[]): number {
   const today = dateKey(new Date());
   let wins = 0;
   for (const t of tasks) {
-    if (t.voided_at || t.state !== "EXECUTED" || !t.executed_end) continue;
-    const k = dateKey(new Date(t.executed_end));
+    const executedEnd = t.effective_executed_end ?? t.executed_end;
+    if (t.voided_at || t.state !== "EXECUTED" || !executedEnd) continue;
+    const k = dateKey(new Date(executedEnd));
     if (k !== today) continue;
     // A "win" = finished within the planned window (delta_minutes <= 0
     // means did not overrun). Null delta defaults to a win — better
     // to overcount on alpha than to undercount and feel discouraging.
-    if ((t.duration_delta_minutes ?? 0) <= 0) wins += 1;
+    if ((t.effective_duration_delta_minutes ?? t.duration_delta_minutes ?? 0) <= 0) wins += 1;
   }
   return wins;
 }

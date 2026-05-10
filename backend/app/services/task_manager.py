@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 import logging
 
-from app.db.models import Task, TaskState, TaskSource, CategoryMapping, Deadline, CalibrationNudgeEvent, ReflectionViewLog
+from app.db.models import Task, TaskExecutionCorrection, TaskState, TaskSource, CategoryMapping, Deadline, CalibrationNudgeEvent, ReflectionViewLog, StopwatchSession
 from app.db.scoping import get_current_user_id
 from app.services.parser import TaskParser, extract_scope_bullets, infer_deadline_binding
 from app.services.deadline_heuristic import score_deadlines
@@ -854,6 +854,144 @@ class TaskManager:
             logger.warning("mark_done: last_task cache write failed (non-blocking): %s", e)
 
         return task
+
+    def correct_execution_duration(
+        self,
+        task_id: str,
+        *,
+        corrected_end_time: Optional[datetime] = None,
+        corrected_duration_minutes: Optional[int] = None,
+        reason: str = "forgot_to_stop_timer",
+        note: Optional[str] = None,
+    ) -> TaskExecutionCorrection:
+        """Append a retroactive timer-stop correction for an EXECUTED task.
+
+        The observed Task.executed_* values and StopwatchSession rows remain
+        unchanged. Clean research baselines should exclude any task with at
+        least one TaskExecutionCorrection row; user-facing views may use the
+        task.effective_* properties.
+        """
+        has_end = corrected_end_time is not None
+        has_duration = corrected_duration_minutes is not None
+        if has_end == has_duration:
+            raise ValueError(
+                "Supply exactly one of corrected_end_time or corrected_duration_minutes"
+            )
+        if reason not in ("forgot_to_stop_timer", "accidental_left_running"):
+            raise ValueError("Invalid execution correction reason")
+
+        task = self.db.query(Task).filter(Task.task_id == task_id).first()
+        if not task:
+            raise ValueError("Task not found")
+        if task.voided_at is not None:
+            raise ValueError("Cannot correct a voided task")
+
+        current_state = TaskState(task.state) if isinstance(task.state, str) else task.state
+        if current_state != TaskState.EXECUTED:
+            raise ValueError(
+                f"Only EXECUTED tasks can receive timer corrections (current state: {task.state})"
+            )
+        if (
+            task.executed_start_utc is None
+            or task.executed_end_utc is None
+            or task.executed_duration_minutes is None
+        ):
+            raise ValueError("Task has no observed execution timestamps to correct")
+        if task.initiation_status == "retroactive":
+            raise ValueError(
+                "Retroactive execution logs are already user-reported; "
+                "timer-stop corrections are only for observed stopwatch sessions"
+            )
+        observed_session = (
+            self.db.query(StopwatchSession.session_id)
+            .filter(
+                StopwatchSession.task_id == task.task_id,
+                StopwatchSession.end_time_utc.isnot(None),
+            )
+            .first()
+        )
+        if observed_session is None:
+            raise ValueError(
+                "Timer-stop corrections require a closed stopwatch session"
+            )
+
+        original_start = strip_tz(task.executed_start_utc)
+        original_end = strip_tz(task.executed_end_utc)
+        if original_start is None or original_end is None:
+            raise ValueError("Task has invalid observed execution timestamps")
+
+        original_duration = int(task.executed_duration_minutes)
+        observed_wall = max(0.0, (original_end - original_start).total_seconds() / 60.0)
+        observed_paused = max(0.0, observed_wall - float(original_duration))
+
+        if corrected_end_time is not None:
+            corrected_end = strip_tz(to_utc(corrected_end_time))
+            if corrected_end is None:
+                raise ValueError("corrected_end_time is invalid")
+            if corrected_end <= original_start:
+                raise ValueError("corrected_end_time must be after execution start")
+            if corrected_end >= original_end:
+                raise ValueError(
+                    "Forgot-to-stop corrections must move the stop time earlier"
+                )
+            corrected_wall = (corrected_end - original_start).total_seconds() / 60.0
+            corrected_duration = int(max(0, corrected_wall - observed_paused))
+        else:
+            assert corrected_duration_minutes is not None
+            corrected_duration = int(corrected_duration_minutes)
+            if corrected_duration >= original_duration:
+                raise ValueError(
+                    "Forgot-to-stop corrections must reduce executed duration"
+                )
+            corrected_end = original_start + timedelta(
+                minutes=corrected_duration + observed_paused
+            )
+
+        if corrected_duration < 1:
+            raise ValueError("Corrected duration must be at least 1 minute")
+        if corrected_duration >= original_duration:
+            raise ValueError(
+                "Forgot-to-stop corrections must reduce executed duration"
+            )
+        if corrected_end >= original_end:
+            raise ValueError(
+                "Forgot-to-stop corrections must move the stop time earlier"
+            )
+
+        uid = _require_current_user("correct_execution_duration")
+        correction = TaskExecutionCorrection(
+            task_id=task.task_id,
+            user_id=uid,
+            provenance="retroactive",
+            reason=reason,
+            note=note,
+            original_executed_start_utc=original_start,
+            original_executed_end_utc=original_end,
+            original_executed_duration_minutes=original_duration,
+            corrected_executed_end_utc=corrected_end,
+            corrected_executed_duration_minutes=corrected_duration,
+            observed_paused_minutes=observed_paused,
+            vt17_eligible=False,
+            created_at=now_utc(),
+        )
+        self.db.add(correction)
+        task.last_modified_at = now_utc()
+        self.db.commit()
+        self.db.refresh(correction)
+
+        try:
+            from app.utils.me_cache import invalidate_me
+            from app.utils.tasks_range_cache import invalidate_user_ranges
+            invalidate_me(uid)
+            invalidate_user_ranges(uid)
+        except Exception as e:
+            logger.warning(
+                "correct_execution_duration: cache invalidate failed "
+                "(non-blocking): %s",
+                e,
+            )
+
+        return correction
     
     def delete_task(self, task_id: str) -> Task:
         """

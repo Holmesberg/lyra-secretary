@@ -28,6 +28,7 @@ import { ReadinessModal } from "@/components/readiness-modal";
 import { ReflectionModal } from "@/components/reflection-modal";
 import { NewTaskModal } from "@/components/new-task-modal";
 import { RetroactiveModal } from "@/components/retroactive-modal";
+import { ExecutionCorrectionDialog } from "@/components/execution-correction-dialog";
 import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
@@ -250,6 +251,7 @@ function TodayInner() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
+  const [correctionTask, setCorrectionTask] = useState<TaskRowType | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
@@ -644,6 +646,11 @@ function TodayInner() {
       duration_delta_minutes: null,
       executed_start: null,
       executed_end: null,
+      effective_executed_duration_minutes: null,
+      effective_duration_delta_minutes: null,
+      effective_executed_end: null,
+      execution_duration_provenance: "observed",
+      execution_correction_id: null,
       voided_at: null,
       discrepancy_score: null,
       signed_discrepancy: null,
@@ -717,6 +724,10 @@ function TodayInner() {
               executed_end: executedEnd,
               executed_duration_minutes: planned,
               duration_delta_minutes: planned != null ? 0 : t.duration_delta_minutes,
+              effective_executed_duration_minutes: planned,
+              effective_duration_delta_minutes: planned != null ? 0 : t.effective_duration_delta_minutes,
+              effective_executed_end: executedEnd,
+              execution_duration_provenance: "retroactive",
             }
           : t
       )
@@ -1018,7 +1029,13 @@ function TodayInner() {
                   }
                   onDone={handleDone}
                   onDelete={isPast ? undefined : handleDelete}
-                  onEdit={(task) => setEditingTask(task)}
+                  onEdit={(task) => {
+                    if (task.state === "EXECUTED") {
+                      setCorrectionTask(task);
+                    } else {
+                      setEditingTask(task);
+                    }
+                  }}
                   selected={selectedIds.has(item.task.task_id)}
                   showCheckbox={selectedIds.size > 0}
                   onToggleSelect={toggleSelect}
@@ -1093,6 +1110,12 @@ function TodayInner() {
         onClose={() => setRetroOpen(false)}
         onCreated={refresh}
         defaultDate={viewedDate}
+      />
+
+      <ExecutionCorrectionDialog
+        task={correctionTask}
+        onClose={() => setCorrectionTask(null)}
+        onSaved={refresh}
       />
 
       <VoidModal

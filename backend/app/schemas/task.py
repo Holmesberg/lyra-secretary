@@ -196,6 +196,11 @@ class TaskDetail(BaseModel):
     executed_start: Optional[datetime]
     executed_end: Optional[datetime]
     executed_duration_minutes: Optional[int]
+    effective_executed_end: Optional[datetime] = None
+    effective_executed_duration_minutes: Optional[int] = None
+    effective_duration_delta_minutes: Optional[int] = None
+    execution_duration_provenance: str = "observed"
+    execution_correction_id: Optional[str] = None
     
     state: TaskState
     source: TaskSource
@@ -315,6 +320,62 @@ class MarkDoneResponse(BaseModel):
     previous_state: TaskState
     new_state: TaskState
     initiation_status: str
+
+
+EXECUTION_CORRECTION_REASONS = {
+    "forgot_to_stop_timer",
+    "accidental_left_running",
+}
+
+
+class ExecutionCorrectionRequest(BaseModel):
+    """Retroactively correct an EXECUTED task whose timer was left running.
+
+    Exactly one of corrected_end_time or corrected_duration_minutes must be
+    supplied. The backend records an append-only correction row and does not
+    mutate the observed task/session timestamps.
+    """
+
+    corrected_end_time: Optional[datetime] = None
+    corrected_duration_minutes: Optional[int] = Field(None, ge=1)
+    reason: str = Field("forgot_to_stop_timer", max_length=40)
+    note: Optional[str] = Field(None, max_length=500)
+
+    @validator("reason")
+    def _reason_must_be_enum(cls, v: str) -> str:
+        if v not in EXECUTION_CORRECTION_REASONS:
+            raise ValueError(
+                f"reason must be one of {sorted(EXECUTION_CORRECTION_REASONS)}"
+            )
+        return v
+
+    @validator("corrected_duration_minutes", always=True)
+    def _exactly_one_correction_input(
+        cls,
+        v: Optional[int],
+        values: dict,
+    ) -> Optional[int]:
+        has_end = values.get("corrected_end_time") is not None
+        has_duration = v is not None
+        if has_end == has_duration:
+            raise ValueError(
+                "Supply exactly one of corrected_end_time or corrected_duration_minutes"
+            )
+        return v
+
+
+class ExecutionCorrectionResponse(BaseModel):
+    task_id: str
+    correction_id: str
+    corrected: bool
+    provenance: str
+    reason: str
+    original_executed_end: datetime
+    original_executed_duration_minutes: int
+    corrected_executed_end: datetime
+    corrected_executed_duration_minutes: int
+    effective_duration_delta_minutes: int
+    vt17_eligible: bool
 
 
 class SwapRequest(BaseModel):

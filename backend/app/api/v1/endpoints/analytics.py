@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 
 from app.api.deps import get_db
-from app.db.models import Archetype, ArchetypeAssignment, Task, TaskState, StopwatchSession, PausePredictionLog, User, Deadline, TaskDeadlineOutcome
+from app.db.models import Archetype, ArchetypeAssignment, Task, TaskExecutionCorrection, TaskState, StopwatchSession, PausePredictionLog, User, Deadline, TaskDeadlineOutcome
 from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_local, now_utc
 from app.utils.redis_client import RedisClient
@@ -1220,6 +1220,9 @@ def get_bias_factor(
             Task.initiation_status != "retroactive",
             Task.executed_duration_minutes != None,
             Task.planned_duration_minutes > 0,
+            ~db.query(TaskExecutionCorrection.correction_id)
+            .filter(TaskExecutionCorrection.task_id == Task.task_id)
+            .exists(),
             # VT-29: exclude tasks bound to imported deadlines.
             (Task.deadline_id.is_(None)) | (Deadline.external_source.is_(None)),
         )
@@ -1340,6 +1343,9 @@ def bias_factor_lookup(
             Task.initiation_status != "retroactive",
             Task.executed_duration_minutes != None,
             Task.planned_duration_minutes >= 5,
+            ~db.query(TaskExecutionCorrection.correction_id)
+            .filter(TaskExecutionCorrection.task_id == Task.task_id)
+            .exists(),
             # VT-29: exclude tasks bound to imported deadlines.
             (Task.deadline_id.is_(None)) | (Deadline.external_source.is_(None)),
         )

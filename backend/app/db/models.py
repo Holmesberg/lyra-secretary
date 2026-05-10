@@ -225,6 +225,10 @@ class Task(Base):
         back_populates="task",
         cascade="all, delete-orphan"
     )
+    execution_corrections: Mapped[list["TaskExecutionCorrection"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
     deadline: Mapped[Optional["Deadline"]] = relationship(
         back_populates="tasks",
         # Explicit FK selection — alembic 036 added a second FK
@@ -279,6 +283,46 @@ class Task(Base):
         if self.executed_duration_minutes is None:
             return None
         return self.planned_duration_minutes - self.executed_duration_minutes
+
+    @property
+    def latest_execution_correction(self) -> Optional["TaskExecutionCorrection"]:
+        """Most recent retroactive timer correction, if one exists."""
+        if not self.execution_corrections:
+            return None
+        return max(self.execution_corrections, key=lambda c: c.created_at)
+
+    @property
+    def effective_executed_duration_minutes(self) -> Optional[int]:
+        """User-facing duration after append-only retroactive correction."""
+        correction = self.latest_execution_correction
+        if correction is not None:
+            return correction.corrected_executed_duration_minutes
+        return self.executed_duration_minutes
+
+    @property
+    def effective_executed_end_utc(self) -> Optional[datetime]:
+        """User-facing end time after append-only retroactive correction."""
+        correction = self.latest_execution_correction
+        if correction is not None:
+            return correction.corrected_executed_end_utc
+        return self.executed_end_utc
+
+    @property
+    def effective_duration_delta_minutes(self) -> Optional[int]:
+        """Planned - effective executed duration."""
+        effective = self.effective_executed_duration_minutes
+        if effective is None:
+            return None
+        return self.planned_duration_minutes - effective
+
+    @property
+    def execution_duration_provenance(self) -> str:
+        """observed for raw stopwatch rows, retroactive after correction."""
+        return (
+            "retroactive"
+            if self.latest_execution_correction or self.initiation_status == "retroactive"
+            else "observed"
+        )
 
     @property
     def discrepancy_score(self) -> Optional[int]:
@@ -527,6 +571,79 @@ class StopwatchSession(Base):
             return None
         wall = int((self.end_time_utc - self.start_time_utc).total_seconds() / 60)
         return max(0, wall - self.total_paused_minutes)
+
+
+class TaskExecutionCorrection(Base):
+    """Append-only retroactive correction for forgotten timer stops.
+
+    This is Layer D user narrative / repair data. It never overwrites the
+    Layer A task or stopwatch timestamps. VT-17 eligibility is explicitly
+    false: this row is not a PauseEvent-like object and must not enter
+    PausePredictionLog or ResumePredictionLog training data.
+    """
+
+    __tablename__ = "task_execution_correction"
+
+    correction_id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+    )
+    task_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("task.task_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    provenance: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="retroactive",
+    )
+    reason: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="forgot_to_stop_timer",
+    )
+    note: Mapped[Optional[str]] = mapped_column(String(500))
+
+    original_executed_start_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    original_executed_end_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    original_executed_duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    corrected_executed_end_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    corrected_executed_duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    observed_paused_minutes: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    # Explicit schema marker: timer corrections are never VT-17 training rows.
+    vt17_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    task: Mapped["Task"] = relationship(back_populates="execution_corrections")
+
+    __table_args__ = (
+        CheckConstraint(
+            "provenance = 'retroactive'",
+            name="check_task_execution_correction_provenance",
+        ),
+        CheckConstraint(
+            "reason IN ('forgot_to_stop_timer', 'accidental_left_running')",
+            name="check_task_execution_correction_reason",
+        ),
+        CheckConstraint(
+            "corrected_executed_duration_minutes > 0",
+            name="check_task_execution_correction_duration_positive",
+        ),
+        CheckConstraint(
+            "vt17_eligible = false",
+            name="check_task_execution_correction_vt17_ineligible",
+        ),
+        Index("idx_task_execution_correction_task_created", "task_id", "created_at"),
+        Index("idx_task_execution_correction_user_created", "user_id", "created_at"),
+    )
 
 
 class CategoryMapping(Base):

@@ -28,6 +28,7 @@ from app.db.models import (
     ResumePredictionLog,
     SuppressionEvent,
     Task,
+    TaskExecutionCorrection,
 )
 from app.utils.time_utils import strip_tz
 
@@ -355,7 +356,20 @@ def baseline_clean_task(
     signal_targets: list[str],
     horizon_policy_version: str = DEFAULT_HORIZON_POLICY_VERSION,
 ) -> bool:
-    """Return True only when every requested exposure gate returns NONE."""
+    """Return True only when every requested exposure gate returns NONE.
+
+    Retroactive execution corrections are Layer D repair data. Any task with a
+    correction row is excluded from clean baselines even when its exposure
+    context is otherwise clean.
+    """
+    has_execution_correction = (
+        db.query(TaskExecutionCorrection.correction_id)
+        .filter(TaskExecutionCorrection.task_id == task.task_id)
+        .first()
+        is not None
+    )
+    if has_execution_correction:
+        return False
     return all(
         result.state == "NONE"
         for result in exposure_results_for_task(

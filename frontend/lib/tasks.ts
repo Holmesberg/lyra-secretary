@@ -38,6 +38,11 @@ export interface TaskRow {
   duration_delta_minutes: number | null;
   executed_start: string | null;
   executed_end: string | null;
+  effective_executed_duration_minutes: number | null;
+  effective_duration_delta_minutes: number | null;
+  effective_executed_end: string | null;
+  execution_duration_provenance: "observed" | "retroactive";
+  execution_correction_id: string | null;
   voided_at: string | null;
   // Extended fields (populated by date_from/date_to range queries)
   discrepancy_score: number | null;
@@ -361,6 +366,43 @@ export function markDone(task_id: string) {
   return api<MarkDoneResponse>(`/v1/tasks/${task_id}/mark-done`, {
     method: "POST",
   });
+}
+
+export interface ExecutionCorrectionInput {
+  corrected_end_time?: string;
+  corrected_duration_minutes?: number;
+  reason?: "forgot_to_stop_timer" | "accidental_left_running";
+  note?: string;
+}
+
+export interface ExecutionCorrectionResponse {
+  task_id: string;
+  correction_id: string;
+  corrected: boolean;
+  provenance: "retroactive";
+  reason: string;
+  original_executed_end: string;
+  original_executed_duration_minutes: number;
+  corrected_executed_end: string;
+  corrected_executed_duration_minutes: number;
+  effective_duration_delta_minutes: number;
+  vt17_eligible: boolean;
+}
+
+export function correctExecutionDuration(
+  taskId: string,
+  input: ExecutionCorrectionInput
+) {
+  return api<ExecutionCorrectionResponse>(
+    `/v1/tasks/${encodeURIComponent(taskId)}/execution-correction`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        reason: "forgot_to_stop_timer",
+        ...input,
+      }),
+    }
+  );
 }
 
 export interface RescheduleInput {

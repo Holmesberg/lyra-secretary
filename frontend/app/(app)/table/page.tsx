@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, subDays, parseISO } from "date-fns";
 import { Download, ChevronUp, ChevronDown } from "lucide-react";
 import { queryTasksRange, type TaskRow, type QueryResponse } from "@/lib/tasks";
+import { ExecutionCorrectionDialog } from "@/components/execution-correction-dialog";
 import {
   CATEGORIES,
   getCategoryColor,
@@ -143,8 +144,8 @@ function computeDaySummaries(tasks: TaskRow[]): Map<string, DaySummary> {
       map.set(dk, s);
     }
     s.planned += t.planned_duration_minutes ?? 0;
-    s.executed += t.executed_duration_minutes ?? 0;
-    s.delta += t.duration_delta_minutes ?? 0;
+    s.executed += t.effective_executed_duration_minutes ?? t.executed_duration_minutes ?? 0;
+    s.delta += t.effective_duration_delta_minutes ?? t.duration_delta_minutes ?? 0;
     if (t.state === "EXECUTED") s.executedCount++;
     if (t.state === "SKIPPED") s.skippedCount++;
   }
@@ -198,13 +199,13 @@ function taskToCsvRow(t: TaskRow): string {
     t.start ?? "",
     t.end ?? "",
     t.executed_start ?? "",
-    t.executed_end ?? "",
+    t.effective_executed_end ?? t.executed_end ?? "",
     `"${(t.title ?? "").replace(/"/g, '""')}"`,
     t.category ?? "",
     t.state,
     String(t.planned_duration_minutes ?? ""),
-    String(t.executed_duration_minutes ?? ""),
-    String(t.duration_delta_minutes ?? ""),
+    String(t.effective_executed_duration_minutes ?? t.executed_duration_minutes ?? ""),
+    String(t.effective_duration_delta_minutes ?? t.duration_delta_minutes ?? ""),
     String(t.pre_task_readiness ?? ""),
     String(t.post_task_reflection ?? ""),
     String(t.discrepancy_score ?? ""),
@@ -256,9 +257,15 @@ function sortTasks(
       case "plan":
         return m * ((a.planned_duration_minutes ?? 0) - (b.planned_duration_minutes ?? 0));
       case "exec":
-        return m * ((a.executed_duration_minutes ?? 0) - (b.executed_duration_minutes ?? 0));
+        return m * (
+          ((a.effective_executed_duration_minutes ?? a.executed_duration_minutes) ?? 0) -
+          ((b.effective_executed_duration_minutes ?? b.executed_duration_minutes) ?? 0)
+        );
       case "delta":
-        return m * ((a.duration_delta_minutes ?? 0) - (b.duration_delta_minutes ?? 0));
+        return m * (
+          ((a.effective_duration_delta_minutes ?? a.duration_delta_minutes) ?? 0) -
+          ((b.effective_duration_delta_minutes ?? b.duration_delta_minutes) ?? 0)
+        );
       case "rf": {
         const aVal = (a.pre_task_readiness ?? 0) * 10 + (a.post_task_reflection ?? 0);
         const bVal = (b.pre_task_readiness ?? 0) * 10 + (b.post_task_reflection ?? 0);
@@ -342,6 +349,7 @@ function MultiSelect({
           ))}
         </div>
       )}
+
     </div>
   );
 }
@@ -394,6 +402,7 @@ export default function TablePage() {
   const [totalCount, setTotalCount] = useState(0);
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [correctionTask, setCorrectionTask] = useState<TaskRow | null>(null);
   const mounted = useRef(false);
 
   // Load persisted filters on mount
@@ -438,8 +447,7 @@ export default function TablePage() {
     return { dateFrom: "2024-01-01", dateTo: today };
   }, [filters.dateRange]);
 
-  // Fetch
-  useEffect(() => {
+  const reloadTasks = useCallback(() => {
     setLoading(true);
     queryTasksRange(dateFrom, dateTo)
       .then((res: QueryResponse) => {
@@ -450,6 +458,11 @@ export default function TablePage() {
       .catch((err) => console.error("Table query failed:", err))
       .finally(() => setLoading(false));
   }, [dateFrom, dateTo]);
+
+  // Fetch
+  useEffect(() => {
+    reloadTasks();
+  }, [reloadTasks]);
 
   // Client-side filtering
   const filtered = useMemo(() => {
@@ -634,8 +647,10 @@ export default function TablePage() {
                 return (
                   <tr
                     key={t.task_id}
+                    onClick={() => t.state === "EXECUTED" && setCorrectionTask(t)}
                     className={cn(
                       "border-t border-hairline/50 hover:bg-void-2/60",
+                      t.state === "EXECUTED" && "cursor-pointer",
                       t.voided_at && "opacity-50"
                     )}
                   >
@@ -674,10 +689,15 @@ export default function TablePage() {
                       {t.planned_duration_minutes != null ? `${t.planned_duration_minutes}m` : "—"}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-dust">
-                      {t.executed_duration_minutes != null ? `${t.executed_duration_minutes}m` : "—"}
+                      {(t.effective_executed_duration_minutes ?? t.executed_duration_minutes) != null
+                        ? `${t.effective_executed_duration_minutes ?? t.executed_duration_minutes}m`
+                        : "—"}
+                      {t.execution_duration_provenance === "retroactive" && (
+                        <span className="ml-1 text-signal">*</span>
+                      )}
                     </td>
-                    <td className={cn("px-3 py-2 text-right font-mono text-xs", deltaCls(t.duration_delta_minutes))}>
-                      {fmtDelta(t.duration_delta_minutes)}
+                    <td className={cn("px-3 py-2 text-right font-mono text-xs", deltaCls(t.effective_duration_delta_minutes ?? t.duration_delta_minutes))}>
+                      {fmtDelta(t.effective_duration_delta_minutes ?? t.duration_delta_minutes)}
                     </td>
                     <td className="px-3 py-2 text-center font-mono text-xs text-dust">
                       {fmtRF(t.pre_task_readiness, t.post_task_reflection)}
@@ -692,6 +712,12 @@ export default function TablePage() {
           </table>
         </div>
       )}
+
+      <ExecutionCorrectionDialog
+        task={correctionTask}
+        onClose={() => setCorrectionTask(null)}
+        onSaved={reloadTasks}
+      />
     </div>
   );
 }

@@ -24,6 +24,7 @@ from app.db.models import (
     ResumePredictionLog,
     StopwatchSession,
     Task,
+    TaskExecutionCorrection,
     TaskState,
 )
 from app.services.exposure_ledger import exposure_results_for_task, is_exposed
@@ -210,6 +211,9 @@ def measured_execution_query(
         Task.initiation_status != "retroactive",
         Task.executed_duration_minutes.isnot(None),
         Task.planned_duration_minutes >= 5,
+        ~db.query(TaskExecutionCorrection.correction_id)
+        .filter(TaskExecutionCorrection.task_id == Task.task_id)
+        .exists(),
     )
     if cutoff is not None:
         q = q.filter(Task.planned_start_utc >= cutoff)
