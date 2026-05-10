@@ -4,7 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Repository](https://img.shields.io/badge/GitHub-lyra--secretary-181717?logo=github)](https://github.com/Holmesberg/lyra-secretary)
 
-> Adaptive scheduling backend for a personal cognitive operating system
+> AI-native productivity system for adaptive scheduling, planning accuracy, and behavioral feedback
+
+LyraOS treats task estimates as hypotheses and work sessions as evidence. It is a productivity interface with behavioral instrumentation underneath: planner, timer, calendar context, pause/resume tracking, readiness/reflection capture, and analytics for the gap between intended work and actual execution.
 
 ## Built an AI system that discovered I finish closer to plan when starting drained.
 

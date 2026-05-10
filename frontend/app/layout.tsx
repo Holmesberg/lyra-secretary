@@ -16,12 +16,19 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://lyraos.org"),
   title: "LyraOS — Your Cognitive Operating System",
   description:
-    "A measurement instrument that logs every estimate you make and every outcome that follows — then shows you the pattern. Pre-alpha research tool, built in public in Cairo.",
+    "An AI-native productivity system that treats task estimates as hypotheses and work sessions as evidence — then shows you the pattern.",
   keywords: [
+    "AI productivity system",
+    "AI-native productivity",
+    "adaptive productivity platform",
     "adaptive scheduling",
+    "cognitive workflow platform",
     "cognitive operating system",
+    "behavior-aware scheduler",
+    "human-AI collaboration",
     "metacognitive measurement",
     "planning accuracy",
+    "planning accuracy app",
     "neuroadaptive systems",
     "time estimation research",
     "productivity research instrument",
@@ -32,7 +39,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "LyraOS — Your Cognitive Operating System",
     description:
-      "Lyra tracks the difference between what you planned and what actually happened — then shows you the pattern you couldn't see alone.",
+      "An AI-native productivity system that learns the gap between your plans and reality.",
     type: "website",
     url: "https://lyraos.org",
     siteName: "LyraOS",
@@ -50,7 +57,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "LyraOS — Your Cognitive Operating System",
     description:
-      "Adaptive scheduling instrument. See your hidden execution patterns in 7 days.",
+      "AI-native productivity system for planning accuracy, adaptive scheduling, and behavioral feedback.",
     images: ["/insights-v2.png"],
   },
   robots: {
@@ -74,7 +81,7 @@ const jsonLd = {
       name: "LyraOS",
       url: "https://lyraos.org",
       description:
-        "Measurement-backed adaptive task scheduler. Records planned vs executed duration per task to learn behavioral patterns, with a research layer that validates whether its own insights actually predict anything.",
+        "AI-native productivity system and behavior-aware scheduler. Treats task estimates as hypotheses and work sessions as evidence, then uses planned-vs-executed traces to reveal behavioral patterns.",
       applicationCategory: "ProductivityApplication",
       operatingSystem: "Web",
       offers: {
@@ -87,6 +94,8 @@ const jsonLd = {
         "Task planning with duration estimates",
         "Stopwatch timing with pause/resume",
         "Pre- and post-task readiness capture",
+        "Planning accuracy measurement",
+        "Adaptive behavioral feedback",
         "Personal bias factor calibration",
         "Archetype-prior shrinkage predictions",
         "Google Calendar integration",
@@ -99,7 +108,7 @@ const jsonLd = {
       name: "LyraOS",
       url: "https://lyraos.org",
       description:
-        "Independent research instrument for measuring how humans estimate vs execute. Pre-alpha, built in public in Cairo.",
+        "Independent AI-native productivity system with behavioral instrumentation for measuring how humans estimate vs execute. Pre-alpha, built in public in Cairo.",
     },
     {
       "@type": "WebSite",
