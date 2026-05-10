@@ -1,33 +1,32 @@
 """
-Shared test fixtures. All integration tests use one in-memory SQLite engine
-registered as the get_db override. This prevents module-level overrides from
-clobbering each other when pytest runs the full suite.
+Shared test fixtures for integration tests.
 
-Singleton guard: pytest loads this file as `conftest` (rootdir-anchored)
-while `from tests.conftest import TestingSession` in other test files loads
-it a SECOND time as `tests.conftest`. Without the guard below, the second
-load creates a fresh in-memory engine + Session factory — the test fixtures
-still point at the original engine but FastAPI's dependency override gets
-re-registered to the second engine. The test writes to engine1, the
-endpoint reads engine2 → ghost "missing rows" failures that only appear
-in full-suite runs. We deduplicate by reusing whichever instance landed
-in sys.modules first.
+Pytest may load this file as `conftest`, while test modules may also import
+`tests.conftest` for helpers. Both names must point at the same in-memory
+SQLite engine, otherwise tests seed one database while FastAPI endpoints read
+another. The stable sys.modules key below keeps that state canonical across
+both import paths.
 """
 import sys
+from types import SimpleNamespace
+
 import pytest
+from fastapi import Request
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
 
-from app.db.base import Base
 from app.api.deps import get_db
+from app.db.base import Base
+from app.db.scoping import set_current_user_id
 from app.main import app
 
-_twin = sys.modules.get("tests.conftest") if __name__ == "conftest" else sys.modules.get("conftest")
-if _twin is not None and hasattr(_twin, "_engine"):
-    _engine = _twin._engine
-    TestingSession = _twin.TestingSession
+_STATE_MODULE = "_lyra_tests_shared_db_state"
+_state = sys.modules.get(_STATE_MODULE)
+if _state is not None:
+    _engine = _state.engine
+    TestingSession = _state.TestingSession
 else:
     _engine = create_engine(
         "sqlite:///:memory:",
@@ -36,18 +35,44 @@ else:
     )
     TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
     Base.metadata.create_all(bind=_engine)
+    sys.modules[_STATE_MODULE] = SimpleNamespace(
+        engine=_engine,
+        TestingSession=TestingSession,
+    )
 
 
-def _override_get_db():
+def _request_user_id(request: Request) -> int:
+    raw = request.headers.get("X-User-Id")
+    if raw is None:
+        return 1
+    try:
+        return int(raw)
+    except ValueError:
+        return 1
+
+
+def _override_get_db(request: Request):
+    set_current_user_id(_request_user_id(request))
     db = TestingSession()
     try:
         yield db
     finally:
+        set_current_user_id(None)
         db.close()
 
 
-# Register once — highest priority because conftest runs first
-app.dependency_overrides[get_db] = _override_get_db
+def _install_test_overrides() -> None:
+    app.dependency_overrides[get_db] = _override_get_db
+
+
+_install_test_overrides()
+
+
+@pytest.fixture(autouse=True)
+def _keep_test_overrides_installed():
+    _install_test_overrides()
+    yield
+    _install_test_overrides()
 
 
 @pytest.fixture
@@ -70,7 +95,7 @@ def auth_headers(user_id: int) -> dict:
     """Build an X-User-Id header dict for TestClient requests.
 
     Always use this when calling client.{post,get,put,delete} from a test.
-    Without it, UserScopeMiddleware defaults to user_id=1 silently — a
+    Without it, UserScopeMiddleware defaults to user_id=1 silently, so a
     test that seeded user_id=77's data and then forgot the header runs as
     user_id=1 and most assertions fall through to coincidental pass. See
     `docs/testing_patterns.md` for the full pattern guide.

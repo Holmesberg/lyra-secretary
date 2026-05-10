@@ -8,7 +8,7 @@ Covers:
   - sync_user end-to-end with mocked WS calls (course-code constraint
     eliminates cross-course false positives even when titles overlap)
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -312,7 +312,8 @@ def test_sync_user_backfills_submitted_assignment_as_completed(db, monkeypatch):
     user = _make_user(db)
     set_current_user_id(user.user_id)
 
-    submitted_at = datetime(2026, 4, 20, 14, 30, 0)
+    submitted_at_utc = datetime(2026, 4, 20, 14, 30, 0, tzinfo=timezone.utc)
+    submitted_at = submitted_at_utc.replace(tzinfo=None)
     courses = [{"id": 100, "shortname": "CSE281 (UG2023)"}]
     assignments_by_course = {
         100: [{
@@ -326,7 +327,7 @@ def test_sync_user_backfills_submitted_assignment_as_completed(db, monkeypatch):
             "lastattempt": {
                 "submission": {
                     "status": "submitted",
-                    "timemodified": int(submitted_at.timestamp()),
+                    "timemodified": int(submitted_at_utc.timestamp()),
                 }
             }
         }
