@@ -63,6 +63,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.db.models import Deadline, User
+from app.services.deadline_manager import record_deadline_completion_event
 from app.utils.time_utils import now_utc
 
 logger = logging.getLogger(__name__)
@@ -234,6 +235,23 @@ def is_submitted(status_resp: dict) -> tuple[bool, str]:
     if grade is not None:
         return True, f"graded ({grade})"
     return False, f"status={status or 'no-submission'}"
+
+
+def submission_completed_at(status_resp: dict) -> Optional[datetime]:
+    """Best external submission timestamp from Moodle, if one is present.
+
+    This is a Moodle submission trace, not evidence of Lyra task execution.
+    Moodle does not always expose the exact human completion moment; when it
+    does not, callers should record sync-time provenance explicitly.
+    """
+    sub = (status_resp.get("lastattempt") or {}).get("submission") or {}
+    ts = sub.get("timemodified") or sub.get("timecreated")
+    if not ts:
+        return None
+    try:
+        return datetime.utcfromtimestamp(int(ts))
+    except (TypeError, ValueError, OSError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -449,8 +467,21 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
             continue
         should_mark, reason = is_submitted(status_resp)
         if should_mark:
+            completed_at = submission_completed_at(status_resp)
+            time_provenance = "external_import"
+            if completed_at is None:
+                completed_at = now
+                time_provenance = "external_import_sync_time"
             d.state = "completed"
-            d.completed_at = now
+            d.completed_at = completed_at
+            record_deadline_completion_event(
+                db,
+                d,
+                completion_source="moodle_submission",
+                completed_at_utc=completed_at,
+                recorded_at_utc=now,
+                time_provenance=time_provenance,
+            )
             result.marked_complete += 1
             result.marked_titles.append(d.title)
             logger.info(
@@ -524,13 +555,14 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
             continue
         submitted, _reason = is_submitted(status_resp)
         completed_at = None
+        time_provenance = None
         if submitted:
-            sub = (status_resp.get("lastattempt") or {}).get("submission") or {}
-            ts = sub.get("timemodified") or sub.get("timecreated")
-            if ts:
-                completed_at = datetime.utcfromtimestamp(int(ts))
-            else:
+            completed_at = submission_completed_at(status_resp)
+            if completed_at is None:
                 completed_at = now
+                time_provenance = "external_import_sync_time"
+            else:
+                time_provenance = "external_import"
             state = "completed"
             result.backfilled_completed += 1
         elif ma_due < now:
@@ -553,6 +585,15 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
             completed_at=completed_at,
         )
         db.add(new_deadline)
+        if submitted and completed_at is not None and time_provenance is not None:
+            record_deadline_completion_event(
+                db,
+                new_deadline,
+                completion_source="moodle_backfill_submission",
+                completed_at_utc=completed_at,
+                recorded_at_utc=now,
+                time_provenance=time_provenance,
+            )
         all_moodle_deadlines.append(new_deadline)  # so subsequent iterations dedup
         result.backfilled_titles.append(ma["name"] or f"#{ma['assign_id']}")
         logger.info(

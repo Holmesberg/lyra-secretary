@@ -28,6 +28,8 @@ isn't observed, but the PK constraint is the safety net.
 import logging
 from typing import Optional
 
+from sqlalchemy import or_
+
 from app.db.models import Deadline, Task, TaskDeadlineOutcome, TaskState, User
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
@@ -53,6 +55,10 @@ def _run_for_one_user(db, user: User):
             Task.voided_at.is_(None),
             Task.deadline_id.is_not(None),
             Task.executed_end_utc.is_not(None),
+            or_(
+                Task.initiation_status.is_(None),
+                Task.initiation_status != "retroactive",
+            ),
             # No existing outcome row OR outcome row is voided (which
             # would be the post-LYR-095-style retroactive void scenario).
             TaskDeadlineOutcome.task_id.is_(None),

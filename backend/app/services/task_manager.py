@@ -821,6 +821,29 @@ class TaskManager:
         )
         task.notes = f"{task.notes or ''}\n{note}".strip()
 
+        if task.deadline_id:
+            deadline = (
+                self.db.query(Deadline)
+                .filter(
+                    Deadline.deadline_id == task.deadline_id,
+                    Deadline.user_id == task.user_id,
+                    Deadline.voided_at.is_(None),
+                )
+                .first()
+            )
+            if deadline is not None:
+                from app.services.deadline_manager import record_deadline_completion_event
+
+                record_deadline_completion_event(
+                    self.db,
+                    deadline,
+                    completion_source="task_retroactive_done",
+                    completed_at_utc=now_ts,
+                    recorded_at_utc=now_ts,
+                    time_provenance="user_reported_retroactive",
+                    task_id=task.task_id,
+                )
+
         self.db.commit()
         self.db.refresh(task)
 

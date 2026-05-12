@@ -18,6 +18,7 @@ import pytest
 
 from app.db.models import (
     Deadline,
+    DeadlineCompletionEvent,
     Task,
     TaskDeadlineOutcome,
     TaskSource,
@@ -31,6 +32,7 @@ from app.workers.jobs.reconcile_deadline_outcomes import _run_for_one_user
 def _clean_slate(db):
     db.rollback()
     db.query(TaskDeadlineOutcome).delete()
+    db.query(DeadlineCompletionEvent).delete()
     db.query(Task).delete()
     db.query(Deadline).delete()
     db.query(User).delete()
@@ -38,6 +40,7 @@ def _clean_slate(db):
     yield
     db.rollback()
     db.query(TaskDeadlineOutcome).delete()
+    db.query(DeadlineCompletionEvent).delete()
     db.query(Task).delete()
     db.query(Deadline).delete()
     db.query(User).delete()
@@ -90,6 +93,7 @@ def _make_task(db, user_id: int, deadline_id=None, **overrides) -> Task:
         user_id=user_id,
         deadline_id=deadline_id,
         voided_at=overrides.get("voided_at"),
+        initiation_status=overrides.get("initiation_status"),
     )
     db.add(t)
     db.commit()
@@ -188,6 +192,22 @@ def test_skips_unbound_tasks(db):
     _make_task(db, user.user_id, deadline_id=None)
 
     _run_for_one_user(db, user)
+    assert db.query(TaskDeadlineOutcome).count() == 0
+
+
+def test_skips_retroactive_done_tasks(db):
+    """Retroactive done fabricates planned timestamps; keep it out of TDO."""
+    user = _make_user(db, "retroactive@example.com")
+    deadline = _make_deadline(db, user.user_id, due_at=datetime(2026, 5, 1, 17, 0, 0))
+    _make_task(
+        db,
+        user.user_id,
+        deadline_id=deadline.deadline_id,
+        initiation_status="retroactive",
+    )
+
+    _run_for_one_user(db, user)
+
     assert db.query(TaskDeadlineOutcome).count() == 0
 
 

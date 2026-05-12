@@ -389,6 +389,10 @@ class Deadline(Base):
         default="planned",
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Set only by the active->missed sweeper. Planned overdue rows stay
+    # planned by design, so "overdue" analytics must compare completion time
+    # against due_at_utc instead of treating missed_at as universal.
+    missed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -410,6 +414,10 @@ class Deadline(Base):
         # Symmetric to Task.deadline — only follow the canonical FK,
         # not the new llm_inferred_deadline_id FK from alembic 036.
         foreign_keys="Task.deadline_id",
+    )
+    completion_events: Mapped[list["DeadlineCompletionEvent"]] = relationship(
+        back_populates="deadline",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (
@@ -444,6 +452,69 @@ class Deadline(Base):
         if self.voided_at is not None:
             return False
         return self.state in ("planned", "active")
+
+
+class DeadlineCompletionEvent(Base):
+    """Append-only deadline resolution trace (alembic 049).
+
+    One deadline may have multiple valid completion events: a manual "done",
+    a later Moodle submission confirmation, and a retroactive task-done action
+    are distinct behaviors. Analytics must distinguish event count from
+    distinct completed deadlines. These rows are completion/submission traces,
+    not stopwatch execution traces, and are never VT-17 eligible.
+    """
+
+    __tablename__ = "deadline_completion_event"
+
+    event_id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+    )
+    deadline_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("deadline.deadline_id"),
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    task_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("task.task_id", ondelete="SET NULL"),
+    )
+    completion_source: Mapped[str] = mapped_column(String(40), nullable=False)
+    completed_at_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    recorded_at_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    due_at_utc_at_event: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    completed_after_due: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # Signed: positive = completed after due_at_utc_at_event.
+    delay_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    time_provenance: Mapped[str] = mapped_column(String(40), nullable=False)
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    deadline: Mapped["Deadline"] = relationship(back_populates="completion_events")
+
+    __table_args__ = (
+        CheckConstraint(
+            "completion_source IN ("
+            "'user_deadline_done', "
+            "'moodle_submission', "
+            "'moodle_backfill_submission', "
+            "'task_retroactive_done'"
+            ")",
+            name="check_deadline_completion_source",
+        ),
+        CheckConstraint(
+            "time_provenance IN ("
+            "'observed_user_action', "
+            "'external_import', "
+            "'external_import_sync_time', "
+            "'user_reported_retroactive'"
+            ")",
+            name="check_deadline_completion_time_provenance",
+        ),
+        Index("idx_deadline_completion_user_recorded", "user_id", "recorded_at_utc"),
+        Index("idx_deadline_completion_deadline_completed", "deadline_id", "completed_at_utc"),
+    )
 
 
 class TaskDeadlineOutcome(Base):

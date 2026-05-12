@@ -69,6 +69,7 @@ def test_active_past_due_transitions_to_missed(db):
 
     db.refresh(deadline)
     assert deadline.state == "missed"
+    assert deadline.missed_at is not None
 
 
 def test_active_not_yet_due_stays_active(db):
@@ -80,6 +81,7 @@ def test_active_not_yet_due_stays_active(db):
 
     db.refresh(deadline)
     assert deadline.state == "active"
+    assert deadline.missed_at is None
 
 
 def test_planned_past_due_stays_planned(db):
@@ -92,6 +94,7 @@ def test_planned_past_due_stays_planned(db):
 
     db.refresh(deadline)
     assert deadline.state == "planned"
+    assert deadline.missed_at is None
 
 
 def test_voided_deadlines_skipped(db):
@@ -118,6 +121,7 @@ def test_already_missed_stays_missed(db):
 
     db.refresh(deadline)
     assert deadline.state == "missed"
+    assert deadline.missed_at is None
 
 
 def test_per_user_scoping(db):

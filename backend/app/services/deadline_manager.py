@@ -30,8 +30,9 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Deadline
+from app.db.models import Deadline, DeadlineCompletionEvent
 from app.db.scoping import get_current_user_id
+from app.utils.time_utils import now_utc, strip_tz
 
 
 # State transitions a user is allowed to drive directly via update_deadline.
@@ -82,6 +83,45 @@ def _require_current_user(op: str) -> int:
             f"{op}: no current_user_id in ContextVar — refusing to write."
         )
     return uid
+
+
+def record_deadline_completion_event(
+    db: Session,
+    deadline: Deadline,
+    *,
+    completion_source: str,
+    completed_at_utc: datetime,
+    time_provenance: str,
+    recorded_at_utc: Optional[datetime] = None,
+    task_id: Optional[str] = None,
+) -> DeadlineCompletionEvent:
+    """Append one deadline completion/submission trace without committing.
+
+    This is intentionally not canonicalizing. One deadline can have multiple
+    valid completion events from different sources; analytics must choose
+    whether it is counting behaviors or distinct completed deadlines.
+    """
+    completed_at = strip_tz(completed_at_utc)
+    recorded_at = strip_tz(recorded_at_utc) or now_utc()
+    due_at = strip_tz(deadline.due_at_utc)
+    if completed_at is None or due_at is None:
+        raise ValueError("deadline_completion_event requires completed_at and due_at")
+
+    delay_minutes = int((completed_at - due_at).total_seconds() / 60)
+    event = DeadlineCompletionEvent(
+        deadline_id=deadline.deadline_id,
+        user_id=deadline.user_id,
+        task_id=task_id,
+        completion_source=completion_source,
+        completed_at_utc=completed_at,
+        recorded_at_utc=recorded_at,
+        due_at_utc_at_event=due_at,
+        completed_after_due=completed_at > due_at,
+        delay_minutes=delay_minutes,
+        time_provenance=time_provenance,
+    )
+    db.add(event)
+    return event
 
 
 class DeadlineManager:
@@ -263,6 +303,10 @@ class DeadlineManager:
         if deadline.voided_at is not None:
             raise ValueError(f"deadline_voided: {deadline_id}")
 
+        previous_state = deadline.state
+        completion_event_needed = False
+        completion_ts: Optional[datetime] = None
+
         if state is not None:
             allowed = USER_TRANSITIONS_FROM.get(deadline.state)
             if allowed is None:
@@ -278,8 +322,10 @@ class DeadlineManager:
                 )
             deadline.state = state
             # Stamp completed_at when transitioning to 'completed'.
-            if state == "completed" and deadline.completed_at is None:
-                deadline.completed_at = datetime.utcnow()
+            if state == "completed" and previous_state != "completed":
+                completion_ts = now_utc()
+                deadline.completed_at = completion_ts
+                completion_event_needed = True
 
         if title is not None:
             deadline.title = title
@@ -289,6 +335,16 @@ class DeadlineManager:
             deadline.due_at_utc = due_at_utc
         if category_hint is not None:
             deadline.category_hint = category_hint
+
+        if completion_event_needed and completion_ts is not None:
+            record_deadline_completion_event(
+                self.db,
+                deadline,
+                completion_source="user_deadline_done",
+                completed_at_utc=completion_ts,
+                recorded_at_utc=completion_ts,
+                time_provenance="observed_user_action",
+            )
 
         self.db.commit()
         self.db.refresh(deadline)
@@ -309,7 +365,11 @@ class DeadlineManager:
         if deadline.voided_at is not None:
             # Idempotent: already voided.
             return deadline
-        deadline.voided_at = datetime.utcnow()
+        now = now_utc()
+        deadline.voided_at = now
+        for event in deadline.completion_events:
+            if event.voided_at is None:
+                event.voided_at = now
         self.db.commit()
         self.db.refresh(deadline)
         return deadline

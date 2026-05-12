@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.models import Deadline, User
+from app.db.models import Deadline, DeadlineCompletionEvent, User
 from app.db.scoping import set_current_user_id
 from app.services.moodle_submissions_sync import (
     SubmissionSyncResult,
@@ -31,12 +31,14 @@ from tests.conftest import auth_headers  # noqa: F401 — pulls in test fixtures
 def _clean_slate(db):
     set_current_user_id(None)
     db.rollback()
+    db.query(DeadlineCompletionEvent).delete()
     db.query(Deadline).delete()
     db.query(User).delete()
     db.commit()
     yield
     set_current_user_id(None)
     db.rollback()
+    db.query(DeadlineCompletionEvent).delete()
     db.query(Deadline).delete()
     db.query(User).delete()
     db.commit()
@@ -221,6 +223,66 @@ def test_sync_user_marks_submitted_assignment_complete(db, monkeypatch):
     assert d.state == "completed"
     assert d.completed_at is not None
     assert "HandsOn Lab8 is due" in res.marked_titles
+    event = db.query(DeadlineCompletionEvent).filter(
+        DeadlineCompletionEvent.deadline_id == d.deadline_id
+    ).one()
+    assert event.completion_source == "moodle_submission"
+    assert event.time_provenance == "external_import_sync_time"
+    assert event.completed_at_utc == d.completed_at
+
+
+def test_sync_user_uses_moodle_submission_timestamp_for_matched_deadline(db, monkeypatch):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    due = datetime(2026, 4, 24, 20, 59, 0)
+    submitted_at_utc = datetime(2026, 4, 24, 21, 30, 0, tzinfo=timezone.utc)
+    submitted_at = submitted_at_utc.replace(tzinfo=None)
+    d = _make_deadline(
+        db, user.user_id,
+        title="HandsOn Lab8 is due",
+        due_at=due,
+        category_hint="CSE281",
+    )
+
+    courses = [{"id": 100, "shortname": "CSE281 (UG2023) - Software Engineering"}]
+    assignments_by_course = {
+        100: [{
+            "id": 45928,
+            "name": "HandsOn Lab8",
+            "duedate": int(due.timestamp()),
+        }],
+    }
+    submission_status_by_assign = {
+        45928: {
+            "lastattempt": {
+                "submission": {
+                    "status": "submitted",
+                    "timemodified": int(submitted_at_utc.timestamp()),
+                }
+            }
+        }
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+
+    res = sync_user(user, "https://lms.test/", db)
+    db.commit()
+    db.refresh(d)
+
+    assert res.marked_complete == 1
+    assert d.completed_at == submitted_at
+    event = db.query(DeadlineCompletionEvent).filter(
+        DeadlineCompletionEvent.deadline_id == d.deadline_id
+    ).one()
+    assert event.time_provenance == "external_import"
+    assert event.completed_at_utc == submitted_at
+    assert event.completed_after_due is True
+    assert event.delay_minutes == 31
 
 
 def test_sync_user_skips_when_course_code_differs(db, monkeypatch):
@@ -356,6 +418,12 @@ def test_sync_user_backfills_submitted_assignment_as_completed(db, monkeypatch):
     assert bf.title == "HandsOn1 Lab2"
     assert bf.external_id == "44612"
     assert bf.category_hint == "CSE281"
+    event = db.query(DeadlineCompletionEvent).filter(
+        DeadlineCompletionEvent.deadline_id == bf.deadline_id
+    ).one()
+    assert event.completion_source == "moodle_backfill_submission"
+    assert event.time_provenance == "external_import"
+    assert event.completed_at_utc == submitted_at
 
 
 def test_sync_user_backfills_overdue_unsubmitted_as_missed(db, monkeypatch):

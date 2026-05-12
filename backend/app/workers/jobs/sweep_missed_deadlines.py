@@ -57,6 +57,8 @@ def _run_for_one_user(db, user: User):
     swept_count = 0
     for deadline in candidates:
         deadline.state = "missed"
+        if deadline.missed_at is None:
+            deadline.missed_at = now
         swept_count += 1
 
     try:

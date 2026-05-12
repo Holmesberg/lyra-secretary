@@ -68,6 +68,7 @@ class DeadlineResponse(BaseModel):
     category_hint: Optional[str]
     state: str
     completed_at: Optional[datetime]
+    missed_at: Optional[datetime]
     voided_at: Optional[datetime]
     created_at: datetime
     # External-source flagging (alembic 041, 2026-04-29). Non-NULL on
@@ -89,7 +90,12 @@ class DeadlineResponse(BaseModel):
     # field with explicit UTC on the way out so the frontend can
     # disambiguate.
     @field_serializer(
-        "due_at_utc", "completed_at", "voided_at", "created_at", "imported_at"
+        "due_at_utc",
+        "completed_at",
+        "missed_at",
+        "voided_at",
+        "created_at",
+        "imported_at",
     )
     def _serialize_utc(self, v: Optional[datetime]) -> Optional[str]:
         if v is None:
