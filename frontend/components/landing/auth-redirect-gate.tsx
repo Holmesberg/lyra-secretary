@@ -4,6 +4,16 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
+const APP_ROUTES_TO_WARM = [
+  "/today",
+  "/pulse",
+  "/calendar",
+  "/deadlines",
+  "/table",
+  "/insights",
+  "/settings",
+];
+
 /**
  * Zero-UI client effects for the landing page:
  *  (1) if the visitor has an authenticated session, bounce them to /today
@@ -21,6 +31,46 @@ export function AuthRedirectGate() {
   useEffect(() => {
     if (status === "authenticated") router.replace("/today");
   }, [status, router]);
+
+  useEffect(() => {
+    if (status === "authenticated") return;
+    let devWarmTimer: number | undefined;
+
+    const warm = () => {
+      for (const route of APP_ROUTES_TO_WARM) {
+        router.prefetch(route);
+      }
+      void fetch("/api/auth/providers").catch(() => {});
+      void fetch("/api/auth/csrf").catch(() => {});
+
+      if (process.env.NODE_ENV === "development") {
+        devWarmTimer = window.setTimeout(() => {
+          void Promise.allSettled(
+            APP_ROUTES_TO_WARM.map((route) =>
+              fetch(route, {
+                cache: "no-store",
+                credentials: "same-origin",
+              })
+            )
+          );
+        }, 750);
+      }
+    };
+
+    const idle =
+      "requestIdleCallback" in window
+        ? window.requestIdleCallback
+        : (cb: IdleRequestCallback) => window.setTimeout(cb, 1);
+    const cancelIdle =
+      "cancelIdleCallback" in window
+        ? window.cancelIdleCallback
+        : (id: number) => window.clearTimeout(id);
+    const id = idle(warm);
+    return () => {
+      cancelIdle(id as number);
+      if (devWarmTimer !== undefined) window.clearTimeout(devWarmTimer);
+    };
+  }, [router, status]);
 
   useEffect(() => {
     document.body.setAttribute("data-surface", "landing");
