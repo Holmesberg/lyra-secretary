@@ -20,7 +20,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.utils.time_utils import now_utc
 
@@ -32,6 +32,14 @@ logger = logging.getLogger(__name__)
 def health_check():
     """Service health check."""
     return {"status": "ok", "service": "lyra-secretary"}
+
+
+@router.get("/health/topology")
+def topology_check(request: Request) -> dict[str, Any]:
+    """Report the backend's runtime topology contract state."""
+    from app.services.runtime_topology import backend_topology_report
+
+    return backend_topology_report(request)
 
 
 @router.get("/health/env-invariants")
@@ -172,4 +180,3 @@ def env_invariants() -> dict[str, Any]:
 
     all_ok = all(v["ok"] for v in results.values())
     return {"all_ok": all_ok, "invariants": results}
-

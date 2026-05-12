@@ -70,6 +70,69 @@ Redis + SQLite fallback both still work — SQLite is kept as `.env.backup-sqlit
    - `http://127.0.0.1:3000`
    - `https://lyraos.org`
 
+## Runtime Topology Integrity
+
+Runtime topology is part of epistemic integrity. Browser verification is not
+trusted until the frontend, auth origin, API origin, and backend CORS contract
+agree on the same topology.
+
+Canonical contract:
+
+- `runtime_topology.json`
+
+Self-report endpoints:
+
+- frontend: `/api/topology`
+- backend: `/v1/health/topology`
+
+Every topology packet includes:
+
+- `topology_class`
+- `frontend_origin` or `api_origin`
+- `compiled_api_origin` for the frontend
+- `nextauth_url` for the frontend
+- `cors_allowed_origins` for the backend
+- `build_id`
+- `runtime_stamp`
+- `verified_topology`
+
+Verifier:
+
+```powershell
+node scripts/verify_runtime_topology.mjs --topology public
+node scripts/verify_runtime_topology.mjs --topology local
+```
+
+Use `--topology public` when `https://lyraos.org` is intentionally serving the
+public bundle:
+
+```text
+frontend_origin = https://lyraos.org
+api_origin = https://api.lyraos.org
+nextauth_url = https://lyraos.org
+```
+
+Use `--topology local` only when `localhost:3000` is intentionally serving a
+local bundle:
+
+```text
+frontend_origin = http://localhost:3000
+api_origin = http://localhost:8000
+nextauth_url = http://localhost:3000
+```
+
+If `localhost:3000` is currently serving a public-env bundle for the tunnel, the
+local verifier must fail with `topology_class=mixed`. That is expected and is
+the guard doing its job. Do not fix this by changing ports or weakening CORS.
+
+Browser verification rule:
+
+```text
+topology verifier passes -> alt-account browser stress can be trusted
+topology verifier fails -> screenshots, latency logs, and bug reports are
+epistemically ambiguous
+```
+
 ## Laptop sleep / wake behavior
 
 - The tunnel is a foreground process launched via `cloudflared tunnel run lyra-prod` (currently `nohup … &`). **Does NOT auto-recover** on laptop sleep or reboot.
@@ -94,6 +157,7 @@ Supabase holds the data *off* the laptop so:
 | Tunnel down (cloudflared killed) | `https://lyraos.org` → 1033 / no response | `cloudflared tunnel run lyra-prod` on laptop |
 | Backend container down | `https://api.lyraos.org/v1/health` → 502 | `docker compose up -d backend` |
 | CORS split-brain | Browser shows `Failed to fetch` from `/v1/users/me`, while `curl localhost:8000/` returns 200 | Verify `CORS_ALLOWED_ORIGINS` includes the browser origin and rerun preflight; see `docs/runtime_incident_cors_split_brain_2026_05_12.md` |
+| Mixed runtime topology | `/api/topology` returns `verified_topology=false`, e.g. `.org` serving localhost auth/API or localhost serving public auth/API | Stop browser verification. Restart the intended frontend env and rerun `node scripts/verify_runtime_topology.mjs --topology public` or `--topology local`. |
 | Frontend process killed or incomplete `.next` artifact | `https://lyraos.org` → 502 while `https://api.lyraos.org/v1/health` stays 200 | From Windows repo root: `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | Supabase outage | API returns 5xx; connection errors in backend log | Flip `.env` back to SQLite backup + restart backend. Supabase data preserved, new writes go to SQLite until resolved. Manual reconciliation needed after. |
 | Domain issue (registrar lock, DNS break) | `lyraos.org` DNS fails | Cloudflare dashboard → Registrar + DNS tab. `oslyra.com` is the name-swap candidate if lyraos.org becomes unusable (see dogfood P2 entry). |

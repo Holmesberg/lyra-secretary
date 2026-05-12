@@ -622,3 +622,78 @@ Results:
 - `tests/test_insights.py tests/test_analytics_archetype_proximity.py`:
   `15 passed`
 - `npx tsc --noEmit`: passed
+
+## Runtime Topology Integrity Gate
+
+Date: 2026-05-13.
+
+New invariant:
+
+```text
+runtime topology must match claimed environment before browser verification is
+trusted
+```
+
+Added artifacts:
+
+- `runtime_topology.json`: canonical local/public topology contract.
+- `frontend/app/api/topology/route.ts`: frontend self-report endpoint.
+- `backend/app/services/runtime_topology.py`: backend topology contract helper.
+- `GET /v1/health/topology`: backend self-report endpoint.
+- `scripts/verify_runtime_topology.mjs`: browser/API topology verifier.
+- `scripts/test_runtime_topology_contract.mjs`: static manifest guard.
+- `backend/tests/test_runtime_topology.py`: backend contract, CORS, diagnostics,
+  and no-auth fail-closed tests.
+
+Topology packets include:
+
+- `topology_class`
+- frontend `frontend_origin`, `compiled_api_origin`, `nextauth_url`
+- backend `api_origin`, `cors_allowed_origins`
+- `build_id`
+- `runtime_stamp`
+- `verified_topology`
+
+Diagnostics now carry topology:
+
+- `/v1/analytics/cortex/diagnostics`
+- `/v1/analytics/output_surfaces/diagnostics`
+
+Verification run:
+
+```powershell
+node scripts/test_runtime_topology_contract.mjs
+& "d:\Projects\Lyra Secretary v0.1\.venv311\Scripts\python.exe" -m pytest tests/test_runtime_topology.py tests/test_config.py tests/test_output_surfaces.py
+npx tsc --noEmit
+node scripts/verify_runtime_topology.mjs --topology public
+node scripts/verify_runtime_topology.mjs --topology local --skip-browser
+& "d:\Projects\Lyra Secretary v0.1\.venv311\Scripts\python.exe" -m pytest tests/test_runtime_topology.py tests/test_cortex_contract_v0.py tests/test_output_surfaces.py tests/test_insights.py tests/test_analytics_archetype_proximity.py
+```
+
+Results:
+
+- static topology contract: passed.
+- focused backend topology/config/output-surface tests: `20 passed`.
+- TypeScript: passed.
+- public topology verifier: passed for `https://lyraos.org` +
+  `https://api.lyraos.org`.
+- local topology verifier: failed loudly as expected because current port
+  `3000` is intentionally serving a public-env bundle:
+
+```json
+{
+  "topology_class": "mixed",
+  "frontend_origin": "http://localhost:3000",
+  "compiled_api_origin": "https://api.lyraos.org",
+  "nextauth_url": "https://lyraos.org",
+  "verified_topology": false,
+  "expected_topology_class": "local",
+  "compiled_topology_class": "public"
+}
+```
+
+This negative control proves stale/mixed topology is not silently accepted.
+Local verification should pass only after the frontend is restarted with local
+env values, without changing port `3000`.
+
+- wider affected backend gate: `40 passed`.

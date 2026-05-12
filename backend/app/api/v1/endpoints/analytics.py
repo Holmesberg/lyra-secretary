@@ -2,7 +2,7 @@
 import json
 from datetime import date, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from collections import defaultdict
 
@@ -1031,6 +1031,7 @@ def get_behavioral_signature(
 
 @router.get("/analytics/cortex/diagnostics")
 def get_cortex_diagnostics(
+    request: Request,
     window_days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -1041,20 +1042,27 @@ def get_cortex_diagnostics(
     """
     op = _require_operator_analytics(db)
     from app.services.cortex import cortex_diagnostics
+    from app.services.runtime_topology import backend_topology_report
 
-    return cortex_diagnostics(db, user_id=op.user_id, window_days=window_days)
+    payload = cortex_diagnostics(db, user_id=op.user_id, window_days=window_days)
+    payload["topology"] = backend_topology_report(request)
+    return payload
 
 
 @router.get("/analytics/output_surfaces/diagnostics")
 def get_output_surface_diagnostics(
+    request: Request,
     window_days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
     db: Session = Depends(get_db),
 ) -> dict:
     """Operator-only Wave 4 output-surface enforcement diagnostics."""
     op = _require_operator_analytics(db)
     from app.services.output_surfaces import output_surface_diagnostics
+    from app.services.runtime_topology import backend_topology_report
 
-    return output_surface_diagnostics(db, user_id=op.user_id, window_days=window_days)
+    payload = output_surface_diagnostics(db, user_id=op.user_id, window_days=window_days)
+    payload["topology"] = backend_topology_report(request)
+    return payload
 
 
 @router.post("/analytics/exposure_policy/effect_log")

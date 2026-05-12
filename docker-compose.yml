@@ -7,6 +7,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./runtime_topology.json:/runtime_topology.json:ro
       - lyra_data:/app/data
     environment:
       # DATABASE_URL reads from repo-root .env. Operator's lyraos.org

@@ -1,0 +1,22 @@
+{
+  "version": "runtime_topology_v1",
+  "topologies": {
+    "local": {
+      "topology_class": "local",
+      "frontend_origin": "http://localhost:3000",
+      "api_origin": "http://localhost:8000",
+      "nextauth_url": "http://localhost:3000"
+    },
+    "public": {
+      "topology_class": "public",
+      "frontend_origin": "https://lyraos.org",
+      "api_origin": "https://api.lyraos.org",
+      "nextauth_url": "https://lyraos.org"
+    }
+  },
+  "declared_browser_origins": [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://lyraos.org"
+  ]
+}
