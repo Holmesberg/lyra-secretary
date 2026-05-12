@@ -55,6 +55,43 @@ Layer D self-report / narrative correction
 -> Layer C only with provenance and uncertainty
 ```
 
+## Runtime Precedence
+
+The runtime path fails closed in this order:
+
+1. identity/scope resolves cleanly,
+2. consumer `usage_class` is allowed,
+3. mixed-row input resolves to an explicit projection,
+4. output surface is registered with `truth_class`,
+5. clean profile, threshold, and window pass,
+6. exposure state permits learning or rendering,
+7. generator/render logic runs,
+8. frontend request may display only what backend permits.
+
+`truth_class` values are `trace`, `metric`, `interpretation`,
+`intervention`, and `diagnostic_only`.
+
+## Epistemic Operating Discipline
+
+The architecture must defend itself when the operator is tired, distracted,
+scaling, or absent. Core safeguards are kernel rules:
+
+- identity and scope resolve before product behavior is read or written,
+- output surfaces are registered before render,
+- every surface declares `truth_class`,
+- output goes through the authorized emission path,
+- frontend requests never override backend suppression,
+- unregistered, unknown, or under-specified surfaces fail closed.
+
+Strictness scales with epistemic risk. Trace outputs can carry a light
+contract. Metric outputs need declared inputs and sign conventions.
+Interpretations and interventions need thresholds, provenance, exposure, and
+fallback behavior. Identity-level claims are nearly locked down.
+
+Ontology and governance are tools for protecting real product traces,
+retention, behavior quality, and longitudinal signal accumulation. They are not
+substitutes for evidence.
+
 ## Layer Roles
 
 | Layer | Role | Example source | Forbidden collapse |
@@ -136,6 +173,10 @@ Code/feasibility-side review:
 LyraOS should become intelligent by preserving contradictions long enough to learn from them.
 
 Contradiction between self-report, observed traces, derived metrics, and interpretive models is not failure. It is often the signal.
+
+The architecture must stay fed by real traces. Registry completeness,
+ontology, and governance are only valuable when they protect actual product
+use, retention, and longitudinal signal accumulation.
 
 ## Related Tensions
 

@@ -1,7 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getInsights, type Insight } from "@/lib/tasks";
+import {
+  getInsights,
+  type Insight,
+  type SuppressedInsightGenerator,
+} from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 import { ArchetypeInsightsCard } from "@/components/archetype-insights-card";
 
@@ -124,6 +128,45 @@ function StandardCard({ insight }: { insight: Insight }) {
   );
 }
 
+function SuppressedInsightsPanel({
+  generators,
+}: {
+  generators: SuppressedInsightGenerator[];
+}) {
+  const shown = generators.filter(
+    (generator) => generator.suppressed_reason === "requires_insights_rewrite"
+  );
+  if (shown.length === 0) return null;
+
+  return (
+    <div className="rounded-sm border border-hairline bg-void-2/40 p-4">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="font-mono text-[11px] font-medium uppercase tracking-widest text-dust">
+          Held for rewrite
+        </h2>
+        <span className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+          {shown.length} paused
+        </span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {shown.map((generator) => (
+          <div
+            key={generator.id}
+            className="rounded-sm border border-hairline/70 bg-void/40 px-3 py-2"
+          >
+            <div className="font-mono text-[10px] uppercase tracking-widest text-dust">
+              {ID_LABELS[generator.id] ?? generator.id}
+            </div>
+            <div className="mt-1 text-xs text-dust-deep">
+              Pending safer wording
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function InsightsPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["insights"],
@@ -204,6 +247,7 @@ export default function InsightsPage() {
   }
 
   const insights = data.insights;
+  const suppressedGenerators = data.suppressed_generators ?? [];
   const featured = insights.find(
     (i) => i.confidence === "high" && i.data_points >= 15
   );
@@ -255,6 +299,8 @@ export default function InsightsPage() {
           Not enough data in any category yet. Keep logging sessions.
         </p>
       )}
+
+      <SuppressedInsightsPanel generators={suppressedGenerators} />
     </div>
   );
 }

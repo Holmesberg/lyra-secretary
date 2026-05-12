@@ -37,6 +37,7 @@ Measurement Validity
 -> Layered Epistemic Architecture
 -> Product event provenance
 -> Cortex canonicalization
+-> Output-surface registry
 -> Exposure Ledger gate
 -> Clean-data profile
 -> Baseline inference or descriptive-only use
@@ -64,6 +65,9 @@ Measurement Validity
 - Cortex does not write truth; it projects and filters.
 - Exposure Ledger does not prove causality; it prevents false baseline claims.
 - Horizon policy is a hypothesis that must remain visible through diagnostics.
+- `truth_layer`, `provenance_class`, `truth_class`, and `usage_class` are
+  separate dimensions.
+- A registered surface is not safe to render unless runtime precedence passes.
 - The [[Self Model]] must notice when the core itself starts drifting.
 
 ## Review Questions

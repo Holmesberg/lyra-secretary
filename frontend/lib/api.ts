@@ -4,12 +4,27 @@
  */
 import { getSession } from "next-auth/react";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const LOCAL_API_BASE = "http://localhost:8000";
+const PUBLIC_API_BASE = "https://api.lyraos.org";
+const CONFIGURED_API_BASE = process.env.NEXT_PUBLIC_API_URL || LOCAL_API_BASE;
 const SESSION_TOKEN_TTL_MS = 30_000;
 
 let cachedBackendToken: string | undefined;
 let cachedBackendTokenUntil = 0;
 let sessionTokenPromise: Promise<string | undefined> | null = null;
+
+export function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "lyraos.org" || host.endsWith(".lyraos.org")) {
+      return PUBLIC_API_BASE;
+    }
+    if (host === "localhost" || host === "127.0.0.1") {
+      return CONFIGURED_API_BASE;
+    }
+  }
+  return CONFIGURED_API_BASE;
+}
 
 export function primeBackendToken(token: string | undefined, ttlMs = SESSION_TOKEN_TTL_MS) {
   cachedBackendToken = token;
@@ -75,7 +90,7 @@ export async function api<T = unknown>(
   headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text();
     let msg = `${res.status}: ${text}`;

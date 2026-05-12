@@ -21,7 +21,11 @@ from app.services.output_surfaces import (
     emit_surface_suppression,
     get_output_surface_spec,
     load_output_surface_registry,
+    output_surface_diagnostics,
+    projection_class_for_profile,
 )
+from app.utils.time_utils import now_utc
+from tests.conftest import auth_headers
 
 
 def test_output_surface_registry_declares_required_runtime_fields():
@@ -116,6 +120,11 @@ def test_emit_surface_render_serializes_structured_payloads_and_legacy_adapter(d
 def test_unregistered_output_surface_hard_fails():
     with pytest.raises(ValueError, match="unregistered_output_surface"):
         get_output_surface_spec("missing.surface")
+
+
+def test_missing_mixed_row_projection_fails_closed():
+    with pytest.raises(ValueError, match="missing_projection_for_profile"):
+        projection_class_for_profile("unknown_future_profile")
 
 
 def test_unregistered_surface_cannot_emit_render_or_suppression(db):
@@ -268,3 +277,85 @@ def test_product_surfaces_do_not_fall_back_to_operator_without_identity():
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(old_overrides)
+
+
+def test_output_surface_diagnostics_reports_missing_terminal_event(db):
+    user = User(
+        email=f"surface-diagnostics-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=True,
+    )
+    db.add(user)
+    db.flush()
+
+    rendered = emit_surface_render(
+        db,
+        surface_id="stopwatch.micro_mirror",
+        user_id=user.user_id,
+        content_snapshot={"kind": "micro_mirror"},
+        create_legacy_view=True,
+        legacy_payload={"kind": "micro_mirror"},
+    )
+    dangling = ExposureDecisionEvent(
+        exposure_id=str(uuid4()),
+        user_id=user.user_id,
+        eligible_at=now_utc(),
+        decision_status="rendered",
+        initiative="system",
+        exposure_category="behavioral_insight",
+        content_template_id="analytics_insights",
+        trigger_source="analytics.insights",
+    )
+    db.add(dangling)
+    db.commit()
+
+    diagnostics = output_surface_diagnostics(
+        db,
+        user_id=user.user_id,
+        window_days=30,
+    )
+
+    assert diagnostics["schema_version"] == "output_surface_diagnostics_v1"
+    assert diagnostics["registry"]["unregistered_render_surfaces"] == []
+    assert diagnostics["dual_write"]["decision_without_terminal_event_count"] == 1
+    assert dangling.exposure_id in diagnostics["dual_write"]["decision_without_terminal_event_ids"]
+    assert diagnostics["dual_write"]["surface_activity"]["stopwatch.micro_mirror"]["renders"] == 1
+    assert rendered["legacy_view_id"] is not None
+    micro_mirror = {
+        row["surface_id"]: row
+        for row in diagnostics["legacy_adapter_reliance"]
+    }["stopwatch.micro_mirror"]
+    assert micro_mirror["legacy_rows"] == 1
+    assert micro_mirror["v0_renders"] == 1
+    assert micro_mirror["parity_delta"] == 0
+
+
+def test_output_surface_diagnostics_endpoint_is_operator_only(db, client):
+    operator = User(
+        email=f"surface-operator-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=True,
+    )
+    non_operator = User(
+        email=f"surface-non-operator-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=False,
+    )
+    db.add_all([operator, non_operator])
+    db.commit()
+
+    denied = client.get(
+        "/v1/analytics/output_surfaces/diagnostics",
+        headers=auth_headers(non_operator.user_id),
+    )
+    assert denied.status_code == 403
+
+    allowed = client.get(
+        "/v1/analytics/output_surfaces/diagnostics?window_days=30",
+        headers=auth_headers(operator.user_id),
+    )
+    assert allowed.status_code == 200
+    body = allowed.json()
+    assert body["schema_version"] == "output_surface_diagnostics_v1"
+    assert body["registry"]["registered_surface_count"] >= 8
+    assert "current_data_eligibility" in body

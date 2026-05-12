@@ -1,9 +1,11 @@
 # Layered Epistemic Architecture Wave Execution Log
 
-**Date:** 2026-05-12  
-**Scope:** Layered Epistemic Architecture execution pass, Wave 0 and Wave 1.  
-**Status:** Wave 0 and Wave 1 are pushed to `origin/main`. Wave 2 and Wave 3
-work remains local and unverified.
+**Date:** 2026-05-12
+**Scope:** Layered Epistemic Architecture execution pass, Waves 0-3 plus
+frontend/runtime verification incidents.
+**Status:** Waves 0-3, latency fixes, sign-in fix, and CORS split-brain fix are
+pushed to `origin/main`. Remaining dirty architecture/vault docs are local and
+separate from pushed runtime commits.
 
 This log records what happened during the pass so future work does not depend
 on operator memory, chat context, or local terminal history.
@@ -149,11 +151,171 @@ Observed correction in this pass:
 Current pushed stack after this pass:
 
 ```text
+8652a30 Allow explicit frontend CORS origins
+2c30f3c Speed dev cold tabs and auth warmup
+3c96ea8 Make Google sign-in click deterministic
+0398668 Narrow insights and speed initial auth load
+3f482c3 Tighten frontend cold-load latency
+60073fc Reduce analytics tab latency
+5dfe94d Dual-write core output surfaces
+5c37e1b Fix frontend dev runtime imports
+a88e213 Document layered architecture wave pass
 eaf3964 Align Wave 1 legacy guard with dual-write rollout
 41a193c Add Wave 1 output surface registry
 8e53172 Enforce Wave 0 identity scoping
 f902d82 Document layered epistemic architecture
 ```
+
+## Wave 2: Core-Surface Dual-Write And Backend Readiness
+
+**Commit:** `5dfe94d Dual-write core output surfaces`
+**Pushed:** yes, to `origin/main`.
+
+Implemented behavior:
+
+- Core first-wave surfaces dual-write through the output-surface emitter.
+- Legacy `ReflectionViewLog` compatibility remains where frontend read/dismiss
+  behavior still depends on it.
+- Archetype proximity readiness moved into backend response metadata:
+  - `ready`
+  - `display_mode`
+  - `eligible_sample_count`
+  - `min_n_required`
+  - `truth_class`
+  - `clean_profile`
+- Reminder/prediction worker surfaces use registered surface metadata.
+- This wave preserved the Wave 1 kernel:
+  - registered `surface_id`,
+  - declared `truth_class`,
+  - declared `usage_class`,
+  - backend-governed render/suppression,
+  - no frontend override.
+
+## Wave 3: Narrow Insights
+
+**Commit:** `0398668 Narrow insights and speed initial auth load`
+**Pushed:** yes, to `origin/main`.
+
+Implemented behavior:
+
+- `/v1/analytics/insights` remains user-facing but is narrowed to
+  contract-safe trace/metric style outputs.
+- Immediately allowed generators:
+  - `estimation_trend`
+  - `initiation_delay`
+  - `retroactive_rate`
+- Legacy/unsafe generators are reported as suppressed with stable metadata
+  instead of disappearing silently:
+  - `time_of_day`
+  - `readiness`
+  - `abandonment`
+  - `best_category`
+  - `worst_category`
+  - `discrepancy_signal`
+  - `pause_pattern`
+  - `morning_anchor`
+  - `archetype_divergence`
+  - `calibration_maturation`
+- Suppression metadata includes owner/deadline:
+  - owner: `Insights Rewrite`
+  - deadline: `Wave 3`
+- Backend response exposes additive contract fields so frontend cannot invent
+  readiness:
+  - `surface_id`
+  - `truth_class`
+  - `usage_class`
+  - `clean_profile`
+  - `eligible_sample_count`
+  - `suppressed_reason`
+  - `fallback_mode`
+  - `legacy_adapter`
+
+Verification:
+
+- `tests/test_insights.py`
+- `tests/test_output_surfaces.py`
+- frontend typecheck/build during the latency pass.
+
+## Frontend Latency And Auth Pass
+
+Pushed commits:
+
+- `3f482c3 Tighten frontend cold-load latency`
+- `3c96ea8 Make Google sign-in click deterministic`
+- `2c30f3c Speed dev cold tabs and auth warmup`
+
+Relevant fixes:
+
+- `npm run dev` now runs Next with Turbopack and Node IPv4 flags.
+- `npm run dev:clean` removes `.next` before dev startup for the known stale
+  `.next` corruption path.
+- Landing page warms auth endpoints and, in development, HTTP-prewarms app
+  routes after idle.
+- Google sign-in uses a deterministic manual NextAuth POST and direct redirect.
+- CSRF is warmed/cached before sign-in click or keyboard focus.
+
+Browser verification after idle prewarm:
+
+```text
+/today_dom_ms=159
+/pulse_dom_ms=241
+/calendar_dom_ms=279
+/deadlines_dom_ms=311
+/table_dom_ms=200
+/insights_dom_ms=271
+/settings_dom_ms=253
+```
+
+Remaining known dev-only cost:
+
+- first landing compile after a clean `.next` is still around 8 seconds under
+  `next dev`.
+
+## CORS Split-Brain Incident
+
+**Commit:** `8652a30 Allow explicit frontend CORS origins`
+**Pushed:** yes, to `origin/main`.
+**Dedicated note:** `docs/runtime_incident_cors_split_brain_2026_05_12.md`
+
+Root cause:
+
+- local frontend correctly used `NEXT_PUBLIC_API_URL=http://localhost:8000`;
+- running backend container still had `FRONTEND_URL=https://lyraos.org`;
+- backend CORS allowed exactly `[settings.FRONTEND_URL]`;
+- browser preflight from `http://localhost:3000` failed with `400`;
+- browser surfaced the failure as `users/me fetch failed: "Failed to fetch"`;
+- backend itself was healthy.
+
+Fix:
+
+- Added `CORS_ALLOWED_ORIGINS`.
+- Backend CORS now uses `settings.cors_allowed_origins`.
+- Docker dev default includes:
+  - `http://localhost:3000`
+  - `http://127.0.0.1:3000`
+  - `https://lyraos.org`
+- Added `backend/tests/test_config.py`.
+
+Verification:
+
+- backend health returned `200`;
+- preflight passed for localhost, 127.0.0.1, and `.org`;
+- browser-side fetch from localhost reached backend and returned a normal
+  invalid-token `401`;
+- `tests/test_config.py` passed.
+
+Epistemic integrity note:
+
+- This was a transport-boundary fix only.
+- It did not loosen:
+  - identity scoping,
+  - output-surface registration,
+  - `truth_class`,
+  - exposure emission,
+  - backend suppression authority,
+  - clean-data gates.
+- CORS admits browser origins to transport. Auth, scope, registry, exposure, and
+  suppression still decide whether data or claims may flow.
 
 ## Local Uncommitted Work After Wave 1
 
@@ -341,3 +503,122 @@ Invoke-WebRequest https://api.lyraos.org -UseBasicParsing
   supported path.
 - Do not commit Obsidian UI-state files.
 - Keep Wave 2 focused on core-surface dual-write and backend readiness.
+
+## Moriarty Alt-Account Stress Pass
+
+Date: 2026-05-12.
+
+Account exercised:
+
+- `moriartyholmesberg@gmail.com`
+- backend user id observed through `/v1/users/me`: `15`
+
+Method:
+
+- Used a short-lived NextAuth session token for the moriarty account rather
+  than relying on browser-cached Google state.
+- Exercised the live public path through `https://lyraos.org` and
+  `https://api.lyraos.org`.
+- Did not change frontend or backend ports.
+
+Routes visited:
+
+- `/today`
+- `/deadlines`
+- `/insights`
+- `/calendar`
+- `/pulse`
+- `/table`
+- `/settings`
+
+Direct API checks from the same authenticated browser session:
+
+- `/v1/users/me`: `200`, email `moriartyholmesberg@gmail.com`, user id `15`
+- `/v1/tasks/query?state=all`: `200`, task count `42`
+- `/v1/deadlines`: `200`, deadline count `14`
+- `/v1/analytics/insights`: `200`, backend-governed readiness metadata,
+  `0` rendered insights for this account, `10` suppressed rewrite generators
+- `/v1/analytics/archetype/proximity?days=14`: `200`, backend-governed
+  readiness metadata, `ready=false`
+- `/v1/notifications/pending`: `200`
+- `/v1/stopwatch/status`: `200`
+
+Observed failures:
+
+- Cloudflare RUM beacons aborted with `net::ERR_ABORTED`.
+- No app/API request failed during the pass.
+
+Conclusion:
+
+- Public auth, user scoping, task/deadline reads, analytics readiness, and
+  exposure-governed insight narrowing work for a non-operator alt account with
+  real seeded stress data.
+
+## Wave 4: Diagnostics And Enforcement Proof
+
+Status: implemented locally, awaiting final browser/live endpoint verification
+before push.
+
+Wave 4 added an operator-only output-surface diagnostics path:
+
+- service: `backend/app/services/output_surfaces.py`
+- endpoint: `GET /v1/analytics/output_surfaces/diagnostics`
+- schema version: `output_surface_diagnostics_v1`
+
+The diagnostic reports:
+
+- registry coverage:
+  - registered surface count
+  - `truth_class` counts
+  - `usage_class` counts
+  - unregistered render surfaces
+  - unregistered decision triggers
+- dual-write integrity:
+  - decision count
+  - render count
+  - suppression count
+  - decision rows missing a terminal render/suppression event
+  - per-surface activity
+- legacy adapter reliance:
+  - legacy adapter rows
+  - v0 render rows
+  - parity delta
+- current-data eligibility for interpretation/intervention surfaces:
+  - clean profile
+  - projection class
+  - candidate N
+  - clean N
+  - contaminated N
+  - UNKNOWN N
+  - exposed/intervention N
+  - suppression reason
+  - fallback mode
+  - operator-only skew flags
+
+Mixed-row projection rule now has code-level representation:
+
+- `measured_execution` -> `raw_observed`
+- `planning_calibration` -> `raw_observed`
+- `pause_process` -> `raw_observed`
+- `descriptive_history` -> `correction_adjusted_effective`
+- `deadline_completion_behavior` -> `external_submission_trace`
+
+Missing projection fails closed:
+
+- `projection_class_for_profile("unknown_future_profile")` raises
+  `missing_projection_for_profile`.
+
+Verification run:
+
+```powershell
+& "d:\Projects\Lyra Secretary v0.1\.venv311\Scripts\python.exe" -m pytest tests/test_output_surfaces.py
+& "d:\Projects\Lyra Secretary v0.1\.venv311\Scripts\python.exe" -m pytest tests/test_insights.py tests/test_analytics_archetype_proximity.py
+npx tsc --noEmit
+```
+
+Results:
+
+- `tests/test_output_surfaces.py`: `12 passed`
+- `tests/test_insights.py tests/test_analytics_archetype_proximity.py`:
+  `15 passed`
+- `npx tsc --noEmit`: passed

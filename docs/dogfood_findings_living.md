@@ -141,6 +141,12 @@ All CI green on `4740475`.**
 - Friendly 400 on InvalidStateTransitionError (commit 7881ba2)
 - Interruption flow handles mixed paused + blocking conflicts (commit 705b9d0)
 - LYR-100 CORS middleware ordering (commit 625bf87)
+- LYR-114 CORS split-brain between localhost frontend and public backend
+  origin — backend was healthy, but browser preflight from
+  `http://localhost:3000` failed because runtime CORS allowed only
+  `https://lyraos.org`. Fixed by `CORS_ALLOWED_ORIGINS` explicit allow-list
+  covering localhost dev, 127.0.0.1 dev, and public `.org`
+  (`8652a30`). See `docs/runtime_incident_cors_split_brain_2026_05_12.md`.
 - LYR-091 Notion archived-page detection (commit 951160e)
 - AppLayout 401 auto-signOut + always-rendered Sign Out button (commit 7c9f33e)
 - Cross-tenant write leak structural fix (Phase 3.2, commits 4cf2168 + 430f120)

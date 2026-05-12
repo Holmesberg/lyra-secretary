@@ -1045,6 +1045,18 @@ def get_cortex_diagnostics(
     return cortex_diagnostics(db, user_id=op.user_id, window_days=window_days)
 
 
+@router.get("/analytics/output_surfaces/diagnostics")
+def get_output_surface_diagnostics(
+    window_days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Operator-only Wave 4 output-surface enforcement diagnostics."""
+    op = _require_operator_analytics(db)
+    from app.services.output_surfaces import output_surface_diagnostics
+
+    return output_surface_diagnostics(db, user_id=op.user_id, window_days=window_days)
+
+
 @router.post("/analytics/exposure_policy/effect_log")
 def record_exposure_policy_effect_log(
     window_days: int = Query(30, ge=1, le=365, description="Look-back window in days"),

@@ -252,6 +252,11 @@ Payload must not contain:
 
 Derived metrics are recomputed from raw events and evaluation version.
 
+The shared event envelope carries provenance. Output surfaces additionally
+declare `truth_class` because a rendered claim can be a trace, metric,
+interpretation, intervention, or diagnostic readout. `truth_class` is not a
+provenance class and must not be inferred from provenance.
+
 ---
 
 ## 7. Passive Signal Expansion
@@ -488,7 +493,67 @@ OpenClaw remains operator-only. OpenClaw agent output, operator orchestration,
 and local runtime traces are not Lyra product research data unless a successor
 contract explicitly admits operator-session analysis.
 
-### 10.2 Horizon Policy Auditability
+### 10.2 Runtime Surface Registry And Precedence
+
+Every product or research output surface that can shape user behavior must be
+registered before render. The registry source of truth is
+`backend/app/core/output_surface_registry.json`; runtime writes go through
+`backend/app/services/output_surfaces.py`.
+
+Required surface fields:
+
+- `surface_id`
+- `truth_class`
+- `usage_class`
+- `channel`
+- `exposure_category`
+- `signal_targets`
+- `clean_profile`
+- `min_n`
+- `time_window`
+- `fallback_mode`
+- `operator_only`
+- `legacy_adapter`
+- `render_policy_version`
+
+Runtime precedence is fail-closed:
+
+1. request identity/scope must resolve cleanly,
+2. consumer `usage_class` must be allowed,
+3. mixed-row input must resolve to an explicit projection,
+4. the surface must be registered with `truth_class`,
+5. clean profile, threshold, and time-window checks must pass,
+6. `UNKNOWN`, `EXPOSED`, and `INTERVENTION` block clean learning unless a
+   profile explicitly permits stratified use,
+7. generator/render logic may run only after those checks,
+8. frontend requests never override backend suppression.
+
+No-direct-emission rule:
+
+- User-facing or behavior-shaping outputs must emit through
+  `backend/app/services/output_surfaces.py`.
+- Direct event writes are reserved for the exposure ledger implementation,
+  the output-surface emitter, migrations, and explicit tests.
+- Dual-write legacy adapters must be treated as temporary compatibility
+  bridges with parity tests or diagnostics; divergence is a product-research
+  integrity bug, not just telemetry drift.
+
+### 10.3 Mixed-Row Read Resolution
+
+Product UI reads `descriptive_history` by default unless the surface is
+research or diagnostic. Analytics reads the projection selected by the
+declared clean-data profile. Training and clean baselines read only
+profile-approved projections.
+
+Projection classes:
+
+- `raw_observed`
+- `correction_adjusted_effective`
+- `external_submission_trace`
+- `repair_prompt_result`
+- `diagnostic_projection`
+
+### 10.4 Horizon Policy Auditability
 
 The horizon policy is a hypothesis about contamination, not contamination
 itself. The exposure gate must therefore remain auditable as an instrument.
@@ -565,6 +630,11 @@ Before any product or research change touching Cortex-adjacent behavior:
   on `UNKNOWN`, `EXPOSED`, or `INTERVENTION`?
 - Does this preserve unknown propagation?
 - Does this preserve clean-data profile declarations?
+- Does every user-facing output surface declare `truth_class`, `usage_class`,
+  fallback mode, threshold, and exposure targets?
+- Does mixed-row consumption use an explicit projection class?
+- Does render failure fail closed instead of letting the frontend display an
+  unlogged output?
 - Does this keep product behavior stable while research evolves?
 - Does this treat retention as a research precondition rather than product
   polish?

@@ -11,7 +11,7 @@
  * missed, skipped) stay queryable but the preview filters them out
  * so the picker only ever surfaces bindable deadlines.
  */
-import { api } from "./api";
+import { api, getApiBase } from "./api";
 
 export type DeadlineState =
   | "planned"
@@ -101,10 +101,9 @@ export async function voidDeadline(deadlineId: string): Promise<void> {
   const { getSession } = await import("next-auth/react");
   const session = await getSession();
   const token = (session as any)?.backendToken as string | undefined;
-  const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${base}/v1/deadlines/${deadlineId}`, {
+  const res = await fetch(`${getApiBase()}/v1/deadlines/${deadlineId}`, {
     method: "DELETE",
     headers,
   });

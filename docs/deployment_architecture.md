@@ -65,7 +65,10 @@ Redis + SQLite fallback both still work — SQLite is kept as `.env.backup-sqlit
 1. Share `https://lyraos.org` in chat.
 2. They click "Sign in with Google" — NextAuth handles OAuth entirely on the lyraos.org side (frontend process). Google callback: `https://lyraos.org/api/auth/callback/google` (added to the Google Cloud Console alongside the existing localhost entry).
 3. Signed in → `/today` loads — first request compiles if cold (dev mode), subsequent requests are fast.
-4. Frontend talks to `api.lyraos.org` via the typed API wrappers in `frontend/lib/*.ts`. CORS permits origin `https://lyraos.org`.
+4. Frontend talks to `api.lyraos.org` via the typed API wrappers in `frontend/lib/*.ts`. CORS uses an explicit origin allow-list rather than a single `FRONTEND_URL` value, so operator dev and public runtime can coexist:
+   - `http://localhost:3000`
+   - `http://127.0.0.1:3000`
+   - `https://lyraos.org`
 
 ## Laptop sleep / wake behavior
 
@@ -90,6 +93,7 @@ Supabase holds the data *off* the laptop so:
 |---|---|---|
 | Tunnel down (cloudflared killed) | `https://lyraos.org` → 1033 / no response | `cloudflared tunnel run lyra-prod` on laptop |
 | Backend container down | `https://api.lyraos.org/v1/health` → 502 | `docker compose up -d backend` |
+| CORS split-brain | Browser shows `Failed to fetch` from `/v1/users/me`, while `curl localhost:8000/` returns 200 | Verify `CORS_ALLOWED_ORIGINS` includes the browser origin and rerun preflight; see `docs/runtime_incident_cors_split_brain_2026_05_12.md` |
 | Frontend process killed or incomplete `.next` artifact | `https://lyraos.org` → 502 while `https://api.lyraos.org/v1/health` stays 200 | From Windows repo root: `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | Supabase outage | API returns 5xx; connection errors in backend log | Flip `.env` back to SQLite backup + restart backend. Supabase data preserved, new writes go to SQLite until resolved. Manual reconciliation needed after. |
 | Domain issue (registrar lock, DNS break) | `lyraos.org` DNS fails | Cloudflare dashboard → Registrar + DNS tab. `oslyra.com` is the name-swap candidate if lyraos.org becomes unusable (see dogfood P2 entry). |

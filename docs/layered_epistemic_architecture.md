@@ -44,6 +44,35 @@ Current implementation caveat:
   route through the Exposure Ledger. It is baseline-safe only when the actual
   code path records exposure and downstream learning calls exposure checks.
 
+## Epistemic Operating Discipline
+
+The architecture must defend itself when the operator is tired, distracted,
+scaling, or absent. Core safeguards are not advisory style preferences; they
+are kernel rules for preserving measurement validity under pressure.
+
+Hard kernel rules:
+
+- request identity and scope must resolve before product behavior is read or
+  written,
+- output surfaces must be registered before they render,
+- every output surface must declare a `truth_class`,
+- user-facing output must go through the authorized emission path,
+- frontend requests must never override backend suppression,
+- unregistered, unknown, or under-specified surfaces fail closed.
+
+The periphery should stay pragmatic. Strictness scales with epistemic risk:
+
+- trace outputs may use a light contract,
+- metric outputs need declared inputs and sign conventions,
+- interpretations and interventions need thresholds, provenance, exposure, and
+  fallback behavior,
+- identity-level or self-model claims are nearly locked down.
+
+The architecture is valuable only while it stays fed by real product traces,
+retention outcomes, behavior quality, and longitudinal signal accumulation.
+Ontology and governance are tools for protecting the instrument, not substitutes
+for evidence.
+
 ## Truth-Layer Vocabulary Compatibility
 
 Older LyraOS prompts and notes use this vocabulary:
@@ -72,6 +101,8 @@ Primary code anchors:
   duration calibration blend.
 - `backend/app/services/exposure_ledger.py`: exposure contamination checks and
   baseline-clean gating.
+- `backend/app/services/output_surfaces.py`: registered output-surface
+  emission and legacy exposure adapter writes.
 - `backend/app/services/archetype_service.py`: survey scoring and survey-derived
   profile assignment.
 
@@ -87,6 +118,9 @@ Supporting implementation anchors:
   insight endpoints.
 - `backend/app/workers/jobs/reminders.py`: scheduled task reminders.
 - `backend/app/core/exposure_horizon_policies.json`: contamination horizons.
+- `backend/app/core/output_surface_registry.json`: runtime surface registry,
+  including `truth_class`, `usage_class`, clean profile, thresholds, fallback,
+  and legacy-adapter declarations.
 
 When code and this document disagree, the next change must either update the
 code or update this document with an explicit decision note.
@@ -531,6 +565,61 @@ Boundary rules:
 - Plain factual reminders still affect behavior, but they do not carry
   behavioral inference.
 - User engagement with outputs is not proof that the output was true.
+- A frontend request never overrides backend suppression.
+- A registered surface is not render-safe unless its runtime checks pass.
+
+Runtime fail-closed precedence:
+
+1. request identity and scope must resolve cleanly,
+2. consumer usage class must be allowed,
+3. mixed-row input must resolve to an explicit read projection,
+4. the surface must be registered with a declared `truth_class`,
+5. clean-data profile, threshold, and time-window checks must pass,
+6. exposure state gates baseline learning: `UNKNOWN`, `EXPOSED`, and
+   `INTERVENTION` block clean learning unless a profile explicitly permits
+   stratified use,
+7. only then may generator or render logic run,
+8. frontend requests never override backend suppression.
+
+Output surface `truth_class` values:
+
+- `trace`: exact readback of observed or declared facts,
+- `metric`: derived arithmetic or statistical structure,
+- `interpretation`: probabilistic or heuristic hypothesis,
+- `intervention`: output intended to change user planning, recovery, or action,
+- `diagnostic_only`: operator/internal readout not safe for user-facing product
+  claims.
+
+Registered output surfaces must declare:
+
+- `surface_id`,
+- `truth_class`,
+- `usage_class`,
+- `channel`,
+- `exposure_category`,
+- `signal_targets`,
+- `clean_profile`,
+- `min_n`,
+- `time_window`,
+- `fallback_mode`,
+- `operator_only`,
+- `legacy_adapter`,
+- `render_policy_version`.
+
+Registry ownership rule:
+
+- New user-facing or behavior-shaping output surfaces must be added to
+  `backend/app/core/output_surface_registry.json` before they render.
+- Runtime emission must go through `backend/app/services/output_surfaces.py`.
+- Direct writes to `ExposureDecisionEvent`, `ExposureRenderEvent`,
+  `SuppressionEvent`, or legacy `ReflectionViewLog` are allowed only inside the
+  exposure ledger implementation, the output-surface emitter, migrations, or
+  explicit tests.
+- Legacy adapters are temporary compatibility bridges. Any surface with
+  `legacy_adapter` must have parity tests or diagnostics until the adapter is
+  removed.
+- Missing registry entries, missing projections, missing exposure writes, or
+  failed render logging suppress the output in non-diagnostic paths.
 
 Current implementation note:
 
@@ -684,11 +773,58 @@ Additional product or diagnostic profiles may exist, but they are not clean
 research baselines until a successor contract says so:
 
 - `deadline_completion_behavior`: append-only deadline-resolution behavior.
-- `diagnostic_only`: operator or internal investigation.
-- `not_applicable`: non-learning path.
 
 If a new profile is introduced, the owning document must state its source rows,
 provenance inclusions, exclusions, exposure policy, and allowed consumers.
+
+### Usage Class Registry
+
+`usage_class` is separate from clean-data profile. It says what kind of consumer
+is allowed to read or emit a projection.
+
+Current usage classes:
+
+- `product`: normal user-facing product behavior.
+- `research`: product-research analysis or model evaluation.
+- `diagnostic_only`: operator or internal investigation.
+- `not_applicable`: no learning or user-facing output path.
+
+Moving `diagnostic_only` and `not_applicable` out of clean-data profiles matters
+because they are consumer permissions, not evidence quality.
+
+### Two-Axis Contract
+
+`truth_layer` and `provenance_class` are independent dimensions.
+
+Examples:
+
+- A `PauseEvent.paused_at_utc` timestamp can be Layer A with `observed`
+  provenance, while the attached pause reason is Layer D with
+  `self_reported` provenance.
+- A Moodle submission timestamp can be Layer A with `external_import`
+  provenance.
+- A correction-adjusted duration can be Layer B with a Layer D repair
+  dependency.
+
+Do not encode provenance as the layer, and do not infer layer from provenance.
+
+### Mixed-Row Resolution
+
+Composite rows must not be consumed directly by learning paths. Consumers must
+read an explicit projection:
+
+- analytics reads the projection chosen by its declared clean-data profile,
+- product UI reads `descriptive_history` by default unless the screen is
+  research or diagnostic,
+- training and clean baselines read only profile-approved projections.
+
+Named projection classes:
+
+- `raw_observed`,
+- `correction_adjusted_effective`,
+- `external_submission_trace`,
+- `repair_prompt_result`,
+- `diagnostic_projection`.
 
 Common provenance classes in current architecture:
 
@@ -716,6 +852,20 @@ Unknown propagation rule:
 
 If the system cannot prove provenance, exposure state, or input layer, it should
 prefer `UNKNOWN`, exclusion, or no output over a neutral default.
+
+Operator/runtime exclusion rule:
+
+JARVIS, OpenClaw, vault synthesis, and operator orchestration traces are not
+product-research inputs by default. They may be audited as operator-runtime
+diagnostics, but they must not train or validate user-behavior claims unless a
+successor contract explicitly admits them.
+
+Repair-prompt routing rule:
+
+Anomaly detection may emit a repair prompt as an `intervention`. User
+confirmation or denial lands in Layer D. Any `system_recovered` state remains
+distinct from observed truth and must be projected separately before analytics,
+UI, or training consumes it.
 
 Evaluation versioning rule:
 
@@ -917,11 +1067,20 @@ decisions.
 ### Provenance Class
 [observed / inferred / self_reported / retroactive / external_import / system_recovered / unknown]
 
+### Truth Class
+[trace / metric / interpretation / intervention / diagnostic_only]
+
+### Usage Class
+[product / research / diagnostic_only / not_applicable]
+
+### Projection Class
+[raw_observed / correction_adjusted_effective / external_submission_trace / repair_prompt_result / diagnostic_projection]
+
 ### Feed Direction
 [Which layer feeds which other layer?]
 
 ### Clean-Data Profile
-[measured_execution / planning_calibration / pause_process / descriptive_history / deadline_completion_behavior / diagnostic_only / not_applicable]
+[measured_execution / planning_calibration / pause_process / descriptive_history / deadline_completion_behavior]
 
 ### Output / Exposure Impact
 [Does the user see it? What target can it contaminate? What exposure category?]
@@ -934,6 +1093,9 @@ decisions.
 
 ### Revisit Condition
 [What evidence, sample count, failure mode, or phase change should trigger review]
+
+### Rollout Checklist
+[dual-write coverage / legacy-adapter coverage / current-data eligibility / unknown-rate visibility / fail-closed tests / operator-only fallback]
 ```
 
 ---
@@ -943,6 +1105,12 @@ decisions.
 This architecture defines how LyraOS should infer behavior when evidence
 exists. It does not imply that current alpha data supports every future
 inference surface.
+
+Architecture validity is not earned by adding more ontology. It is earned when
+the product produces enough real, consented, low-friction traces for the
+ontology to constrain actual decisions. Architecture work must therefore keep
+checking retention, trace volume, exposure coverage, and longitudinal signal
+accumulation. A beautiful registry with sparse data is still underfed.
 
 Before shipping a Layer C output, run a current-data eligibility scan:
 
