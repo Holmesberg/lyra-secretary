@@ -1,9 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { signIn } from "next-auth/react";
 import { motion } from "motion/react";
 import { CornerMarks } from "./corner-marks";
+import { GoogleSignInButton } from "./google-sign-in-button";
 
 export function Hero() {
   return (
@@ -79,13 +79,12 @@ export function Hero() {
             </p>
 
             <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:flex-wrap">
-              <button
-                onClick={() => signIn("google", { callbackUrl: "/today" })}
+              <GoogleSignInButton
                 className="cyber-pill cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
                 Sign in with Google
                 <span aria-hidden>→</span>
-              </button>
+              </GoogleSignInButton>
               <a
                 href="#live-data"
                 className="cyber-pill cyber-pill-outline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-parchment/30"

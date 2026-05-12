@@ -1,9 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { signIn } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { GoogleSignInButton } from "./google-sign-in-button";
 
 const LINKS = [
   { label: "Manifesto", href: "#manifesto" },
@@ -121,13 +121,12 @@ export function SiteNav() {
               </a>
             ))}
           </div>
-          <button
-            onClick={() => signIn("google", { callbackUrl: "/today" })}
+          <GoogleSignInButton
             className="inline-flex items-center gap-2 border border-signal/60 bg-signal/10 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-signal transition-all hover:bg-signal hover:text-void hover:shadow-[0_0_24px_-4px_rgba(77,212,232,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
           >
             Sign in
             <span aria-hidden>→</span>
-          </button>
+          </GoogleSignInButton>
         </div>
       </div>
 
@@ -152,12 +151,11 @@ export function SiteNav() {
             {l.label}
           </a>
         ))}
-        <button
-          onClick={() => signIn("google", { callbackUrl: "/today" })}
+        <GoogleSignInButton
           className="inline-flex items-center gap-1 border border-signal/60 bg-signal/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-signal"
         >
           Sign in
-        </button>
+        </GoogleSignInButton>
       </div>
     </nav>
   );

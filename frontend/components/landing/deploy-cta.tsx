@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { signIn } from "next-auth/react";
 import { CornerMarks } from "./corner-marks";
+import { GoogleSignInButton } from "./google-sign-in-button";
 
 export function DeployCta() {
   return (
@@ -62,14 +62,13 @@ export function DeployCta() {
               color="rgba(77, 212, 232, 0.9)"
               offset={-6}
             />
-            <button
-              onClick={() => signIn("google", { callbackUrl: "/today" })}
+            <GoogleSignInButton
               className="cyber-pill cyber-pill-primary px-8 py-4 text-sm md:text-[0.95rem]"
             >
               <GoogleGlyph className="h-4 w-4" />
               Sign in with Google
               <span aria-hidden>→</span>
-            </button>
+            </GoogleSignInButton>
           </div>
         </div>
 
