@@ -31,8 +31,15 @@ export async function register() {
 
   // Belt: dns.lookup ordering. Affects code paths that go through
   // Node's built-in DNS (e.g. legacy http.request).
-  const dns = await import("node:dns");
-  dns.setDefaultResultOrder("ipv4first");
+  try {
+    const nodeRequire = eval("require") as NodeRequire;
+    const dns = nodeRequire("dns") as typeof import("dns");
+    dns.setDefaultResultOrder("ipv4first");
+  } catch {
+    // Local/dev bundlers can analyze instrumentation.ts before the node
+    // runtime is available. NODE_OPTIONS below remains the load-bearing
+    // IPv4 guard, so this hook should never make the app fail to boot.
+  }
 
   // Suspenders: --no-network-family-autoselection in NODE_OPTIONS
   // (package.json scripts) is what actually carries the load on Node
