@@ -22,7 +22,7 @@ import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { FeedbackLink } from "@/components/feedback-link";
 import { clearPersistedCache } from "@/lib/clear-persisted-cache";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Activity,
@@ -62,11 +62,48 @@ const NAV: NavItem[] = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
 
   useEffect(() => {
     setMenuOpen(false);
+    setPendingHref(null);
   }, [pathname]);
+
+  useEffect(() => {
+    const idle =
+      typeof window !== "undefined" && "requestIdleCallback" in window
+        ? window.requestIdleCallback
+        : (cb: IdleRequestCallback) => window.setTimeout(cb, 1);
+    const cancelIdle =
+      typeof window !== "undefined" && "cancelIdleCallback" in window
+        ? window.cancelIdleCallback
+        : (id: number) => window.clearTimeout(id);
+    const id = idle(() => {
+      for (const item of NAV) {
+        if (item.href !== pathname) router.prefetch(item.href);
+      }
+    });
+    return () => cancelIdle(id as number);
+  }, [pathname, router]);
+
+  function handleNavClick(
+    event: React.MouseEvent<HTMLAnchorElement>,
+    href: string
+  ) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    setPendingHref(href);
+  }
 
   const userEmail = session?.user?.email ?? null;
   const userInitial = userEmail ? userEmail.charAt(0).toUpperCase() : "·";
@@ -110,14 +147,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             // Main
           </div>
           {NAV.map((item) => {
+            const currentPath = pendingHref ?? pathname;
             const active =
-              pathname === item.href ||
-              (item.href !== "/today" && pathname?.startsWith(item.href + "/"));
+              currentPath === item.href ||
+              (item.href !== "/today" &&
+                currentPath?.startsWith(item.href + "/"));
             const Icon = item.icon;
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                onMouseEnter={() => router.prefetch(item.href)}
+                onFocus={() => router.prefetch(item.href)}
+                onClick={(event) => handleNavClick(event, item.href)}
                 className={cn(
                   "group relative flex items-center gap-3 rounded-sm px-3 py-2 font-mono text-[12px] tracking-wide transition-colors",
                   active
@@ -237,13 +279,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <ul className="flex flex-col py-2">
                 {NAV.map((item) => {
-                  const active = pathname === item.href;
+                  const currentPath = pendingHref ?? pathname;
+                  const active = currentPath === item.href;
                   const Icon = item.icon;
                   return (
                     <li key={item.href}>
                       <Link
                         href={item.href}
-                        onClick={() => setMenuOpen(false)}
+                        onClick={(event) => {
+                          handleNavClick(event, item.href);
+                          setMenuOpen(false);
+                        }}
                         className={cn(
                           "group flex items-center gap-3 px-5 py-3 font-mono text-xs uppercase tracking-widest transition-colors",
                           active

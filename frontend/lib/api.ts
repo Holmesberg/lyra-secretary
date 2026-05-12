@@ -5,6 +5,11 @@
 import { getSession } from "next-auth/react";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const SESSION_TOKEN_TTL_MS = 30_000;
+
+let cachedBackendToken: string | undefined;
+let cachedBackendTokenUntil = 0;
+let sessionTokenPromise: Promise<string | undefined> | null = null;
 
 /**
  * Error thrown by the api() helper for non-2xx responses. Carries the
@@ -35,12 +40,31 @@ function _pushRecentError(entry: { path: string; status: number; message: string
   if (w.__lyraLastErrors.length > 5) w.__lyraLastErrors.length = 5;
 }
 
+async function getBackendToken(): Promise<string | undefined> {
+  const now = Date.now();
+  if (cachedBackendTokenUntil > now) {
+    return cachedBackendToken;
+  }
+  if (!sessionTokenPromise) {
+    sessionTokenPromise = getSession()
+      .then((session) => (session as any)?.backendToken as string | undefined)
+      .then((token) => {
+        cachedBackendToken = token;
+        cachedBackendTokenUntil = Date.now() + SESSION_TOKEN_TTL_MS;
+        return token;
+      })
+      .finally(() => {
+        sessionTokenPromise = null;
+      });
+  }
+  return sessionTokenPromise;
+}
+
 export async function api<T = unknown>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
-  const session = await getSession();
-  const token = (session as any)?.backendToken as string | undefined;
+  const token = await getBackendToken();
 
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
@@ -57,6 +81,10 @@ export async function api<T = unknown>(
       else if (detail?.message) msg = detail.message;
     } catch {}
     _pushRecentError({ path, status: res.status, message: msg.slice(0, 300) });
+    if (res.status === 401) {
+      cachedBackendToken = undefined;
+      cachedBackendTokenUntil = 0;
+    }
     throw new ApiError(msg, res.status);
   }
   return (await res.json()) as T;

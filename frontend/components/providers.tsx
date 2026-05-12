@@ -37,6 +37,43 @@ import { useState } from "react";
 
 const ONE_HOUR = 1000 * 60 * 60;
 const TWENTY_FOUR_HOURS = ONE_HOUR * 24;
+const PERSISTED_CACHE_BUSTER = "v2";
+const PERSISTED_CACHE_KEY = `lyra-rq-cache:${PERSISTED_CACHE_BUSTER}`;
+const MAX_PERSISTED_QUERY_BYTES = 100_000;
+const PERSISTED_QUERY_ROOTS = new Set([
+  "me",
+  "tasks",
+  "deadlines",
+  "integrations",
+  "insights",
+]);
+
+type PersistableQuery = {
+  queryKey: unknown;
+  state: {
+    status: string;
+    dataUpdatedAt?: number;
+    data: unknown;
+  };
+};
+
+function shouldPersistQuery(query: PersistableQuery): boolean {
+  if (query.state.status !== "success") return false;
+
+  const root = Array.isArray(query.queryKey) ? query.queryKey[0] : null;
+  if (typeof root !== "string" || !PERSISTED_QUERY_ROOTS.has(root)) {
+    return false;
+  }
+
+  const dataUpdatedAt = query.state.dataUpdatedAt ?? 0;
+  if (Date.now() - dataUpdatedAt > ONE_HOUR) return false;
+
+  try {
+    return JSON.stringify(query.state.data).length <= MAX_PERSISTED_QUERY_BYTES;
+  } catch {
+    return false;
+  }
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [qc] = useState(
@@ -75,7 +112,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       // Bump the key when we change the cache shape so old persisted
       // payloads don't deserialize wrong. Mirrors the me_cache 'v1'
       // versioning convention.
-      key: "lyra-rq-cache:v1",
+      key: PERSISTED_CACHE_KEY,
       // Throttle writes — React Query writes the full cache on every
       // mutation by default, which can be hundreds of writes/sec on
       // a chatty session. 1s window is invisible to humans.
@@ -88,14 +125,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // re-renders client-side and `persister` is set.
   if (!persister) {
     return (
-      <SessionProvider>
+      <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>
         <QueryClientProvider client={qc}>{children}</QueryClientProvider>
       </SessionProvider>
     );
   }
 
   return (
-    <SessionProvider>
+    <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>
       <PersistQueryClientProvider
         client={qc}
         persistOptions={{
@@ -103,7 +140,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
           maxAge: TWENTY_FOUR_HOURS,
           // Mirror the cache key version in the buster so a deploy
           // can invalidate everyone's stale cache by bumping it.
-          buster: "v1",
+          buster: PERSISTED_CACHE_BUSTER,
+          dehydrateOptions: {
+            shouldDehydrateQuery: shouldPersistQuery,
+          },
         }}
       >
         {children}

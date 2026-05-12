@@ -10,12 +10,14 @@
  *
  * Key matches `createSyncStoragePersister` config in components/providers.tsx.
  */
-const PERSISTER_KEY = "lyra-rq-cache:v1";
+const PERSISTER_KEYS = ["lyra-rq-cache:v1", "lyra-rq-cache:v2"];
 
 export function clearPersistedCache(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(PERSISTER_KEY);
+    for (const key of PERSISTER_KEYS) {
+      window.localStorage.removeItem(key);
+    }
   } catch {
     // localStorage access can throw in private-browsing modes / quota
     // exhaustion / etc. Silent fail — clear is best-effort hygiene,
