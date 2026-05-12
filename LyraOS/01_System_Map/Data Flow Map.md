@@ -3,12 +3,14 @@ type: domain
 status: active
 confidence: high
 created: 2026-05-10
-updated: 2026-05-10
-last_reviewed: 2026-05-10
+updated: 2026-05-12
+last_reviewed: 2026-05-12
 source_refs:
   - archive/appstore/summary_of_app.md
   - docs/cortex_product_research_contract_v0.md
+  - docs/layered_epistemic_architecture.md
 related:
+  - "[[Layered Epistemic Architecture]]"
   - "[[Cortex]]"
   - "[[Exposure Ledger]]"
   - "[[Clean Data Profile]]"
@@ -20,7 +22,7 @@ data_class: internal_architecture
 ## Baseline Flow
 
 ```text
-Product action -> raw event/table row -> Cortex projection -> exposure check -> clean-data profile -> inference
+Product action -> raw event/table row -> layer classification -> Cortex projection -> exposure check -> clean-data profile -> inference
 ```
 
 ## Feedback Flow
@@ -28,6 +30,10 @@ Product action -> raw event/table row -> Cortex projection -> exposure check -> 
 ```text
 Inference or rule -> user-visible mirror/nudge -> Exposure Ledger -> later behavior cannot be assumed baseline
 ```
+
+## Layer Router
+
+[[Layered Epistemic Architecture]] decides whether a row is observed behavior, a derived metric, an interpretation, self-report, or an output exposure before it is allowed to feed downstream inference.
 
 ## Failure Mode
 

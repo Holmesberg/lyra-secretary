@@ -3,13 +3,15 @@ type: domain
 status: active
 confidence: high
 created: 2026-05-10
-updated: 2026-05-10
-last_reviewed: 2026-05-10
+updated: 2026-05-12
+last_reviewed: 2026-05-12
 source_refs:
   - MANIFESTO.md
   - docs/cortex_contract_v0.md
   - docs/cortex_product_research_contract_v0.md
+  - docs/layered_epistemic_architecture.md
 related:
+  - "[[Layered Epistemic Architecture]]"
   - "[[Measurement Validity]]"
   - "[[Self Model]]"
   - "[[Cortex]]"
@@ -22,16 +24,17 @@ data_class: internal_architecture
 
 # Epistemic Core
 
-This is the routing map for LyraOS measurement validity. It is not the deepest center; that role belongs to [[Measurement Validity]]. The core exists to keep implementation mechanisms, policies, profiles, and tensions connected without letting any one mechanism become the whole theory.
+This is the routing map for LyraOS measurement validity. [[Measurement Validity]] is the abstract principle. [[Layered Epistemic Architecture]] is the operational center of gravity that keeps observed traces, metrics, interpretations, self-report, and user-facing outputs from collapsing into one truth.
 
 ## Center Of Gravity
 
-[[Measurement Validity]] is the principle. The notes below are mechanisms, constraints, and failure detectors that protect it.
+[[Measurement Validity]] is the principle. [[Layered Epistemic Architecture]] is the router. The notes below are mechanisms, constraints, and failure detectors that protect both.
 
 ## Core Chain
 
 ```text
 Measurement Validity
+-> Layered Epistemic Architecture
 -> Product event provenance
 -> Cortex canonicalization
 -> Exposure Ledger gate
@@ -43,6 +46,7 @@ Measurement Validity
 
 | Note | Role | Failure if weak |
 | --- | --- | --- |
+| [[Layered Epistemic Architecture]] | routes observed behavior, metrics, interpretations, self-report, and outputs | layers collapse into one self-confirming truth |
 | [[Cortex]] | canonicalizes behavioral measurements | metrics drift into mixed spaces |
 | [[Exposure Ledger]] | operational gate for system-induced contamination | the mechanism becomes mistaken for the principle |
 | [[Baseline Cleanliness]] | defines when data can be treated as baseline | clean becomes default instead of proven |
@@ -70,6 +74,7 @@ Measurement Validity
 - Did a product recovery affordance create research evidence by accident?
 - Did a policy effect change without a drift entry?
 - Did Exposure Ledger become the conceptual center instead of the operational gate?
+- Did any feature bypass [[Layered Epistemic Architecture]] and treat a metric, correction, survey answer, or output as canonical truth?
 - Did the [[Self Model]] register any change in what LyraOS thinks it is becoming?
 
 ## Related

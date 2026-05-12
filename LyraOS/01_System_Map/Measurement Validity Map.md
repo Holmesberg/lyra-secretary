@@ -3,12 +3,14 @@ type: domain
 status: active
 confidence: high
 created: 2026-05-10
-updated: 2026-05-10
-last_reviewed: 2026-05-10
+updated: 2026-05-12
+last_reviewed: 2026-05-12
 source_refs:
   - docs/cortex_product_research_contract_v0.md
   - docs/cortex_contract_v0.md
+  - docs/layered_epistemic_architecture.md
 related:
+  - "[[Layered Epistemic Architecture]]"
   - "[[Measurement Validity]]"
   - "[[Self Model]]"
   - "[[Measurement Validity Firewall]]"
@@ -28,7 +30,7 @@ The abstract center is [[Measurement Validity]]. Cortex and Exposure Ledger are 
 ## Validity Stack
 
 ```text
-Raw event -> provenance -> Cortex metric -> exposure context -> clean-data profile -> interpretation
+Raw event -> layer classification -> provenance -> Cortex metric -> exposure context -> clean-data profile -> interpretation
 ```
 
 ## Guardrails
@@ -38,6 +40,7 @@ Raw event -> provenance -> Cortex metric -> exposure context -> clean-data profi
 - Exposure policy is a hypothesis.
 - Repair prompts are interventions.
 - Derived metrics are recomputed at read time.
+- Contradictions between layers are preserved before they are interpreted.
 
 ## Related
 

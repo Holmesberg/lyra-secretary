@@ -3,11 +3,13 @@ type: concept
 status: active
 confidence: high
 created: 2026-05-10
-updated: 2026-05-10
-last_reviewed: 2026-05-10
+updated: 2026-05-12
+last_reviewed: 2026-05-12
 source_refs:
   - docs/cortex_product_research_contract_v0.md
+  - docs/layered_epistemic_architecture.md
 related:
+  - "[[Layered Epistemic Architecture]]"
   - "[[Epistemic Core]]"
   - "[[Measurement Validity]]"
   - "[[Self Model]]"
@@ -24,6 +26,8 @@ data_class: internal_architecture
 A measurement is baseline-clean only when exposure context was evaluated and returned `NONE` for the relevant signal target under the current policy.
 
 Baseline cleanliness is one admissibility state inside [[Measurement Validity]], not a universal truth label.
+
+[[Layered Epistemic Architecture]] makes baseline cleanliness layer-dependent: a row may be valid for descriptive history while being invalid for clean behavioral inference.
 
 ## Why It Matters
 

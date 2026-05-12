@@ -3,12 +3,14 @@ type: domain
 status: active
 confidence: high
 created: 2026-05-10
-updated: 2026-05-10
-last_reviewed: 2026-05-10
+updated: 2026-05-12
+last_reviewed: 2026-05-12
 source_refs:
   - docs/cortex_product_research_contract_v0.md
+  - docs/layered_epistemic_architecture.md
   - backend/app/services/exposure_ledger.py
 related:
+  - "[[Layered Epistemic Architecture]]"
   - "[[Epistemic Core]]"
   - "[[Measurement Validity]]"
   - "[[Self Model]]"
@@ -25,6 +27,8 @@ data_class: internal_architecture
 Exposure Ledger v0 is a causal firewall and replay boundary for baseline inference.
 
 It is an operational mechanism for [[Measurement Validity]]. It should not become the conceptual center of the vault simply because many systems touch it.
+
+[[Layered Epistemic Architecture]] now names the output surface as a contamination boundary. Exposure Ledger is the firewall for that boundary, not the full theory of behavior.
 
 ## Why It Exists
 
