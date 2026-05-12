@@ -131,25 +131,12 @@ def test_proximity_no_tasks_returns_uniform(db, archetypes_seeded):
 # ── Authorization ────────────────────────────────────────────────
 
 
-def test_proximity_no_auth_user_id_falls_back_to_default_per_middleware(
+def test_proximity_no_auth_fails_closed(
     db, archetypes_seeded
 ):
-    """Without X-User-Id, UserScopeMiddleware defaults to user_id=1.
-
-    This documents the existing middleware behavior (per
-    docs/testing_patterns.md). The endpoint itself doesn't 401 — that
-    fallback is documented as the SHIM, not a bug.
-
-    To get a real 401, you'd need to send a malformed Bearer token
-    (covered in middleware-level tests, not here).
-    """
-    # Don't seed user_id=1; without ContextVar reset middleware sets it
+    """Without identity, product analytics must not fall back to operator."""
     resp = client.get("/v1/analytics/archetype/proximity?days=14")
-    # Either 200 with cold-start (no archetype rows or no tasks for u1)
-    # OR 200 with whatever data user_id=1 has. Both indicate the endpoint
-    # is reachable; not a 401. The actual cross-user isolation guarantee
-    # is enforced by the proximity service's user_id scoping.
-    assert resp.status_code == 200
+    assert resp.status_code == 401
 
 
 # ── Cross-user isolation ─────────────────────────────────────────

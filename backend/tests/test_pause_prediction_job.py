@@ -3,7 +3,7 @@
   * When PausePredictor returns a PausePrediction AND the user has an active
     EXECUTING task, the job writes exactly one pause_prediction_log row with
     all fields mapped from the dataclass and enqueues one notification via
-    /v1/notifications/push.
+    the internal notification queue helper.
   * When the predictor returns None, no row and no notification.
   * FIRING_COOLDOWN_MINUTES: if a row already exists within the cooldown,
     the job does not re-fire — even if the predictor would have returned
@@ -110,12 +110,12 @@ def _canned_prediction(user_id: int = USER_ID, mechanism: str = "clock_anchor") 
 
 
 def test_firing_writes_log_row_and_queues_notification(db, user):
-    """Happy path: predictor returns → one row + one httpx.post."""
+    """Happy path: predictor returns -> one row + one queued notification."""
     _make_executing_task(db)
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx") as mock_httpx, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
          patch("app.workers.jobs.pause_prediction.send_telegram_message_sync"):
         mock_cls.return_value.predict.return_value = canned
         _run_for_one_user(db, user)
@@ -131,25 +131,24 @@ def test_firing_writes_log_row_and_queues_notification(db, user):
     assert row.user_response is None
     assert row.response_at is None
 
-    assert mock_httpx.post.call_count == 1
-    call = mock_httpx.post.call_args
-    assert call.args[0].endswith("/v1/notifications/push")
-    assert call.kwargs["json"]["type"] == "pause_prediction"
-    assert call.kwargs["json"]["firing_id"] == row.firing_id
-    assert call.kwargs["headers"] == {"X-User-Id": str(USER_ID)}
+    assert mock_enqueue.call_count == 1
+    call = mock_enqueue.call_args
+    assert call.args[0] == USER_ID
+    assert call.args[1]["type"] == "pause_prediction"
+    assert call.args[1]["firing_id"] == row.firing_id
 
 
 def test_no_prediction_no_row_no_queue(db, user):
     """Predictor returns None → no row, no notification."""
     _make_executing_task(db)
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx") as mock_httpx, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
          patch("app.workers.jobs.pause_prediction.send_telegram_message_sync"):
         mock_cls.return_value.predict.return_value = None
         _run_for_one_user(db, user)
 
     assert db.query(PausePredictionLog).count() == 0
-    assert mock_httpx.post.call_count == 0
+    assert mock_enqueue.call_count == 0
 
 
 def test_no_active_task_skips_prediction(db, user):
@@ -158,7 +157,7 @@ def test_no_active_task_skips_prediction(db, user):
     # Deliberately do NOT create an EXECUTING task.
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
          patch("app.workers.jobs.pause_prediction.RedisClient") as mock_redis_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx") as mock_httpx, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
          patch(
              "app.workers.jobs.pause_prediction.send_telegram_message_sync"
          ) as mock_telegram:
@@ -168,7 +167,7 @@ def test_no_active_task_skips_prediction(db, user):
 
     assert mock_cls.return_value.predict.call_count == 0
     assert db.query(PausePredictionLog).count() == 0
-    assert mock_httpx.post.call_count == 0
+    assert mock_enqueue.call_count == 0
     assert mock_telegram.call_count == 0
 
 
@@ -188,7 +187,7 @@ def test_cooldown_blocks_refire(db, user):
     db.commit()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx") as mock_httpx, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
          patch("app.workers.jobs.pause_prediction.send_telegram_message_sync"):
         mock_cls.return_value.predict.return_value = _canned_prediction()
         _run_for_one_user(db, user)
@@ -197,7 +196,7 @@ def test_cooldown_blocks_refire(db, user):
     # and no notification was enqueued.
     assert db.query(PausePredictionLog).count() == 1
     assert mock_cls.return_value.predict.call_count == 0
-    assert mock_httpx.post.call_count == 0
+    assert mock_enqueue.call_count == 0
 
 
 def test_cooldown_expired_allows_fire(db, user):
@@ -219,7 +218,7 @@ def test_cooldown_expired_allows_fire(db, user):
     db.commit()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx"), \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification"), \
          patch("app.workers.jobs.pause_prediction.send_telegram_message_sync"):
         mock_cls.return_value.predict.return_value = _canned_prediction()
         _run_for_one_user(db, user)
@@ -233,7 +232,7 @@ def test_active_task_resolved_via_executing_query(db, user):
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
          patch("app.workers.jobs.pause_prediction.RedisClient") as mock_redis_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx"), \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification"), \
          patch("app.workers.jobs.pause_prediction.send_telegram_message_sync"):
         mock_redis_cls.return_value.get_active_stopwatch.return_value = None
         mock_cls.return_value.predict.return_value = None
@@ -248,25 +247,25 @@ def test_predictor_exception_does_not_leak_row(db, user):
     """A predictor exception must not leave a half-written pause_prediction_log row."""
     _make_executing_task(db)
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx") as mock_httpx, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
          patch("app.workers.jobs.pause_prediction.send_telegram_message_sync"):
         mock_cls.return_value.predict.side_effect = RuntimeError("boom")
         _run_for_one_user(db, user)
 
     assert db.query(PausePredictionLog).count() == 0
-    assert mock_httpx.post.call_count == 0
+    assert mock_enqueue.call_count == 0
 
 
-def test_notification_push_failure_keeps_row(db, user):
-    """If the /push call fails, the log row must still be committed."""
+def test_notification_enqueue_failure_keeps_row(db, user):
+    """If queueing fails, the log row must still be committed."""
     _make_executing_task(db)
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx") as mock_httpx, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
          patch("app.workers.jobs.pause_prediction.send_telegram_message_sync"):
         mock_cls.return_value.predict.return_value = canned
-        mock_httpx.post.side_effect = RuntimeError("network")
+        mock_enqueue.side_effect = RuntimeError("queue down")
         _run_for_one_user(db, user)
 
     # Research artifact is durable regardless of notification delivery.
@@ -279,7 +278,7 @@ def test_firing_delivers_telegram_message_with_firing_metadata(db, user):
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx"), \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification"), \
          patch(
              "app.workers.jobs.pause_prediction.send_telegram_message_sync"
          ) as mock_telegram:
@@ -304,7 +303,7 @@ def test_telegram_failure_does_not_rollback_row(db, user):
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
-         patch("app.workers.jobs.pause_prediction.httpx"), \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification"), \
          patch(
              "app.workers.jobs.pause_prediction.send_telegram_message_sync"
          ) as mock_telegram:

@@ -2,7 +2,7 @@
 from fastapi import Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.db.scoping import set_current_user_id
+from app.db.scoping import get_current_user_id, set_current_user_id
 from app.db.session import SessionLocal
 from app.db.models import User
 
@@ -10,27 +10,34 @@ from app.db.models import User
 def get_db(request: Request):
     """Yield a session AND set the per-request user scope.
 
-    Phase 1: trust X-User-Id header. Defaults to operator (user_id=1)
-    when missing so existing operator clients (OpenClaw) keep working
-    without modification. Phase 2 replaces this with JWT validation.
+    UserScopeMiddleware is authoritative for normal HTTP requests. If
+    this dependency is reached without a resolved bearer or explicit
+    X-User-Id scope, fail closed instead of silently reading/writing as
+    the operator.
     """
-    user_id = 1
-    raw = request.headers.get("X-User-Id")
-    if raw is not None:
+    existing_scope = get_current_user_id()
+    scope_set_here = False
+
+    # UserScopeMiddleware is the request-scoped source of truth. Only
+    # synthesize a scope here when the dependency is used outside the
+    # normal HTTP middleware path.
+    if existing_scope is None:
+        raw = request.headers.get("X-User-Id")
+        if raw is None:
+            raise HTTPException(status_code=401, detail="not authenticated")
         try:
             user_id = int(raw)
         except ValueError:
-            user_id = 1
-    # Scope is also set in UserScopeMiddleware (which runs in the
-    # event loop context); the duplicate set here is a safety net for
-    # callers that import get_db without going through middleware
-    # (e.g. background scripts).
-    set_current_user_id(user_id)
+            raise HTTPException(status_code=401, detail="invalid X-User-Id header")
+        set_current_user_id(user_id)
+        scope_set_here = True
+
     db = SessionLocal()
     try:
         yield db
     finally:
-        set_current_user_id(None)
+        if scope_set_here:
+            set_current_user_id(None)
         db.close()
 
 
@@ -40,21 +47,23 @@ def get_current_user(
 ) -> User:
     """Resolve the request to a user.
 
-    Phase 1: trust X-User-Id header (operator + tests only).
-    Phase 2: replaced by JWT validation from next-auth.
+    Trust the scope already resolved by UserScopeMiddleware. X-User-Id
+    remains available for operator tooling and tests, but missing
+    identity is no longer allowed to fall back to user_id=1.
 
     Sets the user_id into the scoping ContextVar so the before_compile
     hook auto-filters every subsequent query in this request.
     """
-    if x_user_id is None:
-        # Default to operator (user_id=1) for unauthenticated requests
-        # during the Phase 1 transition. Removed in Phase 2.
-        user_id = 1
-    else:
+    existing_scope = get_current_user_id()
+    if existing_scope is not None:
+        user_id = existing_scope
+    elif x_user_id is not None:
         try:
             user_id = int(x_user_id)
         except ValueError:
             raise HTTPException(status_code=401, detail="invalid X-User-Id header")
+    else:
+        raise HTTPException(status_code=401, detail="not authenticated")
 
     # Set scoping BEFORE loading the user — but the user query itself
     # must run unscoped (User has no user_id column, so it's exempt).

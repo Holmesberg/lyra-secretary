@@ -14,8 +14,6 @@ is best-effort (failure logged, row stays committed).
 """
 import logging
 
-import httpx
-
 from app.db.models import (
     PauseEvent,
     ResumePredictionLog,
@@ -24,6 +22,7 @@ from app.db.models import (
     TaskState,
     User,
 )
+from app.services.notification_queue import enqueue_user_notification
 from app.services.resume_predictor import (
     COOLDOWN_MINUTES,
     MAX_FIRES_PER_SESSION,
@@ -206,12 +205,7 @@ def _enqueue_notification(user: User, row: ResumePredictionLog, task: Task) -> N
         "confidence": row.confidence,
     }
     try:
-        httpx.post(
-            "http://localhost:8000/v1/notifications/push",
-            json=payload,
-            timeout=5.0,
-            headers={"X-User-Id": str(user.user_id)},
-        )
+        enqueue_user_notification(user.user_id, payload)
     except Exception as e:
         logger.warning(
             f"resume_prediction: notification enqueue failed for "

@@ -27,9 +27,8 @@ so a partial write does not leak into the next user's scope).
 import json
 import logging
 
-import httpx
-
 from app.db.models import PausePredictionLog, Task, TaskState, User
+from app.services.notification_queue import enqueue_user_notification
 from app.services.pause_predictor import PausePredictor
 from app.services.telegram_notifier import send_telegram_message_sync
 from app.utils.redis_client import RedisClient
@@ -187,12 +186,7 @@ def _enqueue_notification(user: User, row: PausePredictionLog) -> None:
         "active_task_id": row.active_task_id,
     }
     try:
-        httpx.post(
-            "http://localhost:8000/v1/notifications/push",
-            json=payload,
-            timeout=5.0,
-            headers={"X-User-Id": str(user.user_id)},
-        )
+        enqueue_user_notification(user.user_id, payload)
     except Exception as e:
         logger.warning(
             f"pause_prediction: notification enqueue failed for "

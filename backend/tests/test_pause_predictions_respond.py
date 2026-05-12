@@ -19,11 +19,9 @@ from app.db.models import PausePredictionLog, User
 from app.db.scoping import set_current_user_id
 from app.utils.time_utils import now_utc
 
-# TestClient defaults X-User-Id to "1" (app/api/deps.py). Seeds use
-# USER_ID=1 so they're visible to the request; OTHER_USER_ID=2 tests
-# scoping isolation.
 USER_ID = 1
 OTHER_USER_ID = 2
+AUTH_HEADERS = {"X-User-Id": str(USER_ID)}
 
 
 @pytest.fixture(autouse=True)
@@ -78,6 +76,7 @@ def test_respond_pause_now_records_response_and_timestamp(db, client):
     r = client.post(
         f"/v1/pause_predictions/{row.firing_id}/respond",
         json={"user_response": "pause_now"},
+        headers=AUTH_HEADERS,
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -97,10 +96,12 @@ def test_respond_dismiss_and_snooze_both_accepted(db, client):
     ra = client.post(
         f"/v1/pause_predictions/{row_a.firing_id}/respond",
         json={"user_response": "dismiss"},
+        headers=AUTH_HEADERS,
     )
     rb = client.post(
         f"/v1/pause_predictions/{row_b.firing_id}/respond",
         json={"user_response": "snooze"},
+        headers=AUTH_HEADERS,
     )
     assert ra.status_code == 200
     assert rb.status_code == 200
@@ -112,6 +113,7 @@ def test_respond_unknown_firing_id_returns_404(client):
     r = client.post(
         f"/v1/pause_predictions/{uuid4()}/respond",
         json={"user_response": "pause_now"},
+        headers=AUTH_HEADERS,
     )
     assert r.status_code == 404
     assert "not found" in r.json()["detail"].lower()
@@ -124,6 +126,7 @@ def test_respond_other_users_firing_is_invisible_404(db, client):
     r = client.post(
         f"/v1/pause_predictions/{other_row.firing_id}/respond",
         json={"user_response": "pause_now"},
+        headers=AUTH_HEADERS,
     )
     assert r.status_code == 404
 
@@ -138,6 +141,7 @@ def test_respond_already_reconciled_returns_409(db, client):
     r = client.post(
         f"/v1/pause_predictions/{row.firing_id}/respond",
         json={"user_response": "pause_now"},
+        headers=AUTH_HEADERS,
     )
     assert r.status_code == 409
     assert "already reconciled" in r.json()["detail"].lower()
@@ -152,5 +156,6 @@ def test_respond_rejects_invalid_user_response(db, client):
     r = client.post(
         f"/v1/pause_predictions/{row.firing_id}/respond",
         json={"user_response": "procrastinate"},
+        headers=AUTH_HEADERS,
     )
     assert r.status_code == 422

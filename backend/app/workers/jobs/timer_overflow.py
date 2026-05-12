@@ -1,8 +1,8 @@
 """Timer overflow background job (per-user)."""
 import logging
-import httpx
 
 from app.db.models import StopwatchSession, Task, User
+from app.services.notification_queue import enqueue_user_notification
 from app.utils.time_utils import now_utc
 from app.utils.redis_client import RedisClient
 from app.services.telegram_notifier import send_telegram_message_sync
@@ -54,11 +54,9 @@ def _run_for_one_user(db, user: User):
                     logger.info(f"Overflow alert sent via direct Telegram (user {user.user_id})")
 
                 try:
-                    httpx.post(
-                        "http://localhost:8000/v1/notifications/push",
-                        json={"type": "timer_overflow", "message": message},
-                        timeout=5.0,
-                        headers={"X-User-Id": str(user.user_id)},
+                    enqueue_user_notification(
+                        user.user_id,
+                        {"type": "timer_overflow", "message": message},
                     )
                 except Exception as e:
                     logger.warning(f"Redis queue fallback failed for session {session.session_id}: {e}")

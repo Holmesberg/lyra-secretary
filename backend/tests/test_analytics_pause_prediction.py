@@ -24,11 +24,9 @@ from app.db.models import PausePredictionLog, User
 from app.db.scoping import set_current_user_id
 from app.utils.time_utils import now_utc
 
-# The TestClient defaults X-User-Id to "1" (app/api/deps.py:18). Every
-# seeded row in these tests uses USER_ID so it is visible to the request,
-# and the scoping-leak test uses OTHER to confirm cross-user filtering.
 USER_ID = 1
 OTHER_USER_ID = 2
+AUTH_HEADERS = {"X-User-Id": str(USER_ID)}
 
 
 @pytest.fixture(autouse=True)
@@ -82,7 +80,7 @@ def _seed(
 
 
 def test_empty_history_returns_zeros(client, db):
-    r = client.get("/v1/analytics/pause_prediction")
+    r = client.get("/v1/analytics/pause_prediction", headers=AUTH_HEADERS)
     body = r.json()
     assert r.status_code == 200
     assert body["summary"]["total_fires"] == 0
@@ -102,7 +100,7 @@ def test_acceptance_rate_uses_reconciled_denominator(db, client):
     _seed(db, user_response="no_response")
     _seed(db, user_response=None)
 
-    r = client.get("/v1/analytics/pause_prediction")
+    r = client.get("/v1/analytics/pause_prediction", headers=AUTH_HEADERS)
     body = r.json()
     assert body["summary"]["total_fires"] == 5
     assert body["summary"]["total_reconciled"] == 4
@@ -119,7 +117,7 @@ def test_snooze_refires_excluded_from_summary(db, client):
     # A plain accepted primary firing
     _seed(db, user_response="pause_now")
 
-    r = client.get("/v1/analytics/pause_prediction")
+    r = client.get("/v1/analytics/pause_prediction", headers=AUTH_HEADERS)
     body = r.json()
     # Primary-only count: parent (snooze) + plain-accepted = 2
     assert body["summary"]["total_fires"] == 2
@@ -138,7 +136,7 @@ def test_by_mechanism_split(db, client):
     _seed(db, mechanism="work_rhythm", user_response="pause_now")
     _seed(db, mechanism="work_rhythm", user_response="pause_now")
 
-    r = client.get("/v1/analytics/pause_prediction")
+    r = client.get("/v1/analytics/pause_prediction", headers=AUTH_HEADERS)
     body = r.json()
     clock = next(m for m in body["by_mechanism"] if m["mechanism"] == "clock_anchor")
     rhythm = next(m for m in body["by_mechanism"] if m["mechanism"] == "work_rhythm")
@@ -153,7 +151,7 @@ def test_other_user_rows_are_not_visible(db, client):
     _seed(db, user_id=OTHER_USER_ID, user_response="pause_now")
     _seed(db, user_id=OTHER_USER_ID, user_response="pause_now")
 
-    r = client.get("/v1/analytics/pause_prediction")
+    r = client.get("/v1/analytics/pause_prediction", headers=AUTH_HEADERS)
     body = r.json()
     # Only the caller's 1 row — the other user's 3 must be filtered out.
     assert body["summary"]["total_fires"] == 1

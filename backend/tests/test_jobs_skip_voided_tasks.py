@@ -159,12 +159,13 @@ def test_reminders_skip_voided_task(db, user):
     )
 
     with patch("app.workers.jobs.reminders.send_telegram_message_sync") as mock_tg, \
-         patch("app.workers.jobs.reminders.httpx") as mock_httpx:
+         patch("app.workers.jobs.reminders.enqueue_user_notification") as mock_enqueue:
         mock_tg.return_value = True
         _run_for_one_user(db, user)
 
     # Telegram should be called exactly once (for the live task)
     assert mock_tg.call_count == 1
+    assert mock_enqueue.call_count == 1
     msg = mock_tg.call_args[0][0]
     assert live_task.title in msg
     assert voided_task.title not in msg
@@ -208,12 +209,13 @@ def test_timer_overflow_skip_voided_task(db, user):
     )
 
     with patch("app.workers.jobs.timer_overflow.send_telegram_message_sync") as mock_tg, \
-         patch("app.workers.jobs.timer_overflow.httpx") as mock_httpx:
+         patch("app.workers.jobs.timer_overflow.enqueue_user_notification") as mock_enqueue:
         mock_tg.return_value = True
         _run_for_one_user(db, user)
 
     # Only the live task should trigger an alert
     assert mock_tg.call_count == 1
+    assert mock_enqueue.call_count == 1
     msg = mock_tg.call_args[0][0]
     assert live_task.title in msg
     assert voided_task.title not in msg

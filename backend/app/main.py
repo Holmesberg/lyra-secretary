@@ -26,7 +26,6 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
     Resolution order:
       1. Authorization: Bearer <jwt>  — frontend (next-auth, Phase 2+)
       2. X-User-Id: <int>             — operator's OpenClaw + backend tests
-      3. Default: user_id=1 (operator) — preserves single-user clients
 
     The bearer path also auto-provisions a User row on first login.
 
@@ -47,7 +46,12 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
         from fastapi.responses import JSONResponse
         from fastapi import HTTPException
 
-        user_id = 1
+        # Preserve an explicitly pre-set scope for in-process callers
+        # (tests and internal tools). Real anonymous HTTP requests enter
+        # with no ContextVar scope, so they still fail closed in get_db.
+        from app.db.scoping import get_current_user_id
+
+        user_id = get_current_user_id()
         resolved = False
         auth = request.headers.get("Authorization") or request.headers.get("authorization")
         if auth and auth.lower().startswith("bearer "):
@@ -79,7 +83,10 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
                 try:
                     user_id = int(raw)
                 except ValueError:
-                    user_id = 1
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "invalid X-User-Id header"},
+                    )
 
         set_current_user_id(user_id)
         try:
