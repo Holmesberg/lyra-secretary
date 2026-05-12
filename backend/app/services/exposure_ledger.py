@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -379,6 +379,284 @@ def baseline_clean_task(
             horizon_policy_version=horizon_policy_version,
         )
     )
+
+
+def baseline_clean_task_ids(
+    db: Session,
+    *,
+    tasks: list[Task],
+    signal_targets: list[str],
+    horizon_policy_version: str = DEFAULT_HORIZON_POLICY_VERSION,
+) -> set[str]:
+    """Bulk equivalent of baseline_clean_task for task lists.
+
+    User-facing analytics often filter dozens of candidate tasks at once. The
+    single-row helper intentionally reads clearly, but calling it in a loop
+    creates N x target x legacy-table queries. This helper keeps the same
+    fail-closed semantics while prefetching the exposure rows for the full
+    candidate window.
+    """
+    tasks = [task for task in tasks if task.task_id is not None]
+    if not tasks:
+        return set()
+    if not signal_targets:
+        return {task.task_id for task in tasks}
+
+    clean_ids = {task.task_id for task in tasks}
+
+    corrected_ids = {
+        row[0]
+        for row in (
+            db.query(TaskExecutionCorrection.task_id)
+            .filter(TaskExecutionCorrection.task_id.in_(clean_ids))
+            .all()
+        )
+    }
+    clean_ids -= corrected_ids
+    if not clean_ids:
+        return set()
+
+    try:
+        policy = load_horizon_policy(horizon_policy_version)
+        categories_by_target = {
+            target: affected_categories_for_target(policy, target)
+            for target in signal_targets
+        }
+    except Exception:
+        return set()
+    if any(not categories for categories in categories_by_target.values()):
+        return set()
+
+    checks: list[tuple[str, int, str, datetime, dict[str, int]]] = []
+    for task in tasks:
+        if task.task_id not in clean_ids:
+            continue
+        for signal_target, categories in categories_by_target.items():
+            event_time = task_signal_time(task, signal_target)
+            if event_time is None:
+                clean_ids.discard(task.task_id)
+                break
+            checks.append(
+                (
+                    task.task_id,
+                    task.user_id,
+                    signal_target,
+                    strip_tz(event_time),
+                    categories,
+                )
+            )
+
+    if not checks:
+        return clean_ids
+
+    min_start = min(
+        event_time - timedelta(minutes=max(categories.values()))
+        for _, _, _, event_time, categories in checks
+    )
+    max_end = max(event_time for _, _, _, event_time, _ in checks)
+    user_ids = {user_id for _, user_id, _, _, _ in checks}
+    exposure_categories = {
+        category
+        for categories in categories_by_target.values()
+        for category in categories
+    }
+
+    decisions = (
+        db.query(ExposureDecisionEvent)
+        .filter(
+            ExposureDecisionEvent.user_id.in_(user_ids),
+            ExposureDecisionEvent.eligible_at >= min_start,
+            ExposureDecisionEvent.eligible_at <= max_end,
+            ExposureDecisionEvent.exposure_category.in_(list(exposure_categories)),
+        )
+        .all()
+    )
+    decisions_by_user: dict[int, list[ExposureDecisionEvent]] = defaultdict(list)
+    decision_ids = [decision.exposure_id for decision in decisions]
+    for decision in decisions:
+        decisions_by_user[decision.user_id].append(decision)
+
+    renders_by_exposure: dict[str, list[datetime]] = defaultdict(list)
+    suppression_ids: set[str] = set()
+    if decision_ids:
+        for exposure_id, rendered_at in (
+            db.query(ExposureRenderEvent.exposure_id, ExposureRenderEvent.rendered_at)
+            .filter(
+                ExposureRenderEvent.exposure_id.in_(decision_ids),
+                ExposureRenderEvent.rendered_at >= min_start,
+                ExposureRenderEvent.rendered_at <= max_end,
+            )
+            .all()
+        ):
+            renders_by_exposure[exposure_id].append(strip_tz(rendered_at))
+
+        suppression_ids = {
+            row[0]
+            for row in (
+                db.query(SuppressionEvent.exposure_id)
+                .filter(SuppressionEvent.exposure_id.in_(decision_ids))
+                .all()
+            )
+        }
+
+    reflection_types = [
+        reflection_type
+        for reflection_type, category in LEGACY_REFLECTION_CATEGORY.items()
+        if category in exposure_categories
+    ]
+    reflections_by_user: dict[int, list[ReflectionViewLog]] = defaultdict(list)
+    if reflection_types:
+        reflections = (
+            db.query(ReflectionViewLog)
+            .filter(
+                ReflectionViewLog.user_id.in_(user_ids),
+                ReflectionViewLog.event_class == "impression",
+                ReflectionViewLog.reflection_type.in_(reflection_types),
+                ReflectionViewLog.fired_at >= min_start,
+                ReflectionViewLog.fired_at <= max_end,
+            )
+            .all()
+        )
+        for reflection in reflections:
+            reflections_by_user[reflection.user_id].append(reflection)
+
+    calibrations_by_user: dict[int, list[CalibrationNudgeEvent]] = defaultdict(list)
+    if {"scheduling_suggestion", "behavioral_insight"} & exposure_categories:
+        calibrations = (
+            db.query(CalibrationNudgeEvent)
+            .filter(
+                CalibrationNudgeEvent.user_id.in_(user_ids),
+                CalibrationNudgeEvent.voided_at.is_(None),
+                CalibrationNudgeEvent.decided_at >= min_start,
+                CalibrationNudgeEvent.decided_at <= max_end,
+            )
+            .all()
+        )
+        for calibration in calibrations:
+            calibrations_by_user[calibration.user_id].append(calibration)
+
+    pauses_by_user: dict[int, list[PausePredictionLog]] = defaultdict(list)
+    resumes_by_user: dict[int, list[ResumePredictionLog]] = defaultdict(list)
+    if "predictive_alert" in exposure_categories:
+        pauses = (
+            db.query(PausePredictionLog)
+            .filter(
+                PausePredictionLog.user_id.in_(user_ids),
+                PausePredictionLog.fired_at >= min_start,
+                PausePredictionLog.fired_at <= max_end,
+            )
+            .all()
+        )
+        resumes = (
+            db.query(ResumePredictionLog)
+            .filter(
+                ResumePredictionLog.user_id.in_(user_ids),
+                ResumePredictionLog.fired_at >= min_start,
+                ResumePredictionLog.fired_at <= max_end,
+            )
+            .all()
+        )
+        for pause in pauses:
+            pauses_by_user[pause.user_id].append(pause)
+        for resume in resumes:
+            resumes_by_user[resume.user_id].append(resume)
+
+    for task_id, user_id, signal_target, event_time, categories in checks:
+        if task_id not in clean_ids:
+            continue
+        if _bulk_v0_state_dirty(
+            decisions_by_user[user_id],
+            renders_by_exposure,
+            suppression_ids,
+            event_time=event_time,
+            signal_target=signal_target,
+            categories=categories,
+        ):
+            clean_ids.discard(task_id)
+            continue
+        if _bulk_legacy_state_dirty(
+            user_id=user_id,
+            event_time=event_time,
+            categories=categories,
+            reflections=reflections_by_user[user_id],
+            calibrations=calibrations_by_user[user_id],
+            pauses=pauses_by_user[user_id],
+            resumes=resumes_by_user[user_id],
+        ):
+            clean_ids.discard(task_id)
+
+    return clean_ids
+
+
+def _bulk_v0_state_dirty(
+    decisions: list[ExposureDecisionEvent],
+    renders_by_exposure: dict[str, list[datetime]],
+    suppression_ids: set[str],
+    *,
+    event_time: datetime,
+    signal_target: str,
+    categories: dict[str, int],
+) -> bool:
+    for decision in decisions:
+        if decision.exposure_category not in categories:
+            continue
+        horizon = categories[decision.exposure_category]
+        window_start = event_time - timedelta(minutes=horizon)
+        eligible_at = strip_tz(decision.eligible_at)
+        if eligible_at < window_start or eligible_at > event_time:
+            continue
+
+        if any(
+            window_start <= rendered_at <= event_time
+            for rendered_at in renders_by_exposure.get(decision.exposure_id, [])
+        ):
+            return True
+        if decision.exposure_id in suppression_ids:
+            continue
+        return True
+    return False
+
+
+def _bulk_legacy_state_dirty(
+    *,
+    user_id: int,
+    event_time: datetime,
+    categories: dict[str, int],
+    reflections: list[ReflectionViewLog],
+    calibrations: list[CalibrationNudgeEvent],
+    pauses: list[PausePredictionLog],
+    resumes: list[ResumePredictionLog],
+) -> bool:
+    for reflection in reflections:
+        category = LEGACY_REFLECTION_CATEGORY.get(
+            reflection.reflection_type, "behavioral_insight"
+        )
+        if _within_category_horizon(
+            reflection.fired_at, event_time, category, categories
+        ):
+            return True
+
+    for calibration in calibrations:
+        if _within_category_horizon(
+            calibration.decided_at, event_time, "scheduling_suggestion", categories
+        ) or _within_category_horizon(
+            calibration.decided_at, event_time, "behavioral_insight", categories
+        ):
+            return True
+
+    if "predictive_alert" in categories:
+        for pause in pauses:
+            if _within_category_horizon(
+                pause.fired_at, event_time, "predictive_alert", categories
+            ):
+                return True
+        for resume in resumes:
+            if _within_category_horizon(
+                resume.fired_at, event_time, "predictive_alert", categories
+            ):
+                return True
+
+    return False
 
 
 def record_policy_effect_snapshot(

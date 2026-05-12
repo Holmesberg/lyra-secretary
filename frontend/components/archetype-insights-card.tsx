@@ -85,7 +85,7 @@ export function ArchetypeInsightsCard() {
         `/v1/analytics/bias_factor/lookup?category=${SAMPLE_CATEGORY}&tod=${SAMPLE_TOD}&planned_minutes=${SAMPLE_MINUTES}`
       ),
     staleTime: 60_000,
-    enabled: meQ.data != null,
+    enabled: meQ.data != null && mathOpen,
   });
 
   if (!meQ.data) return null;
@@ -145,6 +145,7 @@ function DynamicProximityCard({
     queryKey: ["proximity-trend", 14, 14],
     queryFn: () => getArchetypeProximityTrend(14, 14),
     staleTime: 60_000,
+    enabled: proximityQ.data?.ready === true,
   });
 
   if (proximityQ.isLoading) {

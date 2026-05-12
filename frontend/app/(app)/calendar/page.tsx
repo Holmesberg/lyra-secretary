@@ -325,9 +325,8 @@ export default function CalendarPage() {
     refetchInterval: 60_000,
   });
 
-  // Stopwatch status poll — drives the live EXECUTING block. Inherits the
-  // global 10 s refetchInterval from providers.tsx. When the operator is
-  // actively timing a task, `statusQ.data` reports task_id + active/paused
+  // Stopwatch status poll — drives the live EXECUTING block. When the
+  // operator is actively timing a task, `statusQ.data` reports task_id + active/paused
   // flags; the events memo below uses that to render the active block
   // from actual_start → now, growing on every poll. `dataUpdatedAt` is
   // included as a memo dep so the end-time recomputes every poll tick
@@ -337,6 +336,7 @@ export default function CalendarPage() {
   const statusQ = useQuery({
     queryKey: ["stopwatch-status"],
     queryFn: getStopwatchStatus,
+    refetchInterval: 10_000,
   });
 
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);

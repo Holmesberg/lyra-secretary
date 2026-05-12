@@ -59,7 +59,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Archetype, Task, TaskState
 from app.services.bias_factor_service import RESEARCH_PRIORS, RESEARCH_PRIOR_DEFAULT
-from app.services.exposure_ledger import baseline_clean_task
+from app.services.exposure_ledger import baseline_clean_task_ids
 
 
 _LOG_2PI = math.log(2.0 * math.pi)
@@ -123,15 +123,13 @@ def _filter_qualifying_tasks(
         q = q.filter(Task.executed_end_utc >= start)
     if end is not None:
         q = q.filter(Task.executed_end_utc < end)
-    return [
-        task
-        for task in q.all()
-        if baseline_clean_task(
-            db,
-            task=task,
-            signal_targets=["planning_estimate", "duration_behavior"],
-        )
-    ]
+    tasks = q.all()
+    clean_ids = baseline_clean_task_ids(
+        db,
+        tasks=tasks,
+        signal_targets=["planning_estimate", "duration_behavior"],
+    )
+    return [task for task in tasks if task.task_id in clean_ids]
 
 
 def _compute_log_posteriors(

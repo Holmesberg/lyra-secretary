@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Archetype, Task, User
 from app.services.archetype_service import DIFFUSE_AVERAGE_ID
-from app.services.exposure_ledger import baseline_clean_task
+from app.services.exposure_ledger import baseline_clean_task_ids
 from app.utils.time_utils import to_local
 
 # Normalization anchor for the composite scaling rule (Rule 13). The
@@ -304,15 +304,12 @@ def blend(
     has a completed=False skip-defaulted assignment, archetype_id on
     User.archetype_id was also set to diffuse_average; same behavior.
     """
-    clean_tasks = [
-        t
-        for t in tasks
-        if baseline_clean_task(
-            db,
-            task=t,
-            signal_targets=["planning_estimate", "duration_behavior"],
-        )
-    ]
+    clean_ids = baseline_clean_task_ids(
+        db,
+        tasks=tasks,
+        signal_targets=["planning_estimate", "duration_behavior"],
+    )
+    clean_tasks = [t for t in tasks if t.task_id in clean_ids]
 
     personal = _adaptive_calibration(clean_tasks, category, tod, planned_minutes)
 

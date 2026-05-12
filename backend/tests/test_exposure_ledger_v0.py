@@ -23,6 +23,8 @@ from app.services.cortex import measured_execution_baseline_tasks
 from app.services import exposure_ledger
 from app.services.exposure_ledger import (
     affected_categories_for_target,
+    baseline_clean_task,
+    baseline_clean_task_ids,
     is_exposed,
     load_horizon_policy,
     record_decision,
@@ -345,6 +347,73 @@ def test_cortex_baseline_helper_excludes_exposed_task(db):
     db.commit()
 
     assert measured_execution_baseline_tasks(db, user_id=user.user_id) == []
+
+
+def test_bulk_baseline_clean_task_ids_matches_single_row_helper(db):
+    _clean(db)
+    user = _user(db)
+    clean_start = datetime(2026, 5, 9, 9, 0, 0)
+    exposed_start = datetime(2026, 5, 9, 12, 0, 0)
+    clean_task = Task(
+        task_id="bulk-clean",
+        user_id=user.user_id,
+        title="Clean task",
+        planned_start_utc=clean_start,
+        planned_end_utc=clean_start + timedelta(minutes=60),
+        planned_duration_minutes=60,
+        executed_start_utc=clean_start,
+        executed_end_utc=clean_start + timedelta(minutes=70),
+        executed_duration_minutes=70,
+        state=TaskState.EXECUTED,
+        initiation_status="initiated",
+        created_at=clean_start,
+    )
+    exposed_task = Task(
+        task_id="bulk-exposed",
+        user_id=user.user_id,
+        title="Exposed task",
+        planned_start_utc=exposed_start,
+        planned_end_utc=exposed_start + timedelta(minutes=60),
+        planned_duration_minutes=60,
+        executed_start_utc=exposed_start,
+        executed_end_utc=exposed_start + timedelta(minutes=80),
+        executed_duration_minutes=80,
+        state=TaskState.EXECUTED,
+        initiation_status="initiated",
+        created_at=exposed_start,
+    )
+    db.add_all([clean_task, exposed_task])
+    decision = record_decision(
+        db,
+        user_id=user.user_id,
+        eligible_at=exposed_start - timedelta(minutes=30),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="overrun-summary",
+    )
+    record_render(
+        db,
+        exposure_id=decision.exposure_id,
+        rendered_at=exposed_start - timedelta(minutes=30),
+        surface="insights",
+        channel="web",
+        content_snapshot="You overrun this category.",
+        render_policy_version="render_v0",
+        interruptiveness="inline",
+        salience_level="medium",
+    )
+    db.commit()
+
+    tasks = [clean_task, exposed_task]
+    targets = ["planning_estimate", "duration_behavior"]
+    bulk_clean = baseline_clean_task_ids(db, tasks=tasks, signal_targets=targets)
+    single_clean = {
+        task.task_id
+        for task in tasks
+        if baseline_clean_task(db, task=task, signal_targets=targets)
+    }
+
+    assert bulk_clean == single_clean == {"bulk-clean"}
 
 
 def test_policy_effect_snapshot_records_unknown_ledger_incomplete_rate(db):

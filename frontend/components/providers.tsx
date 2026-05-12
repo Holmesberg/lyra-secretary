@@ -44,7 +44,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            refetchInterval: 10_000,
+            // Poll only where a surface explicitly opts in. A global poll
+            // makes heavy analytics queries refetch while mounted, which
+            // turns tab clicks into backend contention.
+            refetchInterval: false,
             refetchOnWindowFocus: false,
             // gcTime governs how long INACTIVE queries stay in cache
             // (formerly cacheTime in v4). Bumped from the default 5min
