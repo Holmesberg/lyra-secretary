@@ -83,6 +83,30 @@ scaling, or absent. Core safeguards are kernel rules:
 - frontend requests never override backend suppression,
 - unregistered, unknown, or under-specified surfaces fail closed.
 
+## Complexity Admission Rule
+
+Kernel complexity may grow only when all three conditions are true:
+
+1. a recurring integrity failure exists,
+2. operational discipline already proved insufficient,
+3. the mechanism reduces ambiguity more than it increases cognitive load.
+
+Escalation should prefer:
+
+```text
+manual
+-> runbook
+-> script
+-> test
+-> CI
+-> runtime enforcement
+```
+
+Hard kernel, soft periphery. Identity, topology, truth class, projection,
+exposure, and authorized emission belong in the kernel. Trace readbacks,
+factual reminders, temporary adapters, and low-risk product ergonomics stay
+lighter unless their epistemic risk justifies more ceremony.
+
 Strictness scales with epistemic risk. Trace outputs can carry a light
 contract. Metric outputs need declared inputs and sign conventions.
 Interpretations and interventions need thresholds, provenance, exposure, and

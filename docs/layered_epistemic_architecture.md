@@ -60,6 +60,30 @@ Hard kernel rules:
 - frontend requests must never override backend suppression,
 - unregistered, unknown, or under-specified surfaces fail closed.
 
+Kernel complexity admission rule:
+
+Kernel complexity may grow only when all three conditions are true:
+
+1. a recurring integrity failure exists,
+2. operational discipline has already proved insufficient,
+3. the new mechanism reduces ambiguity more than it increases cognitive load.
+
+Preferred escalation ladder:
+
+```text
+manual note
+  -> runbook
+  -> script
+  -> test
+  -> CI gate
+  -> runtime enforcement
+```
+
+The kernel should defend identity, topology, truth class, projection, exposure,
+and authorized emission. The periphery should stay soft: trace readbacks,
+factual reminders, temporary adapters, and low-risk product ergonomics should
+not inherit heavy ceremony unless their epistemic risk justifies it.
+
 The periphery should stay pragmatic. Strictness scales with epistemic risk:
 
 - trace outputs may use a light contract,
@@ -1094,8 +1118,14 @@ decisions.
 ### Revisit Condition
 [What evidence, sample count, failure mode, or phase change should trigger review]
 
+### Complexity Admission
+[What recurring integrity failure justifies this? Why was manual/runbook/process
+discipline insufficient? Why does the mechanism reduce ambiguity more than it
+adds cognitive load? What rung is this on the ladder: manual / runbook / script
+/ test / CI / runtime enforcement?]
+
 ### Rollout Checklist
-[dual-write coverage / legacy-adapter coverage / current-data eligibility / unknown-rate visibility / fail-closed tests / operator-only fallback]
+[dual-write coverage / legacy-adapter coverage / current-data eligibility / unknown-rate visibility / fail-closed tests / operator-only fallback / topology verification if browser evidence is used]
 ```
 
 ---

@@ -697,3 +697,26 @@ Local verification should pass only after the frontend is restarted with local
 env values, without changing port `3000`.
 
 - wider affected backend gate: `40 passed`.
+
+## Complexity Admission Rule
+
+Date: 2026-05-13.
+
+Added to canonical architecture and vault system map:
+
+```text
+Kernel complexity may grow only when:
+1. a recurring integrity failure exists,
+2. operational discipline already proved insufficient,
+3. the mechanism reduces ambiguity more than it increases cognitive load.
+```
+
+Preferred escalation:
+
+```text
+manual -> runbook -> script -> test -> CI -> runtime enforcement
+```
+
+Decision template now requires a `Complexity Admission` section before future
+kernel growth. The rollout checklist now explicitly calls for topology
+verification when browser evidence is used.
