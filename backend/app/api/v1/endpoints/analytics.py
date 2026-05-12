@@ -21,6 +21,7 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import get_current_user_id
+from app.services.exposure_ledger import baseline_clean_task_ids
 from app.services.output_surfaces import (
     emit_surface_render,
     emit_surface_suppression,
@@ -288,6 +289,18 @@ def _surface_metadata(
         "fallback_mode": spec.fallback_mode,
         "legacy_adapter": spec.legacy_adapter,
     }
+
+
+def _eligible_tasks_for_surface(db: Session, tasks: list, surface_id: str) -> list:
+    spec = get_output_surface_spec(surface_id)
+    if spec.clean_profile == "descriptive_history":
+        return tasks
+    clean_ids = baseline_clean_task_ids(
+        db,
+        tasks=tasks,
+        signal_targets=list(spec.signal_targets),
+    )
+    return [task for task in tasks if task.task_id in clean_ids]
 
 
 def _median(vals: list[float]) -> float:
@@ -796,6 +809,27 @@ def _insight_calibration_maturation(
     )
 
 
+CONTRACT_SAFE_INSIGHT_GENERATORS = [
+    ("analytics.insights.estimation_accuracy_trend", _insight_estimation_trend),
+    ("analytics.insights.initiation_delay", _insight_initiation_delay),
+    ("analytics.insights.retroactive_rate", _insight_retroactive_rate),
+]
+
+
+LEGACY_SUPPRESSED_INSIGHT_SURFACES = [
+    ("analytics.insights.time_of_day_bias", "time_of_day_bias"),
+    ("analytics.insights.readiness_predicts_outcome", "readiness_predicts_outcome"),
+    ("analytics.insights.abandonment_pattern", "abandonment_pattern"),
+    ("analytics.insights.best_category", "best_category"),
+    ("analytics.insights.worst_category", "worst_category"),
+    ("analytics.insights.discrepancy_signal", "discrepancy_signal"),
+    ("analytics.insights.pause_pattern", "pause_pattern"),
+    ("analytics.insights.morning_anchor_cascade", "morning_anchor_cascade"),
+    ("analytics.insights.archetype_divergence", "archetype_divergence"),
+    ("analytics.insights.calibration_maturation", "calibration_maturation"),
+]
+
+
 # ---------------------------------------------------------------------------
 # Insights endpoint
 # ---------------------------------------------------------------------------
@@ -812,75 +846,87 @@ def get_insights(
     Rule-based only — no ML. Requires >= 3 completed sessions with delta data.
     Pass ?auto_mark=true to suppress already-shown insights (24h cooldown per insight_id).
     """
-    MIN_SESSIONS = 3
+    surface_id = "analytics.insights"
+    parent_spec = get_output_surface_spec(surface_id)
+    MIN_SESSIONS = parent_spec.min_n
+    uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
 
     all_tasks = (
         db.query(Task)
-        .filter(Task.initiation_status != "system_error", Task.voided_at.is_(None))
+        .filter(
+            Task.user_id == uid,
+            Task.initiation_status != "system_error",
+            Task.voided_at.is_(None),
+        )
         .order_by(Task.planned_start_utc)
         .all()
     )
+    clean_tasks = _eligible_tasks_for_surface(db, all_tasks, surface_id)
 
     # Gate check: need at least MIN_SESSIONS executed tasks with delta data
     delta_sessions = [
-        t for t in all_tasks
+        t for t in clean_tasks
         if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None
     ]
     sessions_analyzed = len(delta_sessions)
+    suppressed_generators = [
+        {
+            **_surface_metadata(
+                suppressed_surface_id,
+                eligible_sample_count=0,
+                suppressed_reason="requires_insights_rewrite",
+            ),
+            "id": insight_id,
+            "owner": "Insights Rewrite",
+            "deadline": "Wave 3",
+        }
+        for suppressed_surface_id, insight_id in LEGACY_SUPPRESSED_INSIGHT_SURFACES
+    ]
 
     if sessions_analyzed < MIN_SESSIONS:
         remaining = MIN_SESSIONS - sessions_analyzed
+        suppression = _surface_metadata(
+            surface_id,
+            eligible_sample_count=sessions_analyzed,
+            suppressed_reason="insufficient_clean_samples",
+        )
+        try:
+            emit_surface_suppression(
+                db,
+                surface_id=surface_id,
+                user_id=uid,
+                suppression_reason="insufficient_clean_samples",
+                content_template_id="analytics_insights",
+                trigger_source="analytics.insights",
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
         return {
+            **suppression,
             "insights": [],
             "sessions_analyzed": sessions_analyzed,
             "min_sessions_required": MIN_SESSIONS,
             "ready": False,
             "message": f"Log {remaining} more session{'s' if remaining != 1 else ''} to unlock your first behavioral insights.",
+            "suppressed_generators": suppressed_generators,
         }
-
-    # Resolve archetype for archetype-aware generators. Falls back to
-    # Diffuse Average when user has no assignment (per Rule 13 skip-path).
-    uid = get_current_user_id()
-    archetype: Optional[Archetype] = None
-    if uid is not None:
-        user = db.query(User).filter(User.user_id == uid).first()
-        archetype_id = (user.archetype_id if user else None) or "diffuse_average"
-        archetype = (
-            db.query(Archetype)
-            .filter(Archetype.archetype_id == archetype_id)
-            .first()
-        )
-
-    # Run all insight generators, collect results. Archetype-aware
-    # generators take the Archetype row as a second arg; regular ones
-    # just take tasks.
-    base_generators = [
-        _insight_time_of_day,
-        _insight_readiness,
-        _insight_abandonment,
-        _insight_estimation_trend,
-        _insight_best_category,
-        _insight_worst_category,
-        _insight_discrepancy_signal,
-        _insight_pause_pattern,
-        _insight_morning_anchor,
-        _insight_retroactive_rate,
-        _insight_initiation_delay,
-    ]
-    archetype_generators = [
-        _insight_archetype_divergence,
-        _insight_calibration_maturation,
-    ]
 
     redis = RedisClient()
     candidates = []
-    for gen in base_generators:
-        result = gen(all_tasks)
+    for insight_surface_id, gen in CONTRACT_SAFE_INSIGHT_GENERATORS:
+        generator_tasks = _eligible_tasks_for_surface(db, all_tasks, insight_surface_id)
+        result = gen(generator_tasks)
         if result is not None:
-            candidates.append(result)
-    for gen in archetype_generators:
-        result = gen(all_tasks, archetype)
-        if result is not None:
+            result.update(
+                _surface_metadata(
+                    insight_surface_id,
+                    eligible_sample_count=len(generator_tasks),
+                    suppressed_reason=None,
+                )
+            )
             candidates.append(result)
 
     # Sort by strength (largest signal first), then by data_points
@@ -898,12 +944,58 @@ def get_insights(
             result["seen"] = True
         insights.append(result)
 
-    return {
+    response_metadata = _surface_metadata(
+        surface_id,
+        eligible_sample_count=sessions_analyzed,
+        suppressed_reason=None if insights else "no_contract_safe_insights",
+    )
+    response_payload = {
+        **response_metadata,
         "insights": insights,
         "sessions_analyzed": sessions_analyzed,
         "min_sessions_required": MIN_SESSIONS,
         "ready": True,
+        "suppressed_generators": suppressed_generators,
     }
+    try:
+        if insights:
+            emit_surface_render(
+                db,
+                surface_id=surface_id,
+                user_id=uid,
+                content_snapshot=json.dumps(response_payload, sort_keys=True, default=str),
+                content_template_id="analytics_insights",
+                trigger_source="analytics.insights",
+            )
+        else:
+            emit_surface_suppression(
+                db,
+                surface_id=surface_id,
+                user_id=uid,
+                suppression_reason="no_contract_safe_insights",
+                content_template_id="analytics_insights",
+                trigger_source="analytics.insights",
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        if insights:
+            failure_metadata = _surface_metadata(
+                surface_id,
+                eligible_sample_count=sessions_analyzed,
+                suppressed_reason="exposure_emit_failed",
+            )
+            return {
+                **failure_metadata,
+                "insights": [],
+                "sessions_analyzed": sessions_analyzed,
+                "min_sessions_required": MIN_SESSIONS,
+                "ready": False,
+                "message": "Insights are temporarily unavailable while exposure logging catches up.",
+                "suppressed_generators": suppressed_generators,
+            }
+
+    return response_payload
 
 
 def _require_operator_analytics(db: Session) -> User:

@@ -30,10 +30,12 @@
  *     redirecting.
  */
 import { SessionProvider } from "next-auth/react";
+import type { Session } from "next-auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { useState } from "react";
+import { primeBackendToken } from "@/lib/api";
 
 const ONE_HOUR = 1000 * 60 * 60;
 const TWENTY_FOUR_HOURS = ONE_HOUR * 24;
@@ -75,7 +77,15 @@ function shouldPersistQuery(query: PersistableQuery): boolean {
   }
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  session,
+}: {
+  children: React.ReactNode;
+  session?: Session | null;
+}) {
+  primeBackendToken((session as any)?.backendToken as string | undefined);
+
   const [qc] = useState(
     () =>
       new QueryClient({
@@ -125,14 +135,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // re-renders client-side and `persister` is set.
   if (!persister) {
     return (
-      <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>
+      <SessionProvider
+        session={session}
+        refetchOnWindowFocus={false}
+        refetchInterval={0}
+      >
         <QueryClientProvider client={qc}>{children}</QueryClientProvider>
       </SessionProvider>
     );
   }
 
   return (
-    <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>
+    <SessionProvider
+      session={session}
+      refetchOnWindowFocus={false}
+      refetchInterval={0}
+    >
       <PersistQueryClientProvider
         client={qc}
         persistOptions={{

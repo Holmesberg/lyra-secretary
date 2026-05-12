@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import { Chakra_Petch } from "next/font/google";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { getServerSession } from "next-auth";
 import { Providers } from "@/components/providers";
+import { authOptions } from "@/lib/auth";
 
 const chakra = Chakra_Petch({
   subsets: ["latin"],
@@ -123,7 +125,9 @@ const jsonLd = {
   ],
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await getServerSession(authOptions);
+
   return (
     <html
       lang="en"
@@ -138,7 +142,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        <Providers session={session}>{children}</Providers>
       </body>
     </html>
   );

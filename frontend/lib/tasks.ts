@@ -537,6 +537,30 @@ export interface Insight {
   confidence: "low" | "medium" | "high";
   strength: number;
   seen: boolean;
+  surface_id?: string;
+  truth_class?: "trace" | "metric" | "interpretation" | "intervention" | "diagnostic_only";
+  usage_class?: string;
+  clean_profile?: string | null;
+  eligible_sample_count?: number;
+  min_n_required?: number;
+  suppressed_reason?: string | null;
+  fallback_mode?: string;
+  legacy_adapter?: string | null;
+}
+
+export interface SuppressedInsightGenerator {
+  id: string;
+  surface_id: string;
+  truth_class: "trace" | "metric" | "interpretation" | "intervention" | "diagnostic_only";
+  usage_class: string;
+  clean_profile: string | null;
+  eligible_sample_count: number;
+  min_n_required: number;
+  suppressed_reason: string;
+  fallback_mode: string;
+  legacy_adapter: string | null;
+  owner: string;
+  deadline: string;
 }
 
 export interface InsightsResponse {
@@ -544,6 +568,16 @@ export interface InsightsResponse {
   sessions_analyzed: number;
   min_sessions_required: number;
   ready: boolean;
+  surface_id?: string;
+  truth_class?: "trace" | "metric" | "interpretation" | "intervention" | "diagnostic_only";
+  usage_class?: string;
+  clean_profile?: string | null;
+  eligible_sample_count?: number;
+  min_n_required?: number;
+  suppressed_reason?: string | null;
+  fallback_mode?: string;
+  legacy_adapter?: string | null;
+  suppressed_generators?: SuppressedInsightGenerator[];
   message?: string;
 }
 

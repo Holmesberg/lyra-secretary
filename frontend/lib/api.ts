@@ -11,6 +11,11 @@ let cachedBackendToken: string | undefined;
 let cachedBackendTokenUntil = 0;
 let sessionTokenPromise: Promise<string | undefined> | null = null;
 
+export function primeBackendToken(token: string | undefined, ttlMs = SESSION_TOKEN_TTL_MS) {
+  cachedBackendToken = token;
+  cachedBackendTokenUntil = token ? Date.now() + ttlMs : 0;
+}
+
 /**
  * Error thrown by the api() helper for non-2xx responses. Carries the
  * HTTP status so callers can distinguish e.g. a 401 expired session
