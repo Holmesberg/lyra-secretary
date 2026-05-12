@@ -102,6 +102,29 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        """Frontend origins allowed to call the API from browsers."""
+        defaults = [
+            self.FRONTEND_URL,
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://lyraos.org",
+        ]
+        configured = [
+            origin.strip()
+            for origin in self.CORS_ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
+
+        origins: list[str] = []
+        for origin in [*defaults, *configured]:
+            normalized = origin.rstrip("/")
+            if normalized and normalized not in origins:
+                origins.append(normalized)
+        return origins
     
     class Config:
         env_file = ".env"

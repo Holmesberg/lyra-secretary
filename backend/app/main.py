@@ -137,7 +137,7 @@ async def log_request_timing(request, call_next):
 app.add_middleware(UserScopeMiddleware)  # inner — added first
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "X-User-Id"],
