@@ -389,6 +389,17 @@ export interface ProximityResponse {
   proximity: ArchetypeProximity[];
   lookback_days: number;
   n_tasks: number;
+  ready?: boolean;
+  display_mode?: "behavioral_proximity" | "settling_in" | string;
+  surface_id?: string;
+  truth_class?: "trace" | "metric" | "interpretation" | "intervention" | "diagnostic_only";
+  usage_class?: string;
+  clean_profile?: string | null;
+  eligible_sample_count?: number;
+  min_n_required?: number;
+  suppressed_reason?: string | null;
+  fallback_mode?: string;
+  legacy_adapter?: string | null;
   primary_metric: string;
 }
 

@@ -166,30 +166,39 @@ export default function InsightsPage() {
     const remaining =
       (data?.min_sessions_required ?? 3) - (data?.sessions_analyzed ?? 0);
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
+      <div className="space-y-8">
         <h1 className="text-2xl font-semibold tracking-tight text-parchment">
           Insights
         </h1>
-        <p className="max-w-md text-sm text-dust">
-          Insights unlock in{" "}
-          <span className="font-medium text-parchment">
-            {Math.max(1, remaining)} more session
-            {remaining !== 1 ? "s" : ""}
-          </span>
-          . Complete tasks to see your patterns emerge here.
-        </p>
-        <div className="mt-2 h-1.5 w-48 overflow-hidden rounded-full bg-hairline">
-          <div
-            className="h-full rounded-full bg-signal transition-all"
-            style={{
-              width: `${Math.min(100, ((data?.sessions_analyzed ?? 0) / (data?.min_sessions_required ?? 3)) * 100)}%`,
-            }}
-          />
+
+        <ArchetypeInsightsCard />
+
+        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-center">
+          <p className="max-w-md text-sm text-dust">
+            {data?.message ?? (
+              <>
+                Insights unlock in{" "}
+                <span className="font-medium text-parchment">
+                  {Math.max(1, remaining)} more session
+                  {remaining !== 1 ? "s" : ""}
+                </span>
+                . Complete tasks to see your patterns emerge here.
+              </>
+            )}
+          </p>
+          <div className="mt-2 h-1.5 w-48 overflow-hidden rounded-full bg-hairline">
+            <div
+              className="h-full rounded-full bg-signal transition-all"
+              style={{
+                width: `${Math.min(100, ((data?.sessions_analyzed ?? 0) / (data?.min_sessions_required ?? 3)) * 100)}%`,
+              }}
+            />
+          </div>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+            {data?.sessions_analyzed ?? 0} / {data?.min_sessions_required ?? 3}{" "}
+            sessions analyzed
+          </p>
         </div>
-        <p className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-          {data?.sessions_analyzed ?? 0} / {data?.min_sessions_required ?? 3}{" "}
-          sessions analyzed
-        </p>
       </div>
     );
   }

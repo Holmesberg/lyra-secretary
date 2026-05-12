@@ -29,6 +29,7 @@ import logging
 
 from app.db.models import PausePredictionLog, Task, TaskState, User
 from app.services.notification_queue import enqueue_user_notification
+from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
 from app.services.pause_predictor import PausePredictor
 from app.services.telegram_notifier import send_telegram_message_sync
 from app.utils.redis_client import RedisClient
@@ -127,7 +128,7 @@ def _run_for_one_user(db, user: User):
     # (/v1/notifications/pending) AND send the operator-facing text via
     # Telegram. Both are best-effort — neither failure rolls back the
     # already-committed research row.
-    _enqueue_notification(user, row)
+    _enqueue_notification(db, user, row)
     _deliver_telegram(row)
 
 
@@ -169,7 +170,7 @@ def _resolve_active_task(db, user: User):
     )
 
 
-def _enqueue_notification(user: User, row: PausePredictionLog) -> None:
+def _enqueue_notification(db, user: User, row: PausePredictionLog) -> None:
     """Push a pause_prediction notification onto the per-user Redis queue.
 
     Non-fatal: if the push endpoint is unreachable we log and continue —
@@ -187,7 +188,38 @@ def _enqueue_notification(user: User, row: PausePredictionLog) -> None:
     }
     try:
         enqueue_user_notification(user.user_id, payload)
+        emit_surface_render(
+            db,
+            surface_id="worker.pause_prediction",
+            user_id=user.user_id,
+            task_id=row.active_task_id,
+            content_snapshot=json.dumps(payload, sort_keys=True),
+            content_template_id="pause_prediction",
+            initiative="system",
+            trigger_source="worker.pause_prediction",
+            eligible_at=row.fired_at,
+            rendered_at=row.fired_at,
+            data_snapshot_hash=str(row.firing_id),
+        )
+        db.commit()
     except Exception as e:
+        db.rollback()
+        try:
+            emit_surface_suppression(
+                db,
+                surface_id="worker.pause_prediction",
+                user_id=user.user_id,
+                task_id=row.active_task_id,
+                suppression_reason="notification_enqueue_failed",
+                content_template_id="pause_prediction",
+                trigger_source="worker.pause_prediction",
+                eligible_at=row.fired_at,
+                suppressed_at=row.fired_at,
+                generating_confidence=row.confidence,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
         logger.warning(
             f"pause_prediction: notification enqueue failed for "
             f"firing_id={row.firing_id} user_id={user.user_id}: {e}"

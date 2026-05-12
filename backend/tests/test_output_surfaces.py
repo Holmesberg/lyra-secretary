@@ -237,9 +237,6 @@ def test_app_code_does_not_bypass_output_surface_emitter():
 def test_app_code_does_not_create_legacy_reflection_rows_directly():
     allowed_legacy_writers = {
         Path("app/db/models.py"),
-        # Existing legacy surfaces are converted during Wave 2 dual-write.
-        Path("app/api/v1/endpoints/stopwatch.py"),
-        Path("app/services/task_manager.py"),
         Path("app/services/output_surfaces.py"),
     }
 

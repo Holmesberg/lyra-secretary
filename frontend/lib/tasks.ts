@@ -544,6 +544,7 @@ export interface InsightsResponse {
   sessions_analyzed: number;
   min_sessions_required: number;
   ready: boolean;
+  message?: string;
 }
 
 export function getInsights() {

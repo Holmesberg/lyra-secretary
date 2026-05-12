@@ -1,4 +1,5 @@
 """Analytics endpoints — discrepancy experiment measurement layer."""
+import json
 from datetime import date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,6 +21,11 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import get_current_user_id
+from app.services.output_surfaces import (
+    emit_surface_render,
+    emit_surface_suppression,
+    get_output_surface_spec,
+)
 from app.utils.time_utils import to_local, now_utc, strip_tz
 from app.utils.redis_client import RedisClient
 
@@ -261,6 +267,26 @@ def _insight(id: str, observation: str, data_points: int, strength: float = 0.0)
         "data_points": data_points,
         "confidence": _confidence(data_points),
         "strength": round(strength, 3),
+    }
+
+
+def _surface_metadata(
+    surface_id: str,
+    *,
+    eligible_sample_count: int = 0,
+    suppressed_reason: Optional[str] = None,
+) -> dict:
+    spec = get_output_surface_spec(surface_id)
+    return {
+        "surface_id": surface_id,
+        "truth_class": spec.truth_class,
+        "usage_class": spec.usage_class,
+        "clean_profile": spec.clean_profile,
+        "eligible_sample_count": eligible_sample_count,
+        "min_n_required": spec.min_n,
+        "suppressed_reason": suppressed_reason,
+        "fallback_mode": spec.fallback_mode,
+        "legacy_adapter": spec.legacy_adapter,
     }
 
 
@@ -1847,12 +1873,56 @@ def get_archetype_proximity(
         raise HTTPException(status_code=401, detail="not authenticated")
     proximity = compute_proximity(db, uid, lookback_days=days)
     n_tasks = proximity[0]["n_tasks"] if proximity else 0
-    return {
+    surface_id = "analytics.archetype_proximity"
+    spec = get_output_surface_spec(surface_id)
+    ready = n_tasks >= spec.min_n
+    metadata = _surface_metadata(
+        surface_id,
+        eligible_sample_count=n_tasks,
+        suppressed_reason=None if ready else "insufficient_clean_samples",
+    )
+    response_payload = {
+        **metadata,
         "proximity": proximity,
         "lookback_days": days,
         "n_tasks": n_tasks,
+        "ready": ready,
+        "display_mode": "behavioral_proximity" if ready else spec.fallback_mode,
         "primary_metric": "archetype_posterior (MANIFESTO Rule 17, pre-registered)",
     }
+    try:
+        if ready:
+            emit_surface_render(
+                db,
+                surface_id=surface_id,
+                user_id=uid,
+                content_snapshot=json.dumps(response_payload, sort_keys=True, default=str),
+                content_template_id="analytics_archetype_proximity",
+                trigger_source="analytics.archetype_proximity",
+            )
+        else:
+            emit_surface_suppression(
+                db,
+                surface_id=surface_id,
+                user_id=uid,
+                suppression_reason="insufficient_clean_samples",
+                content_template_id="analytics_archetype_proximity",
+                trigger_source="analytics.archetype_proximity",
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        if ready:
+            response_payload.update(
+                _surface_metadata(
+                    surface_id,
+                    eligible_sample_count=n_tasks,
+                    suppressed_reason="exposure_emit_failed",
+                )
+            )
+            response_payload["ready"] = False
+            response_payload["display_mode"] = spec.fallback_mode
+    return response_payload
 
 
 @router.get("/analytics/archetype/proximity/trend")

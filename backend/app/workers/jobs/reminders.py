@@ -4,6 +4,7 @@ import logging
 
 from app.db.models import Task, TaskState, User
 from app.services.notification_queue import enqueue_user_notification
+from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
 from app.utils.time_utils import now_utc, to_local
 from app.utils.redis_client import RedisClient
 from app.services.telegram_notifier import send_telegram_message_sync
@@ -56,7 +57,36 @@ def _run_for_one_user(db, user: User):
                     user.user_id,
                     {"type": "reminder", "message": message},
                 )
+                emit_surface_render(
+                    db,
+                    surface_id="worker.reminder",
+                    user_id=user.user_id,
+                    task_id=task.task_id,
+                    content_snapshot=message,
+                    content_template_id="pre_task_reminder",
+                    initiative="system",
+                    trigger_source="worker.reminder",
+                    eligible_at=now,
+                    rendered_at=now,
+                )
+                db.commit()
             except Exception as e:
+                db.rollback()
+                try:
+                    emit_surface_suppression(
+                        db,
+                        surface_id="worker.reminder",
+                        user_id=user.user_id,
+                        task_id=task.task_id,
+                        suppression_reason="notification_enqueue_failed",
+                        content_template_id="pre_task_reminder",
+                        trigger_source="worker.reminder",
+                        eligible_at=now,
+                        suppressed_at=now,
+                    )
+                    db.commit()
+                except Exception:
+                    db.rollback()
                 logger.warning(f"Redis queue fallback failed for task {task.task_id}: {e}")
 
         # Mark notified per-user so two users can't suppress each other's reminders

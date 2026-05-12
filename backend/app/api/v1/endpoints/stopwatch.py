@@ -1,6 +1,5 @@
 """Stopwatch endpoints."""
 from datetime import datetime
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -26,8 +25,9 @@ from app.schemas.stopwatch import (
     PAUSE_REASONS,
     PAUSE_INITIATORS,
 )
-from app.db.models import ReflectionViewLog, TaskState
+from app.db.models import TaskState
 from app.db.scoping import get_current_user_id
+from app.services.output_surfaces import emit_surface_render
 from app.services.stopwatch_manager import (
     StopwatchManager,
     StopwatchAlreadyRunningError,
@@ -192,28 +192,39 @@ def stop_stopwatch(
         user_id = get_current_user_id()
         micro_mirror_view_id = None
         calibration_nudge_view_id = None
+        fired_at = now_utc()
         if micro_mirror:
-            row = ReflectionViewLog(
-                view_id=str(uuid4()),
+            emitted = emit_surface_render(
+                db,
+                surface_id="stopwatch.micro_mirror",
                 user_id=user_id,
-                reflection_type="micro_mirror",
                 task_id=task.task_id,
-                payload=micro_mirror,
-                fired_at=now_utc(),
+                content_snapshot=micro_mirror,
+                content_template_id="micro_mirror",
+                initiative="system",
+                trigger_source="stopwatch.stop",
+                eligible_at=fired_at,
+                rendered_at=fired_at,
+                create_legacy_view=True,
+                legacy_payload=micro_mirror,
             )
-            db.add(row)
-            micro_mirror_view_id = row.view_id
+            micro_mirror_view_id = emitted["legacy_view_id"]
         if calibration_nudge:
-            row = ReflectionViewLog(
-                view_id=str(uuid4()),
+            emitted = emit_surface_render(
+                db,
+                surface_id="stopwatch.calibration_nudge",
                 user_id=user_id,
-                reflection_type="calibration_nudge",
                 task_id=task.task_id,
-                payload=calibration_nudge,
-                fired_at=now_utc(),
+                content_snapshot=calibration_nudge,
+                content_template_id="calibration_nudge",
+                initiative="system",
+                trigger_source="stopwatch.stop",
+                eligible_at=fired_at,
+                rendered_at=fired_at,
+                create_legacy_view=True,
+                legacy_payload=calibration_nudge,
             )
-            db.add(row)
-            calibration_nudge_view_id = row.view_id
+            calibration_nudge_view_id = emitted["legacy_view_id"]
         if micro_mirror or calibration_nudge:
             db.commit()
 

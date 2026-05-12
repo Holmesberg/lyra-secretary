@@ -13,6 +13,7 @@ Best-effort delivery: research row commits first; notification enqueue
 is best-effort (failure logged, row stays committed).
 """
 import logging
+import json
 
 from app.db.models import (
     PauseEvent,
@@ -23,6 +24,7 @@ from app.db.models import (
     User,
 )
 from app.services.notification_queue import enqueue_user_notification
+from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
 from app.services.resume_predictor import (
     COOLDOWN_MINUTES,
     MAX_FIRES_PER_SESSION,
@@ -155,7 +157,7 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
         f"p75={prediction.p75_pause_minutes}"
     )
 
-    _enqueue_notification(user, row, task)
+    _enqueue_notification(db, user, row, task)
     # Operator fanout (2026-04-30 + 2026-05-01 escalation refinement):
     # message changes with fire-count so the user isn't getting the
     # same "your usual is X" line after they've blown past X by 5×.
@@ -191,7 +193,7 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
         )
 
 
-def _enqueue_notification(user: User, row: ResumePredictionLog, task: Task) -> None:
+def _enqueue_notification(db, user: User, row: ResumePredictionLog, task: Task) -> None:
     payload = {
         "type": "resume_prediction",
         "firing_id": row.firing_id,
@@ -206,7 +208,38 @@ def _enqueue_notification(user: User, row: ResumePredictionLog, task: Task) -> N
     }
     try:
         enqueue_user_notification(user.user_id, payload)
+        emit_surface_render(
+            db,
+            surface_id="worker.resume_prediction",
+            user_id=user.user_id,
+            task_id=row.task_id,
+            content_snapshot=json.dumps(payload, sort_keys=True),
+            content_template_id="resume_prediction",
+            initiative="system",
+            trigger_source="worker.resume_prediction",
+            eligible_at=row.fired_at,
+            rendered_at=row.fired_at,
+            data_snapshot_hash=str(row.firing_id),
+        )
+        db.commit()
     except Exception as e:
+        db.rollback()
+        try:
+            emit_surface_suppression(
+                db,
+                surface_id="worker.resume_prediction",
+                user_id=user.user_id,
+                task_id=row.task_id,
+                suppression_reason="notification_enqueue_failed",
+                content_template_id="resume_prediction",
+                trigger_source="worker.resume_prediction",
+                eligible_at=row.fired_at,
+                suppressed_at=row.fired_at,
+                generating_confidence=row.confidence,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
         logger.warning(
             f"resume_prediction: notification enqueue failed for "
             f"firing_id={row.firing_id} user_id={user.user_id}: {e}"

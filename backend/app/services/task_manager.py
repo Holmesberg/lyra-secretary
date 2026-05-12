@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 
 import logging
 
-from app.db.models import Task, TaskExecutionCorrection, TaskState, TaskSource, CategoryMapping, Deadline, CalibrationNudgeEvent, ReflectionViewLog, StopwatchSession
+from app.db.models import Task, TaskExecutionCorrection, TaskState, TaskSource, CategoryMapping, Deadline, CalibrationNudgeEvent, StopwatchSession
 from app.db.scoping import get_current_user_id
+from app.services.output_surfaces import emit_surface_render
 from app.services.parser import TaskParser, extract_scope_bullets, infer_deadline_binding
 from app.services.deadline_heuristic import score_deadlines
 from app.services.state_machine import StateMachine
@@ -426,21 +427,29 @@ class TaskManager:
                 if nudge_viewed_at is not None
                 else None
             )
-            self.db.add(ReflectionViewLog(
+            nudge_payload = (
+                f"creation_nudge: suggested={nudge_suggested_duration_minutes}min "
+                f"(bf={nudge_bias_factor:.2f}, n={nudge_sample_size}); "
+                f"user_planned={duration_minutes}min; outcome={outcome}"
+            )
+            emit_surface_render(
+                self.db,
+                surface_id="task.creation_nudge",
                 user_id=uid,
-                reflection_type="creation_nudge",
                 task_id=task.task_id,
-                payload=(
-                    f"creation_nudge: suggested={nudge_suggested_duration_minutes}min "
-                    f"(bf={nudge_bias_factor:.2f}, n={nudge_sample_size}); "
-                    f"user_planned={duration_minutes}min; outcome={outcome}"
-                ),
-                fired_at=nudge_viewed_at or created_at_ts,
-                viewed_at=nudge_viewed_at,
-                dismissed_at=created_at_ts,
-                dwell_seconds=dwell,
-                outcome=outcome,
-            ))
+                content_snapshot=nudge_payload,
+                content_template_id="creation_nudge",
+                initiative="system",
+                trigger_source="task.create",
+                eligible_at=nudge_viewed_at or created_at_ts,
+                rendered_at=nudge_viewed_at or created_at_ts,
+                create_legacy_view=True,
+                legacy_payload=nudge_payload,
+                legacy_viewed_at=nudge_viewed_at,
+                legacy_dismissed_at=created_at_ts,
+                legacy_dwell_seconds=dwell,
+                legacy_outcome=outcome,
+            )
         elif nudge_fields_present != 0:
             # Defensive — Pydantic schema already enforces all-or-none, but
             # internal callers (StopwatchManager.start unplanned-task path)

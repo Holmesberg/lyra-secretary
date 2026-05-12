@@ -23,10 +23,9 @@
  *
  * Display adapts to state:
  *   - NO archetype: "Take the survey in Settings to unlock" + link
- *   - Archetype assigned, < 5 EXECUTED sessions: "Settling in" copy
- *   - Archetype assigned, ≥ 5 EXECUTED total but < 3 in last 14d:
- *     "Get back into the rhythm" copy with assigned starting point
- *   - Archetype assigned, ≥ 3 in last 14d: full dynamic posterior view
+ *   - Archetype assigned, backend `ready=false`: backend-governed
+ *     settling/rhythm copy, with no behavioral proximity bars.
+ *   - Archetype assigned, backend `ready=true`: full dynamic posterior view.
  */
 import { useState } from "react";
 import { ChevronUp, Sigma } from "lucide-react";
@@ -34,7 +33,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import {
-  ARCHETYPE_LABELS,
   getArchetypeProximity,
   getArchetypeProximityTrend,
 } from "@/lib/archetype";
@@ -54,16 +52,8 @@ interface MeArchetype {
   archetype_id: string | null;
   archetype_assignment_completed: boolean;
   archetype_latest_assignment_at: string | null;
-  // MANIFESTO §VT-25: gate label reveal until ~5 EXECUTED sessions.
   executed_session_count: number;
 }
-
-// Threshold derived from MANIFESTO.md:810 + docs/building_phases.md:167:
-// "display archetype at session 5–7 with medium-confidence framing".
-// Picking 5 as the boundary keeps the gate tight; the "medium" caveat
-// covers 5–14, after which (v1.1, sessions 15-20) reclassification UI
-// surfaces if behavior diverges.
-const ARCHETYPE_REVEAL_MIN_SESSIONS = 5;
 
 interface BiasBlendSample {
   bias_factor_final?: number;
@@ -121,32 +111,6 @@ export function ArchetypeInsightsCard() {
     );
   }
 
-  // Pre-reveal gate: archetype assigned but the user hasn't logged
-  // enough EXECUTED sessions for the label to be load-bearing yet.
-  // MANIFESTO §VT-25: the survey can overfit transient state (sleep
-  // deprivation, finals stress, etc.); ~5 sessions of real behavior
-  // validate before naming.
-  const sessionCount = me.executed_session_count ?? 0;
-  if (sessionCount < ARCHETYPE_REVEAL_MIN_SESSIONS) {
-    const remaining = ARCHETYPE_REVEAL_MIN_SESSIONS - sessionCount;
-    return (
-      <Card>
-        <CardContent className="flex flex-col gap-3 p-5">
-          <div className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-            Settling in
-          </div>
-          <p className="text-sm leading-relaxed text-dust">
-            Lyra is using your survey as a starting point and watching
-            how you actually move through your day. After about{" "}
-            {remaining === 1 ? "one more session" : `${remaining} more sessions`},
-            you&apos;ll see a profile here that reflects both. Time
-            estimates are already personalizing in the background.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <DynamicProximityCard
       archetypeId={archetypeId}
@@ -197,22 +161,30 @@ function DynamicProximityCard({
   }
   if (!proximityQ.data) return null;
 
-  // Edge case: total session count crossed 5 (gate above), but the last
-  // 14 days has too few qualifying tasks to compute meaningful posterior.
-  // Fall back to a softer copy rather than showing uniform-looking bars.
-  if (proximityQ.data.n_tasks < 3) {
-    const startingLabel = ARCHETYPE_LABELS[archetypeId] ?? archetypeId;
+  // Backend readiness is authoritative. The frontend may choose copy for a
+  // display mode, but it must not invent readiness or render bars when the
+  // registered surface says this interpretation is still suppressed.
+  const backendSaysNotReady = proximityQ.data.ready === false;
+  if (backendSaysNotReady || proximityQ.data.n_tasks < 3) {
+    const eligibleCount =
+      proximityQ.data.eligible_sample_count ?? proximityQ.data.n_tasks ?? 0;
+    const minRequired = proximityQ.data.min_n_required ?? 3;
+    const remaining = Math.max(0, minRequired - eligibleCount);
+    const displayMode = proximityQ.data.display_mode ?? "settling_in";
+    const isSettlingIn = displayMode === "settling_in";
     return (
       <Card>
         <CardContent className="flex flex-col gap-3 p-5">
           <div className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-            Your pattern
+            {isSettlingIn ? "Settling in" : "Your pattern"}
           </div>
           <p className="text-sm leading-relaxed text-dust">
-            Lyra needs a few more recent sessions to show your current pattern.
-            Your starting point was <span className="text-parchment">{startingLabel}</span>{" "}
-            — check back here after a couple more executed tasks and
-            you&apos;ll see how today&apos;s rhythm compares.
+            {isSettlingIn
+              ? "Lyra is using your survey quietly in the background while it waits for observed sessions. "
+              : "Lyra needs a few more recent sessions before it can show behavioral proximity. "}
+            {remaining > 0
+              ? `After ${remaining === 1 ? "one more eligible session" : `${remaining} more eligible sessions`}, this card can compare recent traces without turning the survey into an identity label.`
+              : "The backend has not marked this surface ready yet, so Lyra is keeping the interpretation hidden for now."}
           </p>
         </CardContent>
       </Card>

@@ -9,7 +9,16 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.db.models import Archetype, Task, TaskSource, TaskState, User
+from app.db.models import (
+    Archetype,
+    ExposureDecisionEvent,
+    ExposureRenderEvent,
+    SuppressionEvent,
+    Task,
+    TaskSource,
+    TaskState,
+    User,
+)
 from app.db.scoping import set_current_user_id
 from app.main import app
 from tests.conftest import auth_headers
@@ -31,6 +40,9 @@ ARCHETYPE_PRIORS = [
 def _clean_slate(db):
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM exposure_render_event"))
+    db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM task"))
     db.execute(text("DELETE FROM \"user\""))
     db.execute(text("DELETE FROM archetype"))
@@ -38,6 +50,9 @@ def _clean_slate(db):
     yield
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM exposure_render_event"))
+    db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM task"))
     db.execute(text("DELETE FROM \"user\""))
     db.execute(text("DELETE FROM archetype"))
@@ -108,10 +123,35 @@ def test_proximity_returns_expected_shape(db, archetypes_seeded):
     assert "primary_metric" in body
     assert body["lookback_days"] == 14
     assert body["n_tasks"] == 1
+    assert body["surface_id"] == "analytics.archetype_proximity"
+    assert body["truth_class"] == "interpretation"
+    assert body["clean_profile"] == "planning_calibration"
+    assert body["eligible_sample_count"] == 1
+    assert body["min_n_required"] == 3
+    assert body["ready"] is False
+    assert body["display_mode"] == "settling_in"
+    assert body["suppressed_reason"] == "insufficient_clean_samples"
     assert len(body["proximity"]) == 5
     # Each row has the expected fields
     for row in body["proximity"]:
         assert set(row.keys()) >= {"archetype_id", "label", "score", "rank", "n_tasks"}
+
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(
+            ExposureDecisionEvent.user_id == user.user_id,
+            ExposureDecisionEvent.content_template_id == "analytics_archetype_proximity",
+        )
+        .one()
+    )
+    suppression = (
+        db.query(SuppressionEvent)
+        .filter(SuppressionEvent.exposure_id == decision.exposure_id)
+        .one()
+    )
+    assert decision.decision_status == "suppressed"
+    assert decision.exposure_category == "meta_inference"
+    assert suppression.suppression_reason == "insufficient_clean_samples"
 
 
 def test_proximity_no_tasks_returns_uniform(db, archetypes_seeded):
@@ -126,6 +166,53 @@ def test_proximity_no_tasks_returns_uniform(db, archetypes_seeded):
     assert body["n_tasks"] == 0
     for row in body["proximity"]:
         assert abs(row["score"] - 0.20) < 1e-9
+    assert body["ready"] is False
+    assert body["display_mode"] == "settling_in"
+    assert body["eligible_sample_count"] == 0
+    assert body["min_n_required"] == 3
+
+
+def test_proximity_ready_response_writes_render_event(db, archetypes_seeded):
+    user = _make_user(db, user_id=79, email="px-ready@example.com")
+    set_current_user_id(user.user_id)
+    for i in range(3):
+        _seed_executed_task(
+            db,
+            user.user_id,
+            planned=30,
+            executed=60,
+            category="work",
+            days_ago=i + 1,
+        )
+    set_current_user_id(None)
+
+    resp = client.get(
+        "/v1/analytics/archetype/proximity?days=14",
+        headers=auth_headers(user.user_id),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ready"] is True
+    assert body["display_mode"] == "behavioral_proximity"
+    assert body["eligible_sample_count"] == 3
+    assert body["suppressed_reason"] is None
+
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(
+            ExposureDecisionEvent.user_id == user.user_id,
+            ExposureDecisionEvent.content_template_id == "analytics_archetype_proximity",
+        )
+        .one()
+    )
+    render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
+        .one()
+    )
+    assert decision.decision_status == "rendered"
+    assert decision.exposure_category == "meta_inference"
+    assert render.surface == "analytics.archetype_proximity"
 
 
 # ── Authorization ────────────────────────────────────────────────
