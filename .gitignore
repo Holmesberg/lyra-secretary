@@ -47,6 +47,7 @@ data/
 .vscode/
 *.swp
 *.swo
+LyraOS/.obsidian/graph.json
 
 # Coverage/Testing
 .coverage
