@@ -7,6 +7,11 @@ from app.db.session import SessionLocal
 from app.db.models import User
 
 
+def _test_identity_header_enabled(request: Request) -> bool:
+    """Return true only when the test harness explicitly installed header auth."""
+    return bool(getattr(request.app.state, "allow_test_identity_header", False))
+
+
 def get_db(request: Request):
     """Yield a session AND set the per-request user scope.
 
@@ -25,6 +30,8 @@ def get_db(request: Request):
         raw = request.headers.get("X-User-Id")
         if raw is None:
             raise HTTPException(status_code=401, detail="not authenticated")
+        if not _test_identity_header_enabled(request):
+            raise HTTPException(status_code=401, detail="X-User-Id is test-only")
         try:
             user_id = int(raw)
         except ValueError:
@@ -58,6 +65,8 @@ def get_current_user(
     if existing_scope is not None:
         user_id = existing_scope
     elif x_user_id is not None:
+        if not _test_identity_header_enabled(request):
+            raise HTTPException(status_code=401, detail="X-User-Id is test-only")
         try:
             user_id = int(x_user_id)
         except ValueError:

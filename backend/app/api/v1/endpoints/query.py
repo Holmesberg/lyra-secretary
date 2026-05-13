@@ -328,7 +328,10 @@ def get_last_task(db: Session = Depends(get_db)):
     Returns 404 if no task was operated in the last hour.
     """
     redis = RedisClient()
-    last = redis.get_last_task(user_id=str(get_current_user_id() or 1))
+    uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    last = redis.get_last_task(user_id=str(uid))
     if not last:
         raise HTTPException(
             status_code=404,

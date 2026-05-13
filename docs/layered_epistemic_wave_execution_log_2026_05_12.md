@@ -720,3 +720,96 @@ manual -> runbook -> script -> test -> CI -> runtime enforcement
 Decision template now requires a `Complexity Admission` section before future
 kernel growth. The rollout checklist now explicitly calls for topology
 verification when browser evidence is used.
+
+## Immediate Recovery And Wave 5 Runtime Identity Authority
+
+Date: 2026-05-13.
+
+Runtime finding before recovery:
+
+- local backend was healthy at `http://localhost:8000/v1/health`.
+- frontend was not listening on `localhost:3000`.
+- `cloudflared` was not running.
+- public `https://lyraos.org` and `https://api.lyraos.org` returned Cloudflare
+  `530`.
+
+Recovery actions:
+
+- rebuilt and started the existing frontend on port `3000`.
+- started the existing Cloudflare tunnel `lyra-prod`.
+- did not change ports, hostnames, CORS policy, or API origins.
+- because `cloudflared` runs inside WSL, preserved the existing tunnel config by
+  adding a local WSL bridge from WSL `127.0.0.1:3000` to Windows
+  `172.24.96.1:3000`.
+- rebuilt the port-3000 frontend with public runtime topology before trusting
+  `.org` browser verification.
+
+Topology result:
+
+- `node scripts/verify_runtime_topology.mjs --topology public`: passed.
+- localhost intentionally reported `topology_class=mixed` while the public
+  bundle was served on port `3000`; this is expected during public verification
+  and is a successful split-brain alarm, not a pass condition for local.
+
+Wave 5 invariant:
+
+```text
+Bearer/JWT is the only runtime identity authority.
+X-User-Id is test harness plumbing only.
+Bearer scope always beats X-User-Id.
+No-auth plus X-User-Id fails closed outside the explicit test harness.
+```
+
+Code changes:
+
+- `backend/app/main.py`: `UserScopeMiddleware` rejects `X-User-Id` unless the
+  test harness explicitly enables `app.state.allow_test_identity_header`.
+- `backend/app/api/deps.py`: dependency-level `X-User-Id` fallback is also
+  test-harness-only.
+- `backend/tests/conftest.py`: pytest explicitly enables the test identity
+  header and its `get_db` override no longer overwrites an already-resolved
+  bearer scope.
+- `backend/app/api/v1/endpoints/query.py`: `/tasks/last` no longer falls back
+  to user `1` when identity is missing.
+- `backend/app/api/v1/endpoints/undo.py`: `/undo` no longer falls back to user
+  `1` when identity is missing.
+- `backend/tests/test_runtime_identity_authority.py`: new Wave 5 kernel
+  regression tests.
+
+Verification run:
+
+```powershell
+& "d:\Projects\Lyra Secretary v0.1\.venv311\Scripts\python.exe" -m pytest tests/test_runtime_identity_authority.py
+& "d:\Projects\Lyra Secretary v0.1\.venv311\Scripts\python.exe" -m pytest tests/test_last_task_and_undo_scoping.py tests/test_runtime_topology.py tests/test_config.py tests/test_output_surfaces.py
+node scripts/test_runtime_topology_contract.mjs
+node scripts/verify_runtime_topology.mjs --topology public
+```
+
+Results:
+
+- Wave 5 identity tests: `3 passed`.
+- scoped Redis/topology/config/output-surface tests: `23 passed`.
+- static topology contract: passed.
+- public topology verifier: passed for `https://lyraos.org` +
+  `https://api.lyraos.org`.
+
+Live runtime probes:
+
+- no-auth request with `X-User-Id: 1` returned `401`.
+- bearer token for Moriarty user `15` plus `X-User-Id: 1` resolved as user
+  `15`, never user `1`.
+
+Browser/API smoke after topology verification:
+
+- `asabryhafez@gmail.com`: `/users/me`, `/tasks/query`, `/deadlines`,
+  `/analytics/insights`, and `/analytics/archetype/proximity` returned `200`;
+  output-surface diagnostics returned operator-only `403`.
+- `moriartyholmesberg@gmail.com`: same smoke passed; user resolved as `15`;
+  output-surface diagnostics returned operator-only `403`.
+
+Remaining operational note:
+
+- To verify local topology again, restart the same port-3000 frontend with local
+  env values. Do not change the port. The verifier should then pass for
+  `--topology local` and fail for `--topology public` until the public bundle is
+  restored.

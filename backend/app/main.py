@@ -80,6 +80,11 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
         if not resolved:
             raw = request.headers.get("X-User-Id")
             if raw is not None:
+                if not bool(getattr(request.app.state, "allow_test_identity_header", False)):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "X-User-Id is test-only"},
+                    )
                 try:
                     user_id = int(raw)
                 except ValueError:

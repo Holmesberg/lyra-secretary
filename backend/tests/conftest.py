@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.deps import get_db
 from app.db.base import Base
-from app.db.scoping import set_current_user_id
+from app.db.scoping import get_current_user_id, set_current_user_id
 from app.main import app
 
 _STATE_MODULE = "_lyra_tests_shared_db_state"
@@ -52,16 +52,21 @@ def _request_user_id(request: Request) -> int:
 
 
 def _override_get_db(request: Request):
-    set_current_user_id(_request_user_id(request))
+    scope_set_here = False
+    if get_current_user_id() is None:
+        set_current_user_id(_request_user_id(request))
+        scope_set_here = True
     db = TestingSession()
     try:
         yield db
     finally:
-        set_current_user_id(None)
+        if scope_set_here:
+            set_current_user_id(None)
         db.close()
 
 
 def _install_test_overrides() -> None:
+    app.state.allow_test_identity_header = True
     app.dependency_overrides[get_db] = _override_get_db
 
 

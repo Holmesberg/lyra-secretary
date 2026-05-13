@@ -28,7 +28,10 @@ def undo_action(db: Session = Depends(get_db)) -> UndoResponse:
     """
     try:
         redis = RedisClient()
-        user_id = str(get_current_user_id() or 1)
+        uid = get_current_user_id()
+        if uid is None:
+            raise HTTPException(status_code=401, detail="not authenticated")
+        user_id = str(uid)
 
         # Get undo keys scoped to this user
         keys = redis.client.keys(f"undo:{user_id}:*")
