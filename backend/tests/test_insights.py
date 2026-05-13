@@ -121,6 +121,34 @@ def test_category_insights_require_multiple_categories():
     assert _insight_worst_category(tasks) is None
 
 
+def test_category_insights_quarantine_legacy_work_bucket():
+    tasks = (
+        [_task(delta=-2, category="work") for _ in range(5)]
+        + [_task(delta=-35, category="study") for _ in range(5)]
+        + [_task(delta=-80, category="academic") for _ in range(5)]
+    )
+
+    best = _insight_best_category(tasks)
+    worst = _insight_worst_category(tasks)
+
+    assert best is not None
+    assert "work tasks" not in best["observation"]
+    assert "study tasks" in best["observation"]
+    assert worst is not None
+    assert "work tasks" not in worst["observation"]
+    assert "academic tasks" in worst["observation"]
+
+
+def test_category_insights_suppress_when_only_legacy_work_and_one_clean_category():
+    tasks = (
+        [_task(delta=-2, category="work") for _ in range(5)]
+        + [_task(delta=-35, category="study") for _ in range(5)]
+    )
+
+    assert _insight_best_category(tasks) is None
+    assert _insight_worst_category(tasks) is None
+
+
 def _db_task(
     *,
     user_id: int,

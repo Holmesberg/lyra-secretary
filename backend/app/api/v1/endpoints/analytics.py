@@ -320,6 +320,27 @@ def _is_historical_task(task: Task) -> bool:
     return strip_tz(task.planned_start_utc) <= strip_tz(now_utc())
 
 
+LEGACY_CATEGORY_INSIGHT_QUARANTINE = {"work"}
+
+
+def _category_for_insight(task: Task) -> Optional[str]:
+    """Return a category only when it is safe for category-level claims.
+
+    `work` was an early default/fallback bucket used by frontend modals and
+    keyword mappings before category provenance existed. Until category
+    provenance is stored, it is too contaminated to support "best/worst
+    category" or profile-divergence claims.
+    """
+    category = (task.category or "").strip()
+    if not category:
+        return None
+    if category.lower() in LEGACY_CATEGORY_INSIGHT_QUARANTINE:
+        return None
+    if category.lower() == "uncategorized":
+        return None
+    return category
+
+
 def _not_started(task: Task) -> bool:
     return task.state == TaskState.SKIPPED or task.initiation_status == "abandoned"
 
@@ -434,10 +455,11 @@ def _insight_abandonment(tasks: list) -> Optional[dict]:
         tod_total[tod] += 1
         if _not_started(t):
             tod_ab[tod] += 1
-        if t.category:
-            cat_total[t.category] += 1
+        category = _category_for_insight(t)
+        if category:
+            cat_total[category] += 1
             if _not_started(t):
-                cat_ab[t.category] += 1
+                cat_ab[category] += 1
 
     best_tod = None
     for tod, tot in tod_total.items():
@@ -510,8 +532,9 @@ def _insight_best_category(tasks: list) -> Optional[dict]:
     """Most predictable task category."""
     cat_errors: dict[str, list[int]] = defaultdict(list)
     for t in tasks:
-        if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None and t.category:
-            cat_errors[t.category].append(abs(t.duration_delta_minutes))
+        category = _category_for_insight(t)
+        if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None and category:
+            cat_errors[category].append(abs(t.duration_delta_minutes))
 
     eligible = {
         cat: errors
@@ -546,8 +569,9 @@ def _insight_worst_category(tasks: list) -> Optional[dict]:
     """Least predictable task category - the bucket pulling estimation accuracy down."""
     cat_errors: dict[str, list[int]] = defaultdict(list)
     for t in tasks:
-        if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None and t.category:
-            cat_errors[t.category].append(abs(t.duration_delta_minutes))
+        category = _category_for_insight(t)
+        if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None and category:
+            cat_errors[category].append(abs(t.duration_delta_minutes))
 
     eligible = {
         cat: errors
@@ -760,15 +784,15 @@ def _insight_archetype_divergence(
     from collections import defaultdict
     cat_ratios: dict[str, list[tuple[int, int]]] = defaultdict(list)
     for t in tasks:
+        category = _category_for_insight(t)
         if (
             t.state != TaskState.EXECUTED
             or t.executed_duration_minutes is None
             or not t.planned_duration_minutes
-            or t.category is None
-            or t.category == "uncategorized"
+            or category is None
         ):
             continue
-        cat_ratios[t.category].append(
+        cat_ratios[category].append(
             (t.planned_duration_minutes, t.executed_duration_minutes)
         )
 
@@ -845,16 +869,16 @@ def _insight_calibration_maturation(
     from collections import defaultdict
     cell_counts: dict[tuple[str, str], int] = defaultdict(int)
     for t in tasks:
+        category = _category_for_insight(t)
         if (
             t.state != TaskState.EXECUTED
             or t.executed_duration_minutes is None
             or not t.planned_duration_minutes
-            or t.category is None
-            or t.category == "uncategorized"
+            or category is None
         ):
             continue
         tod = _time_of_day(to_local(t.planned_start_utc))
-        cell_counts[(t.category, tod)] += 1
+        cell_counts[(category, tod)] += 1
 
     # Cells where personal_weight ≥ 0.5 (i.e., n ≥ 15).
     mature_cells = [

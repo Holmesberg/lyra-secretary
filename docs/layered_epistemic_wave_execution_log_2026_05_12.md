@@ -1278,3 +1278,44 @@ Notes:
 - localhost still reports mixed topology because the running port-3000 public
   bundle is intentionally compiled for `.org`; browser verification used the
   verified public topology.
+
+## Insights Category Contamination Hotfix
+
+Date: 2026-05-13.
+
+Finding:
+
+- The rewritten Insights tab surfaced "work tasks were closest to plan" for
+  the operator account.
+- Direct inspection showed `work` was not a stable user-intended category. It
+  contained early-April defaults, test rows, and legacy fallback rows such as
+  `Quick unplanned task`, `debug session`, `feature session`, `test`, and
+  `F-completion test`.
+- Current category mappings now classify many of those titles as
+  `development`, but historical rows were not backfilled and no category
+  provenance column exists yet.
+
+Decision:
+
+- Treat `work` as a legacy contaminated category bucket for category-level
+  insight claims until category provenance exists.
+- Keep the underlying execution traces eligible for non-category metrics such
+  as time-of-day, initiation delay, readiness comparison, and estimation trend.
+- Quarantine `work` only from category synthesis surfaces:
+  `best_category`, `worst_category`, category branch of `abandonment_pattern`,
+  `archetype_divergence`, and `calibration_maturation`.
+
+Verification:
+
+```powershell
+$env:PYTHONPATH='.'
+..\.venv311\Scripts\python.exe -m pytest tests/test_insights.py
+node scripts/verify_runtime_topology.mjs --topology public
+```
+
+Results:
+
+- focused insights tests: passed.
+- public topology verifier: passed.
+- local operator API payload no longer emitted a `work tasks` category claim;
+  closest-category output shifted to `planning tasks`.
