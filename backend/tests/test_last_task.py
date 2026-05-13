@@ -7,7 +7,7 @@ from app.main import app
 from app.db.models import Task, TaskState, TaskSource
 from app.utils.time_utils import now_utc
 from datetime import timedelta
-from tests.conftest import TestingSession
+from tests.conftest import TestingSession, auth_headers
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -15,7 +15,7 @@ client = TestClient(app, raise_server_exceptions=False)
 def test_last_task_404_when_no_recent_operation():
     with patch("app.api.v1.endpoints.query.RedisClient") as mock_redis_cls:
         mock_redis_cls.return_value.get_last_task.return_value = None
-        r = client.get("/v1/tasks/last")
+        r = client.get("/v1/tasks/last", headers=auth_headers(1))
     assert r.status_code == 404
 
 
@@ -38,7 +38,7 @@ def test_last_task_returns_task_info():
     redis_data = {"task_id": "test-last-001", "title": "Write tests", "state": "PLANNED"}
     with patch("app.api.v1.endpoints.query.RedisClient") as mock_redis_cls:
         mock_redis_cls.return_value.get_last_task.return_value = redis_data
-        r = client.get("/v1/tasks/last")
+        r = client.get("/v1/tasks/last", headers=auth_headers(1))
 
     assert r.status_code == 200
     data = r.json()

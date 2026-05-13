@@ -813,3 +813,12 @@ Remaining operational note:
   env values. Do not change the port. The verifier should then pass for
   `--topology local` and fail for `--topology public` until the public bundle is
   restored.
+
+CI correction:
+
+- Initial Wave 5 push failed CI because `tests/test_last_task.py` still called
+  `/v1/tasks/last` without an explicit identity and therefore relied on the old
+  user-`1` fallback.
+- The correction updated that legacy test to use the explicit pytest identity
+  harness via `auth_headers(1)`.
+- Runtime behavior was not loosened; no-auth `/tasks/last` remains fail-closed.
