@@ -9,24 +9,46 @@ from uuid import uuid4
 from app.db.models import ExposureDecisionEvent, SuppressionEvent, Task, TaskState, User
 from app.api.v1.endpoints import analytics as analytics_module
 from app.api.v1.endpoints.analytics import (
+    _insight_abandonment,
+    _insight_best_category,
     _insight_discrepancy_signal,
+    _insight_pause_pattern,
+    _insight_readiness,
     _insight_time_of_day,
+    _insight_worst_category,
 )
 from app.utils.time_utils import now_utc
 from tests.conftest import auth_headers
 from datetime import timedelta
 
 
-def _task(delta=None, disc_score=None, pre=None, post=None, state=TaskState.EXECUTED, tod_hour=9):
+def _task(
+    delta=None,
+    disc_score=None,
+    pre=None,
+    post=None,
+    state=TaskState.EXECUTED,
+    tod_hour=9,
+    category="study",
+    initiation_status="started",
+    pause_count=0,
+):
     t = MagicMock(spec=Task)
     t.state = state
     t.duration_delta_minutes = delta
     t.discrepancy_score = disc_score
     t.pre_task_readiness = pre
     t.post_task_reflection = post
-    t.planned_start_utc = now_utc().replace(hour=tod_hour, minute=0, second=0)
+    t.planned_start_utc = (now_utc() - timedelta(days=1)).replace(
+        hour=tod_hour,
+        minute=0,
+        second=0,
+    )
     t.executed_end_utc = t.planned_start_utc + timedelta(minutes=60)
     t.executed_duration_minutes = 60 if delta is not None else None
+    t.category = category
+    t.initiation_status = initiation_status
+    t.pause_count = pause_count
     return t
 
 
@@ -68,6 +90,37 @@ def test_time_of_day_requires_3_sessions():
     assert result is None
 
 
+def test_rewritten_insight_copy_avoids_identity_language():
+    readiness = _insight_readiness(
+        [_task(delta=-5, pre=2) for _ in range(3)]
+        + [_task(delta=-40, pre=5) for _ in range(3)]
+    )
+    assert readiness is not None
+    assert "ability claim" in readiness["observation"]
+    assert "outperform" not in readiness["observation"]
+
+    abandonment = _insight_abandonment(
+        [_task(state=TaskState.SKIPPED, initiation_status="abandoned", tod_hour=22) for _ in range(5)]
+    )
+    assert abandonment is not None
+    assert "were not started" in abandonment["observation"]
+    assert "abandon" not in abandonment["observation"].lower()
+
+    pause = _insight_pause_pattern(
+        [_task(pause_count=2) for _ in range(3)]
+        + [_task(pause_count=0) for _ in range(2)]
+    )
+    assert pause is not None
+    assert "Recorded pauses" in pause["observation"]
+    assert "interruptions" not in pause["observation"]
+
+
+def test_category_insights_require_multiple_categories():
+    tasks = [_task(delta=-30, category="academic") for _ in range(4)]
+    assert _insight_best_category(tasks) is None
+    assert _insight_worst_category(tasks) is None
+
+
 def _db_task(
     *,
     user_id: int,
@@ -99,9 +152,11 @@ def _db_task(
 class _FakeRedis:
     def __init__(self):
         self.client = self
+        self.keys: set[str] = set()
+        self.setex_calls: list[tuple[str, int, str]] = []
 
-    def exists(self, *_args, **_kwargs):
-        return False
+    def exists(self, key, *_args, **_kwargs):
+        return key in self.keys
 
     def sismember(self, *_args, **_kwargs):
         return False
@@ -111,6 +166,30 @@ class _FakeRedis:
 
     def expire(self, *_args, **_kwargs):
         return None
+
+    def setex(self, key, ttl, value):
+        self.keys.add(key)
+        self.setex_calls.append((key, ttl, value))
+        return None
+
+
+def _db_planned_not_started_task(
+    *,
+    user_id: int,
+    planned_start,
+    category: str = "study",
+) -> Task:
+    return Task(
+        title=f"Task {uuid4()}",
+        user_id=user_id,
+        category=category,
+        planned_start_utc=planned_start,
+        planned_end_utc=planned_start + timedelta(minutes=60),
+        planned_duration_minutes=60,
+        state=TaskState.SKIPPED,
+        initiation_status="abandoned",
+        created_at=planned_start - timedelta(days=1),
+    )
 
 
 def test_insights_endpoint_only_returns_contract_safe_generators(
@@ -146,10 +225,11 @@ def test_insights_endpoint_only_returns_contract_safe_generators(
         "_eligible_tasks_for_surface",
         lambda _db, tasks, _surface_id: tasks,
     )
-    monkeypatch.setattr(analytics_module, "RedisClient", lambda: _FakeRedis())
+    fake_redis = _FakeRedis()
+    monkeypatch.setattr(analytics_module, "RedisClient", lambda: fake_redis)
 
     response = client.get(
-        "/v1/analytics/insights",
+        "/v1/analytics/insights?auto_mark=true",
         headers=auth_headers(user.user_id),
     )
     assert response.status_code == 200
@@ -158,24 +238,36 @@ def test_insights_endpoint_only_returns_contract_safe_generators(
     ids = {insight["id"] for insight in payload["insights"]}
     assert "estimation_accuracy_trend" in ids
     assert "initiation_delay" in ids
+    assert "time_of_day_bias" in ids
     assert ids <= {
         "estimation_accuracy_trend",
         "initiation_delay",
         "retroactive_rate",
+        "time_of_day_bias",
+        "readiness_predicts_outcome",
+        "abandonment_pattern",
+        "best_category",
+        "worst_category",
+        "discrepancy_signal",
+        "pause_pattern",
+        "morning_anchor_cascade",
+        "archetype_divergence",
+        "calibration_maturation",
     }
-    assert "time_of_day_bias" not in ids
     assert payload["surface_id"] == "analytics.insights"
-    assert payload["truth_class"] == "metric"
+    assert payload["truth_class"] == "interpretation"
     assert payload["clean_profile"] == "planning_calibration"
     assert payload["eligible_sample_count"] == 10
+    assert all(
+        key.startswith(f"insight_shown:{user.user_id}:")
+        for key, _ttl, _value in fake_redis.setex_calls
+    )
 
     suppressed = {
         row["id"]: row
         for row in payload["suppressed_generators"]
     }
-    assert suppressed["time_of_day_bias"]["suppressed_reason"] == "requires_insights_rewrite"
-    assert suppressed["time_of_day_bias"]["owner"] == "Insights Rewrite"
-    assert suppressed["time_of_day_bias"]["deadline"] == "Wave 3"
+    assert suppressed == {}
 
     decision = (
         db.query(ExposureDecisionEvent)
@@ -233,7 +325,7 @@ def test_insights_endpoint_scopes_before_sample_gate_and_reports_suppression(
     assert payload["sessions_analyzed"] == 1
     assert payload["eligible_sample_count"] == 1
     assert payload["suppressed_reason"] == "insufficient_clean_samples"
-    assert payload["suppressed_generators"][0]["owner"] == "Insights Rewrite"
+    assert payload["suppressed_generators"] == []
 
     decision = (
         db.query(ExposureDecisionEvent)
@@ -252,3 +344,50 @@ def test_insights_endpoint_scopes_before_sample_gate_and_reports_suppression(
         .one()
     )
     assert suppression.suppression_reason == "insufficient_clean_samples"
+
+
+def test_insights_endpoint_can_render_planning_history_without_executed_sessions(
+    db, client, monkeypatch
+):
+    user = User(email=f"insights-planning-history-{uuid4()}@example.com")
+    db.add(user)
+    db.flush()
+
+    base = (now_utc() - timedelta(days=10)).replace(hour=22, minute=0, second=0)
+    db.add_all(
+        [
+            _db_planned_not_started_task(
+                user_id=user.user_id,
+                planned_start=base + timedelta(days=i),
+                category="study",
+            )
+            for i in range(6)
+        ]
+    )
+    db.commit()
+
+    monkeypatch.setattr(
+        analytics_module,
+        "_eligible_tasks_for_surface",
+        lambda _db, tasks, _surface_id: tasks,
+    )
+    monkeypatch.setattr(analytics_module, "RedisClient", lambda: _FakeRedis())
+
+    response = client.get(
+        "/v1/analytics/insights",
+        headers=auth_headers(user.user_id),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+
+    ids = {insight["id"] for insight in payload["insights"]}
+    assert payload["ready"] is True
+    assert payload["sessions_analyzed"] == 0
+    assert payload["history_events_analyzed"] == 6
+    assert "abandonment_pattern" in ids
+    abandonment = next(
+        insight for insight in payload["insights"]
+        if insight["id"] == "abandonment_pattern"
+    )
+    assert abandonment["truth_class"] == "interpretation"
+    assert "were not started" in abandonment["observation"]

@@ -297,7 +297,7 @@ def test_emit_surface_suppression_writes_decision_and_suppression(db):
         .one()
     )
 
-    assert emitted["truth_class"] == "metric"
+    assert emitted["truth_class"] == "interpretation"
     assert emitted["usage_class"] == "product"
     assert emitted["fallback_mode"] == "empty"
     assert decision.decision_status == "suppressed"

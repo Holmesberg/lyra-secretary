@@ -114,7 +114,7 @@
       "salience_level": "medium"
     },
     "analytics.insights": {
-      "truth_class": "metric",
+      "truth_class": "interpretation",
       "usage_class": "product",
       "channel": "dashboard_page",
       "exposure_category": "behavioral_insight",

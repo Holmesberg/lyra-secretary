@@ -1183,3 +1183,98 @@ Runtime state:
 - no backend topology settings changed.
 - no auth, CORS, port, hostname, output-surface registry, exposure, or
   truth-class enforcement was loosened.
+
+## Insights Rewrite: Rich Patterns From Actual User Data
+
+Date: 2026-05-13.
+
+Scope:
+
+- shipped the Wave 3 suppressed insight bucket instead of leaving it
+  indefinitely held for rewrite.
+- kept `/v1/analytics/insights` inside the registry/emission path.
+- did not change ports, hostnames, CORS, auth semantics, topology, or render
+  acknowledgement behavior.
+
+Implementation:
+
+- rewrote previously suppressed generators with safer metric/descriptive copy:
+  - time-of-day estimate deltas,
+  - readiness self-report versus estimation error,
+  - not-started planning history,
+  - best/worst category estimation error,
+  - readiness/reflection discrepancy comparison,
+  - recorded pause frequency,
+  - morning-plan not-started cascade,
+  - starting-profile drift,
+  - calibration maturation.
+- planning-history insights may now render from `descriptive_history` even when
+  a user has zero executed sessions; execution insights still require their own
+  clean eligible samples.
+- changed the parent `analytics.insights` surface `truth_class` from `metric`
+  to `interpretation` because the rendered page can now contain interpretive
+  child cards.
+- fixed insight seen-state from global `insight_shown:{insight_id}` to
+  user-scoped `insight_shown:{user_id}:{insight_id}`.
+- frontend labels now frame `abandonment_pattern` as "Not started",
+  `morning_anchor_cascade` as "Morning plan", and
+  `archetype_divergence` as "Starting profile drift".
+
+Focused verification:
+
+```powershell
+$env:PYTHONPATH='.'
+..\.venv311\Scripts\python.exe -m pytest tests/test_insights.py tests/test_output_surfaces.py tests/test_analytics_archetype_proximity.py
+npx tsc --noEmit
+```
+
+Results:
+
+- focused backend tests: `34 passed`.
+- TypeScript: passed.
+
+Full verification:
+
+```powershell
+$env:PYTHONPATH='.'
+..\.venv311\Scripts\python.exe -m pytest tests/
+npm run build
+node scripts/verify_runtime_topology.mjs --topology public
+```
+
+Results:
+
+- full backend CI-equivalent: `759 passed, 1 xfailed`.
+- production frontend build: passed.
+- public topology verifier: passed for `https://lyraos.org` +
+  `https://api.lyraos.org`.
+
+Browser/API verification after topology verification:
+
+- `asabryhafez@gmail.com`: `/insights` loaded; `/users/me` resolved user `16`;
+  `/analytics/insights` returned `2` insight cards:
+  `abandonment_pattern`, `morning_anchor_cascade`; `sessions_analyzed=0`,
+  `history_events_analyzed=10`, `truth_class=interpretation`, and
+  `suppressed_generators=0`; proximity returned `200`; diagnostics remained
+  operator-only `403`.
+- `moriartyholmesberg@gmail.com`: `/insights` loaded; `/users/me` resolved user
+  `15`; `/analytics/insights` returned `2` insight cards:
+  `abandonment_pattern`, `morning_anchor_cascade`; `sessions_analyzed=0`,
+  `history_events_analyzed=40`, `truth_class=interpretation`, and
+  `suppressed_generators=0`; proximity returned `200`; diagnostics remained
+  operator-only `403`.
+- operator account: `/insights` loaded; `/users/me` resolved user `1`;
+  `/analytics/insights` returned `9` insight cards:
+  `worst_category`, `best_category`, `time_of_day_bias`,
+  `abandonment_pattern`, `pause_pattern`, `archetype_divergence`,
+  `estimation_accuracy_trend`, `initiation_delay`,
+  `readiness_predicts_outcome`; `sessions_analyzed=42`,
+  `truth_class=interpretation`, and `suppressed_generators=0`.
+
+Notes:
+
+- a `403` resource line appeared in browser console capture only from the
+  intentional non-operator diagnostics check.
+- localhost still reports mixed topology because the running port-3000 public
+  bundle is intentionally compiled for `.org`; browser verification used the
+  verified public topology.

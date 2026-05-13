@@ -570,6 +570,7 @@ export interface SuppressedInsightGenerator {
 export interface InsightsResponse {
   insights: Insight[];
   sessions_analyzed: number;
+  history_events_analyzed?: number;
   min_sessions_required: number;
   ready: boolean;
   surface_id?: string;

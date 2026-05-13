@@ -26,19 +26,19 @@ const CONFIDENCE_STYLE: Record<string, { label: string; text: string }> = {
 const ID_LABELS: Record<string, string> = {
   time_of_day_bias: "Time of day",
   readiness_predicts_outcome: "Readiness signal",
-  abandonment_pattern: "Abandonment",
+  abandonment_pattern: "Not started",
   estimation_accuracy_trend: "Estimation trend",
   best_category: "Best category",
   worst_category: "Worst category",
   discrepancy_signal: "Discrepancy",
   pause_pattern: "Pause pattern",
-  morning_anchor_cascade: "Morning cascade",
+  morning_anchor_cascade: "Morning plan",
   retroactive_rate: "Retroactive rate",
   initiation_delay: "Start delay",
   // Archetype-aware emergent patterns (2026-04-22 clustering ship).
   // Fire after archetype is assigned and user has enough per-cell
   // personal data to compare against the archetype prior.
-  archetype_divergence: "Archetype fit",
+  archetype_divergence: "Starting profile drift",
   calibration_maturation: "Personal calibration",
 };
 
@@ -256,6 +256,10 @@ export default function InsightsPage() {
 
   const insights = data.insights;
   const suppressedGenerators = data.suppressed_generators ?? [];
+  const analyzedLabel =
+    data.sessions_analyzed > 0
+      ? `${data.sessions_analyzed} sessions analyzed`
+      : `${data.history_events_analyzed ?? data.eligible_sample_count ?? 0} history events read`;
   const featured = insights.find(
     (i) => i.confidence === "high" && i.data_points >= 15
   );
@@ -271,7 +275,7 @@ export default function InsightsPage() {
           Insights
         </h1>
         <span className="font-mono text-[10px] uppercase tracking-widest text-dust">
-          {data.sessions_analyzed} sessions analyzed
+          {analyzedLabel}
         </span>
       </div>
 

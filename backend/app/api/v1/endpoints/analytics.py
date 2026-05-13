@@ -312,12 +312,24 @@ def _median(vals: list[float]) -> float:
     return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2
 
 
+def _abs_minutes(value: float) -> int:
+    return int(round(abs(value)))
+
+
+def _is_historical_task(task: Task) -> bool:
+    return strip_tz(task.planned_start_utc) <= strip_tz(now_utc())
+
+
+def _not_started(task: Task) -> bool:
+    return task.state == TaskState.SKIPPED or task.initiation_status == "abandoned"
+
+
 # ---------------------------------------------------------------------------
 # Individual insight generators — each returns a dict or None
 # ---------------------------------------------------------------------------
 
 def _insight_time_of_day(tasks: list) -> Optional[dict]:
-    """Time-of-day bias in delta_minutes. Picks the TOD with max |avg delta|."""
+    """Time-of-day estimate delta. Picks the TOD with max |avg delta|."""
     buckets: dict[str, list[int]] = defaultdict(list)
     for t in tasks:
         if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None:
@@ -336,70 +348,95 @@ def _insight_time_of_day(tasks: list) -> Optional[dict]:
         return None
     tod, avg, n = best
     if avg > 0:  # delta = planned - executed; positive avg = finished early
-        obs = f"You consistently finish {tod} tasks {round(avg)} min early — you may be overplanning them."
+        obs = (
+            f"In this window, {tod} executed tasks finished "
+            f"{_abs_minutes(avg)} min under plan on average."
+        )
     else:
-        obs = f"Your {tod} tasks run an average of {round(abs(avg))} min over plan."
+        obs = (
+            f"In this window, {tod} executed tasks ran "
+            f"{_abs_minutes(avg)} min over plan on average."
+        )
     return _insight("time_of_day_bias", obs, n, strength=abs(avg))
 
 
 def _insight_readiness(tasks: list) -> Optional[dict]:
-    """Pre-task readiness vs delta — median split, always emits when computable."""
+    """Self-reported readiness compared with absolute estimation error."""
     pairs = [
-        (t.pre_task_readiness, t.duration_delta_minutes)
+        (t.pre_task_readiness, abs(t.duration_delta_minutes))
         for t in tasks
         if t.pre_task_readiness is not None and t.duration_delta_minutes is not None
     ]
     if len(pairs) < 6:
         return None
 
-    med = _median([p[0] for p in pairs])
-    low = [d for r, d in pairs if r < med]
-    high = [d for r, d in pairs if r > med]
+    low = [error for readiness, error in pairs if readiness <= 2]
+    high = [error for readiness, error in pairs if readiness >= 4]
+    low_label = "1-2"
+    high_label = "4-5"
+    if len(low) < 3 or len(high) < 3:
+        med = _median([p[0] for p in pairs])
+        low = [error for readiness, error in pairs if readiness < med]
+        high = [error for readiness, error in pairs if readiness > med]
+        low_label = f"below {med:g}"
+        high_label = f"above {med:g}"
     if len(low) < 3 or len(high) < 3:
         return None
 
-    avg_low = _avg(low)
-    avg_high = _avg(high)
-    diff = avg_low - avg_high  # positive = low-readiness sessions overrun more (delta smaller)
+    avg_low_error = _avg(low)
+    avg_high_error = _avg(high)
+    diff = avg_low_error - avg_high_error
     n = len(low) + len(high)
 
     if abs(diff) < 5:
         return _insight(
             "readiness_predicts_outcome",
-            "Your readiness rating doesn't track execution time — your starting state isn't predicting outcomes.",
+            (
+                "In rated sessions, lower and higher readiness starts landed "
+                f"within {_abs_minutes(diff)} min of each other on estimation error."
+            ),
             n,
             strength=abs(diff),
         )
     if diff > 0:
         return _insight(
             "readiness_predicts_outcome",
-            f"When you start sharp, you finish {round(abs(diff))} min closer to plan than when drained.",
+            (
+                f"In rated sessions, readiness {high_label} landed "
+                f"{_abs_minutes(diff)} min closer to plan than readiness {low_label}."
+            ),
             n,
             strength=abs(diff),
         )
     return _insight(
         "readiness_predicts_outcome",
-        f"When you start drained, you actually finish {round(abs(diff))} min closer to plan — your low-readiness sessions outperform your sharp ones.",
+        (
+            f"In rated sessions, readiness {low_label} landed "
+            f"{_abs_minutes(diff)} min closer to plan than readiness {high_label}. "
+            "This is a self-report comparison, not an ability claim."
+        ),
         n,
         strength=abs(diff),
     )
 
 
 def _insight_abandonment(tasks: list) -> Optional[dict]:
-    """Abandonment rate by TOD and category. Threshold 20%."""
+    """Not-started planned-task rate by TOD and category."""
     tod_total: dict[str, int] = defaultdict(int)
     tod_ab: dict[str, int] = defaultdict(int)
     cat_total: dict[str, int] = defaultdict(int)
     cat_ab: dict[str, int] = defaultdict(int)
 
     for t in tasks:
+        if not _is_historical_task(t) or t.state == TaskState.DELETED:
+            continue
         tod = _time_of_day(to_local(t.planned_start_utc))
         tod_total[tod] += 1
-        if t.initiation_status == "abandoned":
+        if _not_started(t):
             tod_ab[tod] += 1
         if t.category:
             cat_total[t.category] += 1
-            if t.initiation_status == "abandoned":
+            if _not_started(t):
                 cat_ab[t.category] += 1
 
     best_tod = None
@@ -430,11 +467,16 @@ def _insight_abandonment(tasks: list) -> Optional[dict]:
         return None
 
     label, rate, n = pick
+    not_started = (
+        tod_ab.get(label, 0)
+        if kind == "tod"
+        else cat_ab.get(label, 0)
+    )
     pct = round(rate * 100)
     obs = (
-        f"You abandon {pct}% of your {label} tasks before starting them."
+        f"In this window, {not_started}/{n} planned {label} tasks were not started ({pct}%)."
         if kind == "tod"
-        else f"Your {label} tasks are your most abandoned — {pct}% never start."
+        else f"In this window, {not_started}/{n} {label} tasks were not started ({pct}%)."
     )
     return _insight("abandonment_pattern", obs, n, strength=rate * 100)
 
@@ -471,46 +513,68 @@ def _insight_best_category(tasks: list) -> Optional[dict]:
         if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None and t.category:
             cat_errors[t.category].append(abs(t.duration_delta_minutes))
 
-    best_cat, best_avg, best_n = None, float("inf"), 0
+    eligible = {
+        cat: errors
+        for cat, errors in cat_errors.items()
+        if len(errors) >= 3
+    }
+    if len(eligible) < 2:
+        return None
+
+    best_cat, best_median, best_n = None, float("inf"), 0
     for cat, errors in cat_errors.items():
         if len(errors) < 3:
             continue
-        avg = _avg(errors)
-        if avg < best_avg:
-            best_cat, best_avg, best_n = cat, avg, len(errors)
+        median_error = _median(errors)
+        if median_error < best_median:
+            best_cat, best_median, best_n = cat, median_error, len(errors)
 
     if best_cat is None:
         return None
     return _insight(
         "best_category",
-        f"Your {best_cat} tasks are your most predictable — avg {round(best_avg)} min from plan.",
+        (
+            f"Among categories with enough data, {best_cat} tasks were closest "
+            f"to plan: median error {_abs_minutes(best_median)} min across {best_n} sessions."
+        ),
         best_n,
-        strength=max(0.0, 60.0 - best_avg),  # closer to plan = stronger insight
+        strength=max(0.0, 60.0 - best_median),  # closer to plan = stronger insight
     )
 
 
 def _insight_worst_category(tasks: list) -> Optional[dict]:
-    """Least predictable task category — the bucket pulling estimation accuracy down."""
+    """Least predictable task category - the bucket pulling estimation accuracy down."""
     cat_errors: dict[str, list[int]] = defaultdict(list)
     for t in tasks:
         if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None and t.category:
             cat_errors[t.category].append(abs(t.duration_delta_minutes))
 
-    worst_cat, worst_avg, worst_n = None, 0.0, 0
+    eligible = {
+        cat: errors
+        for cat, errors in cat_errors.items()
+        if len(errors) >= 3
+    }
+    if len(eligible) < 2:
+        return None
+
+    worst_cat, worst_median, worst_n = None, 0.0, 0
     for cat, errors in cat_errors.items():
         if len(errors) < 3:
             continue
-        avg = _avg(errors)
-        if avg > worst_avg:
-            worst_cat, worst_avg, worst_n = cat, avg, len(errors)
+        median_error = _median(errors)
+        if median_error > worst_median:
+            worst_cat, worst_median, worst_n = cat, median_error, len(errors)
 
-    if worst_cat is None or worst_avg < 20:
+    if worst_cat is None or worst_median < 20:
         return None
     return _insight(
         "worst_category",
-        f"Your {worst_cat} tasks are your least predictable — avg {round(worst_avg)} min from plan.",
+        (
+            f"Among categories with enough data, {worst_cat} tasks had the "
+            f"widest planning error: median {_abs_minutes(worst_median)} min from plan."
+        ),
         worst_n,
-        strength=worst_avg,
+        strength=worst_median,
     )
 
 
@@ -544,9 +608,15 @@ def _insight_discrepancy_signal(tasks: list) -> Optional[dict]:
         return None
     pct = round((ratio - 1) * 100)
     if pct > 0:
-        obs = f"On sessions where your cognitive state shifted most, your execution error was {pct}% higher."
+        obs = (
+            "Where readiness/reflection ratings shifted most, estimation error "
+            f"was {pct}% higher in this window."
+        )
     else:
-        obs = f"On sessions where your cognitive state shifted most, your execution error was actually {abs(pct)}% lower — interesting."
+        obs = (
+            "Where readiness/reflection ratings shifted most, estimation error "
+            f"was {abs(pct)}% lower in this window."
+        )
     return _insight("discrepancy_signal", obs, n, strength=abs(pct))
 
 
@@ -563,7 +633,10 @@ def _insight_pause_pattern(tasks: list) -> Optional[dict]:
     pct = round(rate * 100)
     return _insight(
         "pause_pattern",
-        f"You pause on {pct}% of your sessions — averaging {avg_pauses} interruptions when you do.",
+        (
+            f"Recorded pauses appeared in {pct}% of executed sessions; "
+            f"paused sessions averaged {avg_pauses} pause events."
+        ),
         len(executed),
         strength=rate * 100,
     )
@@ -604,8 +677,12 @@ def _insight_morning_anchor(tasks: list) -> Optional[dict]:
     pct = round(cascade_rate * 100)
     return _insight(
         "morning_anchor_cascade",
-        f"When you skip your first morning task, {pct}% of the rest of that day collapses with it.",
-        days_with_morning,
+        (
+            "On days where the first task before 9 AM was not started, "
+            f"later planned tasks were also mostly not started on "
+            f"{morning_skip_cascade}/{morning_skipped_days} days ({pct}%)."
+        ),
+        morning_skipped_days,
         strength=cascade_rate * 100,
     )
 
@@ -642,7 +719,7 @@ def _insight_initiation_delay(tasks: list) -> Optional[dict]:
     if avg > 0:
         obs = f"On average you start tasks {round(avg)} min after their scheduled time."
     else:
-        obs = f"On average you start tasks {round(abs(avg))} min before their scheduled time — your plan is lagging behind your reality."
+        obs = f"On average you start tasks {round(abs(avg))} min before their scheduled time."
     return _insight("initiation_delay", obs, len(delays), strength=abs(avg))
 
 
@@ -739,10 +816,9 @@ def _insight_archetype_divergence(
 
     direction = "below" if best_personal < best_prior else "above"
     obs = (
-        f"On {best_cat} tasks you're running {_fmt(personal_pct)} — "
-        f"{direction} your archetype's prior ({_fmt(prior_pct)}). "
-        f"Your personal data is pulling the blended prediction away "
-        f"from the cohort average."
+        f"On {best_cat} tasks, trace data is {_fmt(personal_pct)}, "
+        f"{direction} the starting profile prior ({_fmt(prior_pct)}). "
+        "Treat this as calibration drift, not an identity label."
     )
     return _insight(
         "archetype_divergence",
@@ -795,11 +871,9 @@ def _insight_calibration_maturation(
     weight_pct = round(min(1.0, top_n / 30) * 100)
 
     obs = (
-        f"Your personal data now accounts for {weight_pct}% of the "
-        f"prediction on {top_cat}/{top_tod} tasks ({top_n} sessions). "
-        f"The blend is shifting from your archetype's prior to your "
-        f"actual behavior — predictions are becoming yours, not the "
-        f"reference cohort's."
+        f"Personal traces now carry {weight_pct}% of planning calibration "
+        f"for {top_cat}/{top_tod} tasks ({top_n} sessions). "
+        "The starting prior is mostly a fallback in this cell."
     )
     return _insight(
         "calibration_maturation",
@@ -813,21 +887,24 @@ CONTRACT_SAFE_INSIGHT_GENERATORS = [
     ("analytics.insights.estimation_accuracy_trend", _insight_estimation_trend),
     ("analytics.insights.initiation_delay", _insight_initiation_delay),
     ("analytics.insights.retroactive_rate", _insight_retroactive_rate),
+    ("analytics.insights.time_of_day_bias", _insight_time_of_day),
+    ("analytics.insights.readiness_predicts_outcome", _insight_readiness),
+    ("analytics.insights.abandonment_pattern", _insight_abandonment),
+    ("analytics.insights.best_category", _insight_best_category),
+    ("analytics.insights.worst_category", _insight_worst_category),
+    ("analytics.insights.discrepancy_signal", _insight_discrepancy_signal),
+    ("analytics.insights.pause_pattern", _insight_pause_pattern),
+    ("analytics.insights.morning_anchor_cascade", _insight_morning_anchor),
 ]
 
 
-LEGACY_SUPPRESSED_INSIGHT_SURFACES = [
-    ("analytics.insights.time_of_day_bias", "time_of_day_bias"),
-    ("analytics.insights.readiness_predicts_outcome", "readiness_predicts_outcome"),
-    ("analytics.insights.abandonment_pattern", "abandonment_pattern"),
-    ("analytics.insights.best_category", "best_category"),
-    ("analytics.insights.worst_category", "worst_category"),
-    ("analytics.insights.discrepancy_signal", "discrepancy_signal"),
-    ("analytics.insights.pause_pattern", "pause_pattern"),
-    ("analytics.insights.morning_anchor_cascade", "morning_anchor_cascade"),
-    ("analytics.insights.archetype_divergence", "archetype_divergence"),
-    ("analytics.insights.calibration_maturation", "calibration_maturation"),
+PROFILE_AWARE_INSIGHT_GENERATORS = [
+    ("analytics.insights.archetype_divergence", _insight_archetype_divergence),
+    ("analytics.insights.calibration_maturation", _insight_calibration_maturation),
 ]
+
+
+LEGACY_SUPPRESSED_INSIGHT_SURFACES = []
 
 
 # ---------------------------------------------------------------------------
@@ -843,7 +920,8 @@ def get_insights(
     Generate up to 5 plain-language behavioral observations from task history,
     sorted by strength (largest signal first).
 
-    Rule-based only — no ML. Requires >= 3 completed sessions with delta data.
+    Rule-based only — no ML. Execution insights require enough clean executed
+    sessions; planning-history insights may render from descriptive history.
     Pass ?auto_mark=true to suppress already-shown insights (24h cooldown per insight_id).
     """
     surface_id = "analytics.insights"
@@ -871,6 +949,12 @@ def get_insights(
         if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None
     ]
     sessions_analyzed = len(delta_sessions)
+    history_events_analyzed = len(
+        [
+            t for t in all_tasks
+            if t.state != TaskState.DELETED and _is_historical_task(t)
+        ]
+    )
     suppressed_generators = [
         {
             **_surface_metadata(
@@ -885,7 +969,42 @@ def get_insights(
         for suppressed_surface_id, insight_id in LEGACY_SUPPRESSED_INSIGHT_SURFACES
     ]
 
-    if sessions_analyzed < MIN_SESSIONS:
+    candidates = []
+    for insight_surface_id, gen in CONTRACT_SAFE_INSIGHT_GENERATORS:
+        generator_tasks = _eligible_tasks_for_surface(db, all_tasks, insight_surface_id)
+        result = gen(generator_tasks)
+        if result is not None:
+            result.update(
+                _surface_metadata(
+                    insight_surface_id,
+                    eligible_sample_count=len(generator_tasks),
+                    suppressed_reason=None,
+                )
+            )
+            candidates.append(result)
+
+    user = db.query(User).filter(User.user_id == uid).first()
+    archetype = None
+    if user is not None and user.archetype_id:
+        archetype = (
+            db.query(Archetype)
+            .filter(Archetype.archetype_id == user.archetype_id)
+            .first()
+        )
+    for insight_surface_id, gen in PROFILE_AWARE_INSIGHT_GENERATORS:
+        generator_tasks = _eligible_tasks_for_surface(db, all_tasks, insight_surface_id)
+        result = gen(generator_tasks, archetype)
+        if result is not None:
+            result.update(
+                _surface_metadata(
+                    insight_surface_id,
+                    eligible_sample_count=len(generator_tasks),
+                    suppressed_reason=None,
+                )
+            )
+            candidates.append(result)
+
+    if not candidates and sessions_analyzed < MIN_SESSIONS:
         remaining = MIN_SESSIONS - sessions_analyzed
         suppression = _surface_metadata(
             surface_id,
@@ -908,34 +1027,21 @@ def get_insights(
             **suppression,
             "insights": [],
             "sessions_analyzed": sessions_analyzed,
+            "history_events_analyzed": history_events_analyzed,
             "min_sessions_required": MIN_SESSIONS,
             "ready": False,
-            "message": f"Log {remaining} more session{'s' if remaining != 1 else ''} to unlock your first behavioral insights.",
+            "message": f"Log {remaining} more executed session{'s' if remaining != 1 else ''} to unlock execution insights.",
             "suppressed_generators": suppressed_generators,
         }
-
-    redis = RedisClient()
-    candidates = []
-    for insight_surface_id, gen in CONTRACT_SAFE_INSIGHT_GENERATORS:
-        generator_tasks = _eligible_tasks_for_surface(db, all_tasks, insight_surface_id)
-        result = gen(generator_tasks)
-        if result is not None:
-            result.update(
-                _surface_metadata(
-                    insight_surface_id,
-                    eligible_sample_count=len(generator_tasks),
-                    suppressed_reason=None,
-                )
-            )
-            candidates.append(result)
 
     # Sort by strength (largest signal first), then by data_points
     candidates.sort(key=lambda r: (r.get("strength", 0.0), r.get("data_points", 0)), reverse=True)
 
+    redis = RedisClient()
     insights = []
     for result in candidates:
         insight_id = result["id"]
-        redis_key = f"insight_shown:{insight_id}"
+        redis_key = f"insight_shown:{uid}:{insight_id}"
         result["seen"] = bool(redis.client.exists(redis_key))
         if auto_mark and result["seen"]:
             continue
@@ -953,6 +1059,7 @@ def get_insights(
         **response_metadata,
         "insights": insights,
         "sessions_analyzed": sessions_analyzed,
+        "history_events_analyzed": history_events_analyzed,
         "min_sessions_required": MIN_SESSIONS,
         "ready": True,
         "suppressed_generators": suppressed_generators,
@@ -991,6 +1098,7 @@ def get_insights(
                 **failure_metadata,
                 "insights": [],
                 "sessions_analyzed": sessions_analyzed,
+                "history_events_analyzed": history_events_analyzed,
                 "min_sessions_required": MIN_SESSIONS,
                 "ready": False,
                 "message": "Insights are temporarily unavailable while exposure logging catches up.",
