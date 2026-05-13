@@ -23,7 +23,7 @@ import { signOut, useSession } from "next-auth/react";
 import { FeedbackLink } from "@/components/feedback-link";
 import { clearPersistedCache } from "@/lib/clear-persisted-cache";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   CalendarDays,
@@ -65,6 +65,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const prefetchedRoutesRef = useRef<Set<string>>(new Set());
+
+  const prefetchRoute = useCallback(
+    (href: string) => {
+      if (href === pathname || prefetchedRoutesRef.current.has(href)) return;
+      prefetchedRoutesRef.current.add(href);
+      router.prefetch(href);
+    },
+    [pathname, router]
+  );
 
   useEffect(() => {
     setMenuOpen(false);
@@ -72,21 +82,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    const idle =
-      typeof window !== "undefined" && "requestIdleCallback" in window
-        ? window.requestIdleCallback
-        : (cb: IdleRequestCallback) => window.setTimeout(cb, 1);
-    const cancelIdle =
-      typeof window !== "undefined" && "cancelIdleCallback" in window
-        ? window.cancelIdleCallback
-        : (id: number) => window.clearTimeout(id);
-    const id = idle(() => {
-      for (const item of NAV) {
-        if (item.href !== pathname) router.prefetch(item.href);
-      }
-    });
-    return () => cancelIdle(id as number);
-  }, [pathname, router]);
+    let cancelled = false;
+    const queue = NAV.filter((item) => item.href !== pathname);
+    let index = 0;
+    const timers: number[] = [];
+
+    const warmNext = () => {
+      if (cancelled || index >= queue.length) return;
+      prefetchRoute(queue[index].href);
+      index += 1;
+      timers.push(window.setTimeout(warmNext, 350));
+    };
+
+    // Let the current route's own data fan-out settle before warming other
+    // tabs. Next's default visible-link prefetch is disabled below so this is
+    // the single controlled prewarm path instead of a duplicate request burst.
+    timers.push(window.setTimeout(warmNext, 1200));
+
+    return () => {
+      cancelled = true;
+      timers.forEach((id) => window.clearTimeout(id));
+    };
+  }, [pathname, prefetchRoute]);
 
   function handleNavClick(
     event: React.MouseEvent<HTMLAnchorElement>,
@@ -118,6 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Brand mark */}
         <Link
           href="/today"
+          prefetch={false}
           className="flex items-center gap-2.5 border-b border-hairline-signal/30 px-5 py-5"
           aria-label="LyraOS — Today"
         >
@@ -157,8 +175,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                onMouseEnter={() => router.prefetch(item.href)}
-                onFocus={() => router.prefetch(item.href)}
+                prefetch={false}
+                onMouseEnter={() => prefetchRoute(item.href)}
+                onFocus={() => prefetchRoute(item.href)}
                 onClick={(event) => handleNavClick(event, item.href)}
                 className={cn(
                   "group relative flex items-center gap-3 rounded-sm px-3 py-2 font-mono text-[12px] tracking-wide transition-colors",

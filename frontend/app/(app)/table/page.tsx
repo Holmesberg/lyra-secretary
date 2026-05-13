@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { format, subDays, parseISO } from "date-fns";
 import { Download, ChevronUp, ChevronDown } from "lucide-react";
 import { queryTasksRange, type TaskRow, type QueryResponse } from "@/lib/tasks";
@@ -398,10 +399,6 @@ function SortHeader({
 
 export default function TablePage() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [truncated, setTruncated] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [correctionTask, setCorrectionTask] = useState<TaskRow | null>(null);
   const mounted = useRef(false);
 
@@ -447,22 +444,23 @@ export default function TablePage() {
     return { dateFrom: "2024-01-01", dateTo: today };
   }, [filters.dateRange]);
 
-  const reloadTasks = useCallback(() => {
-    setLoading(true);
-    queryTasksRange(dateFrom, dateTo)
-      .then((res: QueryResponse) => {
-        setTasks(res.tasks);
-        setTotalCount(res.total);
-        setTruncated(res.truncated ?? false);
-      })
-      .catch((err) => console.error("Table query failed:", err))
-      .finally(() => setLoading(false));
-  }, [dateFrom, dateTo]);
+  const {
+    data: taskData,
+    isLoading: tasksLoading,
+    refetch: refetchTasks,
+  } = useQuery<QueryResponse>({
+    queryKey: ["tasks-range", dateFrom, dateTo],
+    queryFn: () => queryTasksRange(dateFrom, dateTo),
+    staleTime: 60_000,
+  });
 
-  // Fetch
-  useEffect(() => {
-    reloadTasks();
-  }, [reloadTasks]);
+  const tasks = taskData?.tasks ?? [];
+  const totalCount = taskData?.total ?? 0;
+  const truncated = taskData?.truncated ?? false;
+  const loading = tasksLoading && !taskData;
+  const reloadTasks = useCallback(() => {
+    void refetchTasks();
+  }, [refetchTasks]);
 
   // Client-side filtering
   const filtered = useMemo(() => {

@@ -45,9 +45,14 @@ const MAX_PERSISTED_QUERY_BYTES = 100_000;
 const PERSISTED_QUERY_ROOTS = new Set([
   "me",
   "tasks",
+  "tasks-range",
+  "calendar-events",
+  "calendar-events-today",
   "deadlines",
   "integrations",
   "insights",
+  "proximity",
+  "proximity-trend",
 ]);
 
 type PersistableQuery = {

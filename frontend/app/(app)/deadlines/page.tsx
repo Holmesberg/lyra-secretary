@@ -265,6 +265,7 @@ export default function DeadlinesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["deadlines", "all"],
     queryFn: () => listDeadlines(),
+    staleTime: 60_000,
   });
 
   const [modalOpen, setModalOpen] = useState(false);

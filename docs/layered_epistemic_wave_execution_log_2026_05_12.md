@@ -992,3 +992,93 @@ Runtime state:
 - public topology was verified before browser smoke.
 - no ports, hostnames, CORS, auth, registry, truth-class, or exposure
   enforcement settings were changed.
+
+## Wave 8: Latency Without Enforcement Bypass
+
+Date: 2026-05-13.
+
+Scope:
+
+- optimized cold tab loading and warm tab transitions.
+- did not skip identity, topology, output-surface registry, exposure emission,
+  render acknowledgements, truth-class checks, or backend suppression.
+- no backend contracts or ports were changed.
+
+Measured cause:
+
+- authenticated cold `/today` loads were prefetching every visible app route
+  twice:
+  - Next `Link` default visible-link prefetch,
+  - plus AppShell's idle `router.prefetch(...)` loop,
+  - plus hover/focus prefetch.
+- this produced duplicate `_rsc` route prefetches and downloaded every tab
+  chunk immediately after login, competing with the current tab's API fan-out.
+- Table used manual `useEffect` fetching instead of React Query, so it could
+  not benefit from query persistence or shared stale-time behavior.
+- Calendar's bulk task query and Deadlines' list query lacked explicit
+  stale-time guards.
+
+Code changes:
+
+- AppShell disables default `Link` prefetch for nav links and uses one
+  controlled prewarm path:
+  - waits for the current route's fan-out to settle,
+  - prefetches remaining tabs sequentially,
+  - still prefetches immediately on hover/focus.
+- React Query persistence now includes heavy read-only tab roots:
+  `tasks-range`, `calendar-events`, `calendar-events-today`, `proximity`, and
+  `proximity-trend`.
+- Table now uses React Query for `tasks-range` instead of manual local
+  `useEffect` state.
+- Calendar bulk task query and Deadlines list query now declare `staleTime:
+  60_000`.
+
+Focused verification:
+
+```powershell
+npx tsc --noEmit
+npm run build
+node scripts/verify_runtime_topology.mjs --topology public
+```
+
+Results:
+
+- TypeScript: passed.
+- production frontend build: passed.
+- public topology verifier: passed with frontend build id
+  `wave8-latency-public-local`.
+
+Latency verification:
+
+- duplicate route prefetches were reduced to one controlled `_rsc` wave.
+- public route transitions after a short prewarm resolved URL changes in
+  roughly:
+  - Insights: `217 ms`,
+  - Table: `209 ms`,
+  - Deadlines: `191 ms`,
+  - Settings: `198 ms`,
+  - Pulse: `218 ms`,
+  - Calendar: `220 ms`,
+  - Today: `58 ms`.
+- residual backend calls still take about `1-2 s` through the public tunnel,
+  but cached/persisted routes can render while those reads reconcile.
+
+Browser/API verification:
+
+- `asabryhafez@gmail.com`: browser route loads for `/today`, `/insights`, and
+  `/pulse` passed; API smoke resolved user `16`; `/tasks/query`,
+  `/deadlines`, `/analytics/insights`, `/analytics/archetype/proximity`, and
+  `/stopwatch/status` returned `200`; diagnostics remained operator-only
+  `403`. This account was in an onboarding/no-full-nav state, so tab transition
+  timing was not applicable.
+- `moriartyholmesberg@gmail.com`: browser route loads and API smoke passed;
+  API resolved user `15`; diagnostics remained operator-only `403`; full-nav
+  tab transitions through `.org` measured in the final smoke:
+  - Insights: `237 ms`,
+  - Table: `226 ms`,
+  - Pulse: `223 ms`,
+  - Calendar: `304 ms`,
+  - Today: `50 ms`.
+- The browser captured canceled `_rsc` prefetches during rapid route changes.
+  Those were navigation aborts, not rendered route failures or failed API
+  assertions.

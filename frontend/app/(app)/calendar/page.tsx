@@ -300,6 +300,7 @@ export default function CalendarPage() {
   const tasksQ = useQuery({
     queryKey: ["tasks-range", pivotKey, RANGE_DAYS],
     queryFn: () => queryTasks(pivotKey, RANGE_DAYS),
+    staleTime: 60_000,
   });
 
   // Google Calendar read-only events. Same window as the task query so
