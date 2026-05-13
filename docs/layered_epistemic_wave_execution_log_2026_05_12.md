@@ -900,3 +900,95 @@ Browser/API verification:
   - Moriarty cross-account ack returned `404`.
 - the synthetic exposure, render, and ack rows were deleted after verification
   to avoid contaminating product history.
+
+## Commit 0: Obsidian Graph State Cleanup
+
+Date: 2026-05-13.
+
+Scope:
+
+- added `LyraOS/.obsidian/graph.json` to `.gitignore`.
+- removed the existing tracked graph-state file from the git index.
+
+Reason:
+
+- Obsidian graph layout state is local workspace noise. Keeping it dirty across
+  waves makes the git log less legible and increases the chance of unrelated
+  metadata churn landing in integrity commits.
+
+Commit:
+
+- `38e62b5 Ignore Obsidian graph state`.
+
+## Wave 7A: Idempotency Scope + Self-Report Null Defaults
+
+Date: 2026-05-13.
+
+Scope:
+
+- kept the wave narrow: Redis request idempotency, self-report defaults, focused
+  tests, and execution-log documentation.
+- did not loosen topology, auth, CORS, registry, truth-class, or render-ack
+  enforcement.
+
+New invariants:
+
+```text
+Request idempotency keys are scoped by authenticated user.
+The same client-generated key may replay only that user's own cached write.
+
+Self-report fields remain unknown until explicitly selected.
+The UI may position a control for usability, but it must not submit a fabricated
+numeric readiness/reflection value.
+```
+
+Code changes:
+
+- `RedisClient` idempotency keys now support a user-scoped namespace:
+  `idempotency:user:{user_id}:{key}`.
+- `/v1/create` and `/v1/tasks/{task_id}/llm-confirm` pass the resolved request
+  user into idempotency reads/writes.
+- the `llm-confirm` idempotency check now runs after task lookup so cached
+  responses cannot bypass task existence/void checks.
+- Pulse readiness and reflection controls start as `null`; start/finish buttons
+  stay disabled until the user explicitly chooses a value.
+- retroactive session logging starts post-task reflection as `null` and blocks
+  submit until the user chooses it.
+- JARVIS `start_focus_session` no longer invents readiness `3`; readiness is
+  required and passed as `pre_task_readiness`.
+
+Focused verification:
+
+```powershell
+& "d:\Projects\Lyra Secretary v0.1\.venv311\Scripts\python.exe" -m pytest tests/test_idempotency_user_scope.py tests/test_runtime_identity_authority.py
+npx tsc --noEmit
+```
+
+Results:
+
+- focused backend tests: `4 passed`.
+- TypeScript: passed.
+- full backend CI-equivalent: `755 passed`, `1 xfailed`.
+- public topology verifier: passed for `https://lyraos.org` +
+  `https://api.lyraos.org` with frontend build id `wave7a-public-local`.
+
+Browser/API verification after topology verification:
+
+- `asabryhafez@gmail.com`: product routes `/today`, `/insights`, and `/pulse`
+  loaded through `.org`; `/users/me` resolved user `16`;
+  `/tasks/query`, `/deadlines`, `/analytics/insights`,
+  `/analytics/archetype/proximity`, and `/stopwatch/status` returned `200`;
+  diagnostics remained operator-only `403`.
+- `moriartyholmesberg@gmail.com`: same smoke passed; `/users/me` resolved user
+  `15`; diagnostics remained operator-only `403`.
+- retroactive logging modal was opened without submitting data; after choosing
+  a reason and filling title, `Log session` remained disabled until explicit
+  reflection selection, proving the null-default UI guard in the live public
+  bundle.
+
+Runtime state:
+
+- frontend was rebuilt and restarted on the unchanged port `3000`.
+- public topology was verified before browser smoke.
+- no ports, hostnames, CORS, auth, registry, truth-class, or exposure
+  enforcement settings were changed.

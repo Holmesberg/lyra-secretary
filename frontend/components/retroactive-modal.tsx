@@ -84,7 +84,7 @@ export function RetroactiveModal({
   // Not sent to the backend in this pass — the retroactive endpoint doesn't
   // accept task_completion_percentage. See TODO in handleSubmit.
   const [completionPct, setCompletionPct] = useState<number>(100);
-  const [reflection, setReflection] = useState<number>(3);
+  const [reflection, setReflection] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,7 +97,7 @@ export function RetroactiveModal({
     setCategory("work");
     setCategoryMode("picker");
     setCompletionPct(100);
-    setReflection(3);
+    setReflection(null);
     setError(null);
     setSubmitting(false);
 
@@ -124,10 +124,11 @@ export function RetroactiveModal({
     !!start &&
     !!end &&
     new Date(end).getTime() > new Date(start).getTime() &&
-    !!reason;
+    !!reason &&
+    reflection !== null;
 
   async function handleSubmit() {
-    if (!canSubmit || !reason) return;
+    if (!canSubmit || !reason || reflection === null) return;
     setError(null);
     setSubmitting(true);
     try {

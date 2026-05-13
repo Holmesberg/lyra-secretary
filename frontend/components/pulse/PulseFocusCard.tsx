@@ -104,7 +104,6 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     });
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [readiness, setReadiness] = useState<number>(3);
 
   useEffect(() => {
     if (selectedTaskId && plannedTasks.some((t) => t.task_id === selectedTaskId)) {
@@ -113,7 +112,8 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     setSelectedTaskId(plannedTasks[0]?.task_id ?? null);
   }, [plannedTasks, selectedTaskId]);
 
-  const [reflection, setReflection] = useState<number>(3);
+  const [readiness, setReadiness] = useState<number | null>(null);
+  const [reflection, setReflection] = useState<number | null>(null);
   const [stoppedSummary, setStoppedSummary] = useState<{
     minutes: number;
     delta: number | null;
@@ -139,6 +139,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     onSuccess: () => {
       setMode("idle");
       setErrorMsg(null);
+      setReadiness(null);
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
     },
@@ -174,7 +175,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       setMode("next-prompt");
       setRequiresConfirm(false);
       setErrorMsg(null);
-      setReflection(3);
+      setReflection(null);
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["tasks-range"] });
@@ -300,13 +301,13 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               min={1}
               max={5}
               step={1}
-              value={readiness}
+              value={readiness ?? 3}
               onChange={(e) => setReadiness(Number(e.target.value))}
               className="lyra-range h-2 flex-1"
               aria-label="Pre-task readiness 1 to 5"
             />
             <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
-              {READINESS_LABELS[readiness - 1]}
+              {readiness === null ? "Choose" : READINESS_LABELS[readiness - 1]}
             </span>
           </div>
 
@@ -314,9 +315,10 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
             type="button"
             onClick={() =>
               selectedTaskId &&
+              readiness !== null &&
               startM.mutate({ taskId: selectedTaskId, readiness })
             }
-            disabled={!selectedTaskId || startM.isPending}
+            disabled={!selectedTaskId || readiness === null || startM.isPending}
             className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-5 py-2.5 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon disabled:opacity-50"
           >
             {startM.isPending ? (
@@ -403,13 +405,13 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               min={1}
               max={5}
               step={1}
-              value={reflection}
+              value={reflection ?? 3}
               onChange={(e) => setReflection(Number(e.target.value))}
               className="lyra-range h-2 flex-1"
               aria-label="Post-task reflection 1 to 5"
             />
             <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
-              {READINESS_LABELS[reflection - 1]}
+              {reflection === null ? "Choose" : READINESS_LABELS[reflection - 1]}
             </span>
           </div>
           <div className="flex items-center justify-center gap-3">
@@ -428,12 +430,13 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
             <button
               type="button"
               onClick={() =>
+                reflection !== null &&
                 stopM.mutate({
                   reflection,
                   confirmed: requiresConfirm ? true : undefined,
                 })
               }
-              disabled={stopM.isPending}
+              disabled={stopM.isPending || reflection === null}
               className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon disabled:opacity-50"
             >
               {stopM.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

@@ -408,12 +408,12 @@ WRITE_TOOLS: list[dict[str, Any]] = [
                     },
                     "readiness": {
                         "type": "integer",
-                        "description": "Pre-task readiness 1-5 (1=tired, 5=energized). Default 3 if unsure.",
+                        "description": "Explicit pre-task readiness 1-5 (1=tired, 5=energized). Ask the user if unknown.",
                         "minimum": 1,
                         "maximum": 5,
                     },
                 },
-                "required": ["task_id"],
+                "required": ["task_id", "readiness"],
             },
         },
     },
@@ -1991,7 +1991,11 @@ def _exec_start_focus_session(db: Session, user_id: int, args: dict) -> dict:
     from app.services.stopwatch_manager import StopwatchManager
 
     task_id = args["task_id"]
-    readiness = int(args.get("readiness", 3))
+    if args.get("readiness") is None:
+        return {"ok": False, "reason": "missing_readiness"}
+    readiness = int(args["readiness"])
+    if readiness < 1 or readiness > 5:
+        return {"ok": False, "reason": "invalid_readiness"}
     task = (
         db.query(Task)
         .filter(Task.task_id == task_id, Task.user_id == user_id, Task.voided_at.is_(None))
@@ -2001,7 +2005,10 @@ def _exec_start_focus_session(db: Session, user_id: int, args: dict) -> dict:
         return {"ok": False, "reason": "task_not_found"}
     sm = StopwatchManager(db)
     try:
-        session = sm.start(task_id=task_id, readiness=readiness)
+        session, _task, _is_future_task = sm.start(
+            task_id=task_id,
+            pre_task_readiness=readiness,
+        )
     except Exception as e:
         return {"ok": False, "reason": "start_failed", "detail": str(e)[:200]}
     return {

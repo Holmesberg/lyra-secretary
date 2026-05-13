@@ -103,14 +103,32 @@ class RedisClient:
         key = f"undo:{user_id}:{entity_id}"
         self.client.delete(key)
     # Idempotency (duplicate request protection)
-    def check_idempotency(self, key: str) -> Optional[str]:
+    def _idempotency_key(self, key: str, user_id: Optional[Any] = None) -> str:
+        """Build the Redis idempotency key.
+
+        Runtime request idempotency is user-scoped so one account cannot replay
+        another account's cached write response by reusing the same client key.
+        The legacy bucket is retained only for non-request utility callers that
+        have not yet been migrated.
+        """
+        if user_id is None:
+            return f"idempotency:legacy:{key}"
+        return f"idempotency:user:{user_id}:{key}"
+
+    def check_idempotency(self, key: str, user_id: Optional[Any] = None) -> Optional[str]:
         """Check if idempotency key exists. Returns cached response JSON if duplicate."""
-        redis_key = f"idempotency:{key}"
+        redis_key = self._idempotency_key(key, user_id=user_id)
         return self.client.get(redis_key)
 
-    def set_idempotency(self, key: str, response_json: str, ttl_seconds: int = 30):
+    def set_idempotency(
+        self,
+        key: str,
+        response_json: str,
+        ttl_seconds: int = 30,
+        user_id: Optional[Any] = None,
+    ):
         """Store idempotency key with response for TTL seconds."""
-        redis_key = f"idempotency:{key}"
+        redis_key = self._idempotency_key(key, user_id=user_id)
         self.client.setex(redis_key, ttl_seconds, response_json)
 
     # Notion sync queue

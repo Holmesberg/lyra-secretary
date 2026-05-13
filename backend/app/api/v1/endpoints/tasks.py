@@ -37,6 +37,7 @@ from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
 from app.core.exceptions import ImmutableTaskError
 from app.db.models import Task
+from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_local
 
 router = APIRouter()
@@ -58,11 +59,18 @@ def create_task(
     Optional: Pass X-Idempotency-Key header to prevent duplicate creates
     within a 30-second window.
     """
+    current_user_id = get_current_user_id()
+    if current_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     try:
         # FIX 4: Idempotency check
         redis = RedisClient()
         if x_idempotency_key:
-            cached = redis.check_idempotency(x_idempotency_key)
+            cached = redis.check_idempotency(
+                x_idempotency_key,
+                user_id=current_user_id,
+            )
             if cached:
                 logger.info(f"Idempotency hit for key {x_idempotency_key}")
                 return TaskCreateResponse(**json.loads(cached))
@@ -137,7 +145,11 @@ def create_task(
 
         # FIX 4: Cache response for idempotency
         if x_idempotency_key:
-            redis.set_idempotency(x_idempotency_key, response.model_dump_json())
+            redis.set_idempotency(
+                x_idempotency_key,
+                response.model_dump_json(),
+                user_id=current_user_id,
+            )
         
         return response
         
@@ -149,6 +161,8 @@ def create_task(
                 detail={"error": "start_in_past", "message": "Task start time is in the past. Did you mean tomorrow?"}
             )
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Task creation error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -544,21 +558,27 @@ def confirm_llm_binding(
     eager user double-tap can cause two writes to deadline_match_source
     interleaving with async LLM enrichment.
     """
+    current_user_id = get_current_user_id()
+    if current_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     redis = RedisClient()
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.voided_at is not None:
+        raise HTTPException(status_code=400, detail="Cannot modify voided task")
     if x_idempotency_key:
-        cached = redis.check_idempotency(f"llm_confirm:{task_id}:{x_idempotency_key}")
+        cached = redis.check_idempotency(
+            f"llm_confirm:{task_id}:{x_idempotency_key}",
+            user_id=current_user_id,
+        )
         if cached:
             logger.info(
                 "llm-confirm idempotency hit for task=%s key=%s",
                 task_id, x_idempotency_key,
             )
             return LlmConfirmResponse(**json.loads(cached))
-
-    task = db.query(Task).filter(Task.task_id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.voided_at is not None:
-        raise HTTPException(status_code=400, detail="Cannot modify voided task")
 
     deadline_id_after: Optional[str] = task.deadline_id
     priority_set = False
@@ -647,6 +667,7 @@ def confirm_llm_binding(
             f"llm_confirm:{task_id}:{x_idempotency_key}",
             response.model_dump_json(),
             ttl_seconds=30,
+            user_id=current_user_id,
         )
     return response
 
