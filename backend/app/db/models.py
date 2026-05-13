@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -1277,6 +1278,48 @@ class ExposureRenderEvent(Base):
     __table_args__ = (
         Index("idx_exposure_render_exposure", "exposure_id"),
         Index("idx_exposure_render_rendered", "rendered_at"),
+    )
+
+
+class ExposureAckEvent(Base):
+    """Frontend exposure acknowledgement atom (Wave 6).
+
+    Decision rows say the system chose to show something. Render rows preserve
+    the exact stimulus snapshot. Ack rows are the authenticated client boundary:
+    the browser reports that a renderable exposure reached the rendered UI.
+
+    Idempotency is intentionally narrow: a retried render acknowledgement for
+    the same exposure returns the same row through the service layer.
+    """
+
+    __tablename__ = "exposure_ack_event"
+
+    ack_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    exposure_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("exposure_decision_event.exposure_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user.user_id"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    acked_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    client_event_id: Mapped[Optional[str]] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "exposure_id",
+            "event_type",
+            name="uq_exposure_ack_exposure_event_type",
+        ),
+        Index("idx_exposure_ack_user_acked", "user_id", "acked_at"),
+        Index("idx_exposure_ack_exposure", "exposure_id"),
     )
 
 

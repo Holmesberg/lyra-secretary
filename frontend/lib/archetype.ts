@@ -400,6 +400,8 @@ export interface ProximityResponse {
   suppressed_reason?: string | null;
   fallback_mode?: string;
   legacy_adapter?: string | null;
+  exposure_id?: string | null;
+  render_id?: string | null;
   primary_metric: string;
 }
 

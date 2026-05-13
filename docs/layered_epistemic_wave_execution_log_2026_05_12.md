@@ -822,3 +822,81 @@ CI correction:
 - The correction updated that legacy test to use the explicit pytest identity
   harness via `auth_headers(1)`.
 - Runtime behavior was not loosened; no-auth `/tasks/last` remains fail-closed.
+
+## Wave 6: Render Acknowledgement Boundary
+
+Date: 2026-05-13.
+
+Scope:
+
+- kept Wave 6 narrow: decision-vs-render acknowledgement only.
+- did not introduce a delivery-state system.
+- did not weaken registry, exposure, topology, or auth enforcement.
+
+New invariant:
+
+```text
+Frontend render acknowledgements are idempotent by (exposure_id, event_type).
+An acknowledgement is accepted only from the authenticated user who owns the
+exposure decision.
+```
+
+Code changes:
+
+- `ExposureAckEvent`: new append-only acknowledgement atom with unique
+  `(exposure_id, event_type)`.
+- Alembic `050_exposure_ack_event.py`: creates the acknowledgement table and
+  indexes.
+- `acknowledge_surface_render(...)`: service helper that:
+  - verifies the exposure decision exists,
+  - verifies ownership,
+  - rejects suppressed/non-rendered decisions,
+  - returns the existing ack on retry.
+- `POST /v1/exposures/{exposure_id}/ack/render`: authenticated render-ack
+  endpoint.
+- rendered analytics/proximity responses now include `exposure_id` and
+  `render_id` additively.
+- stop-time micro-mirror and calibration-nudge responses now include additive
+  exposure IDs.
+- frontend insights, archetype proximity card, and stop-time toasts send
+  fire-and-forget render acks; user interaction never waits on ack telemetry.
+
+Focused verification:
+
+```powershell
+& "d:\Projects\Lyra Secretary v0.1\.venv311\Scripts\python.exe" -m pytest tests/test_output_surfaces.py tests/test_runtime_identity_authority.py
+npx tsc --noEmit
+```
+
+Results:
+
+- focused backend tests: `19 passed`.
+- TypeScript: passed.
+- full backend CI-equivalent: `754 passed`, `1 xfailed`.
+- public topology verifier: passed after live backend migration to revision
+  `050` and public frontend rebuild on unchanged port `3000`.
+
+Important behavior:
+
+- retrying a render ack returns the same acknowledgement and creates no
+  duplicate rows.
+- cross-account ack attempts fail closed. Through the HTTP path this may be
+  `404` because row-level scoping hides another user's exposure before the
+  ownership check can return `403`.
+
+Browser/API verification:
+
+- `asabryhafez@gmail.com`: `/users/me`, `/analytics/insights`,
+  `/analytics/archetype/proximity`, and the app `/insights` route passed;
+  diagnostics remained operator-only `403`.
+- `moriartyholmesberg@gmail.com`: same product smoke passed; diagnostics
+  remained operator-only `403`.
+- both alt accounts were below natural insight/proximity render thresholds, so
+  a synthetic `analytics.insights` exposure was created for asabry solely to
+  prove the live ack endpoint. It was acknowledged twice through the real
+  public API:
+  - first ack created a row,
+  - retry returned the same `ack_id`,
+  - Moriarty cross-account ack returned `404`.
+- the synthetic exposure, render, and ack rows were deleted after verification
+  to avoid contaminating product history.

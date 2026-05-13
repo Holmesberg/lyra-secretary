@@ -311,8 +311,10 @@ export interface StopResponse {
   // corresponding signal did not fire. Consumed by Commit 3 toast stack
   // to stamp viewed/dismissed via /v1/reflection_view/{view_id}/*.
   micro_mirror_view_id?: string | null;
+  micro_mirror_exposure_id?: string | null;
   calibration_nudge?: string | null;
   calibration_nudge_view_id?: string | null;
+  calibration_nudge_exposure_id?: string | null;
   paused_parent?: {
     task_id: string;
     title: string;
@@ -546,6 +548,8 @@ export interface Insight {
   suppressed_reason?: string | null;
   fallback_mode?: string;
   legacy_adapter?: string | null;
+  exposure_id?: string | null;
+  render_id?: string | null;
 }
 
 export interface SuppressedInsightGenerator {
@@ -577,6 +581,8 @@ export interface InsightsResponse {
   suppressed_reason?: string | null;
   fallback_mode?: string;
   legacy_adapter?: string | null;
+  exposure_id?: string | null;
+  render_id?: string | null;
   suppressed_generators?: SuppressedInsightGenerator[];
   message?: string;
 }

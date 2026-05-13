@@ -44,6 +44,7 @@ import {
   getCalendarEvents,
   type ExternalCalendarEvent,
 } from "@/lib/calendar";
+import { ackExposureRender } from "@/lib/api";
 
 interface ToastEntry {
   id: string;
@@ -608,9 +609,11 @@ function TodayInner() {
       // affordance was the failure vs content-not-valuable.
       if (res.micro_mirror) {
         pushToast(res.micro_mirror, res.micro_mirror_view_id ?? null, "auto", "/insights");
+        void ackExposureRender(res.micro_mirror_exposure_id);
       }
       if (res.calibration_nudge) {
         pushToast(res.calibration_nudge, res.calibration_nudge_view_id ?? null, "pin", "/insights");
+        void ackExposureRender(res.calibration_nudge_exposure_id);
       }
       refresh();
     } catch (e: any) {

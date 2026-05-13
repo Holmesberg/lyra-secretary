@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getInsights,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 import { ArchetypeInsightsCard } from "@/components/archetype-insights-card";
+import { ackExposureRender } from "@/lib/api";
 
 // Confidence-tier → brand text token. Replaces the traffic-light
 // (green/yellow/red) palette the page shipped with; brand-unification
@@ -173,6 +175,12 @@ export default function InsightsPage() {
     queryFn: getInsights,
     staleTime: 60_000,
   });
+
+  useEffect(() => {
+    if (data?.ready && data.exposure_id) {
+      void ackExposureRender(data.exposure_id);
+    }
+  }, [data?.ready, data?.exposure_id]);
 
   if (isLoading) {
     return (

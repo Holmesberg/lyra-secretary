@@ -54,10 +54,12 @@ class StopwatchStopResponse(BaseModel):
     # Client stamps viewed_at/dismissed_at against it. NULL when the
     # corresponding signal did not fire.
     micro_mirror_view_id: Optional[str] = None
+    micro_mirror_exposure_id: Optional[str] = None
     skipped: bool = False
     skip_reason: Optional[str] = None
     calibration_nudge: Optional[str] = None
     calibration_nudge_view_id: Optional[str] = None
+    calibration_nudge_exposure_id: Optional[str] = None
     task_completion_percentage: Optional[int] = None
     mid_task_completion_pct: Optional[int] = None
 

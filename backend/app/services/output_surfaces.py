@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     Deadline,
+    ExposureAckEvent,
     ExposureDecisionEvent,
     ExposureRenderEvent,
     PauseEvent,
@@ -298,6 +299,55 @@ def emit_surface_suppression(
         "suppression_id": suppression.suppression_id,
         "suppressed_reason": suppression_reason,
     }
+
+
+def acknowledge_surface_render(
+    db: Session,
+    *,
+    exposure_id: str,
+    user_id: int,
+    acked_at=None,
+    client_event_id: Optional[str] = None,
+) -> tuple[ExposureAckEvent, bool]:
+    """Acknowledge that an exposure reached the authenticated client render boundary.
+
+    This is deliberately smaller than a delivery-state machine. It only proves:
+    an authenticated user who owns the exposure acknowledged event_type=render.
+    Retries are idempotent by (exposure_id, event_type).
+    """
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == exposure_id)
+        .first()
+    )
+    if decision is None:
+        raise LookupError("exposure_decision_not_found")
+    if decision.user_id != user_id:
+        raise PermissionError("exposure_ack_wrong_user")
+    if decision.decision_status != "rendered":
+        raise ValueError("exposure_decision_not_rendered")
+
+    existing = (
+        db.query(ExposureAckEvent)
+        .filter(
+            ExposureAckEvent.exposure_id == exposure_id,
+            ExposureAckEvent.event_type == "render",
+        )
+        .first()
+    )
+    if existing is not None:
+        return existing, False
+
+    row = ExposureAckEvent(
+        exposure_id=exposure_id,
+        user_id=user_id,
+        event_type="render",
+        acked_at=strip_tz(acked_at or now_utc()),
+        client_event_id=client_event_id,
+    )
+    db.add(row)
+    db.flush()
+    return row, True
 
 
 def _candidate_tasks_for_profile(

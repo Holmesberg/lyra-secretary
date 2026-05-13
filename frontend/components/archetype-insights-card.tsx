@@ -27,11 +27,11 @@
  *     settling/rhythm copy, with no behavioral proximity bars.
  *   - Archetype assigned, backend `ready=true`: full dynamic posterior view.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronUp, Sigma } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
-import { api } from "@/lib/api";
+import { ackExposureRender, api } from "@/lib/api";
 import {
   getArchetypeProximity,
   getArchetypeProximityTrend,
@@ -147,6 +147,12 @@ function DynamicProximityCard({
     staleTime: 60_000,
     enabled: proximityQ.data?.ready === true,
   });
+
+  useEffect(() => {
+    if (proximityQ.data?.ready && proximityQ.data.exposure_id) {
+      void ackExposureRender(proximityQ.data.exposure_id);
+    }
+  }, [proximityQ.data?.ready, proximityQ.data?.exposure_id]);
 
   if (proximityQ.isLoading) {
     return (

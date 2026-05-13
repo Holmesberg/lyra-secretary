@@ -959,7 +959,7 @@ def get_insights(
     }
     try:
         if insights:
-            emit_surface_render(
+            emitted = emit_surface_render(
                 db,
                 surface_id=surface_id,
                 user_id=uid,
@@ -967,6 +967,8 @@ def get_insights(
                 content_template_id="analytics_insights",
                 trigger_source="analytics.insights",
             )
+            response_payload["exposure_id"] = emitted["exposure_id"]
+            response_payload["render_id"] = emitted["render_id"]
         else:
             emit_surface_suppression(
                 db,
@@ -2004,7 +2006,7 @@ def get_archetype_proximity(
     }
     try:
         if ready:
-            emit_surface_render(
+            emitted = emit_surface_render(
                 db,
                 surface_id=surface_id,
                 user_id=uid,
@@ -2012,6 +2014,8 @@ def get_archetype_proximity(
                 content_template_id="analytics_archetype_proximity",
                 trigger_source="analytics.archetype_proximity",
             )
+            response_payload["exposure_id"] = emitted["exposure_id"]
+            response_payload["render_id"] = emitted["render_id"]
         else:
             emit_surface_suppression(
                 db,

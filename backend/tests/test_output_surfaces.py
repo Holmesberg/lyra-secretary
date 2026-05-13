@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_db
 from app.db.models import (
+    ExposureAckEvent,
     ExposureDecisionEvent,
     ExposureRenderEvent,
     ReflectionViewLog,
@@ -17,6 +18,7 @@ from app.main import app
 from app.services import output_surfaces as output_surface_module
 from app.services.output_surfaces import (
     OutputSurfaceSpec,
+    acknowledge_surface_render,
     emit_surface_render,
     emit_surface_suppression,
     get_output_surface_spec,
@@ -115,6 +117,127 @@ def test_emit_surface_render_serializes_structured_payloads_and_legacy_adapter(d
     assert render.content_snapshot == expected_payload
     assert legacy.reflection_type == "creation_nudge"
     assert legacy.payload == expected_payload
+
+
+def test_render_ack_is_idempotent_and_owned_by_exposure_user(db):
+    user_a = User(email=f"ack-a-{uuid4()}@example.com", timezone="Africa/Cairo")
+    user_b = User(email=f"ack-b-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add_all([user_a, user_b])
+    db.flush()
+
+    emitted = emit_surface_render(
+        db,
+        surface_id="analytics.insights",
+        user_id=user_a.user_id,
+        content_snapshot={"kind": "insights"},
+    )
+
+    ack1, created1 = acknowledge_surface_render(
+        db,
+        exposure_id=emitted["exposure_id"],
+        user_id=user_a.user_id,
+        client_event_id="client-render-1",
+    )
+    ack2, created2 = acknowledge_surface_render(
+        db,
+        exposure_id=emitted["exposure_id"],
+        user_id=user_a.user_id,
+        client_event_id="client-render-retry",
+    )
+
+    assert created1 is True
+    assert created2 is False
+    assert ack2.ack_id == ack1.ack_id
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == emitted["exposure_id"])
+        .count()
+    ) == 1
+
+    with pytest.raises(PermissionError, match="exposure_ack_wrong_user"):
+        acknowledge_surface_render(
+            db,
+            exposure_id=emitted["exposure_id"],
+            user_id=user_b.user_id,
+        )
+
+
+def test_render_ack_rejects_suppressed_exposures(db):
+    user = User(email=f"ack-suppressed-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+
+    suppressed = emit_surface_suppression(
+        db,
+        surface_id="analytics.insights",
+        user_id=user.user_id,
+        suppression_reason="insufficient_clean_samples",
+    )
+
+    with pytest.raises(ValueError, match="exposure_decision_not_rendered"):
+        acknowledge_surface_render(
+            db,
+            exposure_id=suppressed["exposure_id"],
+            user_id=user.user_id,
+        )
+
+
+def test_render_ack_endpoint_retries_without_duplicate_rows(db, client):
+    user = User(email=f"ack-endpoint-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+    emitted = emit_surface_render(
+        db,
+        surface_id="analytics.insights",
+        user_id=user.user_id,
+        content_snapshot={"kind": "endpoint"},
+    )
+    db.commit()
+
+    path = f"/v1/exposures/{emitted['exposure_id']}/ack/render"
+    first = client.post(path, json={"client_event_id": "render-1"}, headers=auth_headers(user.user_id))
+    second = client.post(path, json={"client_event_id": "render-retry"}, headers=auth_headers(user.user_id))
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["created"] is True
+    assert second.json()["created"] is False
+    assert second.json()["ack_id"] == first.json()["ack_id"]
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == emitted["exposure_id"])
+        .count()
+    ) == 1
+
+
+def test_render_ack_endpoint_rejects_cross_account_forgery(db, client):
+    owner = User(email=f"ack-owner-{uuid4()}@example.com", timezone="Africa/Cairo")
+    other = User(email=f"ack-other-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add_all([owner, other])
+    db.flush()
+    emitted = emit_surface_render(
+        db,
+        surface_id="analytics.insights",
+        user_id=owner.user_id,
+        content_snapshot={"kind": "owner"},
+    )
+    db.commit()
+
+    response = client.post(
+        f"/v1/exposures/{emitted['exposure_id']}/ack/render",
+        json={},
+        headers=auth_headers(other.user_id),
+    )
+
+    # Through the HTTP path, row-level scoping may hide the other user's
+    # decision before the ownership check can return 403. Either way, the
+    # cross-account ack is fail-closed and creates no row.
+    assert response.status_code in {403, 404}
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == emitted["exposure_id"])
+        .count()
+    ) == 0
 
 
 def test_unregistered_output_surface_hard_fails():

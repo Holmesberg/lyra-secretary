@@ -109,3 +109,16 @@ export async function api<T = unknown>(
   }
   return (await res.json()) as T;
 }
+
+export async function ackExposureRender(exposureId: string | null | undefined) {
+  if (!exposureId) return;
+  try {
+    await api(`/v1/exposures/${encodeURIComponent(exposureId)}/ack/render`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  } catch {
+    // Render acknowledgements are governance telemetry. They must retry safely
+    // when called again, but they should never block the user's current view.
+  }
+}

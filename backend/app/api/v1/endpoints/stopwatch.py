@@ -191,7 +191,9 @@ def stop_stopwatch(
         # (stop() would have raised otherwise).
         user_id = get_current_user_id()
         micro_mirror_view_id = None
+        micro_mirror_exposure_id = None
         calibration_nudge_view_id = None
+        calibration_nudge_exposure_id = None
         fired_at = now_utc()
         if micro_mirror:
             emitted = emit_surface_render(
@@ -209,6 +211,7 @@ def stop_stopwatch(
                 legacy_payload=micro_mirror,
             )
             micro_mirror_view_id = emitted["legacy_view_id"]
+            micro_mirror_exposure_id = emitted["exposure_id"]
         if calibration_nudge:
             emitted = emit_surface_render(
                 db,
@@ -225,6 +228,7 @@ def stop_stopwatch(
                 legacy_payload=calibration_nudge,
             )
             calibration_nudge_view_id = emitted["legacy_view_id"]
+            calibration_nudge_exposure_id = emitted["exposure_id"]
         if micro_mirror or calibration_nudge:
             db.commit()
 
@@ -242,10 +246,12 @@ def stop_stopwatch(
             paused_parent=paused_parent,
             micro_mirror=micro_mirror,
             micro_mirror_view_id=micro_mirror_view_id,
+            micro_mirror_exposure_id=micro_mirror_exposure_id,
             skipped=zero_duration_skip,
             skip_reason="zero_duration" if zero_duration_skip else None,
             calibration_nudge=calibration_nudge,
             calibration_nudge_view_id=calibration_nudge_view_id,
+            calibration_nudge_exposure_id=calibration_nudge_exposure_id,
             task_completion_percentage=session.task_completion_percentage,
             mid_task_completion_pct=pre_existing_pct if pre_existing_pct is not None else None,
         )
