@@ -502,7 +502,7 @@ class TaskManager:
         # create on the hot path. Queue drains via APScheduler worker.
         notion_synced = False
         try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion queue failed during create_task: {e}", exc_info=True)
@@ -526,7 +526,7 @@ class TaskManager:
 
         # Cache for undo — best-effort
         try:
-            uid = str(get_current_user_id() or 1)
+            uid = str(task.user_id)
             self.redis.cache_undo_action("create_task", task.task_id, {
                 "task_id": task.task_id,
                 "title": task.title
@@ -649,7 +649,7 @@ class TaskManager:
             notion_synced = True
         except Exception as e:
             logger.error(f"Notion sync failed during create_retroactive_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
 
         return task, notion_synced
 
@@ -671,7 +671,7 @@ class TaskManager:
 
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion queue failed during start_task: {e}", exc_info=True)
@@ -739,12 +739,12 @@ class TaskManager:
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         notion_synced = False
         try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
         except Exception as e:
             logger.error(f"Notion queue failed during complete_task: {e}", exc_info=True)
 
         try:
-            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
+            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(task.user_id))
         except Exception as e:
             logger.warning("complete_task: last_task cache write failed (non-blocking): %s", e)
         return task, notion_synced
@@ -770,7 +770,7 @@ class TaskManager:
 
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion queue failed during skip_task: {e}", exc_info=True)
@@ -870,7 +870,7 @@ class TaskManager:
             self.redis.queue_notion_sync(
                 task.task_id,
                 {"action": "sync"},
-                user_id=str(get_current_user_id() or 1),
+                user_id=str(task.user_id),
             )
         except Exception as e:
             logger.error("Notion queue failed during mark_done: %s", e, exc_info=True)
@@ -880,7 +880,7 @@ class TaskManager:
                 task.task_id,
                 task.title,
                 task.state.value if hasattr(task.state, "value") else str(task.state),
-                user_id=str(get_current_user_id() or 1),
+                user_id=str(task.user_id),
             )
         except Exception as e:
             logger.warning("mark_done: last_task cache write failed (non-blocking): %s", e)
@@ -1051,7 +1051,7 @@ class TaskManager:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion archive failed during delete_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "archive"}, user_id=str(get_current_user_id() or 1))
+            self.redis.queue_notion_sync(task.task_id, {"action": "archive"}, user_id=str(task.user_id))
         
         # Cache for undo — best-effort, Redis may be unavailable in some environments
         try:
@@ -1060,7 +1060,7 @@ class TaskManager:
                 "task_id": task.task_id,
                 "title": task.title,
                 "previous_state": state_value
-            }, user_id=str(get_current_user_id() or 1))
+            }, user_id=str(task.user_id))
         except Exception as e:
             logger.warning("delete_task: undo cache write failed (non-blocking): %s", e)
 
@@ -1130,7 +1130,7 @@ class TaskManager:
             except Exception as e:
                 logger.error(f"Notion sync failed on swap for {t.task_id}: {e}", exc_info=True)
                 try:
-                    self.redis.queue_notion_sync(t.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
+                    self.redis.queue_notion_sync(t.task_id, {"action": "sync"}, user_id=str(t.user_id))
                 except Exception as queue_err:
                     logger.warning("swap: notion redis-queue fallback also failed (non-blocking): %s", queue_err)
 
@@ -1246,13 +1246,13 @@ class TaskManager:
         
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(get_current_user_id() or 1))
+            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Notion queue failed during reschedule_task: {e}", exc_info=True)
 
         try:
-            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(get_current_user_id() or 1))
+            self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(task.user_id))
         except Exception as e:
             logger.warning("reschedule_task: last_task cache write failed (non-blocking): %s", e)
         return task, conflicts

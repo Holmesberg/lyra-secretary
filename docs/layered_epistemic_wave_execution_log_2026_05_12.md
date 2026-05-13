@@ -38,6 +38,14 @@ This operating discipline was added to:
 - `docs/layered_epistemic_architecture.md`
 - `LyraOS/01_System_Map/Layered Epistemic Architecture.md`
 
+Companion operating contract:
+
+- `docs/context_window_blast_radius_contract.md`
+
+Final closure runbook:
+
+- `docs/layered_epistemic_wave_9_closure_runbook.md`
+
 ## Wave 0: Identity And Scoping Preconditions
 
 **Commit:** `8e53172 Enforce Wave 0 identity scoping`  
@@ -1082,3 +1090,96 @@ Browser/API verification:
 - The browser captured canceled `_rsc` prefetches during rapid route changes.
   Those were navigation aborts, not rendered route failures or failed API
   assertions.
+
+## Wave 9: Final Closure And Kernel Guard
+
+Date: 2026-05-13.
+
+Scope:
+
+- closed the layered-architecture execution pass without adding product
+  surfaces, ports, hostnames, CORS changes, auth changes, inference claims, or
+  topology changes.
+- added the context-window and blast-radius operating contract.
+- added the final Wave 9 closure runbook.
+- closed the remaining proven `user_id=1` runtime fallback in Redis/Notion
+  side-effect paths.
+
+Kernel audit:
+
+- `task_manager` and `stopwatch_manager` still had `get_current_user_id() or 1`
+  fallbacks for best-effort Redis side effects:
+  - Notion retry queue user namespaces,
+  - undo cache namespaces,
+  - last-task cache namespaces.
+- these did not change database ownership, but they could still write
+  operator-scoped side-effect keys when scope was missing.
+- Wave 9 replaced them with the owning task/user namespace and added a static
+  regression test forbidding the fallback token in runtime app code.
+
+Files changed:
+
+- `docs/context_window_blast_radius_contract.md`
+- `docs/layered_epistemic_wave_9_closure_runbook.md`
+- `backend/app/services/task_manager.py`
+- `backend/app/services/stopwatch_manager.py`
+- `backend/tests/test_runtime_identity_authority.py`
+
+Focused verification:
+
+```powershell
+$env:PYTHONPATH='.'
+..\.venv311\Scripts\python.exe -m pytest tests/test_runtime_identity_authority.py tests/test_output_surfaces.py
+```
+
+Result:
+
+- `20 passed`.
+
+Full backend CI-equivalent:
+
+```powershell
+$env:PYTHONPATH='.'
+..\.venv311\Scripts\python.exe -m pytest tests/
+```
+
+Result:
+
+- `756 passed, 1 xfailed`.
+
+Kernel searches:
+
+- runtime `get_current_user_id() or 1`: no `backend/app` matches.
+- direct `ReflectionViewLog(` writers: only `app/db/models.py` and
+  `app/services/output_surfaces.py`.
+- direct exposure ledger writes: only `app/services/exposure_ledger.py` and
+  `app/services/output_surfaces.py`.
+
+Topology and browser verification:
+
+```powershell
+node scripts/verify_runtime_topology.mjs --topology public
+```
+
+Result:
+
+- public topology verifier passed.
+- live backend container source check found zero `get_current_user_id() or 1`
+  fallbacks under `/app/app`.
+
+Public `.org` browser/API smoke:
+
+- `asabryhafez@gmail.com`: browser routes `/today`, `/insights`, and `/pulse`
+  loaded; `/users/me` resolved user `16`; `/tasks/query`, `/deadlines`,
+  `/analytics/insights`, `/analytics/archetype/proximity`, and
+  `/stopwatch/status` returned `200`; output-surface diagnostics remained
+  operator-only `403`.
+- `moriartyholmesberg@gmail.com`: same smoke passed; `/users/me` resolved user
+  `15`; output-surface diagnostics remained operator-only `403`.
+
+Runtime state:
+
+- no frontend code changed.
+- no backend topology settings changed.
+- no auth, CORS, port, hostname, output-surface registry, exposure, or
+  truth-class enforcement was loosened.

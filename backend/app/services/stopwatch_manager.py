@@ -8,7 +8,6 @@ import logging
 import uuid
 
 from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
-from app.db.scoping import get_current_user_id
 from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, to_local, strip_tz
@@ -597,7 +596,7 @@ class StopwatchManager:
             try:
                 self.redis.queue_notion_sync(
                     task.task_id, {"action": "sync"},
-                    user_id=str(get_current_user_id() or 1),
+                    user_id=user_id,
                 )
             except Exception as e:
                 logger.error(f"Notion enqueue failed on pause: {e}", exc_info=True)
@@ -688,7 +687,7 @@ class StopwatchManager:
             try:
                 self.redis.queue_notion_sync(
                     task.task_id, {"action": "sync"},
-                    user_id=str(get_current_user_id() or 1),
+                    user_id=user_id,
                 )
             except Exception as e:
                 logger.error(f"Notion enqueue failed on resume: {e}", exc_info=True)
@@ -906,13 +905,12 @@ class StopwatchManager:
 
         # ---- Best-effort Notion sync for both ends ----
         try:
-            uid_s = str(get_current_user_id() or 1)
             if source_task_id:
                 self.redis.queue_notion_sync(
-                    source_task_id, {"action": "sync"}, user_id=uid_s
+                    source_task_id, {"action": "sync"}, user_id=user_id
                 )
             self.redis.queue_notion_sync(
-                target.task_id, {"action": "sync"}, user_id=uid_s
+                target.task_id, {"action": "sync"}, user_id=user_id
             )
         except Exception as e:
             logger.error(f"Notion enqueue failed on switch: {e}", exc_info=True)

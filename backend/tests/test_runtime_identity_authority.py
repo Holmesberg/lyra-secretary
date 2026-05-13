@@ -5,6 +5,7 @@ pytest plumbing, but it must never authenticate unauthenticated manual HTTP
 or override a bearer-resolved user.
 """
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.core import security
@@ -73,3 +74,22 @@ def test_x_user_id_still_available_to_explicit_test_harness(client, db):
 
     assert response.status_code == 200
     assert response.json()["user_id"] == 15
+
+
+def test_app_code_has_no_operator_identity_fallbacks():
+    """Kernel guard: runtime code must not silently fall back to user_id=1."""
+
+    offenders: list[str] = []
+    forbidden_tokens = (
+        "get_current_user_id() or 1",
+        "get_current_user_id()or 1",
+    )
+
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    for path in app_dir.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for token in forbidden_tokens:
+            if token in text:
+                offenders.append(f"{path.relative_to(app_dir.parent)}:{token}")
+
+    assert offenders == []
