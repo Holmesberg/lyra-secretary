@@ -49,9 +49,9 @@ export const metadata: Metadata = {
     images: [
       {
         url: "/insights-v2.png",
-        width: 1392,
-        height: 868,
-        alt: "LyraOS insights dashboard - 83 sessions analyzed with archetype proximity plus readiness, time-of-day, abandonment, pause, and category insight cards.",
+        width: 875,
+        height: 780,
+        alt: "LyraOS insights dashboard with a primary synthesis card and supporting confidence-ranked behavioral evidence.",
       },
     ],
   },

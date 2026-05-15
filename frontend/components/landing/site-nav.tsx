@@ -83,20 +83,26 @@ export function SiteNav() {
         {/* Tab content: logo + LyraOS wordmark */}
         <a
           href="#top"
-          className="group absolute left-0 top-0 flex items-center gap-3 pl-4 lg:pl-6"
+          className="group absolute left-0 top-0 flex items-center gap-4 pl-5 lg:pl-7"
           style={{ height: TAB_H, width: TAB_W }}
           aria-label="LyraOS — the instrument"
         >
-          <Image
-            src="/lyraos-logo.png"
-            alt=""
-            width={143}
-            height={130}
-            priority
-            quality={100}
-            sizes="143px"
-            className="h-[130px] w-auto"
-          />
+          <span className="relative flex h-[92px] w-[92px] items-center justify-center rounded-full border border-signal/45 bg-void/70 shadow-[0_0_36px_-14px_rgba(77,212,232,0.85)]">
+            <span
+              aria-hidden
+              className="absolute inset-3 rounded-full bg-signal/10 blur-xl"
+            />
+            <Image
+              src="/lyraos-logo.png"
+              alt=""
+              width={72}
+              height={72}
+              priority
+              quality={100}
+              sizes="72px"
+              className="relative h-[72px] w-auto"
+            />
+          </span>
           <span className="font-display text-[2rem] font-medium leading-none tracking-tight text-parchment lg:text-[2.25rem]">
             LyraOS
           </span>

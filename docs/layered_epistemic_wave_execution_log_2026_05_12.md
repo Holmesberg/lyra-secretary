@@ -1319,3 +1319,21 @@ Results:
 - public topology verifier: passed.
 - local operator API payload no longer emitted a `work tasks` category claim;
   closest-category output shifted to `planning tasks`.
+
+## Adaptive Scheduling Product-Research Note
+
+Date: 2026-05-13.
+
+Documented the emerging adaptive scheduling direction in
+`docs/adaptive_scheduling_progressive_inference.md`.
+
+Key decision:
+
+- adaptive scheduling should be framed as progressive epistemic capability,
+  not generic AI scheduling.
+- the unlock ladder should reflect evidence accumulation:
+  raw traces -> descriptive insights -> synthesis -> experiment suggestions ->
+  measured adaptation -> confidence-backed recommendations.
+- current operator data supports descriptive synthesis and possibly
+  operator-only experiment prompts, but not validated scheduling prescriptions
+  or autonomous calendar mutation.

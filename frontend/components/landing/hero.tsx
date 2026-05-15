@@ -9,12 +9,12 @@ export function Hero() {
   return (
     <section
       id="top"
-      className="relative isolate overflow-hidden pt-20 md:pt-36"
+      className="relative isolate overflow-hidden pt-16 sm:pt-20 md:pt-32 lg:pt-36"
     >
-      <div className="mx-auto max-w-7xl px-6 md:px-10">
+      <div className="mx-auto max-w-7xl px-5 sm:px-6 md:px-10">
         {/* Mobile-only logo block — gives the brand its own moment at the
            top of the content flow since the mobile nav drops the logo. */}
-        <div className="mb-10 flex flex-col items-center gap-3 md:hidden">
+        <div className="mb-8 flex flex-col items-center gap-3 sm:mb-10 md:hidden">
           <div className="relative">
             <div
               aria-hidden
@@ -43,7 +43,7 @@ export function Hero() {
            column). Bottom edge is natural — panel keeps its native
            aspect, no height cap, no object-cover crop. Mobile (<lg)
            stacks naturally. === */}
-        <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-12 lg:items-start lg:gap-12">
+        <div className="grid grid-cols-1 items-center gap-10 sm:gap-12 lg:grid-cols-12 lg:items-start lg:gap-12">
           {/* Left: copy column. Entrance animation uses y-translate only —
              no `opacity:0` on initial state so crawlers + social previews
              see the copy as real text in the SSR HTML. */}
@@ -57,19 +57,19 @@ export function Hero() {
               For people who plan well and still fail themselves
             </p>
 
-            <h1 className="mt-6 font-display font-medium leading-[0.92] tracking-tight text-parchment">
-              <span className="block text-[3rem] md:text-[4.25rem] lg:text-[5rem]">
+            <h1 className="mt-5 font-display font-medium leading-[0.92] tracking-tight text-parchment sm:mt-6">
+              <span className="block text-[2.75rem] sm:text-[3.35rem] md:text-[4.25rem] lg:text-[5rem]">
                 Your Cognitive
               </span>
-              <span className="neon-cyan block text-[3rem] md:text-[4.25rem] lg:text-[5rem]">
+              <span className="neon-cyan block text-[2.75rem] sm:text-[3.35rem] md:text-[4.25rem] lg:text-[5rem]">
                 Operating
               </span>
-              <span className="block text-[3rem] md:text-[4.25rem] lg:text-[5rem]">
+              <span className="block text-[2.75rem] sm:text-[3.35rem] md:text-[4.25rem] lg:text-[5rem]">
                 System<span className="text-ember">.</span>
               </span>
             </h1>
 
-            <p className="mt-7 max-w-xl text-base leading-relaxed text-dust md:text-[17px]">
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-dust sm:mt-7 md:text-[17px]">
               Why do you keep missing your own plans? Lyra quietly logs every
               estimate you make and every outcome that follows — then shows
               you the pattern you couldn&apos;t see alone.
@@ -78,7 +78,7 @@ export function Hero() {
               Not a productivity app. A mirror.
             </p>
 
-            <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+            <div className="mt-8 flex flex-col items-stretch gap-3 sm:mt-9 sm:flex-row sm:items-center sm:flex-wrap">
               <GoogleSignInButton
                 className="cyber-pill cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
@@ -114,13 +114,7 @@ export function Hero() {
                exactly in sync across md / lg breakpoints without magic
                pixel values. `invisible` (visibility:hidden) reserves
                vertical space without rendering glyphs. */}
-            <p
-              aria-hidden
-              className="invisible hidden select-none font-mono text-[11px] font-medium uppercase tracking-widest lg:block"
-            >
-              .
-            </p>
-            <div className="relative mx-auto max-w-xl lg:mt-6 lg:w-full lg:max-w-none">
+            <div className="relative mx-auto w-full max-w-[38rem] lg:-mt-1 lg:max-w-none">
               {/* Atmospheric glow behind the product */}
               <div
                 aria-hidden
@@ -141,14 +135,17 @@ export function Hero() {
                  edge falls wherever the image's native aspect lands. */}
               <div className="relative overflow-hidden rounded-sm border border-hairline-signal bg-void-2 shadow-[0_40px_120px_-20px_rgba(77,212,232,0.35)]">
                 {/* status header chrome */}
-                <div className="flex items-center justify-between border-b border-hairline-signal bg-void/80 px-4 py-2.5">
+                <div className="flex items-center justify-between border-b border-hairline-signal bg-void/80 px-3 py-2 sm:px-4 sm:py-2.5">
                   <div className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-ember/70" />
                     <span className="h-2 w-2 rounded-full bg-dust/50" />
                     <span className="h-2 w-2 rounded-full bg-signal/80" />
                   </div>
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-dust">
-                    lyraos // insights // operative-001
+                  <span className="font-mono text-[9px] uppercase tracking-widest text-dust sm:text-[10px]">
+                    <span className="sm:hidden">insights // live</span>
+                    <span className="hidden sm:inline">
+                      lyraos // insights // operative-001
+                    </span>
                   </span>
                   <span className="font-mono text-[10px] text-signal motion-safe:animate-pulse-glow">
                     ●
@@ -157,13 +154,14 @@ export function Hero() {
                 <div className="scan-lines">
                   <Image
                     src="/insights-v2.png"
-                    alt="LyraOS insights dashboard - 83 sessions analyzed with archetype proximity plus readiness, time-of-day, abandonment, pause, and category insight cards."
-                    width={1392}
-                    height={868}
+                    alt="LyraOS insights dashboard with a primary synthesis card and supporting confidence-ranked behavioral evidence."
+                    width={875}
+                    height={780}
                     priority
                     quality={95}
-                    sizes="(max-width: 1024px) 100vw, 56vw"
-                    className="block w-full"
+                    unoptimized
+                    sizes="(max-width: 640px) calc(100vw - 40px), (max-width: 1024px) min(100vw - 48px, 608px), 56vw"
+                    className="block h-auto w-full"
                   />
                 </div>
               </div>
@@ -178,12 +176,12 @@ export function Hero() {
           whileInView={{ y: 0 }}
           viewport={{ once: true, margin: "-10%" }}
           transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-          className="mt-20 md:mt-24"
+          className="mt-14 sm:mt-16 md:mt-24"
         >
           <div className="relative">
             <CornerMarks size={10} color="rgba(245, 169, 106, 0.5)" />
-            <div className="terminal-panel px-6 py-7 md:px-10">
-              <div className="grid grid-cols-2 gap-y-7 sm:grid-cols-4 sm:gap-y-0 sm:divide-x sm:divide-hairline">
+            <div className="terminal-panel px-5 py-6 sm:px-6 md:px-10 md:py-7">
+              <div className="grid grid-cols-2 gap-y-6 sm:grid-cols-4 sm:gap-y-0 sm:divide-x sm:divide-hairline">
                 <Metric label="Δ delta" value="−32 min" caption="vs plan · overrun" />
                 <Metric label="readiness μ" value="3.7 / 5" caption="self-rated" />
                 <Metric label="pauses / session" value="1.2" caption="avg breaks" />
