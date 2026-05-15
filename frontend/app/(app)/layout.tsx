@@ -18,6 +18,8 @@ import { TutorialOverlay } from "@/components/tutorial-overlay";
 // transaction. No more meta "Plan your week" task at the end.
 import { OnboardingFlow } from "@/components/onboarding-flow";
 
+const ONBOARDING_SKIP_SESSION_KEY = "lyra:onboarding-skip-this-session";
+
 type Me = {
   user_id: number;
   email: string;
@@ -67,6 +69,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Distinguishes the "your session expired, redirecting" banner from
   // the "backend is actually down" banner — different recovery paths.
   const [autoSigningOut, setAutoSigningOut] = useState(false);
+  const [onboardingSkippedThisSession, setOnboardingSkippedThisSession] =
+    useState(() => {
+      if (typeof window === "undefined") return false;
+      return window.sessionStorage.getItem(ONBOARDING_SKIP_SESSION_KEY) === "1";
+    });
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -140,6 +147,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // /me after the user submits. Invalidate-and-refetch — same key, so
   // every consumer updates simultaneously.
   const refetchMe = () => qc.invalidateQueries({ queryKey: ["me"] });
+  const skipOnboardingForSession = () => {
+    setOnboardingSkippedThisSession(true);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(ONBOARDING_SKIP_SESSION_KEY, "1");
+    }
+    void refetchMe();
+  };
+
+  useEffect(() => {
+    if (!me?.has_active_task_history) return;
+    setOnboardingSkippedThisSession(false);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(ONBOARDING_SKIP_SESSION_KEY);
+    }
+  }, [me?.has_active_task_history]);
 
   if (status === "loading") {
     return (
@@ -180,7 +202,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 clearPersistedCache();
                 signOut({ callbackUrl: "/" });
               }}
-              className="rounded-sm border border-hairline-signal/40 bg-void-2/60 px-3 py-1.5 text-xs text-parchment transition-colors hover:bg-signal/10 hover:text-signal"
+              className="rounded-sm border border-hairline-signal/40 bg-void-2/60 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-signal/10 hover:text-signal focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal/70"
             >
               Sign out
             </button>
@@ -225,12 +247,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // catches this and resets the gate.
   const needsOnboarding =
     !needsConsent &&
+    !onboardingSkippedThisSession &&
     (!me.onboarding_completed_at || !me.has_active_task_history);
   if (needsOnboarding) {
     return (
       <OnboardingFlow
         userEmail={me.email}
         onCompleted={refetchMe}
+        onSkipped={skipOnboardingForSession}
       />
     );
   }

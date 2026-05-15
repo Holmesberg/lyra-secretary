@@ -24,6 +24,10 @@ services:
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,https://lyraos.org}
+      # Auth invariant: backend JWT_SECRET must match the frontend
+      # NEXTAUTH_SECRET used to mint backendToken in frontend/lib/auth.ts.
+      - JWT_SECRET=${JWT_SECRET:-dev-only-replace-me-with-32-byte-urlsafe-secret}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       # Magic-for-alpha: Local LLM async parser (Workstream 1, 2026-04-28).
       # Operator runs Ollama on the host (Windows/WSL2 install). Backend
       # reaches it via host.docker.internal. If the service is down, the

@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils";
 interface Props {
   userEmail: string;
   onCompleted: () => void;
+  onSkipped: () => void;
 }
 
 type Step = "dump" | "confirm" | "review_failures";
@@ -106,7 +107,7 @@ function formatWhen(iso: string | null): string {
   });
 }
 
-export function OnboardingFlow({ userEmail, onCompleted }: Props) {
+export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
   const [step, setStep] = useState<Step>("dump");
   const [rawText, setRawText] = useState("");
   const [items, setItems] = useState<BrainDumpParsedItem[]>([]);
@@ -224,13 +225,8 @@ export function OnboardingFlow({ userEmail, onCompleted }: Props) {
     if (parsing || committing || skipping) return;
     setError(null);
     setSkipping(true);
-    try {
-      await api("/v1/users/me/skip-onboarding", { method: "POST" });
-      onCompleted();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to skip");
-      setSkipping(false);
-    }
+    onSkipped();
+    void api("/v1/users/me/skip-onboarding", { method: "POST" });
   }
 
   return (

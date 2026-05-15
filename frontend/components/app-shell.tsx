@@ -245,9 +245,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               clearPersistedCache();
               signOut({ callbackUrl: "/" });
             }}
-            className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 font-mono text-[10px] uppercase tracking-widest text-dust-deep transition-colors hover:bg-ember/10 hover:text-ember"
+            className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-white transition-colors hover:bg-ember/10 hover:text-ember focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ember/70"
           >
-            <LogOut className="h-3.5 w-3.5 transition-colors group-hover:text-ember" />
+            <LogOut className="h-3.5 w-3.5 text-white transition-colors group-hover:text-ember" />
             <span>Sign out</span>
           </button>
         </div>
@@ -349,7 +349,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       setMenuOpen(false);
                       signOut({ callbackUrl: "/" });
                     }}
-                    className="w-full px-5 py-3 text-left font-mono text-xs uppercase tracking-widest text-dust-deep transition-colors hover:bg-ember/5 hover:text-ember"
+                    className="w-full px-5 py-3 text-left font-mono text-xs font-semibold uppercase tracking-widest text-white transition-colors hover:bg-ember/10 hover:text-ember focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ember/70"
                   >
                     Sign out
                   </button>

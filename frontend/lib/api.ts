@@ -8,10 +8,16 @@ const LOCAL_API_BASE = "http://localhost:8000";
 const PUBLIC_API_BASE = "https://api.lyraos.org";
 const CONFIGURED_API_BASE = process.env.NEXT_PUBLIC_API_URL || LOCAL_API_BASE;
 const SESSION_TOKEN_TTL_MS = 30_000;
+const SESSION_TOKEN_RETRY_ATTEMPTS = 5;
+const SESSION_TOKEN_RETRY_DELAY_MS = 100;
 
 let cachedBackendToken: string | undefined;
 let cachedBackendTokenUntil = 0;
 let sessionTokenPromise: Promise<string | undefined> | null = null;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export function getApiBase(): string {
   if (typeof window !== "undefined") {
@@ -70,7 +76,7 @@ async function getBackendToken(): Promise<string | undefined> {
       .then((session) => (session as any)?.backendToken as string | undefined)
       .then((token) => {
         cachedBackendToken = token;
-        cachedBackendTokenUntil = Date.now() + SESSION_TOKEN_TTL_MS;
+        cachedBackendTokenUntil = token ? Date.now() + SESSION_TOKEN_TTL_MS : 0;
         return token;
       })
       .finally(() => {
@@ -84,11 +90,23 @@ export async function api<T = unknown>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
-  const token = await getBackendToken();
+  let token = await getBackendToken();
+  if (!token && typeof window !== "undefined") {
+    for (let attempt = 0; attempt < SESSION_TOKEN_RETRY_ATTEMPTS && !token; attempt += 1) {
+      await sleep(SESSION_TOKEN_RETRY_DELAY_MS);
+      token = await getBackendToken();
+    }
+  }
+
+  if (!token) {
+    const msg = "not authenticated";
+    _pushRecentError({ path, status: 401, message: msg });
+    throw new ApiError(msg, 401);
+  }
 
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  headers.set("Authorization", `Bearer ${token}`);
 
   const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
   if (!res.ok) {

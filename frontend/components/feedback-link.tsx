@@ -30,7 +30,7 @@ export function FeedbackLink({
         type="button"
         onClick={() => setOpen(true)}
         className={
-          "text-[10px] text-dust-deep underline-offset-2 transition-colors hover:text-dust hover:underline " +
+          "rounded-sm text-[10px] font-medium text-white underline-offset-2 transition-colors hover:text-signal hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal/70 " +
           className
         }
       >
