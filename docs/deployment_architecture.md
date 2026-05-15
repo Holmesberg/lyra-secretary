@@ -6,6 +6,11 @@
 
 ## Current stack
 
+**Current runtime note (May 15, 2026):** the frontend is expected to run as a
+production build served by `next start` via `scripts/restart_frontend_wsl.ps1`.
+Older diagram labels or checklist text mentioning `npm run dev` are historical
+April notes and should not be used as current production guidance.
+
 ```
 [ Trusted user (phone / laptop) ]
             │
@@ -29,10 +34,10 @@
 ┌──────────────────────┐   ┌──────────────────────┐
 │ Next.js (frontend)   │   │ FastAPI (backend)    │
 │ port 3000            │   │ port 8000 in Docker  │
-│ npm run dev (Apr 16, │   │ lyrasecretaryv01-    │
-│ will switch to       │   │ backend-1            │
-│ `npm start` once     │   │ + Redis, + workers   │
-│ prod build tested)   │   │                      │
+│ production build     │   │ lyrasecretaryv01-    │
+│ served by            │   │ backend-1            │
+│ `next start`         │   │ + Redis, + workers   │
+│                      │   │                      │
 └──────────────────────┘   └──────────┬───────────┘
                                       │ postgres + ssl
                                       ▼
@@ -64,7 +69,7 @@ Redis + SQLite fallback both still work — SQLite is kept as `.env.backup-sqlit
 
 1. Share `https://lyraos.org` in chat.
 2. They click "Sign in with Google" — NextAuth handles OAuth entirely on the lyraos.org side (frontend process). Google callback: `https://lyraos.org/api/auth/callback/google` (added to the Google Cloud Console alongside the existing localhost entry).
-3. Signed in → `/today` loads — first request compiles if cold (dev mode), subsequent requests are fast.
+3. Signed in → `/today` loads from the production build served by `next start`.
 4. Frontend talks to `api.lyraos.org` via the typed API wrappers in `frontend/lib/*.ts`. CORS uses an explicit origin allow-list rather than a single `FRONTEND_URL` value, so operator dev and public runtime can coexist:
    - `http://localhost:3000`
    - `http://127.0.0.1:3000`
@@ -137,7 +142,7 @@ epistemically ambiguous
 
 - The tunnel is a foreground process launched via `cloudflared tunnel run lyra-prod` (currently `nohup … &`). **Does NOT auto-recover** on laptop sleep or reboot.
 - Same for the backend container (docker-compose state may survive sleep but needs operator to `docker compose up -d` after a reboot).
-- Same for `npm run dev` on the frontend.
+- Same for the `next start` frontend process.
 
 **Fallback today:** if a trusted user hits "site down" while operator's laptop is asleep, operator wakes the laptop and restarts the stack. Acceptable for April 18 pre-alpha (<10 users, operator available).
 
@@ -216,10 +221,9 @@ sleep 2 && curl -sf https://api.lyraos.org/v1/health || echo "TUNNEL DOWN"
 powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1
 
 # 4. Orphan check
-curl -s -H "X-User-Id: 1" localhost:8000/v1/tasks/query?state=all | \
-  python3 -c "import sys,json; tasks=json.load(sys.stdin).get('tasks',[]); \
-  orphans=[t for t in tasks if t['state']=='EXECUTING']; \
-  print(f'{len(orphans)} EXECUTING tasks') if orphans else print('No orphans')"
+# Runtime HTTP auth requires a valid bearer/JWT. Do not use X-User-Id outside
+# tests. Use an authenticated browser session, an operator diagnostic endpoint,
+# or backend logs until an operator service-token path exists.
 
 # 5. Recent errors
 docker logs lyrasecretaryv01-backend-1 --since 1h 2>&1 | grep -i error | tail -10
@@ -227,7 +231,7 @@ docker logs lyrasecretaryv01-backend-1 --since 1h 2>&1 | grep -i error | tail -1
 
 ## References
 
-- `CLAUDE.md §Architecture` — layer overview, now pointing at this doc.
+- `agent bootstrap doc §Architecture` — layer overview, now pointing at this doc.
 - `README.md §Deployment` — endpoint table.
 - `docs/operator_interrogation_checklist.md §Production monitoring` — the Day N questions to ask about trusted-user health.
 - `docs/dogfood_findings_living.md` — operational findings (laptop sleep, tunnel recovery, domain watch).

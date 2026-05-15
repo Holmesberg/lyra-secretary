@@ -28,6 +28,11 @@ observed traces
 The system earns stronger guidance only as it accumulates enough clean,
 longitudinal evidence for a specific user.
 
+This loop is rule-based and probabilistic before it is AI-powered. The
+adaptive claim should come from explicit traces, declared metrics, clean-data
+profiles, and exposure-safe comparisons. LLM or operator tooling may help with
+enrichment and synthesis, but it is not the core intelligence substrate.
+
 The strongest framing is:
 
 > Lyra has seen enough about how this kind of task behaves in this context to
@@ -36,6 +41,9 @@ The strongest framing is:
 Not:
 
 > Lyra has generated your optimal schedule.
+
+See also `docs/behavioral_instrumentation_doctrine.md` for the broader
+instrumentation philosophy behind this stance.
 
 ## Progressive Epistemic Capability
 
@@ -236,6 +244,80 @@ The user should feel:
 Not:
 
 > I am grinding points.
+
+## Cold-Start Priors And Archetype Decay
+
+Adaptive systems have a cold-start problem: before enough local longitudinal
+evidence exists, purely personal inference is sparse and often unhelpful.
+
+The archetype system should therefore be framed as a cold-start prior
+mechanism, not personality typing.
+
+Bad framing:
+
+```text
+You are a procrastinator archetype.
+```
+
+Better framing:
+
+```text
+Users with similar early behavioral/topological patterns historically showed
+similar execution-drift structures. Lyra treats this only as an initial
+hypothesis until your own traces dominate.
+```
+
+The intended authority flow is:
+
+```text
+cold-start prior
+  -> personal traces accumulate
+  -> prior is reinforced, weakened, or locally adjusted
+  -> user sees calibration drift
+  -> no stable identity claim is made
+```
+
+This means archetype authority must decay as personal evidence accumulates.
+Personal longitudinal traces eventually dominate cluster-derived priors.
+
+Good user-facing copy:
+
+```text
+Your starting profile expected academic tasks to run about 40% over plan.
+Your recent trace data is currently 12% under plan. Lyra is treating this as
+calibration drift, not as a fixed identity.
+```
+
+Even better:
+
+```text
+Your traces are moving away from your starting profile on academic tasks. The
+profile expected +40% over plan; your recent data is 12% under. Treat this as
+the model recalibrating, not as a label about you.
+```
+
+Forbidden copy:
+
+```text
+Lyra knows your personality.
+```
+
+```text
+You are no longer this type.
+```
+
+```text
+You should schedule this way because your archetype says so.
+```
+
+Archetypes may be most valuable internally for:
+
+- prior shaping,
+- confidence initialization,
+- cold-start scheduling hypotheses,
+- and comparison against emerging personal traces.
+
+They must not become stable user identity claims.
 
 ## Minimum Future Contract
 

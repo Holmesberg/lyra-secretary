@@ -14,9 +14,9 @@ Thanks for your interest in [Lyra Secretary](https://github.com/Holmesberg/lyra-
    pytest tests/
    ```
 
-   CI uses **Python 3.11** (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). On Windows, **Python 3.14** may fail to install pinned `pydantic`/`fastapi` (wheel build requires MSVC `link.exe`); use a **3.11** virtualenv for full `pytest tests/`. Smokescreen without the full stack: from `backend/`, `pytest tests_inference_engine/ --confcutdir=tests_inference_engine -q` (see [`CLAUDE.md`](CLAUDE.md) → verification commands).
+   CI uses **Python 3.11** (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). On Windows, **Python 3.14** may fail to install pinned `pydantic`/`fastapi` (wheel build requires MSVC `link.exe`); use a **3.11** virtualenv for full `pytest tests/`. Smokescreen without the full stack: from `backend/`, `pytest tests_inference_engine/ --confcutdir=tests_inference_engine -q`.
 
-3. For Docker-based development, see the commands in [`CLAUDE.md`](CLAUDE.md) and networking details in [`docs/architecture.md §3`](docs/architecture.md).
+3. For Docker-based development, see [`README.md`](README.md), [`docs/deployment_architecture.md`](docs/deployment_architecture.md), and networking details in [`docs/architecture.md §3`](docs/architecture.md).
 
 ## Pull requests
 

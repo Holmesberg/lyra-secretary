@@ -75,4 +75,4 @@ This principle emerged April 16 during Path A walk-back to Option C. Original Pa
 
 ## Authority
 
-Designed by operator (Ali Nasser) in conversation with Claude (Anthropic), April 16, 2026. Triggered by the Apr 15 dogfood finding "Conflict detection too strict for planned tasks" and the resulting Path A walk-back of the Apr 14 Gate B spec. Applies to every new user-facing rule from this date forward. Any rule proposed as "hard" must first pass the diagnostic test. Integration-not-isolation principle added April 17, 2026.
+Designed by operator (Ali Nasser) in conversation with assistant runtime (hosted model provider), April 16, 2026. Triggered by the Apr 15 dogfood finding "Conflict detection too strict for planned tasks" and the resulting Path A walk-back of the Apr 14 Gate B spec. Applies to every new user-facing rule from this date forward. Any rule proposed as "hard" must first pass the diagnostic test. Integration-not-isolation principle added April 17, 2026.

@@ -1,6 +1,6 @@
 # Calibration Contract
 
-*Doctrine for every reflection surface in Lyra. Gates Phases 1-6 of the 2026-05-02 system transition (`/home/alina/.claude/plans/alright-listen-up-claude-delegated-garden.md`). Read before adding any user-facing surface that displays inferred behavior.*
+*Doctrine for every reflection surface in Lyra. Gates Phases 1-6 of the 2026-05-02 system transition (`/home/alina/.assistant runtime/plans/alright-listen-up-assistant runtime-delegated-garden.md`). Read before adding any user-facing surface that displays inferred behavior.*
 
 ---
 

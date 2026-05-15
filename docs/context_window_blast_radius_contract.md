@@ -5,6 +5,10 @@
 **Purpose:** Define how Codex should preserve intent, constrain blast radius,
 and re-anchor after context loss while working on LyraOS.
 
+**Manifesto relationship:** this is an operator/Codex execution contract. It is
+subordinate to `MANIFESTO.md` and the Cortex product-research contracts. It does
+not define product claims, research variables, or user-facing governance.
+
 This contract exists because LyraOS work now spans architecture, runtime
 identity, topology, exposure enforcement, browser behavior, and deployment
 state. A smart assistant with a limited context window can be useful only if the

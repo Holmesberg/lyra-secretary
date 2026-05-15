@@ -2,9 +2,9 @@
 
 **Owner:** Operator
 **Created:** April 14, 2026 (triggered by pause-prediction spec vs schema mismatch)
-**Status:** Canonical. Applies to any Claude Code work that touches measurement, data flow, or research-relevant fields. Applies to Claude in chat discussion of such features as well.
+**Status:** Canonical. Applies to any agent runtime work that touches measurement, data flow, or research-relevant fields. Applies to assistant runtime in chat discussion of such features as well.
 
-This document is referenced by `CLAUDE.md`. If you are about to implement a feature that touches the Lyra measurement instrument — stop and read this before producing a design or any code.
+This document is referenced by `agent bootstrap doc`. If you are about to implement a feature that touches the Lyra measurement instrument — stop and read this before producing a design or any code.
 
 ---
 
@@ -144,7 +144,7 @@ These CANNOT skip the rule even if they feel small:
 
 ## References
 
-- `CLAUDE.md` §Structural Investigation Rule — short pointer to this doc
+- `agent bootstrap doc` §Structural Investigation Rule — short pointer to this doc
 - `docs/design_patterns/notification_patterns.md` — notification surface authority
 - `docs/design_patterns/two_stage_destruction.md` — adjacent design-pattern canon
 - `docs/do_not_add.md` — rejected patterns, canonical list of research-relevant fields
@@ -155,4 +155,4 @@ These CANNOT skip the rule even if they feel small:
 
 ## Authority
 
-Designed by operator (Ali Nasser) in conversation with Claude (Anthropic), April 14, 2026. Triggered by the pause-prediction spec vs. schema mismatch: spec assumed a pause-event history table existed; schema retained only one pause per session, cleared on resume. Rule is canonical. Features ship under its authority after April 14, 2026.
+Designed by operator (Ali Nasser) in conversation with assistant runtime (hosted model provider), April 14, 2026. Triggered by the pause-prediction spec vs. schema mismatch: spec assumed a pause-event history table existed; schema retained only one pause per session, cleared on resume. Rule is canonical. Features ship under its authority after April 14, 2026.

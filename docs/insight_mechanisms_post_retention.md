@@ -199,10 +199,10 @@ from Lyra to the user.
 4-week comparison, tomorrow) in one artifact. This is the share-with-a-friend artifact —
 the closest Lyra gets to a Spotify Wrapped moment.
 
-**Data path:** Templated LLM call (Claude Haiku 4.5) over a structured weekly summary
+**Data path:** Templated LLM call (assistant runtime Haiku 4.5) over a structured weekly summary
 built in SQL. Slot-filled templates for v1, full LLM generation for v2.
 
-**Cost:** ~2-3 weeks. Privacy: weekly summary goes to Anthropic API, document in privacy
+**Cost:** ~2-3 weeks. Privacy: weekly summary goes to hosted model provider API, document in privacy
 policy.
 
 ---

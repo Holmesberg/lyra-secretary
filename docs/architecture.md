@@ -2,6 +2,12 @@
 
 *Consolidated from: `multiuser_migration_plan.md`, `phase_4_prerequisites.md`.*
 *Last updated: April 10, 2026.*
+*Current status: historical design note. The current shipped architecture is
+NextAuth Google identity, frontend-minted backend JWT, FastAPI v1 API, request
+user scope middleware, SQLAlchemy/Postgres, Redis, APScheduler workers, and
+operator-only JARVIS/OpenClaw. Use `archive/appstore/summary_of_app.md`,
+`docs/deployment_architecture.md`, and `docs/cortex_product_research_contract_v0.md`
+as current authority.*
 
 ---
 

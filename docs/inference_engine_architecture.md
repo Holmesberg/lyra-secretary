@@ -53,7 +53,7 @@ Per-signal **R2** tiers for surfaced copy will be documented here when Phase 4 c
 
 | Gate | Requirement |
 |------|-------------|
-| Phase 2 → 3 | `docs/jarvis_hypothesis_log.md` — ≥3 PROMOTED + ≥2 REJECTED (`CLAUDE.md`) |
+| Phase 2 → 3 | `docs/jarvis_hypothesis_log.md` — ≥3 PROMOTED + ≥2 REJECTED (`agent bootstrap doc`) |
 | Phase 3 expansion | This doc updated in the **same PR** as new inference outputs or new aggregate fields |
 | Phase 3 → 4 (R8) | Operator + 2 trusted users show **discrimination** before cohort-facing copy from promoted hypotheses |
 | Phase 4+ | `docs/calibration_contract.md` Enforcement checklist on every reflection PR |

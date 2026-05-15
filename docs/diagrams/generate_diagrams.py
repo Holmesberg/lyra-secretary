@@ -473,7 +473,7 @@ def draw_sequence_main() -> None:
     dy = 0.49
     steps = [
         (0, 1, "create task / brain dump", False),
-        (1, 2, "POST /v1/tasks or /brain-dump/commit + bearer", False),
+        (1, 2, "POST /v1/create or /brain-dump/commit + bearer", False),
         (2, 3, "resolve user scope, validate payload", False),
         (3, 4, "INSERT task, deadline bindings", False),
         (3, 5, "cache range / undo context", False),

@@ -1,4 +1,4 @@
-# Claude Code feedback-triage recipe
+# agent runtime feedback-triage recipe
 
 **Created:** 2026-04-28
 **Owner:** Operator (Ali)
@@ -8,15 +8,15 @@
 
 ## Why this exists
 
-The alpha feedback widget (alembic 040) writes rows to `feedback` and emails/Telegrams operator on each submission. But when you accumulate 5-10 reports a week, manual triage drags. This recipe runs Claude Code on a schedule to summarize, categorize, and propose fixes — operator decides which to ship.
+The alpha feedback widget (alembic 040) writes rows to `feedback` and emails/Telegrams operator on each submission. But when you accumulate 5-10 reports a week, manual triage drags. This recipe runs agent runtime on a schedule to summarize, categorize, and propose fixes — operator decides which to ship.
 
-Zero infra: uses Claude Code's built-in `/schedule` command. No webhook, no SDK, no auth setup beyond Claude Code itself.
+Zero infra: uses agent runtime's built-in `/schedule` command. No webhook, no SDK, no auth setup beyond agent runtime itself.
 
 ---
 
 ## The recipe
 
-Paste this into Claude Code to set up a weekly Sunday triage:
+Paste this into agent runtime to set up a weekly Sunday triage:
 
 ```
 /schedule
@@ -48,19 +48,19 @@ You can also run it ad-hoc:
 
 ## Operator-side guardrails
 
-- **Don't auto-resolve.** Every status flip from `unread` → `acted_on` should be operator-driven, even when Claude proposes the patch. The `operator_note` field is for the operator's own context, not Claude's.
+- **Don't auto-resolve.** Every status flip from `unread` → `acted_on` should be operator-driven, even when agent runtime proposes the patch. The `operator_note` field is for the operator's own context, not agent runtime.
 - **Watch for repeat reporters.** If user X submits 5 bugs in a week, that's a signal — either the surface they touch is genuinely broken OR they're feedback-loop power users who'd be great for a 30-min interview. Don't filter their reports out, but tag them.
-- **Email yourself the summary.** Claude Code's `/schedule` output goes to your Claude Code thread. If you want it in your inbox too, ask Claude to also send via Resend.
+- **Email yourself the summary.** agent runtime's `/schedule` output goes to your agent runtime thread. If you want it in your inbox too, ask agent runtime to also send via Resend.
 
 ---
 
 ## When to upgrade to a real webhook
 
 If feedback hits 50+/week or you want sub-hour latency on patches:
-- Build a `POST /v1/feedback` → AWS Lambda or Cloudflare Worker → Claude Agent SDK invocation
-- Lambda passes the feedback row to a Claude agent in a sandboxed branch
+- Build a `POST /v1/feedback` → AWS Lambda or Cloudflare Worker → agent runtime Agent SDK invocation
+- Lambda passes the feedback row to a agent runtime agent in a sandboxed branch
 - Agent commits to a `feedback-fix-{id}` branch + opens a PR for operator review
-- Cost: ~1-2 days of setup + Claude Agent SDK billing
+- Cost: ~1-2 days of setup + agent runtime Agent SDK billing
 
 Until that volume, this recipe is enough.
 
@@ -85,7 +85,7 @@ Fields:
 
 ## Anti-pattern to avoid
 
-Don't have Claude auto-commit fixes from feedback rows without operator review. Two reasons:
+Don't have agent runtime auto-commit fixes from feedback rows without operator review. Two reasons:
 1. **Trust:** users who report bugs deserve to see operator engagement, not bot replies.
 2. **Quality:** automated patches at 10am Sunday before coffee = bad code reaching prod.
 

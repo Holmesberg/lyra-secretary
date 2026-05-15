@@ -1,7 +1,16 @@
 # Research Methodology
 
-*Canonical research-layer document. Consolidates earlier drafts of clustering and hypothesis notes (never committed as standalone files); those names are historical.*
-*Last updated: April 14, 2026.*
+*Historical research-layer design note. Consolidates earlier drafts of
+clustering and hypothesis notes; those names are historical.*
+*Last reviewed: May 15, 2026.*
+
+**Current status:** sections describing archetype priors as "design only,"
+"Bayesian shrinkage," or post-multi-user work are historical. The current
+authority is `MANIFESTO.md` Rule 13/Rule 17, `docs/cortex_contract_v0.md`, and
+`docs/behavioral_instrumentation_doctrine.md`. Current framing: archetypes are
+cold-start similarity priors and the implemented blend is a heuristic
+prior-personal weighting rule, not validated personality typing and not full
+Bayesian posterior inference.
 
 This document covers the research layer: clustering model, validation gates, and working hypotheses beyond H1. The primary hypothesis (H1: signed_discrepancy -> delta) and its pre-registered kill criterion live in `MANIFESTO.md §Kill Criterion — H1` and are not duplicated here.
 
@@ -9,7 +18,8 @@ This document covers the research layer: clustering model, validation gates, and
 
 ## 1. Cold-Start Personalization via Archetype Priors
 
-*Status: design only. No implementation as of v1.5.*
+*Historical status: design-only as of April 14, 2026. Superseded by later
+manifesto amendments and implementation docs.*
 
 ### Rationale
 
@@ -59,7 +69,11 @@ Key citations:
 - Pezzo MV, Litman JA, Pezzo SP. (2006). Pers Individ Differ 41(7):1359-1371.
 - Steel P. (2007, 2010). Psychol Bull 133(1):65-94.
 
-### Bayesian shrinkage formula
+### Historical prior-personal blend formula
+
+This section originally used the phrase "Bayesian shrinkage." Current doctrine
+uses the narrower phrase "linear prior-personal blend heuristic" unless a true
+posterior model is specified.
 
 ```
 personal_weight   = min(1.0, n_sessions_in_cell / 30)

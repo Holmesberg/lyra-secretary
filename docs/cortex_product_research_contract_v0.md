@@ -8,6 +8,11 @@ remaining a research-grade behavioral measurement system.
 This contract does not authorize new inference, schema, predictors, or UI. It
 defines the boundary between product behavior and research interpretation.
 
+**Manifesto relationship:** this contract refines `MANIFESTO.md`; it does not
+supersede it. Changes to product/research boundaries, exposure policy,
+output-surface governance, or user-burden doctrine must update the manifesto or
+explicitly document why no manifesto update is needed.
+
 ---
 
 ## 1. System Definition
@@ -30,6 +35,25 @@ maximize information gain per unit user friction
 This means inference may become richer only when it is paid for by passive
 signals, derived metrics, better uncertainty modeling, or clearer clean-data
 profiles. It must not be paid for by casually adding user prompts.
+
+LyraOS is not primarily an AI-powered productivity system. Its user-facing
+research core is rule-governed, probabilistic, inspectable, longitudinal, and
+epistemically constrained. AI systems may support enrichment, operator
+orchestration, or interface assistance, but they must not become hidden
+authorities over behavioral truth.
+
+The stronger framing is:
+
+```text
+a behavioral measurement instrument with a productivity interface
+```
+
+The core system accumulates evidence, detects patterns probabilistically, and
+progressively earns stronger inference rights. It must explicitly resist fake
+intelligence, opaque personalization, and black-box confidence theater.
+
+See `docs/behavioral_instrumentation_doctrine.md` for the doctrine note that
+expands this principle.
 
 ---
 
@@ -85,6 +109,17 @@ that states:
 6. how the variable can be sunset if it fails validation
 
 If this cannot be answered, the variable is rejected.
+
+User attention is scarce scientific capital. Every prompt is both a product
+friction cost and a potential measurement intervention. Ambiguity must not be
+solved by defaulting to more questions; the preferred direction is sparse
+explicit input plus dense passive structure.
+
+Missingness is part of the behavioral topology. Tasks not started, ignored
+prompts, absent readiness, skipped reflections, delayed initiation, and
+unconfirmed repair candidates may be informative, but they must remain
+provenance-aware absences rather than being converted into neutral defaults or
+observed truth.
 
 ---
 
@@ -211,6 +246,11 @@ No inference output may be treated as a stable user identity.
 
 All research outputs are time-local, context-bound hypotheses unless validated
 by a later contract.
+
+Archetype outputs are especially constrained. They may function as cold-start
+priors or similarity hypotheses, but they must not be rendered or consumed as
+personality truth. As personal longitudinal traces accumulate, user-specific
+evidence must weaken, reinforce, or override archetype priors.
 
 ---
 

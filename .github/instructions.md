@@ -1,4 +1,4 @@
-# Copilot Instructions for Lyra Secretary
+# Repository Instructions for Lyra Secretary
 
 Use these instructions when working in this repository.
 
@@ -6,7 +6,7 @@ Use these instructions when working in this repository.
 
 **Start here:** [`docs/AGENT_HANDOFF.md`](../docs/AGENT_HANDOFF.md) — comprehensive transition context, dual planning tracks, phase gates, file map, verification commands, and a checklist. This file is the short standing instruction set.
 
-**Hard gates (do not skip):** [`CLAUDE.md`](../CLAUDE.md) → section **System transition — rigorous gates (memory contract)** — mirrors transition phases 0–6 with verification sources and halt conditions.
+**Hard gates (do not skip):** [`MANIFESTO.md`](../MANIFESTO.md), [`docs/cortex_contract_v0.md`](../docs/cortex_contract_v0.md), [`docs/cortex_product_research_contract_v0.md`](../docs/cortex_product_research_contract_v0.md), and [`docs/deployment_architecture.md`](../docs/deployment_architecture.md).
 
 ## What This Repo Is
 
@@ -19,7 +19,6 @@ The important idea is simple: the repo already collects a lot of signal. The nex
 Before making changes, read:
 
 - `docs/AGENT_HANDOFF.md` (handoff + gates)
-- `CLAUDE.md`
 - `MANIFESTO.md`
 - `docs/building_phases.md`
 - `docs/calibration_contract.md`

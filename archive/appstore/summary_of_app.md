@@ -1,7 +1,7 @@
 # LyraOS - Comprehensive Product And Architecture Summary
 
 > **Snapshot date:** 2026-05-15
-> **Repository state:** 477 commits, 50 Alembic migrations, 81 backend test files
+> **Repository state:** 478 commits, 50 Alembic migrations, 82 backend test files
 > **Status:** Pre-alpha dogfood with operator plus small alpha cohort
 
 This document is a factual summary of the current LyraOS app and architecture.
@@ -52,8 +52,10 @@ Current doctrine:
 Canonical governance lives in:
 
 - `MANIFESTO.md`
+- `docs/professor_review_packet.md`
 - `docs/cortex_contract_v0.md`
 - `docs/cortex_product_research_contract_v0.md`
+- `docs/behavioral_instrumentation_doctrine.md`
 - `docs/context_window_blast_radius_contract.md`
 - `docs/deployment_architecture.md`
 - `docs/adaptive_scheduling_progressive_inference.md`
@@ -135,6 +137,10 @@ contract explicitly admits them.
 | JARVIS | Operator-only in-app assistant with confirmation-gated writes |
 | OpenClaw | Operator-only multi-agent orchestration/runtime |
 
+The user-facing behavioral core is rule-based, probabilistic, inspectable, and
+evidence-constrained. AI components assist enrichment, operator synthesis, and
+interface work; they are not the core authority for behavioral truth.
+
 ### Deployment
 
 | Layer | Current shape |
@@ -185,21 +191,21 @@ research shortcut.
 
 ---
 
-## 5. Public Frontend Routes
+## 5. Frontend Routes
 
-| Route | Purpose |
-| --- | --- |
-| `/` | Landing page with LyraOS positioning and real Insights screenshot |
-| `/today` | Main task execution surface |
-| `/pulse` | Operational dashboard, quick capture, deadlines, system insight |
-| `/calendar` | Schedule-X calendar with Lyra tasks and Google Calendar overlay |
-| `/deadlines` | Native and Moodle-imported deadline management |
-| `/insights` | Behavioral insight cards, synthesis, confidence tiers |
-| `/table` | Raw task table with filters and bulk actions |
-| `/settings` | Integrations, account controls, archetype/settings surfaces |
-| `/admin/dashboard` | Operator-only admin and cohort dashboard |
-| `/privacy` | Privacy page |
-| `/terms` | Terms page |
+| Route | Access | Purpose |
+| --- | --- | --- |
+| `/` | Public | Landing page with LyraOS positioning and real Insights screenshot |
+| `/today` | Authenticated users | Main task execution surface |
+| `/pulse` | Authenticated users | Operational dashboard, quick capture, deadlines, system insight |
+| `/calendar` | Authenticated users | Schedule-X calendar with Lyra tasks and Google Calendar overlay |
+| `/deadlines` | Authenticated users | Native and Moodle-imported deadline management |
+| `/insights` | Authenticated users | Behavioral insight cards, synthesis, confidence tiers |
+| `/table` | Authenticated users | Raw task table with filters and bulk actions |
+| `/settings` | Authenticated users | Integrations, account controls, archetype/settings surfaces |
+| `/admin/dashboard` | Operator-only | Admin and cohort dashboard |
+| `/privacy` | Public | Privacy page |
+| `/terms` | Public | Terms page |
 
 There is no standalone onboarding route. Onboarding is a component-level gate
 inside the authenticated app shell.
@@ -966,7 +972,6 @@ that the feature is verified.
 - deadlines
 - Moodle import/submission detection
 - Google Calendar read-only context
-- Notion sync
 - Pulse dashboard
 - Insights page
 - primary synthesis insight card
@@ -983,6 +988,7 @@ that the feature is verified.
 - JARVIS
 - OpenClaw workflows
 - operator notifications
+- Notion outbound sync/retry plumbing
 - topology verification discipline
 - exposure diagnostics and policy logs
 
@@ -995,6 +1001,7 @@ that the feature is verified.
 - confidence-backed behavioral recommendations
 - learning from exposed/intervened behavior without stratified exposure modeling
 - new required user input for research enrichment
+- public Notion OAuth/import or non-operator Notion configuration
 
 ---
 

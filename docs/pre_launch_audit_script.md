@@ -33,7 +33,7 @@
 **Checklist:**
 - [ ] List every `CREATE TABLE` from `backend/alembic/versions/*.py`
 - [ ] Cross-reference against `__tablename__` in `backend/app/db/models.py`
-- [ ] Compare against `CLAUDE.md` "Database schema (N tables)" section
+- [ ] Compare against `agent bootstrap doc` "Database schema (N tables)" section
 - [ ] Verify column-level: nullable vs NOT NULL, enum values, FK on-delete behavior, index claims
 - [ ] Verify `external_source` field exists on every table that imports external data (template: `external_event_outcome`, `deadline` post-alembic-041)
 - [ ] H2 queries (Rules 14–16) default to `WHERE external_source IS NULL` — verify per query
@@ -42,7 +42,7 @@
 
 **Output table:**
 
-| Table | In code | In CLAUDE.md | In project_history | In building_phases | Status |
+| Table | In code | In agent bootstrap doc | In project_history | In building_phases | Status |
 |---|---|---|---|---|---|
 
 **Quick commands:**
@@ -61,17 +61,17 @@ grep -h "__tablename__" backend/app/db/models.py | wc -l       # table count
 **Checklist:**
 - [ ] Enumerate every route in `backend/app/api/v1/endpoints/*.py`
 - [ ] Compare against `openclaw/skills/lyra-secretary/SKILL.md`
-- [ ] Compare against `CLAUDE.md` endpoint mentions
+- [ ] Compare against `agent bootstrap doc` endpoint mentions
 - [ ] Compare against `README.md` endpoint counts
 - [ ] Frontend cross-check: every endpoint in `frontend/lib/**` exists in backend; every backend endpoint has a caller (frontend OR OpenClaw OR scheduler-internal)
 - [ ] X-Idempotency-Key header coverage on every mutation
 - [ ] Per-user ownership check on every endpoint accepting an ID
 - [ ] **5xx exception leak audit:** `grep -rn "status_code=500, detail=str(e)" backend/app/api/` — must return 0
-- [ ] Deprecated endpoints (e.g. `POST /v1/parse`) flagged consistently across SKILL.md + CLAUDE.md
+- [ ] Deprecated endpoints (e.g. `POST /v1/parse`) flagged consistently across SKILL.md + agent bootstrap doc
 
 **Output table (CSV-shaped):**
 
-| method | path | in_skillmd | in_claudemd | in_readme | frontend_callers | openclaw_callers | scheduler_only | ownership_check | leaks_5xx | status |
+| method | path | in_skillmd | in_bootstrap_doc | in_readme | frontend_callers | openclaw_callers | scheduler_only | ownership_check | leaks_5xx | status |
 |---|---|---|---|---|---|---|---|---|---|---|
 
 **Quick commands:**
@@ -89,7 +89,7 @@ grep -rn "X-Idempotency-Key\|x-idempotency-key" backend/             # idempoten
 
 **Checklist:**
 - [ ] Read `backend/app/workers/scheduler.py` — enumerate every `add_job` call
-- [ ] Verify count matches CLAUDE.md "N background jobs"
+- [ ] Verify count matches agent bootstrap doc "N background jobs"
 - [ ] Verify CI gate `tests/test_state_consistency.py:test_apscheduler_job_count` asserts the right count
 - [ ] Per-job: trigger interval matches doc, per-user scoping correct, misfire grace configured
 - [ ] **Misfire grace:** `BackgroundScheduler(job_defaults={"misfire_grace_time": ...})` — non-default required for laptop-sleep recovery
@@ -97,7 +97,7 @@ grep -rn "X-Idempotency-Key\|x-idempotency-key" backend/             # idempoten
 
 **Output table:**
 
-| job_name | function | interval_in_code | interval_in_claudemd | per_user_scoped | ci_gate_asserts | misfire_grace | idempotent |
+| job_name | function | interval_in_code | interval_in_bootstrap_doc | per_user_scoped | ci_gate_asserts | misfire_grace | idempotent |
 |---|---|---|---|---|---|---|---|
 
 **Quick commands:**
@@ -114,7 +114,7 @@ grep "misfire_grace_time" backend/app/workers/scheduler.py
 
 **Checklist:**
 - [ ] Extract transition table from `services/state_machine.py`
-- [ ] Compare against CLAUDE.md, README.md, SKILL.md, and any diagram in `docs/diagrams/`
+- [ ] Compare against agent bootstrap doc, README.md, SKILL.md, and any diagram in `docs/diagrams/`
 - [ ] Verify terminal-state immutability — every code path that mutates a task rejects EXECUTED, SKIPPED, DELETED
 - [ ] **Single Mutation Authority:** `grep -rn "task.state =\|task.state=\|Task.state =" backend/app/ | grep -v "task_manager.py"` — must return 0 outside the manager
 - [ ] Early-stop gate (<50% planned duration) wired end-to-end (frontend → endpoint → service)
@@ -207,12 +207,12 @@ grep -rn "VT-\|MANIFESTO Rule" backend/app/                                    #
 ## §8 — Doc count alignment
 
 **Checklist (re-derive every numeric claim from code):**
-- [ ] CLAUDE.md "N tables" — count Alembic CREATE TABLEs
-- [ ] CLAUDE.md / README.md "N endpoints" — count `@router.` decorators
-- [ ] CLAUDE.md "N background jobs" — count `add_job` calls
+- [ ] agent bootstrap doc "N tables" — count Alembic CREATE TABLEs
+- [ ] agent bootstrap doc / README.md "N endpoints" — count `@router.` decorators
+- [ ] agent bootstrap doc "N background jobs" — count `add_job` calls
 - [ ] State machine "N transitions" — count cells in `state_machine.py` map
 - [ ] LYRA_BUGS.md open/fixed counts
-- [ ] `wc -l openclaw/skills/lyra-secretary/SKILL.md` ≤ 150 (per CLAUDE.md hard rule)
+- [ ] `wc -l openclaw/skills/lyra-secretary/SKILL.md` ≤ 150 (per agent bootstrap doc hard rule)
 - [ ] **SKILL.md three-way sync diff:**
   ```bash
   diff openclaw/skills/lyra-secretary/SKILL.md /mnt/c/Users/alina/openclaw/skills/lyra-secretary/SKILL.md
@@ -233,13 +233,13 @@ grep -rn "VT-\|MANIFESTO Rule" backend/app/                                    #
 **Checklist:**
 - [ ] `.env.example` lists every variable
 - [ ] Every `os.getenv` / `os.environ.get` / Pydantic `BaseSettings` field is in `.env.example` OR has a documented default
-- [ ] CLAUDE.md "Required vars" list current: `DATABASE_URL`, `REDIS_URL`, `NOTION_API_KEY`, `NOTION_DATABASE_ID`, `USER_TIMEZONE`, `SECRET_KEY` ≥ 32 chars
+- [ ] agent bootstrap doc "Required vars" list current: `DATABASE_URL`, `REDIS_URL`, `NOTION_API_KEY`, `NOTION_DATABASE_ID`, `USER_TIMEZONE`, `SECRET_KEY` ≥ 32 chars
 - [ ] Supabase pooler details (port 6543, sslmode=require, eu-west-1) match `deployment_architecture.md`
 - [ ] SQLite fallback file (`.env.backup-sqlite-2026-04-16`) still exists; schema parity with current Postgres state
 
 **Output table:**
 
-| var_name | in_env_example | in_claudemd | in_code | required | default | status |
+| var_name | in_env_example | in_bootstrap_doc | in_code | required | default | status |
 |---|---|---|---|---|---|---|
 
 ---

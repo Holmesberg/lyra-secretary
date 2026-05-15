@@ -1,5 +1,5 @@
 name: Lyra Secretary
-model: claude-3-5-sonnet-20241022
+model: nvidia/moonshotai/kimi-k2.6
 temperature: 0.2
 
 system_prompt: |

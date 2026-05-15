@@ -16,6 +16,12 @@ Structural refactor sequencing is governed by
 The product/research boundary is governed by
 `docs/cortex_product_research_contract_v0.md`.
 
+Manifesto relationship: this contract refines `MANIFESTO.md`; it does not
+supersede it. Any change to observed/derived/latent boundaries, clean-data
+profiles, projection semantics, or exposure eligibility is doctrine-level and
+must update the manifesto or explicitly document why no manifesto update is
+needed.
+
 ---
 
 ## 1. Phase Boundary
@@ -190,6 +196,9 @@ Include only rows where:
 - `voided_at IS NULL`
 - `initiation_status != 'system_error'`
 - `initiation_status != 'retroactive'`
+- lifecycle provenance is real-time observed, not `system_recovered`
+- the row is not a `repair_prompt_result` projection unless a successor
+  profile explicitly admits repaired measurements
 - `executed_duration_minutes IS NOT NULL`
 - `planned_duration_minutes >= 5`
 
@@ -201,6 +210,8 @@ Includes all `measured_execution` requirements, plus:
 
 - Exclude tasks bound to externally imported deadlines.
 - Tasks with no deadline binding remain eligible.
+- Exclude correction-adjusted or repair-confirmed projections unless the
+  analysis explicitly reports them as a sensitivity check.
 
 Rationale: externally imported deadlines constrain the time slot from outside
 Lyra, so they mix user planning with external scheduling pressure.

@@ -135,7 +135,7 @@ score >= 0.85 → tier1_auto    (UI pre-checks the binding pill)
 
 ## Edge-case battery findings (2026-04-29 second pass)
 
-15 cases run live against `moriartyholmesberg@gmail.com` (uid=15, Claude's test arena per `memory/project_test_arenas.md`). All hard bugs surfaced in the Apr 28 first pass were fixed.
+15 cases run live against `moriartyholmesberg@gmail.com` (uid=15, assistant runtime test arena per `memory/project_test_arenas.md`). All hard bugs surfaced in the Apr 28 first pass were fixed.
 
 | Verification | Result |
 |---|---|

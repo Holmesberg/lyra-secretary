@@ -1,8 +1,8 @@
 # Agent handoff — Lyra Secretary
 
-**Purpose:** Onboarding for any autonomous or agentic AI (Cursor, Copilot, Claude Code, etc.). Read this **before** editing code or docs. Cross-check claims against the repo; docs sometimes lag.
+**Purpose:** Onboarding for any autonomous or agentic AI (editor agent, Copilot, agent runtime, etc.). Read this **before** editing code or docs. Cross-check claims against the repo; docs sometimes lag.
 
-**Last updated:** 2026-05-03 — gates mirrored in **`CLAUDE.md` → System transition — rigorous gates** (replace date when you materially change reality).
+**Last updated:** 2026-05-03 — gates mirrored in **`agent bootstrap doc` → System transition — rigorous gates** (replace date when you materially change reality).
 
 ---
 
@@ -10,7 +10,7 @@
 
 - **Not** a generic todo/productivity app.
 - **Behavioral inference engine** with scheduling/timer UX as the interaction surface.
-- **Thesis:** measured behavior (especially **implicit** action — pauses, dwell, abandonment paths, timing) must eventually outweigh **declarative** self-report when they conflict, after **calibration** and **confidence** discipline — see `docs/calibration_contract.md` and Principle 5 in the May 2026 transition narrative (`CLAUDE.md`).
+- **Thesis:** measured behavior (especially **implicit** action — pauses, dwell, abandonment paths, timing) must eventually outweigh **declarative** self-report when they conflict, after **calibration** and **confidence** discipline — see `docs/calibration_contract.md` and Principle 5 in the May 2026 transition narrative (`agent bootstrap doc`).
 - **Research as QC for the product** (`MANIFESTO.md`): pre-registration, validity, kill criteria — papers are a side effect; trust in surfaced reflections is the goal.
 - **Operator-only LLM discovery vs rule-based user-facing inference:** JARVIS (operator) proposes hypotheses; promoted patterns ship as **deterministic math** for everyone else. Integrity stance: **403** for non-operator JARVIS — see `backend/app/api/v1/endpoints/jarvis.py`.
 
@@ -21,7 +21,7 @@
 | Track | Canonical files | Role |
 |--------|-----------------|------|
 | **Product / alpha roadmap** | `docs/building_phases.md` | Tiered shipping (retention surfaces first), Phase 4.5 → alpha → retention checkpoints. **Last updated date in file may predate May 2026.** |
-| **May 2026 system transition (“cortex depth”)** | `CLAUDE.md`, `docs/calibration_contract.md`, `docs/data_utilization_inventory_2026_05_02.md`, `docs/jarvis_hypothesis_log.md` | Phases 0–6: calibration → inventory → **JARVIS soak** → inference engine → reflection surfaces → dark-column retirement → top-7 telemetry |
+| **May 2026 system transition (“cortex depth”)** | `agent bootstrap doc`, `docs/calibration_contract.md`, `docs/data_utilization_inventory_2026_05_02.md`, `docs/jarvis_hypothesis_log.md` | Phases 0–6: calibration → inventory → **JARVIS soak** → inference engine → reflection surfaces → dark-column retirement → top-7 telemetry |
 
 **Both are real.** Product work (Tier 1 surfaces, bugs) can proceed in parallel with transition phases. **Do not** assume “Phase 4.5” and “Phase 2 JARVIS” are the same numbering system.
 
@@ -39,9 +39,9 @@ Check these **facts** on checkout:
 | **1 — Data utilization inventory** | Operator sign-off in inventory doc §7 | `docs/data_utilization_inventory_2026_05_02.md` |
 | **2 — JARVIS discovery soak** | ≥3 **PROMOTED** + ≥2 **REJECTED** hypotheses with real discrimination | `docs/jarvis_hypothesis_log.md` |
 | **3 — Inference engine** | Valence + tiers in code; full user-facing writers TBD | **`backend/app/services/inference_engine.py`** — valence, disagreement, R2 tiers; expand only with `docs/inference_engine_architecture.md` |
-| **4+** | Surfaces, retirement, telemetry | Per transition doc; follow **`CLAUDE.md` → System transition — rigorous gates** before merging reflection work |
+| **4+** | Surfaces, retirement, telemetry | Per transition doc; follow **`agent bootstrap doc` → System transition — rigorous gates** before merging reflection work |
 
-**Inference engine:** `inference_engine.py` exists (shared classification math). **Rigorous gates** for every phase live in **`CLAUDE.md` (System transition — rigorous gates)** — do not skip.
+**Inference engine:** `inference_engine.py` exists (shared classification math). **Rigorous gates** for every phase live in **`agent bootstrap doc` (System transition — rigorous gates)** — do not skip.
 
 **JARVIS tools (backend):** `backend/app/services/jarvis_tools.py` — includes `analyze_behavioral_signature`, `query_dark_columns`, `propose_pattern_hypothesis` among read tools; write tools are separate. Tests: `backend/tests/test_jarvis_phase2_discovery_tools.py`, `test_jarvis_endpoints.py`.
 
@@ -53,7 +53,7 @@ Check these **facts** on checkout:
 
 - **`docs/building_phases.md`** may still say “Phase 4.5 active” from April 2026 while May transition docs describe JARVIS/inference — **update explicitly** when you touch either.
 - **`docs/complexity_stress_test_2026_05_01.md`** — early sections push kill/substrate reduction; **read the 2026-05-02 postscript** for the reframe (utilization > raw complexity; JARVIS discovery kept).
-- **`CLAUDE.md` table count vs audits** — CLAUDE may list a subset; migrations evolve — trust `alembic/versions/` + `models.py` for truth.
+- **`agent bootstrap doc` table count vs audits** — assistant runtime may list a subset; migrations evolve — trust `alembic/versions/` + `models.py` for truth.
 - **Missing / partial docs:** `docs/inference_engine_architecture.md` (**DRAFT** — Phase C landed); still missing: `docs/dark_column_retirement_log.md`, `docs/reflection_view_log_schemas.md` — create or trim references when touched.
 
 ---
@@ -97,7 +97,7 @@ pip install matplotlib
 python docs/diagrams/generate_diagrams.py
 ```
 
-Docker and frontend workflows: **`CLAUDE.md`** Commands section.
+Docker and frontend workflows: **`agent bootstrap doc`** Commands section.
 
 ---
 
@@ -118,16 +118,16 @@ Docker and frontend workflows: **`CLAUDE.md`** Commands section.
 | Task truth | `backend/app/services/task_manager.py`, `state_machine.py` |
 | JARVIS | `jarvis_tools.py`, `jarvis_agent.py`, `endpoints/jarvis.py` |
 | Reflection logging | `reflection_view_log` model, endpoints that stamp view/dismiss |
-| Frontend | `frontend/` — Next.js; production serve notes in `CLAUDE.md` |
+| Frontend | `frontend/` — Next.js; production serve notes in `agent bootstrap doc` |
 | Doctrine | `MANIFESTO.md`, `docs/calibration_contract.md` |
 
 ---
 
 ## 9. Handoff checklist for the next agent
 
-- [ ] Read `CLAUDE.md` (**including System transition — rigorous gates**) + `docs/calibration_contract.md` end-to-end.
+- [ ] Read `agent bootstrap doc` (**including System transition — rigorous gates**) + `docs/calibration_contract.md` end-to-end.
 - [ ] Read `docs/jarvis_hypothesis_log.md` — confirm Phase 2 gate (PROMOTED/REJECTED counts).
-- [ ] Confirm `backend/app/services/inference_engine.py` and follow **CLAUDE.md** gates before expanding inference.
+- [ ] Confirm `backend/app/services/inference_engine.py` and follow **agent bootstrap doc** gates before expanding inference.
 - [ ] Run JARVIS-related pytest slice.
 - [ ] Only then implement Phase 3 expansion or Phase 4 surfaces.
 

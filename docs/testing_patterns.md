@@ -220,6 +220,6 @@ Import in test files: `from tests.conftest import auth_headers`.
 These patterns sit alongside two other backend-test disciplines that EVERY test must respect:
 
 - **`voided_at IS NULL` filter** (per `feedback_voided_at_guard` memory): every `Task` query asserts voided rows are excluded. Many existing tests demonstrate this pattern (`backend/tests/test_create_task_with_deadline.py::test_voided_deadline_rejection`, etc).
-- **External-source contamination** (per CLAUDE.md:156): if your test touches imported event data, filter `external_source IS NULL` to keep the H1/H2 measurement layer clean. Currently relevant only to `external_event_outcome` analytics tests.
+- **External-source contamination** (per agent bootstrap doc:156): if your test touches imported event data, filter `external_source IS NULL` to keep the H1/H2 measurement layer clean. Currently relevant only to `external_event_outcome` analytics tests.
 
 Cross-user isolation is the seam discipline. voided_at + external_source are the data-purity disciplines. They are orthogonal — a test can pass cross-user isolation while silently leaking voided rows, or vice versa.

@@ -20,7 +20,7 @@ retention checkpoint and before H1 reaches an explicit decision.
 
 **Justification (operator-stated):**
 1. Per the operator's priority hierarchy (operator's time > users' time > research
-   publications, see `~/.claude/projects/.../memory/user_priority_hierarchy.md`),
+   publications, see `~/.assistant runtime/projects/.../memory/user_priority_hierarchy.md`),
    research-integrity caveats yield to features the operator needs.
 2. The operator wants to use this feature himself for midterms + BCI hackathon
    work — self-dogfooding is the fastest validation loop available.

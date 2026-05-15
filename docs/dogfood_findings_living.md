@@ -5,7 +5,7 @@
 **Last updated:** April 16, 2026 (deployment live on lyraos.org via Cloudflare Tunnel + Supabase Postgres; LYR-098 + ReflectionModal completion % ungate moved to FIXED with commit hashes; calendar-mobile + pause-residual-delay + oslyra.com-watch P2 entries added; alignment audit commit `chore(alignment)` pre-Apr-18 launch cleaned cross-doc drift)
 **Status:** Active dogfood, pre-alpha
 
-This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to Claude Code. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
+This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to agent runtime. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
 
 ---
 
@@ -341,9 +341,9 @@ All CI green on `4740475`.**
 ## How operator uses this doc
 
 1. New finding emerges → operator drops a one-line entry under the appropriate priority section.
-2. When ready to ship a fix batch, operator references the relevant section by name in a Claude Code prompt: "read OPEN P0 section of dogfood_findings_living.md and ship items 1-3."
-3. Claude Code reports back with commit hashes per item.
-4. Operator (or Claude in chat) moves items from OPEN to FIXED with hash + date.
+2. When ready to ship a fix batch, operator references the relevant section by name in a agent runtime prompt: "read OPEN P0 section of dogfood_findings_living.md and ship items 1-3."
+3. agent runtime reports back with commit hashes per item.
+4. Operator (or assistant runtime in chat) moves items from OPEN to FIXED with hash + date.
 5. FIXED items stay for ~2 weeks then get pruned to keep the doc readable.
 
 P0 = blocks alpha launch

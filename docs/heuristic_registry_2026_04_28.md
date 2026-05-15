@@ -56,7 +56,7 @@ WHERE deadline_match_source LIKE 'heuristic_%'
   AND voided_at IS NULL;
 ```
 
-**Owner:** operator + this Claude. Threshold tuning (the four constants in `deadline_heuristic.py`) requires operator approval before code change — they are protocol-frozen alongside the source enum extension.
+**Owner:** operator + this assistant runtime. Threshold tuning (the four constants in `deadline_heuristic.py`) requires operator approval before code change — they are protocol-frozen alongside the source enum extension.
 
 **Sunset condition:**
 - If heuristic disagreement rate (LLM alt rate) exceeds 25% of heuristic-bound tasks within a rolling 50-task window per user, the heuristic over-binds and one of: (a) raise BRITTLE_FLOOR to 0.6, (b) raise AUTO_BIND_MIN_SCORE to 0.7, (c) require LLM confirmation before any heuristic auto-bind (heuristic populates `llm_inferred_*` only).
@@ -87,7 +87,7 @@ FROM task
 WHERE voided_at IS NULL;
 ```
 
-**Owner:** operator + Claude. The 0.85 confidence floor for surfacing alternatives is tunable; lower → more chip noise.
+**Owner:** operator + assistant runtime. The 0.85 confidence floor for surfacing alternatives is tunable; lower → more chip noise.
 
 **Sunset condition:**
 - If alternative-suggestion surface fires on >40% of heuristic-bound tasks for 2 weeks running, the heuristic is mismatching and trust-not-rewrite is becoming chip spam. Either tighten H1 guardrails or raise the alt-suggestion confidence floor to 0.92.

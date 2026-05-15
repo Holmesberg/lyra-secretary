@@ -1,4 +1,4 @@
-# Lyra Secretary — Manifesto v1.17
+# LyraOS - Manifesto v1.18
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
@@ -13,6 +13,36 @@
 *Revised: May 9, 2026. Day 36 — observability-repair interruption budget added: repair prompts require confidence thresholds, batching, cooldowns, and silent logging below threshold.*
 *Revised: May 9, 2026. Day 36 — Exposure Ledger v0 doctrine added: no baseline inference without exposure-context evaluation; `UNKNOWN` fails closed.*
 *Revised: May 9, 2026. Day 36 — horizon-policy auditability added: exposure gate policy is a hypothesis and must emit diagnostic effect logs so policy drift stays visible.*
+*Revised: May 15, 2026. Day 42 - rule-based probabilistic instrumentation doctrine added; AI role boundary, user-attention capital, missingness-as-signal, and archetype cold-start prior decay clarified.*
+
+---
+
+## Current External-Review Interpretation
+*Added: May 15, 2026.*
+
+This manifesto is both doctrine and historical lab notebook. Earlier sections
+preserve the names, hypotheses, and architecture language used when they were
+written. The current product name is LyraOS; historical mentions of "Lyra
+Secretary" are retained when they identify older revisions or experimental
+context.
+
+For professor or external review, read current claims through the latest
+governance sections first:
+
+- Manifesto Governance Rule
+- Rule-Based Instrumentation, Not AI Theater
+- Exposure Ledger v0 doctrine
+- Cortex clean-data profiles
+- current architecture summaries in `archive/appstore/summary_of_app.md`
+
+Historical hypotheses in this file are pre-registered candidates unless a later
+section marks them as shipped, validated, or superseded. They are not marketing
+claims and do not authorize autonomous scheduling, hidden intervention,
+identity labeling, or expanded user-burden surfaces.
+
+Current review note: later historical wording such as "behavioral correction",
+"first system", or early prototype architecture should be read as historical
+lab-notebook language unless restated in a current governance section.
 
 ---
 
@@ -48,9 +78,158 @@ pre-register.
 
 ---
 
+## Canonical Governance Index
+*Added: May 15, 2026.*
+
+Current active governance sources:
+
+- `MANIFESTO.md` - highest-priority doctrine and pre-registration artifact.
+- `docs/cortex_contract_v0.md` - Cortex variables, projections, clean-data
+  profiles, and read-time canonicalization rules.
+- `docs/cortex_product_research_contract_v0.md` - product/research boundary,
+  output-surface, exposure-ledger, and repair-governance contract.
+- `docs/behavioral_instrumentation_doctrine.md` - detailed doctrine for the
+  rule-governed, probabilistic instrumentation framing.
+- `docs/professor_review_packet.md` - external-review orientation packet that
+  separates current implementation, doctrine, limitations, and future gates.
+- `docs/adaptive_scheduling_progressive_inference.md` - future-gated adaptive
+  scheduling evidence contract.
+- `docs/deployment_architecture.md` - current public topology and operational
+  deployment shape.
+- `docs/openclaw_orchestration_contract_v0.md` - operator-only OpenClaw
+  runtime boundary.
+- `docs/context_window_blast_radius_contract.md` - operator/Codex execution
+  discipline; subordinate to product/research doctrine.
+
+Historical, archived, or design-only documents may preserve older names,
+paths, version counts, or proposed mechanisms. They should not be treated as
+current authority unless an active governance source points to them explicitly.
+
+---
+
+## Rule-Based Instrumentation, Not AI Theater
+*Added: May 15, 2026.*
+
+LyraOS is a behavioral measurement instrument with a productivity interface.
+
+Its user-facing intelligence is rule-governed, probabilistic, inspectable,
+longitudinal, and epistemically constrained. It is not powered at its core by
+opaque LLM inference, hidden embeddings, generic summaries, or black-box
+confidence theater. LLMs may enrich tasks, assist operator work, and provide
+interface glue, but they do not become truth authorities for behavioral claims.
+
+Stronger inference must be earned through:
+
+- observed traces
+- deterministic lifecycle transitions
+- clean-data profiles
+- exposure context
+- uncertainty propagation
+- falsifiable comparisons
+- longitudinal repetition
+
+The design goal is not to ask the user more questions until ambiguity
+disappears. User attention is scientific capital. Every prompt is friction, an
+intervention, and a possible change to the measurement environment. Lyra should
+prefer sparse explicit input plus dense passive structure.
+
+Missingness is not neutral. Tasks not started, absent readiness, skipped
+reflections, ignored prompts, delayed starts, and recovery actions are part of
+the behavioral topology. They may be signal, but they are never silently
+converted into observed truth.
+
+Archetypes are cold-start priors, not identity. They can initialize hypotheses
+for users without enough local traces, but personal evidence must decay,
+reinforce, or override those priors over time. The product must not say "you are
+this type"; it may say that a starting prior is recalibrating against observed
+traces.
+
+Companion doctrine: `docs/behavioral_instrumentation_doctrine.md`.
+
+---
+
+## Cortex Canonicalization Rule
+*Added: May 15, 2026.*
+
+Cortex is the read-time canonicalization layer. It does not silently rewrite
+product state, and it does not promote latent constructs into observed facts.
+
+Every research or learning read must declare:
+
+- the raw observed fields it consumes,
+- the derived metrics it recomputes,
+- the clean-data profile it requires,
+- the projection class it is reading,
+- and the exposure state under the current horizon policy.
+
+Legacy `duration_delta_minutes` uses the historical sign convention
+`planned - executed`. Cortex `active_delta_minutes` uses `executed - planned`.
+Any analysis that crosses these terms must state the sign convention explicitly.
+
+The canonical exposure ledger states are `NONE`, `EXPOSED`, `INTERVENTION`, and
+`UNKNOWN`. Event envelopes or inference projections may use lowercase or
+projection-specific aliases, but they must map back to this enum. Only `NONE`
+can certify baseline-clean rows.
+
+---
+
+## Archetype Surface Rule
+*Added: May 15, 2026.*
+
+Archetype and proximity surfaces are permitted only as cold-start prior and
+model-calibration surfaces. They are not identity surfaces.
+
+Allowed:
+
+- "starting profile"
+- "similarity prior"
+- "current proximity estimate"
+- "model recalibration"
+- "personal traces are overriding the starting prior"
+
+Forbidden in active user-facing copy:
+
+- "you are a procrastinator"
+- "your personality is..."
+- "your true type"
+- "you should schedule this way because your archetype says so"
+
+Rule 17 remains the historical activation and measurement guard for archetype
+reveal effects. The current interpretation is stricter: any active surface must
+avoid stable labels, preserve uncertainty, and show archetype authority decaying
+or being overridden as personal longitudinal traces accumulate.
+
+---
+
+## Adaptive Scheduling Evidence Gate
+*Added: May 15, 2026.*
+
+Adaptive scheduling is future-gated. LyraOS may observe, synthesize, and
+describe patterns, but it must not autonomously reschedule tasks, mutate a
+calendar, or claim an optimal schedule without a successor contract.
+
+Any future adaptive scheduling surface must satisfy all of the following before
+public release:
+
+- operator-only validation first,
+- registered output/intervention surface,
+- exposure ledger write before or at render,
+- clean matched-outcome comparison,
+- explicit uncertainty and fallback behavior,
+- no hidden calendar/task mutation,
+- no "AI knows your best life" or "optimal schedule" claim.
+
+The intended future loop is:
+
+```text
+observe -> synthesize -> suggest a small experiment -> measure outcome -> adapt confidence
+```
+
+---
+
 ## What This Is
 
-Lyra Secretary is a measurement-backed productivity tool. Most productivity tools assume their insights are accurate. Lyra tests its own.
+LyraOS is a measurement-backed productivity tool. Most productivity tools assume their insights are accurate. Lyra tests its own.
 
 The tool layer delivers scheduling, timer management, and behavioral feedback. The research layer validates whether those insights actually predict anything. Neither is primary. The tool fails if the research is invalid — you are acting on noise. The research is academic if the tool is not used — you have no data.
 
@@ -267,6 +446,15 @@ Implementation: imported events live in Redis (ephemeral) or in `external_event_
 ---
 
 ## System Architecture
+
+**Current architecture note (May 15, 2026):** the diagram below is a historical
+April snapshot. The current architecture is the Next.js web app with NextAuth
+Google identity, frontend-minted backend JWT, FastAPI v1 API, request user
+scope middleware, SQLAlchemy/Postgres persistence, Redis hot state, APScheduler
+workers, and a separate operator-only JARVIS/OpenClaw layer. The current
+authoritative public topology is `https://lyraos.org` -> `https://api.lyraos.org`;
+see `archive/appstore/summary_of_app.md` and `docs/deployment_architecture.md`
+for the current shape.
 
 ```
 Web UI (Next.js)                        ─┐
@@ -1011,7 +1199,7 @@ Different data populations serve different research questions. Confusing the pop
 
 You are testing two things:
 
-1. **Can the gap between how a person thinks they are and how they actually perform be measured, learned, and eventually closed?** This is the discrepancy hypothesis — the original question.
+1. **Can the gap between how a person thinks they are and how they actually perform be measured, modeled, and responsibly adapted around?** This is the discrepancy hypothesis — the original question.
 
 2. **Does skipping one task cause the next to fall?** This is the cascade failure discovery — observed on Day 2, independent of discrepancy, and potentially the faster path to a publishable finding.
 
@@ -1020,9 +1208,9 @@ Not "can I build a startup."
 
 If discrepancy predicts delta — the product, the paper, the BCI, the startup are all downstream.
 If cascade failure is real — Paper 2 ships first, independent of whether discrepancy pans out.
-If neither — you still have a working adaptive scheduler, 118+ commits of solid engineering, an international hackathon entry, and the clearest possible signal to pivot before overinvesting.
+If neither — the system still produces a useful engineering artifact and the clearest possible signal to pivot before overinvesting in a weak research claim.
 
-Either way, you win.
+Either way, the instrument learns something.
 
 The experiment has started. Stay in measurement mode.
 
@@ -1047,6 +1235,7 @@ The experiment has started. Stay in measurement mode.
 *Manifesto v1.15 — revised April 27, 2026 (Rule 17 archetype-proximity math amendment: effective-sample-size correction + bias-factor winsorization. Operator dogfood at 28 EXECUTED tasks returned 100.0% Procrastinator, 0.0% every other archetype — a 1.0000 / 0.0000 split at four decimals after 2 weeks of overrun-heavy data with a few extreme outliers (top observed bf values were 9.2, 3.7, 3.5). Two structural problems with the un-amended math: (1) the iid likelihood assumption was false (tasks within a user's window correlate along user × week × project × measurement-protocol axes; effective sample size by Kish formula is materially smaller than N), and (2) extreme outliers (bf > 3.0) drove tight-σ archetypes to log-likelihood -∞, since a Normal pdf at 30σ is effectively zero — so any archetype wide enough to absorb a 9× overrun (procrastinator σ=0.40) wins by a margin no amount of ESS damping can close. Amendment v1.15 fixes both: per-archetype log-likelihood is divided by `sqrt(N)` (Kish-style ESS treatment, treating the cluster as ~sqrt(N) effective independent observations) AND each task's observed bf is winsorized to `[0.30, 3.0]` before the Normal-pdf evaluation. The cap is principled: bf > 3.0 isn't "estimation error" the archetype model can read — it's scope-inflation territory the existing VT-22 hypothesis already covers, with its own dedicated mediation test (analysis rule 12). §25a metric, kill threshold (15% post-reveal planning inflation), floor (n ≥ 5 fresh-exposure users), and cohort caveat are all unchanged. v1.13/v1.14 analyses produced under the un-damped/un-winsorized formula remain on record and are tagged with their math version. UI display cap (99% maximum displayed) and display floor (2% minimum bar width) added as belt-and-suspenders against future saturation; rendering layer in `archetype-proximity-display.tsx`. Prompted by operator's question "the math behind archetypes might be leaning too hard towards procrastinator no?" — the honest answer was yes, on both counts. Post-amendment, operator's same data reads as 62% lark_low_discipline / 37% procrastinator / 1% diffuse_average — a real distribution rather than identity assertion.)*
 *Manifesto v1.16 — revised May 9, 2026 (Manifesto Governance Rule added. `MANIFESTO.md` is now the highest-priority governance artifact. Research-doctrine, ontology, measurement-semantics, pre-registration, product/research-boundary, and long-term architecture changes must either update the manifesto or explicitly document why no manifesto update is needed. This is a documentation governance rule only; no measurement formulas, thresholds, or product behavior changed.)*
 *Manifesto v1.17 — revised May 9, 2026 (Operator-only LLM runtime note added. Lyra JARVIS and the operator OpenClaw stack now target NVIDIA NIM `moonshotai/kimi-k2.6` with thinking enabled for chat turns. Structured parser calls explicitly disable thinking to preserve JSON. No measurement formulas, thresholds, clean-data profiles, or non-operator user-facing claims changed.)*
+*Manifesto v1.18 — revised May 15, 2026 (External-review interpretation and rule-based instrumentation doctrine added. Current LyraOS claims are framed as a rule-governed, probabilistic, inspectable behavioral instrument with AI support limited to enrichment, operator work, and interface assistance. User attention is treated as scientific capital; missingness remains provenance-aware signal; archetypes are cold-start priors whose authority must decay or be overridden by personal traces.)*
 
 ---
 

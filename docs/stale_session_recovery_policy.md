@@ -85,7 +85,7 @@ session.end_time = start_time + planned  (defensible synthetic; SKIPPED
 - `backend/app/workers/jobs/stale_session_recovery.py` — implementation
 - `backend/tests/test_jobs_skip_voided_tasks.py` — fixture bumped to 49h
 - `backend/tests/test_pause_resume_pause_event.py` — fixture bumped to 49h
-- `CLAUDE.md` — APScheduler description updated
+- `agent bootstrap doc` — APScheduler description updated
 
 ## Open follow-ups (not in this change)
 

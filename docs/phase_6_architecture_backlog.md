@@ -28,7 +28,7 @@ When in doubt, apply the test: *does this surface make a true statement about wh
 
 ## Origin
 
-Designed across April 12-13 in operator + Claude + ChatGPT conversation. Not implemented. Schema and analytics layer to be built post-retention validation. This document preserves the design so it doesn't have to be reconstructed.
+Designed across April 12-13 in operator + assistant runtime + ChatGPT conversation. Not implemented. Schema and analytics layer to be built post-retention validation. This document preserves the design so it doesn't have to be reconstructed.
 
 ## Core Principle
 
@@ -340,4 +340,4 @@ Design + ship together in Phase 6, not in pieces.
 
 ## Authority
 
-Designed by operator (Aly Nasser) in conversation with Claude (Anthropic) and ChatGPT (OpenAI), April 12-13, 2026. Not implemented. Phase 6 work, post-retention validation. This document is the design specification, not a build plan.
+Designed by operator (Aly Nasser) in conversation with assistant runtime (hosted model provider) and ChatGPT (OpenAI), April 12-13, 2026. Not implemented. Phase 6 work, post-retention validation. This document is the design specification, not a build plan.

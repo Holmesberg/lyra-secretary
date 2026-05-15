@@ -1,312 +1,306 @@
-# Lyra Secretary v1.5
+# LyraOS
 
 [![CI](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml/badge.svg)](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Repository](https://img.shields.io/badge/GitHub-lyra--secretary-181717?logo=github)](https://github.com/Holmesberg/lyra-secretary)
 
-> AI-native productivity system for adaptive scheduling, planning accuracy, and behavioral feedback
+> A rule-governed behavioral measurement instrument with a productivity interface.
 
-LyraOS treats task estimates as hypotheses and work sessions as evidence. It is a productivity interface with behavioral instrumentation underneath: planner, timer, calendar context, pause/resume tracking, readiness/reflection capture, and analytics for the gap between intended work and actual execution.
+LyraOS helps users plan tasks, execute them with timers, recover from missed
+plans, and inspect patterns in their own planning and execution traces. The
+deeper system is not an AI wrapper: it is an explicit, probabilistic,
+longitudinal instrumentation layer that treats plans as hypotheses and work
+sessions as evidence.
 
-## Built an AI system that discovered I finish closer to plan when starting drained.
+The short version:
 
-![Insights v2 — 83 sessions analyzed, archetype proximity plus readiness, time-of-day, abandonment, pause, and category insight cards](docs/insights-v2.png)
+```text
+observe -> canonicalize -> gate by provenance/exposure -> synthesize cautiously
+```
 
-## What Is This?
+![Insights layer screenshot](docs/insights-v2.png)
 
-Lyra Secretary is a FastAPI backend that manages your daily schedule by tracking **planned vs. executed task duration** — the **delta** — to learn behavioral patterns over time. Every task records how long you *said* it would take and how long it *actually* took, building a quantitative profile of your time usage.
+## Current Status
 
-As of v1.2, Lyra also captures a **discrepancy measurement layer**: self-rated readiness before each task (`pre_task_readiness`) and focus quality after (`post_task_reflection`), plus `initiation_delay_minutes` and `initiation_status` (initiated / abandoned / not_started). These feed the `GET /v1/analytics/discrepancy` endpoint and are the core instrument for the cognitive research layer.
+LyraOS is pre-alpha dogfood with the operator plus a small alpha cohort. It is
+live at:
 
-The long-term vision: integrate with **LYRA BCI** (EEG-based cognitive state detection) as a complementary signal — BCI and self-report are two noisy estimators of cognitive state, combined via Bayesian weighting proportional to each source's signal-to-noise ratio.
+- Frontend: `https://lyraos.org`
+- API: `https://api.lyraos.org`
+
+This repository contains the product app, backend API, research/governance
+contracts, operator tooling, and historical design notes. Current doctrine and
+professor-facing orientation live in:
+
+- [MANIFESTO.md](MANIFESTO.md)
+- [docs/professor_review_packet.md](docs/professor_review_packet.md)
+- [docs/behavioral_instrumentation_doctrine.md](docs/behavioral_instrumentation_doctrine.md)
+- [docs/cortex_product_research_contract_v0.md](docs/cortex_product_research_contract_v0.md)
+- [docs/cortex_contract_v0.md](docs/cortex_contract_v0.md)
+- [archive/appstore/summary_of_app.md](archive/appstore/summary_of_app.md)
+
+## What It Is
+
+LyraOS is both:
+
+- a low-friction planning and execution product
+- a measurement-valid behavioral instrument
+
+The product layer gives users a normal workflow: sign in, dump or create tasks,
+start/stop timers, recover missed plans, view deadlines, and inspect insights.
+
+The research layer interprets those traces only through explicit contracts:
+observed facts stay separate from derived metrics and inferred hypotheses;
+retroactive, repaired, external, exposed, and unknown-exposure rows retain
+their provenance; stronger claims require clean-data profiles and exposure
+state.
+
+The core research question is:
+
+```text
+Are humans wrong about their own execution capacity in structured,
+modelable ways?
+```
+
+## What It Is Not
+
+LyraOS does not currently ship:
+
+- autonomous rescheduling
+- hidden calendar mutation
+- validated adaptive scheduling
+- confidence-backed behavioral recommendations
+- stable personality or identity labels
+- AI-generated truth about user behavior
+- learning from exposed/intervened behavior without exposure modeling
+
+AI is used as supporting infrastructure: asynchronous enrichment, operator
+orchestration, implementation assistance, and interface glue. It is not the
+core authority for behavioral truth.
+
+## Shipped Product Surface
+
+User-facing:
+
+- Google sign-in through NextAuth
+- brain-dump onboarding
+- task planning and quick capture
+- timer execution: start, pause, resume, stop, switch
+- overdue recovery
+- calendar and deadline views
+- Moodle deadline import and submission detection
+- read-only Google Calendar context
+- Pulse dashboard
+- Insights page with primary synthesis and confidence-tiered cards
+- pause and resume prediction surfaces
+- archetype survey/proximity, framed as probabilistic prior/proximity
+- settings, export/deletion, and feedback
+
+Operator-only:
+
+- admin dashboard
+- JARVIS
+- OpenClaw workflows
+- operator notifications
+- topology verification
+- exposure diagnostics and policy logs
+- Notion outbound sync/retry plumbing
 
 ## Architecture
 
-At a glance: **Web UI** (Next.js) and **Telegram** → **OpenClaw** (AI agent) → **FastAPI** → **TaskManager** → **Supabase Postgres** (prod) or **SQLite** (dev), **Redis**, **Notion**; **APScheduler** runs in-process for reminders, timer overflow, overdue detection, Notion retry, pause prediction (VT-17), and reflection-signal reconciliation. Details below.
+```text
+Next.js web app
+  -> NextAuth Google identity
+  -> frontend backendToken JWT
+  -> FastAPI v1 API
+  -> request user scope middleware
+  -> service-layer mutation authorities
+  -> SQLAlchemy models / Supabase Postgres
+  -> Redis hot state and queues
+  -> APScheduler workers
 
-## Deployment (production)
+Research/governance layer:
+  raw product events and rows
+  -> Cortex read-time projections
+  -> clean-data profiles
+  -> output surface registry
+  -> exposure ledger and render acknowledgement
+  -> insights, diagnostics, predictions, and policy audits
 
-As of April 16, 2026 the alpha stack ships at **`https://lyraos.org`** (frontend) and **`https://api.lyraos.org`** (backend). Architecture: Cloudflare Tunnel from operator's laptop → Next.js `:3000` and FastAPI `:8000` Docker container; primary data in Supabase Postgres (eu-west-1 pooler). Full diagram, failure modes, and recovery playbook in [`docs/deployment_architecture.md`](docs/deployment_architecture.md).
+Operator-only layer:
+  JARVIS
+  OpenClaw
+  admin diagnostics
+  operator notifications
+```
 
-For local development the stack is unchanged: `docker compose up -d` + `cd frontend && npm run dev` → `http://localhost:3000`. The `.env` decides Postgres vs SQLite on a per-environment basis via `DATABASE_URL`.
+Runtime topology is part of correctness. Public verification uses:
 
-## System Design
+```bash
+node scripts/verify_runtime_topology.mjs --topology public
+```
 
-High-resolution diagrams (dark theme) live in [`docs/diagrams/`](docs/diagrams/); regenerate with `python docs/diagrams/generate_diagrams.py` after installing `matplotlib`. Index: [`docs/README.md`](docs/README.md).
+Current public topology:
 
-### System architecture
+```text
+frontend: https://lyraos.org
+api:      https://api.lyraos.org
+auth:     https://lyraos.org
+```
 
-![System architecture: layers and data flow](docs/diagrams/architecture.png)
+## System Diagrams
 
-### Task state machine
+Diagrams live in [docs/diagrams](docs/diagrams). Regenerate them with:
 
-States and transitions match `StateMachine.TRANSITIONS` in [`backend/app/services/state_machine.py`](backend/app/services/state_machine.py); methods are on `TaskManager` (see [`backend/app/services/task_manager.py`](backend/app/services/task_manager.py)).
+```bash
+python docs/diagrams/generate_diagrams.py
+```
+
+### System Architecture
+
+![System architecture](docs/diagrams/architecture.png)
+
+### Task State Machine
 
 ![Task state machine](docs/diagrams/state-machine.png)
 
-### Task lifecycle (data flow)
+### Task Lifecycle
 
-Create → `POST /v1/create` → start stopwatch → `POST /v1/stopwatch/start` → stop → `POST /v1/stopwatch/stop` → Notion `sync_task()` on success paths. Routes are mounted in [`backend/app/api/v1/router.py`](backend/app/api/v1/router.py).
+![Task lifecycle sequence](docs/diagrams/data-flow.png)
 
-![Task lifecycle sequence — main path (≤15 steps)](docs/diagrams/data-flow.png)
-
-### Undo path (optional)
-
-`POST /v1/undo` within the 30s window — separate sequence from the main lifecycle.
+### Undo Path
 
 ![Undo sequence](docs/diagrams/data-flow-undo.png)
 
-## Tech Stack
+## Technology Stack
 
-| Layer       | Technology                          |
-|-------------|-------------------------------------|
-| API         | Python 3.11, FastAPI, Uvicorn       |
-| ORM         | SQLAlchemy 2.0, Alembic             |
-| Cache       | Redis 7                             |
-| Database    | SQLite (dev) / Supabase Postgres (prod) |
-| Sync        | Notion API                          |
-| AI Agent    | OpenClaw                            |
-| Container   | Docker, Docker Compose              |
+| Layer | Current stack |
+| --- | --- |
+| Frontend | Next.js 15.5.15, React 18, TypeScript 5.6 |
+| Styling/UI | Tailwind CSS, Radix, Lucide, Tremor, Schedule-X, Sonner, Motion |
+| Auth | NextAuth.js 4 with Google OAuth |
+| Backend | FastAPI 0.109, Uvicorn, Python |
+| ORM/migrations | SQLAlchemy 2 typed models, Alembic |
+| Database | Supabase Postgres in public runtime; SQLite for dev/tests |
+| Hot state | Redis |
+| Workers | APScheduler |
+| Operator AI/tooling | JARVIS and OpenClaw, operator-only |
 
-## Prerequisites
+## Local Development
 
-- **Docker Desktop** (with Compose V2)
-- **OpenClaw** installed separately — [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw)
+Prerequisites:
 
-## Setup
+- Docker Desktop with Compose V2
+- Node.js for the frontend
+- Python environment matching the backend requirements
 
-### 1. Clone
-
-```bash
-git clone https://github.com/Holmesberg/lyra-secretary.git
-cd lyra-secretary
-```
-
-### 2. Configure environment
+Configure environment:
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in the required keys in `.env`:
-
-| Key                  | Required | Where to get it                                          |
-|----------------------|----------|----------------------------------------------------------|
-| `NOTION_API_KEY`     | Yes      | [notion.so/my-integrations](https://notion.so/my-integrations) |
-| `NOTION_DATABASE_ID` | Yes      | Copy from Notion database URL                            |
-| `ANTHROPIC_API_KEY`  | Yes      | [console.anthropic.com](https://console.anthropic.com)   |
-| `USER_TIMEZONE`      | Yes      | IANA timezone, e.g. `Africa/Cairo`                       |
-
-### 3. Start services
+Start backend dependencies and API:
 
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
+docker compose exec backend alembic upgrade head
 ```
 
-### 4. Run database migrations
+Run the frontend locally:
 
 ```bash
-docker-compose exec backend alembic upgrade head
+cd frontend
+npm install
+npm run dev
 ```
 
-### 5. Seed initial data (optional)
+Local URLs:
+
+- Frontend: `http://localhost:3000`
+- Backend health: `http://localhost:8000/v1/health`
+- Swagger UI: `http://localhost:8000/docs`
+
+Local topology verification:
 
 ```bash
-docker-compose exec backend python app/db/seed.py
+node scripts/verify_runtime_topology.mjs --topology local
 ```
 
-### 6. Verify
+## API Shape
 
-```bash
-curl http://localhost:8000/v1/health
-# → {"status":"ok","service":"lyra-secretary"}
-```
+All backend routes are mounted under `/v1`.
 
-### 7. Explore the API
+Major route modules:
 
-Open **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+| Module | Responsibility |
+| --- | --- |
+| `health.py` | health, environment invariants, topology report |
+| `users.py` | `/users/me`, consent, onboarding stamps, export/deletion |
+| `tasks.py` | task CRUD, state transitions, recovery, LLM binding actions |
+| `stopwatch.py` | start, pause, resume, stop, switch, status |
+| `query.py` | range task queries and last-task lookup |
+| `brain_dump.py` | brain-dump parse and commit |
+| `deadlines.py` | deadline CRUD and state transitions |
+| `calendar.py` | Google Calendar read-only events and outcomes |
+| `moodle.py` | Moodle iCal and Web Services integration |
+| `analytics.py` | insights, Cortex diagnostics, bias/prediction endpoints |
+| `exposures.py` | render acknowledgement and exposure utilities |
+| `jarvis.py` | operator-only JARVIS chat/confirm/health/stream |
+| `admin.py` | operator-only dashboard |
 
-## OpenClaw Integration
+## Research And Governance
 
-OpenClaw runs as a **separate Docker stack**. To connect it to the Lyra backend:
+The key measurement rules:
 
-1. **Connect to the Lyra network:**
-   ```bash
-   docker network connect lyrasecretaryv01_default <openclaw-container-name>
-   ```
-   Or add `lyrasecretaryv01_default` as an external network in OpenClaw's `docker-compose.yml`. See [docs/architecture.md §3](docs/architecture.md) for details.
+- bearer/JWT is runtime identity authority
+- request scope must resolve before user data reads or writes
+- user-owned ORM reads are scoped through request context
+- raw SQL must scope manually
+- derived metrics are recomputed at read time
+- latent constructs are not persisted as observed facts
+- `UNKNOWN` never defaults to clean, neutral, bounded, zero, or average
+- repaired/retroactive rows stay out of measured-execution baselines unless a
+  successor profile admits them
+- behavior-shaping outputs must be registered before render
+- exposure state gates baseline interpretation
 
-2. **Install the skill:**
-   Copy `openclaw/skills/lyra-secretary/SKILL.md` into your OpenClaw skills directory:
-   ```bash
-   cp -r openclaw/skills/lyra-secretary ~/.openclaw/skills/
-   ```
+Important governance files:
 
-3. **Verify connectivity:**
-   ```bash
-   docker exec <openclaw-container> curl -s http://backend:8000/v1/health
-   # → {"status":"ok","service":"lyra-secretary"}
-   ```
+| File | Role |
+| --- | --- |
+| [MANIFESTO.md](MANIFESTO.md) | top-level doctrine and pre-registration artifact |
+| [docs/professor_review_packet.md](docs/professor_review_packet.md) | external-review orientation |
+| [docs/behavioral_instrumentation_doctrine.md](docs/behavioral_instrumentation_doctrine.md) | rule/probabilistic instrumentation doctrine |
+| [docs/cortex_contract_v0.md](docs/cortex_contract_v0.md) | canonical metric and clean-data profile contract |
+| [docs/cortex_product_research_contract_v0.md](docs/cortex_product_research_contract_v0.md) | product/research boundary and exposure ledger doctrine |
+| [docs/adaptive_scheduling_progressive_inference.md](docs/adaptive_scheduling_progressive_inference.md) | future-gated adaptive scheduling contract |
+| [docs/deployment_architecture.md](docs/deployment_architecture.md) | public topology and operational deployment |
+| [docs/openclaw_orchestration_contract_v0.md](docs/openclaw_orchestration_contract_v0.md) | operator-only OpenClaw boundary |
 
-4. OpenClaw reaches the FastAPI backend at `http://backend:8000` (Docker service DNS).
+## Privacy And Security Notes
 
-5. **Operator LLM runtime:** OpenClaw's Docker stack is configured separately
-   from Lyra. The current operator runtime uses NVIDIA NIM
-   `moonshotai/kimi-k2.6` through the OpenClaw `nvidia/*` provider. Keep API
-   keys in OpenClaw's local `.env` or auth profile storage; never commit them.
+LyraOS is pre-alpha product research and operator dogfood with a small alpha
+cohort. Unless a separate institutional protocol is approved, it should not be
+represented as an IRB-approved human-subjects study.
 
-## API Endpoints
+Known current security/privacy debts:
 
-All endpoints are under `/v1/`. Stopwatch routes are mounted with prefix `/stopwatch` (see [`backend/app/api/v1/router.py`](backend/app/api/v1/router.py)).
+- Google refresh tokens are plaintext security debt.
+- Moodle iCal URLs are plaintext security debt.
+- Public privacy/terms copy has been improved from placeholders but still needs
+  production-grade legal review before broader release.
+- Cloudflare Tunnel from the operator host remains an operational dependency.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/v1/parse` | Parse natural language → structured task (deprecated; prefer `/v1/create`) |
-| POST | `/v1/create` | Create a task |
-| POST | `/v1/reschedule` | Reschedule an existing task |
-| POST | `/v1/delete` | Soft-delete a task |
-| POST | `/v1/tasks/{task_id}/void` | Mark corrupted EXECUTED task as system_error — excluded from analytics |
-| POST | `/v1/tasks/{task_id}/mark-abandoned` | Transition PAUSED/EXECUTING task to SKIPPED; clears Redis timer state |
-| POST | `/v1/tasks/swap` | Swap two tasks' time slots atomically |
-| POST | `/v1/schedule/clear` | Clear all PLANNED tasks in a date range |
-| POST | `/v1/tasks/{task_id}/sync` | Backfill a task into Notion (repair path for pre-fix rows) |
-| GET | `/v1/tasks/{task_id}` | Fetch single task with full detail |
-| GET | `/v1/tasks/query` | Query tasks by date range, category, state |
-| GET | `/v1/tasks/last` | Last-operated task for the current user (per-user scoped) |
-| POST | `/v1/stopwatch/start` | Start stopwatch; accepts `pre_task_readiness` (1–5) |
-| POST | `/v1/stopwatch/stop` | Stop stopwatch; accepts `post_task_reflection` (1–5); `?confirmed=true` if early stop |
-| POST | `/v1/stopwatch/pause` | Pause active stopwatch; accepts `pause_reason` and `pause_initiator` |
-| POST | `/v1/stopwatch/resume` | Resume paused stopwatch |
-| POST | `/v1/stopwatch/update-completion` | Mid-session completion % check-in (overrun loop) |
-| POST | `/v1/stopwatch/correct-readiness` | Correct pre_task_readiness during active session |
-| POST | `/v1/stopwatch/retroactive` | Log completed session after the fact — creates EXECUTED task from timestamps |
-| GET | `/v1/stopwatch/status` | Get stopwatch status |
-| POST | `/v1/reflection_view/{view_id}/viewed` | Stamp viewed_at on a fired reflection surface (LYR-098); idempotent |
-| POST | `/v1/reflection_view/{view_id}/dismissed` | Stamp dismissed_at + compute dwell_seconds; idempotent |
-| GET | `/v1/users/me` | Current user profile (consent, retention cohort, timezone) |
-| POST | `/v1/users/me/consent` | Accept terms + research consent |
-| GET | `/v1/users/me/export` | Export all user data as JSON (tasks, sessions, reflections) |
-| GET | `/v1/users/me/data-summary` | Pre-deletion summary (counts by state for confirmation modal) |
-| DELETE | `/v1/users/me` | Delete account; `retain_for_research` flag controls anonymized retention |
-| POST | `/v1/undo` | Undo last create or delete (30s window) |
-| POST | `/v1/notifications/push` | Enqueue notification into per-user Redis queue (scheduler-internal) |
-| GET | `/v1/notifications/pending` | Poll and drain notification queue (agent-facing) |
-| GET | `/v1/analytics/discrepancy` | Discrepancy measurement data — readiness, reflection, initiation stats |
-| GET | `/v1/analytics/insights` | Behavioral insights — pattern detection after sufficient sessions |
-| GET | `/v1/analytics/behavioral_signature` | Operator-only: aggregated fingerprint (pause/valence/reflection dwell) — **not** for Today/Insights first paint (`calibration_contract` R11) |
-| GET | `/v1/analytics/cascade` | Cascade failure analysis — sequential abandonment patterns |
-| GET | `/v1/analytics/bias_factor` | Per-category bias_factor with Bayesian shrinkage (Phase 6 surface) |
-| GET | `/v1/analytics/pause_prediction` | VT-17 pause-prediction dashboard: firing volume, acceptance_rate, per-mechanism breakdown |
-| POST | `/v1/pause_predictions/{firing_id}/respond` | Record user response to a pause_prediction firing: `pause_now` \| `dismiss` \| `snooze` (VT-17) |
-| GET | `/v1/health` | Health check |
-| GET | `/v1/skill/ping` | Skill health check — active stopwatch, pending tasks today |
+## Historical Notes
 
-Full request/response schemas are documented in [`openclaw/skills/lyra-secretary/SKILL.md`](openclaw/skills/lyra-secretary/SKILL.md) and in Swagger UI at `/docs`.
+Some files preserve older names such as "Lyra Secretary," earlier architecture
+designs, prototype OpenClaw assumptions, and pre-alpha bug trackers. Treat those
+as lineage unless current governance docs explicitly promote them.
 
-## Current Status
-
-**Core pipeline**
-- ✅ Natural language parsing → structured task data
-- ✅ Create / reschedule / delete tasks with conflict detection
-- ✅ State machine: `PLANNED → EXECUTING ⇄ PAUSED → EXECUTED / SKIPPED / DELETED` (PAUSED is non-terminal; auto-resumes on stop)
-- ✅ Immutable history — executed tasks are permanent records
-- ✅ 30-second undo window (`POST /v1/undo`)
-
-**Stopwatch**
-- ✅ Planned vs. actual duration tracking (delta)
-- ✅ Early-stop gate — backend requires explicit confirmation if stopped before 50% of planned duration
-- ✅ Future task warning — warns before starting timer for a task not yet scheduled
-- ✅ Redis desync recovery — auto-restores active session from SQLite on restart
-- ✅ Pause/resume — prayer and break support without stopping the timer; paused time excluded from delta
-- ✅ Retroactive logging — `POST /v1/stopwatch/retroactive` for end-of-day catch-up of untracked sessions
-
-**Discrepancy measurement layer (v1.2)**
-- ✅ `pre_task_readiness` (1–5) — captured at stopwatch start
-- ✅ `post_task_reflection` (1–5) — captured at stopwatch stop; supports two-call reflection pattern
-- ✅ `initiation_delay_minutes` — computed at start: actual minus planned start time
-- ✅ `initiation_status` — `initiated` / `abandoned` / `not_started`; abandoned tasks auto-detected every 30 min
-- ✅ `discrepancy_score` — `abs(pre_task_readiness - post_task_reflection)`
-- ✅ `GET /v1/analytics/discrepancy` — full per-session breakdown with time-of-day, session index, summary stats
-
-**API**
-- ✅ `GET /v1/tasks/{task_id}` — single task fetch with full detail
-- ✅ `GET /v1/tasks/query` — query by date, category, state
-- ✅ `POST /v1/undo` — 30-second undo window via Redis TTL
-- ✅ `POST /v1/notifications/push` + `GET /v1/notifications/pending` — notification queue
-- ✅ `GET /v1/analytics/discrepancy` — discrepancy experiment data
-
-**Background workers (APScheduler — 8 jobs)**
-- ✅ Pre-task reminders — 15-minute warning, polls every 1 minute
-- ✅ Timer overflow notification — alerts when session exceeds planned duration + 5 min
-- ✅ Notion sync retry queue — failed syncs retried every 5 minutes
-- ✅ Abandoned task detection — marks unstarted past-due tasks every 30 minutes
-- ✅ Stale session recovery — auto-closes unclosed stopwatch sessions older than 12h, every 15 minutes (LYR-103)
-- ✅ Orphan task recovery — catches EXECUTING tasks with no open session → SKIPPED, every 15 minutes
-- ✅ Pause prediction (VT-17) — per-user pause prediction firing + logging + notification enqueue, every 1 minute
-- ✅ Pause-prediction reconciliation (VT-17) — closes acceptance window and sets `user_response` on `pause_prediction_log`, every 5 minutes
-
-**Integrations**
-- ✅ Notion calendar sync — create, update, archive pages
-- ✅ OpenClaw integration via Docker network bridge
-- ✅ Idempotency keys — deduplication via Redis (30s TTL)
-- ✅ Notification polling — backend pushes, OpenClaw polls every 30s
-
-**Measurement integrity (v1.4)**
-- ✅ Pause reason classification — `pause_reason` (6 types) and `pause_initiator` (self/external) on pause endpoint
-- ✅ Readiness correction — `POST /v1/stopwatch/correct-readiness` during active session, no time limit
-- ✅ Parent task interruption tracking — `parent_task_id` links new task to paused task
-- ✅ Task substitution tracking — bidirectional `replaces_task_id` / `replaced_by_task_id` linkage
-- ✅ Void endpoint — `POST /v1/tasks/{task_id}/void` marks corrupted sessions as system_error
-- ✅ Conflict detector fix — EXECUTED/SKIPPED/DELETED tasks no longer block new task creation
-- ✅ Analytics: pause_pattern, interruption_rate, substitution_rate, self_consistency_scores
-
-**Behavioral insights (v1.3)**
-- ✅ `GET /v1/analytics/insights` — rule-based pattern detection across sessions
-- ✅ Time-of-day performance, readiness correlation, abandonment patterns, estimation trends
-- ✅ Auto-mark insights as delivered; fires only after minimum session threshold
-- ✅ All API datetime responses in local timezone (UTC stays internal to DB only)
-
-**Agent behavior (SKILL.md)**
-- ✅ Hard Rule #1 — never auto-force conflicts
-- ✅ Hard Rule #2 — bulk delete requires confirmation
-- ✅ Hard Rule #3 — never use generic task names
-- ✅ Hard Rule #4 — always report times from API response
-- ✅ Hard Rule #5 — early-stop gate enforced at backend + skill level
-- ✅ Hard Rule #6 — verify task state via backend before any mutation
-- ✅ Hard Rule #7 — always use Lyra for scheduling (never confirm without task_id)
-- ✅ Readiness capture — mandatory pre-task self-rating before timer start
-- ✅ Reflection capture — mandatory post-task focus rating after timer stop
-
-## Known Issues
-
-See [`LYRA_BUGS.md`](LYRA_BUGS.md) for the full tracker (13 open, 26 deferred OpenClaw, 63 fixed). Key active issues:
-
-- **LYR-080** 🔴 Backend rebuild during active paused session corrupts task/session linkage
-- **LYR-088** 🟡 resume() loses Redis session reference after interleaved stopwatch
-- **LYR-068** 🟡 Notion date timezone double conversion on certain property settings
-- **LYR-092** 🟡 notion_sync retry loop infinitely retries archived pages
-
-## Roadmap
-
-- [ ] OpenClaw tool schema (structured tool definitions)
-- [ ] BCI cognitive session logging (EEG state during tasks)
-- [ ] Weekly/monthly analytics and pattern reports
-- [x] `POST /v1/tasks/{task_id}/sync` — backfill Notion for pre-fix tasks (LYR-015)
-- [ ] Per-model timeout in OpenClaw config (blocked on upstream: openclaw/openclaw#43946)
-- [x] `POST /v1/stopwatch/retroactive` — log completed sessions after the fact with full timestamp control (for untracked sessions)
-- [x] Pause reason classification — `pause_reason` + `pause_initiator` on pause endpoint
-- [x] Readiness correction — `POST /v1/stopwatch/correct-readiness` during active session
-- [x] Parent task interruption tracking — `parent_task_id` links new task to interrupted paused task
-- [x] Task substitution tracking — bidirectional linkage when deleted task replaced in same slot
-- [x] Void endpoint — `POST /v1/tasks/{task_id}/void` for corrupted/agent-generated sessions
-- [x] Conflict detector fix — EXECUTED/SKIPPED/DELETED no longer block new task creation
-- [ ] `unplanned_execution_rate` in analytics — detect structured vs chaotic days, correlate with delta and discrepancy patterns
-- [ ] `GET /v1/analytics/cascade` — cascade failure detection, morning anchor score, skip propagation probability
-- [ ] Paper 2: "Sequential task abandonment in knowledge workers" — independent of discrepancy hypothesis, data already being collected
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+The root bug tracker has been archived at [archive/LYRA_BUGS.md](archive/LYRA_BUGS.md).
+The local Obsidian vault (`LyraOS/`), `.assistant runtime/` runtime state, `agent bootstrap doc`,
+and the local `notebooks/` working directory are ignored and no longer tracked.
 
 ## License
 

@@ -27,9 +27,6 @@ class Settings(BaseSettings):
     # OpenAI
     OPENAI_API_KEY: str = ""
     
-    # Anthropic
-    ANTHROPIC_API_KEY: str = ""
-    
     # User Context (CRITICAL)
     USER_TIMEZONE: str = "Africa/Cairo"
     USER_ID: str = "user_primary"

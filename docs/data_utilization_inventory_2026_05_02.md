@@ -1,6 +1,6 @@
 # Data Utilization Inventory — 2026-05-02
 
-*Source of truth for the 2026-05-02 system transition. Every signal Lyra collects (or could derive) classified into 5 categories with 4 actionable dispositions. Phase 1 of the transition plan (`/home/alina/.claude/plans/alright-listen-up-claude-delegated-garden.md`). Phase 2 (JARVIS soak) does not start until operator signs off on this disposition table.*
+*Source of truth for the 2026-05-02 system transition. Every signal Lyra collects (or could derive) classified into 5 categories with 4 actionable dispositions. Phase 1 of the transition plan (`/home/alina/.assistant runtime/plans/alright-listen-up-assistant runtime-delegated-garden.md`). Phase 2 (JARVIS soak) does not start until operator signs off on this disposition table.*
 
 ---
 

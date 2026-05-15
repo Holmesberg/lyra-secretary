@@ -1,7 +1,7 @@
 # Loop 11 Foundation — Implementation Log
 
 **Build session:** 2026-04-26
-**Approved plan:** `~/.claude/plans/giggly-launching-lynx.md`
+**Approved plan:** `~/.assistant runtime/plans/giggly-launching-lynx.md`
 **MANIFESTO version bumped:** v1.11 → v1.12 (Rules 14/15/16 + Rule 12 amendment)
 **Migration:** alembic 033 (`033_deadline_mechanism_foundation.py`)
 **Test count:** 328 → 360 (32 added across 3 new test files; zero existing tests broken)

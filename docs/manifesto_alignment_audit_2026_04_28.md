@@ -119,5 +119,5 @@ The new chip is an intelligence surface that could plausibly influence subsequen
 
 ---
 
-**Audit author:** Claude (Opus 4.7) at 2026-04-28 04:00 ish.
+**Audit author:** assistant runtime (Opus 4.7) at 2026-04-28 04:00 ish.
 **Operator review:** "if any misalignments flag them without stopping I'll read them and report back if anything is serious." Items 1–7 are flagged in this doc for async review. Items will be folded into commit messages as I work; if any need pulling back, operator will say so.

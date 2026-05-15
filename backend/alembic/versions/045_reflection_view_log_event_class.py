@@ -5,7 +5,7 @@ Revises: 044
 Create Date: 2026-05-02
 
 Phase 1.5 of the 2026-05-02 system transition (`docs/calibration_contract.md` R7.1,
-`/home/alina/.claude/plans/alright-listen-up-claude-delegated-garden.md`).
+`/home/alina/.assistant runtime/plans/alright-listen-up-assistant runtime-delegated-garden.md`).
 
 ReflectionViewLog absorbs both UI impressions (low-frequency) and Phase 6
 behavioral telemetry (high-frequency: modal_dwell, pause_hesitation, survey

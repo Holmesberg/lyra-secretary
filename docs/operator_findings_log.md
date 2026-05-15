@@ -300,5 +300,5 @@ Aggregates (n=7):
   was caused by an environment assumption (IPv6 reachable, datetime
   naive matches DB, server clock matches user clock) that had only
   been verified once. Going forward: every environment assumption
-  documented in CLAUDE.md or memory must have a verification command
+  documented in agent bootstrap doc or memory must have a verification command
   the operator can run before declaring "fixed."

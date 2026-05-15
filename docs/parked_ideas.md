@@ -273,14 +273,14 @@ fires first.
 **Idea:** Base Lyra (web UI + mobile app) remains free or low-cost. Paid tier
 adds OpenClaw via Telegram (natural language commands, conversational
 interactions) + other LLM-powered features. Monthly subscription covers
-Anthropic API consumption + margin.
+hosted model provider API consumption + margin.
 
 **Rationale:** The operator's April 14 OpenClaw credit exhaustion revealed
 that the conversational interface has real per-user cost. Pricing that tier
 separately aligns cost with value. Users who want conversational power pay
 for it; base users don't subsidize them.
 
-**Reference models:** Notion AI, Linear AI, Cursor Pro — standard pricing
+**Reference models:** Notion AI, Linear AI, AI IDE Pro — standard pricing
 pattern for LLM-enhanced consumer products in 2025+.
 
 **Revisit conditions (all must be met):**
@@ -300,7 +300,7 @@ pattern for LLM-enhanced consumer products in 2025+.
   Phase 5 decisions remain research-driven, not monetization-driven
 
 **If idea still looks good in June+:** open a Phase 7 architecture spike.
-Begin with competitive analysis of Notion/Linear/Cursor pricing models, then
+Begin with competitive analysis of Notion/Linear/editor agent pricing models, then
 decide Lyra-specific pricing model.
 
 ---
@@ -703,7 +703,7 @@ already started.
    sparse data is just generic heuristics with someone's name on it.
    Floor: ≥30 EXECUTED tasks per user across ≥3 categories with
    pre/post readiness on ≥60% of them. The Moodle import (alembic 041)
-   is exactly the right pre-cursor because it pulls dense deadline
+   is exactly the right pre-editor agent because it pulls dense deadline
    data without asking the user to type it.
 2. **Trust runway from smaller wins first.** Sequencing matters more
    than capability:

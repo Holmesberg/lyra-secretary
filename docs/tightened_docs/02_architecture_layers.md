@@ -1,5 +1,9 @@
 # 02 Architecture Layers
 
+**Audit date:** 2026-05-08.
+**Current status:** historical first-pass audit. Use current governance docs for
+live architecture status; this file preserves the May 8 alignment snapshot.
+
 **Purpose:** Classify implementation into explicit layers and identify leaks.
 
 ## Layer Definitions
@@ -28,7 +32,7 @@
 | derived metrics | `cortex.py`, `analytics.py`, `bias_factor_service.py`, frontend aggregations | mixed | Multiple metric conventions coexist |
 | cortex | `docs/cortex_contract_v0.md`, `services/cortex.py`, `test_cortex_contract_v0.py` | emerging | Correctly read-only in v0 |
 | inference | `inference_engine.py`, `bias_factor_service.py`, predictors, archetype proximity | research-grade | Uses heuristic and statistical labels with mixed confidence semantics |
-| exposure/intervention | `ReflectionViewLog`, micro-mirrors, nudges, pause/resume banners, insights | partially governed | Exposure ledger is not implemented yet |
+| exposure/intervention | `ReflectionViewLog`, micro-mirrors, nudges, pause/resume banners, insights | partially governed | Exposure Ledger v0 schema/service exists; coverage remains partial and legacy-adapter-heavy |
 | operator tooling | `jarvis_agent.py`, `jarvis_tools.py`, `analytics/behavioral_signature`, notebooks | powerful/prototype | High risk of AI-generated semantic sediment |
 | integrations | Notion, Google Calendar, Moodle, Telegram/OpenClaw | production/prototype mix | External imports need strict exclusion from H1 analyses |
 | UI/product | frontend app/components/lib | production/prototype mix | UI copy can overclaim model meaning |

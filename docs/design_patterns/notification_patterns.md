@@ -158,4 +158,4 @@ This pattern is compatible with the four-principle contract (non-blocking, dismi
 
 ## Authority
 
-Designed by operator (Ali Nasser) in conversation with Claude (Anthropic), April 14, 2026. Post-feedback/output-loop audit decisions D5 (Windows-style pattern) and D6 (gradual exposure mapping). Not optional. Any notification designed outside this pattern is rejected on design review.
+Designed by operator (Ali Nasser) in conversation with assistant runtime (hosted model provider), April 14, 2026. Post-feedback/output-loop audit decisions D5 (Windows-style pattern) and D6 (gradual exposure mapping). Not optional. Any notification designed outside this pattern is rejected on design review.

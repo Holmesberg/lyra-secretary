@@ -37,7 +37,26 @@ The Lyra product/research boundary remains governed by
 
 ---
 
-## 2. Runtime Layers
+## 2. Transport And Auth Boundary
+*Added: May 15, 2026.*
+
+OpenClaw does not have independent authority to bypass LyraOS runtime identity,
+request scoping, topology, or exposure rules.
+
+Any OpenClaw-to-Lyra HTTP path that reads or mutates user data must use a
+contracted authenticated path, such as a bearer/JWT user session or a future
+operator service-token flow with explicit audit logging. Runtime HTTP requests
+must not rely on `X-User-Id`; that header is test-only and is rejected as an
+identity authority outside test contexts.
+
+Direct Docker-network addresses such as `http://backend:8000` may describe
+network reachability, not authorization. Any skill, runbook, or orchestration
+that still presents direct backend calls as sufficient for task control is
+legacy until it includes the real auth and topology contract.
+
+---
+
+## 3. Runtime Layers
 
 | Layer | Runtime model | Role | Constraint |
 | --- | --- | --- | --- |
@@ -60,7 +79,7 @@ an agent ID.
 
 ---
 
-## 3. Required Pipeline
+## 4. Required Pipeline
 
 Every OpenClaw orchestration request should follow this sequence:
 
@@ -83,7 +102,7 @@ dependency must be explicit.
 
 ---
 
-## 4. Invariants
+## 5. Invariants
 
 - No silent merging of conflicting outputs.
 - No hidden assumption propagation.
@@ -96,7 +115,7 @@ dependency must be explicit.
 
 ---
 
-## 5. Required Output Sections
+## 6. Required Output Sections
 
 Every orchestration result must contain:
 
@@ -111,7 +130,7 @@ No section may be omitted. If no conflict exists, the conflict log must say so.
 
 ---
 
-## 6. Implementation Status
+## 7. Implementation Status
 
 As of 2026-05-09, the external OpenClaw runtime is running OpenClaw `2026.5.7`
 and is wired with:
@@ -148,7 +167,7 @@ The external OpenClaw runtime also contains a local copy of this contract at:
 
 ---
 
-## 7. Manifesto Relationship
+## 8. Manifesto Relationship
 
 This contract refines the operator-only tooling boundary already stated in
 `MANIFESTO.md`. It does not change Lyra's research variables, user-facing

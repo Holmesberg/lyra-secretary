@@ -22,8 +22,8 @@
 | 5 | Pulse route — `frontend/app/(app)/pulse/page.tsx` + supporting components | route | Ali (preview-tagged, 2026-04-30) | hours | **med-high** | Marked `preview: true` in nav. Operator's preferred-but-not-yet-promoted dashboard. Three "dashboard-y" routes (today, pulse, insights) for a 4-user cohort is one too many. Keep `/today` (the verb), absorb the timer-as-hero idea into it, kill `/pulse`. |
 | 6 | `/admin/dashboard` + `/admin/alpha_funnel` endpoints + admin frontend route | endpoint+route | Ali (alembic 037, alpha_funnel, 2026-04-28) | hours | **med** | "Operator-only" funnel for North Star metric ("% of new users who create a task AND start a timer within their first 3 minutes"). With n=7 trusted users, this is a SQL query the operator runs once a week, not a dashboard. Reading the operator_findings_log shows the manual queries are how the operator actually checks. |
 | 7 | 12 of 25 documented validity threats (VT-1 through VT-13 except 12, plus 19, 20, 26, 27) — manifesto sections only, no code, no test, no data | manifesto rule | Ali (mostly Apr 14 batch insertion) | days (doc edit) | **med** | Decorative. None are referenced in code or tests. Half are restating analysis caveats that the analysis script will encode anyway. Active VTs to retain: 15, 16, 17, 17d, 17e, 21, 22, 23, 25, 29 (the ten with code or test references). Move the rest to an `archive/manifesto_v1.x_dropped_validity_threats.md` and stop adding more before the next 5 of them have a code home. |
-| 8 | Doc consolidation: collapse 40 doc files → 8 — see §8 deep dive for the merge map | doc surface | unowned (5 alignment audits in 50 days) | days | **med** | Spec-vs-code drift IS the symptom. CLAUDE.md says 10 tables (real: 16), says ~5 VTs (real: 25), says reminders job description that doesn't match the code. The audits keep finding drift because the surface count is unmaintainable, not because attention is lacking. |
-| 9 | `parse.py` endpoint (`/v1/parse`, `/v1/parse/deadline-preview`) | endpoint | Ali (deprecation announced in CLAUDE.md) | hours | **med** | CLAUDE.md says "scheduled for deprecation. LLMs should call /v1/create directly with structured fields." It is still mounted, still consumed (by deadline-preview). Honor the deprecation: stop wiring it into new flows and remove the parse-chain endpoint when the brain dump fully owns parsing. |
+| 8 | Doc consolidation: collapse 40 doc files → 8 — see §8 deep dive for the merge map | doc surface | unowned (5 alignment audits in 50 days) | days | **med** | Spec-vs-code drift IS the symptom. agent bootstrap doc says 10 tables (real: 16), says ~5 VTs (real: 25), says reminders job description that doesn't match the code. The audits keep finding drift because the surface count is unmaintainable, not because attention is lacking. |
+| 9 | `parse.py` endpoint (`/v1/parse`, `/v1/parse/deadline-preview`) | endpoint | Ali (deprecation announced in agent bootstrap doc) | hours | **med** | agent bootstrap doc says "scheduled for deprecation. LLMs should call /v1/create directly with structured fields." It is still mounted, still consumed (by deadline-preview). Honor the deprecation: stop wiring it into new flows and remove the parse-chain endpoint when the brain dump fully owns parsing. |
 | 10 | `archetype_assignment` as a table (15 LOC of schema + 220 LOC service + 311 LOC proximity service + 362 LOC bias_factor service) reduced to **two columns on `user`** | schema fold | Ali (alembic 015, 031, 032) | weeks (data migration) | **60% — flag for operator** | The instrument is real research; the data-modeling cost is not. Most users have one assignment, never re-fit. Active assignment data fits in `user.archetype_id`, `user.assignment_completed`, `user.raw_responses` JSON. The table buys nothing the column doesn't. The proximity recompute query rebuilds from `task` data each time — there's no historical row needed. **Confidence 60%** because re-fitting research at Phase 6 might want history. If you cap re-fits at 1/quarter, this folds. |
 
 That is 10. The brief says stop at 10, surface, let the operator pick. Stopping.
@@ -59,7 +59,7 @@ That's 1.0/10 = exactly 10%. If I had to add a second I'd be reaching, which the
 
 The brief said 2× is suspicious and 4× is overbuilt. **Three rows are at 4×: VTs documented (4×), doc files (5×), and analysis rules (3×)**. That is not random — those are the three surfaces that have *no consumer except their own future analysis*, and analysis is gated by retention which hasn't been validated yet.
 
-CLAUDE.md is already drifting from the code: it claims 10 tables (actual 16), ~14 jobs (correct), and "at least 5 VT pre-registrations" (actual 25). This is what produces the alignment audits. Audits aren't slipping; the substrate is.
+agent bootstrap doc is already drifting from the code: it claims 10 tables (actual 16), ~14 jobs (correct), and "at least 5 VT pre-registrations" (actual 25). This is what produces the alignment audits. Audits aren't slipping; the substrate is.
 
 **Worth saying once before moving on:** the 16-table number isn't because someone forgot to consolidate. Each table got added because the existing tables had the wrong shape for what was actually needed (e.g., `task_deadline_outcome` couldn't go on `task` because EXECUTED tasks are immutable). The architecture is correct. The complaint is that there are too many concepts for the cohort to validate them all simultaneously.
 
@@ -243,7 +243,7 @@ docs/architecture.md  ←  architecture.md + deployment_architecture.md +
 
 docs/parked.md  ←  parked_ideas.md (slimmed)
 
-CLAUDE.md  ←  unchanged but kept current
+agent bootstrap doc  ←  unchanged but kept current
 
 README.md  ←  unchanged but slimmed
 
@@ -252,11 +252,11 @@ LYRA_BUGS.md  ←  unchanged
 openclaw/skills/lyra-secretary/SKILL.md  ←  unchanged
 ```
 
-Plus 1 additional surface for prompts (alignment_audit_prompt.md, complexity_stress_test_prompt.md, claude_code_feedback_triage_recipe.md, pre_launch_audit_script.md, operator_interrogation_checklist.md, testing_patterns.md, import_integrations_capability_map.md → `docs/playbooks.md`).
+Plus 1 additional surface for prompts (alignment_audit_prompt.md, complexity_stress_test_prompt.md, feedback_triage_recipe.md, pre_launch_audit_script.md, operator_interrogation_checklist.md, testing_patterns.md, import_integrations_capability_map.md → `docs/playbooks.md`).
 
 That's 8 active doc surfaces. From 40 → 8 is an 80% reduction. The merge can happen in one sitting because most files are linear append-only logs.
 
-**The duplication test, one example:** "external_source IS NULL" rule appears in CLAUDE.md, MANIFESTO.md, integrations_architecture.md, and the Deadline model docstring. Pick one canonical location (the model docstring is closest to the constraint) and delete the others' copies, replacing with a one-line link.
+**The duplication test, one example:** "external_source IS NULL" rule appears in agent bootstrap doc, MANIFESTO.md, integrations_architecture.md, and the Deadline model docstring. Pick one canonical location (the model docstring is closest to the constraint) and delete the others' copies, replacing with a one-line link.
 
 ### 9. UI route pruning
 
@@ -359,6 +359,6 @@ Lyra's actual target is a behavioral inference engine, not a productivity app. T
 - Surface kills (admin dashboard, /pulse fold-into-today, deprecated /parse, Moodle WS, audit-only endpoints)
 - Structural recommendation #5 (4-user gate / no-new-mechanism-during-validation) — incorporated as hard gate in the transition plan
 
-**The actionable replacement for this audit:** the 2026-05-02 system transition plan (operator-local: `/home/alina/.claude/plans/alright-listen-up-claude-delegated-garden.md`). Six phases (calibration contract → data utilization triage → JARVIS-as-discovery → inference engine → reflection surfaces → dark column retirement → top-7 implicit instrumentation) executing the breakthrough's actual prescription: collect more implicit signal + better math at every layer + filter useful hypotheses from constraining ones. The kill list above stays valid for the surface-sprawl half; the substrate-deletion half was wrong.
+**The actionable replacement for this audit:** the 2026-05-02 system transition plan (operator-local: `/home/alina/.assistant runtime/plans/alright-listen-up-assistant runtime-delegated-garden.md`). Six phases (calibration contract → data utilization triage → JARVIS-as-discovery → inference engine → reflection surfaces → dark column retirement → top-7 implicit instrumentation) executing the breakthrough's actual prescription: collect more implicit signal + better math at every layer + filter useful hypotheses from constraining ones. The kill list above stays valid for the surface-sprawl half; the substrate-deletion half was wrong.
 
 The deeper architectural target — "behavioral inference engine with productivity as interaction surface" — was always the project. This audit found a symptom; the reframe found the disease.

@@ -4,6 +4,8 @@
 
 **Status:** First-pass alignment audit. Treat this as a map of verified anchors
 and unresolved areas, not as a complete proof of every file's runtime behavior.
+Counts and paths reflect the May 8 audit snapshot and may be stale relative to
+current HEAD.
 
 ## Evidence Standard
 
@@ -20,14 +22,14 @@ and unresolved areas, not as a complete proof of every file's runtime behavior.
 | `backend/` | FastAPI app, DB models, task/stopwatch services, analytics, workers | substrate through inference | Owns canonical persistence and most implemented behavior | production/research mix | 45 migrations, 21 endpoint modules, 72 backend tests plus inference tests |
 | `frontend/` | Next.js app, operational UI, onboarding, insights, timers, JARVIS UI | UI/product and exposure | Owns user-facing copy and intervention surfaces | production/prototype mix | Large stateful surfaces: `today`, `calendar`, `table`, `new-task-modal` |
 | `docs/` | Product, research, governance, plans, stress tests | governance/research | Owns declared theory, not ground truth | research/legacy/speculative mix | Contains many active and historical claims; must be verified against code |
-| `docs/repo_alignment_audit/` | This audit output | governance | Owns alignment findings, not implementation truth | active governance | First-pass registry generated 2026-05-08 |
+| `docs/tightened_docs/` | This audit output | governance | Owns alignment findings, not implementation truth | historical audit snapshot | First-pass registry generated 2026-05-08 |
 | `archive/` | Historical specs, old migration SQL, scripts, PDFs | legacy/archive | No active ontology ownership unless promoted | archive | Potentially useful lineage; not runtime truth |
 | `notebooks/` | Operator analytics notebook and local environment | research/prototype | Exploratory analysis only | prototype/legacy | Has embedded `.venv`; should stay out of runtime assumptions |
-| `openclaw/` | External agent skill/gateway integration | operator tooling/integration | Operator notification/control bridge | prototype/legacy risk | Skill sync rules exist in `CLAUDE.md` |
+| `openclaw/` | External agent skill/gateway integration | operator tooling/integration | Operator notification/control bridge | prototype/legacy risk | Skill sync rules exist in `agent bootstrap doc` |
 | `scripts/` | One-off bench/stress scripts | experiments | No canonical ownership | prototype | Must not become implicit source of truth |
 | `backups/` | SQLite backup | archive | Historical data only | archive | `lyra_pre_pivot_apr09.sqlite` predates current schema |
 | `.github/` | Agent instructions | governance | Agent behavior rules | active | Now references Cortex contract |
-| `.claude/` | Local Claude artifacts | governance/operator | Local agent memory/plans | uncertain | Not fully audited |
+| `.assistant runtime/` | Local assistant runtime artifacts | governance/operator | Local agent memory/plans | uncertain | Not fully audited |
 
 ## Backend Subsystems
 

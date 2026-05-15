@@ -1,6 +1,6 @@
 # JARVIS Hypothesis Log
 
-*Phase 2 of the 2026-05-02 system transition (`/home/alina/.claude/plans/alright-listen-up-claude-delegated-garden.md`).*
+*Phase 2 of the 2026-05-02 system transition (`/home/alina/.assistant runtime/plans/alright-listen-up-assistant runtime-delegated-garden.md`).*
 
 JARVIS-on-operator-data discovery layer. Operator chats with JARVIS; JARVIS uses `analyze_behavioral_signature` + `query_dark_columns` + `propose_pattern_hypothesis` tools to surface candidate patterns from operator's behavioral history. Each proposed hypothesis lands in this log with status `PROPOSED`. Operator validates against lived experience and either promotes (→ Phase 3 inference engine) or rejects (with one-line reason).
 
