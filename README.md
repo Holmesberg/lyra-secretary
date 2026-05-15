@@ -4,14 +4,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Repository](https://img.shields.io/badge/GitHub-lyra--secretary-181717?logo=github)](https://github.com/Holmesberg/lyra-secretary)
 
-> A behavioral measurement instrument with a productivity interface.
+> A productivity app for seeing where plans actually break.
 
-LyraOS is a planning and execution app built around a deliberately constrained
-behavioral instrumentation system. Users plan tasks, run timers, recover from
-missed plans, and inspect patterns in their own execution traces. Underneath,
-LyraOS treats every plan as a hypothesis, every work session as evidence, and
-every behavioral claim as something that must earn authority through provenance,
-clean-data rules, exposure state, and uncertainty.
+![LyraOS Insights layer](docs/insights-v2.png)
+
+LyraOS is a planning and execution app wrapped around a behavioral measurement
+instrument. Users plan tasks, run timers, recover from missed plans, and inspect
+patterns in their own execution traces. Underneath, every plan is treated as a
+hypothesis, every work session as evidence, and every behavioral claim as
+something that must earn authority through provenance, clean-data rules,
+exposure state, and uncertainty.
 
 It is not an AI productivity wrapper. The interesting core is explicit,
 rule-governed, probabilistic, longitudinal, and inspectable.
@@ -20,28 +22,12 @@ rule-governed, probabilistic, longitudinal, and inspectable.
 observe -> canonicalize -> gate by provenance/exposure -> synthesize cautiously
 ```
 
-![LyraOS Insights layer](docs/insights-v2.png)
-
 ## Why This Exists
 
 People often plan sincerely and still fail themselves. LyraOS asks whether that
-failure is random, or whether planning error has structure that can be observed,
-modeled, and reflected back without pretending to know more than the evidence
-supports.
-
-The research question:
-
-```text
-Are humans wrong about their own execution capacity in structured,
-modelable ways?
-```
-
-The product question:
-
-```text
-Can a planning app help users see where their plans collapse without turning
-that mirror into judgment, identity labeling, or black-box intervention?
-```
+failure is just noise, or whether planning error has structure that can be
+observed, modeled, and reflected back without turning the mirror into judgment,
+identity labeling, or black-box intervention.
 
 The current answer is a conservative system: capture normal planning and timer
 behavior, preserve the trace, separate observation from inference, and surface
