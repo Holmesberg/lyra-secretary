@@ -1,7 +1,7 @@
 # LyraOS - Comprehensive Product And Architecture Summary
 
-> **Snapshot date:** 2026-05-14
-> **Repository state:** 470 commits, 50 Alembic migrations, 82 backend test files
+> **Snapshot date:** 2026-05-15
+> **Repository state:** 477 commits, 50 Alembic migrations, 81 backend test files
 > **Status:** Pre-alpha dogfood with operator plus small alpha cohort
 
 This document is a factual summary of the current LyraOS app and architecture.
@@ -116,7 +116,7 @@ contract explicitly admits them.
 | Layer | Current stack |
 | --- | --- |
 | Framework | FastAPI 0.109, Uvicorn |
-| Language | Python |
+| Language | Python 3.11 |
 | ORM | SQLAlchemy 2 typed models |
 | Migrations | Alembic, 50 revisions |
 | Database | Supabase Postgres for public runtime; SQLite supported for dev/tests |
