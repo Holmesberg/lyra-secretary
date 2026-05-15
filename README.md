@@ -4,99 +4,129 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Repository](https://img.shields.io/badge/GitHub-lyra--secretary-181717?logo=github)](https://github.com/Holmesberg/lyra-secretary)
 
-> A rule-governed behavioral measurement instrument with a productivity interface.
+> A behavioral measurement instrument with a productivity interface.
 
-LyraOS helps users plan tasks, execute them with timers, recover from missed
-plans, and inspect patterns in their own planning and execution traces. The
-deeper system is not an AI wrapper: it is an explicit, probabilistic,
-longitudinal instrumentation layer that treats plans as hypotheses and work
-sessions as evidence.
+LyraOS is a planning and execution app built around a deliberately constrained
+behavioral instrumentation system. Users plan tasks, run timers, recover from
+missed plans, and inspect patterns in their own execution traces. Underneath,
+LyraOS treats every plan as a hypothesis, every work session as evidence, and
+every behavioral claim as something that must earn authority through provenance,
+clean-data rules, exposure state, and uncertainty.
 
-The short version:
+It is not an AI productivity wrapper. The interesting core is explicit,
+rule-governed, probabilistic, longitudinal, and inspectable.
 
 ```text
 observe -> canonicalize -> gate by provenance/exposure -> synthesize cautiously
 ```
 
-![Insights layer screenshot](docs/insights-v2.png)
+![LyraOS Insights layer](docs/insights-v2.png)
 
-## Current Status
+## Why This Exists
 
-LyraOS is pre-alpha dogfood with the operator plus a small alpha cohort. It is
-live at:
+People often plan sincerely and still fail themselves. LyraOS asks whether that
+failure is random, or whether planning error has structure that can be observed,
+modeled, and reflected back without pretending to know more than the evidence
+supports.
 
-- Frontend: `https://lyraos.org`
-- API: `https://api.lyraos.org`
-
-This repository contains the product app, backend API, research/governance
-contracts, operator tooling, and historical design notes. Current doctrine and
-professor-facing orientation live in:
-
-- [MANIFESTO.md](MANIFESTO.md)
-- [docs/professor_review_packet.md](docs/professor_review_packet.md)
-- [docs/behavioral_instrumentation_doctrine.md](docs/behavioral_instrumentation_doctrine.md)
-- [docs/cortex_product_research_contract_v0.md](docs/cortex_product_research_contract_v0.md)
-- [docs/cortex_contract_v0.md](docs/cortex_contract_v0.md)
-- [archive/appstore/summary_of_app.md](archive/appstore/summary_of_app.md)
-
-## What It Is
-
-LyraOS is both:
-
-- a low-friction planning and execution product
-- a measurement-valid behavioral instrument
-
-The product layer gives users a normal workflow: sign in, dump or create tasks,
-start/stop timers, recover missed plans, view deadlines, and inspect insights.
-
-The research layer interprets those traces only through explicit contracts:
-observed facts stay separate from derived metrics and inferred hypotheses;
-retroactive, repaired, external, exposed, and unknown-exposure rows retain
-their provenance; stronger claims require clean-data profiles and exposure
-state.
-
-The core research question is:
+The research question:
 
 ```text
 Are humans wrong about their own execution capacity in structured,
 modelable ways?
 ```
 
-## What It Is Not
+The product question:
 
-LyraOS does not currently ship:
+```text
+Can a planning app help users see where their plans collapse without turning
+that mirror into judgment, identity labeling, or black-box intervention?
+```
 
-- autonomous rescheduling
-- hidden calendar mutation
-- validated adaptive scheduling
-- confidence-backed behavioral recommendations
-- stable personality or identity labels
-- AI-generated truth about user behavior
-- learning from exposed/intervened behavior without exposure modeling
+The current answer is a conservative system: capture normal planning and timer
+behavior, preserve the trace, separate observation from inference, and surface
+only bounded, time-local hypotheses.
 
-AI is used as supporting infrastructure: asynchronous enrichment, operator
-orchestration, implementation assistance, and interface glue. It is not the
-core authority for behavioral truth.
+## Current Status
 
-## Shipped Product Surface
+LyraOS is pre-alpha dogfood with the operator plus a small alpha cohort.
 
-User-facing:
+| Surface | Status |
+| --- | --- |
+| Public frontend | `https://lyraos.org` |
+| Public API | `https://api.lyraos.org` |
+| Product maturity | Pre-alpha, actively dogfooded |
+| Research posture | Product research substrate, not IRB-approved study |
+| Adaptive scheduling | Future-gated, not autonomous |
+| Calendar mutation | Not shipped |
+
+The repository contains the product app, backend API, public topology checks,
+research/governance contracts, operator-only tooling, diagrams, and historical
+design notes.
+
+## What Makes It Different
+
+Most productivity systems respond to uncertainty by asking the user more
+questions or by hiding inference inside vague personalization. LyraOS tries a
+different strategy:
+
+- keep the minimum useful loop lightweight
+- treat user attention as scarce scientific capital
+- use repeated behavior, timing, pauses, missingness, recovery, and context as
+  weak signals
+- avoid stable identity labels
+- let cold-start priors decay as personal traces accumulate
+- fail closed when exposure or provenance state is unknown
+- keep user-facing claims descriptive unless stronger evidence is explicitly
+  authorized
+
+That makes the system closer to HCI instrumentation, adaptive behavioral
+systems, and longitudinal measurement tooling than to generic AI SaaS.
+
+## The Minimum User Loop
+
+The core product loop is intentionally small:
+
+```text
+sign in -> consent -> dump/create tasks -> start/stop timers -> recover or reflect
+```
+
+Additional inputs exist, but they are embedded at natural workflow boundaries:
+
+| Input stream | Burden | Purpose |
+| --- | --- | --- |
+| Task title, time, duration, category | Required for planning | User's explicit plan |
+| Brain dump | Optional/onboarding | Low-friction task/deadline capture |
+| Timer start/stop/pause/resume | Required for execution | Behavioral trace |
+| Readiness | In-flow when shown | Pre-task self-report |
+| Reflection/completion | In-flow when shown | Post-task self-report |
+| Pause reason | In-flow when shown | Pause-process context |
+| Recovery actions | User initiated | Product repair, not baseline execution |
+| Archetype survey | Skippable | Cold-start prior, not identity truth |
+| Feedback/bug reports | Optional | Alpha product quality |
+
+LyraOS gets most of its value from longitudinal repetition and trace topology,
+not from heavy questionnaires.
+
+## Shipped Product
+
+User-facing surfaces:
 
 - Google sign-in through NextAuth
 - brain-dump onboarding
 - task planning and quick capture
 - timer execution: start, pause, resume, stop, switch
-- overdue recovery
+- overdue and missed-plan recovery
 - calendar and deadline views
-- Moodle deadline import and submission detection
+- Moodle iCal import and submission detection
 - read-only Google Calendar context
 - Pulse dashboard
 - Insights page with primary synthesis and confidence-tiered cards
 - pause and resume prediction surfaces
-- archetype survey/proximity, framed as probabilistic prior/proximity
-- settings, export/deletion, and feedback
+- archetype survey/proximity, framed as cold-start priors
+- settings, account export/deletion, and feedback
 
-Operator-only:
+Operator-only surfaces:
 
 - admin dashboard
 - JARVIS
@@ -105,6 +135,19 @@ Operator-only:
 - topology verification
 - exposure diagnostics and policy logs
 - Notion outbound sync/retry plumbing
+
+## Not Shipped
+
+These are intentionally not public product behavior:
+
+- autonomous rescheduling
+- hidden calendar mutation
+- validated adaptive scheduling
+- confidence-backed behavioral recommendations
+- stable user identity labels
+- AI-generated truth about behavior
+- learning from exposed/intervened behavior without exposure modeling
+- new required research inputs without a successor contract
 
 ## Architecture
 
@@ -134,11 +177,8 @@ Operator-only layer:
   operator notifications
 ```
 
-Runtime topology is part of correctness. Public verification uses:
-
-```bash
-node scripts/verify_runtime_topology.mjs --topology public
-```
+Runtime topology is part of correctness. Browser smoke is not trusted until
+frontend origin, API origin, auth base URL, CORS, and runtime topology agree.
 
 Current public topology:
 
@@ -146,6 +186,12 @@ Current public topology:
 frontend: https://lyraos.org
 api:      https://api.lyraos.org
 auth:     https://lyraos.org
+```
+
+Verify topology:
+
+```bash
+node scripts/verify_runtime_topology.mjs --topology public
 ```
 
 ## System Diagrams
@@ -172,6 +218,49 @@ python docs/diagrams/generate_diagrams.py
 
 ![Undo sequence](docs/diagrams/data-flow-undo.png)
 
+## Measurement Model
+
+Cortex is the read-time canonicalization layer. It does not silently rewrite
+product state.
+
+Core variables:
+
+| Symbol | Name | Meaning |
+| --- | --- | --- |
+| `P` | planned active minutes | The user's plan |
+| `E` | executed active minutes | Active work excluding pauses |
+| `W` | wall-clock elapsed minutes | Real elapsed time |
+| `B` | paused minutes | Total pause duration |
+| `m` | execution multiplier | `E / P` |
+| `z` | log execution multiplier | `log(E / P)` |
+
+Important measurement rules:
+
+- observed facts, derived metrics, and latent hypotheses stay separate
+- derived metrics are recomputed at read time
+- unknowns never become neutral defaults
+- retroactive/repaired rows do not become measured execution by accident
+- exposed or unknown-exposure rows do not silently update clean learning paths
+- behavior-shaping outputs must be registered before render
+
+## Adaptive Direction
+
+Adaptive scheduling is a research direction, not a shipped autonomous planner.
+
+The intended loop:
+
+```text
+observe
+  -> synthesize
+  -> suggest a small experiment
+  -> measure the result
+  -> adapt confidence
+```
+
+Stronger guidance should appear only when enough clean, longitudinal evidence
+exists for a specific user and context. Current public behavior stops at
+descriptive insights, bounded synthesis, and conservative prediction surfaces.
+
 ## Technology Stack
 
 | Layer | Current stack |
@@ -184,7 +273,7 @@ python docs/diagrams/generate_diagrams.py
 | Database | Supabase Postgres in public runtime; SQLite for dev/tests |
 | Hot state | Redis |
 | Workers | APScheduler |
-| Operator AI/tooling | JARVIS and OpenClaw, operator-only |
+| Operator tooling | JARVIS and OpenClaw, operator-only |
 
 ## Local Development
 
@@ -192,7 +281,7 @@ Prerequisites:
 
 - Docker Desktop with Compose V2
 - Node.js for the frontend
-- Python environment matching the backend requirements
+- Python environment matching backend requirements
 
 Configure environment:
 
@@ -231,8 +320,6 @@ node scripts/verify_runtime_topology.mjs --topology local
 
 All backend routes are mounted under `/v1`.
 
-Major route modules:
-
 | Module | Responsibility |
 | --- | --- |
 | `health.py` | health, environment invariants, topology report |
@@ -249,34 +336,19 @@ Major route modules:
 | `jarvis.py` | operator-only JARVIS chat/confirm/health/stream |
 | `admin.py` | operator-only dashboard |
 
-## Research And Governance
-
-The key measurement rules:
-
-- bearer/JWT is runtime identity authority
-- request scope must resolve before user data reads or writes
-- user-owned ORM reads are scoped through request context
-- raw SQL must scope manually
-- derived metrics are recomputed at read time
-- latent constructs are not persisted as observed facts
-- `UNKNOWN` never defaults to clean, neutral, bounded, zero, or average
-- repaired/retroactive rows stay out of measured-execution baselines unless a
-  successor profile admits them
-- behavior-shaping outputs must be registered before render
-- exposure state gates baseline interpretation
-
-Important governance files:
+## Governance Map
 
 | File | Role |
 | --- | --- |
-| [MANIFESTO.md](MANIFESTO.md) | top-level doctrine and pre-registration artifact |
-| [docs/professor_review_packet.md](docs/professor_review_packet.md) | external-review orientation |
-| [docs/behavioral_instrumentation_doctrine.md](docs/behavioral_instrumentation_doctrine.md) | rule/probabilistic instrumentation doctrine |
-| [docs/cortex_contract_v0.md](docs/cortex_contract_v0.md) | canonical metric and clean-data profile contract |
-| [docs/cortex_product_research_contract_v0.md](docs/cortex_product_research_contract_v0.md) | product/research boundary and exposure ledger doctrine |
-| [docs/adaptive_scheduling_progressive_inference.md](docs/adaptive_scheduling_progressive_inference.md) | future-gated adaptive scheduling contract |
-| [docs/deployment_architecture.md](docs/deployment_architecture.md) | public topology and operational deployment |
-| [docs/openclaw_orchestration_contract_v0.md](docs/openclaw_orchestration_contract_v0.md) | operator-only OpenClaw boundary |
+| [MANIFESTO.md](MANIFESTO.md) | Top-level doctrine and pre-registration artifact |
+| [docs/professor_review_packet.md](docs/professor_review_packet.md) | External-review orientation |
+| [docs/behavioral_instrumentation_doctrine.md](docs/behavioral_instrumentation_doctrine.md) | Rule/probabilistic instrumentation doctrine |
+| [docs/cortex_contract_v0.md](docs/cortex_contract_v0.md) | Canonical metrics and clean-data profiles |
+| [docs/cortex_product_research_contract_v0.md](docs/cortex_product_research_contract_v0.md) | Product/research boundary and exposure ledger doctrine |
+| [docs/adaptive_scheduling_progressive_inference.md](docs/adaptive_scheduling_progressive_inference.md) | Future-gated adaptive scheduling contract |
+| [docs/deployment_architecture.md](docs/deployment_architecture.md) | Public topology and operational deployment |
+| [docs/openclaw_orchestration_contract_v0.md](docs/openclaw_orchestration_contract_v0.md) | Operator-only OpenClaw boundary |
+| [archive/appstore/summary_of_app.md](archive/appstore/summary_of_app.md) | Full product and architecture summary |
 
 ## Privacy And Security Notes
 
@@ -295,12 +367,15 @@ Known current security/privacy debts:
 ## Historical Notes
 
 Some files preserve older names such as "Lyra Secretary," earlier architecture
-designs, prototype OpenClaw assumptions, and pre-alpha bug trackers. Treat those
-as lineage unless current governance docs explicitly promote them.
+designs, prototype operator-tooling assumptions, and pre-alpha bug trackers.
+Treat those as lineage unless current governance docs explicitly promote them.
 
-The root bug tracker has been archived at [archive/LYRA_BUGS.md](archive/LYRA_BUGS.md).
-The local Obsidian vault (`LyraOS/`), `.assistant runtime/` runtime state, `agent bootstrap doc`,
-and the local `notebooks/` working directory are ignored and no longer tracked.
+The root bug tracker has been archived at
+[archive/LYRA_BUGS.md](archive/LYRA_BUGS.md).
+
+Local operator vaults, assistant-runtime state, and local-only working files are
+ignored or removed from tracked repository state. The `notebooks/` directory
+remains tracked for shareable templates and reproducible analysis scaffolding.
 
 ## License
 
