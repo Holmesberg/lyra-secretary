@@ -608,6 +608,81 @@ class DeleteIn(BaseModel):
 _HASH_SALT = "lyra-anonymized-retention-2026"
 
 
+def _purge_user_auxiliary_rows(db: Session, uid: int) -> None:
+    """Delete user-owned rows that are not part of anonymized retention."""
+    exposure_filter = (
+        "SELECT exposure_id FROM exposure_decision_event WHERE user_id = :u"
+    )
+
+    db.execute(
+        text(
+            f"""
+            DELETE FROM exposure_ack_event
+            WHERE user_id = :u OR exposure_id IN ({exposure_filter})
+            """
+        ),
+        {"u": uid},
+    )
+    db.execute(
+        text(
+            f"""
+            DELETE FROM suppression_event
+            WHERE exposure_id IN ({exposure_filter})
+            """
+        ),
+        {"u": uid},
+    )
+    db.execute(
+        text(
+            f"""
+            DELETE FROM exposure_render_event
+            WHERE exposure_id IN ({exposure_filter})
+            """
+        ),
+        {"u": uid},
+    )
+    db.execute(text("DELETE FROM exposure_decision_event WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM exposure_policy_effect_log WHERE user_id = :u"), {"u": uid})
+
+    db.execute(text("DELETE FROM feedback WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM jarvis_invocation WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM external_event_outcome WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
+
+    db.execute(text("DELETE FROM calibration_nudge_event WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM reflection_view_log WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM pause_event WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM pause_prediction_log WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM resume_prediction_log WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM task_execution_correction WHERE user_id = :u"), {"u": uid})
+    db.execute(text("DELETE FROM task_deadline_outcome WHERE user_id = :u"), {"u": uid})
+
+    db.execute(
+        text(
+            """
+            DELETE FROM deadline_completion_event
+            WHERE user_id = :u
+               OR deadline_id IN (
+                    SELECT deadline_id FROM deadline WHERE user_id = :u
+               )
+            """
+        ),
+        {"u": uid},
+    )
+    db.execute(
+        text(
+            """
+            UPDATE task
+            SET deadline_id = NULL,
+                llm_inferred_deadline_id = NULL
+            WHERE user_id = :u
+            """
+        ),
+        {"u": uid},
+    )
+    db.execute(text("DELETE FROM deadline WHERE user_id = :u"), {"u": uid})
+
+
 @router.delete("/users/me")
 def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
     """Delete the requesting user's account.
@@ -630,6 +705,8 @@ def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
     # Drop scope so the cascade DELETEs/UPDATEs can run unfiltered.
     set_current_user_id(None)
     try:
+        _purge_user_auxiliary_rows(db, uid)
+
         if body.retain_for_research:
             # One-way hash for grouping this user's retained rows in research queries
             uid_hash = hashlib.sha256(f"{uid}:{_HASH_SALT}".encode()).hexdigest()
@@ -640,7 +717,11 @@ def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
                     UPDATE task SET
                         title = '[anonymized]',
                         notes = NULL,
+                        description = NULL,
                         notion_page_id = NULL,
+                        llm_deadline_candidates = NULL,
+                        llm_sub_items = NULL,
+                        llm_alternative_suggestion = NULL,
                         post_deletion_retained_at = :now,
                         original_user_id_hash = :hash
                     WHERE user_id = :u
@@ -659,23 +740,12 @@ def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
                 {"now": now, "hash": uid_hash, "u": uid},
             )
 
-            # Delete non-behavioral rows. external_event_outcome rows
-            # get purged alongside the user — at current n the VT-23
-            # aggregate signal from deleted users is negligible; LYR-103
-            # tracks the retention-anonymize follow-up for when n grows.
-            # The DB-level ON DELETE CASCADE added in alembic 028 is the
-            # belt-and-suspenders backstop; this explicit DELETE matches
-            # the pattern used for every other user-scoped table here.
-            db.execute(text("DELETE FROM external_event_outcome WHERE user_id = :u"), {"u": uid})
-            db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
             db.execute(text('DELETE FROM "user" WHERE user_id = :u'), {"u": uid})
             db.commit()
         else:
             # Hard delete — all data permanently removed.
-            db.execute(text("DELETE FROM external_event_outcome WHERE user_id = :u"), {"u": uid})
             db.execute(text("DELETE FROM stopwatch_session WHERE user_id = :u"), {"u": uid})
             db.execute(text("DELETE FROM task WHERE user_id = :u"), {"u": uid})
-            db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
             db.execute(text('DELETE FROM "user" WHERE user_id = :u'), {"u": uid})
             db.commit()
     finally:
