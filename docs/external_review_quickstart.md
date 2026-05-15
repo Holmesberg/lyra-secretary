@@ -10,6 +10,26 @@ rule-governed behavioral measurement system: users plan and work normally, the
 system preserves the trace, and later insights must pass provenance,
 clean-data, exposure, and uncertainty gates.
 
+## Evolution Of The App
+
+LyraOS started from a broader question about whether planning failure could be
+measured rather than guessed at. Early framing included productivity automation,
+AI assistance, and possible BCI/cognitive-state signals. The current repo is
+more conservative and, scientifically, stronger: the core system is not BCI-led
+and not AI-led. It is a rule-based/probabilistic behavioral instrument that
+uses ordinary planning and timer traces as its primary substrate.
+
+The current architecture treats those earlier directions as bounded layers:
+
+- **BCI/cognitive-state sensing:** historical and future research context, not
+  a shipped input stream.
+- **AI:** enrichment, operator tooling, implementation support, and interface
+  glue; not the source of behavioral truth.
+- **Adaptive scheduling:** a future-gated evidence loop, not autonomous
+  rescheduling.
+- **Current core:** longitudinal traces, clean-data profiles, exposure state,
+  explicit uncertainty, and conservative synthesis.
+
 ## What Is Shipped
 
 - Google sign-in
