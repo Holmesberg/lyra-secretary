@@ -266,6 +266,22 @@ def test_month_name_date_extracted():
     assert res.items[0].when_local.day == 16
 
 
+def test_numeric_slash_dates_use_day_month_order():
+    """Cairo-local onboarding users write slash dates as day/month.
+
+    Regression shape: `study lecs DB 6/9` was parsed as June 9 under
+    dateparser's default month/day behavior, then `6/9` was stripped from the
+    visible title. The task looked ordinary but landed months off.
+    """
+    res = parse_brain_dump("study lecs DB 6/9", NOW_ISO)
+    assert len(res.items) == 1
+    assert res.items[0].kind == "task"
+    assert res.items[0].title == "study lecs DB"
+    assert res.items[0].when_local is not None
+    assert res.items[0].when_local.month == 9
+    assert res.items[0].when_local.day == 6
+
+
 def test_decimal_time_format():
     """`meeting at 3:30pm tomorrow` should anchor at 15:30."""
     res = parse_brain_dump("call professor at 3:30pm tomorrow", NOW_ISO)

@@ -377,6 +377,12 @@ def _extract_when(segment: str, now_local: datetime) -> Optional[datetime]:
     settings = {
         "PREFER_DATES_FROM": "future",
         "RELATIVE_BASE": now_local,
+        # Lyra's production timezone is Cairo and the onboarding audience uses
+        # day/month numeric dates. Without this, dateparser treats ambiguous
+        # slash dates as US-style month/day, so "6/9" lands on June 9 instead
+        # of September 6 while the visible title has the date stripped.
+        "DATE_ORDER": "DMY",
+        "PREFER_LOCALE_DATE_ORDER": False,
     }
     try:
         parsed = dateparser.parse(rewritten, settings=settings)
