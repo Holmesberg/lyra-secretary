@@ -327,6 +327,7 @@ All backend routes are mounted under `/v1`.
 | File | Role |
 | --- | --- |
 | [MANIFESTO.md](MANIFESTO.md) | Top-level doctrine and pre-registration artifact |
+| [docs/external_review_quickstart.md](docs/external_review_quickstart.md) | One-page reviewer orientation |
 | [docs/professor_review_packet.md](docs/professor_review_packet.md) | External-review orientation |
 | [docs/behavioral_instrumentation_doctrine.md](docs/behavioral_instrumentation_doctrine.md) | Rule/probabilistic instrumentation doctrine |
 | [docs/cortex_contract_v0.md](docs/cortex_contract_v0.md) | Canonical metrics and clean-data profiles |
