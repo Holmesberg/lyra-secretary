@@ -24,6 +24,7 @@ const CONFIDENCE_STYLE: Record<string, { label: string; text: string }> = {
 };
 
 const ID_LABELS: Record<string, string> = {
+  primary_synthesis: "Primary pattern",
   time_of_day_bias: "Time of day",
   readiness_predicts_outcome: "Readiness signal",
   abandonment_pattern: "Not started",
@@ -90,6 +91,20 @@ function FeaturedCard({ insight }: { insight: Insight }) {
       <p className="text-base leading-relaxed text-parchment">
         {insight.observation}
       </p>
+      {insight.evidence && insight.evidence.length > 0 && (
+        <div className="mt-5 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
+          {insight.evidence.map((item) => (
+            <div key={`${item.source_insight_id}-${item.label}`} className="min-w-0">
+              <div className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+                {item.label}
+              </div>
+              <div className="mt-1 break-words text-xs leading-relaxed text-dust">
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -260,13 +275,15 @@ export default function InsightsPage() {
     data.sessions_analyzed > 0
       ? `${data.sessions_analyzed} sessions analyzed`
       : `${data.history_events_analyzed ?? data.eligible_sample_count ?? 0} history events read`;
-  const featured = insights.find(
-    (i) => i.confidence === "high" && i.data_points >= 15
+  const primary = insights.find((i) => i.id === "primary_synthesis") ?? null;
+  const nonPrimaryInsights = insights.filter((i) => i !== primary);
+  const highConfidence = nonPrimaryInsights.filter(
+    (i) => i.confidence === "high"
   );
-  const standard = insights.filter(
-    (i) => i !== featured && i.confidence !== "low"
+  const mediumConfidence = nonPrimaryInsights.filter(
+    (i) => i.confidence === "medium"
   );
-  const emerging = insights.filter((i) => i.confidence === "low");
+  const emerging = nonPrimaryInsights.filter((i) => i.confidence === "low");
 
   return (
     <div className="space-y-8">
@@ -283,13 +300,31 @@ export default function InsightsPage() {
           via React Query invalidation. See ArchetypeInsightsCard. */}
       <ArchetypeInsightsCard />
 
-      {featured && <FeaturedCard insight={featured} />}
+      {primary && <FeaturedCard insight={primary} />}
 
-      {standard.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
-          {standard.map((insight) => (
-            <StandardCard key={insight.id} insight={insight} />
-          ))}
+      {highConfidence.length > 0 && (
+        <div>
+          <h2 className="terminal-prefix mb-3 font-mono text-[11px] font-medium uppercase tracking-widest text-dust">
+            High confidence
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
+            {highConfidence.map((insight) => (
+              <StandardCard key={insight.id} insight={insight} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {mediumConfidence.length > 0 && (
+        <div>
+          <h2 className="terminal-prefix mb-3 font-mono text-[11px] font-medium uppercase tracking-widest text-dust">
+            Medium confidence
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
+            {mediumConfidence.map((insight) => (
+              <StandardCard key={insight.id} insight={insight} />
+            ))}
+          </div>
         </div>
       )}
 

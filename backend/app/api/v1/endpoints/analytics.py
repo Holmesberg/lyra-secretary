@@ -261,13 +261,34 @@ def _confidence(n: int) -> str:
     return "low"
 
 
-def _insight(id: str, observation: str, data_points: int, strength: float = 0.0) -> dict:
-    return {
+def _insight(
+    id: str,
+    observation: str,
+    data_points: int,
+    strength: float = 0.0,
+    *,
+    facts: Optional[dict] = None,
+    evidence: Optional[list[dict]] = None,
+) -> dict:
+    result = {
         "id": id,
         "observation": observation,
         "data_points": data_points,
         "confidence": _confidence(data_points),
         "strength": round(strength, 3),
+    }
+    if facts:
+        result["_facts"] = facts
+    if evidence:
+        result["evidence"] = evidence
+    return result
+
+
+def _public_insight(result: dict) -> dict:
+    return {
+        key: value
+        for key, value in result.items()
+        if not key.startswith("_")
     }
 
 
@@ -378,7 +399,17 @@ def _insight_time_of_day(tasks: list) -> Optional[dict]:
             f"In this window, {tod} executed tasks ran "
             f"{_abs_minutes(avg)} min over plan on average."
         )
-    return _insight("time_of_day_bias", obs, n, strength=abs(avg))
+    return _insight(
+        "time_of_day_bias",
+        obs,
+        n,
+        strength=abs(avg),
+        facts={
+            "time_of_day": tod,
+            "average_delta_minutes": avg,
+            "direction": "under_plan" if avg > 0 else "over_plan",
+        },
+    )
 
 
 def _insight_readiness(tasks: list) -> Optional[dict]:
@@ -500,7 +531,19 @@ def _insight_abandonment(tasks: list) -> Optional[dict]:
         if kind == "tod"
         else f"In this window, {not_started}/{n} {label} tasks were not started ({pct}%)."
     )
-    return _insight("abandonment_pattern", obs, n, strength=rate * 100)
+    return _insight(
+        "abandonment_pattern",
+        obs,
+        n,
+        strength=rate * 100,
+        facts={
+            "kind": kind,
+            "label": label,
+            "not_started": not_started,
+            "total": n,
+            "percent": pct,
+        },
+    )
 
 
 def _insight_estimation_trend(tasks: list) -> Optional[dict]:
@@ -525,7 +568,16 @@ def _insight_estimation_trend(tasks: list) -> Optional[dict]:
         obs = f"Your time estimates are getting more accurate — down {improvement} min avg error over your last 10 sessions."
     else:
         obs = f"Your estimation error has increased by {abs(improvement)} min over your last 10 sessions."
-    return _insight("estimation_accuracy_trend", obs, 10, strength=abs(improvement))
+    return _insight(
+        "estimation_accuracy_trend",
+        obs,
+        10,
+        strength=abs(improvement),
+        facts={
+            "change_minutes": improvement,
+            "direction": "improving" if improvement > 0 else "worsening",
+        },
+    )
 
 
 def _insight_best_category(tasks: list) -> Optional[dict]:
@@ -744,7 +796,181 @@ def _insight_initiation_delay(tasks: list) -> Optional[dict]:
         obs = f"On average you start tasks {round(avg)} min after their scheduled time."
     else:
         obs = f"On average you start tasks {round(abs(avg))} min before their scheduled time."
-    return _insight("initiation_delay", obs, len(delays), strength=abs(avg))
+    return _insight(
+        "initiation_delay",
+        obs,
+        len(delays),
+        strength=abs(avg),
+        facts={
+            "average_delay_minutes": avg,
+            "direction": "after_schedule" if avg > 0 else "before_schedule",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Primary synthesis composer
+# ---------------------------------------------------------------------------
+
+PRIMARY_SYNTHESIS_ID = "primary_synthesis"
+PRIMARY_SYNTHESIS_SURFACE_ID = "analytics.insights.primary_synthesis"
+PRIMARY_SYNTHESIS_MIN_HISTORY_EVENTS = 30
+
+
+def _evidence_item(label: str, value: str, source_insight_id: str) -> dict:
+    return {
+        "label": label,
+        "value": value,
+        "source_insight_id": source_insight_id,
+    }
+
+
+def _abandonment_evidence_value(insight: dict) -> Optional[str]:
+    facts = insight.get("_facts") or {}
+    label = facts.get("label")
+    not_started = facts.get("not_started")
+    total = facts.get("total")
+    percent = facts.get("percent")
+    if label is None or not_started is None or total is None or percent is None:
+        return None
+    if facts.get("kind") == "tod":
+        return f"{not_started}/{total} planned {label} tasks not started ({percent}%)"
+    return f"{not_started}/{total} {label} tasks not started ({percent}%)"
+
+
+def _time_of_day_evidence_value(insight: dict) -> Optional[str]:
+    facts = insight.get("_facts") or {}
+    tod = facts.get("time_of_day")
+    avg = facts.get("average_delta_minutes")
+    if tod is None or avg is None:
+        return None
+    direction = "under plan" if avg > 0 else "over plan"
+    return f"{tod} tasks {round(abs(avg))} min {direction} on average"
+
+
+def _estimation_trend_evidence_value(insight: dict) -> Optional[str]:
+    facts = insight.get("_facts") or {}
+    change = facts.get("change_minutes")
+    if change is None:
+        return None
+    if change > 0:
+        return f"estimate error down {abs(change):g} min over the last 10 sessions"
+    return f"estimate error up {abs(change):g} min over the last 10 sessions"
+
+
+def _initiation_delay_evidence_value(insight: dict) -> Optional[str]:
+    facts = insight.get("_facts") or {}
+    avg = facts.get("average_delay_minutes")
+    if avg is None:
+        return None
+    direction = "after schedule" if avg > 0 else "before schedule"
+    return f"starts averaged {round(abs(avg))} min {direction}"
+
+
+def _primary_synthesis_observation(abandonment: dict, supports: list[dict]) -> str:
+    abandonment_facts = abandonment.get("_facts") or {}
+    category = (
+        abandonment_facts.get("label")
+        if abandonment_facts.get("kind") == "cat"
+        else None
+    )
+    time_support = next(
+        (
+            support
+            for support in supports
+            if support.get("id") == "time_of_day_bias"
+        ),
+        None,
+    )
+    time_facts = (time_support or {}).get("_facts") or {}
+    tod = time_facts.get("time_of_day")
+    late_day = tod in {"evening", "night"}
+
+    if category and late_day:
+        return (
+            f"Planning drift is currently clustering around {category} tasks "
+            "and late-day execution."
+        )
+    if category:
+        return (
+            f"Planning drift is currently clustering around {category} tasks, "
+            "with supporting execution signals in the same window."
+        )
+    if tod:
+        return (
+            f"Planning drift is currently clustering around {tod} task placement, "
+            "with supporting execution signals in the same window."
+        )
+    return (
+        "Several current signals point to one planning-reliability cluster "
+        "rather than a single isolated metric."
+    )
+
+
+def _compose_primary_synthesis(
+    candidates: list[dict],
+    *,
+    history_events_analyzed: int,
+) -> Optional[dict]:
+    """Create a bounded synthesis from already registered source insights."""
+    by_id = {candidate.get("id"): candidate for candidate in candidates}
+    abandonment = by_id.get("abandonment_pattern")
+    if abandonment is None or history_events_analyzed < PRIMARY_SYNTHESIS_MIN_HISTORY_EVENTS:
+        return None
+
+    support_order = [
+        "time_of_day_bias",
+        "estimation_accuracy_trend",
+        "initiation_delay",
+    ]
+    supports = [
+        by_id[insight_id]
+        for insight_id in support_order
+        if insight_id in by_id
+    ]
+    if not supports:
+        return None
+
+    evidence = []
+    abandonment_value = _abandonment_evidence_value(abandonment)
+    if abandonment_value:
+        evidence.append(
+            _evidence_item(
+                "Not-started pattern",
+                abandonment_value,
+                "abandonment_pattern",
+            )
+        )
+
+    evidence_builders = {
+        "time_of_day_bias": ("Time placement", _time_of_day_evidence_value),
+        "estimation_accuracy_trend": ("Estimate drift", _estimation_trend_evidence_value),
+        "initiation_delay": ("Start timing", _initiation_delay_evidence_value),
+    }
+    for support in supports:
+        insight_id = support.get("id")
+        label_and_builder = evidence_builders.get(insight_id)
+        if label_and_builder is None:
+            continue
+        label, builder = label_and_builder
+        value = builder(support)
+        if value:
+            evidence.append(_evidence_item(label, value, insight_id))
+
+    if len(evidence) < 2:
+        return None
+
+    sources = [abandonment, *supports]
+    data_points = max(source.get("data_points", 0) for source in sources)
+    strength = max(source.get("strength", 0.0) for source in sources) + 50.0
+    synthesis = _insight(
+        PRIMARY_SYNTHESIS_ID,
+        _primary_synthesis_observation(abandonment, supports),
+        data_points,
+        strength=strength,
+        evidence=evidence[:4],
+    )
+    return synthesis
 
 
 # ---------------------------------------------------------------------------
@@ -1028,6 +1254,20 @@ def get_insights(
             )
             candidates.append(result)
 
+    primary_synthesis = _compose_primary_synthesis(
+        candidates,
+        history_events_analyzed=history_events_analyzed,
+    )
+    if primary_synthesis is not None:
+        primary_synthesis.update(
+            _surface_metadata(
+                PRIMARY_SYNTHESIS_SURFACE_ID,
+                eligible_sample_count=history_events_analyzed,
+                suppressed_reason=None,
+            )
+        )
+        candidates.append(primary_synthesis)
+
     if not candidates and sessions_analyzed < MIN_SESSIONS:
         remaining = MIN_SESSIONS - sessions_analyzed
         suppression = _surface_metadata(
@@ -1072,7 +1312,7 @@ def get_insights(
         if auto_mark:
             redis.client.setex(redis_key, 86400, "1")
             result["seen"] = True
-        insights.append(result)
+        insights.append(_public_insight(result))
 
     response_metadata = _surface_metadata(
         surface_id,

@@ -539,6 +539,11 @@ export interface Insight {
   confidence: "low" | "medium" | "high";
   strength: number;
   seen: boolean;
+  evidence?: {
+    label: string;
+    value: string;
+    source_insight_id: string;
+  }[];
   surface_id?: string;
   truth_class?: "trace" | "metric" | "interpretation" | "intervention" | "diagnostic_only";
   usage_class?: string;

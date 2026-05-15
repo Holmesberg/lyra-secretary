@@ -11,6 +11,7 @@ from app.api.v1.endpoints import analytics as analytics_module
 from app.api.v1.endpoints.analytics import (
     _insight_abandonment,
     _insight_best_category,
+    PRIMARY_SYNTHESIS_ID,
     _insight_discrepancy_signal,
     _insight_pause_pattern,
     _insight_readiness,
@@ -269,6 +270,7 @@ def test_insights_endpoint_only_returns_contract_safe_generators(
     assert "time_of_day_bias" in ids
     assert ids <= {
         "estimation_accuracy_trend",
+        "primary_synthesis",
         "initiation_delay",
         "retroactive_rate",
         "time_of_day_bias",
@@ -308,6 +310,79 @@ def test_insights_endpoint_only_returns_contract_safe_generators(
     )
     assert decision is not None
     assert decision.decision_status == "rendered"
+
+
+def test_insights_endpoint_primary_synthesis_preserves_source_cards_when_supported(
+    db, client, monkeypatch
+):
+    user = User(email=f"insights-primary-synthesis-{uuid4()}@example.com")
+    db.add(user)
+    db.flush()
+
+    base = (now_utc() - timedelta(days=60)).replace(hour=19, minute=0, second=0)
+    tasks = []
+    skipped_hours = [6, 13, 18, 22]
+    for i in range(12):
+        skipped_start = (base + timedelta(days=i)).replace(
+            hour=skipped_hours[i % len(skipped_hours)]
+        )
+        tasks.append(
+            _db_planned_not_started_task(
+                user_id=user.user_id,
+                planned_start=skipped_start,
+                category="study",
+            )
+        )
+    for i in range(12, 30):
+        tasks.append(
+            _db_task(
+                user_id=user.user_id,
+                planned_start=base + timedelta(days=i),
+                planned_duration=60,
+                executed_duration=110,
+                initiation_delay=12,
+                category="study",
+            )
+        )
+    db.add_all(tasks)
+    db.commit()
+
+    monkeypatch.setattr(
+        analytics_module,
+        "_eligible_tasks_for_surface",
+        lambda _db, tasks, _surface_id: tasks,
+    )
+    monkeypatch.setattr(analytics_module, "RedisClient", lambda: _FakeRedis())
+
+    response = client.get(
+        "/v1/analytics/insights",
+        headers=auth_headers(user.user_id),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    ids = [insight["id"] for insight in payload["insights"]]
+
+    assert PRIMARY_SYNTHESIS_ID in ids
+    assert "abandonment_pattern" in ids
+    assert ids.index(PRIMARY_SYNTHESIS_ID) < ids.index("abandonment_pattern")
+    primary = next(
+        insight for insight in payload["insights"]
+        if insight["id"] == PRIMARY_SYNTHESIS_ID
+    )
+    assert primary["surface_id"] == "analytics.insights.primary_synthesis"
+    assert primary["truth_class"] == "interpretation"
+    assert "study tasks" in primary["observation"]
+    assert "late-day execution" in primary["observation"]
+    assert "should" not in primary["observation"].lower()
+    assert "optimal" not in primary["observation"].lower()
+    assert "_facts" not in primary
+
+    evidence_sources = {
+        item["source_insight_id"]
+        for item in primary["evidence"]
+    }
+    assert "abandonment_pattern" in evidence_sources
+    assert "time_of_day_bias" in evidence_sources
 
 
 def test_insights_endpoint_scopes_before_sample_gate_and_reports_suppression(
@@ -412,6 +487,7 @@ def test_insights_endpoint_can_render_planning_history_without_executed_sessions
     assert payload["ready"] is True
     assert payload["sessions_analyzed"] == 0
     assert payload["history_events_analyzed"] == 6
+    assert PRIMARY_SYNTHESIS_ID not in ids
     assert "abandonment_pattern" in ids
     abandonment = next(
         insight for insight in payload["insights"]

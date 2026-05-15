@@ -129,6 +129,22 @@
       "interruptiveness": "active",
       "salience_level": "high"
     },
+    "analytics.insights.primary_synthesis": {
+      "truth_class": "interpretation",
+      "usage_class": "product",
+      "channel": "dashboard_page",
+      "exposure_category": "behavioral_insight",
+      "signal_targets": ["duration_behavior", "planning_estimate"],
+      "clean_profile": "descriptive_history",
+      "min_n": 30,
+      "time_window_days": 90,
+      "fallback_mode": "suppress",
+      "operator_only": false,
+      "legacy_adapter": null,
+      "render_policy_version": "output_surface_registry_v1",
+      "interruptiveness": "active",
+      "salience_level": "high"
+    },
     "analytics.insights.estimation_accuracy_trend": {
       "truth_class": "metric",
       "usage_class": "product",
