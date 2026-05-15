@@ -31,12 +31,17 @@ interface UserRow {
   tutorial_status: "completed" | "skipped" | "pending";
   gcal_connected: boolean;
   task_total: number;
+  active_task_count: number;
+  skipped_count: number;
+  far_future_planned_count: number;
+  open_timer_count: number;
   executed_count: number;
   first_task_created_at: string | null;
   first_executed_at: string | null;
   last_activity_at: string | null;
   returning_today: boolean;
   returning_7d: boolean;
+  activation_stage: string;
 }
 
 interface Totals {
@@ -49,6 +54,7 @@ interface Totals {
 interface Funnel {
   signed_up: number;
   onboarded: number;
+  meaningful_plan: number;
   first_task: number;
   first_execution: number;
   returning_7d: number;
@@ -181,6 +187,11 @@ export default function AdminDashboardPage() {
             total={funnel.signed_up}
           />
           <FunnelBar
+            label="Meaningful plan"
+            value={funnel.meaningful_plan}
+            total={funnel.signed_up}
+          />
+          <FunnelBar
             label="First task created"
             value={funnel.first_task}
             total={funnel.signed_up}
@@ -209,11 +220,16 @@ export default function AdminDashboardPage() {
               <tr>
                 <th className="px-2 py-1 font-medium">#</th>
                 <th className="px-2 py-1 font-medium">Email</th>
+                <th className="px-2 py-1 font-medium">Stage</th>
                 <th className="px-2 py-1 font-medium">Signup</th>
                 <th className="px-2 py-1 font-medium">Onboarded</th>
                 <th className="px-2 py-1 font-medium">Tour</th>
                 <th className="px-2 py-1 font-medium">GCal</th>
                 <th className="px-2 py-1 font-medium">Tasks</th>
+                <th className="px-2 py-1 font-medium">Active</th>
+                <th className="px-2 py-1 font-medium">Skipped</th>
+                <th className="px-2 py-1 font-medium">Future</th>
+                <th className="px-2 py-1 font-medium">Open</th>
                 <th className="px-2 py-1 font-medium">Exec</th>
                 <th className="px-2 py-1 font-medium">Last Active</th>
                 <th className="px-2 py-1 font-medium">Return</th>
@@ -236,6 +252,9 @@ export default function AdminDashboardPage() {
                       <span className="ml-1 text-[10px] text-signal">op</span>
                     )}
                   </td>
+                  <td className="px-2 py-1.5">
+                    <StageChip stage={u.activation_stage} />
+                  </td>
                   <td className="px-2 py-1.5 text-dust">
                     {shortDate(u.signed_up_at)}
                   </td>
@@ -254,6 +273,28 @@ export default function AdminDashboardPage() {
                   </td>
                   <td className="px-2 py-1.5 text-parchment">
                     {u.task_total}
+                  </td>
+                  <td className="px-2 py-1.5 text-parchment">
+                    {u.active_task_count}
+                  </td>
+                  <td className="px-2 py-1.5 text-parchment">
+                    {u.skipped_count}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {u.far_future_planned_count > 0 ? (
+                      <span className="text-ember">
+                        {u.far_future_planned_count}
+                      </span>
+                    ) : (
+                      <span className="text-dust-deep">0</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {u.open_timer_count > 0 ? (
+                      <span className="text-signal">{u.open_timer_count}</span>
+                    ) : (
+                      <span className="text-dust-deep">0</span>
+                    )}
                   </td>
                   <td className="px-2 py-1.5 text-parchment">
                     {u.executed_count}
@@ -345,6 +386,34 @@ function TourChip({
       className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${cls}`}
     >
       {status}
+    </span>
+  );
+}
+
+function StageChip({ stage }: { stage: string }) {
+  const severe = new Set([
+    "brain_dump_not_completed",
+    "onboarding_skipped_or_empty",
+    "planned_far_future",
+  ]);
+  const warning = new Set([
+    "all_tasks_skipped",
+    "planned_no_timer",
+    "timer_started_no_completion",
+  ]);
+  const cls =
+    stage === "activated"
+      ? "bg-signal/15 text-signal"
+      : severe.has(stage)
+      ? "bg-ember/15 text-ember"
+      : warning.has(stage)
+      ? "bg-amber-500/15 text-amber-300"
+      : "bg-void-2 text-dust-deep";
+  return (
+    <span
+      className={`whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${cls}`}
+    >
+      {stage.replaceAll("_", " ")}
     </span>
   );
 }

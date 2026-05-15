@@ -82,52 +82,75 @@ def operator_dashboard(db: Session = Depends(get_db)) -> dict[str, Any]:
         )
         non_operator_users = [u for u in users if not u.is_operator]
 
-        # Per-user aggregates — one query per user is fine at n<20.
+        task_stats = {
+            row.user_id: row
+            for row in (
+                db.query(
+                    Task.user_id.label("user_id"),
+                    func.count(Task.task_id).label("task_total"),
+                    func.count(Task.task_id)
+                    .filter(Task.state == TaskState.EXECUTED)
+                    .label("executed_count"),
+                    func.count(Task.task_id)
+                    .filter(Task.state.notin_([TaskState.SKIPPED, TaskState.DELETED]))
+                    .label("active_task_count"),
+                    func.count(Task.task_id)
+                    .filter(Task.state == TaskState.SKIPPED)
+                    .label("skipped_count"),
+                    func.count(Task.task_id)
+                    .filter(Task.state == TaskState.PLANNED)
+                    .filter(Task.planned_start_utc > now + timedelta(days=14))
+                    .label("far_future_planned_count"),
+                    func.min(Task.created_at).label("first_task_created"),
+                    func.min(Task.last_modified_at)
+                    .filter(Task.state == TaskState.EXECUTED)
+                    .label("first_executed"),
+                    func.max(Task.last_modified_at).label("last_task_mod"),
+                )
+                .filter(Task.voided_at.is_(None))
+                .group_by(Task.user_id)
+                .all()
+            )
+        }
+        session_stats = {
+            row.user_id: row
+            for row in (
+                db.query(
+                    StopwatchSession.user_id.label("user_id"),
+                    func.max(StopwatchSession.end_time_utc).label(
+                        "last_session_end"
+                    ),
+                    func.count(StopwatchSession.session_id)
+                    .filter(StopwatchSession.end_time_utc.is_(None))
+                    .label("open_timer_count"),
+                )
+                .group_by(StopwatchSession.user_id)
+                .all()
+            )
+        }
+
+        # Per-user aggregates are precomputed above so the operator dashboard
+        # stays fast even when the public DB is reached over the tunnel.
         rows: list[dict[str, Any]] = []
         for u in users:
-            last_task_mod = (
-                db.query(func.max(Task.last_modified_at))
-                .filter(Task.user_id == u.user_id)
-                .filter(Task.voided_at.is_(None))
-                .scalar()
-            )
-            last_session_end = (
-                db.query(func.max(StopwatchSession.end_time_utc))
-                .filter(StopwatchSession.user_id == u.user_id)
-                .scalar()
-            )
+            task_row = task_stats.get(u.user_id)
+            session_row = session_stats.get(u.user_id)
+            last_task_mod = task_row.last_task_mod if task_row else None
+            last_session_end = session_row.last_session_end if session_row else None
             last_activity = max(
                 (t for t in (last_task_mod, last_session_end) if t is not None),
                 default=None,
             )
-            task_total = (
-                db.query(func.count(Task.task_id))
-                .filter(Task.user_id == u.user_id)
-                .filter(Task.voided_at.is_(None))
-                .scalar()
-                or 0
+            task_total = task_row.task_total if task_row else 0
+            executed_count = task_row.executed_count if task_row else 0
+            active_task_count = task_row.active_task_count if task_row else 0
+            skipped_count = task_row.skipped_count if task_row else 0
+            far_future_planned_count = (
+                task_row.far_future_planned_count if task_row else 0
             )
-            executed_count = (
-                db.query(func.count(Task.task_id))
-                .filter(Task.user_id == u.user_id)
-                .filter(Task.voided_at.is_(None))
-                .filter(Task.state == TaskState.EXECUTED)
-                .scalar()
-                or 0
-            )
-            first_task_created = (
-                db.query(func.min(Task.created_at))
-                .filter(Task.user_id == u.user_id)
-                .filter(Task.voided_at.is_(None))
-                .scalar()
-            )
-            first_executed = (
-                db.query(func.min(Task.last_modified_at))
-                .filter(Task.user_id == u.user_id)
-                .filter(Task.voided_at.is_(None))
-                .filter(Task.state == TaskState.EXECUTED)
-                .scalar()
-            )
+            open_timer_count = session_row.open_timer_count if session_row else 0
+            first_task_created = task_row.first_task_created if task_row else None
+            first_executed = task_row.first_executed if task_row else None
             tutorial_status = (
                 "completed"
                 if u.tutorial_completed_at
@@ -135,6 +158,24 @@ def operator_dashboard(db: Session = Depends(get_db)) -> dict[str, Any]:
                 if u.tutorial_skipped_at
                 else "pending"
             )
+            if u.is_operator:
+                activation_stage = "operator"
+            elif u.terms_accepted_at is None:
+                activation_stage = "needs_terms"
+            elif u.onboarding_completed_at is None:
+                activation_stage = "brain_dump_not_completed"
+            elif task_total == 0:
+                activation_stage = "onboarding_skipped_or_empty"
+            elif active_task_count == 0:
+                activation_stage = "all_tasks_skipped"
+            elif far_future_planned_count > 0 and executed_count == 0:
+                activation_stage = "planned_far_future"
+            elif u.first_timer_started_at is None:
+                activation_stage = "planned_no_timer"
+            elif executed_count == 0:
+                activation_stage = "timer_started_no_completion"
+            else:
+                activation_stage = "activated"
             rows.append(
                 {
                     "user_id": u.user_id,
@@ -147,6 +188,10 @@ def operator_dashboard(db: Session = Depends(get_db)) -> dict[str, Any]:
                     "tutorial_status": tutorial_status,
                     "gcal_connected": u.google_refresh_token is not None,
                     "task_total": task_total,
+                    "active_task_count": active_task_count,
+                    "skipped_count": skipped_count,
+                    "far_future_planned_count": far_future_planned_count,
+                    "open_timer_count": open_timer_count,
                     "executed_count": executed_count,
                     "first_task_created_at": first_task_created.isoformat()
                     if first_task_created
@@ -163,6 +208,7 @@ def operator_dashboard(db: Session = Depends(get_db)) -> dict[str, Any]:
                     "returning_7d": bool(
                         last_activity and last_activity >= week_ago
                     ),
+                    "activation_stage": activation_stage,
                 }
             )
 
@@ -170,6 +216,9 @@ def operator_dashboard(db: Session = Depends(get_db)) -> dict[str, Any]:
         funnel = {
             "signed_up": len(non_op_rows),
             "onboarded": sum(1 for r in non_op_rows if r["onboarded_at"]),
+            "meaningful_plan": sum(
+                1 for r in non_op_rows if r["active_task_count"] > 0
+            ),
             "first_task": sum(
                 1 for r in non_op_rows if r["first_task_created_at"]
             ),
