@@ -6,9 +6,8 @@ artifact) and enqueues a notification payload onto the per-user Redis
 queue. A firing cooldown prevents re-firing for the same user within
 FIRING_COOLDOWN_MINUTES.
 
-No Telegram delivery here — that is commit 5b. The queued payload is a
-structured dict with firing_id + mechanism + predicted_at + lead_minutes;
-5b will shape the text template and route via telegram_notifier.
+The per-user queue is the user-facing delivery path. Telegram is reserved
+for operator-owned accounts because it is a shared operator channel.
 
 Determining the active task:
   * Prefer the Redis active_stopwatch key — it is the source of truth
@@ -29,9 +28,9 @@ import logging
 
 from app.db.models import PausePredictionLog, Task, TaskState, User
 from app.services.notification_queue import enqueue_user_notification
+from app.services.operator_notifier import notify_operator
 from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
 from app.services.pause_predictor import PausePredictor
-from app.services.telegram_notifier import send_telegram_message_sync
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
@@ -124,12 +123,11 @@ def _run_for_one_user(db, user: User):
         f"lead_minutes={prediction.lead_minutes} confidence={prediction.confidence}"
     )
 
-    # Queue a structured payload for the OpenClaw agent polling loop
-    # (/v1/notifications/pending) AND send the operator-facing text via
-    # Telegram. Both are best-effort — neither failure rolls back the
-    # already-committed research row.
+    # Queue a structured payload for the current user's notification poller.
+    # Operator Telegram fanout is gated below; non-operator behavioral events
+    # must not leak into the shared operator bot.
     _enqueue_notification(db, user, row)
-    _deliver_telegram(row)
+    _deliver_telegram(user, row)
 
 
 def _resolve_active_task(db, user: User):
@@ -242,18 +240,24 @@ def _format_telegram_text(row: PausePredictionLog) -> str:
     )
 
 
-def _deliver_telegram(row: PausePredictionLog) -> None:
-    """Send the pause-prediction text via the Telegram bot.
+def _deliver_telegram(user: User, row: PausePredictionLog) -> None:
+    """Send operator-owned pause-prediction text via Telegram.
 
-    Non-fatal: a missing TELEGRAM_BOT_TOKEN / network glitch logs a
-    warning and returns. The research row + agent-queue payload are
-    already committed, so research integrity is preserved even when
-    direct delivery fails.
+    The bot is a shared operator channel. Non-operator user-facing delivery
+    must stay inside the per-user notification queue.
     """
+    if not user.is_operator:
+        return
     try:
-        send_telegram_message_sync(_format_telegram_text(row))
+        notify_operator(
+            _format_telegram_text(row),
+            source="scheduler.pause-prediction",
+            severity="alert",
+            dedupe_key=f"pause-prediction:{user.user_id}:{row.firing_id}",
+            cooldown_seconds=FIRING_COOLDOWN_MINUTES * 60,
+        )
     except Exception as e:
         logger.warning(
-            f"pause_prediction: telegram delivery failed for "
+            f"pause_prediction: operator notification failed for "
             f"firing_id={row.firing_id}: {e}"
         )

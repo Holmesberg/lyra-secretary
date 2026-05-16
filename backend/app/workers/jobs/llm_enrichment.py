@@ -27,6 +27,7 @@ from app.db.models import Task
 from app.db.scoping import set_current_user_id
 from app.db.session import SessionLocal
 from app.services.llm_parser import enrich_task_via_llm
+from app.services.operator_notifier import notify_operator
 from app.utils.time_utils import now_utc
 
 logger = logging.getLogger(__name__)
@@ -65,13 +66,17 @@ def run_llm_enrichment() -> None:
         )
         if not pending:
             return
+        status_counts: dict[str, int] = {}
+        unexpected_failures = 0
         for (task_id,) in pending:
             try:
                 status = enrich_task_via_llm(db, task_id)
+                status_counts[status] = status_counts.get(status, 0) + 1
                 logger.debug(
                     "llm_enrichment: task=%s status=%s", task_id, status
                 )
             except Exception as e:  # noqa: BLE001 — last-resort catch
+                unexpected_failures += 1
                 logger.exception(
                     "llm_enrichment: unexpected failure for task=%s: %s",
                     task_id,
@@ -86,6 +91,30 @@ def run_llm_enrichment() -> None:
                 except Exception as e:
                     logger.warning("llm_enrichment: status flip to 'failed' rolled back (non-blocking): %s", e)
                     db.rollback()
+        problem_count = (
+            status_counts.get("failed", 0)
+            + status_counts.get("unavailable", 0)
+            + unexpected_failures
+        )
+        if problem_count:
+            remaining_pending = (
+                db.query(Task.task_id)
+                .filter(
+                    Task.llm_parse_status == "pending",
+                    Task.voided_at.is_(None),
+                )
+                .count()
+            )
+            notify_operator(
+                "LLM enrichment degraded: "
+                f"failed={status_counts.get('failed', 0) + unexpected_failures}, "
+                f"unavailable={status_counts.get('unavailable', 0)}, "
+                f"pending_backlog={remaining_pending}.",
+                source="scheduler.llm-enrichment",
+                severity="warn",
+                dedupe_key="llm-enrichment-degraded",
+                cooldown_seconds=30 * 60,
+            )
     finally:
         db.close()
         set_current_user_id(None)

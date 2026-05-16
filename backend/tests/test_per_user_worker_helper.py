@@ -40,3 +40,40 @@ def test_for_each_user_passes_session_attached_user(db, monkeypatch):
     assert refreshed.moodle_base_url == "https://lms.example.edu"
     assert get_current_user_id() is None
     set_current_user_id(None)
+
+
+def test_for_each_user_notifies_on_user_failure(db, monkeypatch):
+    db.rollback()
+    db.query(User).delete()
+    db.commit()
+    user = User(
+        email="worker-failure@example.com",
+        google_id=None,
+        timezone="Africa/Cairo",
+        is_operator=False,
+        notion_enabled=False,
+        terms_accepted_at=datetime.utcnow(),
+        created_at=datetime.utcnow(),
+    )
+    db.add(user)
+    db.commit()
+
+    monkeypatch.setattr(_per_user, "SessionLocal", TestingSession)
+    calls = []
+
+    def _notify(*args, **kwargs):
+        calls.append((args, kwargs))
+        return True
+
+    monkeypatch.setattr(_per_user, "notify_operator", _notify)
+
+    def _bad_job(job_db, scoped_user):
+        raise RuntimeError("boom")
+
+    _per_user.for_each_user(_bad_job)
+
+    assert len(calls) == 1
+    assert calls[0][1]["source"] == "scheduler.per-user"
+    assert calls[0][1]["severity"] == "error"
+    assert get_current_user_id() is None
+    set_current_user_id(None)

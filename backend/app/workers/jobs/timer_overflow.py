@@ -3,9 +3,9 @@ import logging
 
 from app.db.models import StopwatchSession, Task, User
 from app.services.notification_queue import enqueue_user_notification
+from app.services.operator_notifier import notify_operator
 from app.utils.time_utils import now_utc
 from app.utils.redis_client import RedisClient
-from app.services.telegram_notifier import send_telegram_message_sync
 from app.workers.jobs._per_user import for_each_user
 
 logger = logging.getLogger(__name__)
@@ -48,17 +48,29 @@ def _run_for_one_user(db, user: User):
                 "Reply with 'done' to stop, or a completion percentage (e.g. 75%)."
             )
 
+            delivered = False
+            try:
+                enqueue_user_notification(
+                    user.user_id,
+                    {"type": "timer_overflow", "message": message},
+                )
+                delivered = True
+            except Exception as e:
+                logger.warning(f"Redis queue fallback failed for session {session.session_id}: {e}")
+
+            # The Telegram bot is a shared operator channel, so only mirror
+            # operator-owned timer events there.
             if user.is_operator:
-                sent_direct = send_telegram_message_sync(message)
+                sent_direct = notify_operator(
+                    message,
+                    source="scheduler.timer-overflow",
+                    severity="alert",
+                    dedupe_key=f"timer-overflow:{user.user_id}:{session.session_id}",
+                    cooldown_seconds=86400,
+                )
+                delivered = delivered or sent_direct
                 if sent_direct:
-                    logger.info(f"Overflow alert sent via direct Telegram (user {user.user_id})")
+                    logger.info(f"Overflow alert sent via operator Telegram (user {user.user_id})")
 
-                try:
-                    enqueue_user_notification(
-                        user.user_id,
-                        {"type": "timer_overflow", "message": message},
-                    )
-                except Exception as e:
-                    logger.warning(f"Redis queue fallback failed for session {session.session_id}: {e}")
-
-            redis.client.setex(notified_key, 86400, "1")
+            if delivered:
+                redis.client.setex(notified_key, 86400, "1")

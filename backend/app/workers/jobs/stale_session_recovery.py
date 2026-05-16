@@ -209,9 +209,11 @@ def _run_for_one_user(db, user: User):
             detail = ", ".join(parts) if parts else "session-only"
             notify_operator(
                 f"Auto-closed *{closed}* stale stopwatch session(s) "
-                f"(paused>24h or unattended>24h): {detail}.",
+                f"(paused>{STALE_PAUSE_HOURS}h or unattended>{STALE_ACTIVE_HOURS}h): {detail}.",
                 source="scheduler.stale-sessions",
                 severity="warn",
+                dedupe_key=f"stale-sessions:{user.user_id}:{closed}:{executed_count}:{skipped_count}",
+                cooldown_seconds=30 * 60,
             )
     except Exception as e:
         logger.error(

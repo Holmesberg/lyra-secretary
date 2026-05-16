@@ -21,6 +21,7 @@ from typing import Callable
 from app.db.models import User
 from app.db.scoping import set_current_user_id
 from app.db.session import SessionLocal
+from app.services.operator_notifier import notify_operator
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +51,18 @@ def for_each_user(per_user_fn: Callable) -> None:
                 continue
             per_user_fn(db, user)
         except Exception as e:
+            fn_name = getattr(per_user_fn, "__name__", "per_user_fn")
             logger.error(
                 f"per-user job failed for user_id={user_id}: {e}",
                 exc_info=True,
+            )
+            notify_operator(
+                f"Per-user worker `{fn_name}` failed for user_id `{user_id}` "
+                f"with `{type(e).__name__}`. Check backend logs.",
+                source="scheduler.per-user",
+                severity="error",
+                dedupe_key=f"{fn_name}:{user_id}:{type(e).__name__}",
+                cooldown_seconds=30 * 60,
             )
         finally:
             db.close()

@@ -158,7 +158,7 @@ def test_reminders_skip_voided_task(db, user):
         planned_end_utc=NOW + timedelta(minutes=70),
     )
 
-    with patch("app.workers.jobs.reminders.send_telegram_message_sync") as mock_tg, \
+    with patch("app.workers.jobs.reminders.notify_operator") as mock_tg, \
          patch("app.workers.jobs.reminders.enqueue_user_notification") as mock_enqueue:
         mock_tg.return_value = True
         _run_for_one_user(db, user)
@@ -208,7 +208,7 @@ def test_timer_overflow_skip_voided_task(db, user):
         start_time_utc=NOW - timedelta(minutes=120),
     )
 
-    with patch("app.workers.jobs.timer_overflow.send_telegram_message_sync") as mock_tg, \
+    with patch("app.workers.jobs.timer_overflow.notify_operator") as mock_tg, \
          patch("app.workers.jobs.timer_overflow.enqueue_user_notification") as mock_enqueue:
         mock_tg.return_value = True
         _run_for_one_user(db, user)

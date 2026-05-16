@@ -24,15 +24,15 @@ Selective coverage policy (operator-tunable):
   - "alert" — load-bearing user-facing events (timer overflow, pause
               prediction fired, scheduled reminder due)
 
-Background jobs that fire EVERY FEW SECONDS (llm_enrichment) or are
-pure research-side bookkeeping (reconcile_responses, reconcile_
-deadline_outcomes) deliberately do NOT call notify_operator — Telegram
-spam-blocking would tank the channel. Coverage list documented in
-docs/notification_coverage.md (TODO when audit settles).
+High-cadence jobs call notify_operator only for aggregate degraded states
+with cooldowns. Pure research-side bookkeeping (reconcile_responses,
+reconcile_deadline_outcomes) remains log/diagnostic-first. Coverage list
+documented in docs/notification_coverage.md.
 """
 from __future__ import annotations
 
 import logging
+from time import monotonic
 from typing import Literal
 
 from app.services.telegram_notifier import send_telegram_message_sync
@@ -48,12 +48,16 @@ _PREFIX = {
     "alert": "🔔",
 }
 
+_LAST_SENT_AT: dict[str, float] = {}
+
 
 def notify_operator(
     message: str,
     *,
     source: str = "system",
     severity: Severity = "info",
+    dedupe_key: str | None = None,
+    cooldown_seconds: int | None = None,
 ) -> bool:
     """Send a structured notification to the operator's Telegram.
 
@@ -63,15 +67,33 @@ def notify_operator(
               "moodle.sync"). Appears between brackets after the
               severity emoji.
       severity: One of info/warn/error/alert. Drives the leading emoji.
+      dedupe_key: Optional stable fingerprint for repeated failures.
+      cooldown_seconds: When set with dedupe_key, suppresses repeated
+              notifications for this fingerprint in the current process.
 
     Returns: True if telegram delivery succeeded, False otherwise.
     Failures log + return False — they never raise (callers shouldn't
     have to wrap each notification in try/except).
     """
+    fingerprint = None
+    if dedupe_key and cooldown_seconds and cooldown_seconds > 0:
+        fingerprint = f"{source}:{severity}:{dedupe_key}"
+        last_sent = _LAST_SENT_AT.get(fingerprint)
+        if last_sent is not None and monotonic() - last_sent < cooldown_seconds:
+            logger.debug(
+                "operator_notifier: suppressed duplicate notification "
+                "source=%s dedupe_key=%s",
+                source,
+                dedupe_key,
+            )
+            return False
+
     prefix = _PREFIX.get(severity, _PREFIX["info"])
     formatted = f"{prefix} `[{source}]` {message}"
     try:
         ok = send_telegram_message_sync(formatted)
+        if ok and fingerprint:
+            _LAST_SENT_AT[fingerprint] = monotonic()
         if not ok:
             logger.debug(
                 "operator_notifier: telegram send returned False (likely "
@@ -87,3 +109,8 @@ def notify_operator(
             source,
         )
         return False
+
+
+def clear_operator_notification_dedupe() -> None:
+    """Clear in-memory notification cooldown state for tests."""
+    _LAST_SENT_AT.clear()

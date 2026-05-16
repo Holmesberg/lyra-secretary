@@ -64,6 +64,8 @@ def _run_for_one_user(db, user: User) -> None:
                 _operator_error_message(result.error),
                 source="scheduler.moodle",
                 severity="error",
+                dedupe_key=f"moodle-ics-error:{user.user_id}:{result.error}",
+                cooldown_seconds=60 * 60,
             )
         return
     logger.info(
@@ -85,4 +87,16 @@ def _run_for_one_user(db, user: User) -> None:
             f"Moodle sync: created *{result.created}*, updated *{result.updated}*, voided *{result.skipped_voided}* deadlines.",
             source="scheduler.moodle",
             severity="info",
+            dedupe_key=f"moodle-ics-summary:{user.user_id}:{result.created}:{result.updated}:{result.skipped_voided}",
+            cooldown_seconds=15 * 60,
+        )
+    if user.is_operator and result.skipped_unparseable:
+        from app.services.operator_notifier import notify_operator
+
+        notify_operator(
+            f"Moodle sync skipped *{result.skipped_unparseable}* unparseable event(s).",
+            source="scheduler.moodle",
+            severity="warn",
+            dedupe_key=f"moodle-ics-unparseable:{user.user_id}",
+            cooldown_seconds=6 * 60 * 60,
         )

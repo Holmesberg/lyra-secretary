@@ -1,9 +1,11 @@
 """Background job to retry failed Notion syncs (per-user, gated)."""
 import logging
 
+from app.core.config import settings
 from app.db.models import Task, User
 from app.utils.redis_client import RedisClient
 from app.services.notion_client import NotionClient
+from app.services.operator_notifier import notify_operator
 from app.workers.jobs._per_user import for_each_user
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,17 @@ def _run_for_one_user(db, user: User):
     if not items:
         return
 
+    if not settings.NOTION_API_KEY or not settings.NOTION_DATABASE_ID:
+        notify_operator(
+            "Notion retry queue has pending items, but Notion credentials "
+            "are missing. Queue retained for the next retry.",
+            source="scheduler.notion",
+            severity="error",
+            dedupe_key=f"notion-missing-creds:{user.user_id}",
+            cooldown_seconds=60 * 60,
+        )
+        return
+
     notion = NotionClient()
     success_count = 0
     try:
@@ -40,6 +53,15 @@ def _run_for_one_user(db, user: User):
                 logger.info(f"Retried Notion sync for {task_id} (user {user.user_id})")
             except Exception as e:
                 logger.error(f"Notion sync retry failed for {task_id}: {e}")
+                notify_operator(
+                    f"Notion retry failed for user_id `{user.user_id}` "
+                    f"task_id `{task_id}` with `{type(e).__name__}`. "
+                    "Queue retained from this item onward.",
+                    source="scheduler.notion",
+                    severity="error",
+                    dedupe_key=f"notion-sync-failed:{user.user_id}:{task_id}:{type(e).__name__}",
+                    cooldown_seconds=60 * 60,
+                )
                 break
     finally:
         if success_count > 0:

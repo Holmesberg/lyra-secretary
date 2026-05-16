@@ -27,6 +27,32 @@ def run_moodle_submissions_sync() -> None:
     for_each_user(_run_for_one_user)
 
 
+def _operator_error_message(error: str) -> tuple[str, str]:
+    if error == "auth":
+        return (
+            "Moodle Web Services token rejected - likely rotated. "
+            "Reconnect from Settings -> Moodle.",
+            "error",
+        )
+    if error in {"token_decrypt_failed", "no_token"}:
+        return (
+            f"Moodle Web Services cannot sync because `{error}`. "
+            "Reconnect Moodle Web Services in Settings.",
+            "error",
+        )
+    if error == "no_moodle_userid":
+        return (
+            "Moodle Web Services could not resolve the Moodle user id. "
+            "Reconnect Moodle Web Services in Settings.",
+            "error",
+        )
+    return (
+        f"Moodle Web Services sync failed with `{error}`. Lyra kept the "
+        "connection and will retry on the next cycle.",
+        "warn",
+    )
+
+
 def _run_for_one_user(db, user: User) -> None:
     if not user.moodle_ws_token:
         return
@@ -41,6 +67,15 @@ def _run_for_one_user(db, user: User) -> None:
             "moodle_ws: no base URL for user %s (column NULL + env unset)",
             user.user_id,
         )
+        if user.is_operator:
+            notify_operator(
+                "Moodle Web Services has a token but no base URL. "
+                "Reconnect Moodle in Settings.",
+                source="scheduler.moodle-ws",
+                severity="error",
+                dedupe_key=f"moodle-ws-no-base-url:{user.user_id}",
+                cooldown_seconds=6 * 60 * 60,
+            )
         return
     result = moodle_submissions_sync.sync_user(user, base_url, db)
     db.commit()
@@ -50,14 +85,16 @@ def _run_for_one_user(db, user: User) -> None:
             "moodle_ws: user %s sync ended with error=%s",
             user.user_id, result.error,
         )
-        # Auth failures already set moodle_ws_disconnect_reason inside
-        # sync_user; surface to operator so they reconnect.
-        if user.is_operator and result.error == "auth":
+        # Surface both auth and non-auth WS failures; payload contains no
+        # Moodle token, URL, course title, or assignment title.
+        if user.is_operator:
+            message, severity = _operator_error_message(result.error)
             notify_operator(
-                "Moodle Web Services token rejected — likely rotated. "
-                "Reconnect from /settings → Moodle.",
+                message,
                 source="scheduler.moodle-ws",
-                severity="error",
+                severity=severity,
+                dedupe_key=f"moodle-ws-error:{user.user_id}:{result.error}",
+                cooldown_seconds=6 * 60 * 60,
             )
         return
 
@@ -95,4 +132,6 @@ def _run_for_one_user(db, user: User) -> None:
             "Moodle WS sync —\n" + "\n".join(lines),
             source="scheduler.moodle-ws",
             severity="info",
+            dedupe_key=f"moodle-ws-summary:{user.user_id}:{result.marked_complete}:{backfilled}",
+            cooldown_seconds=15 * 60,
         )

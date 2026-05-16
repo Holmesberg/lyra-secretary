@@ -37,6 +37,7 @@ from googleapiclient.errors import HttpError
 from app.core.config import settings
 from app.db.models import User
 from app.db.session import SessionLocal
+from app.services.operator_notifier import notify_operator
 from app.utils.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,15 @@ def _get_credentials(user: User) -> Optional[Credentials]:
                 user.user_id,
                 e,
             )
+            if user.is_operator:
+                notify_operator(
+                    "Google Calendar token refresh failed. Reconnect Calendar "
+                    "from Settings if this persists.",
+                    source="calendar.sync",
+                    severity="warn",
+                    dedupe_key=f"gcal-refresh-failed:{user.user_id}:{type(e).__name__}",
+                    cooldown_seconds=24 * 60 * 60,
+                )
             return None
         redis.setex(
             _access_token_cache_key(user.user_id),
@@ -197,11 +207,38 @@ def fetch_google_events(
                 )
                 user.google_refresh_token = None
                 db.commit()
+                if user.is_operator:
+                    notify_operator(
+                        "Google Calendar returned 401, so Lyra cleared the "
+                        "stored refresh token. Reconnect Calendar in Settings.",
+                        source="calendar.sync",
+                        severity="error",
+                        dedupe_key=f"gcal-401:{user_id}",
+                        cooldown_seconds=24 * 60 * 60,
+                    )
             else:
                 logger.warning("gcal: events.list HttpError for user %s: %s", user_id, e)
+                if user.is_operator:
+                    notify_operator(
+                        f"Google Calendar events.list failed with HTTP {e.resp.status}. "
+                        "Calendar context is temporarily unavailable.",
+                        source="calendar.sync",
+                        severity="warn",
+                        dedupe_key=f"gcal-http:{user_id}:{e.resp.status}",
+                        cooldown_seconds=60 * 60,
+                    )
             return []
         except Exception as e:
             logger.warning("gcal: events.list failed for user %s: %s", user_id, e)
+            if user.is_operator:
+                notify_operator(
+                    f"Google Calendar events.list failed with `{type(e).__name__}`. "
+                    "Calendar context is temporarily unavailable.",
+                    source="calendar.sync",
+                    severity="warn",
+                    dedupe_key=f"gcal-events-failed:{user_id}:{type(e).__name__}",
+                    cooldown_seconds=60 * 60,
+                )
             return []
 
         events: list[ExternalEvent] = []

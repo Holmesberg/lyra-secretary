@@ -4,10 +4,10 @@ import logging
 
 from app.db.models import Task, TaskState, User
 from app.services.notification_queue import enqueue_user_notification
+from app.services.operator_notifier import notify_operator
 from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
 from app.utils.time_utils import now_utc, to_local
 from app.utils.redis_client import RedisClient
-from app.services.telegram_notifier import send_telegram_message_sync
 from app.workers.jobs._per_user import for_each_user
 
 logger = logging.getLogger(__name__)
@@ -46,48 +46,63 @@ def _run_for_one_user(db, user: User):
             f"Planned duration: {planned_duration} min"
         )
 
-        # Direct Telegram delivery is operator-only (single shared bot/chat).
-        if user.is_operator:
-            sent_direct = send_telegram_message_sync(message)
-            if sent_direct:
-                logger.info(f"Reminder for task {task.task_id} sent via direct Telegram (user {user.user_id})")
-
+        delivered = False
+        queued = False
+        try:
+            enqueue_user_notification(
+                user.user_id,
+                {"type": "reminder", "message": message},
+            )
+            queued = True
+            emit_surface_render(
+                db,
+                surface_id="worker.reminder",
+                user_id=user.user_id,
+                task_id=task.task_id,
+                content_snapshot=message,
+                content_template_id="pre_task_reminder",
+                initiative="system",
+                trigger_source="worker.reminder",
+                eligible_at=now,
+                rendered_at=now,
+            )
+            db.commit()
+            delivered = True
+        except Exception as e:
+            delivered = queued
+            db.rollback()
             try:
-                enqueue_user_notification(
-                    user.user_id,
-                    {"type": "reminder", "message": message},
-                )
-                emit_surface_render(
+                emit_surface_suppression(
                     db,
                     surface_id="worker.reminder",
                     user_id=user.user_id,
                     task_id=task.task_id,
-                    content_snapshot=message,
+                    suppression_reason="notification_enqueue_failed",
                     content_template_id="pre_task_reminder",
-                    initiative="system",
                     trigger_source="worker.reminder",
                     eligible_at=now,
-                    rendered_at=now,
+                    suppressed_at=now,
                 )
                 db.commit()
-            except Exception as e:
+            except Exception:
                 db.rollback()
-                try:
-                    emit_surface_suppression(
-                        db,
-                        surface_id="worker.reminder",
-                        user_id=user.user_id,
-                        task_id=task.task_id,
-                        suppression_reason="notification_enqueue_failed",
-                        content_template_id="pre_task_reminder",
-                        trigger_source="worker.reminder",
-                        eligible_at=now,
-                        suppressed_at=now,
-                    )
-                    db.commit()
-                except Exception:
-                    db.rollback()
-                logger.warning(f"Redis queue fallback failed for task {task.task_id}: {e}")
+            logger.warning(f"Redis queue fallback failed for task {task.task_id}: {e}")
 
-        # Mark notified per-user so two users can't suppress each other's reminders
-        redis.client.setex(notified_key, 7200, "1")
+        # The Telegram bot is a shared operator channel, so only mirror
+        # operator-owned reminders there. Other users receive the queued
+        # notification through their authenticated poller.
+        if user.is_operator:
+            sent_direct = notify_operator(
+                message,
+                source="scheduler.reminders",
+                severity="alert",
+                dedupe_key=f"reminder:{user.user_id}:{task.task_id}",
+                cooldown_seconds=7200,
+            )
+            delivered = delivered or sent_direct
+            if sent_direct:
+                logger.info(f"Reminder for task {task.task_id} sent via operator Telegram (user {user.user_id})")
+
+        # Mark notified per-user only after at least one delivery path succeeds.
+        if delivered:
+            redis.client.setex(notified_key, 7200, "1")

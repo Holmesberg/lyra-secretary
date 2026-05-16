@@ -1,8 +1,14 @@
 """APScheduler setup for background jobs."""
+from apscheduler.events import (
+    EVENT_JOB_ERROR,
+    EVENT_JOB_MAX_INSTANCES,
+    EVENT_JOB_MISSED,
+)
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import logging
 
+from app.services.operator_notifier import notify_operator
 from app.workers.jobs.reminders import check_upcoming_tasks
 from app.workers.jobs.notion_sync import retry_failed_syncs
 from app.workers.jobs.timer_overflow import check_timer_overflow
@@ -32,6 +38,54 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler(
     job_defaults={"misfire_grace_time": 60 * 60 * 24, "coalesce": True}
 )
+_SCHEDULER_LISTENERS_INSTALLED = False
+
+
+def _notify_scheduler_event(event) -> None:
+    """Mirror scheduler health events into the operator channel."""
+    job_id = getattr(event, "job_id", "unknown")
+    if event.code == EVENT_JOB_ERROR:
+        exc = getattr(event, "exception", None)
+        exc_name = type(exc).__name__ if exc is not None else "unknown"
+        message = (
+            f"APScheduler job `{job_id}` failed with `{exc_name}`. "
+            "Check backend logs for the traceback."
+        )
+        severity = "error"
+        dedupe = f"job-error:{job_id}:{exc_name}"
+    elif event.code == EVENT_JOB_MISSED:
+        message = f"APScheduler job `{job_id}` missed its run window."
+        severity = "warn"
+        dedupe = f"job-missed:{job_id}"
+    elif event.code == EVENT_JOB_MAX_INSTANCES:
+        message = (
+            f"APScheduler job `{job_id}` hit max_instances; a prior run "
+            "is still active."
+        )
+        severity = "warn"
+        dedupe = f"job-max-instances:{job_id}"
+    else:
+        return
+
+    notify_operator(
+        message,
+        source="scheduler.health",
+        severity=severity,
+        dedupe_key=dedupe,
+        cooldown_seconds=30 * 60,
+    )
+
+
+def _install_scheduler_listeners() -> None:
+    global _SCHEDULER_LISTENERS_INSTALLED
+    if _SCHEDULER_LISTENERS_INSTALLED:
+        return
+    scheduler.add_listener(
+        _notify_scheduler_event,
+        EVENT_JOB_ERROR | EVENT_JOB_MISSED | EVENT_JOB_MAX_INSTANCES,
+    )
+    _SCHEDULER_LISTENERS_INSTALLED = True
+
 
 def start_scheduler():
     """Start background scheduler."""
@@ -197,8 +251,16 @@ def start_scheduler():
         max_instances=1,
     )
 
+    _install_scheduler_listeners()
     scheduler.start()
     logger.info("APScheduler started")
+    notify_operator(
+        "APScheduler started with Lyra background jobs loaded.",
+        source="scheduler.health",
+        severity="info",
+        dedupe_key="scheduler-started",
+        cooldown_seconds=30 * 60,
+    )
 
 
 def shutdown_scheduler():
@@ -206,3 +268,10 @@ def shutdown_scheduler():
     if scheduler.running:
         scheduler.shutdown()
     logger.info("APScheduler shutdown")
+    notify_operator(
+        "APScheduler shutdown.",
+        source="scheduler.health",
+        severity="warn",
+        dedupe_key="scheduler-shutdown",
+        cooldown_seconds=30 * 60,
+    )
