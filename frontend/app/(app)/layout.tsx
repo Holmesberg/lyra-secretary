@@ -1,6 +1,6 @@
 "use client";
-import { signOut, useSession } from "next-auth/react";
-import { clearPersistedCache } from "@/lib/clear-persisted-cache";
+import { useSession } from "next-auth/react";
+import { clearClientAuthState, signOutAndClear } from "@/lib/sign-out-and-clear";
 import { notifyOperator } from "@/lib/operator-notify";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -82,10 +82,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       // same browser sees prior user's persisted cache flash on first
       // paint (audit-flagged 2026-04-30, RISK-5: shared family device
       // = high probability mom forgets explicit logout).
-      clearPersistedCache();
+      clearClientAuthState(qc);
       router.replace("/");
     }
-  }, [status, router]);
+  }, [status, router, qc]);
 
   // Calendar refresh-token handshake was here (2026-04-21 → 2026-04-22).
   // Removed when we split identity from authorization: sign-in no longer
@@ -132,8 +132,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         source: "frontend.session-expired",
       });
       setAutoSigningOut(true);
-      clearPersistedCache();
-      signOut({ callbackUrl: "/" });
+      signOutAndClear(qc, { callbackUrl: "/" });
     } else {
       notifyOperator({
         message: `Backend unreachable from /v1/users/me: \`${meError ?? "unknown"}\`. Check tunnel + backend container.`,
@@ -141,7 +140,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         source: "frontend.backend-down",
       });
     }
-  }, [meQ.error, meError]);
+  }, [meQ.error, meError, qc]);
 
   // Used by gating modals (consent, archetype, tutorial) to refresh
   // /me after the user submits. Invalidate-and-refetch — same key, so
@@ -199,8 +198,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => {
-                clearPersistedCache();
-                signOut({ callbackUrl: "/" });
+                signOutAndClear(qc, { callbackUrl: "/" });
               }}
               className="rounded-sm border border-hairline-signal/40 bg-void-2/60 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-signal/10 hover:text-signal focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal/70"
             >

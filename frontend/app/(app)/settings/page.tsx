@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { signOutAndClear } from "@/lib/sign-out-and-clear";
 import { IntegrationsSection } from "@/components/integrations-section";
 import { ArchetypeSurvey } from "@/components/archetype-survey";
 
@@ -136,7 +137,7 @@ export default function SettingsPage() {
           retain_for_research: retainForResearch,
         }),
       });
-      signOut({ callbackUrl: "/" });
+      signOutAndClear(qc, { callbackUrl: "/" });
     } catch (e: any) {
       setDeleteError(e.message || "Delete failed");
       setStage(2);

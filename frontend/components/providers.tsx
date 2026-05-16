@@ -23,11 +23,9 @@
  *     30-60s windows for refetch behavior; persistence is independent).
  *
  * Auth boundary:
- *   - On signOut() the calling site is responsible for invalidating
- *     the persister so the cache doesn't survive the auth change.
- *     `lib/clear-persisted-cache.ts` exposes a tiny helper for this.
- *     AppShell + the layout-level signOut() should call it before
- *     redirecting.
+ *   - On signOut()/401/account deletion, callers use
+ *     `lib/sign-out-and-clear.ts` so React Query memory, backend token
+ *     cache, and the persisted cache are invalidated together.
  */
 import { SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";

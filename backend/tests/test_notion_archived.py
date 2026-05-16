@@ -9,6 +9,8 @@ success_count / ltrim mechanism drops the item from the queue head.
 """
 from unittest.mock import MagicMock, patch
 
+import logging
+import pytest
 from notion_client.errors import APIResponseError
 
 from app.services.notion_client import NotionClient
@@ -134,3 +136,35 @@ def test_non_archived_api_error_still_raises():
 
     # Non-archived errors go through @retry_with_backoff: 1 initial + 3 retries.
     assert client.client.pages.update.call_count == 4
+
+
+def test_notion_api_error_log_redacts_task_text(caplog):
+    """Private task text may go to Notion, but not into backend logs."""
+    client = NotionClient.__new__(NotionClient)
+    _bypass_owner_gate(client)
+    client.client = MagicMock()
+
+    private_title = "PRIVATE TASK TEXT DO NOT LOG"
+    other_err = APIResponseError(
+        response=MagicMock(text=f'{{"message":"{private_title}"}}'),
+        message=f"Validation failed for {private_title}",
+        code="validation_error",
+    )
+    client.client.pages.update.side_effect = other_err
+    task = _make_task()
+    task.title = private_title
+
+    caplog.set_level(logging.ERROR, logger="app.services.notion_client")
+    with patch("app.services.notion_client.settings") as mock_settings, \
+         patch("app.db.session.SessionLocal") as mock_session_local:
+        mock_settings.NOTION_API_KEY = "fake-key"
+        fake_session = MagicMock()
+        owner = MagicMock()
+        owner.notion_enabled = True
+        fake_session.query.return_value.filter.return_value.first.return_value = owner
+        mock_session_local.return_value = fake_session
+
+        with pytest.raises(APIResponseError):
+            client.sync_task(task)
+
+    assert private_title not in caplog.text

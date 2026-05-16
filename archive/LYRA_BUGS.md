@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: May 16, 2026 — v1.20 (scheduler resilience and notification log-redaction sweep). 8 product open, 21 deferred/operator-only, 97 fixed/closed.
+Last updated: May 16, 2026 — v1.21 (P1 audit Batch 1 privacy/security hardening). 8 product open, 21 deferred/operator-only, 102 fixed/closed.
 
 ---
 
@@ -21,10 +21,15 @@ Last updated: May 16, 2026 — v1.20 (scheduler resilience and notification log-
 
 ---
 
-## Fixed / Closed (95 bugs)
+## Fixed / Closed (102 bugs)
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
+| LYR-140 | 🔴 high | frontend+privacy | Persisted frontend cache could survive auth transitions on mobile/delete/401 paths | Fixed in this patch. Sign-out, account deletion, unauthenticated API paths, and 401 session expiry now clear the backend-token cache, React Query memory cache, and persisted localStorage cache through a shared hygiene helper. Frontend production build passed. |
+| LYR-139 | 🔴 high | logging+privacy | Private task text could enter logs through deprecated parse, Notion sync, or retry wrappers | Fixed in this patch. Deprecated `/v1/parse` now requires request identity and logs only counts/error classes; Notion sync logs opaque task/page metadata instead of payloads or response bodies; the shared retry wrapper logs exception classes rather than raw exception messages. Regression tests prove sentinel private task text is absent from logs. |
+| LYR-138 | 🔴 high | moodle+security | Moodle WS token could leak through HTTP exception logging | Fixed in this patch. Moodle Web Services transport errors are converted into sanitized `_WSRequestError` / `_WSAuthError` messages that never include `wstoken` URLs. 4xx responses remain auth/reconnect failures; 5xx/network failures remain transient. Regression tests cover sanitized 401 and 503 paths. |
+| LYR-137 | 🔴 high | llm+privacy | Non-operator task enrichment could send user task content to hosted NVIDIA NIM | Fixed in this patch. Hosted NIM enrichment is now operator-owned-task only; non-operator task owners use local Ollama or graceful unavailable behavior. Regression tests prove non-operator tasks do not call NIM while operator tasks still may. |
+| LYR-136 | 🔴 high | auth+security | Public runtime could accept bearer tokens signed with weak/default JWT secret | Fixed in this patch. Backend startup and token decode now fail closed in public/production topology when `JWT_SECRET` is blank/default/too short or differs from `NEXTAUTH_SECRET` when both are present. Frontend backend-token minting now throws when `NEXTAUTH_SECRET` is missing/default/weak. Health invariants include the public JWT-secret guard. |
 | LYR-135 | 🔴 high | security+notifications | Telegram HTTP error logging could leak bot-token URL into backend logs | Fixed in this patch. Direct Telegram delivery, sync wrapper, feedback notifier, and operator notifier logging now summarize Telegram failures without interpolating raw exception URLs. Added regression tests proving configured bot tokens are absent from log text. Rotate the Telegram bot token out-of-band because an earlier runtime error line reached backend logs before this guard existed. |
 | LYR-134 | 🔴 high | scheduler+backend | Per-user scheduler bootstrap OperationalError aborted `resume_prediction` | Fixed in this patch. The shared per-user worker helper now retries the bootstrap `User.user_id` query on transient SQLAlchemy `OperationalError`, disposes stale pooled DB connections before retrying, and sends a specific `scheduler.per-user` alert if the job must skip a tick instead of crashing through APScheduler's generic job-error listener. |
 | LYR-130 | 🟢 low | ci | Notion retry test settings diverged from current scheduler config | Fixed in `7f80c4b`. Updated the Notion retry job test fixture/settings so CI matches the current scheduler notification boundaries. This was the final fix after the May 15 CI failure; CI passed afterward. |

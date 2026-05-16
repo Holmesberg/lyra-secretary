@@ -12,12 +12,16 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from app.db.models import Deadline, DeadlineCompletionEvent, User
 from app.db.scoping import set_current_user_id
 from app.services.moodle_submissions_sync import (
     SubmissionSyncResult,
+    _MoodleWS,
+    _WSAuthError,
+    _WSRequestError,
     _extract_course_code,
     due_proximity_bonus,
     is_submitted,
@@ -166,6 +170,88 @@ def test_resolve_base_url_uses_only_ical_origin(db):
     )
 
     assert resolve_base_url(user, "") == "https://lms.example.edu"
+
+
+def test_ws_http_error_is_sanitized(monkeypatch):
+    token = "fake-moodle-token-that-must-not-appear"
+
+    class FakeResponse:
+        status_code = 503
+        request = httpx.Request(
+            "GET",
+            f"https://lms.test/webservice/rest/server.php?wstoken={token}",
+        )
+
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError(
+                "server unavailable",
+                request=self.request,
+                response=self,
+            )
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr("app.services.moodle_submissions_sync.httpx.Client", FakeClient)
+
+    with pytest.raises(_WSRequestError) as exc:
+        _MoodleWS("https://lms.test", token).call("core_webservice_get_site_info")
+
+    message = str(exc.value)
+    assert "http_503" in message
+    assert "core_webservice_get_site_info" in message
+    assert token not in message
+    assert "wstoken" not in message
+
+
+def test_ws_4xx_auth_error_is_sanitized(monkeypatch):
+    token = "fake-moodle-token-that-must-not-appear"
+
+    class FakeResponse:
+        status_code = 401
+        request = httpx.Request(
+            "GET",
+            f"https://lms.test/webservice/rest/server.php?wstoken={token}",
+        )
+
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError(
+                "unauthorized",
+                request=self.request,
+                response=self,
+            )
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr("app.services.moodle_submissions_sync.httpx.Client", FakeClient)
+
+    with pytest.raises(_WSAuthError) as exc:
+        _MoodleWS("https://lms.test", token).call("core_webservice_get_site_info")
+
+    assert str(exc.value) == "http_401"
+    assert token not in str(exc.value)
+    assert "wstoken" not in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

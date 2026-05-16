@@ -12,6 +12,7 @@ response when no match clears 0.5 threshold, voided/terminal deadlines
 excluded, cross-user invisibility enforced.
 """
 from datetime import datetime, timedelta
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
@@ -98,6 +99,48 @@ def test_no_candidates_returns_all_none(db):
     assert body["deadline_title"] is None
     assert body["deadline_match_confidence"] is None
     assert body["deadline_match_source"] is None
+
+
+def test_deprecated_parse_requires_authentication():
+    resp = client.post(
+        "/v1/parse",
+        json={"text": "private task at 5pm for 30 minutes"},
+    )
+
+    assert resp.status_code == 401
+
+
+def test_deprecated_parse_logs_do_not_include_raw_text(db, caplog, monkeypatch):
+    from app.schemas.task import TaskParseResponse
+
+    user = _make_user(db, user_id=77, email="parse@x")
+    raw_text = "PRIVATE TASK TEXT DO NOT LOG at 5pm for 30 minutes"
+    caplog.set_level(logging.INFO, logger="app.api.v1.endpoints.parse")
+
+    class StubParser:
+        def parse_chained(self, _text):
+            start = datetime.utcnow()
+            return [
+                TaskParseResponse(
+                    title="redacted parsed task",
+                    start=start,
+                    end=start + timedelta(minutes=30),
+                    duration_minutes=30,
+                    category="work",
+                    confidence=0.9,
+                )
+            ]
+
+    monkeypatch.setattr("app.api.v1.endpoints.parse.TaskParser", StubParser)
+
+    resp = client.post(
+        "/v1/parse",
+        json={"text": raw_text},
+        headers=auth_headers(user.user_id),
+    )
+
+    assert resp.status_code == 200
+    assert raw_text not in caplog.text
 
 
 # ── Happy match ──────────────────────────────────────────────────

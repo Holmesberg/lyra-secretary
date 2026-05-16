@@ -62,7 +62,11 @@ class NotionClient:
 
         try:
             properties = self._build_properties(task)
-            logger.info(f"Notion sync payload for task {task.task_id}: {properties}")
+            logger.info(
+                "Notion sync prepared task_id=%s property_count=%s",
+                task.task_id,
+                len(properties),
+            )
             
             if task.notion_page_id:
                 # Update existing page
@@ -71,7 +75,7 @@ class NotionClient:
                     page_id=task.notion_page_id,
                     properties=properties
                 )
-                logger.info(f"Updated Notion page for task {task.task_id}. Response: {response}")
+                logger.info("Updated Notion page for task %s", task.task_id)
             else:
                 # Create new page
                 logger.info(f"Creating new Notion page in database {self.database_id}")
@@ -104,7 +108,12 @@ class NotionClient:
                     f"re-enable sync."
                 )
                 return None
-            logger.error(f"Notion API error: {e}", exc_info=True)
+            logger.error(
+                "Notion API error for task_id=%s code=%s status=%s",
+                task.task_id,
+                getattr(e, "code", None),
+                getattr(e, "status", None),
+            )
             raise
     
     def _build_properties(self, task: Task) -> Dict[str, Any]:
@@ -169,4 +178,9 @@ class NotionClient:
             )
             logger.info(f"Archived Notion page {page_id}")
         except APIResponseError as e:
-            logger.error(f"Failed to archive page: {e}")
+            logger.error(
+                "Failed to archive Notion page_id=%s code=%s status=%s",
+                page_id,
+                getattr(e, "code", None),
+                getattr(e, "status", None),
+            )

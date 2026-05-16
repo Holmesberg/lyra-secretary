@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import Deadline, Task
+from app.db.models import Deadline, Task, User
 from app.services import nvidia_nim_client
 from app.services.nvidia_nim_client import NimConfigError, NimUnavailable
 from app.utils.time_utils import now_utc
@@ -323,6 +323,20 @@ def _call_ollama(prompt: str) -> dict:
     return json.loads(raw)
 
 
+def _task_owner_can_use_hosted_nim(db: Session, task: Task) -> bool:
+    """Hosted NIM enrichment is operator-only unless a privacy contract changes.
+
+    Task titles/descriptions are user content. Non-operator users should stay
+    on the local Ollama path or graceful-unavailable fallback.
+    """
+    owner_is_operator = (
+        db.query(User.is_operator)
+        .filter(User.user_id == task.user_id)
+        .scalar()
+    )
+    return bool(owner_is_operator)
+
+
 def enrich_task_via_llm(db: Session, task_id: str) -> str:
     """Single-attempt enrichment. Idempotent.
 
@@ -374,7 +388,8 @@ def enrich_task_via_llm(db: Session, task_id: str) -> str:
     # failures. NimConfigError (bad key, unknown model) is a developer
     # action — log + skip Ollama (we don't want to silently mask
     # configuration mistakes by always falling back).
-    if nvidia_nim_client.is_configured():
+    can_use_hosted_nim = _task_owner_can_use_hosted_nim(db, task)
+    if nvidia_nim_client.is_configured() and can_use_hosted_nim:
         try:
             parsed = _call_nim(prompt)
         except NimUnavailable as e:
@@ -400,6 +415,11 @@ def enrich_task_via_llm(db: Session, task_id: str) -> str:
                 task_id,
                 e,
             )
+    elif nvidia_nim_client.is_configured():
+        logger.info(
+            "enrich_task_via_llm: hosted NIM configured but owner is non-operator; using local enrichment path for task=%s",
+            task_id,
+        )
 
     for attempt in (1, 2):
         if parsed is not None:

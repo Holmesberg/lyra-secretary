@@ -21,10 +21,25 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { SignJWT } from "jose";
 
-const SECRET = process.env.NEXTAUTH_SECRET || "";
+const DEFAULT_BACKEND_JWT_SECRET = "dev-only-replace-me-with-32-byte-urlsafe-secret";
+const MIN_BACKEND_JWT_SECRET_LENGTH = 32;
+
+function getBackendJwtSecret(): string {
+  const secret = process.env.NEXTAUTH_SECRET || "";
+  if (
+    !secret ||
+    secret === DEFAULT_BACKEND_JWT_SECRET ||
+    secret.length < MIN_BACKEND_JWT_SECRET_LENGTH
+  ) {
+    throw new Error(
+      `NEXTAUTH_SECRET must be configured to a non-default value of at least ${MIN_BACKEND_JWT_SECRET_LENGTH} characters before minting backend tokens.`
+    );
+  }
+  return secret;
+}
 
 async function mintBackendToken(payload: { sub: string; email: string }) {
-  const key = new TextEncoder().encode(SECRET);
+  const key = new TextEncoder().encode(getBackendJwtSecret());
   return await new SignJWT({ email: payload.email, sub: payload.sub })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.sub)

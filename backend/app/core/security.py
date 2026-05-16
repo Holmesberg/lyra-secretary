@@ -24,6 +24,7 @@ call site of this function (the middleware). If you find yourself calling
 it elsewhere, wrap that path in `run_in_threadpool` too — otherwise you'll
 re-introduce the latency the prior commit fixed.
 """
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -36,7 +37,56 @@ from app.db.models import User
 from app.db.session import SessionLocal
 
 
+DEFAULT_JWT_SECRET = "dev-only-replace-me-with-32-byte-urlsafe-secret"
+MIN_RUNTIME_JWT_SECRET_LENGTH = 32
+PRODUCTION_ENVIRONMENTS = {"production", "prod"}
+
+
+def runtime_requires_strong_jwt_secret() -> bool:
+    """True when weak JWT secrets would be a production security risk.
+
+    Local/dev/test environments keep the historical default so lightweight
+    tests can mint tokens without secrets. Public or production topology must
+    fail closed before accepting bearer identity.
+    """
+    env = (settings.ENVIRONMENT or "").strip().lower()
+    frontend_url = (settings.FRONTEND_URL or "").strip().rstrip("/").lower()
+    return env in PRODUCTION_ENVIRONMENTS or frontend_url == "https://lyraos.org"
+
+
+def is_weak_jwt_secret(secret: Optional[str]) -> bool:
+    value = (secret or "").strip()
+    return (
+        not value
+        or value == DEFAULT_JWT_SECRET
+        or len(value) < MIN_RUNTIME_JWT_SECRET_LENGTH
+    )
+
+
+def validate_runtime_jwt_secret() -> None:
+    """Reject public/prod runtime when bearer identity can be forged.
+
+    The frontend signs backend bearer tokens with NEXTAUTH_SECRET while the
+    backend verifies with JWT_SECRET. In production/public topology those
+    values must be strong and, when both are visible to the backend process,
+    identical.
+    """
+    if not runtime_requires_strong_jwt_secret():
+        return
+    if is_weak_jwt_secret(settings.JWT_SECRET):
+        raise RuntimeError(
+            "JWT_SECRET must be configured to a non-default value of at least "
+            f"{MIN_RUNTIME_JWT_SECRET_LENGTH} characters in public runtime"
+        )
+    nextauth_secret = os.environ.get("NEXTAUTH_SECRET")
+    if nextauth_secret is not None and nextauth_secret != settings.JWT_SECRET:
+        raise RuntimeError(
+            "NEXTAUTH_SECRET and JWT_SECRET must match in public runtime"
+        )
+
+
 def decode_token(token: str) -> dict:
+    validate_runtime_jwt_secret()
     try:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:

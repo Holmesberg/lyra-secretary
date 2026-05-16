@@ -43,12 +43,12 @@ def _clean_slate(db):
     db.commit()
 
 
-def _make_user(db) -> User:
+def _make_user(db, *, is_operator: bool = False) -> User:
     u = User(
         email=f"u{uuid4().hex[:8]}@test",
         google_id=None,
         timezone="Africa/Cairo",
-        is_operator=False,
+        is_operator=is_operator,
         notion_enabled=False,
         terms_accepted_at=datetime.utcnow(),
     )
@@ -242,3 +242,64 @@ def test_deadline_write_guard_no_existing_binding(db, monkeypatch):
     db.refresh(task)
     assert task.llm_inferred_deadline_id == deadline.deadline_id
     assert task.deadline_id is None  # never auto-bound by enrichment
+
+
+def test_hosted_nim_skipped_for_non_operator_owner(db, monkeypatch):
+    """Non-operator task text must not leave the local enrichment boundary."""
+    user = _make_user(db, is_operator=False)
+    task = _make_task(db, user.user_id)
+    monkeypatch.setattr(llm_parser.nvidia_nim_client, "is_configured", lambda: True)
+
+    def fail_nim(_prompt: str) -> dict:
+        raise AssertionError("hosted NIM must not be called for non-operator tasks")
+
+    monkeypatch.setattr(llm_parser, "_call_nim", fail_nim)
+    monkeypatch.setattr(
+        llm_parser,
+        "_call_ollama",
+        lambda _prompt: {
+            "priority": 4,
+            "deadline_name": None,
+            "sub_items": [],
+            "scope_estimate_minutes": None,
+        },
+    )
+
+    result = llm_parser.enrich_task_via_llm(db, task.task_id)
+
+    assert result == "enriched"
+    db.refresh(task)
+    assert task.llm_parse_status == "enriched"
+    assert task.llm_priority == 4
+
+
+def test_hosted_nim_allowed_for_operator_owner(db, monkeypatch):
+    user = _make_user(db, is_operator=True)
+    task = _make_task(db, user.user_id)
+    calls = {"nim": 0}
+    monkeypatch.setattr(llm_parser.nvidia_nim_client, "is_configured", lambda: True)
+
+    def fake_nim(_prompt: str) -> dict:
+        calls["nim"] += 1
+        return {
+            "priority": 2,
+            "deadline_name": None,
+            "sub_items": ["operator item"],
+            "scope_estimate_minutes": 45,
+        }
+
+    monkeypatch.setattr(llm_parser, "_call_nim", fake_nim)
+    monkeypatch.setattr(
+        llm_parser,
+        "_call_ollama",
+        lambda _prompt: (_ for _ in ()).throw(
+            AssertionError("Ollama should not run after a successful NIM call")
+        ),
+    )
+
+    result = llm_parser.enrich_task_via_llm(db, task.task_id)
+
+    assert result == "enriched"
+    assert calls["nim"] == 1
+    db.refresh(task)
+    assert task.llm_priority == 2

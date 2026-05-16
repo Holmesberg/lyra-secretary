@@ -19,11 +19,12 @@
  */
 import Image from "next/image";
 import Link from "next/link";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { FeedbackLink } from "@/components/feedback-link";
-import { clearPersistedCache } from "@/lib/clear-persisted-cache";
+import { signOutAndClear } from "@/lib/sign-out-and-clear";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   CalendarDays,
@@ -63,6 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const pathname = usePathname();
   const router = useRouter();
+  const qc = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const prefetchedRoutesRef = useRef<Set<string>>(new Set());
@@ -242,8 +244,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <button
             type="button"
             onClick={() => {
-              clearPersistedCache();
-              signOut({ callbackUrl: "/" });
+              signOutAndClear(qc, { callbackUrl: "/" });
             }}
             className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-white transition-colors hover:bg-ember/10 hover:text-ember focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ember/70"
           >
@@ -347,7 +348,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     type="button"
                     onClick={() => {
                       setMenuOpen(false);
-                      signOut({ callbackUrl: "/" });
+                      signOutAndClear(qc, { callbackUrl: "/" });
                     }}
                     className="w-full px-5 py-3 text-left font-mono text-xs font-semibold uppercase tracking-widest text-white transition-colors hover:bg-ember/10 hover:text-ember focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ember/70"
                   >

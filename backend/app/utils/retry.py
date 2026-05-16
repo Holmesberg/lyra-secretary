@@ -15,10 +15,20 @@ def retry_with_backoff(max_retries=3, base_delay=1.0):
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
+                    error_class = type(e).__name__
                     if attempt == max_retries:
-                        logger.error(f"Failed after {max_retries} retries: {e}")
+                        logger.error(
+                            "Failed after %s retries: %s",
+                            max_retries,
+                            error_class,
+                        )
                         raise
-                    logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s...")
+                    logger.warning(
+                        "Attempt %s failed: %s. Retrying in %.1fs...",
+                        attempt + 1,
+                        error_class,
+                        delay,
+                    )
                     time.sleep(delay)
                     delay *= 2
         return wrapper

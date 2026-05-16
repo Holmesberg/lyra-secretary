@@ -102,6 +102,9 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    from app.core.security import validate_runtime_jwt_secret
+
+    validate_runtime_jwt_secret()
     start_scheduler()
     yield
     # Shutdown

@@ -3,6 +3,7 @@
  * backendToken minted in lib/auth.ts, and forwards it as Bearer.
  */
 import { getSession } from "next-auth/react";
+import { clearPersistedCache } from "@/lib/clear-persisted-cache";
 
 const LOCAL_API_BASE = "http://localhost:8000";
 const PUBLIC_API_BASE = "https://api.lyraos.org";
@@ -35,6 +36,12 @@ export function getApiBase(): string {
 export function primeBackendToken(token: string | undefined, ttlMs = SESSION_TOKEN_TTL_MS) {
   cachedBackendToken = token;
   cachedBackendTokenUntil = token ? Date.now() + ttlMs : 0;
+}
+
+export function clearBackendTokenCache() {
+  cachedBackendToken = undefined;
+  cachedBackendTokenUntil = 0;
+  sessionTokenPromise = null;
 }
 
 /**
@@ -100,6 +107,8 @@ export async function api<T = unknown>(
 
   if (!token) {
     const msg = "not authenticated";
+    clearBackendTokenCache();
+    clearPersistedCache();
     _pushRecentError({ path, status: 401, message: msg });
     throw new ApiError(msg, 401);
   }
@@ -120,8 +129,8 @@ export async function api<T = unknown>(
     } catch {}
     _pushRecentError({ path, status: res.status, message: msg.slice(0, 300) });
     if (res.status === 401) {
-      cachedBackendToken = undefined;
-      cachedBackendTokenUntil = 0;
+      clearBackendTokenCache();
+      clearPersistedCache();
     }
     throw new ApiError(msg, res.status);
   }

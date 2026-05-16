@@ -278,9 +278,17 @@ class _MoodleWS:
             "moodlewsrestformat": "json",
             **{str(k): v for k, v in params.items()},
         }
-        with httpx.Client(timeout=WS_HTTP_TIMEOUT, follow_redirects=True) as client:
-            r = client.get(self.endpoint, params=q)
-            r.raise_for_status()
+        try:
+            with httpx.Client(timeout=WS_HTTP_TIMEOUT, follow_redirects=True) as client:
+                r = client.get(self.endpoint, params=q)
+                r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code if e.response is not None else None
+            if status_code is not None and 400 <= status_code < 500:
+                raise _WSAuthError(f"http_{status_code}") from None
+            raise _WSRequestError(fn, status_code, type(e).__name__) from None
+        except httpx.RequestError as e:
+            raise _WSRequestError(fn, None, type(e).__name__) from None
         body = r.json()
         if isinstance(body, dict) and body.get("exception"):
             err = body.get("errorcode", "")
@@ -294,6 +302,21 @@ class _WSAuthError(RuntimeError):
     """Raised when Moodle returns invalidtoken/accessexception. The
     caller should set the user's moodle_ws_disconnect_reason and stop
     syncing for that user until they reconnect."""
+
+
+class _WSRequestError(RuntimeError):
+    """Sanitized transport/server error for Moodle WS calls.
+
+    Moodle tokens are sent as query parameters. Raw httpx exceptions include
+    the full request URL, so logs must only see this redacted shape.
+    """
+
+    def __init__(self, wsfunction: str, status_code: Optional[int], error_class: str):
+        self.wsfunction = wsfunction
+        self.status_code = status_code
+        self.error_class = error_class
+        status = f"http_{status_code}" if status_code is not None else "request_error"
+        super().__init__(f"{status} function={wsfunction} class={error_class}")
 
 
 def resolve_base_url(user: User, fallback: str = "") -> str:

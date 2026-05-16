@@ -54,6 +54,8 @@ def parse_input(request: TaskParseRequest) -> ParseChainResponse:
     DEPRECATED: LLMs should extract fields themselves and call /v1/create directly.
     Use this only for genuinely ambiguous time expressions.
     """
+    if get_current_user_id() is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
     try:
         parser = TaskParser()
         import re
@@ -61,15 +63,21 @@ def parse_input(request: TaskParseRequest) -> ParseChainResponse:
         tasks = parser.parse_chained(request.text)
 
         logger.info(
-            f"Parsed '{request.text}' -> {len(tasks)} task(s), compound={compound}"
+            "Parsed task input into %s task(s), compound=%s",
+            len(tasks),
+            compound,
         )
         return ParseChainResponse(tasks=tasks, compound=compound)
 
     except Exception as e:
-        logger.error(f"Parse error: {e}", exc_info=True)
+        logger.error("Parse error: %s", type(e).__name__, exc_info=True)
         raise HTTPException(
             status_code=400,
-            detail={"error": "parse_failed", "message": str(e), "confidence": 0.0}
+            detail={
+                "error": "parse_failed",
+                "message": "Unable to parse task input.",
+                "confidence": 0.0,
+            },
         )
 
 

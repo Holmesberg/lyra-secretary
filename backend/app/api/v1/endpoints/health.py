@@ -178,5 +178,32 @@ def env_invariants() -> dict[str, Any]:
             "detail": f"schema probe raised: {e}",
         }
 
+    # --- Invariant 6: public runtime uses a strong shared JWT secret
+    # Why: bearer/JWT is the runtime identity authority. In production
+    # topology the backend must never accept tokens signed with a blank or
+    # repository-default secret.
+    try:
+        from app.core.security import (
+            is_weak_jwt_secret,
+            runtime_requires_strong_jwt_secret,
+        )
+        from app.core.config import settings
+
+        requires_strong = runtime_requires_strong_jwt_secret()
+        weak = is_weak_jwt_secret(settings.JWT_SECRET)
+        results["jwt_secret_strong_for_public_runtime"] = {
+            "ok": (not requires_strong) or (not weak),
+            "detail": (
+                "public runtime requires strong JWT_SECRET"
+                if requires_strong
+                else "development runtime does not enforce public JWT secret strength"
+            ),
+        }
+    except Exception as e:
+        results["jwt_secret_strong_for_public_runtime"] = {
+            "ok": False,
+            "detail": f"jwt secret probe raised: {type(e).__name__}",
+        }
+
     all_ok = all(v["ok"] for v in results.values())
     return {"all_ok": all_ok, "invariants": results}
