@@ -10,7 +10,8 @@ import { Hero } from "@/components/landing/hero";
 import { ThesisSection } from "@/components/landing/thesis-section";
 import { FeaturedInsight } from "@/components/landing/featured-insight";
 import { InstrumentGrid } from "@/components/landing/instrument-grid";
-import { LiveDataStrip } from "@/components/landing/live-data-strip";
+import { ArchitectureSection } from "@/components/landing/architecture-section";
+import { StatusSection } from "@/components/landing/status-section";
 import { ManifestoPreview } from "@/components/landing/manifesto-preview";
 import { DeployCta } from "@/components/landing/deploy-cta";
 import { SiteFooter } from "@/components/landing/site-footer";
@@ -41,7 +42,8 @@ export default function LandingPage() {
       <ThesisSection />
       <FeaturedInsight />
       <InstrumentGrid />
-      <LiveDataStrip />
+      <ArchitectureSection />
+      <StatusSection />
       <ManifestoPreview />
       <DeployCta />
       <SiteFooter />

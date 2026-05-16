@@ -40,18 +40,18 @@ export function DeployCta() {
         </div>
 
         <p className="mb-6 font-mono text-[11px] uppercase tracking-widest text-signal">
-          <span className="text-signal/60">//</span> deploy
+          <span className="text-signal/60">//</span> start
         </p>
 
         <h2 className="font-display text-[2.5rem] font-medium leading-[1.05] tracking-tight text-parchment md:text-[4rem]">
-          See your hidden
+          Start building
           <br />
-          <span className="neon-cyan">execution patterns</span> in 7 days.
+          <span className="neon-cyan">your execution trace</span>.
         </h2>
 
         <p className="mx-auto mt-7 max-w-md text-base leading-relaxed text-dust md:text-[17px]">
-          Pre-alpha. Free. Your data stays in Supabase (eu-west-1). Export or
-          delete anytime from Settings.
+          Pre-alpha. Free. Google sign-in, optional integrations, and account
+          export or deletion from Settings.
         </p>
 
         <div className="mt-12 flex justify-center">
@@ -73,7 +73,7 @@ export function DeployCta() {
         </div>
 
         <p className="mt-8 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-          :: no credit card · no waitlist · signup = first session
+          :: no credit card / no waitlist / signup starts the trace
         </p>
       </div>
     </section>

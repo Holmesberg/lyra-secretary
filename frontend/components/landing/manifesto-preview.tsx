@@ -3,18 +3,18 @@ import { CornerMarks } from "./corner-marks";
 const FIELD_NOTES = [
   {
     quote:
-      "Most productivity tools assume their insights are accurate. Lyra tests its own.",
-    section: "What This Is",
+      "Most productivity tools assume their insights are accurate. LyraOS tests its own.",
+    section: "Measurement Doctrine",
   },
   {
     quote:
-      "Delta is the gap between what you planned and what you executed. It cannot lie.",
-    section: "The Core Variables",
+      "Unknown exposure state is not clean, neutral, bounded, zero, or average.",
+    section: "Exposure Boundary",
   },
   {
     quote:
-      "Every productivity system measures estimation error. Nobody measures whether the planning layer is being used at all.",
-    section: "The Most Original Variable",
+      "Archetypes are cold-start priors, not identity. Personal traces must be allowed to override them.",
+    section: "Cold-Start Priors",
   },
 ];
 
@@ -28,27 +28,29 @@ export function ManifestoPreview() {
           </p>
           <blockquote className="font-display text-[1.75rem] font-medium leading-[1.2] tracking-tight text-parchment md:text-[2.5rem]">
             <span className="text-signal/70">&ldquo;</span>Are humans wrong
-            about themselves in a{" "}
-            <span className="neon-cyan">structured</span> way that predicts
-            failure?<span className="text-signal/70">&rdquo;</span>
+            about their own execution capacity in a{" "}
+            <span className="neon-cyan">structured</span>, modelable way?
+            <span className="text-signal/70">&rdquo;</span>
           </blockquote>
 
           <div className="mx-auto mt-10 max-w-lg space-y-3 text-base leading-relaxed text-dust md:text-[17px]">
             <p>
-              If yes — the error is modelable, correctable, and eventually
-              preventable.
+              If yes, LyraOS can earn stronger inference rights from repeated,
+              provenance-clean traces.
             </p>
-            <p>If no — the data tells us that too, and we pivot.</p>
+            <p>
+              If no, the system should say less, retire weak mechanisms, and
+              preserve user trust.
+            </p>
             <p className="text-parchment">
-              Everything in this system exists to answer that question
-              cleanly.
+              The architecture is built to make both outcomes visible.
             </p>
           </div>
         </div>
 
         <div className="mt-20 grid grid-cols-1 gap-5 md:grid-cols-3">
-          {FIELD_NOTES.map((q) => (
-            <div key={q.section} className="relative">
+          {FIELD_NOTES.map((note, index) => (
+            <div key={note.section} className="relative">
               <CornerMarks
                 size={8}
                 thickness={1}
@@ -56,13 +58,13 @@ export function ManifestoPreview() {
               />
               <figure className="terminal-panel h-full p-6">
                 <p className="mb-4 font-mono text-[9px] uppercase tracking-widest text-signal">
-                  :: note.{FIELD_NOTES.indexOf(q) + 1}
+                  :: note.{index + 1}
                 </p>
                 <blockquote className="text-sm leading-relaxed text-parchment">
-                  &ldquo;{q.quote}&rdquo;
+                  &ldquo;{note.quote}&rdquo;
                 </blockquote>
                 <figcaption className="mt-5 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                  § {q.section}
+                  section / {note.section}
                 </figcaption>
               </figure>
             </div>

@@ -6,9 +6,9 @@ import { cn } from "@/lib/utils";
 import { GoogleSignInButton } from "./google-sign-in-button";
 
 const LINKS = [
+  { label: "Architecture", href: "#architecture" },
   { label: "Manifesto", href: "#manifesto" },
   { label: "Instrument", href: "#instrument" },
-  { label: "Live demo", href: "#live-data" },
 ];
 
 // === Desktop stepped-tab geometry. Do not touch on mobile — the whole

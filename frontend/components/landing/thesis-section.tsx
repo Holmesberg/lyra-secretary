@@ -19,16 +19,17 @@ export function ThesisSection() {
             actually happened.
           </p>
           <p>
-            Tasks overrun. Focus drops. Energy shifts. Plans fail.
+            Tasks overrun. Pauses accumulate. Recovery happens after the fact.
+            Plans fail in patterns, but those patterns are usually invisible.
             <br />
             <span className="text-parchment">
-              No system learns from that.
+              LyraOS turns the trace into cautious, inspectable hypotheses.
             </span>
           </p>
         </div>
 
         <p className="mt-16 font-display text-3xl font-medium text-ember md:text-4xl">
-          Until now.
+          The point is legibility before optimization.
         </p>
       </div>
     </section>

@@ -36,7 +36,7 @@ export function Hero() {
           </span>
         </div>
 
-        {/* === Hero grid: copy left, product right.
+        {/* Hero grid: copy left, product right.
            lg:items-start top-aligns the two columns so the insights
            panel's top edge matches the H1 "Your Cognitive" top (via
            an invisible eyebrow-height spacer + lg:mt-6 on the right
@@ -54,7 +54,7 @@ export function Hero() {
             className="order-1 lg:col-span-5"
           >
             <p className="terminal-prefix font-mono text-[11px] font-medium uppercase tracking-widest text-signal">
-              For people who plan well and still fail themselves
+              Behavioral measurement instrument with a productivity interface
             </p>
 
             <h1 className="mt-5 font-display font-medium leading-[0.92] tracking-tight text-parchment sm:mt-6">
@@ -70,12 +70,13 @@ export function Hero() {
             </h1>
 
             <p className="mt-6 max-w-xl text-base leading-relaxed text-dust sm:mt-7 md:text-[17px]">
-              Why do you keep missing your own plans? Lyra quietly logs every
-              estimate you make and every outcome that follows — then shows
-              you the pattern you couldn&apos;t see alone.
+              LyraOS helps you plan tasks, run timers, recover missed plans,
+              and see how execution actually behaves. Under the surface it
+              preserves provenance, clean-data boundaries, and exposure state
+              so every insight stays bounded.
             </p>
             <p className="mt-3 max-w-xl font-mono text-xs uppercase tracking-widest text-ember md:text-[13px]">
-              Not a productivity app. A mirror.
+              Rule-based. Probabilistic. Not AI theater.
             </p>
 
             <div className="mt-8 flex flex-col items-stretch gap-3 sm:mt-9 sm:flex-row sm:items-center sm:flex-wrap">
@@ -86,10 +87,10 @@ export function Hero() {
                 <span aria-hidden>→</span>
               </GoogleSignInButton>
               <a
-                href="#live-data"
+                href="#architecture"
                 className="cyber-pill cyber-pill-outline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-parchment/30"
               >
-                See Live Demo
+                See Architecture
               </a>
             </div>
           </motion.div>
@@ -144,7 +145,7 @@ export function Hero() {
                   <span className="font-mono text-[9px] uppercase tracking-widest text-dust sm:text-[10px]">
                     <span className="sm:hidden">insights // live</span>
                     <span className="hidden sm:inline">
-                      lyraos // insights // operative-001
+                      lyraos // insights // bounded-synthesis
                     </span>
                   </span>
                   <span className="font-mono text-[10px] text-signal motion-safe:animate-pulse-glow">
@@ -169,8 +170,8 @@ export function Hero() {
           </motion.div>
         </div>
 
-        {/* === Real-data metrics strip — pulled from operator's Supabase 2026-04-18.
-           Y-translate-only entrance on scroll-into-view; no opacity-0 initial. */}
+        {/* Current architecture strip. Y-translate-only entrance on
+           scroll-into-view; no opacity-0 initial. */}
         <motion.div
           initial={{ y: 20 }}
           whileInView={{ y: 0 }}
@@ -182,13 +183,13 @@ export function Hero() {
             <CornerMarks size={10} color="rgba(245, 169, 106, 0.5)" />
             <div className="terminal-panel px-5 py-6 sm:px-6 md:px-10 md:py-7">
               <div className="grid grid-cols-2 gap-y-6 sm:grid-cols-4 sm:gap-y-0 sm:divide-x sm:divide-hairline">
-                <Metric label="Δ delta" value="−32 min" caption="vs plan · overrun" />
-                <Metric label="readiness μ" value="3.7 / 5" caption="self-rated" />
-                <Metric label="pauses / session" value="1.2" caption="avg breaks" />
-                <Metric label="init delay" value="10 min" caption="late starts" />
+                <Metric label="input loop" value="4 steps" caption="plan, run, recover, inspect" />
+                <Metric label="cortex" value="read-time" caption="derived metrics stay derived" />
+                <Metric label="exposure" value="fail closed" caption="unknown never becomes clean" />
+                <Metric label="future gates" value="no auto" caption="no hidden rescheduling" />
               </div>
               <p className="mt-6 text-center font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-                :: real data · 45 sessions · operative-001 · 14-day window
+                :: current doctrine :: low burden :: scoped identity :: bounded inference
               </p>
             </div>
           </div>
@@ -198,8 +199,8 @@ export function Hero() {
       {/* Build-publicly band */}
       <div className="mt-20 border-y border-hairline bg-void/60 py-5">
         <p className="mx-auto max-w-3xl px-6 text-center font-mono text-[11px] uppercase tracking-widest text-dust">
-          Built publicly by an AI Engineering student · exploring
-          neuroadaptive systems · Cairo, 2026
+          Pre-alpha dogfood by an AI Engineering student :: planning product,
+          behavioral instrument, future-gated adaptive systems :: Cairo, 2026
         </p>
       </div>
     </section>
