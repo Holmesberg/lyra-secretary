@@ -318,7 +318,10 @@ def test_notion_sync_skip_voided_task(db, user):
     ]
 
     with patch("app.workers.jobs.notion_sync.RedisClient") as MockRedis, \
-         patch("app.workers.jobs.notion_sync.NotionClient") as MockNotion:
+         patch("app.workers.jobs.notion_sync.NotionClient") as MockNotion, \
+         patch("app.workers.jobs.notion_sync.settings") as mock_settings:
+        mock_settings.NOTION_API_KEY = "test-notion-key"
+        mock_settings.NOTION_DATABASE_ID = "test-notion-db"
         mock_rc = MagicMock()
         mock_rc.get_notion_sync_queue.return_value = fake_queue
         MockRedis.return_value = mock_rc
