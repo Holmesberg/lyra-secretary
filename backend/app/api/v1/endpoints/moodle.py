@@ -204,8 +204,7 @@ def delete_moodle_disconnect(
 
 class MoodleWSConnectIn(BaseModel):
     """Operator-supplied Moodle Web Services token. 32-char hex
-    (Moodle's standard length); stored plaintext per existing trust
-    class for moodle_ics_url + google_refresh_token."""
+    (Moodle's standard length); encrypted before storage."""
     ws_token: str
     base_url: Optional[str] = None  # falls back to env MOODLE_WS_BASE_URL
 
@@ -237,13 +236,11 @@ def post_moodle_ws_connect(
     # legacy operator row.
     import os
     base_url = (body.base_url or "").strip()
-    if not base_url and user.moodle_ics_url:
-        from urllib.parse import urlparse
-        parsed = urlparse(user.moodle_ics_url)
-        if parsed.scheme and parsed.netloc:
-            base_url = f"{parsed.scheme}://{parsed.netloc}"
     if not base_url:
-        base_url = os.environ.get("MOODLE_WS_BASE_URL", "").strip()
+        base_url = moodle_submissions_sync.resolve_base_url(
+            user,
+            os.environ.get("MOODLE_WS_BASE_URL", ""),
+        )
     if not base_url:
         raise HTTPException(
             status_code=400,
@@ -304,10 +301,13 @@ def post_moodle_ws_sync_now(db: Session = Depends(get_db)) -> dict[str, Any]:
     if not user.moodle_ws_token:
         raise HTTPException(status_code=400, detail="moodle_ws_not_connected")
 
-    # Per-user base URL (alembic 044), env fallback for legacy operator
-    # row pre-044.
+    # Per-user base URL (alembic 044), iCal-origin derivation for legacy
+    # rows, then env fallback for the oldest operator setup.
     import os
-    base_url = user.moodle_base_url or os.environ.get("MOODLE_WS_BASE_URL", "")
+    base_url = moodle_submissions_sync.resolve_base_url(
+        user,
+        os.environ.get("MOODLE_WS_BASE_URL", ""),
+    )
     if not base_url:
         raise HTTPException(
             status_code=500, detail="moodle_ws_base_url_missing"

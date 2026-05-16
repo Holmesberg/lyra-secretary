@@ -21,6 +21,7 @@ from app.services.moodle_submissions_sync import (
     _extract_course_code,
     due_proximity_bonus,
     is_submitted,
+    resolve_base_url,
     sync_user,
     title_similarity,
 )
@@ -54,6 +55,8 @@ def _make_user(db, *, ws_token="tok-1234567890123456") -> User:
         terms_accepted_at=datetime.utcnow(),
         created_at=datetime.utcnow(),
         moodle_ws_token=ws_token,
+        moodle_userid=100,
+        moodle_base_url="https://lms.test",
     )
     db.add(u)
     db.commit()
@@ -152,6 +155,17 @@ def test_is_submitted_false_on_draft():
 def test_is_submitted_false_on_no_submission():
     ok, reason = is_submitted({})
     assert not ok
+
+
+def test_resolve_base_url_uses_only_ical_origin(db):
+    user = _make_user(db)
+    user.moodle_base_url = None
+    user.moodle_ics_url = (
+        "https://lms.example.edu/calendar/export_execute.php?"
+        "userid=1&authtoken=secret-token&preset_time=recentupcoming"
+    )
+
+    assert resolve_base_url(user, "") == "https://lms.example.edu"
 
 
 # ---------------------------------------------------------------------------
@@ -659,6 +673,41 @@ def test_sync_user_falls_back_to_env_when_per_user_userid_null(db, monkeypatch):
     )
     sync_user(user, "https://lms.test/", db)
     assert seen_userids == [34554]
+
+
+def test_sync_user_self_heals_legacy_userid_from_site_info(db, monkeypatch):
+    """Legacy rows should become one-time setup rows after the next sync.
+
+    If a user already supplied a WS token before per-user Moodle fields
+    existed, the stored token can recover the Moodle userid from
+    core_webservice_get_site_info instead of asking the user to reconnect.
+    """
+    user = _make_user(db)
+    user.moodle_userid = None
+    user.moodle_base_url = None
+    db.commit()
+    set_current_user_id(user.user_id)
+
+    seen_userids: list[int] = []
+
+    def _spy_call(self, fn, **params):
+        if fn == "core_webservice_get_site_info":
+            return {"userid": 321}
+        if fn == "core_enrol_get_users_courses":
+            seen_userids.append(int(params["userid"]))
+            return []
+        return {"courses": []}
+
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call", _spy_call
+    )
+    sync_user(user, "https://lms.test/", db)
+    db.commit()
+    db.refresh(user)
+
+    assert seen_userids == [321]
+    assert user.moodle_userid == 321
+    assert user.moodle_base_url == "https://lms.test"
 
 
 def test_sync_user_decrypts_fernet_prefixed_token(db, monkeypatch):

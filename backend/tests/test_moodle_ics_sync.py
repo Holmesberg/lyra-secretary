@@ -22,9 +22,20 @@ from app.db.models import Deadline, User
 from app.db.scoping import set_current_user_id
 from app.services import moodle_ics_sync
 from app.services.deadline_manager import DeadlineManager
+from app.workers.jobs.moodle_ics_sync import _operator_error_message
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "moodle_sample.ics"
+
+
+def test_operator_error_message_distinguishes_503_from_auth_rotation():
+    msg = _operator_error_message("http_503")
+    assert "temporarily unavailable" in msg
+    assert "retry" in msg
+    assert "Reconnect" not in msg
+
+    auth_msg = _operator_error_message("http_403")
+    assert "Reconnect Moodle" in auth_msg
 
 
 @pytest.fixture(autouse=True)

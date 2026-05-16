@@ -52,11 +52,13 @@ SAFETY:
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Optional
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import httpx
@@ -294,6 +296,74 @@ class _WSAuthError(RuntimeError):
     syncing for that user until they reconnect."""
 
 
+def resolve_base_url(user: User, fallback: str = "") -> str:
+    """Resolve the Moodle host without exposing credential-bearing URLs.
+
+    Per-user storage wins. If a legacy row lacks `moodle_base_url`, derive
+    only the origin from the user's iCal subscription URL. The raw iCal URL
+    carries an authtoken and must not be returned or logged.
+    """
+    if user.moodle_base_url:
+        return user.moodle_base_url.strip()
+    if user.moodle_ics_url:
+        parsed = urlparse(user.moodle_ics_url)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}"
+    return fallback.strip()
+
+
+def _env_moodle_userid() -> Optional[int]:
+    raw = os.environ.get("MOODLE_WS_USERID")
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("moodle_ws: invalid MOODLE_WS_USERID env value")
+        return None
+    return value if value > 0 else None
+
+
+def _resolve_moodle_userid(user: User, ws: _MoodleWS, *, base_url: str) -> int:
+    """Resolve and persist the Moodle userid for one-time-token sync.
+
+    New connections store `moodle_userid` at connect time. Legacy rows can
+    recover the same value from `core_webservice_get_site_info` using the
+    already-stored token, avoiding a second user prompt. Env fallback remains
+    for very old operator deployments.
+    """
+    if user.moodle_userid:
+        return int(user.moodle_userid)
+
+    try:
+        site_info = ws.call("core_webservice_get_site_info")
+        moodle_userid = (
+            site_info.get("userid") if isinstance(site_info, dict) else None
+        )
+        if isinstance(moodle_userid, int) and moodle_userid > 0:
+            user.moodle_userid = moodle_userid
+            if base_url and not user.moodle_base_url:
+                user.moodle_base_url = base_url.rstrip("/")
+            return moodle_userid
+        logger.warning(
+            "moodle_ws: user_id=%s site_info returned no userid",
+            user.user_id,
+        )
+    except _WSAuthError:
+        raise
+    except Exception as e:
+        logger.warning(
+            "moodle_ws: user_id=%s site_info fetch error: %s",
+            user.user_id,
+            e,
+        )
+
+    env_userid = _env_moodle_userid()
+    if env_userid:
+        return env_userid
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Per-user sync entry-point
 # ---------------------------------------------------------------------------
@@ -345,14 +415,22 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
         user.moodle_ws_disconnect_reason = "token_decrypt_failed"
         result.error = "token_decrypt_failed"
         return result
+    base_url = base_url.rstrip("/")
+    if base_url and not user.moodle_base_url:
+        user.moodle_base_url = base_url
     ws = _MoodleWS(base_url, token_plain)
 
     # Resolve Moodle userid: prefer per-user column (alembic 044), fall
     # back to env for the legacy operator row pre-044. Token is bound
     # to its user — passing the wrong userid raises Moodle's
     # accessexception, so this MUST be the user's own Moodle ID.
-    import os
-    moodle_userid = user.moodle_userid or int(os.environ.get("MOODLE_WS_USERID") or 0)
+    try:
+        moodle_userid = _resolve_moodle_userid(user, ws, base_url=base_url)
+    except _WSAuthError as e:
+        user.moodle_ws_disconnect_reason = "invalidtoken"
+        result.error = "auth"
+        logger.warning("moodle_ws: user_id=%s auth failed: %s", user.user_id, e)
+        return result
     if not moodle_userid:
         result.error = "no_moodle_userid"
         return result

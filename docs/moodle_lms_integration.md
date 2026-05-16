@@ -86,6 +86,11 @@ VT-29 is pre-registered in `MANIFESTO.md` with three distinguishing analyses (29
 
 **Token revocation:** when `fetch_ics()` returns 4xx, the URL is auto-cleared, `moodle_disconnect_reason` is set to `token_invalid_<status>`, and the frontend shows "Reconnect needed". User pastes a fresh URL → reconnects.
 
+**Transient LMS failures:** 5xx responses such as `http_503` are not treated as
+token rotation. Lyra keeps the stored URL, leaves the integration connected,
+and retries on the next 6h cycle. Operator notifications must distinguish 4xx
+reconnect-needed failures from 5xx server-unavailable failures.
+
 **Voided rows:** if a user explicitly voids an imported deadline, the next sync sees it and returns `skipped_voided` rather than resurrecting it. Permanent ignore. To reset, user disconnects + reconnects.
 
 **Disconnect:** `DELETE /v1/integrations/moodle/disconnect` clears `moodle_ics_url` (sync stops). Optional `void_imported: true` body voids all `external_source='moodle_ics'` deadlines. Default is keep-as-is — sync stops, deadlines remain as Lyra-owned rows.
@@ -163,6 +168,18 @@ Future rotation: rotating `SECRET_KEY` invalidates all Fernet-encrypted tokens. 
 - `moodle_userid`: `user.moodle_userid` → env fallback (`MOODLE_WS_USERID`)
 - `base_url`: `user.moodle_base_url` → env fallback (`MOODLE_WS_BASE_URL`)
 - token: decrypt if `fernet:`-prefixed, else raw
+
+**Current one-time-entry behavior (May 16, 2026):**
+- `moodle_userid`: `user.moodle_userid` -> live
+  `core_webservice_get_site_info` using the stored token -> env fallback
+  (`MOODLE_WS_USERID`)
+- `base_url`: `user.moodle_base_url` -> origin derived from
+  `user.moodle_ics_url` -> env fallback (`MOODLE_WS_BASE_URL`)
+
+The live `site_info` recovery makes old one-time entries durable: if a user
+connected WS before `moodle_userid`/`moodle_base_url` existed, the next sync can
+self-heal those columns without asking for the token again. Re-entry is only
+required when Moodle rejects the token/URL with a permanent 4xx/auth response.
 
 **Tests** (`test_moodle_submissions_sync.py`):
 - `test_sync_user_uses_per_user_moodle_userid_when_set` — two users with different IDs each get their own

@@ -1,4 +1,4 @@
-# LyraOS - Manifesto v1.18
+# LyraOS - Manifesto v1.19
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
@@ -14,6 +14,7 @@
 *Revised: May 9, 2026. Day 36 — Exposure Ledger v0 doctrine added: no baseline inference without exposure-context evaluation; `UNKNOWN` fails closed.*
 *Revised: May 9, 2026. Day 36 — horizon-policy auditability added: exposure gate policy is a hypothesis and must emit diagnostic effect logs so policy drift stays visible.*
 *Revised: May 15, 2026. Day 42 - rule-based probabilistic instrumentation doctrine added; AI role boundary, user-attention capital, missingness-as-signal, and archetype cold-start prior decay clarified.*
+*Revised: May 16, 2026. Day 43 - substrate-level kill criterion added; distinguishes product failure from falsification of the behavioral instrumentation hypothesis.*
 
 ---
 
@@ -31,6 +32,7 @@ governance sections first:
 
 - Manifesto Governance Rule
 - Rule-Based Instrumentation, Not AI Theater
+- Substrate Kill Criterion
 - Exposure Ledger v0 doctrine
 - Cortex clean-data profiles
 - current architecture summaries in `archive/appstore/summary_of_app.md`
@@ -145,6 +147,72 @@ this type"; it may say that a starting prior is recalibrating against observed
 traces.
 
 Companion doctrine: `docs/behavioral_instrumentation_doctrine.md`.
+
+---
+
+## Substrate Kill Criterion
+*Added: May 16, 2026. Day 43.*
+
+LyraOS can fail at several layers without falsifying the core project. Bad UI,
+weak onboarding, low retention, brittle integrations, or a narrow first cohort
+may kill a product path, but they do not by themselves prove that behavioral
+instrumentation is impossible or uninteresting.
+
+The substrate-level claim is narrower and more serious:
+
+```text
+Repeated planning and execution traces contain stable, useful behavioral
+structure that can be detected under identity, topology, clean-data,
+missingness, and exposure constraints.
+```
+
+The deepest falsifier is therefore not "users churned" or "a feature broke."
+The deepest falsifier is clean data failing to carry predictive or explanatory
+structure after the system has had enough legitimate opportunity to observe.
+
+The behavioral instrumentation substrate should be treated as falsified if,
+after a pre-registered analysis window with enough clean, analysis-eligible
+rows, most of the following hold:
+
+1. Clean baseline rows do not outperform naive baselines on pre-registered
+   prediction tasks. Rolling personal averages, category/time heuristics, or
+   last-observation rules perform as well as the richer trace model.
+2. Longitudinal structure is not stable. Patterns disappear across adjacent
+   windows, cohorts, or comparable contexts, and added personal history does
+   not reduce uncertainty.
+3. Independent weak signals do not cohere. Initiation delay, execution drift,
+   pause topology, recovery behavior, readiness/reflection, and missingness
+   remain mutually noisy after opportunity and exposure controls.
+4. Cold-start priors do not help. Archetype or similarity priors fail to
+   improve early calibration and do not get productively reinforced, weakened,
+   or overridden by personal traces.
+5. Missingness is not informative after controls. Abandoned tasks, absent
+   readiness, skipped reflections, ignored prompts, and unstarted plans add no
+   predictive value once opportunity-to-respond, UI context, and exposure state
+   are accounted for.
+6. Conclusions are representation-fragile. Small semantically irrelevant
+   changes in schema, grouping, or metric wording flip the main findings.
+7. Bounded adaptive experiments do not beat neutral controls after exposure
+   stratification. Suggestions derived from inferred structure perform no
+   better than generic reminders or random small experiments.
+
+If this criterion fires, LyraOS must not continue escalating adaptive
+scheduling, behavioral prediction, or stronger guidance claims. The product may
+remain a planning, timer, recovery, and descriptive analytics tool if users
+still value it, but the "behavioral measurement instrument" claim must be
+demoted until a new falsifiable substrate hypothesis is written.
+
+Non-falsifiers:
+
+- one failed hypothesis such as H1, H2, VT-17, or an archetype rule
+- small-n inconclusive results
+- bad retention before the core loop has been made usable
+- onboarding confusion
+- broken Moodle, Google Calendar, Notion, email, or deployment plumbing
+- noisy individual self-report fields
+
+These can kill mechanisms, surfaces, or product strategy. They do not by
+themselves kill the deeper instrumentation substrate.
 
 ---
 

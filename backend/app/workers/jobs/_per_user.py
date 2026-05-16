@@ -30,21 +30,28 @@ def for_each_user(per_user_fn: Callable) -> None:
 
     Each iteration gets its own DB session so a failure on one user
     doesn't poison the next. Exceptions are logged and swallowed.
+
+    The bootstrap session intentionally loads only ids. Passing ORM
+    instances from that closed session into per-user jobs makes user-row
+    mutations look successful while commits happen on a different session.
     """
     bootstrap = SessionLocal()
     try:
-        users = bootstrap.query(User).all()
+        user_ids = [row[0] for row in bootstrap.query(User.user_id).all()]
     finally:
         bootstrap.close()
 
-    for user in users:
-        set_current_user_id(user.user_id)
+    for user_id in user_ids:
+        set_current_user_id(user_id)
         db = SessionLocal()
         try:
+            user = db.query(User).filter(User.user_id == user_id).one_or_none()
+            if user is None:
+                continue
             per_user_fn(db, user)
         except Exception as e:
             logger.error(
-                f"per-user job failed for user_id={user.user_id}: {e}",
+                f"per-user job failed for user_id={user_id}: {e}",
                 exc_info=True,
             )
         finally:

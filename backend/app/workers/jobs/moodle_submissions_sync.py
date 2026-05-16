@@ -30,9 +30,12 @@ def run_moodle_submissions_sync() -> None:
 def _run_for_one_user(db, user: User) -> None:
     if not user.moodle_ws_token:
         return
-    # Per-user base URL (alembic 044), env fallback for legacy operator
-    # row pre-044.
-    base_url = user.moodle_base_url or os.environ.get("MOODLE_WS_BASE_URL", "")
+    # Per-user base URL (alembic 044), iCal-origin derivation for legacy
+    # rows, then env fallback for the oldest operator setup.
+    base_url = moodle_submissions_sync.resolve_base_url(
+        user,
+        os.environ.get("MOODLE_WS_BASE_URL", ""),
+    )
     if not base_url:
         logger.warning(
             "moodle_ws: no base URL for user %s (column NULL + env unset)",
