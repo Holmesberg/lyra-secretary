@@ -13,8 +13,8 @@ from app.db.models import CategoryMapping
 class TaskParser:
     """Parse natural language into structured task data."""
     
-    def __init__(self):
-        self.db = SessionLocal()
+    def __init__(self, *, use_db_categories: bool = True):
+        self.db = SessionLocal() if use_db_categories else None
     
     def parse(self, text: str) -> TaskParseResponse:
         """
@@ -242,6 +242,8 @@ class TaskParser:
     
     def _infer_category(self, title: str) -> Optional[str]:
         """Infer category from static keyword mappings."""
+        if self.db is None:
+            return None
         title_lower = title.lower()
         
         # Query database for matching keywords

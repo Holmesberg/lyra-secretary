@@ -55,7 +55,9 @@ def parse_input(request: TaskParseRequest) -> ParseChainResponse:
     Use this only for genuinely ambiguous time expressions.
     """
     try:
-        parser = TaskParser()
+        # Deprecated OpenClaw compatibility path. Keep it pure: no user data
+        # reads, no category DB lookup, no raw input logs.
+        parser = TaskParser(use_db_categories=False)
         import re
         compound = bool(re.search(r'\s+then\s+', request.text, re.IGNORECASE))
         tasks = parser.parse_chained(request.text)

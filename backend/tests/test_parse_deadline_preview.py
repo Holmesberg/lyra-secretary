@@ -105,6 +105,9 @@ def test_deprecated_parse_remains_unauthenticated_compatibility(monkeypatch):
     from app.schemas.task import TaskParseResponse
 
     class StubParser:
+        def __init__(self, **_kwargs):
+            pass
+
         def parse_chained(self, _text):
             start = datetime.utcnow()
             return [
@@ -136,6 +139,9 @@ def test_deprecated_parse_logs_do_not_include_raw_text(db, caplog, monkeypatch):
     caplog.set_level(logging.INFO, logger="app.api.v1.endpoints.parse")
 
     class StubParser:
+        def __init__(self, **_kwargs):
+            pass
+
         def parse_chained(self, _text):
             start = datetime.utcnow()
             return [
@@ -159,6 +165,39 @@ def test_deprecated_parse_logs_do_not_include_raw_text(db, caplog, monkeypatch):
 
     assert resp.status_code == 200
     assert raw_text not in caplog.text
+
+
+def test_deprecated_parse_uses_pure_parser_without_db_categories(monkeypatch):
+    calls = {"init": []}
+
+    class SpyParser:
+        def __init__(self, *, use_db_categories: bool):
+            calls["init"].append(use_db_categories)
+
+        def parse_chained(self, _text):
+            start = datetime.utcnow()
+            return [
+                TaskParseResponse(
+                    title="pure parsed task",
+                    start=start,
+                    end=start + timedelta(minutes=30),
+                    duration_minutes=30,
+                    category=None,
+                    confidence=0.9,
+                )
+            ]
+
+    from app.schemas.task import TaskParseResponse
+
+    monkeypatch.setattr("app.api.v1.endpoints.parse.TaskParser", SpyParser)
+
+    resp = client.post(
+        "/v1/parse",
+        json={"text": "pure parse at 5pm for 30 minutes"},
+    )
+
+    assert resp.status_code == 200
+    assert calls["init"] == [False]
 
 
 # ── Happy match ──────────────────────────────────────────────────
