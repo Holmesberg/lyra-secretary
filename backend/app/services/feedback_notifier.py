@@ -20,7 +20,10 @@ from typing import Optional
 import requests
 
 from app.core.config import settings
-from app.services.telegram_notifier import send_telegram_message_sync
+from app.services.telegram_notifier import (
+    _telegram_error_summary,
+    send_telegram_message_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +101,10 @@ def _send_telegram(text: str) -> bool:
         send_telegram_message_sync(text)
         return True
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"feedback_notifier: Telegram send failed: {e}")
+        logger.warning(
+            "feedback_notifier: Telegram send failed: %s",
+            _telegram_error_summary(e),
+        )
         return False
 
 

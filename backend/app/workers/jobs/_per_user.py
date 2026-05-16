@@ -16,14 +16,77 @@ Usage:
         ...
 """
 import logging
+import time
 from typing import Callable
+
+from sqlalchemy.exc import OperationalError
 
 from app.db.models import User
 from app.db.scoping import set_current_user_id
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, engine
 from app.services.operator_notifier import notify_operator
 
 logger = logging.getLogger(__name__)
+
+BOOTSTRAP_MAX_ATTEMPTS = 2
+BOOTSTRAP_RETRY_DELAY_SECONDS = 1.0
+
+
+def _dispose_engine_pool() -> None:
+    """Drop stale pooled DB connections after a bootstrap OperationalError."""
+    try:
+        engine.dispose()
+    except Exception:  # noqa: BLE001 - diagnostics only; keep worker alive
+        logger.warning(
+            "per-user bootstrap could not dispose DB engine pool",
+            exc_info=True,
+        )
+
+
+def _load_user_ids() -> list[int]:
+    """Load user ids for per-user worker iteration with one DB retry.
+
+    The bootstrap read is shared by every per-user scheduler job. A transient
+    pool/SSL EOF should not make APScheduler mark the whole job as failed.
+    """
+    for attempt in range(1, BOOTSTRAP_MAX_ATTEMPTS + 1):
+        bootstrap = SessionLocal()
+        failed_operationally = False
+        try:
+            return [row[0] for row in bootstrap.query(User.user_id).all()]
+        except OperationalError:
+            failed_operationally = True
+            try:
+                bootstrap.rollback()
+            except Exception:  # noqa: BLE001 - session may already be broken
+                logger.debug(
+                    "per-user bootstrap rollback failed after OperationalError",
+                    exc_info=True,
+                )
+            logger.warning(
+                "per-user bootstrap user-id query failed with OperationalError "
+                "on attempt %s/%s",
+                attempt,
+                BOOTSTRAP_MAX_ATTEMPTS,
+                exc_info=True,
+            )
+        finally:
+            bootstrap.close()
+
+        if failed_operationally:
+            _dispose_engine_pool()
+            if attempt < BOOTSTRAP_MAX_ATTEMPTS:
+                time.sleep(BOOTSTRAP_RETRY_DELAY_SECONDS)
+
+    notify_operator(
+        "Per-user worker bootstrap failed while loading user ids with "
+        "`OperationalError`. Job skipped this tick; check backend logs.",
+        source="scheduler.per-user",
+        severity="error",
+        dedupe_key="bootstrap-user-ids:OperationalError",
+        cooldown_seconds=30 * 60,
+    )
+    return []
 
 
 def for_each_user(per_user_fn: Callable) -> None:
@@ -36,11 +99,7 @@ def for_each_user(per_user_fn: Callable) -> None:
     instances from that closed session into per-user jobs makes user-row
     mutations look successful while commits happen on a different session.
     """
-    bootstrap = SessionLocal()
-    try:
-        user_ids = [row[0] for row in bootstrap.query(User.user_id).all()]
-    finally:
-        bootstrap.close()
+    user_ids = _load_user_ids()
 
     for user_id in user_ids:
         set_current_user_id(user_id)

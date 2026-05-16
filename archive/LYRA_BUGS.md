@@ -1,6 +1,6 @@
 # Lyra Secretary — Bug Tracker
 
-Last updated: May 16, 2026 — v1.19 (reconciled against full commit history and GitHub active issues; added May fixes that shipped without tracker rows). 8 product open, 21 deferred/operator-only, 95 fixed/closed.
+Last updated: May 16, 2026 — v1.20 (scheduler resilience and notification log-redaction sweep). 8 product open, 21 deferred/operator-only, 97 fixed/closed.
 
 ---
 
@@ -25,6 +25,8 @@ Last updated: May 16, 2026 — v1.19 (reconciled against full commit history and
 
 | ID | Priority | Tag | Title | Fix |
 |----|----------|-----|-------|-----|
+| LYR-135 | 🔴 high | security+notifications | Telegram HTTP error logging could leak bot-token URL into backend logs | Fixed in this patch. Direct Telegram delivery, sync wrapper, feedback notifier, and operator notifier logging now summarize Telegram failures without interpolating raw exception URLs. Added regression tests proving configured bot tokens are absent from log text. Rotate the Telegram bot token out-of-band because an earlier runtime error line reached backend logs before this guard existed. |
+| LYR-134 | 🔴 high | scheduler+backend | Per-user scheduler bootstrap OperationalError aborted `resume_prediction` | Fixed in this patch. The shared per-user worker helper now retries the bootstrap `User.user_id` query on transient SQLAlchemy `OperationalError`, disposes stale pooled DB connections before retrying, and sends a specific `scheduler.per-user` alert if the job must skip a tick instead of crashing through APScheduler's generic job-error listener. |
 | LYR-130 | 🟢 low | ci | Notion retry test settings diverged from current scheduler config | Fixed in `7f80c4b`. Updated the Notion retry job test fixture/settings so CI matches the current scheduler notification boundaries. This was the final fix after the May 15 CI failure; CI passed afterward. |
 | LYR-129 | 🔴 high | backend+privacy | Pause-prediction/operator Telegram boundary could leak cross-user behavioral events | Fixed in `47f8e98`. Pause prediction delivery was routed through safer operator-only boundaries; per-user worker failures, scheduler health, Notion/LLM/Moodle/Calendar failure surfaces, and notifier cooldown/dedupe behavior were hardened and documented in `docs/notification_coverage.md`. Added/updated tests for operator notifier, per-user worker behavior, pause prediction job behavior, and voided-task job skips. |
 | LYR-128 | 🟡 medium | moodle | Moodle sync failures were under-classified and gave ambiguous reconnect guidance | Fixed in `0240ab5`. Moodle iCal and Web Services sync now distinguish transient HTTP failures from auth/token failures more carefully, avoids treating HTTP 503 as token rotation, documents LMS one-time-entry limits, and adds kill criteria to `MANIFESTO.md`. Regression tests cover Moodle iCal/submissions sync and per-user worker behavior. |

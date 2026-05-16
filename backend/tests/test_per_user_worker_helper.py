@@ -1,5 +1,7 @@
 from datetime import datetime
+from types import SimpleNamespace
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import object_session
 
 from app.db.models import User
@@ -75,5 +77,130 @@ def test_for_each_user_notifies_on_user_failure(db, monkeypatch):
     assert len(calls) == 1
     assert calls[0][1]["source"] == "scheduler.per-user"
     assert calls[0][1]["severity"] == "error"
+    assert get_current_user_id() is None
+    set_current_user_id(None)
+
+
+def _db_operational_error() -> OperationalError:
+    return OperationalError("SELECT user_id FROM user", {}, Exception("SSL EOF"))
+
+
+class _FailingBootstrapSession:
+    def __init__(self):
+        self.rollback_called = False
+        self.close_called = False
+
+    def query(self, *_args, **_kwargs):
+        return self
+
+    def all(self):
+        raise _db_operational_error()
+
+    def rollback(self):
+        self.rollback_called = True
+
+    def close(self):
+        self.close_called = True
+
+
+class _SuccessfulBootstrapSession:
+    def __init__(self, user_ids):
+        self.user_ids = user_ids
+        self.close_called = False
+
+    def query(self, *_args, **_kwargs):
+        return self
+
+    def all(self):
+        return [(user_id,) for user_id in self.user_ids]
+
+    def close(self):
+        self.close_called = True
+
+
+class _UserSession:
+    def __init__(self, user_id):
+        self.user = SimpleNamespace(user_id=user_id)
+        self.close_called = False
+
+    def query(self, *_args, **_kwargs):
+        return self
+
+    def filter(self, *_args, **_kwargs):
+        return self
+
+    def one_or_none(self):
+        return self.user
+
+    def close(self):
+        self.close_called = True
+
+
+class _FakeEngine:
+    def __init__(self):
+        self.dispose_calls = 0
+
+    def dispose(self):
+        self.dispose_calls += 1
+
+
+def test_for_each_user_retries_bootstrap_operational_error(monkeypatch):
+    fake_engine = _FakeEngine()
+    sessions = [
+        _FailingBootstrapSession(),
+        _SuccessfulBootstrapSession([42]),
+        _UserSession(42),
+    ]
+    sleeps = []
+    calls = []
+
+    monkeypatch.setattr(_per_user, "SessionLocal", lambda: sessions.pop(0))
+    monkeypatch.setattr(_per_user, "engine", fake_engine)
+    monkeypatch.setattr(_per_user.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    def _job(job_db, scoped_user):
+        calls.append((job_db, scoped_user.user_id))
+
+    _per_user.for_each_user(_job)
+
+    assert len(calls) == 1
+    assert isinstance(calls[0][0], _UserSession)
+    assert calls[0][1] == 42
+    assert fake_engine.dispose_calls == 1
+    assert sleeps == [_per_user.BOOTSTRAP_RETRY_DELAY_SECONDS]
+    assert get_current_user_id() is None
+    set_current_user_id(None)
+
+
+def test_for_each_user_notifies_and_skips_after_bootstrap_operational_error(
+    monkeypatch,
+):
+    fake_engine = _FakeEngine()
+    sessions = [
+        _FailingBootstrapSession()
+        for _ in range(_per_user.BOOTSTRAP_MAX_ATTEMPTS)
+    ]
+    notifications = []
+    sleeps = []
+    calls = []
+
+    monkeypatch.setattr(_per_user, "SessionLocal", lambda: sessions.pop(0))
+    monkeypatch.setattr(_per_user, "engine", fake_engine)
+    monkeypatch.setattr(_per_user.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(
+        _per_user,
+        "notify_operator",
+        lambda *args, **kwargs: notifications.append((args, kwargs)) or True,
+    )
+
+    _per_user.for_each_user(lambda job_db, scoped_user: calls.append(scoped_user))
+
+    assert calls == []
+    assert len(notifications) == 1
+    assert notifications[0][1]["source"] == "scheduler.per-user"
+    assert notifications[0][1]["severity"] == "error"
+    assert notifications[0][1]["dedupe_key"] == "bootstrap-user-ids:OperationalError"
+    assert fake_engine.dispose_calls == _per_user.BOOTSTRAP_MAX_ATTEMPTS
+    assert sleeps == [_per_user.BOOTSTRAP_RETRY_DELAY_SECONDS]
     assert get_current_user_id() is None
     set_current_user_id(None)

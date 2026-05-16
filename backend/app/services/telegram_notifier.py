@@ -6,6 +6,24 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_TELEGRAM_SEND_ENDPOINT_FOR_LOG = "https://api.telegram.org/bot<redacted>/sendMessage"
+
+
+def _telegram_error_summary(exc: Exception) -> str:
+    """Return a token-safe summary for Telegram delivery failures."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        return (
+            f"{type(exc).__name__}(status_code={response.status_code}, "
+            f"endpoint={_TELEGRAM_SEND_ENDPOINT_FOR_LOG})"
+        )
+    if isinstance(exc, httpx.RequestError):
+        return (
+            f"{type(exc).__name__}"
+            f"(endpoint={_TELEGRAM_SEND_ENDPOINT_FOR_LOG})"
+        )
+    return type(exc).__name__
+
 
 async def send_telegram_message(text: str) -> bool:
     """Send message directly via Telegram Bot API. Returns True if sent."""
@@ -26,7 +44,7 @@ async def send_telegram_message(text: str) -> bool:
             resp.raise_for_status()
             return True
     except Exception as e:
-        logger.error(f"Telegram direct send failed: {e}")
+        logger.error("Telegram direct send failed: %s", _telegram_error_summary(e))
         return False
 
 
@@ -36,5 +54,5 @@ def send_telegram_message_sync(text: str) -> bool:
     try:
         return asyncio.run(send_telegram_message(text))
     except Exception as e:
-        logger.error(f"Telegram sync wrapper failed: {e}")
+        logger.error("Telegram sync wrapper failed: %s", _telegram_error_summary(e))
         return False

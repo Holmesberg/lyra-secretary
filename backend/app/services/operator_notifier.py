@@ -105,7 +105,7 @@ def notify_operator(
         logger.warning(
             "operator_notifier: unexpected error sending telegram: %s "
             "(source=%s)",
-            e,
+            type(e).__name__,
             source,
         )
         return False
