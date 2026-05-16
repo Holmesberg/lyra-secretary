@@ -1,92 +1,141 @@
-# agent runtime feedback-triage recipe
+# 24h Admin Bug Sweep
 
-**Created:** 2026-04-28
-**Owner:** Operator (Ali)
-**Goal:** Turn the alpha-cohort feedback queue into a weekly autonomous-triage cycle without building webhook infrastructure.
+**Updated:** 2026-05-16  
+**Owner:** Operator (Ali)  
+**Tracker:** GitHub Issues is active; `archive/LYRA_BUGS.md` is historical plus durable sync notes.
 
----
-
-## Why this exists
-
-The alpha feedback widget (alembic 040) writes rows to `feedback` and emails/Telegrams operator on each submission. But when you accumulate 5-10 reports a week, manual triage drags. This recipe runs agent runtime on a schedule to summarize, categorize, and propose fixes — operator decides which to ship.
-
-Zero infra: uses agent runtime's built-in `/schedule` command. No webhook, no SDK, no auth setup beyond agent runtime itself.
+This is a lightweight operator routine, not backend automation. User bug reports
+already reach the operator through Telegram and the in-app feedback queue. Once
+per day, the operator batches the non-critical reports and asks Codex to turn
+them into clean, deduplicated GitHub issue state.
 
 ---
 
-## The recipe
+## P0 Immediate Escalation
 
-Paste this into agent runtime to set up a weekly Sunday triage:
+P0 reports do **not** wait for the 24h sweep. Handle them immediately.
 
-```
-/schedule
-when: every Sunday at 10:00
-do: Pull unresolved feedback from /v1/admin/feedback (operator-only,
-    requires auth). For each row, classify:
-      - quick-fix bug (1-line repro, <20-line patch): propose patch
-      - design-choice bug (needs operator decision): summarize and ask
-      - suggestion: bucket by theme; surface top 3 themes
-      - confused: identify the surface that confused them; suggest
-        microcopy changes
-    Then post a single summary:
-      - n unread, n acted_on this week
-      - top 3 themes
-      - 2-3 quick-fix patches you'd ship if I approved
-      - 1-2 design-choice questions for me to answer
-    Don't ship anything autonomously. Operator-approve every patch.
-```
+P0 includes:
 
-You can also run it ad-hoc:
+- cross-user data leak or privacy breach
+- auth/sign-in outage
+- production unavailable
+- account deletion/export failure
+- exposed secret/token
+- data corruption or irreversible user-data loss
+- core task/timer flow unusable for active users
 
-```
-/triage-feedback
-```
-
-(define this as a custom slash command pointing to the same prompt above)
+For P0, send Codex the redacted report immediately and ask for incident triage,
+root-cause analysis, issue documentation, and fix planning/implementation as a
+separate urgent task.
 
 ---
 
-## Operator-side guardrails
+## Privacy Rule Before Codex Or GitHub
 
-- **Don't auto-resolve.** Every status flip from `unread` → `acted_on` should be operator-driven, even when agent runtime proposes the patch. The `operator_note` field is for the operator's own context, not agent runtime.
-- **Watch for repeat reporters.** If user X submits 5 bugs in a week, that's a signal — either the surface they touch is genuinely broken OR they're feedback-loop power users who'd be great for a 30-min interview. Don't filter their reports out, but tag them.
-- **Email yourself the summary.** agent runtime's `/schedule` output goes to your agent runtime thread. If you want it in your inbox too, ask agent runtime to also send via Resend.
+Before pasting reports into Codex or GitHub, redact:
 
----
+- raw tokens, API keys, bearer strings, cookies, refresh tokens, private URLs
+- email addresses and unnecessary personal identifiers
+- screenshots with personal data
+- private user task/deadline/calendar content unless it is essential to the bug
+- stack traces or request payloads that include secrets
 
-## When to upgrade to a real webhook
+Use stable placeholders instead:
 
-If feedback hits 50+/week or you want sub-hour latency on patches:
-- Build a `POST /v1/feedback` → AWS Lambda or Cloudflare Worker → agent runtime Agent SDK invocation
-- Lambda passes the feedback row to a agent runtime agent in a sandboxed branch
-- Agent commits to a `feedback-fix-{id}` branch + opens a PR for operator review
-- Cost: ~1-2 days of setup + agent runtime Agent SDK billing
-
-Until that volume, this recipe is enough.
-
----
-
-## Schema reference (alembic 040)
-
-```sql
-SELECT feedback_id, kind, body, page_url, status, submitted_at
-FROM feedback
-WHERE status = 'unread'
-ORDER BY submitted_at DESC;
+```text
+[user A]
+[user B]
+[redacted email]
+[redacted token]
+[private task title]
+[private URL]
 ```
 
-Fields:
-- `kind`: `'bug' | 'suggestion' | 'confused' | 'other'`
-- `status`: `'unread' | 'read' | 'acted_on' | 'dismissed'`
-- `error_context`: JSON array of last 3 client-side errors (path, status, message)
-- `page_url`: URL where user submitted from
+If a reproduction needs private content, paraphrase the structure rather than
+copying the content.
 
 ---
 
-## Anti-pattern to avoid
+## Daily Sweep Workflow
 
-Don't have agent runtime auto-commit fixes from feedback rows without operator review. Two reasons:
-1. **Trust:** users who report bugs deserve to see operator engagement, not bot replies.
-2. **Quality:** automated patches at 10am Sunday before coffee = bad code reaching prod.
+Every 24h:
 
-The recipe explicitly says "don't ship anything autonomously." That's the line.
+1. Gather non-P0 reports from Telegram, `/v1/admin/feedback`, and direct user
+   messages.
+2. Redact the batch using the privacy rule above.
+3. Send Codex the daily prompt below.
+4. Codex dedupes against GitHub Issues and `archive/LYRA_BUGS.md`.
+5. Codex creates or updates canonical GitHub issues.
+6. Codex comments on existing issues rather than creating duplicates.
+7. Codex updates `archive/LYRA_BUGS.md` only for durable tracker changes or
+   fixed issues.
+
+---
+
+## GitHub Issue Rules
+
+- Every real bug gets exactly one canonical GitHub issue.
+- Title format: `[LYR-NNN] concise symptom`.
+- Always apply the `bug` label.
+- Add `duplicate`, `documentation`, or `wontfix` only when appropriate.
+- If the report duplicates an existing issue, do not create a new issue.
+- If an accidental duplicate exists, comment on it and close it into the
+  canonical issue.
+
+Issue body should include:
+
+- user-visible symptom
+- redacted source report date/context
+- affected surface
+- suspected subsystem
+- priority
+- reproduction clues
+- current status
+
+---
+
+## Priority Rules
+
+| Priority | Meaning |
+| --- | --- |
+| P0 / critical | Privacy, auth, production availability, irreversible data loss, or active-user core-flow outage. Immediate escalation. |
+| P1 / high | User-facing core flow broken: onboarding, task create, timer start/stop, deadlines, Moodle/Calendar sync, account settings. |
+| P2 / medium | Confusing but recoverable behavior, stale UI, incorrect labels, partial sync, non-blocking notification failure. |
+| P3 / low | Cosmetic, copy, docs, known third-party limitation, rare operator-only annoyance. |
+
+---
+
+## Daily Prompt
+
+```text
+Run the 24h admin bug sweep.
+
+Reports since last sweep, already redacted:
+[paste reports]
+
+For each report:
+1. dedupe against GitHub issues and LYRA_BUGS.md
+2. inspect relevant code/docs if needed
+3. assign priority
+4. create or update GitHub issues
+5. tell me what was filed, merged, ignored, or needs reproduction
+
+P0 reports were/will be sent separately immediately.
+```
+
+---
+
+## Codex Output Contract
+
+At the end of a sweep, Codex should report:
+
+- issues created
+- issues updated
+- reports merged into existing issues
+- reports ignored as non-bugs or already fixed
+- reports needing more reproduction detail
+- any P0 discovered during the sweep and escalated out of batch handling
+
+No implementation should be bundled into the sweep unless the operator
+explicitly asks for the fix after triage.

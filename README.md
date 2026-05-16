@@ -359,6 +359,9 @@ Treat those as lineage unless current governance docs explicitly promote them.
 
 The root bug tracker has been archived at
 [archive/LYRA_BUGS.md](archive/LYRA_BUGS.md).
+Active user-reported bugs are triaged through the
+[24h admin bug sweep](docs/feedback_triage_recipe.md) and tracked in GitHub
+Issues.
 
 Local operator vaults, assistant-runtime state, and local-only working files are
 ignored or removed from tracked repository state. The `notebooks/` directory
