@@ -101,13 +101,31 @@ def test_no_candidates_returns_all_none(db):
     assert body["deadline_match_source"] is None
 
 
-def test_deprecated_parse_requires_authentication():
+def test_deprecated_parse_remains_unauthenticated_compatibility(monkeypatch):
+    from app.schemas.task import TaskParseResponse
+
+    class StubParser:
+        def parse_chained(self, _text):
+            start = datetime.utcnow()
+            return [
+                TaskParseResponse(
+                    title="compat parsed task",
+                    start=start,
+                    end=start + timedelta(minutes=30),
+                    duration_minutes=30,
+                    category="work",
+                    confidence=0.9,
+                )
+            ]
+
+    monkeypatch.setattr("app.api.v1.endpoints.parse.TaskParser", StubParser)
+
     resp = client.post(
         "/v1/parse",
         json={"text": "private task at 5pm for 30 minutes"},
     )
 
-    assert resp.status_code == 401
+    assert resp.status_code == 200
 
 
 def test_deprecated_parse_logs_do_not_include_raw_text(db, caplog, monkeypatch):

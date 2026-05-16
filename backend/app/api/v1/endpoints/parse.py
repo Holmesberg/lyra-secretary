@@ -54,8 +54,6 @@ def parse_input(request: TaskParseRequest) -> ParseChainResponse:
     DEPRECATED: LLMs should extract fields themselves and call /v1/create directly.
     Use this only for genuinely ambiguous time expressions.
     """
-    if get_current_user_id() is None:
-        raise HTTPException(status_code=401, detail="not authenticated")
     try:
         parser = TaskParser()
         import re
