@@ -32,8 +32,9 @@ import type { Session } from "next-auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { useState } from "react";
-import { primeBackendToken } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { clearBackendTokenCache, primeBackendToken } from "@/lib/api";
+import { clearPersistedCache } from "@/lib/clear-persisted-cache";
 
 const ONE_HOUR = 1000 * 60 * 60;
 const TWENTY_FOUR_HOURS = ONE_HOUR * 24;
@@ -87,7 +88,10 @@ export function Providers({
   children: React.ReactNode;
   session?: Session | null;
 }) {
-  primeBackendToken((session as any)?.backendToken as string | undefined);
+  const backendToken = (session as any)?.backendToken as string | undefined;
+  const hasBackendToken = Boolean(backendToken);
+
+  primeBackendToken(backendToken);
 
   const [qc] = useState(
     () =>
@@ -136,7 +140,14 @@ export function Providers({
   // SSR — render the plain provider without persistence (no window).
   // First client paint hydrates from localStorage when the component
   // re-renders client-side and `persister` is set.
-  if (!persister) {
+  useEffect(() => {
+    if (hasBackendToken) return;
+    clearBackendTokenCache();
+    qc.clear();
+    clearPersistedCache();
+  }, [hasBackendToken, qc]);
+
+  if (!persister || !hasBackendToken) {
     return (
       <SessionProvider
         session={session}
