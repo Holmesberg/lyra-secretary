@@ -17,3 +17,16 @@ def test_cors_allowed_origins_accept_extra_configured_origins_without_duplicates
 
     assert settings.cors_allowed_origins.count("http://localhost:3000") == 1
     assert "https://preview.lyraos.org" in settings.cors_allowed_origins
+
+
+def test_settings_ignore_unknown_env_keys_without_echoing_values(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\ufeffJWT_ALGORITHM=HS256\n"
+        "UNRELATED_SECRET_SHAPED_KEY=secret-value-that-must-not-error\n",
+        encoding="utf-8",
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.JWT_ALGORITHM == "HS256"
