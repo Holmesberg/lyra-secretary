@@ -16,10 +16,15 @@ _pool_kwargs = {} if _is_sqlite else {
     "pool_pre_ping": True,
     "pool_recycle": 1800,
 }
+_connect_args = (
+    {"check_same_thread": False}
+    if _is_sqlite
+    else {"connect_timeout": settings.DB_CONNECT_TIMEOUT_SECONDS}
+)
 
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args={"check_same_thread": False} if _is_sqlite else {},
+    connect_args=_connect_args,
     **_pool_kwargs,
 )
 

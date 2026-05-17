@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 def run_moodle_submissions_sync() -> None:
     """Entry point for APScheduler."""
-    for_each_user(_run_for_one_user)
+    for_each_user(_run_for_one_user, job_name="moodle_submissions_sync")
 
 
 def _operator_error_message(error: str) -> tuple[str, str, str, str, str]:

@@ -1,10 +1,12 @@
 """Direct Telegram Bot API delivery for reminders and alerts."""
 import logging
+import threading
 import httpx
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 _TELEGRAM_SEND_ENDPOINT_FOR_LOG = "https://api.telegram.org/bot<redacted>/sendMessage"
 
@@ -39,7 +41,7 @@ async def send_telegram_message(text: str) -> bool:
                     "text": text,
                     "parse_mode": "Markdown"
                 },
-                timeout=5.0
+                timeout=settings.TELEGRAM_TIMEOUT_SECONDS
             )
             resp.raise_for_status()
             return True
@@ -51,8 +53,36 @@ async def send_telegram_message(text: str) -> bool:
 def send_telegram_message_sync(text: str) -> bool:
     """Sync wrapper for use from APScheduler thread-based jobs."""
     import asyncio
-    try:
+
+    def _run() -> bool:
         return asyncio.run(send_telegram_message(text))
-    except Exception as e:
-        logger.error("Telegram sync wrapper failed: %s", _telegram_error_summary(e))
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        try:
+            return _run()
+        except Exception as e:
+            logger.error("Telegram sync wrapper failed: %s", _telegram_error_summary(e))
+            return False
+
+    result = False
+    error: Exception | None = None
+
+    def _thread_runner() -> None:
+        nonlocal result, error
+        try:
+            result = _run()
+        except Exception as exc:  # noqa: BLE001 - observation channel only
+            error = exc
+
+    thread = threading.Thread(target=_thread_runner, daemon=True)
+    thread.start()
+    thread.join(float(settings.TELEGRAM_TIMEOUT_SECONDS) + 1.0)
+    if thread.is_alive():
+        logger.error("Telegram sync wrapper timed out: %s", "running_event_loop")
         return False
+    if error is not None:
+        logger.error("Telegram sync wrapper failed: %s", _telegram_error_summary(error))
+        return False
+    return result

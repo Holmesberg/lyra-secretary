@@ -17,6 +17,7 @@ install_scoping(Base)
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.concurrency import run_in_threadpool
+from sqlalchemy.exc import OperationalError
 from app.db.scoping import set_current_user_id
 
 
@@ -79,6 +80,23 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
                 return JSONResponse(
                     status_code=e.status_code,
                     content={"detail": e.detail},
+                )
+            except OperationalError:
+                await run_in_threadpool(
+                    write_security_audit_event,
+                    event_type="auth_failure",
+                    surface=request.url.path,
+                    status="error",
+                    request=request,
+                    redacted_metadata={"reason": "OperationalError"},
+                )
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "detail": (
+                            "authentication database temporarily unavailable"
+                        )
+                    },
                 )
             except Exception as e:
                 await run_in_threadpool(

@@ -1,10 +1,10 @@
-"""Pause prediction background job (per-user, every 1 minute).
+"""Pause prediction background job (active-user, every 1 minute).
 
-Runs PausePredictor for each user on each tick. If a prediction passes all
-gates, writes one row to pause_prediction_log (the pre-registered research
-artifact) and enqueues a notification payload onto the per-user Redis
-queue. A firing cooldown prevents re-firing for the same user within
-FIRING_COOLDOWN_MINUTES.
+Runs PausePredictor for each user with an EXECUTING task on each tick. If a
+prediction passes all gates, writes one row to pause_prediction_log (the
+pre-registered research artifact) and enqueues a notification payload onto
+the per-user Redis queue. A firing cooldown prevents re-firing for the same
+user within FIRING_COOLDOWN_MINUTES.
 
 The per-user queue is the user-facing delivery path. Telegram is reserved
 for operator-owned accounts because it is a shared operator channel.
@@ -25,10 +25,15 @@ so a partial write does not leak into the next user's scope).
 """
 import json
 import logging
+import time
 
+from sqlalchemy.exc import OperationalError
+
+from app.db.session import SessionLocal, engine
 from app.db.models import PausePredictionLog, Task, TaskState, User
+from app.db.scoping import set_current_user_id
 from app.services.notification_queue import enqueue_user_notification
-from app.services.operator_notifier import notify_operator
+from app.services.operator_notifier import format_alert_context, notify_operator
 from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
 from app.services.pause_predictor import PausePredictor
 from app.utils.redis_client import RedisClient
@@ -44,10 +49,99 @@ logger = logging.getLogger(__name__)
 # between 10:45 and the natural cooldown expiry (10:55) cleanly contains the
 # single predicted pause at ~10:48.
 FIRING_COOLDOWN_MINUTES = 10
+ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS = 2
+ACTIVE_USER_BOOTSTRAP_RETRY_DELAY_SECONDS = 1.0
 
 
 def run_pause_prediction():
-    for_each_user(_run_for_one_user)
+    for_each_user(
+        _run_for_one_user,
+        user_ids=_load_active_user_ids(),
+        job_name="pause_prediction",
+    )
+
+
+def _dispose_engine_pool() -> None:
+    try:
+        engine.dispose()
+    except Exception:  # noqa: BLE001 - diagnostics only; keep worker alive
+        logger.warning(
+            "pause_prediction: could not dispose DB engine pool",
+            exc_info=True,
+        )
+
+
+def _load_active_user_ids() -> list[int]:
+    """Return users who currently have an EXECUTING task.
+
+    Pause prediction is a live-session instrument. Bootstrapping every account
+    once per minute makes the job scale with registered users rather than
+    active work, and that can produce scheduler max_instances warnings. This
+    query is intentionally unscoped, then the per-user helper re-enters each
+    candidate with normal ContextVar scoping.
+    """
+    set_current_user_id(None)
+    for attempt in range(1, ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS + 1):
+        bootstrap = SessionLocal()
+        failed_operationally = False
+        try:
+            rows = (
+                bootstrap.query(Task.user_id)
+                .filter(
+                    Task.state == TaskState.EXECUTING,
+                    Task.voided_at.is_(None),
+                )
+                .distinct()
+                .all()
+            )
+            return [int(row[0]) for row in rows if row[0] is not None]
+        except OperationalError:
+            failed_operationally = True
+            try:
+                bootstrap.rollback()
+            except Exception:  # noqa: BLE001 - session may already be broken
+                logger.debug(
+                    "pause_prediction active-user bootstrap rollback failed",
+                    exc_info=True,
+                )
+            logger.warning(
+                "pause_prediction active-user bootstrap failed with "
+                "OperationalError on attempt %s/%s",
+                attempt,
+                ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS,
+                exc_info=True,
+            )
+        finally:
+            bootstrap.close()
+
+        if failed_operationally:
+            _dispose_engine_pool()
+            if attempt < ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS:
+                time.sleep(ACTIVE_USER_BOOTSTRAP_RETRY_DELAY_SECONDS)
+
+    notify_operator(
+        "Pause prediction active-user bootstrap failed with "
+        "`OperationalError`. Job skipped this tick; check backend logs.\n\n"
+        + format_alert_context(
+            affected="scheduler.pause-prediction / active-user bootstrap",
+            scope="unknown active-user count; bootstrap could not load candidates",
+            retry=(
+                f"Retried {ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS} total "
+                "attempt(s), disposed the DB engine pool after each failure, "
+                "then waits for the next scheduler tick."
+            ),
+            user_action="No student action. Operator should triage if repeated.",
+            data_integrity=(
+                "No pause_prediction_log row attempted because bootstrap "
+                "failed before user iteration."
+            ),
+        ),
+        source="scheduler.pause-prediction",
+        severity="error",
+        dedupe_key="pause-prediction-active-users:OperationalError",
+        cooldown_seconds=30 * 60,
+    )
+    return []
 
 
 def _run_for_one_user(db, user: User):

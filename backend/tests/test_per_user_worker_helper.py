@@ -1,6 +1,7 @@
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import object_session
 
@@ -8,6 +9,12 @@ from app.db.models import User
 from app.db.scoping import get_current_user_id, set_current_user_id
 from app.workers.jobs import _per_user
 from tests.conftest import TestingSession
+
+
+@pytest.fixture(autouse=True)
+def _reset_bootstrap_backoff(monkeypatch):
+    monkeypatch.setattr(_per_user, "_bootstrap_backoff_until_monotonic", 0.0)
+    yield
 
 
 def test_for_each_user_passes_session_attached_user(db, monkeypatch):
@@ -138,6 +145,27 @@ class _UserSession:
         self.close_called = True
 
 
+class _FailingUserLoadSession:
+    def __init__(self):
+        self.rollback_called = False
+        self.close_called = False
+
+    def query(self, *_args, **_kwargs):
+        return self
+
+    def filter(self, *_args, **_kwargs):
+        return self
+
+    def one_or_none(self):
+        raise _db_operational_error()
+
+    def rollback(self):
+        self.rollback_called = True
+
+    def close(self):
+        self.close_called = True
+
+
 class _FakeEngine:
     def __init__(self):
         self.dispose_calls = 0
@@ -206,5 +234,78 @@ def test_for_each_user_notifies_and_skips_after_bootstrap_operational_error(
     assert "Data integrity risk:" in notifications[0][0][0]
     assert fake_engine.dispose_calls == _per_user.BOOTSTRAP_MAX_ATTEMPTS
     assert sleeps == [_per_user.BOOTSTRAP_RETRY_DELAY_SECONDS]
+    assert _per_user._bootstrap_backoff_until_monotonic > 0
+    assert get_current_user_id() is None
+    set_current_user_id(None)
+
+
+def test_for_each_user_honors_bootstrap_db_backoff(monkeypatch):
+    calls = []
+    notifications = []
+
+    monkeypatch.setattr(_per_user.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_per_user, "_bootstrap_backoff_until_monotonic", 150.0)
+    monkeypatch.setattr(
+        _per_user,
+        "SessionLocal",
+        lambda: (_ for _ in ()).throw(AssertionError("DB should not be touched")),
+    )
+    monkeypatch.setattr(
+        _per_user,
+        "notify_operator",
+        lambda *args, **kwargs: notifications.append((args, kwargs)) or True,
+    )
+
+    _per_user.for_each_user(lambda job_db, scoped_user: calls.append(scoped_user))
+    _per_user.for_each_user(
+        lambda job_db, scoped_user: calls.append(scoped_user),
+        user_ids=[123],
+        job_name="candidate_job",
+    )
+
+    assert calls == []
+    assert notifications == []
+    assert get_current_user_id() is None
+    set_current_user_id(None)
+
+
+def test_for_each_user_iteration_operational_error_opens_backoff_and_stops_fanout(
+    monkeypatch,
+):
+    fake_engine = _FakeEngine()
+    failing_user_session = _FailingUserLoadSession()
+    unused_second_user = _UserSession(2)
+    sessions = [
+        _SuccessfulBootstrapSession([1, 2]),
+        failing_user_session,
+        unused_second_user,
+    ]
+    notifications = []
+    calls = []
+
+    monkeypatch.setattr(_per_user, "SessionLocal", lambda: sessions.pop(0))
+    monkeypatch.setattr(_per_user, "engine", fake_engine)
+    monkeypatch.setattr(
+        _per_user,
+        "notify_operator",
+        lambda *args, **kwargs: notifications.append((args, kwargs)) or True,
+    )
+
+    _per_user.for_each_user(
+        lambda job_db, scoped_user: calls.append(scoped_user),
+        job_name="timer_overflow",
+    )
+
+    assert calls == []
+    assert failing_user_session.rollback_called
+    assert failing_user_session.close_called
+    assert unused_second_user.close_called is False
+    assert len(sessions) == 1
+    assert fake_engine.dispose_calls == 1
+    assert _per_user._bootstrap_backoff_until_monotonic > 0
+    assert len(notifications) == 1
+    assert notifications[0][1]["dedupe_key"] == "timer_overflow:OperationalError"
+    assert "scheduler.per-user / timer_overflow" in notifications[0][0][0]
+    assert "remaining users" in notifications[0][0][0]
     assert get_current_user_id() is None
     set_current_user_id(None)

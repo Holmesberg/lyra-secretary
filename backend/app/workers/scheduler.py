@@ -136,13 +136,16 @@ def _install_scheduler_listeners() -> None:
 
 def start_scheduler():
     """Start background scheduler."""
-    # Reminders (check every 1 minute)
+    # Reminders (check every 1 minute). Candidate bootstrap loads only users
+    # with due planned tasks; DB bootstrap failure skips the tick before any
+    # reminder mutation is attempted.
     scheduler.add_job(
         check_upcoming_tasks,
         trigger=IntervalTrigger(minutes=1),
         id="reminders",
         name="Check upcoming task reminders",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
     )
     
     # Notion sync retry (check every 5 minutes)
@@ -196,15 +199,18 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # VT-17 pause prediction (every 1 minute)
-    # Lead window is 2-3 min, so check every minute to catch the boundary.
-    # In-job FIRING_COOLDOWN_MINUTES prevents re-fires for the same user.
+    # VT-17 pause prediction (every 1 minute). Lead window is 2-3 min, so
+    # check every minute to catch the boundary. The job bootstraps only users
+    # with an EXECUTING task so runtime scales with active sessions rather than
+    # total registered accounts. In-job FIRING_COOLDOWN_MINUTES prevents
+    # re-fires for the same user.
     scheduler.add_job(
         run_pause_prediction,
         trigger=IntervalTrigger(minutes=1),
         id="pause_prediction",
         name="VT-17 pause prediction — fire + log + queue notification",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
     )
 
     # Reconcile pause_prediction_log outcomes (every 5 minutes)

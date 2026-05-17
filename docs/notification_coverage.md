@@ -62,6 +62,44 @@ User action needed: No student action. Operator should triage if repeated.
 Data integrity risk: No per-user mutation attempted before bootstrap completed.
 ```
 
+Repeated bootstrap `OperationalError` opens a short DB backoff so scheduler
+jobs do not hammer the pooler during an outage. See
+`docs/incidents/2026-05-17-per-user-bootstrap-operationalerror.md`.
+
+Per-user iteration DB outage example:
+
+```text
+Affected provider/subsystem: scheduler.per-user / timer_overflow
+Affected user scope: user#...; remaining users in this job were not attempted
+Retry behavior: This user iteration and remaining users were skipped; DB pool was disposed and DB backoff opened.
+User action needed: No student action. Operator should triage the Lyra DB path if this repeats.
+Data integrity risk: DB session was rolled back, closed, and scope was cleared before stopping fanout.
+```
+
+Per-user `OperationalError` alerts must use the caller's job name, not a
+generic `_run_for_one_user` label.
+
+Authentication database outage example:
+
+```text
+HTTP status: 503
+Detail: authentication database temporarily unavailable
+```
+
+This is fail-closed platform degradation. It must not be presented as an
+expired user token, must not fall back to `X-User-Id`, and must not widen user
+scope.
+
+Reminder candidate-bootstrap example:
+
+```text
+Affected provider/subsystem: scheduler.reminders / candidate bootstrap
+Affected user scope: unknown candidate-user count; bootstrap could not load planned tasks in the reminder window
+Retry behavior: Retried, disposed the DB pool, then waits for next scheduler tick.
+User action needed: No student action. Operator should triage if this repeats.
+Data integrity risk: No reminder notification or output-surface row was attempted before user iteration.
+```
+
 LLM enrichment max-instance example:
 
 ```text
@@ -81,9 +119,9 @@ enrichment, not authentication, user scoping, or core scheduling truth. See
 
 | Subsystem | User queue | Operator Telegram | Cooldown | Notes |
 | --- | --- | --- | --- | --- |
-| Pre-task reminders | yes | operator-owned only | per task, 2h | Non-operator reminders stay in the authenticated queue. |
+| Pre-task reminders | yes | operator-owned only | per task, 2h | Candidate scan is upcoming-task scoped; non-operator reminders stay in the authenticated queue. |
 | Timer overflow | yes | operator-owned only | per session, 24h | Non-operator timer state is not mirrored to the shared bot. |
-| Pause prediction | yes | operator-owned only | per firing, 10m | Fixes the cross-user leak risk. |
+| Pause prediction | yes | operator-owned only | per firing, 10m | Candidate scan is active-session scoped; fixes the cross-user leak risk. |
 | Resume prediction | yes | operator-owned only | job-level firing caps | Existing `user.is_operator` gate remains required. |
 | Scheduler health | no | yes | 30m | Job error, missed run, and max-instance events. |
 | Per-user job exceptions | no | yes | 30m | Reports job/user id and exception class only. |

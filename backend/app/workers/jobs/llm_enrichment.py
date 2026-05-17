@@ -21,10 +21,11 @@ and no-ops.
 import logging
 
 from sqlalchemy import asc
+from sqlalchemy.exc import OperationalError
 
 from app.db.models import Task
 from app.db.scoping import set_current_user_id
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, engine
 from app.services.llm_parser import enrich_task_via_llm
 from app.services.operator_notifier import format_alert_context, notify_operator
 from app.utils.time_utils import now_utc
@@ -52,17 +53,53 @@ def run_llm_enrichment() -> None:
         from datetime import timedelta
 
         cutoff = now_utc() - timedelta(seconds=1)
-        pending = (
-            db.query(Task.task_id)
-            .filter(
-                Task.llm_parse_status == "pending",
-                Task.voided_at.is_(None),
-                Task.created_at < cutoff,
+        try:
+            pending = (
+                db.query(Task.task_id)
+                .filter(
+                    Task.llm_parse_status == "pending",
+                    Task.voided_at.is_(None),
+                    Task.created_at < cutoff,
+                )
+                .order_by(asc(Task.created_at))
+                .limit(_MAX_TASKS_PER_CYCLE)
+                .all()
             )
-            .order_by(asc(Task.created_at))
-            .limit(_MAX_TASKS_PER_CYCLE)
-            .all()
-        )
+        except OperationalError:
+            db.rollback()
+            try:
+                engine.dispose()
+            except Exception:  # noqa: BLE001 - diagnostics only
+                logger.warning(
+                    "llm_enrichment: could not dispose DB engine pool",
+                    exc_info=True,
+                )
+            logger.warning(
+                "llm_enrichment: skipped tick because DB bootstrap failed",
+                exc_info=True,
+            )
+            notify_operator(
+                "LLM enrichment skipped because the database was unavailable "
+                "during the pending-task scan.\n\n"
+                + format_alert_context(
+                    affected="scheduler.llm-enrichment / database bootstrap",
+                    scope="unknown; pending task scan did not complete",
+                    retry=(
+                        "This tick is skipped; the scheduler retries on the "
+                        "next interval after disposing the DB engine pool."
+                    ),
+                    user_action="No student action.",
+                    data_integrity=(
+                        "No task enrichment mutation attempted before the "
+                        "pending-task scan completed."
+                    ),
+                ),
+                source="scheduler.llm-enrichment",
+                severity="warn",
+                dedupe_key="llm-enrichment-db-unavailable",
+                cooldown_seconds=30 * 60,
+            )
+            return
         if not pending:
             return
         status_counts: dict[str, int] = {}

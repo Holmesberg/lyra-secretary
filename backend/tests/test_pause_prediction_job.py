@@ -32,7 +32,9 @@ from app.db.models import (
 from app.db.scoping import set_current_user_id
 from app.services.pause_predictor import PausePrediction
 from app.utils.time_utils import now_utc
+from app.workers.jobs import pause_prediction
 from app.workers.jobs.pause_prediction import _run_for_one_user
+from tests.conftest import TestingSession
 
 USER_ID = 910
 
@@ -95,6 +97,20 @@ def _make_executing_task(db, user_id: int = USER_ID) -> Task:
     return t
 
 
+def _make_user(db, user_id: int, email: str) -> User:
+    u = User(
+        user_id=user_id,
+        email=email,
+        is_operator=False,
+        notion_enabled=False,
+        created_at=now_utc(),
+    )
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+    return u
+
+
 def _canned_prediction(user_id: int = USER_ID, mechanism: str = "clock_anchor") -> PausePrediction:
     now = now_utc()
     return PausePrediction(
@@ -137,6 +153,65 @@ def test_firing_writes_log_row_and_queues_notification(db, user):
     assert call.args[0] == USER_ID
     assert call.args[1]["type"] == "pause_prediction"
     assert call.args[1]["firing_id"] == row.firing_id
+
+
+def test_run_pause_prediction_only_iterates_active_candidates(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(pause_prediction, "_load_active_user_ids", lambda: [1, 2])
+    monkeypatch.setattr(
+        pause_prediction,
+        "for_each_user",
+        lambda fn, user_ids=None, job_name=None: calls.append(
+            (fn, user_ids, job_name)
+        ),
+    )
+
+    pause_prediction.run_pause_prediction()
+
+    assert calls == [(pause_prediction._run_for_one_user, [1, 2], "pause_prediction")]
+
+
+def test_active_user_bootstrap_only_returns_executing_users(db, monkeypatch):
+    set_current_user_id(None)
+    active = _make_user(db, USER_ID, "pause-active@test")
+    planned = _make_user(db, USER_ID + 1, "pause-planned@test")
+    voided = _make_user(db, USER_ID + 2, "pause-voided@test")
+    _make_executing_task(db, user_id=active.user_id)
+
+    now = now_utc()
+    db.add(
+        Task(
+            task_id=str(uuid4()),
+            user_id=planned.user_id,
+            title="planned work",
+            category="dev",
+            state=TaskState.PLANNED,
+            planned_start_utc=now,
+            planned_end_utc=now + timedelta(minutes=30),
+            planned_duration_minutes=30,
+            source="manual",
+        )
+    )
+    db.add(
+        Task(
+            task_id=str(uuid4()),
+            user_id=voided.user_id,
+            title="voided executing work",
+            category="dev",
+            state=TaskState.EXECUTING,
+            planned_start_utc=now,
+            planned_end_utc=now + timedelta(minutes=30),
+            planned_duration_minutes=30,
+            executed_start_utc=now,
+            voided_at=now,
+            source="manual",
+        )
+    )
+    db.commit()
+    monkeypatch.setattr(pause_prediction, "SessionLocal", TestingSession)
+
+    assert pause_prediction._load_active_user_ids() == [active.user_id]
 
 
 def test_no_prediction_no_row_no_queue(db, user):

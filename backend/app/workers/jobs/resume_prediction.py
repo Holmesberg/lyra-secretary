@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_resume_prediction():
-    for_each_user(_run_for_one_user)
+    for_each_user(_run_for_one_user, job_name="resume_prediction")
 
 
 def _run_for_one_user(db, user: User):

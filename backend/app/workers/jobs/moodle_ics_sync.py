@@ -61,7 +61,7 @@ def _operator_error_message(error: str) -> tuple[str, str, str, str, str]:
 
 def run_moodle_ics_sync() -> None:
     """Entry point for the APScheduler job."""
-    for_each_user(_run_for_one_user)
+    for_each_user(_run_for_one_user, job_name="moodle_ics_sync")
 
 
 def _run_for_one_user(db, user: User) -> None:

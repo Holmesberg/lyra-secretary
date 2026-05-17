@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_URL: str = "sqlite:///./data/lyra.db"
+    DB_CONNECT_TIMEOUT_SECONDS: int = Field(5, env="DB_CONNECT_TIMEOUT_SECONDS")
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -34,6 +35,7 @@ class Settings(BaseSettings):
     # Telegram (Optional — direct reminder delivery)
     TELEGRAM_BOT_TOKEN: Optional[str] = Field(None, env="TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID: Optional[str] = Field(None, env="TELEGRAM_CHAT_ID")
+    TELEGRAM_TIMEOUT_SECONDS: float = Field(2.0, env="TELEGRAM_TIMEOUT_SECONDS")
 
     # Alpha feedback widget (alembic 040, 2026-04-28). Resend is the
     # primary channel; Telegram (above) is the fallback. Either or both

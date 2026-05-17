@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+from sqlalchemy.exc import OperationalError
+
 from app.core import security
 from app.db.models import User
 from app.main import app
@@ -74,6 +76,21 @@ def test_x_user_id_still_available_to_explicit_test_harness(client, db):
 
     assert response.status_code == 200
     assert response.json()["user_id"] == 15
+
+
+def test_bearer_db_unavailable_fails_closed_as_platform_degradation(client, monkeypatch):
+    def _resolve_user_from_token(_token: str):
+        raise OperationalError("SELECT user", {}, Exception("pooler unavailable"))
+
+    monkeypatch.setattr(security, "resolve_user_from_token", _resolve_user_from_token)
+
+    response = client.get(
+        "/v1/users/me",
+        headers={"Authorization": "Bearer db-unavailable"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "authentication database temporarily unavailable"
 
 
 def test_app_code_has_no_operator_identity_fallbacks():

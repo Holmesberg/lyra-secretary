@@ -97,6 +97,8 @@ Rules:
 - bearer identity beats `X-User-Id`,
 - missing identity fails closed,
 - invalid bearer fails closed,
+- database unavailability during bearer resolution fails closed as a platform
+  degradation (`503`), not as an expired-token/auth-rotation signal,
 - runtime `X-User-Id` fails closed,
 - no route may silently fall back to `user_id=1`,
 - JWT secret strength is enforced in public/prod topology.
@@ -212,6 +214,10 @@ redacted by sensitive key and by sensitive string patterns.
 Security audit logging is best-effort. A failed audit write must not weaken
 auth, authorization, scoping, or provider token handling.
 
+Application logs are part of the redaction surface. HTTP client libraries must
+not emit raw provider URLs that contain bot tokens, OAuth values, Moodle
+tokens, authtokens, or signed URLs.
+
 ## 8. Provider Failure Boundary
 
 Provider failure classes:
@@ -223,6 +229,7 @@ Provider failure classes:
 | Google Calendar auth failure | pause calendar sync, surface reconnect | do not widen calendar reads |
 | Notion unavailable | degrade Notion sync | do not affect task ownership |
 | Provider timeout | mark sync degraded | do not bypass auth |
+| Lyra DB unavailable during auth | return temporary platform failure | fail closed; do not accept fallback identity |
 
 Provider failures should not page as Lyra product failures unless widespread
 or persistent. Scheduler, bootstrap, and database failures are Lyra platform

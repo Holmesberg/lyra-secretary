@@ -17,7 +17,7 @@ Usage:
 """
 import logging
 import time
-from typing import Callable
+from typing import Callable, Iterable, Optional
 
 from sqlalchemy.exc import OperationalError
 
@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 BOOTSTRAP_MAX_ATTEMPTS = 2
 BOOTSTRAP_RETRY_DELAY_SECONDS = 1.0
+BOOTSTRAP_BACKOFF_SECONDS = 120.0
+_bootstrap_backoff_until_monotonic = 0.0
 
 
 def _dispose_engine_pool() -> None:
@@ -47,17 +49,40 @@ def _dispose_engine_pool() -> None:
         )
 
 
+def _open_db_backoff() -> None:
+    global _bootstrap_backoff_until_monotonic
+    _bootstrap_backoff_until_monotonic = (
+        time.monotonic() + BOOTSTRAP_BACKOFF_SECONDS
+    )
+
+
+def _remaining_backoff_seconds() -> float:
+    return max(0.0, _bootstrap_backoff_until_monotonic - time.monotonic())
+
+
 def _load_user_ids() -> list[int]:
     """Load user ids for per-user worker iteration with one DB retry.
 
     The bootstrap read is shared by every per-user scheduler job. A transient
     pool/SSL EOF should not make APScheduler mark the whole job as failed.
     """
+    global _bootstrap_backoff_until_monotonic
+    now = time.monotonic()
+    if now < _bootstrap_backoff_until_monotonic:
+        remaining = _bootstrap_backoff_until_monotonic - now
+        logger.info(
+            "per-user bootstrap in DB backoff for %.1fs; skipping this tick",
+            remaining,
+        )
+        return []
+
     for attempt in range(1, BOOTSTRAP_MAX_ATTEMPTS + 1):
         bootstrap = SessionLocal()
         failed_operationally = False
         try:
-            return [row[0] for row in bootstrap.query(User.user_id).all()]
+            user_ids = [row[0] for row in bootstrap.query(User.user_id).all()]
+            _bootstrap_backoff_until_monotonic = 0.0
+            return user_ids
         except OperationalError:
             failed_operationally = True
             try:
@@ -82,6 +107,7 @@ def _load_user_ids() -> list[int]:
             if attempt < BOOTSTRAP_MAX_ATTEMPTS:
                 time.sleep(BOOTSTRAP_RETRY_DELAY_SECONDS)
 
+    _open_db_backoff()
     notify_operator(
         "Per-user worker bootstrap failed while loading user ids with "
         "`OperationalError`. Job skipped this tick; check backend logs.\n\n"
@@ -92,8 +118,9 @@ def _load_user_ids() -> list[int]:
             ),
             retry=(
                 f"Retried {BOOTSTRAP_MAX_ATTEMPTS} total attempt(s), disposed "
-                "the DB engine pool after each failure, then waits for the "
-                "next scheduler tick."
+                "the DB engine pool after each failure, then opens a short "
+                f"{int(BOOTSTRAP_BACKOFF_SECONDS)}s DB backoff before "
+                "per-user bootstrap retries."
             ),
             user_action=(
                 "No student action. Operator should triage immediately if "
@@ -112,7 +139,11 @@ def _load_user_ids() -> list[int]:
     return []
 
 
-def for_each_user(per_user_fn: Callable) -> None:
+def for_each_user(
+    per_user_fn: Callable,
+    user_ids: Optional[Iterable[int]] = None,
+    job_name: str | None = None,
+) -> None:
     """Run per_user_fn(db, user) for every user, scoped to that user.
 
     Each iteration gets its own DB session so a failure on one user
@@ -122,7 +153,18 @@ def for_each_user(per_user_fn: Callable) -> None:
     instances from that closed session into per-user jobs makes user-row
     mutations look successful while commits happen on a different session.
     """
-    user_ids = _load_user_ids()
+    label = job_name or getattr(per_user_fn, "__name__", "per_user_fn")
+
+    if user_ids is not None and _remaining_backoff_seconds() > 0:
+        logger.info(
+            "per-user job %s skipped because DB backoff is active for %.1fs",
+            label,
+            _remaining_backoff_seconds(),
+        )
+        set_current_user_id(None)
+        return
+
+    user_ids = list(user_ids) if user_ids is not None else _load_user_ids()
 
     for user_id in user_ids:
         set_current_user_id(user_id)
@@ -132,18 +174,68 @@ def for_each_user(per_user_fn: Callable) -> None:
             if user is None:
                 continue
             per_user_fn(db, user)
-        except Exception as e:
-            fn_name = getattr(per_user_fn, "__name__", "per_user_fn")
+        except OperationalError as e:
+            try:
+                db.rollback()
+            except Exception:  # noqa: BLE001 - session may already be broken
+                logger.debug(
+                    "per-user job rollback failed after OperationalError",
+                    exc_info=True,
+                )
+            _dispose_engine_pool()
+            _open_db_backoff()
             logger.error(
-                f"per-user job failed for user_id={user_id}: {e}",
+                "per-user job %s hit OperationalError for user_id=%s; "
+                "remaining iterations skipped and DB backoff opened: %s",
+                label,
+                user_id,
+                e,
                 exc_info=True,
             )
             notify_operator(
-                f"Per-user worker `{fn_name}` failed for "
+                f"Per-user worker `{label}` hit `OperationalError` while "
+                f"running for `{redacted_user_ref(user_id)}`. Remaining "
+                "iterations were skipped and DB backoff opened; check backend "
+                "logs.\n\n"
+                + format_alert_context(
+                    affected=f"scheduler.per-user / {label}",
+                    scope=(
+                        f"{redacted_user_ref(user_id)}; remaining users in "
+                        "this job were not attempted"
+                    ),
+                    retry=(
+                        "This user iteration and the remaining users for this "
+                        "job were skipped; the DB engine pool was disposed, a "
+                        f"{int(BOOTSTRAP_BACKOFF_SECONDS)}s DB backoff opened, "
+                        "and the scheduler retries on the next tick."
+                    ),
+                    user_action=(
+                        "No student action. Operator should triage the Lyra DB "
+                        "path if this repeats."
+                    ),
+                    data_integrity=(
+                        "Unknown whether this user iteration started a write; "
+                        "the DB session was rolled back, closed, and scope was "
+                        "cleared before stopping fanout."
+                    ),
+                ),
+                source="scheduler.per-user",
+                severity="error",
+                dedupe_key=f"{label}:OperationalError",
+                cooldown_seconds=30 * 60,
+            )
+            break
+        except Exception as e:
+            logger.error(
+                f"per-user job {label} failed for user_id={user_id}: {e}",
+                exc_info=True,
+            )
+            notify_operator(
+                f"Per-user worker `{label}` failed for "
                 f"`{redacted_user_ref(user_id)}` with `{type(e).__name__}`. "
                 "Check backend logs.\n\n"
                 + format_alert_context(
-                    affected=f"scheduler.per-user / {fn_name}",
+                    affected=f"scheduler.per-user / {label}",
                     scope=redacted_user_ref(user_id),
                     retry=(
                         "This user iteration was skipped; the scheduler "
@@ -161,7 +253,7 @@ def for_each_user(per_user_fn: Callable) -> None:
                 ),
                 source="scheduler.per-user",
                 severity="error",
-                dedupe_key=f"{fn_name}:{user_id}:{type(e).__name__}",
+                dedupe_key=f"{label}:{user_id}:{type(e).__name__}",
                 cooldown_seconds=30 * 60,
             )
         finally:

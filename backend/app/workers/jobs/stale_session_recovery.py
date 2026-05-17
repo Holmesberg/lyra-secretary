@@ -47,7 +47,7 @@ EARLY_STOP_FRACTION = 0.5  # mirrors stopwatch_manager early-stop gate
 
 
 def run_stale_session_recovery():
-    for_each_user(_run_for_one_user)
+    for_each_user(_run_for_one_user, job_name="stale_session_recovery")
 
 
 def _run_for_one_user(db, user: User):

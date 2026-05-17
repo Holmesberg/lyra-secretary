@@ -28,7 +28,7 @@ ABANDONED_STATES = (TaskState.EXECUTING, TaskState.PAUSED)
 
 
 def run_orphan_task_recovery():
-    for_each_user(_run_for_one_user)
+    for_each_user(_run_for_one_user, job_name="orphan_task_recovery")
 
 
 def _run_for_one_user(db, user: User):

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def retry_failed_syncs():
-    for_each_user(_run_for_one_user)
+    for_each_user(_run_for_one_user, job_name="notion_sync")
 
 
 def _run_for_one_user(db, user: User):

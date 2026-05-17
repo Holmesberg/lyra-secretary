@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_reconcile_deadline_outcomes():
-    for_each_user(_run_for_one_user)
+    for_each_user(_run_for_one_user, job_name="reconcile_deadline_outcomes")
 
 
 def _run_for_one_user(db, user: User):

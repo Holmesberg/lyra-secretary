@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def detect_and_skip_overdue_tasks():
-    for_each_user(_run_for_one_user)
+    for_each_user(_run_for_one_user, job_name="overdue_tasks")
 
 
 def _run_for_one_user(db, user: User):
