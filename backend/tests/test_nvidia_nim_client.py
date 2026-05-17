@@ -82,6 +82,24 @@ def test_chat_completion_allows_structured_output_to_disable_thinking(monkeypatc
     assert payload["chat_template_kwargs"] == {"thinking": False}
 
 
+def test_chat_completion_accepts_per_call_timeout(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(nvidia_nim_client.settings, "NVIDIA_NIM_API_KEY", "nvapi-test")
+    monkeypatch.setattr(nvidia_nim_client.settings, "NVIDIA_NIM_TIMEOUT_SECONDS", 120)
+    monkeypatch.setattr(
+        nvidia_nim_client.httpx,
+        "Client",
+        lambda timeout: _FakeClient(captured=captured, timeout=timeout),
+    )
+
+    nvidia_nim_client.chat_completion(
+        messages=[{"role": "user", "content": "json"}],
+        timeout_seconds=15,
+    )
+
+    assert captured["timeout"] == 15
+
+
 def test_llm_parser_disables_thinking_for_json_contract(monkeypatch):
     captured = {}
 
@@ -94,3 +112,6 @@ def test_llm_parser_disables_thinking_for_json_contract(monkeypatch):
     assert llm_parser._call_nim("Return JSON.") == {"priority": 3}
     assert captured["response_format"] == {"type": "json_object"}
     assert captured["chat_template_kwargs"] == {"thinking": False}
+    assert captured["timeout_seconds"] == (
+        llm_parser.settings.NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS
+    )

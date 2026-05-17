@@ -1,5 +1,5 @@
 """FastAPI dependencies."""
-from fastapi import Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.scoping import get_current_user_id, set_current_user_id
@@ -46,6 +46,77 @@ def get_db(request: Request):
         if scope_set_here:
             set_current_user_id(None)
         db.close()
+
+
+def require_current_user_scope() -> int:
+    """Return the resolved request user id or fail closed.
+
+    Bearer/JWT resolution happens in ``UserScopeMiddleware``. Test-only
+    ``X-User-Id`` may also have populated the ContextVar, but only when the
+    harness explicitly enabled it. This helper never invents an identity.
+    """
+    uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    return uid
+
+
+def authenticated_user_from_scope(db: Session) -> User:
+    """Resolve the current scoped user from the database."""
+    uid = require_current_user_scope()
+    user = db.query(User).filter(User.user_id == uid).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="user not found")
+    return user
+
+
+def operator_user_from_scope(db: Session, request: Request | None = None) -> User:
+    """Resolve the current user and require the trusted-alpha operator role."""
+    try:
+        user = authenticated_user_from_scope(db)
+    except HTTPException as exc:
+        if request is not None and exc.status_code == 401:
+            from app.services.security_audit import write_security_audit_event
+
+            write_security_audit_event(
+                db=db,
+                event_type="auth_required_denied",
+                surface=request.url.path,
+                status="denied",
+                request=request,
+                redacted_metadata={"reason": exc.detail},
+            )
+        raise
+
+    if not user.is_operator:
+        if request is not None:
+            from app.services.security_audit import write_security_audit_event
+
+            write_security_audit_event(
+                db=db,
+                actor_user_id=user.user_id,
+                user_id=user.user_id,
+                event_type="operator_access_denied",
+                surface=request.url.path,
+                status="denied",
+                request=request,
+                redacted_metadata={"role": "user"},
+            )
+        raise HTTPException(status_code=403, detail="operator only")
+    return user
+
+
+def require_authenticated_user(db: Session = Depends(get_db)) -> User:
+    """FastAPI dependency for endpoints that need a concrete user row."""
+    return authenticated_user_from_scope(db)
+
+
+def require_operator_user(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> User:
+    """FastAPI dependency for operator/admin/JARVIS/diagnostic endpoints."""
+    return operator_user_from_scope(db, request=request)
 
 
 def get_current_user(

@@ -15,6 +15,9 @@
 *Revised: May 9, 2026. Day 36 — horizon-policy auditability added: exposure gate policy is a hypothesis and must emit diagnostic effect logs so policy drift stays visible.*
 *Revised: May 15, 2026. Day 42 - rule-based probabilistic instrumentation doctrine added; AI role boundary, user-attention capital, missingness-as-signal, and archetype cold-start prior decay clarified.*
 *Revised: May 16, 2026. Day 43 - substrate-level kill criterion added; distinguishes product failure from falsification of the behavioral instrumentation hypothesis.*
+*Revised: May 17, 2026. Day 44 - academic execution substrate and Academic Pressure Map governance added; pressure-map validity threats, kill criteria, and hypothesis boundaries linked to the manifesto.*
+*Revised: May 17, 2026. Day 44 - operational alert classification added: provider outages/auth failures are scoped provider degradations; repeated scheduler/bootstrap/database failures are Lyra platform failures.*
+*Revised: May 17, 2026. Day 44 - trusted-alpha security governance linked: audit rows are governance-only, provider failures must not weaken auth or user scoping, and `docs/prodblueprint_security.md` is the operational security blueprint.*
 
 ---
 
@@ -33,6 +36,9 @@ governance sections first:
 - Manifesto Governance Rule
 - Rule-Based Instrumentation, Not AI Theater
 - Substrate Kill Criterion
+- Academic Execution Substrate Governance
+- Operational Alert Classification
+- Trusted-Alpha Security Governance
 - Exposure Ledger v0 doctrine
 - Cortex clean-data profiles
 - current architecture summaries in `archive/appstore/summary_of_app.md`
@@ -96,6 +102,15 @@ Current active governance sources:
   separates current implementation, doctrine, limitations, and future gates.
 - `docs/adaptive_scheduling_progressive_inference.md` - future-gated adaptive
   scheduling evidence contract.
+- `docs/academic_execution_substrate.md` - academic/provider execution
+  substrate doctrine; subordinate to this manifesto.
+- `docs/academic_pressure_map_contract.md` - Academic Pressure Map trust-state
+  and copy contract; subordinate to this manifesto.
+- `docs/notification_coverage.md` - operator notification boundary and
+  operational alert triage contract.
+- `docs/prodblueprint_security.md` - trusted-alpha operational security
+  blueprint for access control, auditability, data isolation, provider failure
+  handling, and public-beta upgrade gates.
 - `docs/deployment_architecture.md` - current public topology and operational
   deployment shape.
 - `docs/openclaw_orchestration_contract_v0.md` - operator-only OpenClaw
@@ -106,6 +121,51 @@ Current active governance sources:
 Historical, archived, or design-only documents may preserve older names,
 paths, version counts, or proposed mechanisms. They should not be treated as
 current authority unless an active governance source points to them explicitly.
+
+---
+
+## Operational Alert Classification
+*Added: May 17, 2026.*
+
+Provider outage/auth failures are not, by themselves, Lyra product failures.
+They are scoped provider degradations unless they become widespread or
+persistent. Alert copy must name the provider/subsystem, user scope, retry
+behavior, user action needed, and data-integrity risk.
+
+Scheduler, bootstrap, and database failures are Lyra platform failures. If
+they repeat, they should be triaged immediately because they can block multiple
+per-user workers before any provider-specific logic runs.
+
+No operational alert may imply stronger product or research failure than the
+evidence supports. Moodle, Google Calendar, Notion, Supabase, or other upstream
+failures must not be conflated with learning/completion truth,
+adaptive-scheduler validity, or clean-data admission.
+
+---
+
+## Trusted-Alpha Security Governance
+*Added: May 17, 2026.*
+
+Security governance is operational integrity, not research doctrine. The
+canonical trusted-alpha blueprint is `docs/prodblueprint_security.md`.
+
+Hard invariants:
+
+```text
+SecurityAuditEvent must never become behavioral telemetry.
+Provider failure must degrade functionality, not weaken authentication or user scoping.
+```
+
+Security audit rows exist for authentication, authorization, provider
+connection, account-governance, cross-user-block, secret/topology, and incident
+review. They must not be consumed by Cortex, clean-data profiles, adaptive
+scheduling, productivity inference, execution modeling, archetype inference,
+or user behavior analysis.
+
+Access-control and audit hardening must preserve the existing research
+boundaries: stronger security may prevent bad data from entering the system,
+but audit rows themselves are not evidence of learning, productivity,
+attention, completion, or execution quality.
 
 ---
 
@@ -213,6 +273,121 @@ Non-falsifiers:
 
 These can kill mechanisms, surfaces, or product strategy. They do not by
 themselves kill the deeper instrumentation substrate.
+
+---
+
+## Academic Execution Substrate Governance
+*Added: May 17, 2026. Day 44.*
+
+The academic-provider direction is governed by the same product/research
+boundary as the rest of LyraOS:
+
+```text
+External academic systems provide structure.
+Lyra turns structure into pressure and accepted intention.
+Only accepted intention plus observed execution can support recalibration.
+```
+
+The canonical subordinate documents are:
+
+- `docs/academic_execution_substrate.md`
+- `docs/academic_pressure_map_contract.md`
+
+These documents may define product copy, provider-adapter detail, and Academic
+Pressure Map response shape, but they do not supersede this manifesto's
+research doctrine.
+
+### Academic Pressure Map Claim Boundary
+
+Academic Pressure Map may claim:
+
+- visible academic obligations exist,
+- visible academic load appears compressed,
+- coverage or source trust needs confirmation,
+- a plan candidate can be drafted from explicit assumptions,
+- later accepted study blocks may produce execution evidence.
+
+Academic Pressure Map must not claim:
+
+- the student learned the material,
+- passive academic activity proves completion,
+- imported provider structure is academic truth,
+- Lyra knows exact study hours,
+- the user is behind, lazy, or deficient,
+- a scheduled block passing means execution occurred.
+
+### Academic Validity Threat Candidates
+
+Academic pressure features introduce new or expanded validity threats:
+
+| Candidate | Threat | Required protection |
+| --- | --- | --- |
+| Academic VT-A | provider structure is mistaken for learning/completion truth | provider events remain obligations/resources until outcome evidence exists |
+| Academic VT-B | coverage confidence is inflated by weak peer reports | 3-5 student confirmations help structure only; moderator/instructor source outranks peer reports |
+| Academic VT-C | pressure-map copy changes planning behavior before baseline observation | pressure-map and plan-preview suggestions are exposure surfaces |
+| Academic VT-D | calendar visibility is mistaken for true free time | use known busy time / visible load language unless coverage is complete |
+| Academic VT-E | passive resource activity becomes clean calibration | passive activity is weak evidence unless the user accepted or confirmed intention |
+| Academic VT-F | provider semantics leak into Cortex, clean-data profiles, or adaptive scheduling | provider adapters normalize into provider-blind primitives before inference |
+
+Any future academic implementation that touches calibration, Cortex, clean-data
+profiles, Exposure Ledger, adaptive scheduling, or provider-derived outcomes
+must either map to these VT candidates or add a new pre-registered VT here.
+
+### Academic Pressure Map Hypotheses
+
+Academic Pressure Map is a product-research hypothesis, not a validated
+behavioral finding.
+
+Current hypothesis:
+
+```text
+A visible pressure map over academic obligations, uncertainty, and known
+schedule load creates enough clarity and agency for students to accept more
+realistic study intentions.
+```
+
+Possible strengthening evidence:
+
+- 3-5 users can explain what is due, large, uncertain, and compressed within
+  10 seconds of opening Pulse.
+- Users correct coverage assumptions before plan generation.
+- Accepted academic blocks produce measurable execution/outcome traces.
+- Recalibrated ranges become more accurate than cold structure priors.
+
+Possible falsifiers for the surface:
+
+- users cannot explain their academic pressure after seeing the map,
+- trust-state copy confuses users about what Lyra knows,
+- pressure-map suggestions create panic, shame, or disengagement,
+- users do not accept plan candidates even after assumption correction,
+- accepted plans do not produce usable execution/outcome traces.
+
+These falsify or kill the Academic Pressure Map surface. They do not by
+themselves falsify the substrate-level instrumentation claim above.
+
+### Academic Kill Criteria
+
+Before Academic Pressure Map graduates beyond prototype, freeze a specific
+review window and minimum sample. Until then, use these provisional gates:
+
+1. **Comprehension gate:** if fewer than 3 of the first 5 test users can state
+   what is due, what is large, what is uncertain, and why the week is
+   compressed within 10 seconds, the pressure-map copy/layout must be revised.
+2. **Trust-state gate:** if users confuse `verified_reachable` with
+   `verified_exact`, the trust-state copy contract blocks plan-preview UI until
+   fixed.
+3. **Agency gate:** if pressure-map copy produces reported panic/shame rather
+   than clarity, remove or soften the offending surface before expanding.
+4. **Calibration gate:** academic recalibration remains disabled for any row
+   without accepted intention plus observed execution or explicit outcome
+   confirmation.
+5. **Provider-leakage gate:** any provider-name branch in Cortex, clean-data
+   admission, exposure interpretation, or adaptive scheduling blocks merge
+   until normalized behind provider-blind primitives.
+
+Moderator, instructor, or source-of-truth answers may cross the coverage
+threshold immediately for structure. They do not authorize stronger claims
+about learning, understanding, completion, or personal calibration.
 
 ---
 

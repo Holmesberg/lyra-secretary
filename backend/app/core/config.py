@@ -73,11 +73,14 @@ class Settings(BaseSettings):
     NVIDIA_NIM_BASE_URL: str = Field(
         "https://integrate.api.nvidia.com/v1", env="NVIDIA_NIM_BASE_URL"
     )
-    # 30s default — NIM free-tier 70B+ models can take 3-15s for a full
-    # response with tool calls. Match the Ollama 10s policy of "fast
-    # enough that one stuck request doesn't pin the worker thread"
-    # but with more headroom for the larger models.
+    # JARVIS gets more headroom because it is foreground, operator-only, and
+    # can stream longer reasoning/tool turns. Background enrichment must use
+    # NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS instead so provider slowness
+    # degrades auxiliary parsing rather than pinning the scheduler.
     NVIDIA_NIM_TIMEOUT_SECONDS: int = Field(120, env="NVIDIA_NIM_TIMEOUT_SECONDS")
+    NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS: int = Field(
+        15, env="NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS"
+    )
     # Kimi K2.6 supports NVIDIA's chat_template_kwargs={"thinking": true}
     # switch. Keep it env-controlled because structured JSON parsing must
     # disable it per call.

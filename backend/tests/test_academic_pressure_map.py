@@ -89,6 +89,11 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     assert item["estimate"]["high_minutes"] % 30 == 0
     assert item["trust_state"] == "verified_reachable"
     assert "coverage correctness" in " ".join(item["warnings"])
+    assert "pressure_summary" in data
+    assert data["coverage_questions"][0]["trust_state"] == "verified_reachable"
+    assert "3-5 student confirmations" in data["coverage_questions"][0]["reason"]
+    assert data["capacity_context"]["google_calendar_connected"] is False
+    assert "not true free time" in data["capacity_context"]["caveat"]
 
 
 def test_pressure_map_marks_overdue_without_inferring_completion(db):
@@ -102,6 +107,8 @@ def test_pressure_map_marks_overdue_without_inferring_completion(db):
     assert data["items"][0]["pressure_level"] == "overdue"
     assert "do not infer completion" in " ".join(data["items"][0]["warnings"])
     assert "No completion is inferred" in " ".join(data["warnings"])
+    assert any(point["kind"] == "overdue" for point in data["compression_points"])
+    assert any(option["action"] == "create_plan" for option in data["recovery_options"])
 
 
 def test_pressure_map_includes_planned_task_load_but_not_deleted_or_executed(db):
@@ -146,6 +153,8 @@ def test_pressure_map_empty_state_has_low_authority_methodology(db):
     data = resp.json()
     assert data["items"] == []
     assert "No active academic deadlines" in data["headline"]
+    assert data["pressure_summary"] == "No visible academic deadline pressure in this window."
+    assert data["recovery_options"][0]["action"] == "clear_or_ignore"
     assert any("ranges instead of exact-hour claims" in line for line in data["methodology"])
 
 
@@ -159,4 +168,20 @@ def test_pressure_map_uses_agency_not_panic_copy(db):
     data = resp.json()
     assert "recovery option" in data["headline"]
     assert "overloaded" not in data["headline"].lower()
+    assert "overloaded" not in data["pressure_summary"].lower()
     assert any("clarity and agency" in warning for warning in data["warnings"])
+    assert any("trust-state copy" in line for line in data["methodology"])
+    assert any("research integrity" in line for line in data["methodology"])
+
+
+def test_pressure_map_names_deadline_clusters_and_biggest_split_option(db):
+    user = _user(db, "cluster-pressure@example.com")
+    _deadline(db, user.user_id, "Algorithms Quiz", days=2, external_source="moodle_ics")
+    _deadline(db, user.user_id, "Systems Project", days=3, external_source="moodle_ics")
+
+    resp = client.get("/v1/academic/pressure-map", headers=auth_headers(user.user_id))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert any(point["kind"] == "cluster" for point in data["compression_points"])
+    assert any(option["action"] == "split_into_blocks" for option in data["recovery_options"])

@@ -16,7 +16,14 @@ from datetime import datetime, timedelta
 import pytest
 from sqlalchemy import text
 
-from app.db.models import Task, TaskState, User
+from app.db.models import (
+    Deadline,
+    ExposureDecisionEvent,
+    SecurityAuditEvent,
+    Task,
+    TaskState,
+    User,
+)
 from app.db.scoping import set_current_user_id
 from tests.conftest import TestingSession
 
@@ -54,8 +61,13 @@ def adv_users(db):
     set_current_user_id(None)
     wipe = TestingSession()
     try:
+        wipe.execute(text("DELETE FROM security_audit_event"))
+        wipe.execute(text("DELETE FROM exposure_ack_event"))
+        wipe.execute(text("DELETE FROM exposure_decision_event"))
         wipe.execute(text("DELETE FROM stopwatch_session"))
         wipe.execute(text("DELETE FROM task"))
+        wipe.execute(text("DELETE FROM deadline_completion_event"))
+        wipe.execute(text("DELETE FROM deadline"))
         wipe.execute(text("DELETE FROM user"))
         wipe.commit()
     finally:
@@ -571,5 +583,141 @@ def test_reflection_view_viewed_cross_tenant_blocked(adv_users, client):
         assert row is not None
         assert row.user_id == 98
         assert row.dismissed_at is None  # attacker didn't stamp
+    finally:
+        check.close()
+
+
+def test_academic_pressure_map_scoped_to_requesting_user(adv_users, client):
+    now = datetime.utcnow()
+    s = TestingSession()
+    try:
+        s.add_all(
+            [
+                Deadline(
+                    user_id=98,
+                    title="Eve private quiz",
+                    due_at_utc=now + timedelta(days=2),
+                    state="planned",
+                    external_source="moodle_ics",
+                    external_id="eve-quiz",
+                    imported_at=now,
+                ),
+                Deadline(
+                    user_id=99,
+                    title="Mallory hidden exam",
+                    due_at_utc=now + timedelta(days=2),
+                    state="planned",
+                    external_source="moodle_ics",
+                    external_id="mallory-exam",
+                    imported_at=now,
+                ),
+            ]
+        )
+        s.commit()
+    finally:
+        s.close()
+
+    r98 = client.get("/v1/academic/pressure-map?horizon_days=14", headers=_h(98))
+    assert r98.status_code == 200, r98.text
+    body = r98.text
+    assert "Eve private quiz" in body
+    assert "Mallory hidden exam" not in body
+
+
+def test_moodle_integration_status_is_scoped_to_requesting_user(adv_users, client):
+    set_current_user_id(None)
+    s = TestingSession()
+    try:
+        user98 = s.query(User).filter(User.user_id == 98).one()
+        user99 = s.query(User).filter(User.user_id == 99).one()
+        user98.moodle_ics_url = "https://moodle.example.test/calendar?authtoken=eve"
+        user98.moodle_ws_token = "fernet:eve-token"
+        user99.moodle_ics_url = None
+        user99.moodle_ws_token = None
+        s.commit()
+    finally:
+        s.close()
+
+    r98 = client.get("/v1/integrations", headers=_h(98))
+    r99 = client.get("/v1/integrations", headers=_h(99))
+    assert r98.status_code == 200 and r99.status_code == 200
+    moodle98 = next(i for i in r98.json()["integrations"] if i["id"] == "moodle")
+    moodle99 = next(i for i in r99.json()["integrations"] if i["id"] == "moodle")
+    assert moodle98["status"] == "connected"
+    assert moodle98["ws_connected"] is True
+    assert moodle99["status"] == "disconnected"
+    assert moodle99["ws_connected"] is False
+
+
+def test_exposure_ack_cross_user_blocked_and_audited(adv_users, client):
+    set_current_user_id(None)
+    s = TestingSession()
+    try:
+        decision = ExposureDecisionEvent(
+            exposure_id="eve-exposure-1",
+            user_id=98,
+            task_id=None,
+            eligible_at=datetime.utcnow(),
+            decision_status="rendered",
+            initiative="system",
+            exposure_category="reflection",
+            content_template_id="test",
+            trigger_source="test",
+        )
+        s.add(decision)
+        s.commit()
+    finally:
+        s.close()
+
+    r = client.post(
+        "/v1/exposures/eve-exposure-1/ack/render",
+        json={"client_event_id": "mallory-attempt"},
+        headers=_h(99),
+    )
+    # The scoping hook hides out-of-scope exposures as 404 while still
+    # recording a governance audit event for the denied id lookup.
+    assert r.status_code == 404, r.text
+
+    set_current_user_id(None)
+    check = TestingSession()
+    try:
+        event = (
+            check.query(SecurityAuditEvent)
+            .filter(SecurityAuditEvent.event_type == "cross_user_access_blocked")
+            .first()
+        )
+        assert event is not None
+        assert event.actor_user_id == 99
+        assert event.target_id == "eve-exposure-1"
+    finally:
+        check.close()
+
+
+def test_export_and_delete_account_do_not_cross_user_boundaries(adv_users, client):
+    r98 = _create(client, 98, "eve export only", 210)
+    r99 = _create(client, 99, "mallory export only", 215)
+    assert r98.status_code == 200 and r99.status_code == 200
+
+    export = client.get("/v1/users/me/export", headers=_h(98))
+    assert export.status_code == 200, export.text
+    exported_titles = [row["title"] for row in export.json()["tasks"]]
+    assert "eve export only" in exported_titles
+    assert "mallory export only" not in exported_titles
+
+    delete = client.request(
+        "DELETE",
+        "/v1/users/me",
+        json={"confirm_email": "mallory@x", "retain_for_research": False},
+        headers=_h(99),
+    )
+    assert delete.status_code == 200, delete.text
+
+    set_current_user_id(None)
+    check = TestingSession()
+    try:
+        assert check.query(User).filter(User.user_id == 98).first() is not None
+        assert check.query(Task).filter(Task.user_id == 98).count() == 1
+        assert check.query(User).filter(User.user_id == 99).first() is None
+        assert check.query(Task).filter(Task.user_id == 99).count() == 0
     finally:
         check.close()

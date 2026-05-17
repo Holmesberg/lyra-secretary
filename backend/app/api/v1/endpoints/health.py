@@ -20,7 +20,10 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db, operator_user_from_scope
 
 from app.utils.time_utils import now_utc
 
@@ -43,7 +46,9 @@ def topology_check(request: Request) -> dict[str, Any]:
 
 
 @router.get("/health/env-invariants")
-def env_invariants() -> dict[str, Any]:
+def env_invariants(
+    request: Request, db: Session = Depends(get_db)
+) -> dict[str, Any]:
     """Probe Lyra's environment assumptions and report any drift.
 
     Each invariant returns ok=True/False with a brief detail string.
@@ -55,6 +60,7 @@ def env_invariants() -> dict[str, Any]:
       - a fix patches the symptom rather than the assumption
       - the operator's `feedback_*` memory codifies a convention
     """
+    operator_user_from_scope(db, request=request)
     results: dict[str, dict[str, Any]] = {}
 
     # --- Invariant 1: now_utc() returns naive datetime

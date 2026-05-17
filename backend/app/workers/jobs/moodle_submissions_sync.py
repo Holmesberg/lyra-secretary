@@ -16,7 +16,11 @@ import os
 
 from app.db.models import User
 from app.services import moodle_submissions_sync
-from app.services.operator_notifier import notify_operator
+from app.services.operator_notifier import (
+    format_alert_context,
+    notify_operator,
+    redacted_user_ref,
+)
 from app.workers.jobs._per_user import for_each_user
 
 logger = logging.getLogger(__name__)
@@ -27,29 +31,41 @@ def run_moodle_submissions_sync() -> None:
     for_each_user(_run_for_one_user)
 
 
-def _operator_error_message(error: str) -> tuple[str, str]:
+def _operator_error_message(error: str) -> tuple[str, str, str, str, str]:
     if error == "auth":
         return (
             "Moodle Web Services token rejected - likely rotated. "
             "Reconnect from Settings -> Moodle.",
-            "error",
+            "warn",
+            "Will retry on future cycles, but success requires reconnect.",
+            "Yes - reconnect Moodle Web Services in Settings.",
+            "No deadline completion is inferred while auth is rejected.",
         )
     if error in {"token_decrypt_failed", "no_token"}:
         return (
             f"Moodle Web Services cannot sync because `{error}`. "
             "Reconnect Moodle Web Services in Settings.",
-            "error",
+            "warn",
+            "Will retry on future cycles, but success requires reconnect.",
+            "Yes - reconnect Moodle Web Services in Settings.",
+            "No submission/completion state is changed from this failure.",
         )
     if error == "no_moodle_userid":
         return (
             "Moodle Web Services could not resolve the Moodle user id. "
             "Reconnect Moodle Web Services in Settings.",
-            "error",
+            "warn",
+            "Will retry on future cycles, but success likely requires reconnect.",
+            "Yes - reconnect Moodle Web Services in Settings.",
+            "No submission/completion state is changed from this failure.",
         )
     return (
         f"Moodle Web Services sync failed with `{error}`. Lyra kept the "
         "connection and will retry on the next cycle.",
         "warn",
+        "Lyra kept the connection and will retry on the next cycle.",
+        "No user action unless the provider failure persists.",
+        "No submission/completion state is changed from this failure.",
     )
 
 
@@ -70,9 +86,22 @@ def _run_for_one_user(db, user: User) -> None:
         if user.is_operator:
             notify_operator(
                 "Moodle Web Services has a token but no base URL. "
-                "Reconnect Moodle in Settings.",
+                "Reconnect Moodle in Settings.\n\n"
+                + format_alert_context(
+                    affected="Moodle Web Services / submission sync",
+                    scope=redacted_user_ref(user.user_id),
+                    retry=(
+                        "Will retry on future cycles, but success requires "
+                        "a base URL from reconnect."
+                    ),
+                    user_action="Yes - reconnect Moodle in Settings.",
+                    data_integrity=(
+                        "No submission/completion state is changed from "
+                        "this failure."
+                    ),
+                ),
                 source="scheduler.moodle-ws",
-                severity="error",
+                severity="warn",
                 dedupe_key=f"moodle-ws-no-base-url:{user.user_id}",
                 cooldown_seconds=6 * 60 * 60,
             )
@@ -88,9 +117,19 @@ def _run_for_one_user(db, user: User) -> None:
         # Surface both auth and non-auth WS failures; payload contains no
         # Moodle token, URL, course title, or assignment title.
         if user.is_operator:
-            message, severity = _operator_error_message(result.error)
+            message, severity, retry, user_action, data_integrity = (
+                _operator_error_message(result.error)
+            )
             notify_operator(
-                message,
+                message
+                + "\n\n"
+                + format_alert_context(
+                    affected="Moodle Web Services / submission sync",
+                    scope=redacted_user_ref(user.user_id),
+                    retry=retry,
+                    user_action=user_action,
+                    data_integrity=data_integrity,
+                ),
                 source="scheduler.moodle-ws",
                 severity=severity,
                 dedupe_key=f"moodle-ws-error:{user.user_id}:{result.error}",

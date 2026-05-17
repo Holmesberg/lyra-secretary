@@ -77,6 +77,8 @@ def test_for_each_user_notifies_on_user_failure(db, monkeypatch):
     assert len(calls) == 1
     assert calls[0][1]["source"] == "scheduler.per-user"
     assert calls[0][1]["severity"] == "error"
+    assert "Affected provider/subsystem:" in calls[0][0][0]
+    assert "user_id `" not in calls[0][0][0]
     assert get_current_user_id() is None
     set_current_user_id(None)
 
@@ -200,6 +202,8 @@ def test_for_each_user_notifies_and_skips_after_bootstrap_operational_error(
     assert notifications[0][1]["source"] == "scheduler.per-user"
     assert notifications[0][1]["severity"] == "error"
     assert notifications[0][1]["dedupe_key"] == "bootstrap-user-ids:OperationalError"
+    assert "Affected provider/subsystem:" in notifications[0][0][0]
+    assert "Data integrity risk:" in notifications[0][0][0]
     assert fake_engine.dispose_calls == _per_user.BOOTSTRAP_MAX_ATTEMPTS
     assert sleeps == [_per_user.BOOTSTRAP_RETRY_DELAY_SECONDS]
     assert get_current_user_id() is None

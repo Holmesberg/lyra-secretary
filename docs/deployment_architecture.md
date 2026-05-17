@@ -4,6 +4,10 @@
 **Shipped:** April 16, 2026 (P0 sprint ahead of April 18 trusted-user launch)
 **Status:** Live. First external-domain deployment.
 
+Security companion: `docs/prodblueprint_security.md` is the trusted-alpha
+security blueprint for access control, audit logs, data isolation, provider
+failure handling, and public-beta upgrade gates.
+
 ## Current stack
 
 **Current runtime note (May 15, 2026):** the frontend is expected to run as a

@@ -1484,3 +1484,40 @@ class JarvisInvocation(Base):
     __table_args__ = (
         Index("ix_jarvis_invocation_user_invoked_at", "user_id", "invoked_at"),
     )
+
+
+class SecurityAuditEvent(Base):
+    """Append-only security/governance audit event.
+
+    This table is deliberately not behavioral telemetry. Rows here exist for
+    authentication, access-control, provider-connection, account-governance,
+    and topology/secret incident review only. They must never be consumed by
+    Cortex, clean-data profiles, adaptive scheduling, productivity inference,
+    or user behavior analysis.
+    """
+
+    __tablename__ = "security_audit_event"
+
+    event_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    actor_user_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    surface: Mapped[str] = mapped_column(String(160), nullable=False)
+    target_type: Mapped[Optional[str]] = mapped_column(String(80))
+    target_id: Mapped[Optional[str]] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    ip_hash: Mapped[Optional[str]] = mapped_column(String(64))
+    user_agent_hash: Mapped[Optional[str]] = mapped_column(String(64))
+    redacted_metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, index=True
+    )
+
+    __table_args__ = (
+        Index("idx_security_audit_event_created", "created_at"),
+        Index("idx_security_audit_event_type_created", "event_type", "created_at"),
+        Index("idx_security_audit_actor_created", "actor_user_id", "created_at"),
+        Index("idx_security_audit_user_created", "user_id", "created_at"),
+    )

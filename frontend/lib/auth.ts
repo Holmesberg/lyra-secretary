@@ -19,10 +19,11 @@
  */
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { SignJWT } from "jose";
+import { decodeJwt, SignJWT } from "jose";
 
 const DEFAULT_BACKEND_JWT_SECRET = "dev-only-replace-me-with-32-byte-urlsafe-secret";
 const MIN_BACKEND_JWT_SECRET_LENGTH = 32;
+const BACKEND_TOKEN_REFRESH_WINDOW_SECONDS = 10 * 60;
 
 function getBackendJwtSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET || "";
@@ -48,6 +49,20 @@ async function mintBackendToken(payload: { sub: string; email: string }) {
     .sign(key);
 }
 
+function backendTokenNeedsRefresh(token: unknown): boolean {
+  if (typeof token !== "string" || !token) {
+    return true;
+  }
+  try {
+    const decoded = decodeJwt(token);
+    const exp = typeof decoded.exp === "number" ? decoded.exp : 0;
+    const now = Math.floor(Date.now() / 1000);
+    return exp - now <= BACKEND_TOKEN_REFRESH_WINDOW_SECONDS;
+  } catch {
+    return true;
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
@@ -70,9 +85,15 @@ export const authOptions: NextAuthOptions = {
       if (account && profile) {
         token.email = profile.email;
         token.sub = (profile as any).sub || token.sub;
+      }
+      if (
+        token.sub &&
+        token.email &&
+        backendTokenNeedsRefresh(token.backendToken)
+      ) {
         token.backendToken = await mintBackendToken({
           sub: token.sub as string,
-          email: profile.email as string,
+          email: token.email as string,
         });
       }
       return token;

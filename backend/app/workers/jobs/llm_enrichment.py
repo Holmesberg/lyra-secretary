@@ -5,21 +5,20 @@ Pulls tasks where `llm_parse_status='pending'` and calls
 the operator-locked guardrail #1: this is enrichment, not critical-path.
 POST /v1/create has already returned by the time this runs.
 
-Cadence: every 5 seconds. Per cycle, claims up to 3 tasks at a time.
+Cadence: every 60 seconds. Per cycle, claims 1 task at a time.
 Cross-tenant isolation via `set_current_user_id(None)` (this is a
 system-level operation; queries explicitly scope by task.user_id).
 
 Cold cadence: when consecutive enrichments mark `unavailable` (Ollama
-down), the next cycle still runs but logs less noisily. APScheduler's
-fixed cadence is fine — the worker self-throttles at the per-task call
-(30-60s timeout) so a down Ollama doesn't burn CPU.
+down), the next cycle still runs but logs less noisily. Hosted NIM uses
+a short enrichment timeout and Ollama is capped, so provider slowness
+degrades auxiliary parsing without creating scheduler max_instances noise.
 
 Idempotency: `enrich_task_via_llm` is idempotent. If the same task is
 claimed twice (rare race), the second call sees the terminal status
 and no-ops.
 """
 import logging
-from typing import Optional
 
 from sqlalchemy import asc
 
@@ -27,16 +26,15 @@ from app.db.models import Task
 from app.db.scoping import set_current_user_id
 from app.db.session import SessionLocal
 from app.services.llm_parser import enrich_task_via_llm
-from app.services.operator_notifier import notify_operator
+from app.services.operator_notifier import format_alert_context, notify_operator
 from app.utils.time_utils import now_utc
 
 logger = logging.getLogger(__name__)
 
 
-# Per-cycle cap. Each task takes 5-60s on the LLM (depending on GPU
-# availability), so 3-per-cycle at 5s cadence keeps the queue draining
-# without blocking long when Ollama is fast.
-_MAX_TASKS_PER_CYCLE = 3
+# Per-cycle cap. LLM enrichment is auxiliary and must not pin scheduler
+# capacity. Keep one task per tick; backlog is safer than operational noise.
+_MAX_TASKS_PER_CYCLE = 1
 
 
 def run_llm_enrichment() -> None:
@@ -52,6 +50,7 @@ def run_llm_enrichment() -> None:
         # Debounce: skip tasks created in the last 1 second so the create
         # transaction has fully committed before we read the row.
         from datetime import timedelta
+
         cutoff = now_utc() - timedelta(seconds=1)
         pending = (
             db.query(Task.task_id)
@@ -75,7 +74,7 @@ def run_llm_enrichment() -> None:
                 logger.debug(
                     "llm_enrichment: task=%s status=%s", task_id, status
                 )
-            except Exception as e:  # noqa: BLE001 — last-resort catch
+            except Exception as e:  # noqa: BLE001 - last-resort catch
                 unexpected_failures += 1
                 logger.exception(
                     "llm_enrichment: unexpected failure for task=%s: %s",
@@ -89,7 +88,11 @@ def run_llm_enrichment() -> None:
                         task.llm_parse_status = "failed"
                         db.commit()
                 except Exception as e:
-                    logger.warning("llm_enrichment: status flip to 'failed' rolled back (non-blocking): %s", e)
+                    logger.warning(
+                        "llm_enrichment: status flip to 'failed' rolled back "
+                        "(non-blocking): %s",
+                        e,
+                    )
                     db.rollback()
         problem_count = (
             status_counts.get("failed", 0)
@@ -109,7 +112,24 @@ def run_llm_enrichment() -> None:
                 "LLM enrichment degraded: "
                 f"failed={status_counts.get('failed', 0) + unexpected_failures}, "
                 f"unavailable={status_counts.get('unavailable', 0)}, "
-                f"pending_backlog={remaining_pending}.",
+                f"pending_backlog={remaining_pending}.\n\n"
+                + format_alert_context(
+                    affected="LLM enrichment / async parser",
+                    scope=(
+                        f"{len(pending)} claimed task(s), "
+                        f"{remaining_pending} pending backlog item(s)"
+                    ),
+                    retry=(
+                        "Failed rows are marked terminal where possible; "
+                        "unavailable rows remain inspectable and future "
+                        "pending rows retry on later cycles."
+                    ),
+                    user_action="No student action.",
+                    data_integrity=(
+                        "Core task rows remain; LLM enrichment is auxiliary "
+                        "and must not own scheduling truth."
+                    ),
+                ),
                 source="scheduler.llm-enrichment",
                 severity="warn",
                 dedupe_key="llm-enrichment-degraded",

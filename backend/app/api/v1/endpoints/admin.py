@@ -18,11 +18,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, operator_user_from_scope
 from app.db.models import (
     ExternalEventOutcome,
     PauseEvent,
@@ -38,20 +38,14 @@ from app.utils.time_utils import now_utc
 router = APIRouter()
 
 
-def _require_operator(db: Session) -> User:
-    uid = get_current_user_id()
-    if uid is None:
-        raise HTTPException(status_code=401, detail="not authenticated")
-    user = db.query(User).filter(User.user_id == uid).first()
-    if user is None:
-        raise HTTPException(status_code=401, detail="user not found")
-    if not user.is_operator:
-        raise HTTPException(status_code=403, detail="operator only")
-    return user
+def _require_operator(db: Session, request: Request) -> User:
+    return operator_user_from_scope(db, request=request)
 
 
 @router.get("/admin/dashboard")
-def operator_dashboard(db: Session = Depends(get_db)) -> dict[str, Any]:
+def operator_dashboard(
+    request: Request, db: Session = Depends(get_db)
+) -> dict[str, Any]:
     """Per-user retention + funnel + VT-progress snapshot.
 
     Operator-only. Returns:
@@ -65,7 +59,7 @@ def operator_dashboard(db: Session = Depends(get_db)) -> dict[str, Any]:
         preparation, VT-23 external-source attendance, IMP-3 GCal
         retention lift)
     """
-    _require_operator(db)
+    _require_operator(db, request)
 
     # Disable user scoping — we're querying across all users.
     original_uid = get_current_user_id()
@@ -320,7 +314,9 @@ def _count_users_with_pause_history(db: Session, days: int) -> int:
 
 
 @router.get("/admin/alpha_funnel")
-def alpha_funnel(db: Session = Depends(get_db)) -> dict[str, Any]:
+def alpha_funnel(
+    request: Request, db: Session = Depends(get_db)
+) -> dict[str, Any]:
     """Alpha North Star + funnel snapshot.
 
     The North Star (operator-set 2026-04-28): % of new users who create a
@@ -365,7 +361,7 @@ def alpha_funnel(db: Session = Depends(get_db)) -> dict[str, Any]:
         ],
       }
     """
-    _require_operator(db)
+    _require_operator(db, request)
     original_uid = get_current_user_id()
     set_current_user_id(None)
     try:

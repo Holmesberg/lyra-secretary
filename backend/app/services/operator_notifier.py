@@ -32,6 +32,7 @@ documented in docs/notification_coverage.md.
 from __future__ import annotations
 
 import logging
+import hashlib
 from time import monotonic
 from typing import Literal
 
@@ -49,6 +50,34 @@ _PREFIX = {
 }
 
 _LAST_SENT_AT: dict[str, float] = {}
+
+
+def redacted_user_ref(user_id: int | str | None) -> str:
+    """Return a stable non-PII user reference for operator alerts."""
+    if user_id is None:
+        return "user#unknown"
+    digest = hashlib.sha256(f"lyra-alert-user:{user_id}".encode()).hexdigest()
+    return f"user#{digest[:10]}"
+
+
+def format_alert_context(
+    *,
+    affected: str,
+    scope: str,
+    retry: str,
+    user_action: str,
+    data_integrity: str,
+) -> str:
+    """Format the mandatory incident-triage fields for operator alerts."""
+    return "\n".join(
+        [
+            f"Affected provider/subsystem: {affected}",
+            f"Affected user scope: {scope}",
+            f"Retry behavior: {retry}",
+            f"User action needed: {user_action}",
+            f"Data integrity risk: {data_integrity}",
+        ]
+    )
 
 
 def notify_operator(

@@ -11,11 +11,11 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, operator_user_from_scope
 from app.db.models import Feedback, User
 from app.db.scoping import get_current_user_id, set_current_user_id
 from app.schemas.feedback import (
@@ -32,16 +32,8 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _require_operator(db: Session) -> User:
-    uid = get_current_user_id()
-    if uid is None:
-        raise HTTPException(status_code=401, detail="not authenticated")
-    user = db.query(User).filter(User.user_id == uid).first()
-    if user is None:
-        raise HTTPException(status_code=401, detail="user not found")
-    if not user.is_operator:
-        raise HTTPException(status_code=403, detail="operator only")
-    return user
+def _require_operator(db: Session, request: Request) -> User:
+    return operator_user_from_scope(db, request=request)
 
 
 @router.post("/feedback", response_model=FeedbackSubmitResponse)
@@ -95,13 +87,14 @@ def submit_feedback(
 
 @router.get("/admin/feedback", response_model=FeedbackListResponse)
 def list_feedback(
+    request: Request,
     status: Optional[str] = Query(None, description="unread | read | acted_on | dismissed | all"),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> FeedbackListResponse:
     """Operator-only triage queue. Default returns last 50 ordered by
     most recent first, all statuses. Filter via ?status=unread."""
-    _require_operator(db)
+    _require_operator(db, request)
     original_uid = get_current_user_id()
     set_current_user_id(None)
     try:
@@ -148,6 +141,7 @@ def list_feedback(
 def resolve_feedback(
     feedback_id: str,
     request: FeedbackResolveRequest,
+    fastapi_request: Request,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Mark a feedback row read / acted_on / dismissed.
@@ -156,7 +150,7 @@ def resolve_feedback(
     otherwise be filtered to operator's own rows) so the operator can
     triage rows submitted by any user.
     """
-    _require_operator(db)
+    _require_operator(db, fastapi_request)
     original_uid = get_current_user_id()
     set_current_user_id(None)
     try:

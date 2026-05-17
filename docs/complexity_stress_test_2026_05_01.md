@@ -122,7 +122,7 @@ The 15 without code-side existence (VT-1 through VT-13 minus 12, plus 19, 20, 26
 | 8 | reconcile_responses | 5 min | pause_prediction_log rows stay open | reconcile on next /tasks/query | LAZY — eliminate |
 | 9 | reconcile_deadline_outcomes | 30 min | task_deadline_outcome rows missing | reconcile on /analytics/deadline-shape open | LAZY — eliminate (the analytics endpoint already runs the same query) |
 | 10 | sweep_missed_deadlines | 1 hour | active deadlines past due stay active | check on /deadlines open | LAZY — compute on read |
-| 11 | llm_enrichment | **5 SECONDS** | New tasks don't get LLM enrichment | already async via queue | KEEP cadence; add max_instances guard (already present) |
+| 11 | llm_enrichment | **60 SECONDS** | New tasks wait longer for auxiliary enrichment | already async via queue | Superseded 2026-05-17 after max-instances alert; keep `max_instances=1` and cap one task per tick. |
 | 12 | resume_prediction | 2 min | Resume banners go silent | none — measurement substrate but see #4 in kill list | **DELETE — Kill list #4** |
 | 13 | moodle_ics_sync | 6 hours | New Moodle deadlines don't import | n/a (external service) | KEEP |
 | 14 | moodle_submissions_sync | 6 hours | Submissions stay marked overdue in Lyra | n/a (external service) | **DELETE — Kill list #3** |

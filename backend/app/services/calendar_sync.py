@@ -37,7 +37,11 @@ from googleapiclient.errors import HttpError
 from app.core.config import settings
 from app.db.models import User
 from app.db.session import SessionLocal
-from app.services.operator_notifier import notify_operator
+from app.services.operator_notifier import (
+    format_alert_context,
+    notify_operator,
+    redacted_user_ref,
+)
 from app.utils.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
@@ -133,7 +137,22 @@ def _get_credentials(user: User) -> Optional[Credentials]:
             if user.is_operator:
                 notify_operator(
                     "Google Calendar token refresh failed. Reconnect Calendar "
-                    "from Settings if this persists.",
+                    "from Settings if this persists.\n\n"
+                    + format_alert_context(
+                        affected="Google Calendar / availability read",
+                        scope=redacted_user_ref(user.user_id),
+                        retry=(
+                            "Calendar context returns empty for this request; "
+                            "Lyra retries when calendar context is requested again."
+                        ),
+                        user_action=(
+                            "Reconnect Calendar only if the failure persists."
+                        ),
+                        data_integrity=(
+                            "No tasks, deadlines, or calendar events are "
+                            "written by this read-only path."
+                        ),
+                    ),
                     source="calendar.sync",
                     severity="warn",
                     dedupe_key=f"gcal-refresh-failed:{user.user_id}:{type(e).__name__}",
@@ -210,9 +229,22 @@ def fetch_google_events(
                 if user.is_operator:
                     notify_operator(
                         "Google Calendar returned 401, so Lyra cleared the "
-                        "stored refresh token. Reconnect Calendar in Settings.",
+                        "stored refresh token. Reconnect Calendar in Settings.\n\n"
+                        + format_alert_context(
+                            affected="Google Calendar / availability read",
+                            scope=redacted_user_ref(user_id),
+                            retry=(
+                                "No retry will succeed until Calendar is "
+                                "reconnected."
+                            ),
+                            user_action="Yes - reconnect Calendar in Settings.",
+                            data_integrity=(
+                                "Stored refresh token was cleared; no tasks, "
+                                "deadlines, or calendar events were written."
+                            ),
+                        ),
                         source="calendar.sync",
-                        severity="error",
+                        severity="warn",
                         dedupe_key=f"gcal-401:{user_id}",
                         cooldown_seconds=24 * 60 * 60,
                     )
@@ -221,7 +253,24 @@ def fetch_google_events(
                 if user.is_operator:
                     notify_operator(
                         f"Google Calendar events.list failed with HTTP {e.resp.status}. "
-                        "Calendar context is temporarily unavailable.",
+                        "Calendar context is temporarily unavailable.\n\n"
+                        + format_alert_context(
+                            affected="Google Calendar / availability read",
+                            scope=redacted_user_ref(user_id),
+                            retry=(
+                                "Calendar context returns empty for this "
+                                "request; Lyra retries when calendar context "
+                                "is requested again."
+                            ),
+                            user_action=(
+                                "No user action unless the provider failure "
+                                "persists."
+                            ),
+                            data_integrity=(
+                                "No tasks, deadlines, or calendar events are "
+                                "written by this read-only path."
+                            ),
+                        ),
                         source="calendar.sync",
                         severity="warn",
                         dedupe_key=f"gcal-http:{user_id}:{e.resp.status}",
@@ -233,7 +282,22 @@ def fetch_google_events(
             if user.is_operator:
                 notify_operator(
                     f"Google Calendar events.list failed with `{type(e).__name__}`. "
-                    "Calendar context is temporarily unavailable.",
+                    "Calendar context is temporarily unavailable.\n\n"
+                    + format_alert_context(
+                        affected="Google Calendar / availability read",
+                        scope=redacted_user_ref(user_id),
+                        retry=(
+                            "Calendar context returns empty for this request; "
+                            "Lyra retries when calendar context is requested again."
+                        ),
+                        user_action=(
+                            "No user action unless the provider failure persists."
+                        ),
+                        data_integrity=(
+                            "No tasks, deadlines, or calendar events are "
+                            "written by this read-only path."
+                        ),
+                    ),
                     source="calendar.sync",
                     severity="warn",
                     dedupe_key=f"gcal-events-failed:{user_id}:{type(e).__name__}",

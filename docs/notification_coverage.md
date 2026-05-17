@@ -4,6 +4,9 @@
 
 LyraOS has two notification paths with different trust boundaries:
 
+Security companion: `docs/prodblueprint_security.md` defines the broader
+trusted-alpha access-control, audit, redaction, and provider-failure boundary.
+
 - **Per-user queue:** authenticated in-app/user-facing delivery through
   `notifications:pending:{user_id}` and `/v1/notifications/pending`.
 - **Operator channel:** shared Telegram bot for system state and
@@ -20,6 +23,59 @@ LyraOS has two notification paths with different trust boundaries:
    `app.services.operator_notifier.notify_operator`.
 5. Missing Telegram credentials or Telegram delivery failure must never break a
    product mutation or research write.
+6. Provider outage/auth failures are provider-scoped degradations unless they
+   are widespread or persistent. They should say what provider failed, whether
+   reconnect is needed, and whether Lyra kept existing data.
+7. Scheduler/bootstrap/database failures are Lyra platform failures. If they
+   repeat, triage immediately.
+
+## Operational Alert Contract
+
+Every operator-facing operational alert with `warn` or `error` severity must
+include the triage block from
+`app.services.operator_notifier.format_alert_context`:
+
+- affected provider/subsystem,
+- affected user scope: count, unknown bootstrap scope, or hashed/redacted user
+  reference from `redacted_user_ref`,
+- retry behavior,
+- whether user action is needed,
+- whether data integrity is at risk.
+
+Provider-auth examples:
+
+```text
+Affected provider/subsystem: Moodle Web Services / submission sync
+Affected user scope: user#...
+Retry behavior: Will retry on future cycles, but success requires reconnect.
+User action needed: Yes - reconnect Moodle Web Services in Settings.
+Data integrity risk: No deadline completion is inferred while auth is rejected.
+```
+
+Platform bootstrap example:
+
+```text
+Affected provider/subsystem: scheduler.per-user / database bootstrap
+Affected user scope: unknown user count; bootstrap could not load user ids
+Retry behavior: Retried, disposed the DB pool, then waits for next tick.
+User action needed: No student action. Operator should triage if repeated.
+Data integrity risk: No per-user mutation attempted before bootstrap completed.
+```
+
+LLM enrichment max-instance example:
+
+```text
+Affected provider/subsystem: scheduler.health / llm_enrichment
+Affected user scope: unknown; a previous instance is still running for this job
+Retry behavior: This tick is skipped; scheduler tries again on the next interval.
+User action needed: No student action.
+Data integrity risk: Low unless the same job remains stuck across repeated intervals.
+```
+
+`llm_enrichment` is auxiliary. Max-instance warnings should not page as product
+failures unless they are persistent; provider slowness should degrade semantic
+enrichment, not authentication, user scoping, or core scheduling truth. See
+`docs/incidents/2026-05-17-llm-enrichment-maxinstances.md`.
 
 ## Current Coverage Matrix
 

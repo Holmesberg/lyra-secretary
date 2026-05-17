@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,7 @@ from app.api.deps import get_db
 from app.db.models import Deadline, User
 from app.db.scoping import get_current_user_id
 from app.services import moodle_ics_sync, moodle_submissions_sync
+from app.services.security_audit import write_security_audit_event
 from app.utils.time_utils import now_utc
 
 router = APIRouter()
@@ -99,7 +100,9 @@ def post_moodle_preview(body: MoodlePreviewIn) -> dict[str, Any]:
 
 @router.post("/integrations/moodle/connect")
 def post_moodle_connect(
-    body: MoodleConnectIn, db: Session = Depends(get_db)
+    body: MoodleConnectIn,
+    request: Request,
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Store the URL + run an immediate sync. Idempotent — re-connecting
     with the same URL is a no-op fetch + upsert pass."""
@@ -119,6 +122,17 @@ def post_moodle_connect(
     user.moodle_ics_url = body.ics_url.strip()
     user.moodle_disconnect_reason = None
     db.commit()
+    write_security_audit_event(
+        db=db,
+        actor_user_id=user.user_id,
+        user_id=user.user_id,
+        event_type="provider_connected",
+        surface="/integrations/moodle/connect",
+        target_type="provider",
+        target_id="moodle_ics",
+        status="success",
+        request=request,
+    )
 
     # Run the real sync now so deadlines are visible immediately.
     result = moodle_ics_sync.sync_user(user.user_id, db)
@@ -161,6 +175,7 @@ def post_moodle_sync_now(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 @router.delete("/integrations/moodle/disconnect")
 def delete_moodle_disconnect(
+    request: Request,
     body: Optional[MoodleDisconnectIn] = None,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -191,6 +206,18 @@ def delete_moodle_disconnect(
             voided_count += 1
 
     db.commit()
+    write_security_audit_event(
+        db=db,
+        actor_user_id=user.user_id,
+        user_id=user.user_id,
+        event_type="provider_disconnected",
+        surface="/integrations/moodle/disconnect",
+        target_type="provider",
+        target_id="moodle_ics",
+        status="success",
+        request=request,
+        redacted_metadata={"void_imported": void_imported},
+    )
     return {
         "ok": True,
         "voided_imported_count": voided_count,
@@ -211,7 +238,9 @@ class MoodleWSConnectIn(BaseModel):
 
 @router.post("/integrations/moodle/ws-connect")
 def post_moodle_ws_connect(
-    body: MoodleWSConnectIn, db: Session = Depends(get_db)
+    body: MoodleWSConnectIn,
+    request: Request,
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Store the Moodle Web Services token. Validates by hitting
     `core_webservice_get_site_info` once before persisting — bad
@@ -286,6 +315,17 @@ def post_moodle_ws_connect(
     user.moodle_base_url = base_url
     user.moodle_ws_disconnect_reason = None
     db.commit()
+    write_security_audit_event(
+        db=db,
+        actor_user_id=user.user_id,
+        user_id=user.user_id,
+        event_type="provider_connected",
+        surface="/integrations/moodle/ws-connect",
+        target_type="provider",
+        target_id="moodle_ws",
+        status="success",
+        request=request,
+    )
     return {"ok": True}
 
 
@@ -360,7 +400,10 @@ def post_moodle_ws_sync_now(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.delete("/integrations/moodle/ws-disconnect")
-def delete_moodle_ws_disconnect(db: Session = Depends(get_db)) -> dict[str, Any]:
+def delete_moodle_ws_disconnect(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
     """Clear the WS token. Does NOT void any deadlines — that's the
     iCal disconnect's job; WS is purely a submission-detection layer."""
     user = _current_user(db)
@@ -368,4 +411,15 @@ def delete_moodle_ws_disconnect(db: Session = Depends(get_db)) -> dict[str, Any]
     user.moodle_ws_last_synced_at = None
     user.moodle_ws_disconnect_reason = None
     db.commit()
+    write_security_audit_event(
+        db=db,
+        actor_user_id=user.user_id,
+        user_id=user.user_id,
+        event_type="provider_disconnected",
+        surface="/integrations/moodle/ws-disconnect",
+        target_type="provider",
+        target_id="moodle_ws",
+        status="success",
+        request=request,
+    )
     return {"ok": True}

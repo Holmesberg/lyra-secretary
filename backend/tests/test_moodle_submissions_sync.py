@@ -29,6 +29,9 @@ from app.services.moodle_submissions_sync import (
     sync_user,
     title_similarity,
 )
+from app.workers.jobs.moodle_submissions_sync import (
+    _operator_error_message as _ws_operator_error_message,
+)
 from tests.conftest import auth_headers  # noqa: F401 — pulls in test fixtures
 
 
@@ -66,6 +69,18 @@ def _make_user(db, *, ws_token="tok-1234567890123456") -> User:
     db.commit()
     db.refresh(u)
     return u
+
+
+def test_ws_operator_error_message_treats_auth_as_provider_user_action():
+    message, severity, retry, user_action, data_integrity = (
+        _ws_operator_error_message("auth")
+    )
+
+    assert "token rejected" in message
+    assert severity == "warn"
+    assert "requires reconnect" in retry
+    assert "Yes" in user_action
+    assert "No deadline completion is inferred" in data_integrity
 
 
 def _make_deadline(db, user_id, *, title, due_at, category_hint=None, state="planned"):

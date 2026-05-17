@@ -1,6 +1,12 @@
 "use client";
 
-import { AlertTriangle, CalendarClock, CheckCircle2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  ClipboardCheck,
+  ShieldQuestion,
+} from "lucide-react";
 import type {
   AcademicPressureItem,
   AcademicPressureMapResponse,
@@ -29,6 +35,13 @@ function pressureClass(item: AcademicPressureItem): string {
   if (item.pressure_level === "overdue") return "border-ember/50 bg-ember/10";
   if (item.pressure_level === "high") return "border-ember/30 bg-ember/5";
   return "border-hairline bg-void-2/40";
+}
+
+function fmtTrust(trust: AcademicPressureItem["trust_state"]): string {
+  if (trust === "verified_reachable") return "source reachable";
+  if (trust === "requires_user_confirmation") return "needs confirmation";
+  if (trust === "verified_exact") return "source verified";
+  return trust.replaceAll("_", " ");
 }
 
 export function PulseAcademicPressureMap({
@@ -67,7 +80,7 @@ export function PulseAcademicPressureMap({
             </div>
             <div className="min-w-0">
               <p className="text-[15px] leading-snug text-parchment">
-                {pressure.headline}
+                {pressure.pressure_summary || pressure.headline}
               </p>
               <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
                 {fmtHours(
@@ -80,8 +93,20 @@ export function PulseAcademicPressureMap({
             </div>
           </div>
 
+          {pressure.compression_points.length > 0 && (
+            <div className="mb-3 rounded-sm border border-hairline bg-void-2/30 px-3 py-2">
+              <div className="mb-1 flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                <ShieldQuestion size={12} className="text-signal" />
+                Why the week feels compressed
+              </div>
+              <p className="text-[12px] leading-snug text-dust">
+                {pressure.compression_points[0].detail}
+              </p>
+            </div>
+          )}
+
           {hasItems ? (
-            <ul className="flex flex-1 flex-col gap-2">
+            <ul className="flex flex-col gap-2">
               {items.map((item) => (
                 <li
                   key={item.obligation_id}
@@ -94,8 +119,7 @@ export function PulseAcademicPressureMap({
                       </p>
                       <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
                         {item.obligation_type} / {item.complexity_tier} /{" "}
-                        {item.complexity_source} /{" "}
-                        {item.trust_state.replaceAll("_", " ")}
+                        {fmtTrust(item.trust_state)}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
@@ -120,12 +144,28 @@ export function PulseAcademicPressureMap({
             </div>
           )}
 
+          {pressure.recovery_options.length > 0 && (
+            <div className="mt-3 rounded-sm border border-signal/20 bg-signal/5 px-3 py-2">
+              <div className="mb-1 flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-signal">
+                <ClipboardCheck size={12} />
+                Next recovery option
+              </div>
+              <p className="text-[12px] font-medium text-parchment">
+                {pressure.recovery_options[0].label}
+              </p>
+              <p className="mt-1 text-[11px] leading-snug text-dust">
+                {pressure.recovery_options[0].detail}
+              </p>
+            </div>
+          )}
+
           <div className="mt-3 flex items-start gap-2 border-t border-hairline pt-3 text-[11px] leading-relaxed text-dust">
             <AlertTriangle size={14} className="mt-0.5 shrink-0 text-ember" />
             <p>
-              Ranges are structure priors, not personal truth. The goal is
-              clarity and agency, not panic. Confirm coverage before turning
-              pressure into a plan.
+              Ranges are structure priors, not personal truth.{" "}
+              {pressure.coverage_questions.length} coverage question
+              {pressure.coverage_questions.length === 1 ? "" : "s"} need
+              confirmation before this becomes a plan.
             </p>
           </div>
         </>

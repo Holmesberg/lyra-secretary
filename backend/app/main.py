@@ -45,6 +45,7 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
 
         from fastapi.responses import JSONResponse
         from fastapi import HTTPException
+        from app.services.security_audit import write_security_audit_event
 
         # Preserve an explicitly pre-set scope for in-process callers
         # (tests and internal tools). Real anonymous HTTP requests enter
@@ -64,6 +65,14 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
                 user_id = user.user_id
                 resolved = True
             except HTTPException as e:
+                await run_in_threadpool(
+                    write_security_audit_event,
+                    event_type="auth_failure",
+                    surface=request.url.path,
+                    status="denied",
+                    request=request,
+                    redacted_metadata={"reason": e.detail},
+                )
                 # Malformed / expired / unknown-user Bearer must NOT
                 # silently fall through to user_id=1. That's a footgun
                 # even with the scoping hook in place — explicit 401.
@@ -72,6 +81,14 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
                     content={"detail": e.detail},
                 )
             except Exception as e:
+                await run_in_threadpool(
+                    write_security_audit_event,
+                    event_type="auth_failure",
+                    surface=request.url.path,
+                    status="denied",
+                    request=request,
+                    redacted_metadata={"reason": type(e).__name__},
+                )
                 return JSONResponse(
                     status_code=401,
                     content={"detail": f"bearer auth failed: {e}"},
@@ -81,6 +98,13 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
             raw = request.headers.get("X-User-Id")
             if raw is not None:
                 if not bool(getattr(request.app.state, "allow_test_identity_header", False)):
+                    await run_in_threadpool(
+                        write_security_audit_event,
+                        event_type="test_identity_header_denied",
+                        surface=request.url.path,
+                        status="denied",
+                        request=request,
+                    )
                     return JSONResponse(
                         status_code=401,
                         content={"detail": "X-User-Id is test-only"},
@@ -88,6 +112,14 @@ class UserScopeMiddleware(BaseHTTPMiddleware):
                 try:
                     user_id = int(raw)
                 except ValueError:
+                    await run_in_threadpool(
+                        write_security_audit_event,
+                        event_type="test_identity_header_denied",
+                        surface=request.url.path,
+                        status="denied",
+                        request=request,
+                        redacted_metadata={"reason": "invalid_header"},
+                    )
                     return JSONResponse(
                         status_code=401,
                         content={"detail": "invalid X-User-Id header"},

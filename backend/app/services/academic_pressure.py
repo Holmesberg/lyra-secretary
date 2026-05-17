@@ -17,11 +17,15 @@ from sqlalchemy.orm import Session
 from app.db.models import Deadline, Task, TaskState, User
 from app.db.scoping import get_current_user_id
 from app.schemas.academic import (
+    AcademicCapacityContext,
     AcademicComplexityTier,
+    AcademicCompressionPoint,
+    AcademicCoverageQuestion,
     AcademicPressureEstimate,
     AcademicPressureItem,
     AcademicPressureMapResponse,
     AcademicPressureLevel,
+    AcademicRecoveryOption,
     AcademicSourceSummary,
     AcademicTrustState,
 )
@@ -211,6 +215,222 @@ def _headline(items: list[AcademicPressureItem], low: int, high: int, horizon_da
     )
 
 
+def _pressure_summary(
+    items: list[AcademicPressureItem],
+    low: int,
+    high: int,
+    planned_minutes: int,
+    calendar_busy: int,
+    gcal_connected: bool,
+) -> str:
+    if not items:
+        return "No visible academic deadline pressure in this window."
+    high_pressure = sum(1 for item in items if item.pressure_level in ("high", "overdue"))
+    uncertain = sum(1 for item in items if item.trust_state != "verified_exact")
+    hours_low = round(low / 60)
+    hours_high = round(high / 60)
+    load_phrase = f"{hours_low}-{hours_high}h of visible academic load"
+    if high_pressure and uncertain:
+        return (
+            f"This week looks compressed: {high_pressure} pressure points, "
+            f"{uncertain} coverage questions, and {load_phrase}."
+        )
+    if high_pressure:
+        return f"This week looks compressed: {high_pressure} pressure points and {load_phrase}."
+    if planned_minutes or calendar_busy:
+        source = "calendar and Lyra tasks" if gcal_connected else "Lyra tasks"
+        return f"{load_phrase} sits beside known scheduled load from {source}."
+    return f"{load_phrase}; confirm coverage before turning it into a plan."
+
+
+def _clustered_due_items(items: list[AcademicPressureItem]) -> list[AcademicPressureItem]:
+    clusters: list[AcademicPressureItem] = []
+    sorted_items = sorted(items, key=lambda item: item.due_at_utc)
+    for idx, item in enumerate(sorted_items):
+        neighbors = sorted_items[max(0, idx - 1): idx] + sorted_items[idx + 1: idx + 2]
+        if any(abs((item.due_at_utc - other.due_at_utc).total_seconds()) <= 48 * 3600 for other in neighbors):
+            clusters.append(item)
+    return clusters
+
+
+def _compression_points(
+    items: list[AcademicPressureItem],
+    low: int,
+    high: int,
+    planned_minutes: int,
+    calendar_busy: int,
+    gcal_connected: bool,
+) -> list[AcademicCompressionPoint]:
+    points: list[AcademicCompressionPoint] = []
+    overdue = [item for item in items if item.pressure_level == "overdue"]
+    high_pressure = [item for item in items if item.pressure_level == "high"]
+    uncertain = [item for item in items if item.trust_state != "verified_exact"]
+    clustered = _clustered_due_items(items)
+
+    if overdue:
+        points.append(
+            AcademicCompressionPoint(
+                kind="overdue",
+                title="Overdue academic pressure",
+                detail=(
+                    f"{len(overdue)} item(s) are overdue. Lyra does not infer completion "
+                    "from silence; confirm, reschedule, or clear them."
+                ),
+                obligation_ids=[item.obligation_id for item in overdue],
+            )
+        )
+    if high_pressure:
+        points.append(
+            AcademicCompressionPoint(
+                kind="due_soon",
+                title="Due-soon pressure",
+                detail=f"{len(high_pressure)} item(s) are due within 3 days and may need recovery blocks.",
+                obligation_ids=[item.obligation_id for item in high_pressure],
+            )
+        )
+    if len(clustered) >= 2:
+        points.append(
+            AcademicCompressionPoint(
+                kind="cluster",
+                title="Deadline cluster",
+                detail=f"{len(clustered)} item(s) land within 48-hour clusters.",
+                obligation_ids=[item.obligation_id for item in clustered],
+            )
+        )
+    if uncertain:
+        points.append(
+            AcademicCompressionPoint(
+                kind="uncertain_coverage",
+                title="Coverage still needs confirmation",
+                detail=(
+                    f"{len(uncertain)} item(s) are imported or inferred enough to plan around, "
+                    "but not enough to treat as exact coverage truth."
+                ),
+                obligation_ids=[item.obligation_id for item in uncertain],
+            )
+        )
+    if items and (planned_minutes or calendar_busy):
+        known_load = planned_minutes + calendar_busy
+        total_low = low + known_load
+        total_high = high + known_load
+        caveat = "Google Calendar is connected." if gcal_connected else "Calendar coverage is incomplete."
+        points.append(
+            AcademicCompressionPoint(
+                kind="known_load",
+                title="Known scheduled load",
+                detail=(
+                    f"Known busy/planned load plus academic ranges is "
+                    f"{round(total_low / 60)}-{round(total_high / 60)}h in this window. {caveat}"
+                ),
+                obligation_ids=[],
+            )
+        )
+    return points[:5]
+
+
+def _coverage_questions(items: list[AcademicPressureItem]) -> list[AcademicCoverageQuestion]:
+    questions: list[AcademicCoverageQuestion] = []
+    for item in items:
+        if item.trust_state == "verified_exact":
+            continue
+        questions.append(
+            AcademicCoverageQuestion(
+                obligation_id=item.obligation_id,
+                question=f"What exactly does {item.title} cover?",
+                reason=(
+                    "Coverage must be confirmed by source metadata, moderator answer, "
+                    "3-5 student confirmations, or this user's correction before strong planning."
+                ),
+                trust_state=item.trust_state,
+            )
+        )
+    return questions[:5]
+
+
+def _recovery_options(
+    items: list[AcademicPressureItem],
+    coverage_questions: list[AcademicCoverageQuestion],
+    gcal_connected: bool,
+) -> list[AcademicRecoveryOption]:
+    if not items:
+        return [
+            AcademicRecoveryOption(
+                action="clear_or_ignore",
+                label="Keep the window clean",
+                detail="No active academic pressure is visible here. Add or import deadlines if something is missing.",
+                obligation_ids=[],
+            )
+        ]
+
+    options: list[AcademicRecoveryOption] = []
+    high_or_overdue = [item for item in items if item.pressure_level in ("high", "overdue")]
+    largest = sorted(items, key=lambda item: item.estimate.high_minutes, reverse=True)[:2]
+    if coverage_questions:
+        options.append(
+            AcademicRecoveryOption(
+                action="confirm_coverage",
+                label="Confirm coverage",
+                detail="Lock what these deadlines actually cover before Lyra turns them into study blocks.",
+                obligation_ids=[q.obligation_id for q in coverage_questions],
+            )
+        )
+    if high_or_overdue:
+        options.append(
+            AcademicRecoveryOption(
+                action="create_plan",
+                label="Create a recovery plan",
+                detail="Turn the due-soon pressure points into editable study blocks.",
+                obligation_ids=[item.obligation_id for item in high_or_overdue],
+            )
+        )
+    if largest:
+        options.append(
+            AcademicRecoveryOption(
+                action="split_into_blocks",
+                label="Split the biggest work",
+                detail="Break the largest visible obligations into smaller blocks before they compress the week.",
+                obligation_ids=[item.obligation_id for item in largest],
+            )
+        )
+    if not gcal_connected:
+        options.append(
+            AcademicRecoveryOption(
+                action="review_calendar",
+                label="Review schedule context",
+                detail="Calendar is not connected, so Lyra can show academic load but not true free-time mismatch.",
+                obligation_ids=[],
+            )
+        )
+    return options[:4]
+
+
+def _capacity_context(
+    low: int,
+    high: int,
+    planned_minutes: int,
+    calendar_busy: int,
+    gcal_connected: bool,
+) -> AcademicCapacityContext:
+    if gcal_connected:
+        caveat = (
+            "Known busy time comes from connected Google Calendar and planned Lyra tasks; "
+            "unscheduled real-life constraints may still be missing."
+        )
+    else:
+        caveat = (
+            "Calendar is not connected, so Lyra shows visible academic pressure and planned Lyra load, "
+            "not true free time."
+        )
+    return AcademicCapacityContext(
+        known_busy_minutes=calendar_busy,
+        planned_lyra_minutes=planned_minutes,
+        estimated_academic_low_minutes=low,
+        estimated_academic_high_minutes=high,
+        google_calendar_connected=gcal_connected,
+        caveat=caveat,
+    )
+
+
 def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureMapResponse:
     uid = get_current_user_id()
     if uid is None:
@@ -278,11 +498,37 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
     if not gcal_connected:
         warnings.append("Google Calendar is not connected, so free-time mismatch is incomplete.")
 
+    coverage_questions = _coverage_questions(items)
     return AcademicPressureMapResponse(
         generated_at_utc=generated_at,
         horizon_days=horizon_days,
         headline=_headline(items, low_total, high_total, horizon_days),
+        pressure_summary=_pressure_summary(
+            items,
+            low_total,
+            high_total,
+            planned_minutes,
+            calendar_busy,
+            gcal_connected,
+        ),
         items=items,
+        compression_points=_compression_points(
+            items,
+            low_total,
+            high_total,
+            planned_minutes,
+            calendar_busy,
+            gcal_connected,
+        ),
+        recovery_options=_recovery_options(items, coverage_questions, gcal_connected),
+        coverage_questions=coverage_questions,
+        capacity_context=_capacity_context(
+            low_total,
+            high_total,
+            planned_minutes,
+            calendar_busy,
+            gcal_connected,
+        ),
         estimated_low_minutes=low_total,
         estimated_high_minutes=high_total,
         source_summary=AcademicSourceSummary(
@@ -300,6 +546,8 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             "personal timer traces will override priors after enough evidence",
             "Baseet-ready provider boundary: metadata and canonical links only",
             "clarity-and-agency copy rule: name pressure points with recovery options, not doom",
+            "trust-state copy is governed by docs/academic_pressure_map_contract.md",
+            "validity threats and research integrity are checked before calibration admission",
         ],
         warnings=warnings,
     )

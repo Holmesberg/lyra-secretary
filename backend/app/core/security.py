@@ -130,6 +130,18 @@ def resolve_user_from_token(token: str) -> User:
                 db.add(user)
                 db.commit()
                 db.refresh(user)
+                from app.services.security_audit import write_security_audit_event
+
+                write_security_audit_event(
+                    event_type="user_provisioned",
+                    surface="auth.jwt",
+                    status="success",
+                    actor_user_id=user.user_id,
+                    user_id=user.user_id,
+                    target_type="user",
+                    target_id=f"user:{user.user_id}",
+                    redacted_metadata={"identity_provider": "google"},
+                )
             except IntegrityError:
                 # Concurrent signup race: another request beat us to the
                 # INSERT and committed first. Roll back our failed transaction

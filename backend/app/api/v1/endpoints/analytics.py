@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from collections import defaultdict
 
-from app.api.deps import get_db
+from app.api.deps import get_db, operator_user_from_scope
 from app.db.models import (
     Archetype,
     ArchetypeAssignment,
@@ -1372,20 +1372,13 @@ def get_insights(
     return response_payload
 
 
-def _require_operator_analytics(db: Session) -> User:
-    uid = get_current_user_id()
-    if uid is None:
-        raise HTTPException(status_code=401, detail="not authenticated")
-    user = db.query(User).filter(User.user_id == uid).first()
-    if user is None:
-        raise HTTPException(status_code=401, detail="user not found")
-    if not user.is_operator:
-        raise HTTPException(status_code=403, detail="operator only")
-    return user
+def _require_operator_analytics(db: Session, request: Request | None = None) -> User:
+    return operator_user_from_scope(db, request=request)
 
 
 @router.get("/analytics/behavioral_signature")
 def get_behavioral_signature(
+    request: Request,
     window_days: int = Query(14, ge=1, le=90, description="Look-back window in days"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -1395,7 +1388,7 @@ def get_behavioral_signature(
     ``docs/calibration_contract.md`` R11 — **not** for Today/Insights rendering;
     use for operator dashboards, scripts, and JARVIS-equivalent HTTP access.
     """
-    op = _require_operator_analytics(db)
+    op = _require_operator_analytics(db, request)
     from app.services.inference_engine import behavioral_signature_for_operator
 
     return behavioral_signature_for_operator(
@@ -1414,7 +1407,7 @@ def get_cortex_diagnostics(
     Read-time instrument audit only. This endpoint does not write state, does
     not infer psychology, and must not be used by user-facing first-paint paths.
     """
-    op = _require_operator_analytics(db)
+    op = _require_operator_analytics(db, request)
     from app.services.cortex import cortex_diagnostics
     from app.services.runtime_topology import backend_topology_report
 
@@ -1430,7 +1423,7 @@ def get_output_surface_diagnostics(
     db: Session = Depends(get_db),
 ) -> dict:
     """Operator-only Wave 4 output-surface enforcement diagnostics."""
-    op = _require_operator_analytics(db)
+    op = _require_operator_analytics(db, request)
     from app.services.output_surfaces import output_surface_diagnostics
     from app.services.runtime_topology import backend_topology_report
 
@@ -1441,6 +1434,7 @@ def get_output_surface_diagnostics(
 
 @router.post("/analytics/exposure_policy/effect_log")
 def record_exposure_policy_effect_log(
+    request: Request,
     window_days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -1451,7 +1445,7 @@ def record_exposure_policy_effect_log(
     invisible authority: high UNKNOWN rate, ledger-incomplete drift, or broad
     EXPOSED collapse.
     """
-    op = _require_operator_analytics(db)
+    op = _require_operator_analytics(db, request)
     from app.services.cortex import measured_execution_query
     from app.services.exposure_ledger import (
         DEFAULT_HORIZON_POLICY_VERSION,

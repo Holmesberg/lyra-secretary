@@ -12,6 +12,18 @@ export type AcademicTrustState =
 export type AcademicPressureLevel = "low" | "medium" | "high" | "overdue";
 export type AcademicComplexityTier = "low" | "medium" | "high" | "unknown";
 export type AcademicConfidence = "low" | "medium" | "high";
+export type AcademicCompressionKind =
+  | "due_soon"
+  | "overdue"
+  | "cluster"
+  | "known_load"
+  | "uncertain_coverage";
+export type AcademicRecoveryAction =
+  | "confirm_coverage"
+  | "split_into_blocks"
+  | "create_plan"
+  | "review_calendar"
+  | "clear_or_ignore";
 
 export interface AcademicPressureEstimate {
   low_minutes: number;
@@ -44,11 +56,46 @@ export interface AcademicSourceSummary {
   planned_lyra_minutes: number;
 }
 
+export interface AcademicCompressionPoint {
+  kind: AcademicCompressionKind;
+  title: string;
+  detail: string;
+  obligation_ids: string[];
+}
+
+export interface AcademicRecoveryOption {
+  action: AcademicRecoveryAction;
+  label: string;
+  detail: string;
+  obligation_ids: string[];
+}
+
+export interface AcademicCoverageQuestion {
+  obligation_id: string;
+  question: string;
+  reason: string;
+  trust_state: AcademicTrustState;
+}
+
+export interface AcademicCapacityContext {
+  known_busy_minutes: number;
+  planned_lyra_minutes: number;
+  estimated_academic_low_minutes: number;
+  estimated_academic_high_minutes: number;
+  google_calendar_connected: boolean;
+  caveat: string;
+}
+
 export interface AcademicPressureMapResponse {
   generated_at_utc: string;
   horizon_days: number;
   headline: string;
+  pressure_summary: string;
   items: AcademicPressureItem[];
+  compression_points: AcademicCompressionPoint[];
+  recovery_options: AcademicRecoveryOption[];
+  coverage_questions: AcademicCoverageQuestion[];
+  capacity_context: AcademicCapacityContext;
   estimated_low_minutes: number;
   estimated_high_minutes: number;
   source_summary: AcademicSourceSummary;

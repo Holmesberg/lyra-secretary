@@ -5,8 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
-from app.db.models import User
+from app.api.deps import get_db, operator_user_from_scope
 from app.db.scoping import get_current_user_id
 from app.services.notification_queue import (
     drain_user_notifications,
@@ -63,17 +62,11 @@ class OperatorNotifyRequest(BaseModel):
 @router.post("/operator")
 def post_operator_notification(
     payload: OperatorNotifyRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
     """Mirror a frontend signal into the operator's Telegram."""
-    uid = get_current_user_id()
-    if uid is None:
-        raise HTTPException(status_code=401, detail="not authenticated")
-    user = db.query(User).filter(User.user_id == uid).first()
-    if user is None:
-        raise HTTPException(status_code=401, detail="user not found")
-    if not user.is_operator:
-        raise HTTPException(status_code=403, detail="operator only")
+    operator_user_from_scope(db, request=request)
     sent = notify_operator(
         payload.message,
         source=payload.source,

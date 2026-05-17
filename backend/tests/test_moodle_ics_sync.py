@@ -29,13 +29,25 @@ FIXTURE_PATH = Path(__file__).parent / "fixtures" / "moodle_sample.ics"
 
 
 def test_operator_error_message_distinguishes_503_from_auth_rotation():
-    msg = _operator_error_message("http_503")
+    msg, severity, retry, user_action, data_integrity = _operator_error_message(
+        "http_503"
+    )
     assert "temporarily unavailable" in msg
     assert "retry" in msg
     assert "Reconnect" not in msg
+    assert severity == "warn"
+    assert "retry" in retry
+    assert "No user action" in user_action
+    assert "No mutation" in data_integrity
 
-    auth_msg = _operator_error_message("http_403")
+    auth_msg, severity, retry, user_action, data_integrity = _operator_error_message(
+        "http_403"
+    )
     assert "Reconnect Moodle" in auth_msg
+    assert severity == "warn"
+    assert "No retry" in retry
+    assert "Yes" in user_action
+    assert "future Moodle imports are paused" in data_integrity
 
 
 @pytest.fixture(autouse=True)

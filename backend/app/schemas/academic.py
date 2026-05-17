@@ -23,6 +23,20 @@ AcademicTrustState = Literal[
 AcademicComplexityTier = Literal["low", "medium", "high", "unknown"]
 AcademicConfidence = Literal["low", "medium", "high"]
 AcademicPressureLevel = Literal["low", "medium", "high", "overdue"]
+AcademicCompressionKind = Literal[
+    "due_soon",
+    "overdue",
+    "cluster",
+    "known_load",
+    "uncertain_coverage",
+]
+AcademicRecoveryAction = Literal[
+    "confirm_coverage",
+    "split_into_blocks",
+    "create_plan",
+    "review_calendar",
+    "clear_or_ignore",
+]
 
 
 class AcademicPressureEstimate(BaseModel):
@@ -62,11 +76,46 @@ class AcademicSourceSummary(BaseModel):
     planned_lyra_minutes: int
 
 
+class AcademicCompressionPoint(BaseModel):
+    kind: AcademicCompressionKind
+    title: str
+    detail: str
+    obligation_ids: list[str] = Field(default_factory=list)
+
+
+class AcademicRecoveryOption(BaseModel):
+    action: AcademicRecoveryAction
+    label: str
+    detail: str
+    obligation_ids: list[str] = Field(default_factory=list)
+
+
+class AcademicCoverageQuestion(BaseModel):
+    obligation_id: str
+    question: str
+    reason: str
+    trust_state: AcademicTrustState
+
+
+class AcademicCapacityContext(BaseModel):
+    known_busy_minutes: int
+    planned_lyra_minutes: int
+    estimated_academic_low_minutes: int
+    estimated_academic_high_minutes: int
+    google_calendar_connected: bool
+    caveat: str
+
+
 class AcademicPressureMapResponse(BaseModel):
     generated_at_utc: datetime
     horizon_days: int
     headline: str
+    pressure_summary: str
     items: list[AcademicPressureItem]
+    compression_points: list[AcademicCompressionPoint]
+    recovery_options: list[AcademicRecoveryOption]
+    coverage_questions: list[AcademicCoverageQuestion]
+    capacity_context: AcademicCapacityContext
     estimated_low_minutes: int
     estimated_high_minutes: int
     source_summary: AcademicSourceSummary

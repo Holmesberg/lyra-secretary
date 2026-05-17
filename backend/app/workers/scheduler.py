@@ -8,7 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import logging
 
-from app.services.operator_notifier import notify_operator
+from app.services.operator_notifier import format_alert_context, notify_operator
 from app.workers.jobs.reminders import check_upcoming_tasks
 from app.workers.jobs.notion_sync import retry_failed_syncs
 from app.workers.jobs.timer_overflow import check_timer_overflow
@@ -49,18 +49,65 @@ def _notify_scheduler_event(event) -> None:
         exc_name = type(exc).__name__ if exc is not None else "unknown"
         message = (
             f"APScheduler job `{job_id}` failed with `{exc_name}`. "
-            "Check backend logs for the traceback."
+            "Check backend logs for the traceback.\n\n"
+            + format_alert_context(
+                affected=f"scheduler.health / {job_id}",
+                scope=(
+                    "unknown; inspect the failed job to determine affected "
+                    "users"
+                ),
+                retry=(
+                    "APScheduler will run the job again on its next trigger "
+                    "unless the process is stopped."
+                ),
+                user_action=(
+                    "No student action. Operator should triage immediately "
+                    "if repeated."
+                ),
+                data_integrity=(
+                    "Unknown from scheduler event alone; inspect job logs "
+                    "and DB writes."
+                ),
+            )
         )
         severity = "error"
         dedupe = f"job-error:{job_id}:{exc_name}"
     elif event.code == EVENT_JOB_MISSED:
-        message = f"APScheduler job `{job_id}` missed its run window."
+        message = (
+            f"APScheduler job `{job_id}` missed its run window.\n\n"
+            + format_alert_context(
+                affected=f"scheduler.health / {job_id}",
+                scope="unknown; job did not start at the scheduled time",
+                retry="Coalesced scheduler config runs one catch-up tick when possible.",
+                user_action="No student action.",
+                data_integrity=(
+                    "Low by default; idempotent jobs reconcile current state "
+                    "on the next run."
+                ),
+            )
+        )
         severity = "warn"
         dedupe = f"job-missed:{job_id}"
     elif event.code == EVENT_JOB_MAX_INSTANCES:
         message = (
             f"APScheduler job `{job_id}` hit max_instances; a prior run "
-            "is still active."
+            "is still active.\n\n"
+            + format_alert_context(
+                affected=f"scheduler.health / {job_id}",
+                scope=(
+                    "unknown; a previous instance is still running for this "
+                    "job"
+                ),
+                retry=(
+                    "This tick is skipped; scheduler tries again on the next "
+                    "interval."
+                ),
+                user_action="No student action.",
+                data_integrity=(
+                    "Low unless the same job remains stuck across repeated "
+                    "intervals."
+                ),
+            )
         )
         severity = "warn"
         dedupe = f"job-max-instances:{job_id}"
@@ -193,17 +240,18 @@ def start_scheduler():
     )
 
     # Magic-for-alpha — Workstream 1 (2026-04-28). Pulls tasks where
-    # llm_parse_status='pending' and calls Ollama for semantic enrichment
-    # (priority, deadline candidates, sub-items). Fires every 5s. Per-cycle
-    # cap = 3. Self-throttles when Ollama is down (job runs, marks
-    # 'unavailable', returns fast).
+    # llm_parse_status='pending' and calls the configured LLM for semantic
+    # enrichment (priority, deadline candidates, sub-items). This is
+    # auxiliary: run every 60s, claim one task per tick, and keep
+    # max_instances=1 so provider slowness degrades enrichment rather than
+    # weakening scheduler reliability.
     scheduler.add_job(
         run_llm_enrichment,
-        trigger=IntervalTrigger(seconds=5),
+        trigger=IntervalTrigger(seconds=60),
         id="llm_enrichment",
         name="Magic — LLM async parser; semantic deadline + priority + sub-items",
         replace_existing=True,
-        max_instances=1,  # critical: single inflight worker so a slow LLM call doesn't pile up
+        max_instances=1,
     )
 
     # Magic-for-alpha — Workstream 2 (2026-04-28). Sibling of pause_prediction.
@@ -269,7 +317,17 @@ def shutdown_scheduler():
         scheduler.shutdown()
     logger.info("APScheduler shutdown")
     notify_operator(
-        "APScheduler shutdown.",
+        "APScheduler shutdown.\n\n"
+        + format_alert_context(
+            affected="scheduler.health / scheduler process",
+            scope="all background jobs on this backend process",
+            retry="Jobs resume when the backend process starts the scheduler again.",
+            user_action="No student action.",
+            data_integrity=(
+                "No direct data mutation from shutdown; scheduled work pauses "
+                "until restart."
+            ),
+        ),
         source="scheduler.health",
         severity="warn",
         dedupe_key="scheduler-shutdown",

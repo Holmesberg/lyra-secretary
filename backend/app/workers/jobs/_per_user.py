@@ -24,7 +24,11 @@ from sqlalchemy.exc import OperationalError
 from app.db.models import User
 from app.db.scoping import set_current_user_id
 from app.db.session import SessionLocal, engine
-from app.services.operator_notifier import notify_operator
+from app.services.operator_notifier import (
+    format_alert_context,
+    notify_operator,
+    redacted_user_ref,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +84,26 @@ def _load_user_ids() -> list[int]:
 
     notify_operator(
         "Per-user worker bootstrap failed while loading user ids with "
-        "`OperationalError`. Job skipped this tick; check backend logs.",
+        "`OperationalError`. Job skipped this tick; check backend logs.\n\n"
+        + format_alert_context(
+            affected="scheduler.per-user / database bootstrap",
+            scope=(
+                "unknown user count; bootstrap could not load user ids"
+            ),
+            retry=(
+                f"Retried {BOOTSTRAP_MAX_ATTEMPTS} total attempt(s), disposed "
+                "the DB engine pool after each failure, then waits for the "
+                "next scheduler tick."
+            ),
+            user_action=(
+                "No student action. Operator should triage immediately if "
+                "this repeats."
+            ),
+            data_integrity=(
+                "No per-user mutation attempted because bootstrap failed "
+                "before user iteration."
+            ),
+        ),
         source="scheduler.per-user",
         severity="error",
         dedupe_key="bootstrap-user-ids:OperationalError",
@@ -116,8 +139,26 @@ def for_each_user(per_user_fn: Callable) -> None:
                 exc_info=True,
             )
             notify_operator(
-                f"Per-user worker `{fn_name}` failed for user_id `{user_id}` "
-                f"with `{type(e).__name__}`. Check backend logs.",
+                f"Per-user worker `{fn_name}` failed for "
+                f"`{redacted_user_ref(user_id)}` with `{type(e).__name__}`. "
+                "Check backend logs.\n\n"
+                + format_alert_context(
+                    affected=f"scheduler.per-user / {fn_name}",
+                    scope=redacted_user_ref(user_id),
+                    retry=(
+                        "This user iteration was skipped; the scheduler "
+                        "continues with remaining users and retries on the "
+                        "next tick."
+                    ),
+                    user_action=(
+                        "No student action unless the operator confirms an "
+                        "account-specific repair is needed."
+                    ),
+                    data_integrity=(
+                        "Unknown for this user's job until logs are reviewed; "
+                        "DB session is closed and scope is cleared."
+                    ),
+                ),
                 source="scheduler.per-user",
                 severity="error",
                 dedupe_key=f"{fn_name}:{user_id}:{type(e).__name__}",

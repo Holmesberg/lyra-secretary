@@ -127,6 +127,7 @@ def chat_completion(
     max_tokens: int = 1024,
     response_format: Optional[dict[str, Any]] = None,
     chat_template_kwargs: Optional[dict[str, Any]] = None,
+    timeout_seconds: Optional[int] = None,
 ) -> dict[str, Any]:
     """Single-shot chat completion. Returns the parsed JSON response dict.
 
@@ -157,7 +158,7 @@ def chat_completion(
         payload["chat_template_kwargs"] = template_kwargs
 
     url = f"{settings.NVIDIA_NIM_BASE_URL.rstrip('/')}/chat/completions"
-    timeout = settings.NVIDIA_NIM_TIMEOUT_SECONDS
+    timeout = timeout_seconds or settings.NVIDIA_NIM_TIMEOUT_SECONDS
 
     try:
         with httpx.Client(timeout=timeout) as client:

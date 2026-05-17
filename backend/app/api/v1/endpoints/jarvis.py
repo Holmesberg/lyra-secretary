@@ -22,37 +22,21 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, operator_user_from_scope
 from app.core.config import settings
 from app.db.models import JarvisInvocation, User
-from app.db.scoping import get_current_user_id
 from app.services import jarvis_agent, jarvis_tools, nvidia_nim_client
 from app.utils.time_utils import now_utc
 
 router = APIRouter()
 
 
-def _require_operator(db: Session) -> User:
-    """Same shape as admin.py / feedback.py — single canonical operator check.
-
-    Duplicated here intentionally rather than imported to keep endpoints
-    decoupled (admin.py is allowed to evolve its 403 detail string without
-    affecting JARVIS).
-    """
-    uid = get_current_user_id()
-    if uid is None:
-        raise HTTPException(status_code=401, detail="not authenticated")
-    user = db.query(User).filter(User.user_id == uid).first()
-    if user is None:
-        raise HTTPException(status_code=401, detail="user not found")
-    if not user.is_operator:
-        raise HTTPException(status_code=403, detail="operator only")
-    return user
-
+def _require_operator(db: Session, request: Request) -> User:
+    return operator_user_from_scope(db, request=request)
 
 # ---------------------------------------------------------------------------
 # Request / response shapes
@@ -86,7 +70,9 @@ class JarvisConfirmRequest(BaseModel):
 
 @router.post("/jarvis/ask")
 def jarvis_ask(
-    payload: JarvisAskRequest, db: Session = Depends(get_db)
+    payload: JarvisAskRequest,
+    request: Request,
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Submit a user message and get the assistant's response.
 
@@ -100,7 +86,7 @@ def jarvis_ask(
         "error": null | "human-readable reason"
       }
     """
-    user = _require_operator(db)
+    user = _require_operator(db, request)
     return jarvis_agent.run_agent(
         db=db,
         user_id=user.user_id,
@@ -112,7 +98,9 @@ def jarvis_ask(
 
 @router.post("/jarvis/confirm")
 def jarvis_confirm(
-    payload: JarvisConfirmRequest, db: Session = Depends(get_db)
+    payload: JarvisConfirmRequest,
+    request: Request,
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Confirm or reject a queued write action.
 
@@ -125,7 +113,7 @@ def jarvis_confirm(
     as status='rejected' and returns a short cancel acknowledgement —
     no NIM round-trip.
     """
-    user = _require_operator(db)
+    user = _require_operator(db, request)
 
     if not payload.confirmed:
         # Mark the most recent pending row for this user/tool as rejected.
@@ -190,11 +178,13 @@ def jarvis_confirm(
 
 
 @router.get("/jarvis/health")
-def jarvis_health(db: Session = Depends(get_db)) -> dict[str, Any]:
+def jarvis_health(
+    request: Request, db: Session = Depends(get_db)
+) -> dict[str, Any]:
     """NIM availability + current model. Used by the floating-button glow.
 
     Operator-only — same gate as the chat endpoints. Returns:
       {available: bool, model: "...", reason: str|null}
     """
-    _require_operator(db)
+    _require_operator(db, request)
     return nvidia_nim_client.health_check()

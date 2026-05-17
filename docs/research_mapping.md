@@ -76,6 +76,8 @@ exists.
 | Adaptive scheduling can eventually be earned from evidence. | Current adaptive scheduling is a future-gated direction, not a validated shipped system. | Explicit experiment protocol, exposure logging, acceptance/rejection outcomes, and outcome comparisons. |
 | Archetype priors improve cold-start calibration. | The survey and priors are implemented as hypothesis scaffolding, not validated clusters. | Reliability checks, cluster separability, and proof that priors beat flat/history-only baselines. |
 | Missingness is meaningful signal. | Missingness can be informative, but random inconsistency and usability friction must be separated. | Missingness taxonomy, user/session context, and tests against random-dropout baselines. |
+| Academic Pressure Map improves accepted study intentions. | The pressure map can expose obligations, uncertainty, and known load, but the relief/comprehension effect is not yet validated. | `MANIFESTO.md` "Academic Execution Substrate Governance"; 3-5 user/moderator coverage validation; accepted-plan and execution-outcome traces. |
+| Provider-derived academic structure can support execution inference. | Moodle/Baseet/Calendar can provide structure, but provider data is not learning, completion, or calibration truth by itself. | Provider-normalized primitives, trust-state contract, exposure logging, and clean-data exclusion unless intention plus execution exists. |
 
 Conservative phrasing:
 

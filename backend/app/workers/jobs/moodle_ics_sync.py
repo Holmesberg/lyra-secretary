@@ -9,12 +9,13 @@ import logging
 
 from app.db.models import User
 from app.services import moodle_ics_sync
+from app.services.operator_notifier import format_alert_context, redacted_user_ref
 from app.workers.jobs._per_user import for_each_user
 
 logger = logging.getLogger(__name__)
 
 
-def _operator_error_message(error: str) -> str:
+def _operator_error_message(error: str) -> tuple[str, str, str, str, str]:
     if error.startswith("http_"):
         try:
             status = int(error.split("_", 1)[1])
@@ -23,22 +24,38 @@ def _operator_error_message(error: str) -> str:
         if 400 <= status < 500:
             return (
                 f"Moodle sync failed: `{error}`. Moodle rejected the calendar "
-                "URL, so Lyra disconnected it. Reconnect Moodle in /settings."
+                "URL, so Lyra disconnected it. Reconnect Moodle in /settings.",
+                "warn",
+                "No retry until the user reconnects the Moodle calendar.",
+                "Yes - reconnect Moodle in Settings.",
+                "No imported deadlines were deleted; future Moodle imports are paused.",
             )
         if 500 <= status < 600:
             return (
                 f"Moodle sync failed: `{error}`. Moodle is temporarily "
                 "unavailable or rate-limiting; Lyra kept the connection and "
-                "will retry on the next cycle."
+                "will retry on the next cycle.",
+                "warn",
+                "Lyra kept the connection and will retry on the next cycle.",
+                "No user action unless the outage persists.",
+                "No mutation beyond retaining existing imported deadlines.",
             )
     if error in {"fetch_failed", "fetch_unknown"}:
         return (
             f"Moodle sync failed: `{error}`. Lyra kept the connection and "
-            "will retry on the next cycle."
+            "will retry on the next cycle.",
+            "warn",
+            "Lyra kept the connection and will retry on the next cycle.",
+            "No user action unless the outage persists.",
+            "No mutation beyond retaining existing imported deadlines.",
         )
     return (
         f"Moodle sync failed: `{error}`. Lyra kept the connection unless "
-        "Settings shows reconnect needed."
+        "Settings shows reconnect needed.",
+        "warn",
+        "Lyra will retry on the next cycle if the connection remains present.",
+        "Check Settings only if reconnect is shown.",
+        "No completion inference or deadline deletion from this failure.",
     )
 
 
@@ -60,10 +77,21 @@ def _run_for_one_user(db, user: User) -> None:
         if user.is_operator:
             from app.services.operator_notifier import notify_operator
 
+            message, severity, retry, user_action, data_integrity = (
+                _operator_error_message(result.error)
+            )
             notify_operator(
-                _operator_error_message(result.error),
+                message
+                + "\n\n"
+                + format_alert_context(
+                    affected="Moodle iCal / deadline import",
+                    scope=redacted_user_ref(user.user_id),
+                    retry=retry,
+                    user_action=user_action,
+                    data_integrity=data_integrity,
+                ),
                 source="scheduler.moodle",
-                severity="error",
+                severity=severity,
                 dedupe_key=f"moodle-ics-error:{user.user_id}:{result.error}",
                 cooldown_seconds=60 * 60,
             )
@@ -94,7 +122,23 @@ def _run_for_one_user(db, user: User) -> None:
         from app.services.operator_notifier import notify_operator
 
         notify_operator(
-            f"Moodle sync skipped *{result.skipped_unparseable}* unparseable event(s).",
+            f"Moodle sync skipped *{result.skipped_unparseable}* "
+            "unparseable event(s).\n\n"
+            + format_alert_context(
+                affected="Moodle iCal / deadline import",
+                scope=redacted_user_ref(user.user_id),
+                retry=(
+                    "Skipped events are not imported; future cycles may "
+                    "import them if Moodle changes the event shape."
+                ),
+                user_action=(
+                    "No student action unless expected deadlines are missing."
+                ),
+                data_integrity=(
+                    "Ambiguous events are skipped rather than imported with "
+                    "fake precision."
+                ),
+            ),
             source="scheduler.moodle",
             severity="warn",
             dedupe_key=f"moodle-ics-unparseable:{user.user_id}",

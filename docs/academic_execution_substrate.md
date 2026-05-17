@@ -4,11 +4,26 @@
 **Created:** 2026-05-16.
 **Purpose:** Capture the Baseet collaboration insight, the academic execution
 integration boundary, and the evidence rules for passive academic activity.
+**Governance:** Subordinate to `MANIFESTO.md`, especially "Manifesto
+Governance Rule", "Substrate Kill Criterion", and "Academic Execution
+Substrate Governance".
 
 This document does not authorize hidden tracking, autonomous scheduling,
 copyrighted content ingestion, product merger, or stronger behavioral claims.
 It defines the architecture needed for LyraOS to remain a provider-agnostic
 execution inference engine while integrating with academic/content systems.
+
+Implementation note: Academic Pressure Map surfaces must follow
+`docs/academic_pressure_map_contract.md`. That contract freezes trust-state
+copy, validity-threat cross-links, research-integrity checks, and the rule that
+passive activity is weak evidence unless the user accepted or confirmed an
+intention.
+
+Manifesto linkage: academic pressure, provider adapters, passive activity, and
+Baseet/Moodle integration are potential validity-threat surfaces. They must be
+read through `MANIFESTO.md` before any feature is allowed to affect Cortex,
+Exposure Ledger, clean-data profiles, adaptive scheduling, or stronger research
+claims.
 
 ---
 

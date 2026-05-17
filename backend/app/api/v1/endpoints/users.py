@@ -6,14 +6,14 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import authenticated_user_from_scope, get_db
 from app.db.models import Archetype, ArchetypeAssignment, StopwatchSession, Task, TaskState, User
-from app.db.scoping import get_current_user_id, set_current_user_id
+from app.db.scoping import set_current_user_id
 from app.schemas.archetype import ArchetypeAssignmentOut, ArchetypeSurveyIn
 from app.services.archetype_service import (
     DIFFUSE_AVERAGE_ID,
@@ -26,6 +26,7 @@ from app.services.archetype_service import (
     score_meq,
 )
 from app.services.calendar_sync import store_refresh_token
+from app.services.security_audit import audit_user_target, write_security_audit_event
 from app.utils.me_cache import get_cached_me, invalidate_me, set_cached_me
 from app.utils.time_utils import now_utc, strip_tz
 
@@ -63,14 +64,7 @@ router = APIRouter()
 
 
 def _current_user(db: Session) -> User:
-    uid = get_current_user_id()
-    if uid is None:
-        raise HTTPException(status_code=401, detail="not authenticated")
-    # User table is exempt from scoping; this is a direct lookup.
-    user = db.query(User).filter(User.user_id == uid).first()
-    if user is None:
-        raise HTTPException(status_code=401, detail="user not found")
-    return user
+    return authenticated_user_from_scope(db)
 
 
 class ConsentIn(BaseModel):
@@ -246,7 +240,11 @@ class StoreRefreshTokenIn(BaseModel):
 
 
 @router.post("/users/me/google-refresh-token")
-def post_google_refresh_token(body: StoreRefreshTokenIn, db: Session = Depends(get_db)):
+def post_google_refresh_token(
+    body: StoreRefreshTokenIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Persist a Google OAuth refresh token for the current user.
 
     Called by the Next.js server-side API route
@@ -264,12 +262,25 @@ def post_google_refresh_token(body: StoreRefreshTokenIn, db: Session = Depends(g
     if not body.refresh_token:
         raise HTTPException(status_code=400, detail="refresh_token required")
     store_refresh_token(user.user_id, body.refresh_token)
+    write_security_audit_event(
+        db=db,
+        actor_user_id=user.user_id,
+        user_id=user.user_id,
+        event_type="provider_connected",
+        surface="/users/me/google-refresh-token",
+        target_type="provider",
+        target_id="google_calendar",
+        status="success",
+        request=request,
+    )
     invalidate_me(user.user_id)  # google_calendar_connected flips
     return {"ok": True, "google_calendar_connected": True}
 
 
 @router.delete("/users/me/google-refresh-token")
-def delete_google_refresh_token(db: Session = Depends(get_db)):
+def delete_google_refresh_token(
+    request: Request, db: Session = Depends(get_db)
+):
     """Forget the user's refresh token — disconnects Google Calendar.
 
     Does NOT revoke the token with Google; user must also visit
@@ -279,6 +290,17 @@ def delete_google_refresh_token(db: Session = Depends(get_db)):
     user = _current_user(db)
     user.google_refresh_token = None
     db.commit()
+    write_security_audit_event(
+        db=db,
+        actor_user_id=user.user_id,
+        user_id=user.user_id,
+        event_type="provider_disconnected",
+        surface="/users/me/google-refresh-token",
+        target_type="provider",
+        target_id="google_calendar",
+        status="success",
+        request=request,
+    )
     invalidate_me(user.user_id)  # google_calendar_connected flips
     return {"ok": True, "google_calendar_connected": False}
 
@@ -526,7 +548,7 @@ def post_consent(body: ConsentIn, db: Session = Depends(get_db)):
 
 
 @router.get("/users/me/export")
-def export_my_data(db: Session = Depends(get_db)):
+def export_my_data(request: Request, db: Session = Depends(get_db)):
     """Full JSON dump of the requesting user's data. GDPR-style export."""
     user = _current_user(db)
     tasks = db.query(Task).all()  # auto-scoped
@@ -535,6 +557,17 @@ def export_my_data(db: Session = Depends(get_db)):
         db.query(ArchetypeAssignment)
         .filter(ArchetypeAssignment.user_id == user.user_id)
         .all()
+    )
+    write_security_audit_event(
+        db=db,
+        actor_user_id=user.user_id,
+        user_id=user.user_id,
+        event_type="account_export",
+        surface="/users/me/export",
+        target_type="user",
+        target_id=audit_user_target(user.user_id),
+        status="success",
+        request=request,
     )
     return {
         "user": {
@@ -684,7 +717,11 @@ def _purge_user_auxiliary_rows(db: Session, uid: int) -> None:
 
 
 @router.delete("/users/me")
-def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
+def delete_my_account(
+    body: DeleteIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Delete the requesting user's account.
 
     If retain_for_research=true (default): anonymize task and session rows,
@@ -701,6 +738,18 @@ def delete_my_account(body: DeleteIn, db: Session = Depends(get_db)):
 
     uid = user.user_id
     now = now_utc()
+    write_security_audit_event(
+        db=db,
+        actor_user_id=uid,
+        user_id=uid,
+        event_type="account_delete_requested",
+        surface="/users/me",
+        target_type="user",
+        target_id=audit_user_target(uid),
+        status="requested",
+        request=request,
+        redacted_metadata={"retain_for_research": body.retain_for_research},
+    )
 
     # Drop scope so the cascade DELETEs/UPDATEs can run unfiltered.
     set_current_user_id(None)

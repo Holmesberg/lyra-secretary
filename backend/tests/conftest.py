@@ -68,6 +68,12 @@ def _override_get_db(request: Request):
 def _install_test_overrides() -> None:
     app.state.allow_test_identity_header = True
     app.dependency_overrides[get_db] = _override_get_db
+    try:
+        import app.services.security_audit as security_audit
+
+        security_audit.SessionLocal = TestingSession
+    except Exception:
+        pass
 
 
 _install_test_overrides()
