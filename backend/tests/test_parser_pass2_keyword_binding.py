@@ -3,7 +3,7 @@
 Two layers tested:
 1. `infer_deadline_binding(title, candidates)` — pure function unit tests.
 2. End-to-end via TaskManager.create_task — when deadline_id is None,
-   Pass 2 fires and binds the task with deadline_match_source='parser_auto'.
+   Pass 2 stays suggestion-only and does not canonical-bind.
 
 Stoplist behavior, threshold, tie-breaking, and the asymmetric ratio
 (over task_tokens) are all covered.
@@ -158,7 +158,7 @@ def _make_user(db, email: str) -> User:
     return u
 
 
-def test_pass2_binds_with_parser_auto_source(db):
+def test_create_task_requires_explicit_deadline_even_when_pass2_would_match(db):
     user = _make_user(db, "g1@example.com")
     set_current_user_id(user.user_id)
 
@@ -182,10 +182,8 @@ def test_pass2_binds_with_parser_auto_source(db):
         end=start + timedelta(hours=1),
     )
     assert task is not None
-    assert task.deadline_id == deadline.deadline_id
-    assert task.deadline_match_source == "parser_auto"
-    # Confidence is the overlap ratio (between 0 and 1)
-    assert 0.5 <= task.deadline_match_confidence <= 1.0
+    assert task.deadline_id is None
+    assert task.deadline_match_source is None
 
 
 def test_pass2_does_not_bind_when_no_overlap(db):

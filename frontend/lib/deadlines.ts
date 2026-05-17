@@ -118,14 +118,19 @@ export interface DeadlinePreviewResponse {
   deadline_id: string | null;
   deadline_title: string | null;
   deadline_match_confidence: number | null;
-  deadline_match_source: "parser_auto" | null;
+  deadline_match_source:
+    | "heuristic_exact_title"
+    | "heuristic_startswith"
+    | "heuristic_substring"
+    | "heuristic_alias"
+    | null;
 }
 
 /**
- * Preview which deadline the parser would auto-bind for a given
- * title+description, without creating a task. Used by the new-task
- * modal to surface a soft "Lyra thinks this binds to X" affordance
- * the user can confirm or override.
+ * Preview which guarded deadline candidate Lyra would suggest for a
+ * given title+description, without creating a task or binding anything.
+ * Used by the new-task modal to surface a soft "Lyra thinks this binds
+ * to X" affordance the user can confirm or override.
  *
  * Returns all-null fields when no candidate clears the threshold or
  * when the user has no bindable deadlines.

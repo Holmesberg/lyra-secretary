@@ -163,8 +163,8 @@ def query_tasks(
         task_ids = [t.task_id for t in tasks]
         # Batch-load deadline titles for any tasks that have a binding.
         # Operator request 2026-05-01: surface the bound deadline title
-        # in /today so the user can verify the auto-bind landed on the
-        # right deadline. Single SQL — same trick as session_agg.
+        # in /today so the user can verify the explicit/confirmed binding
+        # landed on the right deadline. Single SQL — same trick as session_agg.
         deadline_titles: dict[str, str] = {}
         bound_deadline_ids = [t.deadline_id for t in tasks if t.deadline_id]
         if bound_deadline_ids:
@@ -276,7 +276,7 @@ def query_tasks(
                 "deadline_match_confidence": t.deadline_match_confidence,
                 # Operator request 2026-05-01: bound deadline title so
                 # /today + /calendar can render an inline chip
-                # ("↳ Lab 8 due Fri") proving the auto-bind landed.
+                # ("↳ Lab 8 due Fri") proving the binding landed.
                 "deadline_title": (
                     deadline_titles.get(t.deadline_id)
                     if t.deadline_id else None

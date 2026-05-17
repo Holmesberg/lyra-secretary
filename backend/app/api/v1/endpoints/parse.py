@@ -9,7 +9,8 @@ from app.api.deps import get_db
 from app.db.models import Deadline
 from app.db.scoping import get_current_user_id
 from app.schemas.task import TaskParseRequest, TaskParseResponse
-from app.services.parser import TaskParser, infer_deadline_binding
+from app.services.deadline_heuristic import score_deadlines
+from app.services.parser import TaskParser
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class DeadlinePreviewResponse(BaseModel):
     deadline_id: Optional[str] = None
     deadline_title: Optional[str] = None
     deadline_match_confidence: Optional[float] = None
-    deadline_match_source: Optional[str] = None  # "parser_auto" when matched
+    deadline_match_source: Optional[str] = None
 
 
 @router.post("/parse", response_model=ParseChainResponse)
@@ -86,13 +87,9 @@ def deadline_preview(
     request: DeadlinePreviewRequest,
     db: Session = Depends(get_db),
 ) -> DeadlinePreviewResponse:
-    """Read-only Pass 2 inference. Mirrors what TaskManager.create_task would
-    pick if this title+description were submitted, without writing a task.
-
-    Powers the NewTaskModal's deadline-suggestion UX (Loop 11 Phase K). The
-    asymmetric token-overlap math + 0.5 threshold + earliest-due tiebreak
-    all come from `infer_deadline_binding` so the preview never disagrees
-    with what creation would actually bind.
+    """Read-only deadline suggestion. This endpoint never authorizes a
+    canonical bind; it only previews a guarded candidate that the user can
+    confirm or override in the NewTaskModal.
     """
     uid = get_current_user_id()
     if uid is None:
@@ -108,13 +105,13 @@ def deadline_preview(
     )
     if not candidates:
         return DeadlinePreviewResponse()
-    match = infer_deadline_binding(request.title, candidates)
-    if match is None:
+    match = score_deadlines(request.title, request.description, candidates)
+    if not match.auto_bind or not match.candidates:
         return DeadlinePreviewResponse()
-    deadline, confidence = match
+    top = match.candidates[0]
     return DeadlinePreviewResponse(
-        deadline_id=deadline.deadline_id,
-        deadline_title=deadline.title,
-        deadline_match_confidence=round(confidence, 3),
-        deadline_match_source="parser_auto",
+        deadline_id=top.deadline_id,
+        deadline_title=top.title,
+        deadline_match_confidence=round(top.score, 3),
+        deadline_match_source=top.source,
     )

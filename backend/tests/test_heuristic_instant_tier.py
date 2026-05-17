@@ -73,10 +73,9 @@ def _args(title: str, description: str = None) -> dict:
     )
 
 
-def test_heuristic_auto_bind_high_confidence(db):
-    """Exact-title match clears all guardrails → canonical bind +
-    candidates pre-populated. Chip would suppress via user-owns guard
-    but data is there for audit."""
+def test_heuristic_high_confidence_stays_suggestion_only(db):
+    """Exact-title match clears suggestion guardrails, but canonical
+    binding still requires explicit user confirmation."""
     user = _make_user(db)
     set_current_user_id(user.user_id)
     bci = _make_deadline(db, user.user_id, "BCI Paper")
@@ -86,11 +85,12 @@ def test_heuristic_auto_bind_high_confidence(db):
         **_args("BCI Paper writeup intro")
     )
     assert task is not None
-    assert task.deadline_id == bci.deadline_id
-    assert task.deadline_match_source == "heuristic_exact_title"
-    # Candidates pre-populated even though chip will suppress
+    assert task.deadline_id is None
+    assert task.deadline_match_source is None
+    # Candidates pre-populated for the explicit confirmation chip.
     assert task.llm_deadline_candidates is not None
     assert len(task.llm_deadline_candidates) >= 1
+    assert task.llm_inferred_deadline_id == bci.deadline_id
 
 
 def test_heuristic_multi_competitive_populates_candidates_no_bind(db):

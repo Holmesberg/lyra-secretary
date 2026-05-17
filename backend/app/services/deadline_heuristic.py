@@ -1,9 +1,9 @@
-"""Tier 0 deterministic deadline-matching heuristic (2026-04-28).
+"""Tier 0 deterministic deadline-suggestion heuristic (2026-04-28).
 
 Sibling of the LLM enrichment path. Runs synchronously inside POST
-/v1/create with sub-10ms latency. When confident, sets the canonical
-`task.deadline_id` immediately so the user sees the binding the moment
-the task lands on /today — no LLM wait, no chip flash.
+/v1/create with sub-10ms latency. When confident, populates
+`task.llm_deadline_candidates` immediately so the user sees a candidate
+the moment the task lands on /today.
 
 Operator-locked design (2026-04-28 conversation):
 
@@ -14,7 +14,7 @@ Operator-locked design (2026-04-28 conversation):
     +0.4  meaningful-token overlap (post stopword strip)
     -0.5  applied per competing candidate above 0.5 (multi-match penalty)
 
-  Auto-bind (canonical `deadline_id` SET on /v1/create) requires ALL:
+  Strong suggestion requires ALL:
     1. top.score >= AUTO_BIND_MIN_SCORE (0.6)
     2. top.score - second.score >= UNIQUENESS_MARGIN (0.2)
     3. count(c for c in candidates if c.score >= 0.5) <= 1
@@ -23,7 +23,10 @@ Operator-locked design (2026-04-28 conversation):
        nothing semantically distinctive)
 
   Failing any guardrail → return ranked candidates anyway, but
-  `auto_bind=False`. The chip surfaces them; user decides.
+  `auto_bind=False`. The chip surfaces them; user decides. Despite the
+  legacy field name, `auto_bind=True` now means "safe to preview as the
+  top suggestion"; /v1/create does not write a canonical deadline_id
+  unless the request carries an explicit deadline_id.
 
 Source enum granularity (per operator's research-integrity guidance —
 Rule 14 stratification stays sharp):
@@ -102,9 +105,12 @@ class HeuristicCandidate:
 
 @dataclass
 class HeuristicMatch:
-    """Returned to /v1/create. When `auto_bind=True`, the caller writes
-    `task.deadline_id = top.deadline_id` and `deadline_match_source =
-    top.source` synchronously."""
+    """Returned to /v1/create and /parse/deadline-preview.
+
+    `auto_bind=True` is a legacy name. It now means the top candidate is
+    strong enough to show as the default suggestion; canonical binding
+    still requires explicit user confirmation.
+    """
     candidates: list[HeuristicCandidate]
     auto_bind: bool
     rejected_reason: Optional[str]  # debug/audit-only label when auto_bind=False

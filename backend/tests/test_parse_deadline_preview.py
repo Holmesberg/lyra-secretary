@@ -1,15 +1,14 @@
 """Tests for POST /v1/parse/deadline-preview.
 
-Loop 11 Phase K — read-only Pass 2 inference. The endpoint surfaces what
-TaskManager.create_task would auto-bind via `infer_deadline_binding` if
-this title+description were submitted, without writing a task. Powers
-the NewTaskModal's deadline-suggestion UX.
+The endpoint surfaces a guarded deadline suggestion without writing a
+task or authorizing a canonical bind. The NewTaskModal can ask the user
+to confirm this suggestion, but /v1/create must still receive an explicit
+deadline_id before any binding is written.
 
-The math is owned by `infer_deadline_binding` (covered in
-test_parser_pass2_keyword_binding.py). This file pins the endpoint
-contract: 401 when unauth, empty payload when no candidates, all-None
-response when no match clears 0.5 threshold, voided/terminal deadlines
-excluded, cross-user invisibility enforced.
+This file pins the endpoint contract: empty payload when no candidates,
+all-None response when no guarded candidate clears the threshold,
+voided/terminal deadlines excluded, cross-user invisibility enforced,
+and weak single-token description overlap suppressed.
 """
 from datetime import datetime, timedelta
 import logging
@@ -218,9 +217,26 @@ def test_strong_keyword_match_returns_binding(db):
     body = resp.json()
     assert body["deadline_id"] == deadline.deadline_id
     assert body["deadline_title"] == "BCI Hackathon"
-    assert body["deadline_match_source"] == "parser_auto"
+    assert body["deadline_match_source"] == "heuristic_exact_title"
     assert body["deadline_match_confidence"] is not None
     assert 0.5 <= body["deadline_match_confidence"] <= 1.0
+
+
+def test_single_generic_description_overlap_returns_none(db):
+    user = _make_user(db, user_id=77, email="revision@x")
+    _make_deadline(
+        db,
+        user.user_id,
+        title="CO Final",
+        description="AI revision material",
+    )
+    resp = client.post(
+        "/v1/parse/deadline-preview",
+        json={"title": "AI revision"},
+        headers=auth_headers(user.user_id),
+    )
+    body = resp.json()
+    assert body["deadline_id"] is None
 
 
 def test_weak_match_below_threshold_returns_none(db):
