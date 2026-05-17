@@ -9,11 +9,17 @@ from app.db.scoping import set_current_user_id
 from app.db.session import SessionLocal, engine
 from app.db.models import Task, TaskState, User
 from app.services.notification_queue import enqueue_user_notification
-from app.services.operator_notifier import format_alert_context, notify_operator
+from app.services.operator_notifier import notify_operator
 from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
 from app.utils.time_utils import now_utc, to_local
 from app.utils.redis_client import RedisClient
 from app.workers.jobs._per_user import for_each_user
+from app.workers.jobs._scheduler_contract import (
+    JobResult,
+    NO_MUTATION_ATTEMPTED,
+    degrade_job,
+    run_scheduler_job,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +27,16 @@ REMINDER_BOOTSTRAP_MAX_ATTEMPTS = 2
 REMINDER_BOOTSTRAP_RETRY_DELAY_SECONDS = 1.0
 
 
-def check_upcoming_tasks():
-    for_each_user(
+def check_upcoming_tasks() -> JobResult:
+    return run_scheduler_job(
+        "reminders",
+        "scheduler.reminders",
+        _check_upcoming_tasks,
+    )
+
+
+def _check_upcoming_tasks() -> JobResult:
+    return for_each_user(
         _run_for_one_user,
         user_ids=_load_candidate_user_ids(),
         job_name="reminders",
@@ -90,35 +104,34 @@ def _load_candidate_user_ids() -> list[int]:
             if attempt < REMINDER_BOOTSTRAP_MAX_ATTEMPTS:
                 time.sleep(REMINDER_BOOTSTRAP_RETRY_DELAY_SECONDS)
 
-    notify_operator(
-        "Reminder candidate bootstrap failed with `OperationalError`. "
-        "Job skipped this tick; check backend logs.\n\n"
-        + format_alert_context(
-            affected="scheduler.reminders / candidate bootstrap",
-            scope=(
-                "unknown candidate-user count; bootstrap could not load "
-                "planned tasks in the reminder window"
-            ),
-            retry=(
-                f"Retried {REMINDER_BOOTSTRAP_MAX_ATTEMPTS} total attempt(s), "
-                "disposed the DB engine pool after each failure, then waits "
-                "for the next scheduler tick."
-            ),
-            user_action=(
-                "No student action. Operator should triage if this repeats."
-            ),
-            data_integrity=(
-                "No reminder notification, output-surface row, or per-user "
-                "mutation was attempted because bootstrap failed before user "
-                "iteration. Reminders may be delayed until DB access recovers."
-            ),
+    degrade_job(
+        job_id="reminders",
+        subsystem="scheduler.reminders / candidate bootstrap",
+        message=(
+            "Reminder candidate bootstrap failed with `OperationalError`. "
+            "Job skipped this tick; check backend logs."
         ),
+        affected="scheduler.reminders / candidate bootstrap",
+        scope=(
+            "unknown candidate-user count; bootstrap could not load "
+            "planned tasks in the reminder window"
+        ),
+        retry=(
+            f"Retried {REMINDER_BOOTSTRAP_MAX_ATTEMPTS} total attempt(s), "
+            "disposed the DB engine pool after each failure, then waits "
+            "for the next scheduler tick. Reminder notifications may be delayed "
+            "until DB access recovers."
+        ),
+        user_action=(
+            "No student action. Operator should triage if this repeats."
+        ),
+        data_integrity=NO_MUTATION_ATTEMPTED,
         source="scheduler.reminders",
         severity="error",
         dedupe_key="reminder-candidates:OperationalError",
         cooldown_seconds=30 * 60,
+        notifier=notify_operator,
     )
-    return []
 
 
 def _run_for_one_user(db, user: User):

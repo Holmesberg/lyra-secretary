@@ -29,6 +29,12 @@ from app.db.session import SessionLocal, engine
 from app.services.llm_parser import enrich_task_via_llm
 from app.services.operator_notifier import format_alert_context, notify_operator
 from app.utils.time_utils import now_utc
+from app.workers.jobs._scheduler_contract import (
+    JobResult,
+    NO_MUTATION_ATTEMPTED,
+    degrade_job,
+    run_scheduler_job,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +44,15 @@ logger = logging.getLogger(__name__)
 _MAX_TASKS_PER_CYCLE = 1
 
 
-def run_llm_enrichment() -> None:
+def run_llm_enrichment() -> JobResult:
+    return run_scheduler_job(
+        "llm_enrichment",
+        "scheduler.llm-enrichment",
+        _run_llm_enrichment,
+    )
+
+
+def _run_llm_enrichment() -> JobResult:
     """Single APScheduler tick. Pulls pending tasks and enriches each.
 
     Bypasses the SQLAlchemy ContextVar scoping hook for the SELECT
@@ -78,30 +92,30 @@ def run_llm_enrichment() -> None:
                 "llm_enrichment: skipped tick because DB bootstrap failed",
                 exc_info=True,
             )
-            notify_operator(
-                "LLM enrichment skipped because the database was unavailable "
-                "during the pending-task scan.\n\n"
-                + format_alert_context(
-                    affected="scheduler.llm-enrichment / database bootstrap",
-                    scope="unknown; pending task scan did not complete",
-                    retry=(
-                        "This tick is skipped; the scheduler retries on the "
-                        "next interval after disposing the DB engine pool."
-                    ),
-                    user_action="No student action.",
-                    data_integrity=(
-                        "No task enrichment mutation attempted before the "
-                        "pending-task scan completed."
-                    ),
+            degrade_job(
+                job_id="llm_enrichment",
+                subsystem="scheduler.llm-enrichment / database bootstrap",
+                message=(
+                    "LLM enrichment skipped because the database was unavailable "
+                    "during the pending-task scan."
                 ),
+                affected="scheduler.llm-enrichment / database bootstrap",
+                scope="unknown; pending task scan did not complete",
+                retry=(
+                    "This tick is skipped; the scheduler retries on the "
+                    "next interval after disposing the DB engine pool."
+                ),
+                user_action="No student action.",
+                data_integrity=NO_MUTATION_ATTEMPTED,
                 source="scheduler.llm-enrichment",
                 severity="warn",
                 dedupe_key="llm-enrichment-db-unavailable",
                 cooldown_seconds=30 * 60,
+                notifier=notify_operator,
             )
-            return
+            return JobResult.DEGRADED_HANDLED
         if not pending:
-            return
+            return JobResult.OK
         status_counts: dict[str, int] = {}
         unexpected_failures = 0
         for (task_id,) in pending:
@@ -175,3 +189,4 @@ def run_llm_enrichment() -> None:
     finally:
         db.close()
         set_current_user_id(None)
+    return JobResult.OK

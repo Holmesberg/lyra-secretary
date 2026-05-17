@@ -20,6 +20,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import text
 
 from app.db.models import (
@@ -34,6 +35,12 @@ from app.services.pause_predictor import PausePrediction
 from app.utils.time_utils import now_utc
 from app.workers.jobs import pause_prediction
 from app.workers.jobs.pause_prediction import _run_for_one_user
+from app.workers.jobs._scheduler_contract import (
+    JobResult,
+    NO_MUTATION_ATTEMPTED,
+    SchedulerJobDegraded,
+    reset_degradation_backoff,
+)
 from tests.conftest import TestingSession
 
 USER_ID = 910
@@ -167,8 +174,9 @@ def test_run_pause_prediction_only_iterates_active_candidates(monkeypatch):
         ),
     )
 
-    pause_prediction.run_pause_prediction()
+    result = pause_prediction.run_pause_prediction()
 
+    assert result == JobResult.OK
     assert calls == [(pause_prediction._run_for_one_user, [1, 2], "pause_prediction")]
 
 
@@ -212,6 +220,70 @@ def test_active_user_bootstrap_only_returns_executing_users(db, monkeypatch):
     monkeypatch.setattr(pause_prediction, "SessionLocal", TestingSession)
 
     assert pause_prediction._load_active_user_ids() == [active.user_id]
+
+
+def test_active_user_bootstrap_db_failure_degrades_without_raise(monkeypatch):
+    class FailingSession:
+        def query(self, *_args, **_kwargs):
+            raise OperationalError("select", {}, Exception("db down"))
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    notifications = []
+    dispose_count = 0
+
+    def fake_dispose():
+        nonlocal dispose_count
+        dispose_count += 1
+
+    monkeypatch.setattr(pause_prediction, "SessionLocal", FailingSession)
+    monkeypatch.setattr(pause_prediction, "_dispose_engine_pool", fake_dispose)
+    monkeypatch.setattr(pause_prediction.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        pause_prediction,
+        "notify_operator",
+        lambda message, **kwargs: notifications.append((message, kwargs)) or True,
+    )
+    reset_degradation_backoff()
+
+    with pytest.raises(SchedulerJobDegraded):
+        pause_prediction._load_active_user_ids()
+
+    assert dispose_count == pause_prediction.ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS
+    assert len(notifications) == 1
+    assert notifications[0][1]["source"] == "scheduler.pause-prediction"
+    assert f"Data integrity risk: {NO_MUTATION_ATTEMPTED}" in notifications[0][0]
+
+
+def test_pause_prediction_entrypoint_returns_degraded_handled_on_bootstrap_failure(monkeypatch):
+    class FailingSession:
+        def query(self, *_args, **_kwargs):
+            raise OperationalError("select", {}, Exception("db down"))
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    notifications = []
+
+    monkeypatch.setattr(pause_prediction, "SessionLocal", FailingSession)
+    monkeypatch.setattr(pause_prediction, "_dispose_engine_pool", lambda: None)
+    monkeypatch.setattr(pause_prediction.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        pause_prediction,
+        "notify_operator",
+        lambda message, **kwargs: notifications.append((message, kwargs)) or True,
+    )
+    reset_degradation_backoff()
+
+    assert pause_prediction.run_pause_prediction() == JobResult.DEGRADED_HANDLED
+    assert len(notifications) == 1
 
 
 def test_no_prediction_no_row_no_queue(db, user):

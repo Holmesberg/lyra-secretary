@@ -33,12 +33,18 @@ from app.db.session import SessionLocal, engine
 from app.db.models import PausePredictionLog, Task, TaskState, User
 from app.db.scoping import set_current_user_id
 from app.services.notification_queue import enqueue_user_notification
-from app.services.operator_notifier import format_alert_context, notify_operator
+from app.services.operator_notifier import notify_operator
 from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
 from app.services.pause_predictor import PausePredictor
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
+from app.workers.jobs._scheduler_contract import (
+    JobResult,
+    NO_MUTATION_ATTEMPTED,
+    degrade_job,
+    run_scheduler_job,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +59,16 @@ ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS = 2
 ACTIVE_USER_BOOTSTRAP_RETRY_DELAY_SECONDS = 1.0
 
 
-def run_pause_prediction():
-    for_each_user(
+def run_pause_prediction() -> JobResult:
+    return run_scheduler_job(
+        "pause_prediction",
+        "scheduler.pause-prediction",
+        _run_pause_prediction,
+    )
+
+
+def _run_pause_prediction() -> JobResult:
+    return for_each_user(
         _run_for_one_user,
         user_ids=_load_active_user_ids(),
         job_name="pause_prediction",
@@ -119,29 +133,28 @@ def _load_active_user_ids() -> list[int]:
             if attempt < ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS:
                 time.sleep(ACTIVE_USER_BOOTSTRAP_RETRY_DELAY_SECONDS)
 
-    notify_operator(
-        "Pause prediction active-user bootstrap failed with "
-        "`OperationalError`. Job skipped this tick; check backend logs.\n\n"
-        + format_alert_context(
-            affected="scheduler.pause-prediction / active-user bootstrap",
-            scope="unknown active-user count; bootstrap could not load candidates",
-            retry=(
-                f"Retried {ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS} total "
-                "attempt(s), disposed the DB engine pool after each failure, "
-                "then waits for the next scheduler tick."
-            ),
-            user_action="No student action. Operator should triage if repeated.",
-            data_integrity=(
-                "No pause_prediction_log row attempted because bootstrap "
-                "failed before user iteration."
-            ),
+    degrade_job(
+        job_id="pause_prediction",
+        subsystem="scheduler.pause-prediction / active-user bootstrap",
+        message=(
+            "Pause prediction active-user bootstrap failed with "
+            "`OperationalError`. Job skipped this tick; check backend logs."
         ),
+        affected="scheduler.pause-prediction / active-user bootstrap",
+        scope="unknown active-user count; bootstrap could not load candidates",
+        retry=(
+            f"Retried {ACTIVE_USER_BOOTSTRAP_MAX_ATTEMPTS} total "
+            "attempt(s), disposed the DB engine pool after each failure, "
+            "then waits for the next scheduler tick."
+        ),
+        user_action="No student action. Operator should triage if repeated.",
+        data_integrity=NO_MUTATION_ATTEMPTED,
         source="scheduler.pause-prediction",
         severity="error",
         dedupe_key="pause-prediction-active-users:OperationalError",
         cooldown_seconds=30 * 60,
+        notifier=notify_operator,
     )
-    return []
 
 
 def _run_for_one_user(db, user: User):

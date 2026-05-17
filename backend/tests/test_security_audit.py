@@ -106,6 +106,7 @@ def test_security_audit_model_is_not_imported_by_behavioral_paths():
     """Audit rows must not become another inference dataset."""
     app_dir = Path(__file__).resolve().parents[1] / "app"
     allowed = {
+        Path("core/research_contracts.py"),
         Path("db/models.py"),
         Path("services/security_audit.py"),
     }

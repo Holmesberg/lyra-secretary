@@ -8,12 +8,19 @@ from sqlalchemy.orm import object_session
 from app.db.models import User
 from app.db.scoping import get_current_user_id, set_current_user_id
 from app.workers.jobs import _per_user
+from app.workers.jobs._scheduler_contract import (
+    JobResult,
+    MUTATION_MAY_HAVE_STARTED,
+    NO_MUTATION_ATTEMPTED,
+    reset_degradation_backoff,
+)
 from tests.conftest import TestingSession
 
 
 @pytest.fixture(autouse=True)
 def _reset_bootstrap_backoff(monkeypatch):
     monkeypatch.setattr(_per_user, "_bootstrap_backoff_until_monotonic", 0.0)
+    reset_degradation_backoff()
     yield
 
 
@@ -223,15 +230,17 @@ def test_for_each_user_notifies_and_skips_after_bootstrap_operational_error(
         lambda *args, **kwargs: notifications.append((args, kwargs)) or True,
     )
 
-    _per_user.for_each_user(lambda job_db, scoped_user: calls.append(scoped_user))
+    result = _per_user.for_each_user(lambda job_db, scoped_user: calls.append(scoped_user))
 
     assert calls == []
+    assert result == JobResult.DEGRADED_HANDLED
     assert len(notifications) == 1
     assert notifications[0][1]["source"] == "scheduler.per-user"
     assert notifications[0][1]["severity"] == "error"
     assert notifications[0][1]["dedupe_key"] == "bootstrap-user-ids:OperationalError"
     assert "Affected provider/subsystem:" in notifications[0][0][0]
     assert "Data integrity risk:" in notifications[0][0][0]
+    assert f"Data integrity risk: {NO_MUTATION_ATTEMPTED}" in notifications[0][0][0]
     assert fake_engine.dispose_calls == _per_user.BOOTSTRAP_MAX_ATTEMPTS
     assert sleeps == [_per_user.BOOTSTRAP_RETRY_DELAY_SECONDS]
     assert _per_user._bootstrap_backoff_until_monotonic > 0
@@ -256,14 +265,16 @@ def test_for_each_user_honors_bootstrap_db_backoff(monkeypatch):
         lambda *args, **kwargs: notifications.append((args, kwargs)) or True,
     )
 
-    _per_user.for_each_user(lambda job_db, scoped_user: calls.append(scoped_user))
-    _per_user.for_each_user(
+    first = _per_user.for_each_user(lambda job_db, scoped_user: calls.append(scoped_user))
+    second = _per_user.for_each_user(
         lambda job_db, scoped_user: calls.append(scoped_user),
         user_ids=[123],
         job_name="candidate_job",
     )
 
     assert calls == []
+    assert first == JobResult.DEGRADED_HANDLED
+    assert second == JobResult.DEGRADED_HANDLED
     assert notifications == []
     assert get_current_user_id() is None
     set_current_user_id(None)
@@ -291,12 +302,13 @@ def test_for_each_user_iteration_operational_error_opens_backoff_and_stops_fanou
         lambda *args, **kwargs: notifications.append((args, kwargs)) or True,
     )
 
-    _per_user.for_each_user(
+    result = _per_user.for_each_user(
         lambda job_db, scoped_user: calls.append(scoped_user),
         job_name="timer_overflow",
     )
 
     assert calls == []
+    assert result == JobResult.DEGRADED_HANDLED
     assert failing_user_session.rollback_called
     assert failing_user_session.close_called
     assert unused_second_user.close_called is False
@@ -307,5 +319,6 @@ def test_for_each_user_iteration_operational_error_opens_backoff_and_stops_fanou
     assert notifications[0][1]["dedupe_key"] == "timer_overflow:OperationalError"
     assert "scheduler.per-user / timer_overflow" in notifications[0][0][0]
     assert "remaining users" in notifications[0][0][0]
+    assert f"Data integrity risk: {MUTATION_MAY_HAVE_STARTED}" in notifications[0][0][0]
     assert get_current_user_id() is None
     set_current_user_id(None)

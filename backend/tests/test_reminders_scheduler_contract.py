@@ -1,6 +1,7 @@
 from datetime import timedelta
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -8,6 +9,12 @@ from app.db.models import Task, TaskState, User
 from app.db.scoping import set_current_user_id
 from app.utils.time_utils import now_utc
 from app.workers.jobs import reminders
+from app.workers.jobs._scheduler_contract import (
+    JobResult,
+    NO_MUTATION_ATTEMPTED,
+    SchedulerJobDegraded,
+    reset_degradation_backoff,
+)
 from tests.conftest import TestingSession
 
 
@@ -100,9 +107,38 @@ def test_reminder_bootstrap_db_failure_degrades_without_raise(monkeypatch):
         "notify_operator",
         lambda message, **kwargs: notifications.append((message, kwargs)) or True,
     )
+    reset_degradation_backoff()
 
-    assert reminders._load_candidate_user_ids() == []
+    with pytest.raises(SchedulerJobDegraded):
+        reminders._load_candidate_user_ids()
     assert dispose_count == reminders.REMINDER_BOOTSTRAP_MAX_ATTEMPTS
     assert notifications
     assert notifications[0][1]["source"] == "scheduler.reminders"
-    assert "No reminder notification" in notifications[0][0]
+    assert f"Data integrity risk: {NO_MUTATION_ATTEMPTED}" in notifications[0][0]
+
+
+def test_reminder_entrypoint_returns_degraded_handled_on_bootstrap_failure(monkeypatch):
+    class FailingSession:
+        def query(self, *args, **kwargs):
+            raise OperationalError("select", {}, Exception("db down"))
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    notifications = []
+
+    monkeypatch.setattr(reminders, "SessionLocal", FailingSession)
+    monkeypatch.setattr(reminders, "_dispose_engine_pool", lambda: None)
+    monkeypatch.setattr(reminders.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        reminders,
+        "notify_operator",
+        lambda message, **kwargs: notifications.append((message, kwargs)) or True,
+    )
+    reset_degradation_backoff()
+
+    assert reminders.check_upcoming_tasks() == JobResult.DEGRADED_HANDLED
+    assert len(notifications) == 1

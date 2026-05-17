@@ -4,6 +4,11 @@ from pathlib import Path
 from sqlalchemy.exc import OperationalError
 
 from app.workers.jobs import llm_enrichment
+from app.workers.jobs._scheduler_contract import (
+    JobResult,
+    NO_MUTATION_ATTEMPTED,
+    reset_degradation_backoff,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -130,8 +135,9 @@ def test_llm_enrichment_db_bootstrap_failure_degrades_without_raise(monkeypatch)
         "notify_operator",
         lambda *args, **kwargs: notifications.append((args, kwargs)) or True,
     )
+    reset_degradation_backoff()
 
-    llm_enrichment.run_llm_enrichment()
+    assert llm_enrichment.run_llm_enrichment() == JobResult.DEGRADED_HANDLED
 
     assert session.rollback_called
     assert session.close_called
@@ -139,3 +145,4 @@ def test_llm_enrichment_db_bootstrap_failure_degrades_without_raise(monkeypatch)
     assert len(notifications) == 1
     assert notifications[0][1]["source"] == "scheduler.llm-enrichment"
     assert "database bootstrap" in notifications[0][0][0]
+    assert f"Data integrity risk: {NO_MUTATION_ATTEMPTED}" in notifications[0][0][0]

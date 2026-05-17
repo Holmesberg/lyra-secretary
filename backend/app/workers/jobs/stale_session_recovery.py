@@ -30,24 +30,126 @@ History:
     SKIPPED. Negative pause_event.duration_minutes bug fixed in same pass.
 """
 import logging
+import time
 from datetime import timedelta
 
 import sqlalchemy as sa
+from sqlalchemy.exc import OperationalError
 
 from app.db.models import PauseEvent, StopwatchSession, Task, TaskState, User
+from app.db.scoping import set_current_user_id
+from app.db.session import SessionLocal
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
+from app.workers.jobs._scheduler_contract import (
+    JobResult,
+    NO_MUTATION_ATTEMPTED,
+    degrade_job,
+    dispose_engine_pool,
+    run_scheduler_job,
+)
 
 logger = logging.getLogger(__name__)
 
 STALE_PAUSE_HOURS = 48
 STALE_ACTIVE_HOURS = 48
 EARLY_STOP_FRACTION = 0.5  # mirrors stopwatch_manager early-stop gate
+STALE_BOOTSTRAP_MAX_ATTEMPTS = 2
+STALE_BOOTSTRAP_RETRY_DELAY_SECONDS = 1.0
 
 
-def run_stale_session_recovery():
-    for_each_user(_run_for_one_user, job_name="stale_session_recovery")
+def run_stale_session_recovery() -> JobResult:
+    return run_scheduler_job(
+        "stale_session_recovery",
+        "scheduler.stale-sessions",
+        _run_stale_session_recovery,
+    )
+
+
+def _run_stale_session_recovery() -> JobResult:
+    return for_each_user(
+        _run_for_one_user,
+        user_ids=_load_candidate_user_ids(),
+        job_name="stale_session_recovery",
+    )
+
+
+def _load_candidate_user_ids() -> list[int]:
+    """Load users who have stale open sessions before per-user mutation starts."""
+    set_current_user_id(None)
+    now = now_utc()
+    pause_cutoff = now - timedelta(hours=STALE_PAUSE_HOURS)
+    active_cutoff = now - timedelta(hours=STALE_ACTIVE_HOURS)
+
+    for attempt in range(1, STALE_BOOTSTRAP_MAX_ATTEMPTS + 1):
+        db = SessionLocal()
+        failed_operationally = False
+        try:
+            rows = (
+                db.query(StopwatchSession.user_id)
+                .filter(
+                    StopwatchSession.end_time_utc.is_(None),
+                    sa.or_(
+                        sa.and_(
+                            StopwatchSession.paused_at_utc.isnot(None),
+                            StopwatchSession.paused_at_utc < pause_cutoff,
+                        ),
+                        sa.and_(
+                            StopwatchSession.paused_at_utc.is_(None),
+                            StopwatchSession.start_time_utc < active_cutoff,
+                        ),
+                    ),
+                )
+                .distinct()
+                .all()
+            )
+            return [int(row[0]) for row in rows if row[0] is not None]
+        except OperationalError:
+            failed_operationally = True
+            try:
+                db.rollback()
+            except Exception:  # noqa: BLE001 - session may already be broken
+                logger.debug(
+                    "stale_session_recovery candidate bootstrap rollback failed",
+                    exc_info=True,
+                )
+            logger.warning(
+                "stale_session_recovery candidate bootstrap failed with "
+                "OperationalError on attempt %s/%s",
+                attempt,
+                STALE_BOOTSTRAP_MAX_ATTEMPTS,
+                exc_info=True,
+            )
+        finally:
+            db.close()
+
+        if failed_operationally:
+            dispose_engine_pool(logger)
+            if attempt < STALE_BOOTSTRAP_MAX_ATTEMPTS:
+                time.sleep(STALE_BOOTSTRAP_RETRY_DELAY_SECONDS)
+
+    degrade_job(
+        job_id="stale_session_recovery",
+        subsystem="scheduler.stale-sessions / candidate bootstrap",
+        message=(
+            "Stale session recovery candidate bootstrap failed with "
+            "`OperationalError`. Job skipped this tick; check backend logs."
+        ),
+        affected="scheduler.stale-sessions / candidate bootstrap",
+        scope="unknown candidate-user count; bootstrap could not load stale sessions",
+        retry=(
+            f"Retried {STALE_BOOTSTRAP_MAX_ATTEMPTS} total attempt(s), disposed "
+            "the DB engine pool after each failure, then waits for the next "
+            "scheduler tick."
+        ),
+        user_action="No student action. Operator should triage if repeated.",
+        data_integrity=NO_MUTATION_ATTEMPTED,
+        source="scheduler.stale-sessions",
+        severity="error",
+        dedupe_key="stale-session-candidates:OperationalError",
+        cooldown_seconds=30 * 60,
+    )
 
 
 def _run_for_one_user(db, user: User):
@@ -185,6 +287,9 @@ def _run_for_one_user(db, user: User):
                 f"planned_min={planned} started_at={session.start_time_utc.isoformat()} "
                 f"user_id={user.user_id}"
             )
+        except OperationalError:
+            db.rollback()
+            raise
         except Exception as e:
             logger.error(
                 f"stale_session_recovery: failed to close session_id={session.session_id} "
@@ -215,6 +320,14 @@ def _run_for_one_user(db, user: User):
                 dedupe_key=f"stale-sessions:{user.user_id}:{closed}:{executed_count}:{skipped_count}",
                 cooldown_seconds=30 * 60,
             )
+    except OperationalError:
+        logger.error(
+            f"stale_session_recovery: commit failed with OperationalError "
+            f"for user_id={user.user_id}",
+            exc_info=True,
+        )
+        db.rollback()
+        raise
     except Exception as e:
         logger.error(
             f"stale_session_recovery: commit failed for user_id={user.user_id}: {e}",
