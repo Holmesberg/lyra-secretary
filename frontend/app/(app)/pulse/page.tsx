@@ -45,6 +45,10 @@ import {
   type IntegrationsResponse,
 } from "@/lib/integrations";
 import {
+  getAcademicPressureMap,
+  type AcademicPressureMapResponse,
+} from "@/lib/academic";
+import {
   focusMinutesToday,
   winsToday,
 } from "@/lib/pulse-aggregations";
@@ -54,6 +58,7 @@ import { PulseTodaysPlanV2 } from "@/components/pulse/PulseTodaysPlanV2";
 import { PulseFocusCard } from "@/components/pulse/PulseFocusCard";
 import { PulseDeadlinesV2 } from "@/components/pulse/PulseDeadlinesV2";
 import { PulseSystemInsight } from "@/components/pulse/PulseSystemInsight";
+import { PulseAcademicPressureMap } from "@/components/pulse/PulseAcademicPressureMap";
 import { PulseRecovery } from "@/components/pulse/PulseRecovery";
 import { PulseIntegrationsV2 } from "@/components/pulse/PulseIntegrationsV2";
 import { PulseQuickCaptureV2 } from "@/components/pulse/PulseQuickCaptureV2";
@@ -113,6 +118,11 @@ export default function PulsePage() {
   const integrationsQ = useQuery<IntegrationsResponse>({
     queryKey: ["integrations"],
     queryFn: getIntegrations,
+    staleTime: 60_000,
+  });
+  const pressureQ = useQuery<AcademicPressureMapResponse>({
+    queryKey: ["academic-pressure-map", 14],
+    queryFn: () => getAcademicPressureMap(14),
     staleTime: 60_000,
   });
 
@@ -175,16 +185,22 @@ export default function PulsePage() {
 
       {/* BOTTOM ROW — System Insight | Recovery | Integrations */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-4">
           <PulseSystemInsight
             tasksToday={tasksToday}
             recentTasks={recentTasks}
           />
         </div>
         <div className="lg:col-span-4">
+          <PulseAcademicPressureMap
+            pressure={pressureQ.data ?? null}
+            loading={pressureQ.isLoading}
+          />
+        </div>
+        <div className="lg:col-span-2">
           <PulseRecovery recentTasks={recentTasks} />
         </div>
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-2">
           <PulseIntegrationsV2 integrations={integrations} />
         </div>
       </div>

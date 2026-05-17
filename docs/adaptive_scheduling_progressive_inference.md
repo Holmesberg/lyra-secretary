@@ -44,6 +44,10 @@ Not:
 
 See also `docs/behavioral_instrumentation_doctrine.md` for the broader
 instrumentation philosophy behind this stance.
+For academic/content-system integrations, see
+`docs/academic_execution_substrate.md`; it separates external academic
+structure, passive activity traces, accepted user intention, and clean
+planning-calibration evidence.
 
 ## Progressive Epistemic Capability
 

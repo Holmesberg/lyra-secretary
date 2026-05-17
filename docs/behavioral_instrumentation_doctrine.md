@@ -9,6 +9,11 @@ This document does not authorize new predictors, prompts, schema, UI, or
 automatic scheduling. It clarifies the interpretation philosophy behind the
 current architecture.
 
+For the academic-provider version of this doctrine, including Baseet/LMS
+adapter boundaries, passive activity traces, and the rule that planning
+calibration requires accepted intention, see
+`docs/academic_execution_substrate.md`.
+
 ---
 
 ## 1. Core Claim
