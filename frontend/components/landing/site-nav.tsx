@@ -16,7 +16,7 @@ const LINKS = [
 // simple-bar treatment further down.
 // TAB_H = logo render height — logo fills the tab edge-to-edge with
 // zero pad so the detective silhouette reads as the brand anchor.
-const TAB_W = 300;
+const TAB_W = 350;
 const TAB_H = 130;
 const LINE_Y = 70;
 const SLOPE_W = 60;
@@ -83,24 +83,20 @@ export function SiteNav() {
         {/* Tab content: logo + LyraOS wordmark */}
         <a
           href="#top"
-          className="group absolute left-0 top-0 flex items-center gap-4 pl-5 lg:pl-7"
+          className="group absolute left-0 top-0 flex items-center gap-5 pl-9 pr-4 lg:pl-12 lg:pr-6"
           style={{ height: TAB_H, width: TAB_W }}
           aria-label="LyraOS — the instrument"
         >
-          <span className="relative flex h-[92px] w-[92px] items-center justify-center rounded-full border border-signal/45 bg-void/70 shadow-[0_0_36px_-14px_rgba(77,212,232,0.85)]">
-            <span
-              aria-hidden
-              className="absolute inset-3 rounded-full bg-signal/10 blur-xl"
-            />
+          <span className="relative flex h-[124px] w-[124px] shrink-0 items-center justify-center">
             <Image
               src="/lyraos-logo.png"
               alt=""
-              width={72}
-              height={72}
+              width={124}
+              height={124}
               priority
               quality={100}
-              sizes="72px"
-              className="relative h-[72px] w-auto"
+              sizes="124px"
+              className="block h-[124px] w-[124px] object-contain"
             />
           </span>
           <span className="font-display text-[2rem] font-medium leading-none tracking-tight text-parchment lg:text-[2.25rem]">
