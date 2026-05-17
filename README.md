@@ -180,6 +180,15 @@ Verify topology:
 node scripts/verify_runtime_topology.mjs --topology public
 ```
 
+Production frontend recovery is WSL/public-topology specific:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1
+```
+
+Do not prove `lyraos.org` by starting a separate Windows `next start` process.
+See `docs/incidents/2026-05-17-public-frontend-mixed-topology.md`.
+
 ## System Diagrams
 
 Diagrams live in [docs/diagrams](docs/diagrams). Regenerate them with:

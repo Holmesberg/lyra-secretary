@@ -55,9 +55,9 @@ else
 fi
 
 if [ "`$NO_BUILD" != '1' ]; then
-  echo '== rebuilding .next from scratch =='
+  echo '== rebuilding .next public topology from scratch =='
   rm -rf .next
-  npm run build
+  npm run build:public
 else
   echo '== skipping build; validating existing .next =='
 fi
@@ -75,7 +75,7 @@ set -euo pipefail
 source ~/.nvm/nvm.sh
 cd "__FRONTEND_DIR__"
 export NEXT_TELEMETRY_DISABLED=1
-exec npm run start > /tmp/frontend.log 2>&1
+exec npm run start:public > /tmp/frontend.log 2>&1
 EOS
 
 python3 - <<PY
@@ -104,6 +104,31 @@ curl -s -o /dev/null -w 'wsl_localhost:%{http_code},time=%{time_total}\n' --max-
 if [ "`$SKIP_PUBLIC_CHECK" != '1' ]; then
   echo '== public health =='
   curl -s -o /dev/null -w 'lyraos_org:%{http_code},time=%{time_total}\n' --max-time 20 https://lyraos.org/
+  echo '== public topology =='
+  python3 - <<'PY'
+import json
+import sys
+import urllib.request
+
+request = urllib.request.Request(
+    "https://lyraos.org/api/topology",
+    headers={"User-Agent": "LyraTopologyVerifier/1.0"},
+)
+with urllib.request.urlopen(request, timeout=20) as response:
+    topology = json.load(response)
+
+print(json.dumps(topology, indent=2))
+expected = {
+    "topology_class": "public",
+    "compiled_api_origin": "https://api.lyraos.org",
+    "nextauth_url": "https://lyraos.org",
+    "verified_topology": True,
+}
+for key, value in expected.items():
+    if topology.get(key) != value:
+        print(f"ERROR: public topology mismatch for {key}: {topology.get(key)!r}", file=sys.stderr)
+        sys.exit(43)
+PY
 fi
 "@
 

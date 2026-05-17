@@ -142,6 +142,39 @@ topology verifier fails -> screenshots, latency logs, and bug reports are
 epistemically ambiguous
 ```
 
+Public frontend authority:
+
+```text
+Cloudflare reaches the WSL `lyra-frontend` tmux process, not any stray Windows
+`next start` process.
+```
+
+For `lyraos.org`, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1
+node scripts/verify_runtime_topology.mjs --topology public
+```
+
+Do not use a Windows port-3000 frontend to prove public health while the tunnel
+is served from WSL. If both Windows and WSL have frontend processes, stop and
+verify which process Cloudflare is actually reaching.
+
+Public browser smoke requires secure cookie names:
+
+```powershell
+$rawA = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_ASABRYHAFEZ", "User")
+$rawM = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_MORIARTY", "User")
+$env:LYRA_COOKIE_ASABRYHAFEZ = "__Secure-next-auth.session-token=$rawA"
+$env:LYRA_COOKIE_MORIARTY = "__Secure-next-auth.session-token=$rawM"
+$env:LYRA_FRONTEND_ORIGIN = "https://lyraos.org"
+$env:LYRA_API_ORIGIN = "https://api.lyraos.org"
+node scripts/browser_smoke_two_users.mjs
+```
+
+The raw token-only cookie env can work on localhost, but HTTPS public smoke
+must use `__Secure-next-auth.session-token`.
+
 ## Laptop sleep / wake behavior
 
 - The tunnel is a foreground process launched via `cloudflared tunnel run lyra-prod` (currently `nohup … &`). **Does NOT auto-recover** on laptop sleep or reboot.
@@ -166,7 +199,7 @@ Supabase holds the data *off* the laptop so:
 | Tunnel down (cloudflared killed) | `https://lyraos.org` → 1033 / no response | `cloudflared tunnel run lyra-prod` on laptop |
 | Backend container down | `https://api.lyraos.org/v1/health` → 502 | `docker compose up -d backend` |
 | CORS split-brain | Browser shows `Failed to fetch` from `/v1/users/me`, while `curl localhost:8000/` returns 200 | Verify `CORS_ALLOWED_ORIGINS` includes the browser origin and rerun preflight; see `docs/runtime_incident_cors_split_brain_2026_05_12.md` |
-| Mixed runtime topology | `/api/topology` returns `verified_topology=false`, e.g. `.org` serving localhost auth/API or localhost serving public auth/API | Stop browser verification. Restart the intended frontend env and rerun `node scripts/verify_runtime_topology.mjs --topology public` or `--topology local`. |
+| Mixed runtime topology | `/api/topology` returns `verified_topology=false`, e.g. `.org` serving localhost auth/API or localhost serving public auth/API | Stop browser verification. Restart the intended frontend env and rerun `node scripts/verify_runtime_topology.mjs --topology public` or `--topology local`. For `.org`, use `scripts/restart_frontend_wsl.ps1`; see `docs/incidents/2026-05-17-public-frontend-mixed-topology.md`. |
 | Frontend process killed or incomplete `.next` artifact | `https://lyraos.org` → 502 while `https://api.lyraos.org/v1/health` stays 200 | From Windows repo root: `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | Supabase outage | API returns 5xx; connection errors in backend log | Flip `.env` back to SQLite backup + restart backend. Supabase data preserved, new writes go to SQLite until resolved. Manual reconciliation needed after. |
 | Domain issue (registrar lock, DNS break) | `lyraos.org` DNS fails | Cloudflare dashboard → Registrar + DNS tab. `oslyra.com` is the name-swap candidate if lyraos.org becomes unusable (see dogfood P2 entry). |
@@ -220,8 +253,9 @@ pgrep cloudflared || (cloudflared tunnel run lyra-prod &)
 sleep 2 && curl -sf https://api.lyraos.org/v1/health || echo "TUNNEL DOWN"
 
 # 3. Frontend
-# Stops stale next/npm processes, removes .next, rebuilds, verifies BUILD_ID,
-# then starts `next start` inside WSL tmux session `lyra-frontend`.
+# Stops stale next/npm processes, removes .next, rebuilds public topology,
+# verifies BUILD_ID and public /api/topology, then starts `start:public`
+# inside WSL tmux session `lyra-frontend`.
 powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1
 
 # 4. Orphan check
