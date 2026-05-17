@@ -5,6 +5,7 @@ existing time/title/category fields. Covers:
   - description change resets llm_parse_status='pending' + clears stale candidates
   - whitespace-only description "change" does NOT trigger reset
   - deadline_id binding sets deadline_match_source='user_explicit'
+  - clear_deadline explicitly removes an existing binding
   - cross-tenant deadline binding rejected
 """
 from datetime import datetime, timedelta
@@ -170,3 +171,58 @@ def test_no_change_when_description_and_deadline_omitted(db):
     assert task.description == "original"
     assert task.llm_parse_status == "enriched"
     assert task.deadline_id is None
+
+
+def test_clear_deadline_removes_existing_binding(db):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    deadline = _make_deadline(db, user.user_id)
+    task = _make_task(
+        db,
+        user.user_id,
+        deadline_id=deadline.deadline_id,
+        deadline_match_source="user_explicit",
+        deadline_match_confidence=1.0,
+        llm_inferred_deadline_id=deadline.deadline_id,
+        llm_deadline_match_confidence=0.9,
+        llm_deadline_candidates=[
+            {"deadline_id": deadline.deadline_id, "title": deadline.title, "confidence": 0.9}
+        ],
+        llm_alternative_suggestion={
+            "deadline_id": deadline.deadline_id,
+            "title": deadline.title,
+            "confidence": 0.9,
+        },
+    )
+
+    new_start = datetime.utcnow() + timedelta(hours=3)
+    TaskManager(db).reschedule_task(
+        task_id=task.task_id,
+        new_start=new_start,
+        clear_deadline=True,
+    )
+    db.refresh(task)
+    assert task.deadline_id is None
+    assert task.deadline_match_source is None
+    assert task.deadline_match_confidence is None
+    assert task.llm_inferred_deadline_id is None
+    assert task.llm_deadline_match_confidence is None
+    assert task.llm_deadline_candidates is None
+    assert task.llm_alternative_suggestion is None
+    assert task.llm_binding_rejected_at is not None
+
+
+def test_clear_deadline_conflicts_with_new_deadline_id(db):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    deadline = _make_deadline(db, user.user_id)
+    task = _make_task(db, user.user_id)
+    new_start = datetime.utcnow() + timedelta(hours=3)
+
+    with pytest.raises(ValueError, match="clear_deadline_conflicts_with_deadline_id"):
+        TaskManager(db).reschedule_task(
+            task_id=task.task_id,
+            new_start=new_start,
+            deadline_id=deadline.deadline_id,
+            clear_deadline=True,
+        )

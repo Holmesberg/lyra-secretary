@@ -491,6 +491,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       const endDate = new Date(end);
 
       if (isEdit && editingTask) {
+        const clearDeadline =
+          Boolean(editingTask.deadline_id) && deadlineId === null;
         await rescheduleTask({
           task_id: editingTask.task_id,
           new_start: startDate.toISOString(),
@@ -501,12 +503,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           // now editable. Backend resets llm_parse_status='pending' on
           // description change so the chip refreshes.
           description: description.trim() || undefined,
-          // null = no change for backend (per Optional default), so use
-          // the explicit value here. Frontend can clear by setting to
-          // null via the deadline-picker's "clear" affordance — backend
-          // treats `deadline_id: null` as no-change in this commit; an
-          // explicit clear endpoint is a follow-up.
           deadline_id: deadlineId ?? undefined,
+          clear_deadline: clearDeadline,
         });
         resetForm();
         onCreated();

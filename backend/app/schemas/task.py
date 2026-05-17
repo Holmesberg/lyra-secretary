@@ -104,6 +104,13 @@ class TaskRescheduleRequest(BaseModel):
         None, min_length=36, max_length=36,
         description="Optional UUID of the deadline to bind to. None = no change.",
     )
+    clear_deadline: bool = Field(
+        False,
+        description=(
+            "Explicitly clear the current deadline binding. False/absent = no change. "
+            "Cannot be combined with deadline_id."
+        ),
+    )
 
     @validator('new_end')
     def end_after_start(cls, v, values):

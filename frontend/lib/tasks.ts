@@ -129,9 +129,8 @@ export interface CreateTaskInput {
   category: string;
   description?: string;
   force?: boolean;
-  // Loop 11 Phase K: optional explicit deadline binding. When null/absent
-  // the backend's Pass 2 keyword-overlap inference may still bind one
-  // automatically. When supplied, it overrides Pass 2.
+  // Loop 11 Phase K: optional explicit deadline binding. When absent,
+  // deadline suggestions remain suggestion-only; backend does not bind.
   deadline_id?: string;
   // Loop 1 calibration_nudge outcome log: when the modal showed a nudge
   // and the user accepted/dismissed it, the four fields below travel with
@@ -420,6 +419,8 @@ export interface RescheduleInput {
   /** Explicit deadline rebind via the edit modal. Sets
    * deadline_match_source='user_explicit' with confidence=1.0. */
   deadline_id?: string | null;
+  /** Explicitly clear the existing deadline binding. Omitted/false = no change. */
+  clear_deadline?: boolean;
 }
 
 export function rescheduleTask(input: RescheduleInput) {

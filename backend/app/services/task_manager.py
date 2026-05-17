@@ -1120,6 +1120,7 @@ class TaskManager:
         category: Optional[str] = None,
         description: Optional[str] = None,
         deadline_id: Optional[str] = None,
+        clear_deadline: bool = False,
     ) -> tuple[Task, list[Task]]:
         """
         Reschedule a task (preserves TaskID).
@@ -1135,6 +1136,9 @@ class TaskManager:
             deadline_id: optional new explicit deadline binding. Validates
                 ownership + bindable state; sets deadline_match_source =
                 'user_explicit', confidence = 1.0. None = no change.
+            clear_deadline: explicit user intent to remove the current
+                deadline binding. False = no change. Cannot be combined
+                with deadline_id.
 
         Returns:
             (updated_task, conflicts)
@@ -1144,6 +1148,8 @@ class TaskManager:
             raise ValueError("Task not found")
         if task.voided_at is not None:
             raise ValueError("Cannot reschedule a voided task")
+        if clear_deadline and deadline_id is not None:
+            raise ValueError("clear_deadline_conflicts_with_deadline_id")
 
         if not task.is_mutable:
             raise ImmutableTaskError("Cannot reschedule immutable task")
@@ -1195,16 +1201,18 @@ class TaskManager:
             task.llm_priority = None
             task.llm_sub_items = None
             task.llm_parsed_at = None
-        # Explicit deadline rebind via the editor — mirrors create_task's
-        # user_explicit path. Validates ownership + bindable state.
-        # KNOWN GAP (2026-04-28): clearing an existing binding via the
-        # editor (passing deadline_id=null) silently does nothing because
-        # we can't distinguish "no change" from "explicit clear" without a
-        # sentinel. Workaround: chip's [Not relevant] path stamps
-        # llm_binding_rejected_at; existing user_explicit bindings have
-        # no clear-via-modal path yet. Follow-up: add `clear_deadline:
-        # bool = False` to TaskRescheduleRequest.
-        if deadline_id is not None and deadline_id != task.deadline_id:
+        # Explicit deadline clear/rebind via the editor. `deadline_id=None`
+        # remains "no change"; `clear_deadline=True` is the explicit sentinel.
+        if clear_deadline:
+            task.deadline_id = None
+            task.deadline_match_source = None
+            task.deadline_match_confidence = None
+            task.llm_inferred_deadline_id = None
+            task.llm_deadline_match_confidence = None
+            task.llm_deadline_candidates = None
+            task.llm_alternative_suggestion = None
+            task.llm_binding_rejected_at = now_utc()
+        elif deadline_id is not None and deadline_id != task.deadline_id:
             bound = self._validate_bindable_deadline(deadline_id)
             if bound.user_id != task.user_id:
                 raise ValueError("Deadline does not belong to current user")
