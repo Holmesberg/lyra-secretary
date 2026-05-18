@@ -167,8 +167,7 @@ class StopwatchManager:
                 TaskState.SKIPPED, TaskState.EXECUTED, TaskState.DELETED,
             ):
                 self._close_orphan_session(active["session_id"])
-                self.redis.clear_active_stopwatch(user_id)
-                self.redis.clear_pause_state(user_id)
+                self.redis.clear_stopwatch_state(user_id)
                 return None
         return active
 
@@ -239,8 +238,7 @@ class StopwatchManager:
             self._close_orphan_session(session.session_id)
         active = self.redis.get_active_stopwatch(user_id)
         if active and active.get("task_id") == task_id:
-            self.redis.clear_active_stopwatch(user_id)
-            self.redis.clear_pause_state(user_id)
+            self.redis.clear_stopwatch_state(user_id)
 
     def _get_session(self, session_id: str) -> StopwatchSession:
         session = self.db.query(StopwatchSession).filter(
@@ -353,18 +351,13 @@ class StopwatchManager:
             task = self.db.query(Task).filter(
                 Task.task_id == executing_session.task_id
             ).first()
-            self.redis.set_active_stopwatch(
+            self.redis.activate_stopwatch(
                 user_id=user_id,
                 session_id=executing_session.session_id,
                 task_id=task.task_id,
                 title=task.title,
                 start_time=executing_session.start_time_utc.isoformat(),
             )
-            # Defensive: clear any lingering pause_state. The TTLs on
-            # active_stopwatch and pause_state SHOULD coincide, but if a
-            # race left pause_state behind after active expired, recovery
-            # to an EXECUTING task must not report paused=true.
-            self.redis.clear_pause_state(user_id)
             return self.redis.get_active_stopwatch(user_id)
 
         # Priority 2: no EXECUTING task. Fall back to the most-recently-paused
@@ -386,19 +379,23 @@ class StopwatchManager:
             task = self.db.query(Task).filter(
                 Task.task_id == paused_session.task_id
             ).first()
-            self.redis.set_active_stopwatch(
-                user_id=user_id,
-                session_id=paused_session.session_id,
-                task_id=task.task_id,
-                title=task.title,
-                start_time=paused_session.start_time_utc.isoformat(),
-            )
             # Rehydrate pause_state so the banner correctly shows paused.
-            if paused_session.paused_at_utc and not self.redis.get_pause_state(user_id):
-                self.redis.set_pause_state(
-                    user_id,
-                    paused_session.session_id,
-                    paused_session.paused_at_utc.isoformat(),
+            if paused_session.paused_at_utc:
+                self.redis.activate_paused_stopwatch(
+                    user_id=user_id,
+                    session_id=paused_session.session_id,
+                    task_id=task.task_id,
+                    title=task.title,
+                    start_time=paused_session.start_time_utc.isoformat(),
+                    paused_at=paused_session.paused_at_utc.isoformat(),
+                )
+            else:
+                self.redis.activate_stopwatch(
+                    user_id=user_id,
+                    session_id=paused_session.session_id,
+                    task_id=task.task_id,
+                    title=task.title,
+                    start_time=paused_session.start_time_utc.isoformat(),
                 )
             return self.redis.get_active_stopwatch(user_id)
 
@@ -432,8 +429,7 @@ class StopwatchManager:
                 # Current timer is paused — allow starting a new task
                 paused_task_id = active["task_id"]
                 # Clear active stopwatch from Redis (DB session stays unclosed)
-                self.redis.clear_active_stopwatch(user_id)
-                self.redis.clear_pause_state(user_id)
+                self.redis.clear_stopwatch_state(user_id)
             else:
                 raise StopwatchAlreadyRunningError(
                     f"Stopwatch already running for task {active['task_id']}"
@@ -894,8 +890,7 @@ class StopwatchManager:
         self.db.commit()
 
         # ---- Update Redis: clear old, set new ----
-        self.redis.clear_pause_state(user_id)
-        self.redis.set_active_stopwatch(
+        self.redis.activate_stopwatch(
             user_id=user_id,
             session_id=target_session.session_id,
             task_id=target.task_id,
@@ -1077,8 +1072,7 @@ class StopwatchManager:
             raise ValueError("Task not found")
         if task.voided_at is not None:
             # Task was voided mid-session — clean up stopwatch state, don't complete.
-            self.redis.clear_active_stopwatch(user_id)
-            self.redis.clear_pause_state(user_id)
+            self.redis.clear_stopwatch_state(user_id)
             session.end_time_utc = now_utc()
             session.auto_closed = True
             self.db.commit()

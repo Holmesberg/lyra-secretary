@@ -9,6 +9,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+STOPWATCH_TTL_SECONDS = 46800
+
 
 class RedisClient:
     """Redis client with application-specific patterns."""
@@ -22,6 +24,29 @@ class RedisClient:
         )
     
     # Stopwatch patterns
+    def _active_stopwatch_key(self, user_id: str) -> str:
+        return f"stopwatch:active:{user_id}"
+
+    def _pause_state_key(self, user_id: str) -> str:
+        return f"stopwatch:paused:{user_id}"
+
+    def _active_stopwatch_payload(
+        self,
+        *,
+        session_id: str,
+        task_id: str,
+        title: str,
+        start_time: str,
+    ) -> str:
+        return json.dumps(
+            {
+                "session_id": session_id,
+                "task_id": task_id,
+                "title": title,
+                "start_time": start_time,
+            }
+        )
+
     def set_active_stopwatch(
         self,
         user_id: str,
@@ -33,19 +58,83 @@ class RedisClient:
         """Store active stopwatch session. 13h TTL as defense-in-depth above
         the 12h stale_session_recovery DB sweep — if stop/recovery both miss,
         the key auto-expires rather than persisting indefinitely."""
-        key = f"stopwatch:active:{user_id}"
-        data = {
-            "session_id": session_id,
-            "task_id": task_id,
-            "title": title,
-            "start_time": start_time
-        }
-        self.client.set(key, json.dumps(data), ex=46800)
+        key = self._active_stopwatch_key(user_id)
+        payload = self._active_stopwatch_payload(
+            session_id=session_id,
+            task_id=task_id,
+            title=title,
+            start_time=start_time,
+        )
+        self.client.set(key, payload, ex=STOPWATCH_TTL_SECONDS)
         logger.info(f"Stopwatch started: {task_id}")
+
+    def activate_stopwatch(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        task_id: str,
+        title: str,
+        start_time: str,
+        clear_pause: bool = True,
+    ) -> None:
+        """Atomically set active stopwatch and optionally clear pause state.
+
+        Stopwatch active and pause keys describe one live state machine. When
+        a resume/switch/recovery path changes both, use one Redis transaction
+        so frontend status polls cannot observe a transient split-brain state.
+        """
+        payload = self._active_stopwatch_payload(
+            session_id=session_id,
+            task_id=task_id,
+            title=title,
+            start_time=start_time,
+        )
+        pipe = self.client.pipeline(transaction=True)
+        pipe.set(
+            self._active_stopwatch_key(user_id),
+            payload,
+            ex=STOPWATCH_TTL_SECONDS,
+        )
+        if clear_pause:
+            pipe.delete(self._pause_state_key(user_id))
+        pipe.execute()
+        logger.info(f"Stopwatch activated atomically: {task_id}")
+
+    def activate_paused_stopwatch(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        task_id: str,
+        title: str,
+        start_time: str,
+        paused_at: str,
+    ) -> None:
+        """Atomically rehydrate active stopwatch plus paused state."""
+        payload = self._active_stopwatch_payload(
+            session_id=session_id,
+            task_id=task_id,
+            title=title,
+            start_time=start_time,
+        )
+        pipe = self.client.pipeline(transaction=True)
+        pipe.set(
+            self._active_stopwatch_key(user_id),
+            payload,
+            ex=STOPWATCH_TTL_SECONDS,
+        )
+        pipe.set(
+            self._pause_state_key(user_id),
+            json.dumps({"session_id": session_id, "paused_at": paused_at}),
+            ex=STOPWATCH_TTL_SECONDS,
+        )
+        pipe.execute()
+        logger.info(f"Paused stopwatch activated atomically: {task_id}")
     
     def get_active_stopwatch(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get active stopwatch session."""
-        key = f"stopwatch:active:{user_id}"
+        key = self._active_stopwatch_key(user_id)
         data = self.client.get(key)
         if data:
             return json.loads(data)
@@ -53,24 +142,36 @@ class RedisClient:
     
     def clear_active_stopwatch(self, user_id: str):
         """Clear active stopwatch."""
-        key = f"stopwatch:active:{user_id}"
+        key = self._active_stopwatch_key(user_id)
         self.client.delete(key)
         logger.info(f"Stopwatch cleared for user {user_id}")
 
+    def clear_stopwatch_state(self, user_id: str):
+        """Atomically clear active and pause stopwatch keys for a user."""
+        pipe = self.client.pipeline(transaction=True)
+        pipe.delete(self._active_stopwatch_key(user_id))
+        pipe.delete(self._pause_state_key(user_id))
+        pipe.execute()
+        logger.info(f"Stopwatch state cleared for user {user_id}")
+
     def set_pause_state(self, user_id: str, session_id: str, paused_at: str):
         """Store pause state. 13h TTL matches set_active_stopwatch."""
-        key = f"stopwatch:paused:{user_id}"
-        self.client.set(key, json.dumps({"session_id": session_id, "paused_at": paused_at}), ex=46800)
+        key = self._pause_state_key(user_id)
+        self.client.set(
+            key,
+            json.dumps({"session_id": session_id, "paused_at": paused_at}),
+            ex=STOPWATCH_TTL_SECONDS,
+        )
 
     def get_pause_state(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get pause state if stopwatch is currently paused."""
-        key = f"stopwatch:paused:{user_id}"
+        key = self._pause_state_key(user_id)
         data = self.client.get(key)
         return json.loads(data) if data else None
 
     def clear_pause_state(self, user_id: str):
         """Clear pause state on resume or stop."""
-        self.client.delete(f"stopwatch:paused:{user_id}")
+        self.client.delete(self._pause_state_key(user_id))
     
     # Undo pattern (30 second TTL, per-user namespaced)
     def cache_undo_action(
