@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     FEEDBACK_FROM_EMAIL: str = Field(
         "onboarding@resend.dev", env="FEEDBACK_FROM_EMAIL"
     )
+    USER_EMAIL_ENABLED: bool = Field(False, env="USER_EMAIL_ENABLED")
+    USER_EMAIL_FROM: str = Field("hello@lyraos.org", env="USER_EMAIL_FROM")
 
     # Local LLM enrichment (Workstream 1, magic-for-alpha 2026-04-28).
     # Optional. When OLLAMA_URL is unreachable or the model isn't loaded,

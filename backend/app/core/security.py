@@ -142,6 +142,13 @@ def resolve_user_from_token(token: str) -> User:
                     target_id=f"user:{user.user_id}",
                     redacted_metadata={"identity_provider": "google"},
                 )
+                from app.services.user_mailer import (
+                    record_activation_email_result,
+                    send_activation_email,
+                )
+
+                mail_result = send_activation_email(user)
+                record_activation_email_result(user.user_id, mail_result)
             except IntegrityError:
                 # Concurrent signup race: another request beat us to the
                 # INSERT and committed first. Roll back our failed transaction

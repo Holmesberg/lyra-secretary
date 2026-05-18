@@ -834,6 +834,12 @@ class User(Base):
     first_task_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     first_timer_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     d1_return_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Transactional account email state. This is operational identity
+    # infrastructure only; it must not feed behavioral inference,
+    # Cortex, clean-data profiles, or adaptive scheduling.
+    activation_email_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    activation_email_failed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    activation_email_last_error: Mapped[Optional[str]] = mapped_column(String(80))
 
 
 class Archetype(Base):
