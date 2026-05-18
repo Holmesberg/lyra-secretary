@@ -10,6 +10,7 @@ from app.db.models import Deadline
 from app.db.scoping import get_current_user_id
 from app.schemas.task import TaskParseRequest, TaskParseResponse
 from app.services.deadline_heuristic import score_deadlines
+from app.services.output_surfaces import emit_surface_render
 from app.services.parser import TaskParser
 
 router = APIRouter()
@@ -40,6 +41,13 @@ class DeadlinePreviewResponse(BaseModel):
     deadline_title: Optional[str] = None
     deadline_match_confidence: Optional[float] = None
     deadline_match_source: Optional[str] = None
+    surface_id: Optional[str] = None
+    truth_class: Optional[str] = None
+    signal_targets: Optional[list[str]] = None
+    clean_profile: Optional[str] = None
+    fallback_mode: Optional[str] = None
+    exposure_id: Optional[str] = None
+    render_id: Optional[str] = None
 
 
 @router.post("/parse", response_model=ParseChainResponse)
@@ -109,9 +117,44 @@ def deadline_preview(
     if not match.auto_bind or not match.candidates:
         return DeadlinePreviewResponse()
     top = match.candidates[0]
+    try:
+        emitted = emit_surface_render(
+            db,
+            surface_id="task.deadline_binding_suggestion",
+            user_id=uid,
+            content_snapshot={
+                "copy": (
+                    f"Lyra thinks this binds to {top.title} - "
+                    f"{round(top.score * 100)}% match"
+                ),
+                "deadline_id": top.deadline_id,
+                "deadline_title": top.title,
+                "deadline_match_confidence": round(top.score, 3),
+                "deadline_match_source": top.source,
+            },
+            content_template_id="deadline_binding_suggestion",
+            initiative="system",
+            trigger_source="parse.deadline_preview",
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Suppressed deadline binding suggestion because exposure logging failed",
+            exc_info=True,
+        )
+        return DeadlinePreviewResponse()
+
     return DeadlinePreviewResponse(
         deadline_id=top.deadline_id,
         deadline_title=top.title,
         deadline_match_confidence=round(top.score, 3),
         deadline_match_source=top.source,
+        surface_id=emitted["surface_id"],
+        truth_class=emitted["truth_class"],
+        signal_targets=emitted["signal_targets"],
+        clean_profile=emitted["clean_profile"],
+        fallback_mode=emitted["fallback_mode"],
+        exposure_id=emitted["exposure_id"],
+        render_id=emitted["render_id"],
     )

@@ -17,7 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.db.models import Deadline, Task, User
+from app.db.models import Deadline, ExposureDecisionEvent, ExposureRenderEvent, Task, User
 from app.db.scoping import set_current_user_id
 from app.main import app
 from tests.conftest import auth_headers
@@ -30,6 +30,10 @@ client = TestClient(app, raise_server_exceptions=False)
 def _clean_slate(db):
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM exposure_ack_event"))
+    db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM exposure_render_event"))
+    db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM task"))
     db.execute(text("DELETE FROM deadline"))
     db.execute(text("DELETE FROM \"user\""))
@@ -37,6 +41,10 @@ def _clean_slate(db):
     yield
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM exposure_ack_event"))
+    db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM exposure_render_event"))
+    db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM task"))
     db.execute(text("DELETE FROM deadline"))
     db.execute(text("DELETE FROM \"user\""))
@@ -220,6 +228,56 @@ def test_strong_keyword_match_returns_binding(db):
     assert body["deadline_match_source"] == "heuristic_exact_title"
     assert body["deadline_match_confidence"] is not None
     assert 0.5 <= body["deadline_match_confidence"] <= 1.0
+    assert body["surface_id"] == "task.deadline_binding_suggestion"
+    assert body["truth_class"] == "interpretation"
+    assert body["signal_targets"] == ["planning_estimate", "deadline_behavior"]
+    assert body["clean_profile"] is None
+    assert body["fallback_mode"] == "suppress"
+    assert body["exposure_id"]
+    assert body["render_id"]
+
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == body["exposure_id"])
+        .one()
+    )
+    render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.render_id == body["render_id"])
+        .one()
+    )
+    assert decision.user_id == user.user_id
+    assert decision.exposure_category == "scheduling_suggestion"
+    assert decision.trigger_source == "parse.deadline_preview"
+    assert render.surface == "task.deadline_binding_suggestion"
+    assert "Lyra thinks this binds to BCI Hackathon" in render.content_snapshot
+
+
+def test_binding_suggestion_suppresses_if_exposure_logging_fails(db, monkeypatch):
+    user = _make_user(db, user_id=77, email="emit-fail@x")
+    _make_deadline(
+        db,
+        user.user_id,
+        title="BCI Hackathon",
+        description="build the speller backend",
+    )
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("ledger unavailable")
+
+    monkeypatch.setattr("app.api.v1.endpoints.parse.emit_surface_render", boom)
+
+    resp = client.post(
+        "/v1/parse/deadline-preview",
+        json={"title": "BCI hackathon speller prep"},
+        headers=auth_headers(user.user_id),
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deadline_id"] is None
+    assert db.query(ExposureDecisionEvent).count() == 0
+    assert db.query(ExposureRenderEvent).count() == 0
 
 
 def test_single_generic_description_overlap_returns_none(db):

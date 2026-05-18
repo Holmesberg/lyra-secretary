@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_db
 from app.db.models import (
+    Archetype,
     ExposureAckEvent,
     ExposureDecisionEvent,
     ExposureRenderEvent,
@@ -36,6 +37,8 @@ def test_output_surface_registry_declares_required_runtime_fields():
         "stopwatch.micro_mirror",
         "stopwatch.calibration_nudge",
         "task.creation_nudge",
+        "task.deadline_binding_suggestion",
+        "academic.pressure_map",
         "worker.reminder",
         "worker.pause_prediction",
         "worker.resume_prediction",
@@ -400,6 +403,94 @@ def test_product_surfaces_do_not_fall_back_to_operator_without_identity():
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(old_overrides)
+
+
+def test_task_creation_nudge_lookup_emits_exposure_when_it_will_render(db):
+    user = User(
+        email=f"creation-nudge-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=False,
+    )
+    db.add(user)
+    if db.query(Archetype).filter_by(archetype_id="diffuse_average").first() is None:
+        db.add(
+            Archetype(
+                archetype_id="diffuse_average",
+                name="Diffuse Average",
+                prior_bias_factor=1.30,
+                prior_sigma=0.30,
+            )
+        )
+    db.commit()
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/v1/analytics/bias_factor/lookup?category=study&tod=morning&planned_minutes=30",
+            headers=auth_headers(user.user_id),
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cell"] is not None
+    assert body["surface_id"] == "task.creation_nudge"
+    assert body["truth_class"] == "intervention"
+    assert body["signal_targets"] == ["planning_estimate"]
+    assert body["clean_profile"] == "planning_calibration"
+    assert body["fallback_mode"] == "suppress"
+    assert body["exposure_id"]
+    assert body["render_id"]
+
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == body["exposure_id"])
+        .one()
+    )
+    render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.render_id == body["render_id"])
+        .one()
+    )
+    assert decision.user_id == user.user_id
+    assert decision.exposure_category == "scheduling_suggestion"
+    assert decision.trigger_source == "analytics.bias_factor.lookup"
+    assert render.surface == "task.creation_nudge"
+    assert "A typical wrap is" in render.content_snapshot
+
+
+def test_task_creation_nudge_lookup_suppresses_if_exposure_logging_fails(db, monkeypatch):
+    user = User(
+        email=f"creation-nudge-fail-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=False,
+    )
+    db.add(user)
+    if db.query(Archetype).filter_by(archetype_id="diffuse_average").first() is None:
+        db.add(
+            Archetype(
+                archetype_id="diffuse_average",
+                name="Diffuse Average",
+                prior_bias_factor=1.30,
+                prior_sigma=0.30,
+            )
+        )
+    db.commit()
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("ledger unavailable")
+
+    monkeypatch.setattr("app.api.v1.endpoints.analytics.emit_surface_render", boom)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/v1/analytics/bias_factor/lookup?category=study&tod=morning&planned_minutes=30",
+            headers=auth_headers(user.user_id),
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cell"] is None
+    assert body["surface_id"] == "task.creation_nudge"
+    assert body["suppressed_reason"] == "exposure_emit_failed"
 
 
 def test_output_surface_diagnostics_reports_missing_terminal_event(db):

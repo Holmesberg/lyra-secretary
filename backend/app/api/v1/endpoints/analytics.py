@@ -1875,7 +1875,63 @@ def bias_factor_lookup(
     if uid is None:
         return _adaptive_calibration(tasks, category, tod, planned_minutes)
     from app.services.bias_factor_service import blend
-    return blend(db, uid, tasks, category, tod, planned_minutes)
+    result = blend(db, uid, tasks, category, tod, planned_minutes)
+    cell = result.get("cell")
+    magnitude = result.get("bias_factor_final")
+    if magnitude is None and cell is not None:
+        magnitude = cell.get("bias_factor")
+    threshold = 1.20 if result.get("source") == "research" else 1.25
+    if cell is not None and magnitude is not None and magnitude >= threshold:
+        suggested_minutes = max(5, round((planned_minutes * magnitude) / 5) * 5)
+        try:
+            emitted = emit_surface_render(
+                db,
+                surface_id="task.creation_nudge",
+                user_id=uid,
+                content_snapshot={
+                    "copy": (
+                        f"A typical wrap is {suggested_minutes} min "
+                        f"for {category} / {tod} from a {round(magnitude, 3)}x factor."
+                    ),
+                    "category": category,
+                    "time_of_day": tod,
+                    "planned_minutes": planned_minutes,
+                    "suggested_minutes": suggested_minutes,
+                    "bias_factor": round(magnitude, 3),
+                    "sample_size": cell.get("sessions"),
+                    "source": result.get("source"),
+                },
+                content_template_id="task_creation_nudge_lookup",
+                initiative="system",
+                trigger_source="analytics.bias_factor.lookup",
+            )
+            db.commit()
+            result.update(
+                {
+                    "surface_id": emitted["surface_id"],
+                    "truth_class": emitted["truth_class"],
+                    "signal_targets": emitted["signal_targets"],
+                    "clean_profile": emitted["clean_profile"],
+                    "fallback_mode": emitted["fallback_mode"],
+                    "exposure_id": emitted["exposure_id"],
+                    "render_id": emitted["render_id"],
+                }
+            )
+        except Exception:
+            db.rollback()
+            return {
+                "cell": None,
+                "sessions": result.get("sessions", 0),
+                "min_sessions": result.get("min_sessions", 3),
+                "source": result.get("source"),
+                "suppressed_reason": "exposure_emit_failed",
+                "surface_id": "task.creation_nudge",
+                "truth_class": "intervention",
+                "signal_targets": ["planning_estimate"],
+                "clean_profile": "planning_calibration",
+                "fallback_mode": "suppress",
+            }
+    return result
 
 
 @router.get("/analytics/pause_prediction")

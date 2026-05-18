@@ -101,6 +101,13 @@ export interface AcademicPressureMapResponse {
   source_summary: AcademicSourceSummary;
   methodology: string[];
   warnings: string[];
+  surface_id?: string | null;
+  truth_class?: string | null;
+  signal_targets?: string[] | null;
+  clean_profile?: string | null;
+  fallback_mode?: string | null;
+  exposure_id?: string | null;
+  render_id?: string | null;
 }
 
 export function getAcademicPressureMap(

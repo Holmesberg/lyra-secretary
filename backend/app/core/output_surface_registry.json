@@ -49,6 +49,38 @@
       "interruptiveness": "active",
       "salience_level": "high"
     },
+    "task.deadline_binding_suggestion": {
+      "truth_class": "interpretation",
+      "usage_class": "product",
+      "channel": "in_app_modal",
+      "exposure_category": "scheduling_suggestion",
+      "signal_targets": ["planning_estimate", "deadline_behavior"],
+      "clean_profile": null,
+      "min_n": 0,
+      "time_window_days": null,
+      "fallback_mode": "suppress",
+      "operator_only": false,
+      "legacy_adapter": null,
+      "render_policy_version": "output_surface_registry_v1",
+      "interruptiveness": "passive",
+      "salience_level": "medium"
+    },
+    "academic.pressure_map": {
+      "truth_class": "interpretation",
+      "usage_class": "product",
+      "channel": "dashboard_card",
+      "exposure_category": "scheduling_suggestion",
+      "signal_targets": ["planning_estimate", "deadline_behavior"],
+      "clean_profile": null,
+      "min_n": 0,
+      "time_window_days": 14,
+      "fallback_mode": "suppress",
+      "operator_only": false,
+      "legacy_adapter": null,
+      "render_policy_version": "output_surface_registry_v1",
+      "interruptiveness": "passive",
+      "salience_level": "medium"
+    },
     "worker.reminder": {
       "truth_class": "trace",
       "usage_class": "product",

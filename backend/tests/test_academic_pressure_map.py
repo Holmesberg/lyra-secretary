@@ -3,7 +3,16 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.models import Deadline, Task, TaskState, User
+from app.db.models import (
+    Deadline,
+    ExposureAckEvent,
+    ExposureDecisionEvent,
+    ExposureRenderEvent,
+    SuppressionEvent,
+    Task,
+    TaskState,
+    User,
+)
 from app.db.scoping import set_current_user_id
 from app.main import app
 from tests.conftest import auth_headers
@@ -16,6 +25,10 @@ client = TestClient(app, raise_server_exceptions=False)
 def _clean(db):
     set_current_user_id(None)
     db.rollback()
+    db.query(ExposureAckEvent).delete()
+    db.query(SuppressionEvent).delete()
+    db.query(ExposureRenderEvent).delete()
+    db.query(ExposureDecisionEvent).delete()
     db.query(Task).delete()
     db.query(Deadline).delete()
     db.query(User).delete()
@@ -23,6 +36,10 @@ def _clean(db):
     yield
     set_current_user_id(None)
     db.rollback()
+    db.query(ExposureAckEvent).delete()
+    db.query(SuppressionEvent).delete()
+    db.query(ExposureRenderEvent).delete()
+    db.query(ExposureDecisionEvent).delete()
     db.query(Task).delete()
     db.query(Deadline).delete()
     db.query(User).delete()
@@ -90,10 +107,32 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     assert item["trust_state"] == "verified_reachable"
     assert "coverage correctness" in " ".join(item["warnings"])
     assert "pressure_summary" in data
+    assert data["surface_id"] == "academic.pressure_map"
+    assert data["truth_class"] == "interpretation"
+    assert data["signal_targets"] == ["planning_estimate", "deadline_behavior"]
+    assert data["clean_profile"] is None
+    assert data["fallback_mode"] == "suppress"
+    assert data["exposure_id"]
+    assert data["render_id"]
     assert data["coverage_questions"][0]["trust_state"] == "verified_reachable"
     assert "3-5 student confirmations" in data["coverage_questions"][0]["reason"]
     assert data["capacity_context"]["google_calendar_connected"] is False
     assert "not true free time" in data["capacity_context"]["caveat"]
+
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == data["exposure_id"])
+        .one()
+    )
+    render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.render_id == data["render_id"])
+        .one()
+    )
+    assert decision.user_id == alice.user_id
+    assert decision.exposure_category == "scheduling_suggestion"
+    assert render.surface == "academic.pressure_map"
+    assert "Algorithms Quiz 2" in render.content_snapshot
 
 
 def test_pressure_map_marks_overdue_without_inferring_completion(db):

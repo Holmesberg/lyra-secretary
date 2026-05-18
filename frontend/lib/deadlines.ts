@@ -124,6 +124,13 @@ export interface DeadlinePreviewResponse {
     | "heuristic_substring"
     | "heuristic_alias"
     | null;
+  surface_id?: string | null;
+  truth_class?: string | null;
+  signal_targets?: string[] | null;
+  clean_profile?: string | null;
+  fallback_mode?: string | null;
+  exposure_id?: string | null;
+  render_id?: string | null;
 }
 
 /**

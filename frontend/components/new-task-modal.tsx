@@ -21,6 +21,7 @@ import {
   type TaskRow,
   type BiasFactorCell,
 } from "@/lib/tasks";
+import { ackExposureRender } from "@/lib/api";
 import {
   listDeadlines,
   previewDeadlineBinding,
@@ -153,6 +154,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     // backend can compute dwell_seconds for the V3 ReflectionViewLog
     // row (Phase 6 prerequisite per phase_6_architecture_backlog.md:227).
     firedAt: string;
+    exposureId?: string | null;
   } | null>(null);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
@@ -225,6 +227,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               cell: { ...res.cell, bias_factor: magnitude },
               suggestedMin: roundTo5(planned * magnitude),
               firedAt: new Date().toISOString(),
+              exposureId: res.exposure_id,
             });
             setNudgeSource(isResearch ? "research" : "personal");
           } else {
@@ -237,6 +240,10 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     return () => { clearTimeout(timer); abortCtl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, category, start, end, durHours, durMinutes, isEdit, nudgeDecisionMade]);
+
+  useEffect(() => {
+    void ackExposureRender(calibrationNudge?.exposureId);
+  }, [calibrationNudge?.exposureId]);
 
   // Loop 11 Phase K — Pass 2 deadline-binding preview.
   //
@@ -270,6 +277,10 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     }, 500);
     return () => { clearTimeout(timer); abortCtl.abort(); };
   }, [open, isEdit, title, description, deadlineId]);
+
+  useEffect(() => {
+    void ackExposureRender(parserSuggestion?.exposure_id);
+  }, [parserSuggestion?.exposure_id]);
 
   const totalMinutes = durHours * 60 + durMinutes;
   const endBeforeStart = diffMinutes(start, end) <= 0;

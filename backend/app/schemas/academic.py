@@ -121,6 +121,13 @@ class AcademicPressureMapResponse(BaseModel):
     source_summary: AcademicSourceSummary
     methodology: list[str]
     warnings: list[str]
+    surface_id: Optional[str] = None
+    truth_class: Optional[str] = None
+    signal_targets: Optional[list[str]] = None
+    clean_profile: Optional[str] = None
+    fallback_mode: Optional[str] = None
+    exposure_id: Optional[str] = None
+    render_id: Optional[str] = None
 
     @field_serializer("generated_at_utc")
     def _serialize_generated_utc(self, v: datetime) -> str:
