@@ -61,6 +61,11 @@ PROVIDER_SPECIFIC_TERMS: Final[frozenset[str]] = frozenset(
     }
 )
 
+SCALABILITY_RISK_PRIORITIES: Final[tuple[str, str]] = (
+    "provider_adapter_contract",
+    "drift_rollup_contract",
+)
+
 PASSIVE_ACTIVITY_EVIDENCE_CLASS: Final[str] = "passive_activity"
 PLANNING_CALIBRATION_PROFILE: Final[str] = "planning_calibration"
 SECURITY_AUDIT_MODEL_NAME: Final[str] = "SecurityAuditEvent"

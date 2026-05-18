@@ -18,6 +18,7 @@
 *Revised: May 17, 2026. Day 44 - academic execution substrate and Academic Pressure Map governance added; pressure-map validity threats, kill criteria, and hypothesis boundaries linked to the manifesto.*
 *Revised: May 17, 2026. Day 44 - operational alert classification added: provider outages/auth failures are scoped provider degradations; repeated scheduler/bootstrap/database failures are Lyra platform failures.*
 *Revised: May 17, 2026. Day 44 - trusted-alpha security governance linked: audit rows are governance-only, provider failures must not weaken auth or user scoping, and `docs/prodblueprint_security.md` is the operational security blueprint.*
+*Revised: May 18, 2026. Day 45 - friction-tested instrument methodology, publish-path optionality, provider-adapter scalability, drift-rollup scalability, and future-gated neuroadaptive sequencing documented.*
 
 ---
 
@@ -62,6 +63,53 @@ Lyra's core thesis is behavioral correction at scale. Measurement discipline, pr
 This distinction matters for strategic decisions. "Kill H1 if correlation fails" is not abandoning the project; it is identifying that a specific cold-start prediction mechanism didn't work and iterating to the next candidate. "Publish Paper 1" is not the goal; it is a side-effect that simultaneously sharpens the measurement instrument and builds user trust in the product's claims.
 
 All subsequent sections should be read through this framing.
+
+---
+
+## Friction-Tested Instrument Methodology
+*Added: May 18, 2026.*
+
+LyraOS was not designed as a complete theory and later checked against
+reality. The instrument has repeatedly evolved through direct friction:
+
+```text
+reality collision
+  -> validity threat
+  -> architectural response
+  -> executable invariant
+```
+
+This matters methodologically. The git history, doctrine revisions, validity
+threats, exposure-ledger evolution, runtime repairs, provider-boundary changes,
+and security contracts form a longitudinal epistemic audit trail. They record
+which assumptions failed, what the failure threatened, and which boundary was
+added before stronger product or research claims were allowed.
+
+This does not make Lyra's hypotheses true. It makes the instrument more
+inspectable. Failed hypotheses, null results, cohort fragmentation, and product
+friction remain scientifically useful when they produce explicit constraints
+instead of silent story changes.
+
+The current research optionality is:
+
+- Paper 1: metacognitive discrepancy and execution failure, gated by H1 and
+  validity-threat analyses.
+- Paper 2: sequential task abandonment / cascade failure, gated by multi-user
+  sequence data and structural-dependency controls.
+- Paper 3: unplanned execution rate as a missing measurement variable, likely
+  the fastest construct paper once the instrument is externally reviewed.
+- Paper 4: VT-22 scope inflation, only if mediation evidence supports it.
+
+These are optional publish paths, not product claims. Publication remains
+quality-control infrastructure.
+
+Future BCI/neuroadaptive integration is a conditional research sequence, not a
+current product promise. BCI signals are noisy estimates of cognitive state.
+LyraOS can make them useful only if longitudinal behavioral traces first earn
+validity as semantic grounding for those noisy signals.
+
+Companion doctrine:
+`docs/research_optionality_and_friction_methodology.md`.
 
 ---
 
@@ -117,6 +165,13 @@ Current active governance sources:
   runtime boundary.
 - `docs/context_window_blast_radius_contract.md` - operator/Codex execution
   discipline; subordinate to product/research doctrine.
+- `docs/provider_adapter_contract.md` - scalability contract for normalizing
+  provider-local dialects into provider-blind substrate primitives.
+- `docs/drift_rollup_contract.md` - scalability contract for async/cached drift
+  metrics without turning derived rollups into observed truth.
+- `docs/research_optionality_and_friction_methodology.md` - publish-path
+  optionality, friction-tested instrument design, and future-gated
+  neuroadaptive sequencing.
 
 Historical, archived, or design-only documents may preserve older names,
 paths, version counts, or proposed mechanisms. They should not be treated as
