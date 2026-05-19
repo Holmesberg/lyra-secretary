@@ -27,7 +27,7 @@ and validity risks.
 
 | Candidate | Inputs | Intended output | Status | Risk |
 | --- | --- | --- | --- | --- |
-| `description_incomplete_at_deadline` | task/deadline binding, `Deadline.due_at_utc`, task description/scope snapshot, task edit timestamps | implicit planning-depth signal | Phase 6 candidate; registered in `docs/data_utilization_inventory_2026_05_02.md` Revision 2 | description completeness is not scope truth; requires boundary snapshot and provenance |
+| `description_incomplete_at_deadline` | task/deadline binding, `Deadline.due_at_utc`, task description/scope snapshot, task edit timestamps | implicit planning-depth signal | Phase 6 candidate; registered in `archive/docs_history/data_utilization_inventory_2026_05_02.md` Revision 2 | description completeness is not scope truth; requires boundary snapshot and provenance |
 
 ## Inference Pretension Warnings
 

@@ -21,7 +21,7 @@
 | Track | Canonical files | Role |
 |--------|-----------------|------|
 | **Product / alpha roadmap** | `docs/building_phases.md` | Tiered shipping (retention surfaces first), Phase 4.5 → alpha → retention checkpoints. **Last updated date in file may predate May 2026.** |
-| **May 2026 system transition (“cortex depth”)** | `agent bootstrap doc`, `docs/calibration_contract.md`, `docs/data_utilization_inventory_2026_05_02.md`, `docs/jarvis_hypothesis_log.md` | Phases 0–6: calibration → inventory → **JARVIS soak** → inference engine → reflection surfaces → dark-column retirement → top-7 telemetry |
+| **May 2026 system transition (“cortex depth”)** | `agent bootstrap doc`, `docs/calibration_contract.md`, `archive/docs_history/data_utilization_inventory_2026_05_02.md`, `docs/jarvis_hypothesis_log.md` | Phases 0–6: calibration → inventory → **JARVIS soak** → inference engine → reflection surfaces → dark-column retirement → top-7 telemetry |
 
 **Both are real.** Product work (Tier 1 surfaces, bugs) can proceed in parallel with transition phases. **Do not** assume “Phase 4.5” and “Phase 2 JARVIS” are the same numbering system.
 
@@ -36,7 +36,7 @@ Check these **facts** on checkout:
 | Transition phase | Intended gate | Verify |
 |------------------|---------------|--------|
 | **0 — Calibration doctrine** | `docs/calibration_contract.md` exists, used as gate for UI | Read R1–R11 |
-| **1 — Data utilization inventory** | Operator sign-off in inventory doc §7 | `docs/data_utilization_inventory_2026_05_02.md` |
+| **1 — Data utilization inventory** | Operator sign-off in inventory doc §7 | `archive/docs_history/data_utilization_inventory_2026_05_02.md` |
 | **2 — JARVIS discovery soak** | ≥3 **PROMOTED** + ≥2 **REJECTED** hypotheses with real discrimination | `docs/jarvis_hypothesis_log.md` |
 | **3 — Inference engine** | Valence + tiers in code; full user-facing writers TBD | **`backend/app/services/inference_engine.py`** — valence, disagreement, R2 tiers; expand only with `docs/inference_engine_architecture.md` |
 | **4+** | Surfaces, retirement, telemetry | Per transition doc; follow **`agent bootstrap doc` → System transition — rigorous gates** before merging reflection work |
@@ -52,7 +52,7 @@ Check these **facts** on checkout:
 ## 4. Doc/code drift to watch
 
 - **`docs/building_phases.md`** may still say “Phase 4.5 active” from April 2026 while May transition docs describe JARVIS/inference — **update explicitly** when you touch either.
-- **`docs/complexity_stress_test_2026_05_01.md`** — early sections push kill/substrate reduction; **read the 2026-05-02 postscript** for the reframe (utilization > raw complexity; JARVIS discovery kept).
+- **`archive/docs_history/complexity_stress_test_2026_05_01.md`** — early sections push kill/substrate reduction; **read the 2026-05-02 postscript** for the reframe (utilization > raw complexity; JARVIS discovery kept).
 - **`agent bootstrap doc` table count vs audits** — assistant runtime may list a subset; migrations evolve — trust `alembic/versions/` + `models.py` for truth.
 - **Missing / partial docs:** `docs/inference_engine_architecture.md` (**DRAFT** — Phase C landed); still missing: `docs/dark_column_retirement_log.md`, `docs/reflection_view_log_schemas.md` — create or trim references when touched.
 

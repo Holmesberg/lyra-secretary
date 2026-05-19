@@ -1,6 +1,6 @@
 # Journey signal counts — onboarding through task completion
 
-**Companion:** `docs/data_utilization_inventory_2026_05_02.md` (authoritative disposition table).
+**Companion:** `archive/docs_history/data_utilization_inventory_2026_05_02.md` (authoritative disposition table).
 
 ---
 
@@ -84,7 +84,7 @@ This **21-row** view does **not** replace the **≥208** full inventory; it is t
 - **Full fidelity** likely needs a **boundary event** at or before `deadline.due_at_utc` (telemetry or server-side snapshot) — aligns with **NOT-INSTRUMENTED** until Phase 6.
 - **Proxies** (partial, existing columns): `deadline_id`, `Deadline.due_at_utc`, `Task.description`, `scope_bullet_count_at_plan`, `last_modified_at` — sufficient for **operator/JARVIS exploratory** queries before hard user-facing copy.
 
-Canonical disposition row: **`docs/data_utilization_inventory_2026_05_02.md` — Revision 2**.
+Canonical disposition row: **`archive/docs_history/data_utilization_inventory_2026_05_02.md` — Revision 2**.
 
 ---
 

@@ -97,7 +97,7 @@ These are operator-prompts to seed JARVIS chat sessions. Each surfaces a categor
 
 - **Proposed:** 2026-03-29 (doc + inventory sync; operator to validate with `query_dark_columns` + lived experience)
 - **Observation:** Tasks with a bound deadline sometimes reach the due instant with a thin or empty composed description / scope — **declared urgency without planning depth** (priority mismeasurement).
-- **Signals used:** `deadline_id`, `Deadline.due_at_utc`, `Task.description`, `scope_bullet_count_at_plan`, `Task.last_modified_at` (proxy); future boundary telemetry at `due_at_utc` per `docs/data_utilization_inventory_2026_05_02.md` Revision 2.
+- **Signals used:** `deadline_id`, `Deadline.due_at_utc`, `Task.description`, `scope_bullet_count_at_plan`, `Task.last_modified_at` (proxy); future boundary telemetry at `due_at_utc` per `archive/docs_history/data_utilization_inventory_2026_05_02.md` Revision 2.
 - **Predicted outcome:** Stricter description-incomplete cases correlate with different skip / friction / reschedule outcomes than fully planned-before-deadline tasks.
 - **Falsifier:** No outcome or valence split once n is sufficient and proxy or telemetry definition is frozen.
 - **Generality tag:** potentially-general

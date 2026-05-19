@@ -19,6 +19,7 @@
 *Revised: May 17, 2026. Day 44 - operational alert classification added: provider outages/auth failures are scoped provider degradations; repeated scheduler/bootstrap/database failures are Lyra platform failures.*
 *Revised: May 17, 2026. Day 44 - trusted-alpha security governance linked: audit rows are governance-only, provider failures must not weaken auth or user scoping, and `docs/prodblueprint_security.md` is the operational security blueprint.*
 *Revised: May 18, 2026. Day 45 - friction-tested instrument methodology, publish-path optionality, provider-adapter scalability, drift-rollup scalability, and future-gated neuroadaptive sequencing documented.*
+*Revised: May 19, 2026. Day 46 - product/research assumption register added for professor review, investor diligence, hypothesis validation, and falsification tracking.*
 
 ---
 
@@ -172,6 +173,9 @@ Current active governance sources:
 - `docs/research_optionality_and_friction_methodology.md` - publish-path
   optionality, friction-tested instrument design, and future-gated
   neuroadaptive sequencing.
+- `docs/product_research_assumption_register.md` - active assumption, hypothesis,
+  validation, falsification, and investor-diligence register.
+  Short form: assumption, hypothesis, validation, falsification.
 
 Historical, archived, or design-only documents may preserve older names,
 paths, version counts, or proposed mechanisms. They should not be treated as

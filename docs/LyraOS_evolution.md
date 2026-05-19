@@ -1378,8 +1378,8 @@ Major decision sources:
 - `docs/strategic_decisions_april_22.md`
 - `docs/strategic_decisions_april_24.md`
 - `docs/building_phases.md`
-- `docs/complexity_stress_test_2026_05_01.md`
-- `docs/data_utilization_inventory_2026_05_02.md`
+- `archive/docs_history/complexity_stress_test_2026_05_01.md`
+- `archive/docs_history/data_utilization_inventory_2026_05_02.md`
 
 Major code anchors:
 

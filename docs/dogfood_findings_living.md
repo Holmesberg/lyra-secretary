@@ -21,7 +21,7 @@ This intake records operator requests without silently expanding the ontology.
   `stopwatch-status` stays fresh because it drives the live timer.
 - **Incomplete task description before deadline.** Already registered as
   `description_incomplete_at_deadline` in
-  `docs/data_utilization_inventory_2026_05_02.md` Revision 2. No duplicate
+  `archive/docs_history/data_utilization_inventory_2026_05_02.md` Revision 2. No duplicate
   concept created. It remains a Phase 6 instrumentation candidate, not a v0
   inferred psychological claim.
 - **Overdue done button.** Fixed May 9: missed deadlines now keep the existing
@@ -146,7 +146,7 @@ All CI green on `4740475`.**
   `http://localhost:3000` failed because runtime CORS allowed only
   `https://lyraos.org`. Fixed by `CORS_ALLOWED_ORIGINS` explicit allow-list
   covering localhost dev, 127.0.0.1 dev, and public `.org`
-  (`8652a30`). See `docs/runtime_incident_cors_split_brain_2026_05_12.md`.
+  (`8652a30`). See `archive/docs_history/runtime_incident_cors_split_brain_2026_05_12.md`.
 - LYR-091 Notion archived-page detection (commit 951160e)
 - AppLayout 401 auto-signOut + always-rendered Sign Out button (commit 7c9f33e)
 - Cross-tenant write leak structural fix (Phase 3.2, commits 4cf2168 + 430f120)
