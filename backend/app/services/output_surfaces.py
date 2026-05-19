@@ -367,12 +367,34 @@ def _candidate_tasks_for_profile(
     )
 
     if clean_profile in {"measured_execution", "planning_calibration"}:
+        clean_stopwatch_exists = (
+            db.query(StopwatchSession.session_id)
+            .filter(
+                StopwatchSession.task_id == Task.task_id,
+                StopwatchSession.user_id == user_id,
+                StopwatchSession.end_time_utc.isnot(None),
+                StopwatchSession.auto_closed.is_(False),
+                StopwatchSession.data_quality_flag.is_(None),
+            )
+            .exists()
+        )
+        auto_closed_stopwatch_exists = (
+            db.query(StopwatchSession.session_id)
+            .filter(
+                StopwatchSession.task_id == Task.task_id,
+                StopwatchSession.user_id == user_id,
+                StopwatchSession.auto_closed.is_(True),
+            )
+            .exists()
+        )
         q = q.filter(
             Task.state == TaskState.EXECUTED,
             Task.initiation_status != "system_error",
             Task.initiation_status != "retroactive",
             Task.executed_duration_minutes.isnot(None),
             Task.planned_duration_minutes >= 5,
+            clean_stopwatch_exists,
+            ~auto_closed_stopwatch_exists,
         )
         if clean_profile == "planning_calibration":
             q = (
@@ -386,6 +408,7 @@ def _candidate_tasks_for_profile(
             .filter(
                 Task.state == TaskState.EXECUTED,
                 PauseEvent.self_reported_retroactively.is_(False),
+                StopwatchSession.auto_closed.is_(False),
                 StopwatchSession.data_quality_flag.is_(None),
             )
             .distinct()

@@ -178,6 +178,35 @@ def test_paused_with_only_closed_sessions_recovered(db):
     assert task.initiation_status == "orphaned_recovery"
 
 
+def test_abandoned_state_contract_no_unbacked_executing_or_paused_survives(db):
+    """No live EXECUTING/PAUSED task may survive without an open session."""
+    executing = _seed_task(db, title="ghost-executing", state=TaskState.EXECUTING)
+    paused = _seed_task(db, title="ghost-paused-contract", state=TaskState.PAUSED)
+    active = _seed_task(db, title="real-active", state=TaskState.EXECUTING)
+    _seed_session(db, active, closed=False)
+
+    user = db.query(User).filter(User.user_id == USER_ID).first()
+    set_current_user_id(USER_ID)
+    _run_for_one_user(db, user)
+
+    dangling = []
+    for task in db.query(Task).filter(Task.state.in_((TaskState.EXECUTING, TaskState.PAUSED))).all():
+        has_open_session = db.query(StopwatchSession).filter(
+            StopwatchSession.task_id == task.task_id,
+            StopwatchSession.end_time_utc.is_(None),
+        ).first()
+        if not has_open_session:
+            dangling.append(task.task_id)
+
+    db.refresh(executing)
+    db.refresh(paused)
+    db.refresh(active)
+    assert executing.state == TaskState.SKIPPED
+    assert paused.state == TaskState.SKIPPED
+    assert active.state == TaskState.EXECUTING
+    assert dangling == []
+
+
 def test_voided_paused_task_not_touched(db):
     """Voided PAUSED task is filtered out by voided_at IS NULL check."""
     task = _seed_task(db, title="voided-paused", state=TaskState.PAUSED)

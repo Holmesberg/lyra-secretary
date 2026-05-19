@@ -85,6 +85,28 @@ def _task(
     )
 
 
+def _session(
+    task: Task,
+    *,
+    user_id: int,
+    auto_closed: bool = False,
+    data_quality_flag: str | None = None,
+    start: datetime | None = None,
+) -> StopwatchSession:
+    start = start or task.executed_start_utc or task.planned_start_utc
+    end = task.executed_end_utc or (start + timedelta(minutes=task.planned_duration_minutes))
+    return StopwatchSession(
+        session_id=str(uuid4()),
+        task_id=task.task_id,
+        user_id=user_id,
+        start_time_utc=start,
+        end_time_utc=end,
+        auto_closed=auto_closed,
+        total_paused_minutes=0.0,
+        data_quality_flag=data_quality_flag,
+    )
+
+
 def test_task_metrics_use_executed_over_planned_and_log_symmetry():
     over = _task(1, planned=60, executed=120)
     under = _task(1, planned=60, executed=30)
@@ -179,7 +201,31 @@ def test_clean_data_profiles_exclude_contaminated_rows(db):
     missing_exec = _task(user.user_id, planned=60, executed=None)
     under_floor = _task(user.user_id, planned=4, executed=5)
     skipped = _task(user.user_id, planned=60, executed=None, state=TaskState.SKIPPED)
-    db.add_all([clean, external, retro, system_error, missing_exec, under_floor, skipped])
+    no_stopwatch = _task(user.user_id, planned=60, executed=75)
+    auto_closed = _task(user.user_id, planned=60, executed=75)
+    flagged = _task(user.user_id, planned=60, executed=75)
+    db.add_all([
+        clean,
+        external,
+        retro,
+        system_error,
+        missing_exec,
+        under_floor,
+        skipped,
+        no_stopwatch,
+        auto_closed,
+        flagged,
+    ])
+    db.flush()
+    db.add_all([
+        _session(clean, user_id=user.user_id),
+        _session(external, user_id=user.user_id),
+        _session(retro, user_id=user.user_id),
+        _session(system_error, user_id=user.user_id),
+        _session(under_floor, user_id=user.user_id),
+        _session(auto_closed, user_id=user.user_id, auto_closed=True),
+        _session(flagged, user_id=user.user_id, data_quality_flag="pause_reason_lost_to_overwrite"),
+    ])
     db.commit()
 
     measured_ids = {t.task_id for t in measured_execution_query(db, user_id=user.user_id).all()}
@@ -213,7 +259,17 @@ def test_pause_process_profile_excludes_retroactive_and_flagged_pause_rows(db):
         total_paused_minutes=10.0,
         data_quality_flag="pause_reason_lost_to_overwrite",
     )
-    db.add_all([clean_session, flagged_session])
+    auto_closed_session = StopwatchSession(
+        session_id=str(uuid4()),
+        task_id=task.task_id,
+        user_id=user.user_id,
+        start_time_utc=datetime(2026, 5, 1, 13, 0, 0),
+        end_time_utc=datetime(2026, 5, 1, 14, 30, 0),
+        auto_closed=True,
+        total_paused_minutes=10.0,
+        data_quality_flag=None,
+    )
+    db.add_all([clean_session, flagged_session, auto_closed_session])
     db.flush()
     db.add_all([
         PauseEvent(
@@ -244,6 +300,17 @@ def test_pause_process_profile_excludes_retroactive_and_flagged_pause_rows(db):
             user_id=user.user_id,
             paused_at_utc=datetime(2026, 5, 1, 11, 30, 0),
             resumed_at_utc=datetime(2026, 5, 1, 11, 40, 0),
+            duration_minutes=10.0,
+            pause_reason="distraction",
+            pause_initiator="self",
+            self_reported_retroactively=False,
+        ),
+        PauseEvent(
+            pause_event_id=str(uuid4()),
+            session_id=auto_closed_session.session_id,
+            user_id=user.user_id,
+            paused_at_utc=datetime(2026, 5, 1, 13, 30, 0),
+            resumed_at_utc=datetime(2026, 5, 1, 13, 40, 0),
             duration_minutes=10.0,
             pause_reason="distraction",
             pause_initiator="self",
@@ -294,9 +361,16 @@ def test_cortex_diagnostics_endpoint_is_operator_only(db, client):
 def test_cortex_diagnostics_endpoint_returns_contract_counts(db, client):
     operator = _user(db, is_operator=True)
     other_user = _user(db, is_operator=False)
-    db.add(_task(operator.user_id, planned=60, executed=120, category="development"))
-    db.add(_task(operator.user_id, planned=60, executed=60, initiation_status="retroactive"))
-    db.add(_task(other_user.user_id, planned=60, executed=300, category="study"))
+    clean = _task(operator.user_id, planned=60, executed=120, category="development")
+    retro = _task(operator.user_id, planned=60, executed=60, initiation_status="retroactive")
+    other = _task(other_user.user_id, planned=60, executed=300, category="study")
+    db.add_all([clean, retro, other])
+    db.flush()
+    db.add_all([
+        _session(clean, user_id=operator.user_id),
+        _session(retro, user_id=operator.user_id),
+        _session(other, user_id=other_user.user_id),
+    ])
     db.commit()
 
     response = client.get(

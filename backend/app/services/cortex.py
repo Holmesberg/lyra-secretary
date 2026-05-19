@@ -203,6 +203,26 @@ def measured_execution_query(
     user_id: int,
     cutoff: Optional[datetime] = None,
 ) -> Query:
+    clean_stopwatch_exists = (
+        db.query(StopwatchSession.session_id)
+        .filter(
+            StopwatchSession.task_id == Task.task_id,
+            StopwatchSession.user_id == user_id,
+            StopwatchSession.end_time_utc.isnot(None),
+            StopwatchSession.auto_closed.is_(False),
+            StopwatchSession.data_quality_flag.is_(None),
+        )
+        .exists()
+    )
+    auto_closed_stopwatch_exists = (
+        db.query(StopwatchSession.session_id)
+        .filter(
+            StopwatchSession.task_id == Task.task_id,
+            StopwatchSession.user_id == user_id,
+            StopwatchSession.auto_closed.is_(True),
+        )
+        .exists()
+    )
     q = db.query(Task).filter(
         Task.user_id == user_id,
         Task.state == TaskState.EXECUTED,
@@ -214,6 +234,8 @@ def measured_execution_query(
         ~db.query(TaskExecutionCorrection.correction_id)
         .filter(TaskExecutionCorrection.task_id == Task.task_id)
         .exists(),
+        clean_stopwatch_exists,
+        ~auto_closed_stopwatch_exists,
     )
     if cutoff is not None:
         q = q.filter(Task.planned_start_utc >= cutoff)
@@ -289,6 +311,7 @@ def pause_process_query(
         .filter(
             PauseEvent.user_id == user_id,
             PauseEvent.self_reported_retroactively.is_(False),
+            StopwatchSession.auto_closed.is_(False),
             StopwatchSession.data_quality_flag.is_(None),
             Task.voided_at.is_(None),
         )

@@ -201,6 +201,14 @@ Include only rows where:
   profile explicitly admits repaired measurements
 - `executed_duration_minutes IS NOT NULL`
 - `planned_duration_minutes >= 5`
+- at least one closed `StopwatchSession` exists for the task with
+  `auto_closed IS FALSE` and `data_quality_flag IS NULL`
+- no `StopwatchSession` for the task has `auto_closed IS TRUE`
+
+Rationale: auto-closed stopwatch rows are descriptive history and repair
+evidence. They are not clean measurement rows because the system inferred the
+session boundary after dropout rather than observing a user stop/complete
+boundary.
 
 ### `planning_calibration`
 
@@ -225,6 +233,7 @@ Include only rows where:
 - Pause row is real-time captured, not retroactive confirmation.
 - `PauseEvent.self_reported_retroactively IS FALSE`
 - Parent task is not voided.
+- Joined `StopwatchSession.auto_closed IS FALSE`
 - Joined `StopwatchSession.data_quality_flag IS NULL`
 - Pause event has the fields required by the analysis.
 
