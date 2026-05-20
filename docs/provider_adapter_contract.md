@@ -65,7 +65,49 @@ Minimum normalized fields:
 The normalized record may preserve provider vocabulary for display, but the
 core must consume the normalized evidence class and substrate primitive.
 
-## 3. Required Primitives
+## 3. Dirty Provider Input Assumptions
+
+Provider data is expected to be incomplete, stale, contradictory, malformed,
+or semantically misleading.
+
+Examples:
+
+- a Jira/Linear ticket remains "in progress" after the human stopped working,
+- a calendar block says "study" but reality diverged,
+- an LMS assignment is imported without enough resource scope,
+- a lecture tab stays open without active engagement,
+- a provider deadline changes after an earlier sync,
+- or two providers describe the same obligation differently.
+
+This is not a reason to reject the middleware strategy. It is the reason the
+adapter layer exists.
+
+Required response:
+
+```text
+dirty provider row
+  -> preserve provenance
+  -> normalize to weak evidence
+  -> attach trust state
+  -> infer cautiously at the edge
+  -> demote or ask for repair when contradictions are high
+```
+
+Forbidden response:
+
+```text
+dirty provider row
+  -> treat as clean intention or execution truth
+```
+
+Lyra should absorb common provider mess through edge-case handling, confidence
+demotion, stale-state checks, idle/overlong-session guards, and low-friction
+repair prompts. It should not make the user manually clean every upstream
+system before receiving value. Manual confirmation is reserved for cases where
+the inferred consequence would affect planning, calibration, or stronger
+adaptive authority.
+
+## 4. Required Primitives
 
 Adapters must translate into these provider-blind primitives where applicable:
 
@@ -84,7 +126,7 @@ Provider imports usually create obligations or weak activity traces. They do
 not create planning calibration unless the user accepted or confirmed an
 intention.
 
-## 4. Provider Failure Invariant
+## 5. Provider Failure Invariant
 
 Provider failure must degrade functionality, not weaken authentication or user
 scoping.
@@ -100,12 +142,14 @@ Examples:
 
 Provider outage paths must not create trusted execution evidence.
 
-## 5. Adapter Acceptance Checklist
+## 6. Adapter Acceptance Checklist
 
 A new provider adapter is incomplete unless it has:
 
 - normalized DTO or equivalent mapping,
 - user-id scoping at persistence and read time,
+- dirty-input confidence/demotion rules for stale, overlong, contradictory, or
+  ambiguous provider rows,
 - redaction tests for raw URLs, tokens, OAuth payloads, and provider secrets,
 - trust-state copy,
 - provider outage degradation tests,
@@ -113,7 +157,7 @@ A new provider adapter is incomplete unless it has:
 - exposure registration for any provider-native suggestion,
 - and a browser/API smoke path proving another user cannot see imported data.
 
-## 6. Forbidden Shortcuts
+## 7. Forbidden Shortcuts
 
 Forbidden:
 

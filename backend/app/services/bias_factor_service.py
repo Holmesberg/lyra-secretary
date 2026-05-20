@@ -138,6 +138,8 @@ def _adaptive_calibration(
     dur_bucket = "short" if planned_minutes < 30 else "long" if planned_minutes > 60 else "medium"
 
     for t in tasks:
+        if getattr(t, "is_anchor", False):
+            continue
         cat = t.category or "uncategorized"
         if cat != category:
             continue
@@ -309,7 +311,10 @@ def blend(
         tasks=tasks,
         signal_targets=["planning_estimate", "duration_behavior"],
     )
-    clean_tasks = [t for t in tasks if t.task_id in clean_ids]
+    clean_tasks = [
+        t for t in tasks
+        if t.task_id in clean_ids and not getattr(t, "is_anchor", False)
+    ]
 
     personal = _adaptive_calibration(clean_tasks, category, tod, planned_minutes)
 

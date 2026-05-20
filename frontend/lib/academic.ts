@@ -51,6 +51,10 @@ export interface AcademicSourceSummary {
   deadlines_total: number;
   moodle_deadlines: number;
   native_deadlines: number;
+  academic_task_count: number;
+  study_task_count: number;
+  academic_task_minutes: number;
+  study_task_minutes: number;
   google_calendar_connected: boolean;
   calendar_busy_minutes: number;
   planned_lyra_minutes: number;

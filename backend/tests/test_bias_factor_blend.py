@@ -94,6 +94,7 @@ def _make_tasks(
             planned_start_utc=start,
             planned_end_utc=start + timedelta(minutes=planned),
             planned_duration_minutes=planned,
+            created_at=start,
             executed_start_utc=start,
             executed_end_utc=start + timedelta(minutes=executed),
             executed_duration_minutes=executed,

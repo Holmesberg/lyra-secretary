@@ -23,9 +23,12 @@ from app.db.models import (
 from app.db.scoping import get_current_user_id
 from app.services.exposure_ledger import baseline_clean_task_ids
 from app.services.output_surfaces import (
+    RULE11_SUPPRESSION_REASON,
     emit_surface_render,
     emit_surface_suppression,
     get_output_surface_spec,
+    rule11_no_nudge_control_active,
+    rule11_randomization_fields,
 )
 from app.utils.time_utils import to_local, now_utc, strip_tz
 from app.utils.redis_client import RedisClient
@@ -321,7 +324,10 @@ def _eligible_tasks_for_surface(db: Session, tasks: list, surface_id: str) -> li
         tasks=tasks,
         signal_targets=list(spec.signal_targets),
     )
-    return [task for task in tasks if task.task_id in clean_ids]
+    return [
+        task for task in tasks
+        if task.task_id in clean_ids and not getattr(task, "is_anchor", False)
+    ]
 
 
 def _median(vals: list[float]) -> float:
@@ -1330,16 +1336,49 @@ def get_insights(
     }
     try:
         if insights:
-            emitted = emit_surface_render(
-                db,
-                surface_id=surface_id,
-                user_id=uid,
-                content_snapshot=json.dumps(response_payload, sort_keys=True, default=str),
-                content_template_id="analytics_insights",
-                trigger_source="analytics.insights",
+            eligible_at = now_utc()
+            arm, policy = rule11_randomization_fields(
+                db, user_id=uid, surface_id=surface_id, eligible_at=eligible_at
             )
-            response_payload["exposure_id"] = emitted["exposure_id"]
-            response_payload["render_id"] = emitted["render_id"]
+            if rule11_no_nudge_control_active(
+                db, user_id=uid, surface_id=surface_id, eligible_at=eligible_at
+            ):
+                emit_surface_suppression(
+                    db,
+                    surface_id=surface_id,
+                    user_id=uid,
+                    suppression_reason=RULE11_SUPPRESSION_REASON,
+                    eligible_at=eligible_at,
+                    suppressed_at=eligible_at,
+                    content_template_id="analytics_insights",
+                    trigger_source="analytics.insights",
+                    randomization_arm=arm,
+                    randomization_policy_version=policy,
+                )
+                response_payload.update(
+                    _surface_metadata(
+                        surface_id,
+                        eligible_sample_count=sessions_analyzed,
+                        suppressed_reason=RULE11_SUPPRESSION_REASON,
+                    )
+                )
+                response_payload["insights"] = []
+                response_payload["ready"] = False
+            else:
+                emitted = emit_surface_render(
+                    db,
+                    surface_id=surface_id,
+                    user_id=uid,
+                    content_snapshot=json.dumps(response_payload, sort_keys=True, default=str),
+                    eligible_at=eligible_at,
+                    rendered_at=eligible_at,
+                    content_template_id="analytics_insights",
+                    trigger_source="analytics.insights",
+                    randomization_arm=arm,
+                    randomization_policy_version=policy,
+                )
+                response_payload["exposure_id"] = emitted["exposure_id"]
+                response_payload["render_id"] = emitted["render_id"]
         else:
             emit_surface_suppression(
                 db,
@@ -1735,6 +1774,7 @@ def get_bias_factor(
             Task.state == TaskState.EXECUTED,
             Task.initiation_status != "system_error",
             Task.voided_at.is_(None),
+            Task.is_anchor.is_(False),
             Task.initiation_status != "retroactive",
             Task.executed_duration_minutes != None,
             Task.planned_duration_minutes > 0,
@@ -1859,6 +1899,7 @@ def bias_factor_lookup(
             Task.initiation_status != "system_error",
             Task.voided_at.is_(None),
             Task.initiation_status != "retroactive",
+            Task.is_anchor.is_(False),
             Task.executed_duration_minutes != None,
             Task.planned_duration_minutes >= 5,
             ~db.query(TaskExecutionCorrection.correction_id)
@@ -1883,27 +1924,73 @@ def bias_factor_lookup(
     threshold = 1.20 if result.get("source") == "research" else 1.25
     if cell is not None and magnitude is not None and magnitude >= threshold:
         suggested_minutes = max(5, round((planned_minutes * magnitude) / 5) * 5)
+        surface_id = "task.creation_nudge"
+        eligible_at = now_utc()
+        arm, policy = rule11_randomization_fields(
+            db, user_id=uid, surface_id=surface_id, eligible_at=eligible_at
+        )
         try:
+            if rule11_no_nudge_control_active(
+                db, user_id=uid, surface_id=surface_id, eligible_at=eligible_at
+            ):
+                emitted = emit_surface_suppression(
+                    db,
+                    surface_id=surface_id,
+                    user_id=uid,
+                    suppression_reason=RULE11_SUPPRESSION_REASON,
+                    eligible_at=eligible_at,
+                    suppressed_at=eligible_at,
+                    content_template_id="task_creation_nudge_lookup",
+                    initiative="system",
+                    trigger_source="analytics.bias_factor.lookup",
+                    randomization_arm=arm,
+                    randomization_policy_version=policy,
+                )
+                db.commit()
+                return {
+                    "cell": None,
+                    "sessions": result.get("sessions", 0),
+                    "min_sessions": result.get("min_sessions", 3),
+                    "source": result.get("source"),
+                    "suppressed_reason": emitted["suppressed_reason"],
+                    "surface_id": emitted["surface_id"],
+                    "truth_class": emitted["truth_class"],
+                    "signal_targets": emitted["signal_targets"],
+                    "clean_profile": emitted["clean_profile"],
+                    "fallback_mode": emitted["fallback_mode"],
+                    "exposure_id": emitted["exposure_id"],
+                    "suppression_id": emitted["suppression_id"],
+                }
             emitted = emit_surface_render(
                 db,
-                surface_id="task.creation_nudge",
+                surface_id=surface_id,
                 user_id=uid,
                 content_snapshot={
                     "copy": (
-                        f"A typical wrap is {suggested_minutes} min "
-                        f"for {category} / {tod} from a {round(magnitude, 3)}x factor."
+                        f"Suggested window is {suggested_minutes} min "
+                        f"for {category} / {tod} from a {round(magnitude, 3)}x "
+                        f"Rule-13 factor."
                     ),
                     "category": category,
                     "time_of_day": tod,
                     "planned_minutes": planned_minutes,
                     "suggested_minutes": suggested_minutes,
                     "bias_factor": round(magnitude, 3),
+                    "personal_bias_factor": cell.get("bias_factor"),
+                    "personal_weight": result.get("personal_weight"),
+                    "prior_weight": result.get("prior_weight"),
+                    "archetype_prior_for_cell": result.get("archetype_prior_for_cell"),
+                    "archetype_prior_citation": result.get("archetype_prior_citation"),
                     "sample_size": cell.get("sessions"),
                     "source": result.get("source"),
                 },
+                eligible_at=eligible_at,
+                rendered_at=eligible_at,
                 content_template_id="task_creation_nudge_lookup",
                 initiative="system",
                 trigger_source="analytics.bias_factor.lookup",
+                randomization_arm=arm,
+                randomization_policy_version=policy,
             )
             db.commit()
             result.update(

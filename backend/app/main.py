@@ -198,7 +198,7 @@ app.add_middleware(
     allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["Authorization", "Content-Type", "X-User-Id"],
+    allow_headers=["Authorization", "Content-Type", "X-User-Id", "X-Idempotency-Key"],
     expose_headers=["*"],
 )  # outer — added last, runs first
 app.include_router(api_router, prefix="/v1")

@@ -55,6 +55,23 @@ _HIGH_COMPLEXITY_TERMS = {
     "theory",
 }
 
+ACADEMIC_PRESSURE_TASK_CATEGORIES = {"academic", "study"}
+ACADEMIC_SCHEDULE_TASK_TOKENS = {
+    "class",
+    "course",
+    "lab",
+    "labs",
+    "lec",
+    "lecture",
+    "lectures",
+    "practical",
+    "section",
+    "seminar",
+    "tut",
+    "tutorial",
+    "tutorials",
+}
+
 
 @dataclass(frozen=True)
 class _TypePrior:
@@ -74,6 +91,36 @@ _TYPE_PRIORS: dict[str, _TypePrior] = {
     "lecture": _TypePrior(75, 150, "lecture/revision prior without recording duration"),
     "deadline": _TypePrior(90, 240, "generic academic-deadline prior"),
 }
+
+
+def is_academic_pressure_task_category(category: str | None) -> bool:
+    """True for Lyra task categories that belong on the academic map.
+
+    Governance distinction:
+      - academic = institutional/prescheduled academic obligations
+        (deadlines, lectures, tutorials, labs, classes).
+      - study = user-owned self-study sessions.
+
+    They share the same pressure surface, but their source labels and
+    trust wording stay separate so provider-imported structure does not
+    collapse into self-study behavior.
+    """
+    return (category or "").strip().lower() in ACADEMIC_PRESSURE_TASK_CATEGORIES
+
+
+def _academic_pressure_task_kind(task: Task) -> str:
+    """Return `academic` or `study` for pressure-map projection.
+
+    Existing rows may predate the 2026-05-20 category boundary. If a
+    stored `study` task is clearly a prescheduled lab/lecture/tutorial
+    block, project it as academic on this surface without rewriting the
+    historical task row.
+    """
+    category = (task.category or "").strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", (task.title or "").lower()))
+    if category == "academic" or tokens & ACADEMIC_SCHEDULE_TASK_TOKENS:
+        return "academic"
+    return "study"
 
 
 def _clamp_horizon(days: int) -> int:
@@ -99,6 +146,12 @@ def _classify_obligation(title: str) -> str:
     if "lecture" in t or "revision" in t or "review" in t:
         return "lecture"
     return "deadline"
+
+
+def _classify_task_obligation(task: Task) -> str:
+    if _academic_pressure_task_kind(task) == "study":
+        return "self_study"
+    return _classify_obligation(task.title)
 
 
 def _complexity_tier(title: str, category_hint: str | None) -> AcademicComplexityTier:
@@ -168,6 +221,37 @@ def _estimate(deadline: Deadline) -> AcademicPressureEstimate:
     )
 
 
+def _task_estimate(task: Task) -> AcademicPressureEstimate:
+    planned = int(task.planned_duration_minutes or 0)
+    if planned <= 0 and task.planned_start_utc and task.planned_end_utc:
+        planned = max(
+            0,
+            int((task.planned_end_utc - task.planned_start_utc).total_seconds() / 60),
+        )
+    planned = max(planned, 5)
+    kind = _academic_pressure_task_kind(task)
+    if kind == "study":
+        assumptions = [
+            "self-study task scheduled by the user",
+            "planned duration is visible intention, not completed work",
+            "no passive/provider activity is used as execution truth",
+        ]
+        confidence = "medium"
+    else:
+        assumptions = [
+            "prescheduled academic task in Lyra",
+            "planned duration is visible schedule structure",
+            "coverage/source still needs confirmation before auto-plan generation",
+        ]
+        confidence = "low"
+    return AcademicPressureEstimate(
+        low_minutes=planned,
+        high_minutes=planned,
+        confidence=confidence,
+        assumptions=assumptions,
+    )
+
+
 def _calendar_busy_minutes(user_id: int, user: User | None, start: datetime, end: datetime) -> tuple[int, bool]:
     if user is None or not user.google_refresh_token:
         return 0, False
@@ -198,9 +282,29 @@ def _planned_task_minutes(db: Session, user_id: int, start: datetime, end: datet
     return sum(int(row[0] or 0) for row in rows)
 
 
+def _planned_academic_task_rows(
+    db: Session,
+    user_id: int,
+    start: datetime,
+    end: datetime,
+) -> list[Task]:
+    return (
+        db.query(Task)
+        .filter(Task.user_id == user_id)
+        .filter(Task.voided_at.is_(None))
+        .filter(Task.is_anchor.is_(False))
+        .filter(Task.state.in_([TaskState.PLANNED, TaskState.EXECUTING, TaskState.PAUSED]))
+        .filter(Task.planned_start_utc < end)
+        .filter(Task.planned_end_utc > start)
+        .filter(Task.category.in_(tuple(ACADEMIC_PRESSURE_TASK_CATEGORIES)))
+        .order_by(Task.planned_start_utc.asc())
+        .all()
+    )
+
+
 def _headline(items: list[AcademicPressureItem], low: int, high: int, horizon_days: int) -> str:
     if not items:
-        return f"No active academic deadlines in the next {horizon_days} days."
+        return f"No active academic obligations in the next {horizon_days} days."
     high_pressure = sum(1 for item in items if item.pressure_level in ("high", "overdue"))
     hours_low = round(low / 60)
     hours_high = round(high / 60)
@@ -224,7 +328,7 @@ def _pressure_summary(
     gcal_connected: bool,
 ) -> str:
     if not items:
-        return "No visible academic deadline pressure in this window."
+        return "No visible academic pressure in this window."
     high_pressure = sum(1 for item in items if item.pressure_level in ("high", "overdue"))
     uncertain = sum(1 for item in items if item.trust_state != "verified_exact")
     hours_low = round(low / 60)
@@ -357,7 +461,7 @@ def _recovery_options(
             AcademicRecoveryOption(
                 action="clear_or_ignore",
                 label="Keep the window clean",
-                detail="No active academic pressure is visible here. Add or import deadlines if something is missing.",
+                detail="No active academic pressure is visible here. Add or import deadlines, lectures, labs, tutorials, or study blocks if something is missing.",
                 obligation_ids=[],
             )
         ]
@@ -481,12 +585,56 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             )
         )
 
+    academic_tasks = _planned_academic_task_rows(db, uid, generated_at, window_end)
+    for task in academic_tasks:
+        scheduled_at = strip_tz(task.planned_start_utc) or task.planned_start_utc
+        kind = _academic_pressure_task_kind(task)
+        estimate = _task_estimate(task)
+        days_until = (scheduled_at - generated_at).total_seconds() / 86400
+        source = "lyra_self_study_task" if kind == "study" else "lyra_academic_task"
+        trust: AcademicTrustState = (
+            "verified_exact" if kind == "study" else "requires_user_confirmation"
+        )
+        warnings = [
+            "scheduled task is intention, not completion evidence",
+        ]
+        if kind == "academic":
+            warnings.append("academic scheduled block needs provider/user coverage confirmation")
+        items.append(
+            AcademicPressureItem(
+                obligation_id=task.task_id,
+                title=task.title,
+                due_at_utc=scheduled_at,
+                source=source,
+                obligation_type=_classify_task_obligation(task),
+                trust_state=trust,
+                complexity_tier=_complexity_tier(task.title, task.category),
+                complexity_source="task_category_v1",
+                pressure_level=_pressure_level(scheduled_at, generated_at),
+                days_until_due=round(days_until, 1),
+                estimate=estimate,
+                warnings=warnings,
+            )
+        )
+
+    items.sort(key=lambda item: item.due_at_utc)
+
     low_total = sum(item.estimate.low_minutes for item in items)
     high_total = sum(item.estimate.high_minutes for item in items)
     calendar_busy, gcal_connected = _calendar_busy_minutes(uid, user, generated_at, window_end)
     planned_minutes = _planned_task_minutes(db, uid, generated_at, window_end)
     native_count = sum(1 for d in deadlines if not d.external_source)
     moodle_count = sum(1 for d in deadlines if d.external_source == "moodle_ics")
+    academic_task_minutes = sum(
+        int(t.planned_duration_minutes or 0)
+        for t in academic_tasks
+        if _academic_pressure_task_kind(t) == "academic"
+    )
+    study_task_minutes = sum(
+        int(t.planned_duration_minutes or 0)
+        for t in academic_tasks
+        if _academic_pressure_task_kind(t) == "study"
+    )
 
     warnings = [
         "Pressure Map should create clarity and agency, not panic.",
@@ -535,6 +683,16 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             deadlines_total=len(deadlines),
             moodle_deadlines=moodle_count,
             native_deadlines=native_count,
+            academic_task_count=sum(
+                1 for t in academic_tasks
+                if _academic_pressure_task_kind(t) == "academic"
+            ),
+            study_task_count=sum(
+                1 for t in academic_tasks
+                if _academic_pressure_task_kind(t) == "study"
+            ),
+            academic_task_minutes=academic_task_minutes,
+            study_task_minutes=study_task_minutes,
             google_calendar_connected=gcal_connected,
             calendar_busy_minutes=calendar_busy,
             planned_lyra_minutes=planned_minutes,

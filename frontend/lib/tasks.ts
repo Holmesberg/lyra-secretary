@@ -29,6 +29,8 @@ export interface TaskRow {
   end: string | null;
   state: TaskState;
   category: string | null;
+  is_anchor: boolean;
+  rct_arm: string | null;
   initiation_status: string | null;
   session_index_in_day: number;
   pre_task_readiness: number | null;

@@ -651,7 +651,7 @@ function GhostButton({
 // absolute clock string.
 function relativeAge(iso: string | null): string {
   if (!iso) return "never";
-  const ms = Date.now() - new Date(iso).getTime();
+  const ms = Date.now() - parseApiInstant(iso).getTime();
   if (ms < 0) return "just now";
   if (ms < 60_000) return "just now";
   const m = Math.floor(ms / 60_000);
@@ -660,6 +660,14 @@ function relativeAge(iso: string | null): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   return `${d}d ago`;
+}
+
+function parseApiInstant(iso: string): Date {
+  // Defensive compatibility for pre-fix persisted integration cache
+  // entries. Moodle sync timestamps are UTC; older API responses omitted
+  // the offset, which browsers interpreted as local time.
+  const hasExplicitZone = /(?:Z|[+-]\d\d:\d\d)$/.test(iso);
+  return new Date(hasExplicitZone ? iso : `${iso}Z`);
 }
 
 function cleanQueryParams() {

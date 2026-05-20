@@ -42,6 +42,10 @@ from app.schemas.brain_dump import (
     BrainDumpParsedItem,
     BrainDumpParseResponse,
 )
+from app.services.category_inference import (
+    infer_academic_category,
+    infer_research_duration_prior,
+)
 from app.services.deadline_heuristic import score_deadlines
 
 logger = logging.getLogger(__name__)
@@ -78,6 +82,19 @@ TASK_LEADING_VERBS = {
     "wash", "cook", "pay", "book", "reserve", "order",
     "create", "design", "draw", "paint", "record", "shoot",
     "memorize", "rehearse", "summarize",
+}
+
+TASK_CONTEXT_TOKENS = {
+    "practice",
+    "read",
+    "reading",
+    "rev",
+    "review",
+    "revise",
+    "revision",
+    "slides",
+    "solve",
+    "study",
 }
 
 # Tokens that anchor a date/time. Matched as alternatives — phrases
@@ -287,12 +304,16 @@ def _classify_kind(segment: str) -> tuple[str, float]:
     leading_verb = first_word.group(1) if first_word else ""
     has_action = leading_verb in TASK_LEADING_VERBS
     has_date = bool(DATE_HINTS.search(segment))
+    words = set(re.findall(r"[a-z0-9]+", lower))
+    has_task_context = bool(words & TASK_CONTEXT_TOKENS)
 
     # 1. Action verb at the front — TASK, even if deadline kw appears.
     if has_action and has_date:
         return "task", 0.88
     if has_action:
         return "task", 0.70
+    if has_task_context and has_deadline_kw:
+        return "task", 0.82 if has_date else 0.68
     # 2. Deadline keyword without a leading verb.
     if has_deadline_kw and has_date:
         return "deadline", 0.92
@@ -533,11 +554,27 @@ def parse_brain_dump(
         #    "study 1" / "break".
         range_duration, normalized = _extract_time_range_and_normalize(seg)
         explicit_duration = _extract_duration(normalized)
-        derived_duration = explicit_duration if explicit_duration is not None else range_duration
+        if explicit_duration is not None:
+            derived_duration = explicit_duration
+            duration_source = "explicit_text"
+            duration_confidence = 1.0
+            duration_basis = "user supplied a duration in the text"
+        elif range_duration is not None:
+            derived_duration = range_duration
+            duration_source = "time_range"
+            duration_confidence = 0.95
+            duration_basis = "duration derived from a parsed time range"
+        else:
+            derived_duration = None
+            duration_source = None
+            duration_confidence = None
+            duration_basis = None
 
         kind, kind_conf = _classify_kind(normalized)
         when = _extract_when(normalized, now_local)
         title = _strip_date_tokens(normalized) or normalized
+        category = infer_academic_category(title)
+        category_source = "title_heuristic_v1" if category else None
         # Cap title length defensively
         if len(title) > 200:
             title = title[:200].rstrip() + "…"
@@ -557,8 +594,20 @@ def parse_brain_dump(
 
         if kind == "task":
             # Duration precedence: extracted (explicit user value) >
-            # default (30 min). Clamp to schema bounds [1, 720].
-            duration = derived_duration if derived_duration is not None else 30
+            # research prior > default (30 min). Clamp to schema bounds [1, 720].
+            duration = derived_duration
+            if duration is None:
+                prior = infer_research_duration_prior(title, category)
+                if prior is not None:
+                    duration = prior.minutes
+                    duration_source = prior.source
+                    duration_confidence = prior.confidence
+                    duration_basis = prior.basis
+                else:
+                    duration = 30
+                    duration_source = "default_30_min"
+                    duration_confidence = 0.35
+                    duration_basis = "no explicit duration or category prior matched"
             duration = max(1, min(720, duration))
             if when is None:
                 when = _default_when_for_task(now_local, task_default_index)
@@ -570,6 +619,11 @@ def parse_brain_dump(
                 title=title,
                 when_local=when,
                 duration_minutes=duration,
+                category=category,
+                category_source=category_source,
+                duration_source=duration_source,
+                duration_confidence=duration_confidence,
+                duration_basis=duration_basis,
                 confidence=round(conf, 2),
             ))
         else:
@@ -579,6 +633,11 @@ def parse_brain_dump(
                 title=title,
                 when_local=when,
                 duration_minutes=None,
+                category="academic",
+                category_source="deadline_kind",
+                duration_source=None,
+                duration_confidence=None,
+                duration_basis=None,
                 confidence=round(conf, 2),
             ))
 

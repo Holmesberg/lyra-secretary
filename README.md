@@ -4,14 +4,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Repository](https://img.shields.io/badge/GitHub-lyra--secretary-181717?logo=github)](https://github.com/Holmesberg/lyra-secretary)
 
-> A productivity app for seeing where plans actually break.
+> An execution-reality layer for seeing where plans actually break.
 
 ![LyraOS Insights layer](docs/insights-v2.png)
 
-LyraOS is a planning and execution app wrapped around a behavioral measurement
-instrument. Users plan tasks, run timers, recover from missed plans, and inspect
-patterns in their own execution traces. Underneath, every plan is treated as a
-hypothesis, every work session as evidence, and every behavioral claim as
+LyraOS is an execution-reality middleware layer wrapped in a product interface.
+Calendars, LMSs, task apps, and planning tools already hold commitments;
+LyraOS interprets what happens when those commitments collide with real
+execution. Users can still plan tasks, run timers, recover from missed plans,
+and inspect patterns in their own traces. Underneath, every plan is treated as
+a hypothesis, every work session as evidence, and every behavioral claim as
 something that must earn authority through provenance, clean-data rules,
 exposure state, and uncertainty.
 
@@ -32,6 +34,10 @@ identity labeling, or black-box intervention.
 The current answer is a conservative system: capture normal planning and timer
 behavior, preserve the trace, separate observation from inference, and surface
 only bounded, time-local hypotheses.
+
+The alignment claim is honesty, not obedience. LyraOS should help users
+preserve contact between intention, constraint, action, and consequence without
+optimizing them into hidden compliance, dependence, or engagement loops.
 
 ## Current Status
 
@@ -56,10 +62,12 @@ Most productivity systems respond to uncertainty by asking the user more
 questions or by hiding inference inside vague personalization. LyraOS tries a
 different strategy:
 
+- sit above existing planning systems instead of replacing them
 - keep the minimum useful loop lightweight
 - treat user attention as scarce scientific capital
 - use repeated behavior, timing, pauses, missingness, recovery, and context as
   weak signals
+- treat influence as inevitable but unconscious influence as unacceptable
 - avoid stable identity labels
 - let cold-start priors decay as personal traces accumulate
 - fail closed when exposure or provenance state is unknown

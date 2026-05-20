@@ -27,7 +27,13 @@ from app.schemas.stopwatch import (
 )
 from app.db.models import TaskState
 from app.db.scoping import get_current_user_id
-from app.services.output_surfaces import emit_surface_render
+from app.services.output_surfaces import (
+    RULE11_SUPPRESSION_REASON,
+    emit_surface_render,
+    emit_surface_suppression,
+    rule11_no_nudge_control_active,
+    rule11_randomization_fields,
+)
 from app.services.stopwatch_manager import (
     StopwatchManager,
     StopwatchAlreadyRunningError,
@@ -195,41 +201,96 @@ def stop_stopwatch(
         calibration_nudge_view_id = None
         calibration_nudge_exposure_id = None
         fired_at = now_utc()
+        surface_decision_recorded = False
         if micro_mirror:
-            emitted = emit_surface_render(
-                db,
-                surface_id="stopwatch.micro_mirror",
-                user_id=user_id,
-                task_id=task.task_id,
-                content_snapshot=micro_mirror,
-                content_template_id="micro_mirror",
-                initiative="system",
-                trigger_source="stopwatch.stop",
-                eligible_at=fired_at,
-                rendered_at=fired_at,
-                create_legacy_view=True,
-                legacy_payload=micro_mirror,
+            surface_id = "stopwatch.micro_mirror"
+            arm, policy = rule11_randomization_fields(
+                db, user_id=user_id, surface_id=surface_id, eligible_at=fired_at
             )
-            micro_mirror_view_id = emitted["legacy_view_id"]
-            micro_mirror_exposure_id = emitted["exposure_id"]
+            if rule11_no_nudge_control_active(
+                db, user_id=user_id, surface_id=surface_id, eligible_at=fired_at
+            ):
+                emit_surface_suppression(
+                    db,
+                    surface_id=surface_id,
+                    user_id=user_id,
+                    task_id=task.task_id,
+                    suppression_reason=RULE11_SUPPRESSION_REASON,
+                    eligible_at=fired_at,
+                    suppressed_at=fired_at,
+                    content_template_id="micro_mirror",
+                    initiative="system",
+                    trigger_source="stopwatch.stop",
+                    randomization_arm=arm,
+                    randomization_policy_version=policy,
+                )
+                micro_mirror = None
+                surface_decision_recorded = True
+            else:
+                emitted = emit_surface_render(
+                    db,
+                    surface_id=surface_id,
+                    user_id=user_id,
+                    task_id=task.task_id,
+                    content_snapshot=micro_mirror,
+                    content_template_id="micro_mirror",
+                    initiative="system",
+                    trigger_source="stopwatch.stop",
+                    eligible_at=fired_at,
+                    rendered_at=fired_at,
+                    create_legacy_view=True,
+                    legacy_payload=micro_mirror,
+                    randomization_arm=arm,
+                    randomization_policy_version=policy,
+                )
+                micro_mirror_view_id = emitted["legacy_view_id"]
+                micro_mirror_exposure_id = emitted["exposure_id"]
+                surface_decision_recorded = True
         if calibration_nudge:
-            emitted = emit_surface_render(
-                db,
-                surface_id="stopwatch.calibration_nudge",
-                user_id=user_id,
-                task_id=task.task_id,
-                content_snapshot=calibration_nudge,
-                content_template_id="calibration_nudge",
-                initiative="system",
-                trigger_source="stopwatch.stop",
-                eligible_at=fired_at,
-                rendered_at=fired_at,
-                create_legacy_view=True,
-                legacy_payload=calibration_nudge,
+            surface_id = "stopwatch.calibration_nudge"
+            arm, policy = rule11_randomization_fields(
+                db, user_id=user_id, surface_id=surface_id, eligible_at=fired_at
             )
-            calibration_nudge_view_id = emitted["legacy_view_id"]
-            calibration_nudge_exposure_id = emitted["exposure_id"]
-        if micro_mirror or calibration_nudge:
+            if rule11_no_nudge_control_active(
+                db, user_id=user_id, surface_id=surface_id, eligible_at=fired_at
+            ):
+                emit_surface_suppression(
+                    db,
+                    surface_id=surface_id,
+                    user_id=user_id,
+                    task_id=task.task_id,
+                    suppression_reason=RULE11_SUPPRESSION_REASON,
+                    eligible_at=fired_at,
+                    suppressed_at=fired_at,
+                    content_template_id="calibration_nudge",
+                    initiative="system",
+                    trigger_source="stopwatch.stop",
+                    randomization_arm=arm,
+                    randomization_policy_version=policy,
+                )
+                calibration_nudge = None
+                surface_decision_recorded = True
+            else:
+                emitted = emit_surface_render(
+                    db,
+                    surface_id=surface_id,
+                    user_id=user_id,
+                    task_id=task.task_id,
+                    content_snapshot=calibration_nudge,
+                    content_template_id="calibration_nudge",
+                    initiative="system",
+                    trigger_source="stopwatch.stop",
+                    eligible_at=fired_at,
+                    rendered_at=fired_at,
+                    create_legacy_view=True,
+                    legacy_payload=calibration_nudge,
+                    randomization_arm=arm,
+                    randomization_policy_version=policy,
+                )
+                calibration_nudge_view_id = emitted["legacy_view_id"]
+                calibration_nudge_exposure_id = emitted["exposure_id"]
+                surface_decision_recorded = True
+        if surface_decision_recorded:
             db.commit()
 
         return StopwatchStopResponse(

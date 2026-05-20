@@ -27,6 +27,15 @@ class BrainDumpParsedItem(BaseModel):
     # For deadlines: due_at_local (required for deadline kind).
     when_local: Optional[datetime] = None
     duration_minutes: Optional[int] = None
+    # Auto-inferred taxonomy used for preview + commit. Low-authority:
+    # user can still edit after creation, and TaskManager re-checks if absent.
+    category: Optional[str] = None
+    category_source: Optional[str] = None
+    # Duration provenance so prior-filled durations are not mistaken for
+    # explicit user intent.
+    duration_source: Optional[str] = None
+    duration_confidence: Optional[float] = None
+    duration_basis: Optional[str] = None
     # Heuristic confidence in this item being correctly typed.
     # High (≥0.85): explicit deadline keyword + date, or unambiguous task
     # Medium (0.45-0.85): one signal, ambiguous typing
@@ -63,6 +72,11 @@ class BrainDumpCommitItem(BaseModel):
     description: Optional[str] = Field(None, max_length=2000)
     when_local: Optional[datetime] = None
     duration_minutes: Optional[int] = Field(None, ge=1, le=720)
+    category: Optional[str] = Field(None, max_length=64)
+    category_source: Optional[str] = Field(None, max_length=80)
+    duration_source: Optional[str] = Field(None, max_length=80)
+    duration_confidence: Optional[float] = None
+    duration_basis: Optional[str] = Field(None, max_length=160)
 
 
 class BrainDumpCommitBinding(BaseModel):

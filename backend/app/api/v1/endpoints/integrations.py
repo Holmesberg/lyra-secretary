@@ -16,6 +16,7 @@ changes. See docs/integrations_architecture.md §Status Endpoint.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,6 +27,22 @@ from app.db.models import User
 from app.db.scoping import get_current_user_id
 
 router = APIRouter()
+
+
+def _utc_iso(value: datetime | None) -> str | None:
+    """Serialize DB UTC datetimes with an explicit offset.
+
+    The user row stores Moodle sync timestamps as naive UTC. Returning a
+    bare ISO string makes browsers parse it as local time, so a fresh
+    Cairo sync can look 3h old. Stamp UTC before crossing the API.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat()
 
 
 def _current_user(db: Session) -> User:
@@ -91,9 +108,7 @@ def list_integrations(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "available": True,
                 "scopes": [],
                 "last_synced_at": (
-                    user.moodle_last_synced_at.isoformat()
-                    if user.moodle_last_synced_at
-                    else None
+                    _utc_iso(user.moodle_last_synced_at)
                 ),
                 "disconnect_reason": user.moodle_disconnect_reason,
                 # Moodle Web Services token (alembic 043, 2026-05-01).
@@ -103,9 +118,7 @@ def list_integrations(db: Session = Depends(get_db)) -> dict[str, Any]:
                 # never echoes the credential.
                 "ws_connected": bool(user.moodle_ws_token),
                 "ws_last_synced_at": (
-                    user.moodle_ws_last_synced_at.isoformat()
-                    if user.moodle_ws_last_synced_at
-                    else None
+                    _utc_iso(user.moodle_ws_last_synced_at)
                 ),
                 "ws_disconnect_reason": user.moodle_ws_disconnect_reason,
             },

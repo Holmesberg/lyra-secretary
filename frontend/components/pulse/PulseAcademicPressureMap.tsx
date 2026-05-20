@@ -31,6 +31,16 @@ function fmtDue(days: number): string {
   return `in ${Math.round(days)}d`;
 }
 
+function fmtTiming(item: AcademicPressureItem): string {
+  const isTask = item.source === "lyra_self_study_task" || item.source === "lyra_academic_task";
+  const days = item.days_until_due;
+  if (!isTask) return fmtDue(days);
+  if (days < 0) return "started";
+  if (days < 1) return "scheduled today";
+  if (days < 2) return "scheduled tomorrow";
+  return `scheduled in ${Math.round(days)}d`;
+}
+
 function pressureClass(item: AcademicPressureItem): string {
   if (item.pressure_level === "overdue") return "border-ember/50 bg-ember/10";
   if (item.pressure_level === "high") return "border-ember/30 bg-ember/5";
@@ -88,7 +98,9 @@ export function PulseAcademicPressureMap({
                   pressure.estimated_high_minutes
                 )}{" "}
                 visible load / {pressure.source_summary.moodle_deadlines} Moodle /{" "}
-                {pressure.source_summary.native_deadlines} native
+                {pressure.source_summary.native_deadlines} native /{" "}
+                {pressure.source_summary.academic_task_count} academic /{" "}
+                {pressure.source_summary.study_task_count} study
               </p>
             </div>
           </div>
@@ -130,7 +142,7 @@ export function PulseAcademicPressureMap({
                         )}
                       </p>
                       <p className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                        {fmtDue(item.days_until_due)}
+                        {fmtTiming(item)}
                       </p>
                     </div>
                   </div>
@@ -140,7 +152,7 @@ export function PulseAcademicPressureMap({
           ) : (
             <div className="flex flex-1 items-center gap-3 rounded-sm border border-hairline bg-void-2/40 px-3 py-4 text-sm text-dust">
               <CheckCircle2 size={16} className="shrink-0 text-signal" />
-              No active academic deadlines in this window.
+              No active academic obligations in this window.
             </div>
           )}
 

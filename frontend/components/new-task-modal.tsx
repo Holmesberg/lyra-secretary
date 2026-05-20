@@ -148,6 +148,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [nudgeSource, setNudgeSource] = useState<"personal" | "research" | null>(null);
   const [calibrationNudge, setCalibrationNudge] = useState<{
     cell: BiasFactorCell;
+    factor: number;
+    personalFactor?: number | null;
+    blendFactor?: number | null;
+    personalWeight?: number | null;
+    priorWeight?: number | null;
+    priorFactor?: number | null;
+    priorCitation?: string | null;
     suggestedMin: number;
     // ISO timestamp captured at the moment the nudge first appeared in
     // the UI. Sent as `nudge_viewed_at` with the createTask payload so
@@ -215,16 +222,20 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           const isResearch = res.source === "research";
           const threshold = isResearch ? 1.20 : 1.25;
           // Rule-13 canonical magnitude (MANIFESTO v1.10): prefer the
-          // shrinkage-blended `bias_factor_final` when present. Falls
-          // back to the personal-cascade cell.bias_factor only on the
-          // no-auth path (unusual). The display-cell mirrors the blend
-          // magnitude so the user-visible percentage matches the
-          // suggestion math.
-          const magnitude =
-            res.bias_factor_final ?? res.cell?.bias_factor ?? null;
+          // shrinkage-blended `bias_factor_final` when present. Keep the
+          // raw cell.bias_factor separate so the UI does not relabel a
+          // prior-blended estimate as pure "early data".
+          const magnitude = res.bias_factor_final ?? res.cell?.bias_factor ?? null;
           if (res.cell && magnitude !== null && magnitude >= threshold) {
             setCalibrationNudge({
-              cell: { ...res.cell, bias_factor: magnitude },
+              cell: res.cell,
+              factor: magnitude,
+              personalFactor: isResearch ? null : res.cell.bias_factor,
+              blendFactor: res.bias_factor_final ?? null,
+              personalWeight: res.personal_weight ?? null,
+              priorWeight: res.prior_weight ?? null,
+              priorFactor: res.archetype_prior_for_cell ?? null,
+              priorCitation: res.archetype_prior_citation ?? res.cell.citation ?? null,
               suggestedMin: roundTo5(planned * magnitude),
               firedAt: new Date().toISOString(),
               exposureId: res.exposure_id,
@@ -996,12 +1007,31 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               <div>
                 {nudgeSource === "research" ? (
                   <>
-                    Research on <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
-                    shows people underestimate by <span className="font-medium text-parchment">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span>.
+                    Research prior for <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
+                    sizes this about <span className="font-medium text-parchment">{Math.round((calibrationNudge.factor - 1) * 100)}%</span> over your estimate.
                     {" "}Your estimate: {durHours * 60 + durMinutes} min.
                     {calibrationNudge.cell.citation && (
                       <span className="block mt-0.5 text-[10px] text-signal/60">{calibrationNudge.cell.citation}</span>
                     )}
+                  </>
+                ) : calibrationNudge.priorWeight !== null &&
+                  calibrationNudge.priorWeight !== undefined &&
+                  calibrationNudge.priorWeight > 0.05 &&
+                  calibrationNudge.personalWeight !== null &&
+                  calibrationNudge.personalWeight !== undefined ? (
+                  <>
+                    {calibrationNudge.cell.sessions < 10 ? "Low-confidence blend" : "Blended estimate"}
+                    {" "}({calibrationNudge.cell.sessions} sessions + prior): <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
+                    {calibrationNudge.cell.time_of_day !== "all" && (
+                      <> in the <span className="font-medium text-parchment">{calibrationNudge.cell.time_of_day}</span></>
+                    )}
+                    {" "}are sized <span className="font-medium text-parchment">{Math.round((calibrationNudge.factor - 1) * 100)}%</span> over plan.
+                    <span className="block mt-0.5 text-[10px] text-signal/70">
+                      Raw session average: {Math.round(((calibrationNudge.personalFactor ?? calibrationNudge.factor) - 1) * 100)}% over;
+                      {" "}personal weight {Math.round(calibrationNudge.personalWeight * 100)}%,
+                      prior weight {Math.round(calibrationNudge.priorWeight * 100)}%.
+                      {calibrationNudge.priorCitation ? ` ${calibrationNudge.priorCitation}` : ""}
+                    </span>
                   </>
                 ) : (
                   <>
@@ -1010,10 +1040,10 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     {calibrationNudge.cell.time_of_day !== "all" && (
                       <> in the <span className="font-medium text-parchment">{calibrationNudge.cell.time_of_day}</span></>
                     )}
-                    {" "}run <span className="font-medium text-parchment">{Math.round((calibrationNudge.cell.bias_factor - 1) * 100)}%</span> over plan.
+                    {" "}run <span className="font-medium text-parchment">{Math.round((calibrationNudge.factor - 1) * 100)}%</span> over plan.
                   </>
                 )}
-                {" "}A typical wrap is {calibrationNudge.suggestedMin} min.
+                {" "}Suggested window: {calibrationNudge.suggestedMin} min.
               </div>
               <div className="mt-2 flex gap-2">
                 <button
@@ -1024,7 +1054,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     setNudgeDecisionData({
                       decision: "accepted",
                       suggested_minutes: calibrationNudge.suggestedMin,
-                      bias_factor: calibrationNudge.cell.bias_factor,
+                      bias_factor: calibrationNudge.factor,
                       sample_size: calibrationNudge.cell.sessions,
                       viewed_at: calibrationNudge.firedAt,
                     });
@@ -1044,7 +1074,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     setNudgeDecisionData({
                       decision: "dismissed",
                       suggested_minutes: calibrationNudge.suggestedMin,
-                      bias_factor: calibrationNudge.cell.bias_factor,
+                      bias_factor: calibrationNudge.factor,
                       sample_size: calibrationNudge.cell.sessions,
                       viewed_at: calibrationNudge.firedAt,
                     });

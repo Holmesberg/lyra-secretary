@@ -76,6 +76,35 @@ def test_commit_clean_batch_returns_empty_failed_items(client, db):
     assert body["failed_items"] == []
 
 
+def test_commit_preserves_parse_inferred_category(client, db):
+    user = _make_user(db)
+    future = (datetime.utcnow() + timedelta(hours=6)).isoformat()
+    r = client.post(
+        "/v1/brain-dump/commit",
+        json=_commit_payload([
+            {
+                "item_id": str(uuid4()),
+                "kind": "task",
+                "title": "AI final revision",
+                "when_local": future,
+                "duration_minutes": 90,
+                "category": "study",
+                "category_source": "title_heuristic_v1",
+                "duration_source": "research_prior_v1",
+                "duration_confidence": 0.55,
+                "duration_basis": "study exam-prep block prior",
+            },
+        ]),
+        headers=auth_headers(user.user_id),
+    )
+
+    assert r.status_code == 200
+    body = r.json()
+    task = db.query(Task).filter(Task.task_id == body["task_ids"][0]).one()
+    assert task.category == "study"
+    assert task.planned_duration_minutes == 90
+
+
 def test_commit_past_time_task_lands_in_failed_items(client, db):
     """LYR-114 core regression: past-time tasks must surface in
     failed_items rather than being silently dropped."""

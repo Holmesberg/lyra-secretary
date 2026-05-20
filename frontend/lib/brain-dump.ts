@@ -28,6 +28,11 @@ export interface BrainDumpParsedItem {
    *  task segments — UI fills a default before commit. */
   when_local: string | null;
   duration_minutes: number | null;
+  category: string | null;
+  category_source: string | null;
+  duration_source: string | null;
+  duration_confidence: number | null;
+  duration_basis: string | null;
   confidence: number;
 }
 
@@ -53,6 +58,11 @@ export interface BrainDumpCommitItem {
   description?: string | null;
   when_local?: string | null;
   duration_minutes?: number | null;
+  category?: string | null;
+  category_source?: string | null;
+  duration_source?: string | null;
+  duration_confidence?: number | null;
+  duration_basis?: string | null;
 }
 
 export interface BrainDumpCommitBinding {

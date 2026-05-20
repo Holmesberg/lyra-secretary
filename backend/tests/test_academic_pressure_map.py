@@ -180,7 +180,84 @@ def test_pressure_map_includes_planned_task_load_but_not_deleted_or_executed(db)
     resp = client.get("/v1/academic/pressure-map", headers=auth_headers(user.user_id))
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["source_summary"]["planned_lyra_minutes"] == 60
+    data = resp.json()
+    assert data["source_summary"]["planned_lyra_minutes"] == 60
+    assert data["source_summary"]["study_task_count"] == 1
+    assert data["source_summary"]["study_task_minutes"] == 60
+    assert data["estimated_low_minutes"] == 60
+    assert [item["title"] for item in data["items"]] == ["planned block"]
+    assert data["items"][0]["source"] == "lyra_self_study_task"
+    assert data["items"][0]["obligation_type"] == "self_study"
+    assert "planned duration is visible intention" in " ".join(
+        data["items"][0]["estimate"]["assumptions"]
+    )
+
+
+def test_pressure_map_includes_prescheduled_academic_task_blocks(db):
+    user = _user(db, "academic-task-pressure@example.com")
+    now = datetime.utcnow()
+    db.add_all(
+        [
+            Task(
+                user_id=user.user_id,
+                title="CO MARS labs",
+                category="academic",
+                planned_start_utc=now + timedelta(hours=2),
+                planned_end_utc=now + timedelta(hours=4),
+                planned_duration_minutes=120,
+                state=TaskState.PLANNED,
+            ),
+            Task(
+                user_id=user.user_id,
+                title="planning task",
+                category="planning",
+                planned_start_utc=now + timedelta(hours=5),
+                planned_end_utc=now + timedelta(hours=6),
+                planned_duration_minutes=60,
+                state=TaskState.PLANNED,
+            ),
+        ]
+    )
+    db.commit()
+
+    resp = client.get("/v1/academic/pressure-map", headers=auth_headers(user.user_id))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert [item["title"] for item in data["items"]] == ["CO MARS labs"]
+    assert data["source_summary"]["academic_task_count"] == 1
+    assert data["source_summary"]["academic_task_minutes"] == 120
+    assert data["source_summary"]["study_task_count"] == 0
+    assert data["estimated_low_minutes"] == 120
+    assert data["items"][0]["source"] == "lyra_academic_task"
+    assert data["items"][0]["obligation_type"] == "lab"
+    assert data["items"][0]["trust_state"] == "requires_user_confirmation"
+
+
+def test_pressure_map_projects_old_study_lab_rows_as_academic_structure(db):
+    user = _user(db, "old-study-lab-pressure@example.com")
+    now = datetime.utcnow()
+    db.add(
+        Task(
+            user_id=user.user_id,
+            title="CO MARS labs",
+            category="study",
+            planned_start_utc=now + timedelta(hours=2),
+            planned_end_utc=now + timedelta(hours=4),
+            planned_duration_minutes=120,
+            state=TaskState.PLANNED,
+        )
+    )
+    db.commit()
+
+    resp = client.get("/v1/academic/pressure-map", headers=auth_headers(user.user_id))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["source_summary"]["academic_task_count"] == 1
+    assert data["source_summary"]["study_task_count"] == 0
+    assert data["items"][0]["source"] == "lyra_academic_task"
+    assert data["items"][0]["obligation_type"] == "lab"
 
 
 def test_pressure_map_empty_state_has_low_authority_methodology(db):
@@ -191,8 +268,8 @@ def test_pressure_map_empty_state_has_low_authority_methodology(db):
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["items"] == []
-    assert "No active academic deadlines" in data["headline"]
-    assert data["pressure_summary"] == "No visible academic deadline pressure in this window."
+    assert "No active academic obligations" in data["headline"]
+    assert data["pressure_summary"] == "No visible academic pressure in this window."
     assert data["recovery_options"][0]["action"] == "clear_or_ignore"
     assert any("ranges instead of exact-hour claims" in line for line in data["methodology"])
 

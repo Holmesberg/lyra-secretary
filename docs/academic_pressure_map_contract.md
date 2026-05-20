@@ -22,6 +22,9 @@ preview, assumption-correction, or recalibration work must check:
   user-visible suggestion that may affect later behavior.
 - `LyraOS/03_Concepts/Clean Data Profile.md` before admitting any academic
   event into calibration or baseline inference.
+- `docs/academic_asset_velocity_and_evidence_fusion_plan.md` before adding
+  asset-level duration priors, cohort workload estimates, passive activity
+  signals, evidence tiers, or contradiction scoring.
 
 ## Product Promise
 
@@ -40,6 +43,32 @@ It must help the student see:
 - what is already scheduled,
 - where the week is compressed,
 - and what can be done next without panic.
+
+Day-0 value is bounded legibility, not omniscience. The first pressure map may
+be only semi-accurate: it should make the scale and shape of the week visible
+using provider structure, native deadlines, study/academic tasks, and labeled
+duration priors. It becomes more personal only as accepted intentions,
+corrections, execution traces, and cohort-safe asset estimates accumulate.
+
+This is intentional. Lyra can be useful before it is deeply adaptive if it
+shows approximate pressure honestly and lets the user correct it.
+
+## Category Boundary
+
+The pressure map includes both `academic` and `study` rows, but they do not
+mean the same thing.
+
+- `academic`: institution/provided or prescheduled academic structure,
+  including deadlines, imported Baseet/Moodle obligations, lectures,
+  tutorials, labs, classes, sections, and similar course events.
+- `study`: user-owned self-study sessions, including revision, reading,
+  slide review, problem solving, homework/assignment work blocks, and exam
+  preparation the student schedules for themselves.
+
+Both categories may appear on the same pressure surface because both consume
+academic capacity. They must keep distinct source labels and assumptions:
+provider/prescheduled structure is not self-study behavior, and self-study
+intention is not provider coverage truth.
 
 It must not imply:
 
@@ -100,6 +129,10 @@ Authority order:
 
 ## Copy Rules
 
+Copy must protect psychological safety. That does not mean hiding pressure or
+making the system falsely comforting. It means pressure is described as a
+structural condition, not as a moral failure or identity label.
+
 Allowed:
 
 ```text
@@ -139,3 +172,29 @@ This lecture activity proves you learned the material.
 
 Passive academic activity is weak evidence. It must not become planned
 execution calibration unless the user accepted or confirmed an intention.
+
+## Architecture-Freeze Note
+
+Asset-velocity estimates and passive/explicit evidence fusion are future work.
+The current implementation is still `heuristic_v1`: static obligation priors,
+title/category complexity heuristics, rounded uncertainty ranges, and no
+lecture/tutorial/resource counts or personal execution history applied to the
+estimate.
+
+Future cohort-derived duration estimates must preserve estimate provenance,
+minimum-N privacy thresholds, clean-data filters, and low-authority copy.
+Passive activity may reduce manual friction, but must remain contextual
+evidence, not execution truth.
+
+Approximate-now/refined-later rule:
+
+```text
+heuristic pressure map
+  -> user correction and accepted intention
+  -> clean execution traces
+  -> cohort-safe asset or course priors
+  -> narrower future ranges
+```
+
+No range may become more authoritative unless its source, confidence, and
+admission profile are visible to downstream consumers.

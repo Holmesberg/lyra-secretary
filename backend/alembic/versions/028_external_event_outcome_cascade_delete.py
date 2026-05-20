@@ -37,7 +37,35 @@ branch_labels = None
 depends_on = None
 
 
+SQLITE_NAMING_CONVENTION = {
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+}
+
+
 def upgrade() -> None:
+    if op.get_context().dialect.name == "sqlite":
+        # SQLite cannot ALTER foreign-key constraints in place, and the
+        # original 027 FK is unnamed under SQLite reflection. Batch mode
+        # recreates the table with a deterministic temporary constraint name
+        # so local dev databases can advance through the same revision graph.
+        with op.batch_alter_table(
+            "external_event_outcome",
+            recreate="always",
+            naming_convention=SQLITE_NAMING_CONVENTION,
+        ) as batch_op:
+            batch_op.drop_constraint(
+                "fk_external_event_outcome_user_id_user",
+                type_="foreignkey",
+            )
+            batch_op.create_foreign_key(
+                "external_event_outcome_user_id_fkey",
+                "user",
+                ["user_id"],
+                ["user_id"],
+                ondelete="CASCADE",
+            )
+        return
+
     # Postgres doesn't support ALTER CONSTRAINT for FKs — drop and recreate.
     op.drop_constraint(
         "external_event_outcome_user_id_fkey",
@@ -55,6 +83,24 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_context().dialect.name == "sqlite":
+        with op.batch_alter_table(
+            "external_event_outcome",
+            recreate="always",
+            naming_convention=SQLITE_NAMING_CONVENTION,
+        ) as batch_op:
+            batch_op.drop_constraint(
+                "external_event_outcome_user_id_fkey",
+                type_="foreignkey",
+            )
+            batch_op.create_foreign_key(
+                "fk_external_event_outcome_user_id_user",
+                "user",
+                ["user_id"],
+                ["user_id"],
+            )
+        return
+
     op.drop_constraint(
         "external_event_outcome_user_id_fkey",
         "external_event_outcome",

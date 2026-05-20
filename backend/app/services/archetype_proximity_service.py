@@ -115,6 +115,7 @@ def _filter_qualifying_tasks(
         Task.user_id == user_id,
         Task.state == TaskState.EXECUTED,
         Task.voided_at.is_(None),
+        Task.is_anchor.is_(False),
         Task.initiation_status != "system_error",
         Task.planned_duration_minutes >= 5,
         Task.executed_duration_minutes.is_not(None),

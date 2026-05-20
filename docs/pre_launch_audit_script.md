@@ -189,6 +189,69 @@ grep -rn "VT-\|MANIFESTO Rule" backend/app/                                    #
 
 ---
 
+## §6A — May 19, 2026 Telemetry Pre-Flight Ledger
+
+**Generated:** 2026-05-19.
+**Target gate:** architecture-freeze review before the next external cohort.
+The previous May 21 framing is de-scoped; this is not a rush deadline.
+**Status:** implementation gaps found against the research-governance contract.
+This ledger is the patch pipeline for the next alpha gate; keep it separate
+from the reusable checklist above so future audits can compare dated code
+reality against this snapshot.
+
+### Primary Discrepancy Matrix
+
+| Vector / requirement | Implemented status | Codebase location | Risk level | Immediate action |
+| --- | --- | --- | --- | --- |
+| Cortex sign isolation | Partially isolated | `backend/app/services/cortex.py`; `backend/app/db/models.py` | Medium | Keep `active_delta_minutes = executed - planned` isolated from legacy `duration_delta_minutes = planned - executed`; audit new analytics loops for token mixups. |
+| Substrate Kill timeline | Qualitative only | `MANIFESTO.md` Substrate Kill Criterion | Low | Pre-register the clean-session floor and evaluation window before the next research readout. |
+| OpenClaw automated voiding | Verified | `backend/app/api/v1/endpoints/tasks.py`; `openclaw/skills/lyra-secretary/SKILL.md` | Zero | No action; system-error/test traces have a void path. |
+| `is_anchor` time stripping | Implemented in current patch | `backend/alembic/versions/053_task_anchor_and_rct_arm.py`; `backend/app/db/models.py`; `backend/app/services/bias_factor_service.py`; `backend/app/services/cortex.py`; `backend/app/services/output_surfaces.py` | High / P0 for clean calibration | Keep anchors in descriptive history, but exclude them from clean bias-factor / measured-execution calibration. |
+| Rule 11 nudge suppression | Implemented in current patch | `backend/app/services/output_surfaces.py`; `backend/app/api/v1/endpoints/stopwatch.py`; `backend/app/api/v1/endpoints/analytics.py` | High | Deterministic post-baseline 1-in-7 suppression now records `rule11_no_nudge` vs `rule11_active`; keep analysis claims gated on enough paired days. |
+| VT-12a readiness-duration metric | Not implemented | Backend metric absent; notebook/readout only | Low | Keep as post-aggregation notebook analysis until it becomes product-critical. |
+| Soft-warning RCT arming | Arm stamp implemented in current patch; warning UI still inactive | `backend/alembic/versions/053_task_anchor_and_rct_arm.py`; `backend/app/services/task_manager.py` | High / P0 for Rule 16 | Keep deterministic `(user_id mod 2)` arm stamped on task creation; only analyze when the warning surface is live. |
+| Winsorization isolation | Verified | `backend/app/services/archetype_proximity_service.py` | Zero | No action; raw ledger durations remain unmutated. |
+
+### Architecture-Freeze Hard Gates
+
+1. [x] Add `Task.is_anchor` with migration backfill for obvious prayer/sleep rows.
+2. [x] Exclude `is_anchor = true` from `bias_factor_service.blend()`, direct
+   `_adaptive_calibration()` consumers, Cortex measured-execution queries, and
+   clean output-surface candidates.
+3. [x] Add deterministic RCT arm stamping at task creation using `user_id % 2`.
+4. [x] Surface the new fields in task read APIs so audits can inspect them.
+5. [x] Add contract tests for anchor exclusion and RCT arm determinism in
+   `backend/tests/test_task_anchor_and_rct_arm.py`.
+6. [x] Add Rule 11 deterministic no-nudge suppression for
+   `stopwatch.micro_mirror`, `stopwatch.calibration_nudge`,
+   `task.creation_nudge`, and `analytics.insights`.
+
+### Deferred, But Still Required Before Claims
+
+- VT-12a stays a notebook/crosswalk calculation until alpha data volume is
+  large enough to justify a backend endpoint.
+- Substrate Kill Criterion needs a concrete `n` and timeline. Suggested floor:
+  do not run the kill readout below `n >= 100` clean, non-anchor, non-voided,
+  non-auto-closed execution sessions across the evaluation cohort.
+
+### VT-26 Semantic Prior Trap
+
+`CategoryMapping` is currently a keyword-to-category mapper. It does not know
+whether "study" means light review, deep problem-solving, lecture catch-up, or
+exam rehearsal. Until task operational type exists, shrinkage priors can
+over-allocate early users based on category semantics alone. Do not interpret
+early prior behavior as evidence of user execution style without enough clean
+personal rows.
+
+### Parser / NIM Guardrail
+
+Structured local-inference parsing must strip reasoning wrappers before JSON
+parsing and should prefer hard JSON-mode or zero-temperature settings where
+available. Raw schema endpoints must reject contaminated payloads instead of
+silently coercing malformed model output into task facts.
+
+---
+
 ## §7 — Bug tracker alignment
 
 **Checklist:**

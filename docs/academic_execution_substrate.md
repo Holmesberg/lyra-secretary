@@ -68,6 +68,19 @@ External systems provide structure.
 Lyra provides execution inference.
 ```
 
+Current strategic framing:
+
+```text
+Lyra is the execution-reality middleware above planning systems,
+not a replacement planner.
+```
+
+The user should not need to rebuild academic or work commitments inside Lyra
+for Lyra to become useful. Calendars, LMSs, Baseet, Notion, Jira/Linear, and
+similar tools already contain plans and obligations. Lyra's job is to
+normalize that structure, expose pressure, and model what happens when
+execution collides with it.
+
 Examples:
 
 | Layer | Responsibility |
@@ -149,6 +162,11 @@ Users use an academic planning/execution feature because it helps now.
 Lyra collects valid execution traces through that flow.
 The research substrate compounds underneath.
 ```
+
+This means Day-0 value can come from approximate pressure visibility before
+strong personalization exists. A map that is semi-accurate, provenance-labeled,
+and correctable is product value as long as it does not claim precision it has
+not earned.
 
 The user-facing promise is immediate clarity:
 

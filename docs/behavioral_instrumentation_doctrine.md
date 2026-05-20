@@ -37,6 +37,16 @@ The AI components are supporting systems. They may enrich, orchestrate,
 summarize, or assist operator work, but they are not the source of truth for
 user-facing behavioral claims.
 
+The substrate is action-first, not emotion-first. Lyra may use readiness,
+reflection, sentiment, or self-report as evidence, but the core object is what
+humans do under constraints:
+
+```text
+intention -> execution -> drift -> interruption -> consequence -> recalibration
+```
+
+Emotional interpretation must not substitute for action evidence.
+
 ## 2. Not An AI Wrapper
 
 LyraOS should not be framed as:
@@ -54,6 +64,16 @@ The serious claim is different:
 The system accumulates behavioral evidence, detects structure
 probabilistically, and progressively earns stronger inference rights.
 ```
+
+The alignment claim is also different:
+
+```text
+better alignment -> increased honesty
+```
+
+Lyra does not align by making the user maximally obedient to a plan. It aligns
+by preserving reality contact between what was intended, what constraints were
+present, what action occurred, and what consequence followed.
 
 That makes the architecture closer to:
 
@@ -113,6 +133,19 @@ The preferred direction is:
 ```text
 sparse explicit input + dense passive structure
 ```
+
+Influence cannot be eliminated. A mirror, pressure map, warning, reminder, or
+duration suggestion can change later behavior. The invariant is:
+
+```text
+Influence is inevitable.
+Unconscious influence is unacceptable.
+```
+
+Every behavior-shaping surface must therefore be visible, inspectable,
+challengeable, and exposure-aware. Hidden optimization for retention,
+engagement, or compliance is misaligned even if it improves short-term product
+metrics.
 
 The minimum useful loop is:
 
@@ -196,6 +229,13 @@ Self-report is an input, not psychological truth. Timer traces are high-value
 instrumentation, not perfect cognition. Derived metrics are read-time
 interpretations, not raw facts.
 
+Provider and passive-activity rows obey the same rule. A resource open event,
+Jira status, calendar block, or LMS import can be useful context without being
+execution truth. Dirty upstream data is expected. Lyra should handle it through
+evidence tiers, provenance, contradiction handling, cooldown repair prompts,
+and graceful demotion from calibration, not by assuming clean provider data or
+forcing constant manual cleanup.
+
 ## 8. Archetypes As Cold-Start Priors
 
 The archetype system is coherent only when framed as a cold-start prior
@@ -259,7 +299,33 @@ The archetype system may be more useful internally than externally:
 It should not become a user-facing identity experience unless a successor
 contract proves that the benefit outweighs identity-internalization risk.
 
-## 10. Product Copy Shape
+## 10. Earned Adaptation Authority
+
+Lyra is not permanently constrained to weak suggestions. It is constrained to
+earned authority.
+
+Current low-authority behavior exists because the instrument has not yet earned
+stronger claims across enough clean traces, users, providers, and exposure
+states. If future cohorts show stable predictive lift, trustworthy
+recalibration effects, and acceptable user response, stronger automation can
+become valid.
+
+Authority ladder:
+
+```text
+weak evidence
+  -> weak claims
+  -> editable estimates
+  -> bounded recommendations
+  -> validated adaptive suggestions
+  -> future-gated automation
+```
+
+The danger is not strong adaptation by itself. The danger is strong adaptation
+without grounded validity. Any future autonomous scheduling or prediction must
+show its evidence class, contamination state, override path, and kill criteria.
+
+## 11. Product Copy Shape
 
 Good copy:
 
@@ -291,7 +357,7 @@ You are a disciplined worker.
 Lyra knows your personality.
 ```
 
-## 11. Research-Facing Architectural Strength
+## 12. Research-Facing Architectural Strength
 
 The professor-facing strength is the combination of:
 

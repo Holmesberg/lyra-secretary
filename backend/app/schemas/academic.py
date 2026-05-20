@@ -71,6 +71,10 @@ class AcademicSourceSummary(BaseModel):
     deadlines_total: int
     moodle_deadlines: int
     native_deadlines: int
+    academic_task_count: int = 0
+    study_task_count: int = 0
+    academic_task_minutes: int = 0
+    study_task_minutes: int = 0
     google_calendar_connected: bool
     calendar_busy_minutes: int
     planned_lyra_minutes: int

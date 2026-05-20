@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
@@ -33,7 +34,7 @@ from app.services.exposure_ledger import (
     record_render,
     record_suppression,
 )
-from app.utils.time_utils import now_utc, strip_tz
+from app.utils.time_utils import now_utc, strip_tz, to_local
 
 
 PROFILE_PROJECTIONS = {
@@ -42,6 +43,18 @@ PROFILE_PROJECTIONS = {
     "pause_process": "raw_observed",
     "descriptive_history": "correction_adjusted_effective",
     "deadline_completion_behavior": "external_submission_trace",
+}
+
+RULE11_POLICY_VERSION = "rule11_no_nudge_v1"
+RULE11_ACTIVE_ARM = "rule11_active"
+RULE11_CONTROL_ARM = "rule11_no_nudge"
+RULE11_SUPPRESSION_REASON = "rule11_no_nudge_control_day"
+RULE11_BASELINE_DAYS = 7
+RULE11_SURFACE_IDS = {
+    "analytics.insights",
+    "stopwatch.calibration_nudge",
+    "stopwatch.micro_mirror",
+    "task.creation_nudge",
 }
 
 
@@ -129,6 +142,55 @@ def projection_class_for_profile(clean_profile: Optional[str]) -> Optional[str]:
         return PROFILE_PROJECTIONS[clean_profile]
     except KeyError as exc:
         raise ValueError(f"missing_projection_for_profile:{clean_profile}") from exc
+
+
+def rule11_no_nudge_control_active(
+    db: Session,
+    *,
+    user_id: int,
+    surface_id: str,
+    eligible_at=None,
+) -> bool:
+    """Deterministic 1-in-7 no-nudge control day for VT-21.
+
+    Activates only after a user's first 7 days so the baseline week remains
+    nudge-active, then hashes (user_id, local date, policy version) to avoid
+    hand-picked control days while staying perfectly reproducible.
+    """
+    if surface_id not in RULE11_SURFACE_IDS:
+        return False
+    eligible_at = strip_tz(eligible_at or now_utc())
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if user is None or user.created_at is None:
+        return False
+    created_at = strip_tz(user.created_at)
+    if eligible_at < created_at + timedelta(days=RULE11_BASELINE_DAYS):
+        return False
+    local_day = to_local(eligible_at).date().isoformat()
+    digest = sha256(
+        f"{RULE11_POLICY_VERSION}:{user_id}:{local_day}".encode("utf-8")
+    ).hexdigest()
+    return int(digest[:8], 16) % 7 == 0
+
+
+def rule11_randomization_fields(
+    db: Session,
+    *,
+    user_id: int,
+    surface_id: str,
+    eligible_at=None,
+) -> tuple[str, Optional[str]]:
+    """Return ExposureDecisionEvent randomization fields for Rule 11 surfaces."""
+    if surface_id not in RULE11_SURFACE_IDS:
+        return "none", None
+    arm = (
+        RULE11_CONTROL_ARM
+        if rule11_no_nudge_control_active(
+            db, user_id=user_id, surface_id=surface_id, eligible_at=eligible_at
+        )
+        else RULE11_ACTIVE_ARM
+    )
+    return arm, RULE11_POLICY_VERSION
 
 
 def _snapshot_to_text(value: Any) -> str:
@@ -262,6 +324,8 @@ def emit_surface_suppression(
     initiative: str = "system",
     trigger_source: Optional[str] = None,
     generating_confidence: Optional[float] = None,
+    randomization_arm: str = "none",
+    randomization_policy_version: Optional[str] = None,
 ) -> dict[str, Any]:
     spec = get_output_surface_spec(surface_id)
     _assert_surface_allowed_for_user(db, spec=spec, user_id=user_id)
@@ -277,6 +341,8 @@ def emit_surface_suppression(
         exposure_category=spec.exposure_category,
         content_template_id=content_template_id,
         trigger_source=trigger_source or surface_id,
+        randomization_arm=randomization_arm,
+        randomization_policy_version=randomization_policy_version,
         delivered_at=None,
     )
     suppression = record_suppression(
@@ -389,6 +455,7 @@ def _candidate_tasks_for_profile(
         )
         q = q.filter(
             Task.state == TaskState.EXECUTED,
+            Task.is_anchor.is_(False),
             Task.initiation_status != "system_error",
             Task.initiation_status != "retroactive",
             Task.executed_duration_minutes.isnot(None),

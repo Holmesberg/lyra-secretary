@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,6 +20,9 @@ from app.main import app
 from app.services import output_surfaces as output_surface_module
 from app.services.output_surfaces import (
     OutputSurfaceSpec,
+    RULE11_ACTIVE_ARM,
+    RULE11_CONTROL_ARM,
+    RULE11_POLICY_VERSION,
     acknowledge_surface_render,
     emit_surface_render,
     emit_surface_suppression,
@@ -26,6 +30,8 @@ from app.services.output_surfaces import (
     load_output_surface_registry,
     output_surface_diagnostics,
     projection_class_for_profile,
+    rule11_no_nudge_control_active,
+    rule11_randomization_fields,
 )
 from app.utils.time_utils import now_utc
 from tests.conftest import auth_headers
@@ -120,6 +126,78 @@ def test_emit_surface_render_serializes_structured_payloads_and_legacy_adapter(d
     assert render.content_snapshot == expected_payload
     assert legacy.reflection_type == "creation_nudge"
     assert legacy.payload == expected_payload
+
+
+def test_rule11_no_nudge_control_is_deterministic_after_baseline(db):
+    created_at = now_utc() - timedelta(days=30)
+    user = User(
+        email=f"rule11-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        created_at=created_at,
+    )
+    db.add(user)
+    db.flush()
+
+    control_day = None
+    for offset in range(8, 60):
+        eligible_at = created_at + timedelta(days=offset)
+        if rule11_no_nudge_control_active(
+            db,
+            user_id=user.user_id,
+            surface_id="analytics.insights",
+            eligible_at=eligible_at,
+        ):
+            control_day = eligible_at
+            break
+
+    assert control_day is not None
+    assert rule11_no_nudge_control_active(
+        db,
+        user_id=user.user_id,
+        surface_id="analytics.insights",
+        eligible_at=control_day,
+    )
+    assert not rule11_no_nudge_control_active(
+        db,
+        user_id=user.user_id,
+        surface_id="academic.pressure_map",
+        eligible_at=control_day,
+    )
+    arm, policy = rule11_randomization_fields(
+        db,
+        user_id=user.user_id,
+        surface_id="analytics.insights",
+        eligible_at=control_day,
+    )
+    assert arm == RULE11_CONTROL_ARM
+    assert policy == RULE11_POLICY_VERSION
+
+
+def test_rule11_control_does_not_activate_during_baseline_week(db):
+    created_at = now_utc() - timedelta(days=3)
+    user = User(
+        email=f"rule11-baseline-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        created_at=created_at,
+    )
+    db.add(user)
+    db.flush()
+
+    for offset in range(0, 7):
+        assert not rule11_no_nudge_control_active(
+            db,
+            user_id=user.user_id,
+            surface_id="analytics.insights",
+            eligible_at=created_at + timedelta(days=offset),
+        )
+    arm, policy = rule11_randomization_fields(
+        db,
+        user_id=user.user_id,
+        surface_id="analytics.insights",
+        eligible_at=created_at + timedelta(days=3),
+    )
+    assert arm == RULE11_ACTIVE_ARM
+    assert policy == RULE11_POLICY_VERSION
 
 
 def test_render_ack_is_idempotent_and_owned_by_exposure_user(db):
@@ -286,6 +364,8 @@ def test_emit_surface_suppression_writes_decision_and_suppression(db):
         user_id=user.user_id,
         suppression_reason="insufficient_clean_samples",
         content_template_id="insights_empty",
+        randomization_arm=RULE11_CONTROL_ARM,
+        randomization_policy_version=RULE11_POLICY_VERSION,
     )
     db.commit()
 
@@ -306,6 +386,8 @@ def test_emit_surface_suppression_writes_decision_and_suppression(db):
     assert decision.decision_status == "suppressed"
     assert decision.delivered_at is None
     assert decision.exposure_category == "behavioral_insight"
+    assert decision.randomization_arm == RULE11_CONTROL_ARM
+    assert decision.randomization_policy_version == RULE11_POLICY_VERSION
     assert suppression.suppression_reason == "insufficient_clean_samples"
     assert suppression.would_have_rendered_template_id == "insights_empty"
 
@@ -454,7 +536,9 @@ def test_task_creation_nudge_lookup_emits_exposure_when_it_will_render(db):
     assert decision.exposure_category == "scheduling_suggestion"
     assert decision.trigger_source == "analytics.bias_factor.lookup"
     assert render.surface == "task.creation_nudge"
-    assert "A typical wrap is" in render.content_snapshot
+    assert "Suggested window is" in render.content_snapshot
+    assert "personal_weight" in render.content_snapshot
+    assert "prior_weight" in render.content_snapshot
 
 
 def test_task_creation_nudge_lookup_suppresses_if_exposure_logging_fails(db, monkeypatch):

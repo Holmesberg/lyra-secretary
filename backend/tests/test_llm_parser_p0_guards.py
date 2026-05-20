@@ -244,6 +244,33 @@ def test_deadline_write_guard_no_existing_binding(db, monkeypatch):
     assert task.deadline_id is None  # never auto-bound by enrichment
 
 
+def test_llm_deadline_ranker_prefers_matching_academic_acronym(db, monkeypatch):
+    """Task-level academic acronyms beat a wrong LLM deadline hint.
+
+    Regression for "AI project revision" surfacing "CO Final" above
+    "AI final": short subject tokens are identity, while "final" is generic.
+    """
+    user = _make_user(db)
+    ai = _make_deadline(db, user.user_id, title="AI final")
+    co = _make_deadline(db, user.user_id, title="CO Final")
+    task = _make_task(db, user.user_id, title="AI project revision")
+    _stub_ollama(monkeypatch, {
+        "priority": 2,
+        "deadline_name": "CO Final",
+        "sub_items": [],
+        "scope_estimate_minutes": None,
+    })
+
+    result = llm_parser.enrich_task_via_llm(db, task.task_id)
+
+    assert result == "enriched"
+    db.refresh(task)
+    assert task.llm_inferred_deadline_id == ai.deadline_id
+    assert task.llm_deadline_candidates is not None
+    assert task.llm_deadline_candidates[0]["deadline_id"] == ai.deadline_id
+    assert all(c["deadline_id"] != co.deadline_id for c in task.llm_deadline_candidates)
+
+
 def test_hosted_nim_skipped_for_non_operator_owner(db, monkeypatch):
     """Non-operator task text must not leave the local enrichment boundary."""
     user = _make_user(db, is_operator=False)

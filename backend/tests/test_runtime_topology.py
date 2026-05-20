@@ -58,18 +58,21 @@ def test_cors_accepts_declared_origins_only():
                 headers={
                     "Origin": origin,
                     "Access-Control-Request-Method": "GET",
-                    "Access-Control-Request-Headers": "authorization",
+                    "Access-Control-Request-Headers": "authorization,x-idempotency-key",
                 },
             )
             assert response.status_code == 200
             assert response.headers.get("access-control-allow-origin") == origin
+            assert "x-idempotency-key" in (
+                response.headers.get("access-control-allow-headers", "").lower()
+            )
 
         rogue = client.options(
             "/v1/users/me",
             headers={
                 "Origin": "https://evil.example",
                 "Access-Control-Request-Method": "GET",
-                "Access-Control-Request-Headers": "authorization",
+                "Access-Control-Request-Headers": "authorization,x-idempotency-key",
             },
         )
         assert rogue.headers.get("access-control-allow-origin") is None

@@ -3,6 +3,13 @@
 This module implements the canonicalization layer documented in
 ``docs/cortex_contract_v0.md``. It intentionally does not write new state.
 All metrics are derived at query time from existing observables.
+
+Sign-convention guardrail:
+    - Cortex `active_delta_minutes` is executed - planned.
+    - Legacy `Task.duration_delta_minutes` is planned - executed.
+    - Cortex may expose the legacy value only as `legacy_duration_delta_minutes`;
+      new Cortex math must use `active_delta_minutes` or
+      `execution_multiplier`.
 """
 from __future__ import annotations
 
@@ -227,6 +234,7 @@ def measured_execution_query(
         Task.user_id == user_id,
         Task.state == TaskState.EXECUTED,
         Task.voided_at.is_(None),
+        Task.is_anchor.is_(False),
         Task.initiation_status != "system_error",
         Task.initiation_status != "retroactive",
         Task.executed_duration_minutes.isnot(None),
@@ -374,6 +382,7 @@ def cortex_diagnostics(db: Session, *, user_id: int, window_days: int = 30) -> d
         "voided": base.filter(Task.voided_at.isnot(None)).count(),
         "system_error": base.filter(Task.initiation_status == "system_error").count(),
         "retroactive": base.filter(Task.initiation_status == "retroactive").count(),
+        "anchor": base.filter(Task.is_anchor.is_(True)).count(),
         "missing_executed_duration": base.filter(
             Task.state == TaskState.EXECUTED,
             Task.executed_duration_minutes.is_(None),

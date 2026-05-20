@@ -11,6 +11,9 @@ diligence.
 Governance Rule", "Substrate Kill Criterion", "Friction-Tested Instrument
 Methodology", "Academic Execution Substrate Governance", and
 "Trusted-Alpha Security Governance".
+**Evidence crosswalks:** `docs/planning_vs_executing_survey_assumption_crosswalk.md`
+maps the April 2026 Planning vs Executing survey to this register. Survey
+signal may support an assumption, but does not validate it.
 
 This document does not authorize new product claims, autonomous adaptation,
 BCI claims, institutional deployment claims, or broader cohort scaling. It is a
@@ -75,6 +78,8 @@ assumptions are observable and falsifiable.
 | M6 | The system must preserve the ability to discover it was wrong. | Ranges, trust states, editable assumptions, kill criteria, and versioned contracts reduce false certainty. | user corrections, trust-state displays, confidence tiers, profile eligibility, metric versions. | Track correction rates, trust failures, and claims demoted after new evidence. | Users or reviewers cannot tell what Lyra knows, guesses, or cannot infer. | doctrine-locked |
 | M7 | Self-report is evidence, not truth authority. | Readiness, reflection, and duration estimates are useful signals, but contradictions between self-report and execution traces may be more informative than either alone. | readiness, reflection, planned duration, edits, observed execution, corrections, contradictory signal pairs. | Compare self-report-only, trace-only, and contradiction-aware models; review mismatch cases with users qualitatively. | Self-report contradictions add no explanatory value or users reject mismatch framing as inaccurate or judgmental. | partially-supported |
 | M8 | System-suggested durations require provenance. | If Lyra proposes a duration and the user accepts it unchanged, that row is epistemically different from an independent user estimate. | duration source, suggested range, accepted/edited flag, plan edits, execution delta, clean-profile eligibility. | Add `duration_source` or equivalent before cohort-level duration priors affect planning; exclude unedited system suggestions from pure user-estimate calibration. | System-suggested durations are mixed into planning calibration without provenance, making estimate-drift claims uninterpretable. | doctrine-locked / future-gated |
+| M9 | Passive activity can reduce friction only if it avoids surveillance hallucination. | Passive/contextual traces may improve continuity and repair prompts, but only when treated as bounded evidence with provenance, confidence, consent scope, and contradiction handling. | resource match, foreground time, idle gaps, consent scope, passive confidence, contradiction score, user correction. | Introduce passive rows only behind evidence tiers; compare passive-assisted interpretation against explicit-only baselines and user review. | Passive traces are treated as semantic truth, users reject inferences as creepy/wrong, or passive-only rows enter clean calibration. | doctrine-locked / future-gated |
+| M10 | Alignment improves through honesty, not obedience. | Users trust and benefit from Lyra when it preserves inspectable contact between intention, constraint, action, and consequence rather than optimizing compliance or engagement. | copy comprehension, correction acceptance, opt-out/override use, trust feedback, exposure rows, accepted/rejected suggestions. | Compare low-authority, provenance-visible guidance against authoritative or hidden-steering copy in qualitative review before any scaled experiment. | Users comply more but report reduced agency, cannot explain why Lyra suggested something, or behavior changes without exposure visibility. | doctrine-locked / testable |
 
 ## 5. Product And UX Assumptions
 
@@ -89,6 +94,8 @@ assumptions are observable and falsifiable.
 | P7 | Execution clarity must not become anxiety amplification. | Pressure maps and workload topology increase perceived agency more than perceived overwhelm. | pressure-map engagement, anxiety/overwhelm feedback, plan acceptance, reschedule behavior, discard/private-mode use. | Qualitative review plus lightweight post-surface feedback; track whether pressure visibility leads to repair or avoidance. | Users experience pressure visibility as compression, shame, or panic more often than clarity. | partially-supported / killable |
 | P8 | Instrumentation burden has a cumulative tolerance threshold. | A flow that feels acceptable for days may become too heavy over months unless instrumentation remains sparse, contextual, and useful. | long-horizon retention, field completion decay, skipped reflections, timer abandonment, passive candidate confirmation rate. | Track burden signals over cohort weeks, not just onboarding; remove or defer fields whose marginal value does not justify friction. | Users quietly stop using Lyra because the measurement ritual becomes work. | partially-supported |
 | P9 | Probabilistic duration estimates must feel like estimates, not judgment. | Cohort/provider-derived duration ranges can help planning if presented as uncertain priors the user can edit, not as truth about the user. | estimate source, edit rate, acceptance rate, correction rate, feedback sentiment, later drift. | Present ranges with low-authority copy; separate `user_entered`, `system_suggested_accepted`, and `system_suggested_edited` before research use. | Users feel judged or system priors contaminate clean user-estimate calibration. | future-gated |
+| P10 | Approximate pressure maps can create value before deep personalization. | A semi-accurate, provenance-labeled pressure map helps users understand workload scale and compression even before personal longitudinal adaptation is strong. | pressure-map return rate, correction rate, plan creation from map, feedback sentiment, mismatch reports, range edits. | Test whether Day-0 pressure maps produce "this explains my week" feedback and accepted corrections without exact-hour claims. | Users find approximate pressure misleading, anxiety-inducing, or not useful enough to return before personalization matures. | partially-supported / killable |
+| P11 | Psychological safety can be maintained through non-accusatory execution language. | Users tolerate uncomfortable execution mirrors when copy frames pressure/drift as structural evidence rather than moral failure or identity. | churn after insight exposure, negative sentiment, support messages, correction acceptance, private/discard use. | Review copy qualitatively; compare neutral structural language against more evaluative wording only under governed exposure. | Users interpret Lyra as judgmental, punitive, or bossware-like despite low-authority framing. | doctrine-locked / testable |
 
 ## 6. Scientific And Behavioral Hypotheses
 
@@ -112,6 +119,9 @@ assumptions are observable and falsifiable.
 | S4 | Drift rollups can improve scalability without corrupting research truth. | Async/cached rollups can reduce latency if they remain versioned, user-scoped, profile-scoped derived values. | endpoint p95, slow-query traces, metric version, clean profile, source high-water mark. | Delay materialization until runtime trigger; compare rollup output to read-time canonical values. | Rollups drift from source truth, hide profile/exposure state, or become user-facing authority. | future-gated |
 | S5 | Runtime reliability is part of measurement validity. | Scheduler, database, topology, and auth failures can damage data quality if not classified and degraded correctly. | JobResult state, alert taxonomy, retry behavior, mutation phrase, topology verifier, smoke tests. | Enforce scheduler degradation contracts and topology checks; incident notes for repeated platform failures. | Operational failures silently create missing or mis-scoped behavioral traces. | doctrine-locked |
 | S6 | Redis state must be atomic where execution traces can race. | Rapid timer or telemetry mutations require atomic Redis operations to avoid dropped or contradictory execution state. | stopwatch state, pause/resume bursts, active task ids, recovery rows. | Transaction/pipeline tests under rapid state changes. | Naive read-modify-write loses trace state or misbinds active execution. | partially-supported |
+| S7 | Academic asset velocity can improve cold-start pressure estimates without becoming truth authority. | Lecture/tutorial/lab/resource metadata plus clean cohort execution rollups can improve initial workload ranges if estimates remain aggregate, versioned, privacy-thresholded, and provenance-labeled. | asset metadata, clean execution duration, distinct-user count, trimmed mean, p25/p75, estimate source, user edits. | Add canonical asset identity, task-asset binding, duration provenance, and async rollups after freeze; compare against current static priors. | Asset priors leak raw provider data, overfit small cohorts, enter pure calibration as user estimates, or users experience estimates as judgment. | future-gated |
+| S8 | Dirty provider data is normal, not exceptional. | Middleware value survives messy upstream systems if imports preserve provenance, confidence, contradiction state, and low-friction repair paths. | stale provider rows, overlong active states, contradictory provider statuses, user corrections, demotion counts, repair prompt acceptance. | Add dirty-input fixtures per adapter; test that ambiguous provider rows remain useful context but do not enter clean calibration. | Provider mess either corrupts calibration or forces enough manual cleanup that middleware loses its friction advantage. | doctrine-locked / testable |
+| S9 | Lyra's strategic layer is execution-reality middleware, not workflow replacement. | Adoption and immediate value improve when Lyra sits above existing calendars, LMSs, task apps, and planning tools instead of requiring users to rebuild their workflow. | import success, first-session time-to-value, pressure-map engagement, retained provider mix, native-only vs imported usage. | Compare onboarding and retention for provider-assisted pressure visibility against blank-slate manual planning. | Users must duplicate too much workflow inside Lyra, or value depends on replacing rather than interpreting existing tools. | partially-supported |
 
 ## 8. Security, Privacy, And Governance Assumptions
 
@@ -163,8 +173,10 @@ Primary risks:
 
 - traces do not generalize beyond operator/early cohort,
 - users do not tolerate instrumentation friction,
+- users reject honest mirrors because pressure visibility feels psychologically unsafe,
 - exposure effects overwhelm clean baseline inference,
 - provider adapters leak local semantics into the core,
+- dirty upstream provider data overwhelms confidence/demotion handling,
 - operational instability damages data quality,
 - or adaptive feedback becomes manipulative instead of epistemically honest.
 
@@ -187,11 +199,18 @@ Current mitigation strategy:
 3. Accepted intention improves calibration quality over passive activity.
 4. System-suggested duration estimates preserve provenance and do not enter
    pure user-estimate calibration unchanged.
-5. Unplanned execution rate explains instability beyond estimation error.
-6. Read-time drift computation remains fast until a real rollup trigger fires.
-7. Small-cohort qualitative feedback confirms that transparency increases
+5. Passive/contextual evidence avoids surveillance hallucination and remains
+   lower-authority than confirmed intention or clean explicit execution.
+6. Academic asset-velocity priors improve pressure-map estimates only after
+   canonical asset identity, duration provenance, and clean cohort rollups exist.
+7. Approximate Day-0 pressure maps create value before deep personalization.
+8. Dirty provider rows are demoted, repaired, or contextualized without
+   corrupting calibration or recreating heavy manual cleanup.
+9. Unplanned execution rate explains instability beyond estimation error.
+10. Read-time drift computation remains fast until a real rollup trigger fires.
+11. Small-cohort qualitative feedback confirms that transparency increases
    trust rather than confusion.
-8. Longitudinal mirrors remain supportive enough that users keep participating
+12. Longitudinal mirrors remain supportive enough that users keep participating
    after uncomfortable patterns become visible.
 
 Until these survive contact with users and runtime, LyraOS should stay in

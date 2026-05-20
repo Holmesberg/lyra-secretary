@@ -640,6 +640,8 @@ function TodayInner() {
       end: null,
       state: "PLANNED",
       category: null,
+      is_anchor: false,
+      rct_arm: null,
       initiation_status: null,
       session_index_in_day: 0,
       pre_task_readiness: null,

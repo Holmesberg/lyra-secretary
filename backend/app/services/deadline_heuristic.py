@@ -85,13 +85,18 @@ BRITTLE_TOKENS = {
     "time", "plan", "review", "session", "block", "todo",
     "report", "doc", "note", "writeup",
 }
+GENERIC_DEADLINE_TOKENS = {
+    "final", "finals", "exam", "exams", "quiz", "quizzes",
+    "lab", "labs", "lecture", "lectures", "lec", "tutorial",
+    "tutorials", "assignment", "assignments", "submission",
+}
 
 _NORMALIZE_RE = re.compile(r"[^a-z0-9\s]+")
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STOPWORDS = {
     "the", "a", "an", "to", "for", "of", "and", "or", "in", "on",
     "at", "by", "with", "due", "today", "tomorrow", "deadline",
-    "is", "are", "be",
+    "is", "are", "be", "am", "pm", *GENERIC_DEADLINE_TOKENS,
 }
 
 
@@ -123,8 +128,37 @@ def _normalize(s: str) -> str:
 def _meaningful_tokens(s: str) -> set[str]:
     return {
         t for t in _TOKEN_RE.findall((s or "").lower())
-        if t not in _STOPWORDS and len(t) >= 3
+        if t not in _STOPWORDS and (len(t) >= 3 or len(t) == 2)
     }
+
+
+def _subject_tokens_from_tokens(tokens: set[str]) -> set[str]:
+    """Short academic identity tokens such as AI/CO/OS/CV.
+
+    These are too short for ordinary keyword matching but highly
+    discriminative for imported course/deadline titles. Generic deadline
+    words stay excluded, so "final" alone cannot bind two unrelated rows.
+    """
+    return {
+        t for t in tokens
+        if (len(t) == 2 or any(ch.isdigit() for ch in t))
+        and t not in _STOPWORDS
+        and t not in BRITTLE_TOKENS
+        and t not in GENERIC_DEADLINE_TOKENS
+    }
+
+
+def _subject_tokens(s: Optional[str]) -> set[str]:
+    out: set[str] = set()
+    for raw in re.findall(r"[A-Za-z0-9]+", s or ""):
+        t = raw.lower()
+        if t in _STOPWORDS or t in BRITTLE_TOKENS or t in GENERIC_DEADLINE_TOKENS:
+            continue
+        if len(t) == 2:
+            out.add(t)
+        elif 3 <= len(t) <= 5 and (raw.isupper() or any(ch.isdigit() for ch in raw)):
+            out.add(t)
+    return out
 
 
 def _score_one(haystack_norm: str, haystack_tokens: set[str], deadline: Deadline) -> tuple[float, str]:
@@ -161,6 +195,15 @@ def _score_one(haystack_norm: str, haystack_tokens: set[str], deadline: Deadline
     # Single-token title appearing word-boundary in haystack
     if len(title_norm.split()) == 1 and title_norm in haystack_tokens:
         return 0.8, "heuristic_startswith"
+
+    # Academic acronym match: "AI project revision" should prefer
+    # "AI final" over "CO Final"; the generic word "final" is not enough.
+    subject_overlap = (
+        _subject_tokens_from_tokens(haystack_tokens)
+        & _subject_tokens_from_tokens(title_tokens)
+    )
+    if subject_overlap:
+        return 0.7, "heuristic_substring"
 
     # Plain substring match (case-insensitive)
     if title_norm in haystack_norm:
@@ -207,8 +250,19 @@ def _course_codes_collide(haystack: str, deadline: Deadline) -> bool:
         getattr(deadline, "category_hint", None)
     )
     if deadline_code is None:
-        return False
-    return haystack_code != deadline_code
+        # Fall through to short academic identity tokens below.
+        pass
+    elif haystack_code != deadline_code:
+        return True
+
+    haystack_subjects = _subject_tokens(haystack)
+    deadline_subjects = (
+        _subject_tokens(deadline.title)
+        | _subject_tokens(getattr(deadline, "category_hint", None))
+    )
+    if haystack_subjects and deadline_subjects:
+        return haystack_subjects.isdisjoint(deadline_subjects)
+    return False
 
 
 def _is_brittle(haystack_tokens: set[str], deadline: Deadline) -> bool:

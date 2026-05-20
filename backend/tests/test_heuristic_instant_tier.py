@@ -119,6 +119,27 @@ def test_heuristic_multi_competitive_populates_candidates_no_bind(db):
     assert task.llm_parse_status == "pending"
 
 
+def test_short_academic_acronym_disambiguates_final_deadlines(db):
+    """Two-letter course/subject acronyms are meaningful in academic rows.
+
+    "AI project revision" should not bind toward "CO Final" just because
+    both are final/exam-shaped deadlines.
+    """
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    ai = _make_deadline(db, user.user_id, "AI final")
+    co = _make_deadline(db, user.user_id, "CO Final")
+
+    task, _, _ = TaskManager(db).create_task(**_args("AI project revision"))
+
+    assert task is not None
+    assert task.deadline_id is None
+    assert task.llm_deadline_candidates is not None
+    assert task.llm_deadline_candidates[0]["deadline_id"] == ai.deadline_id
+    assert task.llm_inferred_deadline_id == ai.deadline_id
+    assert all(c["deadline_id"] != co.deadline_id for c in task.llm_deadline_candidates)
+
+
 def test_no_deadlines_no_candidates(db):
     """When user has no deadlines, no candidates, no chip data."""
     user = _make_user(db)

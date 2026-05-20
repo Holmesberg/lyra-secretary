@@ -649,6 +649,27 @@ def test_moodle_integration_status_is_scoped_to_requesting_user(adv_users, clien
     assert moodle99["ws_connected"] is False
 
 
+def test_moodle_integration_sync_timestamps_are_explicit_utc(adv_users, client):
+    set_current_user_id(None)
+    stamp = datetime(2026, 5, 20, 6, 15, 30)
+    s = TestingSession()
+    try:
+        user98 = s.query(User).filter(User.user_id == 98).one()
+        user98.moodle_ics_url = "https://moodle.example.test/calendar?authtoken=eve"
+        user98.moodle_ws_token = "fernet:eve-token"
+        user98.moodle_last_synced_at = stamp
+        user98.moodle_ws_last_synced_at = stamp
+        s.commit()
+    finally:
+        s.close()
+
+    r98 = client.get("/v1/integrations", headers=_h(98))
+    assert r98.status_code == 200, r98.text
+    moodle98 = next(i for i in r98.json()["integrations"] if i["id"] == "moodle")
+    assert moodle98["last_synced_at"] == "2026-05-20T06:15:30+00:00"
+    assert moodle98["ws_last_synced_at"] == "2026-05-20T06:15:30+00:00"
+
+
 def test_exposure_ack_cross_user_blocked_and_audited(adv_users, client):
     set_current_user_id(None)
     s = TestingSession()

@@ -206,6 +206,11 @@ export function BrainDumpQuickModal({
         description: i.description,
         when_local: i.when_local,
         duration_minutes: i.duration_minutes,
+        category: i.category,
+        category_source: i.category_source,
+        duration_source: i.duration_source,
+        duration_confidence: i.duration_confidence,
+        duration_basis: i.duration_basis,
       }));
       const commitBindings: BrainDumpCommitBinding[] = bindings
         .filter((b) => bindingChoices[b.task_item_id] === "yes")
@@ -357,9 +362,18 @@ gym sat morning"
                     </div>
                     <div className="mt-0.5 font-mono text-[10px] text-dust">
                       {fmtWhen(it.when_local)}
+                      {it.category && ` - ${it.category}`}
+                      {it.duration_source === "research_prior_v1" && " - prior"}
                       {it.duration_minutes !== null &&
                         ` · ${it.duration_minutes}m`}
                     </div>
+                    {it.duration_source === "research_prior_v1" &&
+                      it.duration_basis && (
+                        <div className="mt-1 text-[10px] text-dust-deep">
+                          Initial duration from {it.duration_basis}; edit after
+                          creation if the block is different.
+                        </div>
+                      )}
                     {itemBindings.length > 0 && (
                       <div className="mt-2 flex flex-col gap-1.5">
                         {itemBindings.map((b) => {

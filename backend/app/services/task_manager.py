@@ -5,6 +5,7 @@ ALL task modifications MUST go through this service.
 No other service should modify Task objects directly.
 """
 from datetime import datetime, timedelta
+import re
 from typing import Optional
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from app.db.scoping import get_current_user_id
 from app.services.output_surfaces import emit_surface_render
 from app.services.parser import TaskParser, extract_scope_bullets
 from app.services.deadline_heuristic import score_deadlines
+from app.services.category_inference import infer_academic_category
 from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector, ConflictResult
 from app.services.notion_client import NotionClient
@@ -25,6 +27,21 @@ from app.core.exceptions import ImmutableTaskError
 logger = logging.getLogger(__name__)
 
 
+ANCHOR_CATEGORIES = {"prayer", "sleep"}
+ANCHOR_TITLE_TOKENS = {
+    "asr",
+    "dhuhr",
+    "fajr",
+    "isha",
+    "maghrib",
+    "nap",
+    "prayer",
+    "sleep",
+    "taraweeh",
+    "zuhr",
+}
+RCT_ARM_CONTROL = "deadline_soft_warning_control"
+RCT_ARM_TREATMENT = "deadline_soft_warning_treatment"
 def _require_current_user(op: str) -> int:
     """Resolve the acting user_id from the request-scoped ContextVar.
 
@@ -40,6 +57,20 @@ def _require_current_user(op: str) -> int:
             "Set it via middleware (HTTP) or _per_user.py (worker)."
         )
     return uid
+
+
+def _is_anchor_task(title: str, category: Optional[str]) -> bool:
+    """Classify fixed routine blocks that must not calibrate bias_factor."""
+    cat = (category or "").strip().lower()
+    if cat in ANCHOR_CATEGORIES:
+        return True
+    tokens = set(re.findall(r"[a-z0-9]+", (title or "").lower()))
+    return bool(tokens & ANCHOR_TITLE_TOKENS)
+
+
+def _rct_arm_for_user(user_id: int) -> str:
+    """Rule 16 deterministic soft-warning arm, fixed by user_id parity."""
+    return RCT_ARM_TREATMENT if user_id % 2 else RCT_ARM_CONTROL
 
 
 class TaskManager:
@@ -111,9 +142,21 @@ class TaskManager:
         Checks exact word matches first (prevents false substring hits like
         'run' inside 'running'). Falls back to substring for multi-word
         keywords such as 'problem set'.
+
+        Academic/student split, frozen 2026-05-20:
+          - `academic` is provider/prescheduled structure: deadlines,
+            lectures, tutorials, labs, classes.
+          - `study` is user-owned self-study: revision, reading,
+            problem solving, homework/assignment work blocks.
+
+        This code-level fallback matters for Baseet-style imports where a
+        student will not manually choose a category.
         """
         title_lower = title.lower()
-        words = set(title_lower.split())
+        words = set(re.findall(r"[a-z0-9]+", title_lower))
+        inferred = infer_academic_category(title)
+        if inferred:
+            return inferred
         mappings = self.db.query(CategoryMapping).all()
         # Pass 1: exact word match
         for m in mappings:
@@ -311,6 +354,8 @@ class TaskManager:
             last_modified_at=created_at_ts,
             session_index_in_day=self._compute_session_index(start, created_at_ts),
             user_id=uid,
+            is_anchor=_is_anchor_task(title, category),
+            rct_arm=_rct_arm_for_user(uid),
             # Loop 11 fields (alembic 033)
             scope_bullet_count_at_plan=scope_bullets_at_plan,
             deadline_id=bound_deadline.deadline_id if bound_deadline else None,
@@ -578,6 +623,8 @@ class TaskManager:
             last_modified_at=created_at_ts,
             session_index_in_day=self._compute_session_index(start_utc, created_at_ts),
             user_id=uid,
+            is_anchor=_is_anchor_task(title, category),
+            rct_arm=_rct_arm_for_user(uid),
         )
 
         self.db.add(task)

@@ -145,10 +145,43 @@ def test_title_strips_date_tokens():
     assert "friday" not in title
 
 
-def test_task_default_duration_is_30_minutes():
-    raw = "read chapter 3"
+def test_task_default_duration_is_30_minutes_when_no_prior_matches():
+    raw = "buy printer paper"
     res = parse_brain_dump(raw, NOW_ISO)
     assert res.items[0].duration_minutes == 30
+    assert res.items[0].duration_source == "default_30_min"
+
+
+def test_brain_dump_infers_academic_category_and_duration_prior():
+    res = parse_brain_dump("CO tutorial tomorrow at 9am", NOW_ISO)
+    item = res.items[0]
+
+    assert item.kind == "task"
+    assert item.category == "academic"
+    assert item.category_source == "title_heuristic_v1"
+    assert item.duration_minutes == 60
+    assert item.duration_source == "research_prior_v1"
+    assert "tutorial" in (item.duration_basis or "")
+
+
+def test_brain_dump_infers_study_category_and_duration_prior():
+    res = parse_brain_dump("AI final revision tomorrow at 10am", NOW_ISO)
+    item = res.items[0]
+
+    assert item.kind == "task"
+    assert item.category == "study"
+    assert item.duration_minutes == 90
+    assert item.duration_source == "research_prior_v1"
+    assert "exam-prep" in (item.duration_basis or "")
+
+
+def test_explicit_duration_wins_over_research_prior():
+    res = parse_brain_dump("read CO slides tomorrow for 45 minutes", NOW_ISO)
+    item = res.items[0]
+
+    assert item.category == "study"
+    assert item.duration_minutes == 45
+    assert item.duration_source == "explicit_text"
 
 
 def test_deadline_has_no_duration():

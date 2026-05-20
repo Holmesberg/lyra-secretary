@@ -148,32 +148,66 @@ def _rank_deadline_candidates(
 
     hint_tokens = _tokenize(deadline_name or "")
     title_tokens = _tokenize(task_title) | _tokenize(task_description or "")
+    task_subjects = _subject_tokens(task_title) | _subject_tokens(task_description or "")
+    hint_subjects = _subject_tokens(deadline_name or "")
     # If neither signal has content, can't rank.
     if not hint_tokens and not title_tokens:
         return []
 
     scored: list[tuple[float, Deadline]] = []
     for d in deadlines:
-        haystack = _tokenize(d.title) | _tokenize(d.description or "")
-        if not haystack:
+        identity_tokens = (
+            _tokenize(d.title)
+            | _tokenize(getattr(d, "category_hint", None) or "")
+        )
+        context_tokens = _tokenize(d.description or "")
+        candidate_subjects = (
+            _subject_tokens(d.title)
+            | _subject_tokens(getattr(d, "category_hint", None) or "")
+        )
+        if task_subjects and candidate_subjects and task_subjects.isdisjoint(candidate_subjects):
             continue
+        if not identity_tokens and not context_tokens:
+            continue
+        title_overlap = title_tokens & identity_tokens
+        title_context_overlap = title_tokens & context_tokens
+        subject_score = 1.0 if (task_subjects & candidate_subjects) else 0.0
         # Two-signal blend.
         hint_score = (
-            len(hint_tokens & haystack) / max(len(hint_tokens), 1)
+            len(hint_tokens & identity_tokens) / max(len(hint_tokens), 1)
             if hint_tokens
             else 0.0
         )
+        if hint_tokens and context_tokens:
+            hint_score = max(
+                hint_score,
+                0.35 * len(hint_tokens & context_tokens) / max(len(hint_tokens), 1),
+            )
         title_score = (
-            len(title_tokens & haystack) / max(len(title_tokens), 1)
+            max(
+                len(title_overlap) / max(len(identity_tokens), 1),
+                len(title_overlap) / max(len(title_tokens), 1),
+                0.35 * len(title_context_overlap) / max(len(title_tokens), 1),
+            )
             if title_tokens
             else 0.0
         )
         # Weighted blend: hint dominates when present (LLM is reading the
-        # user's intent), title is the fallback.
+        # user's intent), title is the fallback. If the LLM hint carries a
+        # different academic acronym from the task, let the task's own
+        # subject token win; this prevents "AI project revision" from being
+        # pulled toward "CO Final" just because the hint hallucinated it.
         if hint_tokens:
-            blended = 0.7 * hint_score + 0.3 * title_score
+            hint_conflicts_with_task = (
+                bool(hint_subjects and task_subjects)
+                and hint_subjects.isdisjoint(task_subjects)
+            )
+            if hint_conflicts_with_task:
+                blended = max(0.75 * subject_score, 0.2 * hint_score + 0.6 * title_score)
+            else:
+                blended = max(0.75 * subject_score, 0.7 * hint_score + 0.3 * title_score)
         else:
-            blended = title_score
+            blended = max(0.75 * subject_score, title_score)
         scored.append((blended, d))
 
     scored.sort(key=lambda x: -x[0])
@@ -207,6 +241,33 @@ _STOPWORDS = {
     "today",
     "tomorrow",
     "deadline",
+    "is",
+    "are",
+    "be",
+    "am",
+    "pm",
+    "final",
+    "finals",
+    "exam",
+    "exams",
+    "quiz",
+    "quizzes",
+    "lab",
+    "labs",
+    "lecture",
+    "lectures",
+    "lec",
+    "tutorial",
+    "tutorials",
+    "assignment",
+    "assignments",
+    "submission",
+}
+
+_BRITTLE_TOKENS = {
+    "paper", "project", "task", "work", "thing", "stuff",
+    "time", "plan", "review", "session", "block", "todo",
+    "report", "doc", "note", "writeup",
 }
 
 
@@ -218,8 +279,23 @@ def _tokenize(s: str) -> set[str]:
     return {
         t
         for t in re.findall(r"[a-z0-9]+", s.lower())
-        if t not in _STOPWORDS and len(t) >= 3
+        if t not in _STOPWORDS and (len(t) >= 3 or len(t) == 2)
     }
+
+
+def _subject_tokens(s: str) -> set[str]:
+    import re
+
+    out: set[str] = set()
+    for raw in re.findall(r"[A-Za-z0-9]+", s or ""):
+        t = raw.lower()
+        if t in _STOPWORDS or t in _BRITTLE_TOKENS:
+            continue
+        if len(t) == 2:
+            out.add(t)
+        elif 3 <= len(t) <= 5 and (raw.isupper() or any(ch.isdigit() for ch in raw)):
+            out.add(t)
+    return out
 
 
 def _strip_markdown_fence(s: str) -> str:

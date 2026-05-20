@@ -8,7 +8,8 @@
  * Step 1 — Brain dump
  *   Single textarea. The user pastes everything that's on their mind
  *   (deadlines, tasks, half-thoughts) in any format. NO title field,
- *   NO start/end picker, NO category. The parser splits on commas /
+ *   NO start/end picker. Category and initial duration are inferred
+ *   in preview when the user omits them. The parser splits on commas /
  *   newlines / semicolons / "then" and classifies each segment as
  *   task or deadline. Multiple times in the dump are parsed to each
  *   item's anchor.
@@ -195,6 +196,11 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
         description: i.description,
         when_local: i.when_local,
         duration_minutes: i.duration_minutes,
+        category: i.category,
+        category_source: i.category_source,
+        duration_source: i.duration_source,
+        duration_confidence: i.duration_confidence,
+        duration_basis: i.duration_basis,
       }));
       const commitBindings: BrainDumpCommitBinding[] = bindings
         .filter((b) => bindingChoices[b.task_item_id] === "yes")
@@ -343,6 +349,15 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                       </div>
                       <div className="mt-0.5 text-xs text-dust">
                         {formatWhen(it.when_local)}
+                        {it.category && (
+                          <span className="text-dust-deep">
+                            {" "}
+                            - {it.category}
+                          </span>
+                        )}
+                        {it.duration_source === "research_prior_v1" && (
+                          <span className="text-dust-deep"> - prior</span>
+                        )}
                         {it.kind === "task" &&
                           it.duration_minutes != null && (
                             <span className="text-dust-deep">
@@ -353,6 +368,14 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                       </div>
                     </div>
                   </div>
+
+                  {it.duration_source === "research_prior_v1" &&
+                    it.duration_basis && (
+                      <div className="mt-1 text-[10px] text-dust-deep">
+                        Initial duration from {it.duration_basis}; edit after
+                        creation if the block is different.
+                      </div>
+                    )}
 
                   {it.kind === "task" && taskBindings.length > 0 && (
                     <div className="mt-3 border-t border-hairline-signal/20 pt-3">

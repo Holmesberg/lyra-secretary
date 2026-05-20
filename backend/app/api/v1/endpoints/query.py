@@ -241,6 +241,8 @@ def query_tasks(
                 "end": to_local(t.planned_end_utc).isoformat() if t.planned_end_utc else None,
                 "state": t.state.value if hasattr(t.state, 'value') else str(t.state),
                 "category": t.category,
+                "is_anchor": t.is_anchor,
+                "rct_arm": t.rct_arm,
                 "initiation_status": t.initiation_status,
                 "session_index_in_day": t.session_index_in_day if t.session_index_in_day is not None else 0,
                 "pre_task_readiness": t.pre_task_readiness,

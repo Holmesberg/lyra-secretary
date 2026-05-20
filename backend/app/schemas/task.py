@@ -213,6 +213,8 @@ class TaskDetail(BaseModel):
     source: TaskSource
     confidence_score: Optional[float]
     notes: Optional[str]
+    is_anchor: bool = False
+    rct_arm: Optional[str] = None
     
     created_at: datetime
     last_modified_at: datetime

@@ -20,6 +20,7 @@
 *Revised: May 17, 2026. Day 44 - trusted-alpha security governance linked: audit rows are governance-only, provider failures must not weaken auth or user scoping, and `docs/prodblueprint_security.md` is the operational security blueprint.*
 *Revised: May 18, 2026. Day 45 - friction-tested instrument methodology, publish-path optionality, provider-adapter scalability, drift-rollup scalability, and future-gated neuroadaptive sequencing documented.*
 *Revised: May 19, 2026. Day 46 - product/research assumption register added for professor review, investor diligence, hypothesis validation, and falsification tracking.*
+*Revised: May 20, 2026. Day 47 - alignment-through-honesty, conscious influence, middleware execution substrate, dirty-pipe provider doctrine, and earned adaptation authority clarified.*
 
 ---
 
@@ -258,6 +259,105 @@ Missingness is not neutral. Tasks not started, absent readiness, skipped
 reflections, ignored prompts, delayed starts, and recovery actions are part of
 the behavioral topology. They may be signal, but they are never silently
 converted into observed truth.
+
+---
+
+## Alignment Through Honesty
+*Added: May 20, 2026.*
+
+LyraOS is not philosophically anti-influence. Any system that highlights,
+prioritizes, reminds, predicts, reframes, visualizes, ranks, nudges, or adapts
+participates in human cognition.
+
+The governing rule is narrower and stricter:
+
+```text
+Influence is inevitable.
+Unconscious influence is unacceptable.
+```
+
+Alignment therefore does not mean maximizing obedience, retention, engagement,
+or compliance. It means preserving accurate contact between:
+
+```text
+intention
+  -> constraint
+  -> action
+  -> consequence
+```
+
+The alignment variable is honesty. Better alignment should increase the
+user's ability to inspect, challenge, revise, reject, or leave the system's
+interpretation. Stronger guidance is permitted only when it remains visible,
+bounded, provenance-aware, reversible, and uncertainty-aware.
+
+Forbidden interpretations:
+
+- "The system should avoid influence entirely."
+- "The system should optimize the user into compliance."
+- "A prediction is aligned because it improves retention."
+- "A recommendation is aligned because the user accepted it."
+
+Allowed interpretation:
+
+```text
+Guidance can exist without domination when the human can see the influence,
+understand the evidence, reject the recommendation, and preserve agency.
+```
+
+This doctrine explains why Lyra uses low-authority copy, exposure rows,
+editable assumptions, confidence tiers, clean-data profiles, no stable
+identity labels, and earned authority ladders. These are not ornamental UX
+choices. They are epistemic stabilizers that prevent recursive reality drift
+between the human, the model, and the feedback loop connecting them.
+
+The strongest future version of Lyra is not a permanently weak assistant. It
+is an evidence-governed system whose adaptive authority scales only after
+validity survives cohort data, exposure controls, and falsifiable comparison.
+
+---
+
+## Execution-Reality Middleware Substrate
+*Added: May 20, 2026.*
+
+LyraOS should not be primarily interpreted as a standalone planning app.
+
+The current product strategy is:
+
+```text
+Existing systems provide commitments and structure.
+Lyra models execution reality across them.
+```
+
+Calendars, LMSs, Baseet, Notion, Jira/Linear, and similar tools already hold
+plans, obligations, resources, tickets, events, and deadlines. Lyra's distinct
+layer is the interpretation of what happens when those commitments collide
+with reality:
+
+- pressure topology,
+- visible workload compression,
+- initiation delay,
+- execution drift,
+- interruption and pause topology,
+- recovery windows,
+- estimate recalibration,
+- and evidence-gated adaptation.
+
+This pivot reduces the burden of asking users to rebuild their life inside
+Lyra. The Day-0 product value is not deep personalization. It is semi-accurate,
+provenance-labeled pressure visibility over existing commitments, refined over
+time as accepted intention and execution traces accumulate.
+
+Immediate utility may scale before strong research claims scale. Pressure-map
+visualization, obligation normalization, conflict surfacing, and low-authority
+duration priors can be production-safe utility when they are labeled as
+estimates. Stronger adaptive scheduling, prediction, or autonomous replanning
+remain earned-authority features gated by data quality, exposure controls, and
+cohort validation.
+
+This middleware framing does not weaken the research substrate. It makes the
+research substrate less burdensome by letting useful workflow surfaces collect
+execution traces underneath.
 
 Archetypes are cold-start priors, not identity. They can initialize hypotheses
 for users without enough local traces, but personal evidence must decay,

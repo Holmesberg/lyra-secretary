@@ -161,6 +161,15 @@ class Task(Base):
     # silently funneled every cross-tenant write to the operator (LYR-093).
     user_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # Measurement validity gates (alembic 053, 2026-05-19).
+    # is_anchor marks fixed routine blocks such as prayers and sleep. These
+    # are valid descriptive schedule rows, but they must not enter clean
+    # bias_factor calibration as evidence of planning/execution skill.
+    is_anchor: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Rule 16 soft-warning cohort assignment. Deterministic by user_id mod 2
+    # and stamped at creation so later analyses do not infer exposure arm.
+    rct_arm: Mapped[Optional[str]] = mapped_column(String(40))
+
     # Loop 11 — deadline mechanism foundation (alembic 033, 2026-04-26).
     # Pre-registered MANIFESTO Rules 14, 15, 16 + Rule 12 amendment.
     # See `docs/feedback_loops_closure_plan.md §Loop 11` and
@@ -263,6 +272,8 @@ class Task(Base):
         Index("idx_task_start", "planned_start_utc"),
         Index("idx_task_category", "category"),
         Index("idx_task_created", "created_at"),
+        Index("idx_task_user_anchor", "user_id", "is_anchor"),
+        Index("idx_task_rct_arm", "rct_arm"),
     )
     
     # Helper properties

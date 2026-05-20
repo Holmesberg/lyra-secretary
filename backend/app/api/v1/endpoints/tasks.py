@@ -757,6 +757,8 @@ def get_task(
         source=task.source,
         confidence_score=task.confidence_score,
         notes=task.notes,
+        is_anchor=task.is_anchor,
+        rct_arm=task.rct_arm,
         created_at=task.created_at,
         last_modified_at=task.last_modified_at,
         duration_delta_minutes=task.duration_delta_minutes,

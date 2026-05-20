@@ -202,7 +202,10 @@ def brain_dump_commit(
                 title=item.title,
                 start=when_local,
                 end=end_local,
-                category=None,  # let category_mapping infer post-create
+                # Brain-dump parse already applies the same deterministic
+                # category boundary used by TaskManager. If absent, the
+                # manager still falls back to category_mapping inference.
+                category=item.category,
                 description=item.description,
                 deadline_id=deadline_id,
                 # force_conflicts=True so a tight brain-dump (multiple
