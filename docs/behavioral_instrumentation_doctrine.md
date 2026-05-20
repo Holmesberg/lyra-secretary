@@ -325,6 +325,26 @@ The danger is not strong adaptation by itself. The danger is strong adaptation
 without grounded validity. Any future autonomous scheduling or prediction must
 show its evidence class, contamination state, override path, and kill criteria.
 
+### Control-System Vocabulary Guard
+
+Lyra may borrow from cybernetics, adaptive control, and cognitive systems
+engineering, but those terms must not become decorative metaphors. Any future
+control-system claim should define the following before entering product or
+research doctrine:
+
+| Term | Lyra interpretation | Overclaim to avoid |
+| --- | --- | --- |
+| `state` | Observable task/execution condition such as planned, executing, skipped, paused, pressure window, or recent cascade context. | Treating latent motivation or identity as directly observed state. |
+| `control input` | A reversible suggestion, recovery option, buffer, reminder, or experiment proposal. | Hidden steering or calendar mutation without consent. |
+| `disturbance` | External or internal disruption such as provider changes, fatigue, interruption, late start, or deadline compression. | Explaining every miss as a user defect. |
+| `objective` | A bounded local aim such as reducing next-block skip risk or preserving sleep. | Optimizing productivity, engagement, or compliance globally. |
+| `feedback` | Measured response after a visible surface or chosen action. | Assuming behavior changed naturally after Lyra intervened. |
+| `stability` | Lower volatility or reduced cascade propagation under explicit metrics. | Claiming the person is stable, disciplined, or fixed. |
+| `over-control` | The system creates dependence, pressure, or compliance while improving visible metrics. | Calling all metric improvement alignment. |
+
+Control language is useful only when it increases precision. If it hides
+uncertainty, it should be replaced with simpler measurement language.
+
 ## 11. Product Copy Shape
 
 Good copy:

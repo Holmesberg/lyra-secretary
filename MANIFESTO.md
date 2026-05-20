@@ -44,7 +44,8 @@ governance sections first:
 - Trusted-Alpha Security Governance
 - Exposure Ledger v0 doctrine
 - Cortex clean-data profiles
-- current architecture summaries in `archive/appstore/summary_of_app.md`
+- historical architecture lineage in `archive/appstore/summary_of_app.md`
+  (not current governance unless promoted here or in `README.md`)
 
 Historical hypotheses in this file are pre-registered candidates unless a later
 section marks them as shipped, validated, or superseded. They are not marketing
@@ -802,11 +803,13 @@ Where `bias_factor ≈ 1.5-2.0` when pre ≥ 4. This is an early observation fro
 discrepancy → delta
 ```
 
-Not the reverse. Discrepancy is the predictive lens. Delta is ground truth.
+Not the reverse. Discrepancy is the candidate predictive lens. Delta is the
+primary observed outcome only under the relevant clean-data profile.
 
 Phase 1 (current): test whether discrepancy contains predictive information about delta.
 Phase 2 (if signal exists): context → predicted discrepancy → predicted delta.
-Phase 3 (BCI, conditional): validated EEG markers → true state → predicted delta.
+Phase 3 (BCI, conditional): validated EEG markers → estimated cognitive-state
+signal → predicted delta.
 
 ### The Temporal Clarification
 
@@ -855,8 +858,9 @@ Google identity, frontend-minted backend JWT, FastAPI v1 API, request user
 scope middleware, SQLAlchemy/Postgres persistence, Redis hot state, APScheduler
 workers, and a separate operator-only JARVIS/OpenClaw layer. The current
 authoritative public topology is `https://lyraos.org` -> `https://api.lyraos.org`;
-see `archive/appstore/summary_of_app.md` and `docs/deployment_architecture.md`
-for the current shape.
+see `docs/deployment_architecture.md`, `README.md`, and the active Cortex
+contracts for the current shape. Archive summaries are lineage unless
+explicitly promoted.
 
 ```
 Web UI (Next.js)                        ─┐
@@ -926,7 +930,10 @@ unknown-propagation, or product/research boundary rules. See
 
 Unplanned execution rate is the differentiator.
 
-Every productivity system measures estimation error (delta). Nobody measures whether the planning layer is being used at all.
+Most productivity systems foreground estimation error (delta) or completion.
+Lyra's research angle is to treat planning-layer participation itself as an
+observable variable: whether execution happened from an accepted plan,
+retroactively, or outside planning entirely.
 
 This variable answers a different question — not "how wrong were your estimates" but "did you even estimate."
 
@@ -937,7 +944,10 @@ This variable answers a different question — not "how wrong were your estimate
 | High delta + high unplanned rate | Reactive execution — no model possible yet |
 | Low delta + low unplanned rate | Calibrated, structured — the target state |
 
-The third pattern is where most people actually live. Lyra is the first system that can detect it, measure it, and eventually interrupt it — not by forcing logging, but by making the value of the planning layer visible over time.
+The third pattern may be where many people actually live. Lyra's contribution
+is not a claim that no prior system has ever noticed reactive execution; it is
+the attempt to instrument it as a longitudinal planning-participation signal
+under clean-data, provenance, and exposure constraints.
 
 ### The Three Behavioral Profiles
 
@@ -977,7 +987,10 @@ This taxonomy deserves its own paper independent of the discrepancy hypothesis.
 
 Observation: Skipping Gym at 6am cascaded into skipping SWE backlog at 7:30am, skipping CSE281 at 2pm, and restructuring the entire afternoon.
 
-This is not noise. This is a behavioral pattern nobody has measured cleanly.
+This is not automatically noise. The research opportunity is to test whether
+sequential task abandonment can be measured cleanly enough, under Lyra's
+state-machine and exposure constraints, to distinguish true sequence
+instability from shared context, task dependency, or scheduling artifacts.
 
 ### The Cascade Hypothesis
 

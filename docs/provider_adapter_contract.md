@@ -107,6 +107,31 @@ system before receiving value. Manual confirmation is reserved for cases where
 the inferred consequence would affect planning, calibration, or stronger
 adaptive authority.
 
+### Passive Sensing And Digital-Phenotyping Boundary
+
+Provider adapters, foreground activity, browser/resource events, and future
+passive signals sit near the digital-phenotyping design space. Lyra may use
+these traces only as bounded contextual evidence.
+
+They must not become:
+
+- mental-health inference,
+- attention scoring,
+- productivity surveillance,
+- identity classification,
+- competence scoring,
+- or passive execution truth.
+
+Additional rules for passive/provider-adjacent traces:
+
+- Treat missingness as potentially informative but never as proof.
+- Assume sparse behavioral traces can be identifying even when direct
+  identifiers are removed.
+- Preserve context boundaries: academic traces must not silently merge into
+  health, identity, employment, or institutional-risk claims.
+- Require explicit successor governance before any passive signal enters
+  clean-data calibration.
+
 ## 4. Required Primitives
 
 Adapters must translate into these provider-blind primitives where applicable:

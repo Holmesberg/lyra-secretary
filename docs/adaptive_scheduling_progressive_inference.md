@@ -189,6 +189,36 @@ Intervention surfaces must:
 - compare downstream outcomes against the exact intervention target,
 - fail closed when exposure state or outcome data is unknown.
 
+## JITAI And Micro-Randomized Trial Frame
+
+Future adaptive scheduling and cascade-intercept work should use
+just-in-time adaptive intervention (JITAI) language before shipping any
+behavior-shaping surface. This is a discipline layer, not academic decoration.
+
+Each candidate intervention must specify:
+
+| JITAI element | Lyra requirement |
+| --- | --- |
+| Decision point | The exact observable moment when the system may intervene, such as first skip, overdue transition, task start, pause duration threshold, or pressure-map view. |
+| Tailoring variables | The local facts used to decide whether and how to intervene: category, time window, pressure load, exposure state, recent skips, deadline distance, sleep if available. |
+| Intervention options | The reversible choices shown to the user: proceed as planned, reduce scope, insert buffer, clear a window, reschedule one block, or dismiss. |
+| Proximal outcome | The near-term result being tested: next-task start, next 2-6h skip rate, initiation delay, completion state, accepted edit, or user-rated plausibility. |
+| Decision rule | The explicit threshold or policy that triggers the surface and can be killed or suppressed. |
+| Randomization/suppression | The control path used once volume permits causal learning, such as deterministic no-show days or micro-randomized variants. |
+
+The cascade finding maps cleanly to this frame:
+
+```text
+decision point: first sequence rupture / first skip
+tailoring variables: next anchor distance, pressure load, time of day,
+  category, recent skip streak, exposure state
+options: buffer, reduce scope, clear next window, proceed as planned
+proximal outcome: next task starts or next 2-6h skip rate drops
+```
+
+Until those pieces are defined, a cascade warning is just a behavioral nudge.
+After they are defined, it can become an instrumented intervention candidate.
+
 ## Operator-Only First
 
 Adaptive scheduling should begin as operator-only.

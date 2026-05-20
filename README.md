@@ -352,7 +352,7 @@ All backend routes are mounted under `/v1`.
 | [docs/adaptive_scheduling_progressive_inference.md](docs/adaptive_scheduling_progressive_inference.md) | Future-gated adaptive scheduling contract |
 | [docs/deployment_architecture.md](docs/deployment_architecture.md) | Public topology and operational deployment |
 | [docs/openclaw_orchestration_contract_v0.md](docs/openclaw_orchestration_contract_v0.md) | Operator-only OpenClaw boundary |
-| [archive/appstore/summary_of_app.md](archive/appstore/summary_of_app.md) | Full product and architecture summary |
+| [archive/appstore/summary_of_app.md](archive/appstore/summary_of_app.md) | Historical product and architecture lineage; not current governance unless promoted |
 
 ## Privacy And Security Notes
 

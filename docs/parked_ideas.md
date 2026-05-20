@@ -1153,6 +1153,16 @@ surface is a compliance theater and should not replace the modal.
 
 ### Cascade morning-skip intervention (VT-32 candidate, operationalizes the cascade hypothesis)
 
+**2026-05-20 cross-domain audit note.** This is now a subtype of the broader
+**Cascade Intercept / Sequence Disruption Circuit Breaker** concept. Archive
+lineage (`archive/FEATURES.md`) already captured first-skip propagation and
+skip-confirm warnings. The broader JITAI framing is: first sequence rupture is
+the decision point; next anchor distance, pressure load, category, time of day,
+and recent skips are tailoring variables; buffer/reduce-scope/clear-window are
+intervention options; next-task start and next 2-6h skip rate are proximal
+outcomes. Keep parked until exposure logging, suppression/randomization, and
+baseline rates are ready.
+
 **Trigger.** First planned task of the user's day (lowest
 `planned_start_utc` for that local-date) transitions to SKIPPED.
 

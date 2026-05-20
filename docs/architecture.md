@@ -5,9 +5,10 @@
 *Current status: historical design note. The current shipped architecture is
 NextAuth Google identity, frontend-minted backend JWT, FastAPI v1 API, request
 user scope middleware, SQLAlchemy/Postgres, Redis, APScheduler workers, and
-operator-only JARVIS/OpenClaw. Use `archive/appstore/summary_of_app.md`,
-`docs/deployment_architecture.md`, and `docs/cortex_product_research_contract_v0.md`
-as current authority.*
+operator-only JARVIS/OpenClaw. Use `docs/deployment_architecture.md`,
+`docs/cortex_product_research_contract_v0.md`, `README.md`, and `MANIFESTO.md`
+as current authority. `archive/appstore/summary_of_app.md` is historical
+lineage unless a current governance document explicitly promotes a section.*
 
 ---
 

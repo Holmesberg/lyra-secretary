@@ -161,7 +161,29 @@ research claims.
 
 ---
 
-## 7. Compact Bibliography
+## 7. Cross-Domain Coverage Matrix
+
+This matrix summarizes the 2026-05-20 literature-compression pass. The full
+audit lives in `docs/cross_domain_breakthrough_audit_2026_05_20.md`.
+
+| Domain | Current Lyra coverage | Missing / next compression | Claim risk |
+| --- | --- | --- | --- |
+| HCI / personal informatics | Strong: tracking friction, reflection, action loop, nonjudgmental copy. | Add more explicit reflection-vs-rumination and lived-informatics vocabulary. | Users may experience mirrors as judgment. |
+| Behavioral measurement | Strong: planning fallacy, self-report caution, exposure contamination. | Add self-monitoring reactivity and JITAI/MRT language to intervention docs. | Low-n findings may look stronger than they are. |
+| Control systems / cybernetics | Partial: feedback, drift, cascade, recovery. | Define state/input/disturbance/objective/stability before using control claims. | Metaphor outruns formalism. |
+| Data / measurement science | Strong: provenance, clean-data profiles, validity boundaries. | Keep source/claim lineage attached to every synthesis surface. | Clean data becomes generic "good data." |
+| Software systems architecture | Strong: provider adapters, read-time projections, topology checks. | Add causal-temporal ordering to exposure/outcome windows when needed. | Runtime shortcuts corrupt measurement. |
+| Human-AI systems | Partial-to-strong: AI as support, not truth. | Preserve AI as downstream synthesis over evidence packets. | Fluent language becomes hidden authority. |
+| Cognitive ergonomics | Partial: attention, burden, friction. | Add workload, interruption cost, task switching, cognitive offloading. | Product makes truth visible but too costly. |
+| CSCW / organization | Early: provider/workflow surfaces. | Add articulation work, boundary objects, handoffs, breakdown repair. | Middleware becomes workflow replacement. |
+| EdTech / learning analytics | Partial: academic pressure map and LMS boundary. | Add mastery-vs-engagement and institutional surveillance cautions. | Academic pressure becomes student-risk scoring. |
+| Digital phenotyping / passive sensing | Guarded but undernamed. | Name passive-sensing risks explicitly in provider contracts. | Passive traces become latent truth. |
+| Persuasive technology | Guarded through anti-gamification/low authority. | Map to PSD/dark-pattern literature as a negative reference. | Influence turns into engagement optimization. |
+| Privacy / security | Strong as operational governance. | Keep contextual integrity and re-identification risk in provider decisions. | Behavioral traces escape expected context. |
+
+---
+
+## 8. Compact Bibliography
 
 | Source | Used for |
 | --- | --- |
@@ -185,7 +207,7 @@ research claims.
 
 ---
 
-## 8. One-Paragraph External Summary
+## 9. One-Paragraph External Summary
 
 LyraOS currently has an implemented behavioral instrumentation architecture:
 task plans, execution traces, pauses, reflections, exposure events, and

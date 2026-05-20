@@ -101,6 +101,26 @@ Long-term, Lyra should be an execution intelligence layer with adapters to:
 - Notion or other planning systems,
 - and future academic or workplace systems.
 
+### EdTech And Learning-Analytics Boundary
+
+Academic integrations place Lyra near learning analytics and educational data
+mining, but Lyra must not inherit their strongest institutional overclaims.
+
+Rules:
+
+- LMS activity is not learning.
+- Assignment completion is not mastery.
+- Resource views are not comprehension.
+- Attendance is not engagement.
+- Deadline pressure is not academic risk by itself.
+- Study execution is not proof of learning outcome.
+
+Academic provider data may support workload topology, obligation discovery,
+and pressure visibility. It must not become competence scoring, student-risk
+classification, or institutional surveillance. If a future partner wants
+teacher/admin views, that is a new governance surface, not an extension of the
+student execution substrate.
+
 ## 3. No Two-App Loop
 
 Do not require the user to bounce between products:

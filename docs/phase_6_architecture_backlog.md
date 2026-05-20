@@ -221,7 +221,13 @@ Bias-factor feedback surfaced at stop (the current `calibration_nudge` path) tel
 
 ### Architectural constraints
 
-- **Never auto-fill.** The field starts empty. The user types a number. Only after the user has committed a number does the nudge fire. This preserves the uncontaminated planning signal (see `docs/do_not_add.md` §Auto-suggested task durations).
+- **Never auto-fill as an independent user estimate.** The field starts empty.
+  The user types a number. Only after the user has committed a number does the
+  nudge fire. This preserves the uncontaminated planning signal. Any future
+  pre-task duration prior must be recorded as system-suggested, exposed, and
+  excluded from pure user-estimate calibration unless a successor profile
+  admits it (see `docs/do_not_add.md` §Auto-suggested task durations without
+  provenance).
 - **Cold-start protection.** Nudge suppressed for (user × category) combinations with < 10 sessions. Surface the "Insights unlock in N sessions" progress framing instead (gap fix G4). Maps to calibration pre-registered constraint §"30 sessions per category" but relaxed to 10 for the *nudge surface*, which is a lower-stakes metric-dialect surface — philosophical branches keep the 30-session gate.
 - **No escalation on dismiss.** Dismissal is not nagged. The user saw the prediction, chose to proceed, that choice is itself V1 signal (measurement-trust velocity — a user who repeatedly overrides the model and overruns is an Illusion Preserver or Overcorrector, see §User Response Typology).
 - **V3 engagement signal.** Every nudge render, dismissal, and acceptance logs to `reflection_view_log` with `reflection_type = 'creation_nudge'`, `viewed_at`, `dismissed_at`, `dwell_seconds`, `outcome` (kept/adjusted/dismissed). Feeds the Phase 6 response-type classifier.

@@ -64,7 +64,50 @@ changed multiple downstream decisions.
 
 ---
 
-## 3. What Is Actually New
+## 3. Expanded Domain Map
+
+### Core Load-Bearing Domains
+
+| Domain | What Lyra is doing inside it | Prior-art anchors | Current documentation status | Main risk |
+| --- | --- | --- | --- | --- |
+| HCI / personal informatics | Reducing tracking friction, making execution traces legible, and moving users from collection to reflection/action. | Li/Dey/Forlizzi; Rooksby; Epstein; Baumer; Cho; Toebosch. | Strong, but terminology still thin. | Reflection becomes rumination or judgment. |
+| Behavioral science / measurement | Testing intention-action gaps, planning fallacy, self-report limits, measurement reactivity, and intervention timing. | Buehler; Newby-Clark; Nelson/Hayes; Klasnja; Nahum-Shani. | Strong. | Treating low-n operator patterns as validated laws. |
+| Control systems / cybernetics | Modeling execution as state, feedback, disturbance, correction, and instability propagation. | Wiener; Ashby; Conant/Ashby; Hekler; Carver/Scheier. | Partial. | Decorative "execution physics" language without state/control definitions. |
+| Data / measurement science | Preserving provenance, clean-data admission, validity boundaries, and uncertainty propagation. | Messick; Kane; Wang/Strong; W3C PROV; Buneman. | Strong. | Clean data becomes a vibe instead of an explicit inference-specific profile. |
+| Software systems architecture | Using adapters, event traces, read-time projections, temporal ordering, and runtime topology as measurement infrastructure. | Parnas; Lamport; event sourcing; stream processing; provenance databases. | Strong. | Product shortcuts bypassing the measurement substrate. |
+| AI / human-AI systems | Keeping AI downstream of deterministic evidence; preserving uncertainty and user correction. | Horvitz; Parasuraman/Riley; Lee/See; Amershi; Liao; Vital Insight. | Partial-to-strong. | Fluent synthesis collapses uncertainty into narrative authority. |
+
+### Important Adjacent Domains
+
+| Domain | Why it matters | Missing terminology to add when relevant |
+| --- | --- | --- |
+| Cognitive ergonomics | Lyra is directly manipulating workload visibility, interruption timing, task switching, and cognitive offloading. | mental workload, interruption cost, task switching, cognitive offloading, NASA-TLX, ecological momentary assessment. |
+| CSCW / organizational systems | Provider adapters and academic/workplace integrations become coordination infrastructure, not just personal tracking. | articulation work, boundary objects, awareness, handoffs, infrastructuring, breakdown repair. |
+| EdTech / learning analytics | Academic Pressure Map sits near LMS analytics and student-risk dashboards. | self-regulated learning, learning analytics, educational data mining, mastery vs engagement, institutional ethics. |
+| Neurotechnology / BCI | Future BCI claims depend on noisy state inference and closed-loop authority. | passive BCI, neuroadaptive systems, signal nonstationarity, neuroergonomics, mental privacy. |
+| Privacy / security engineering | Behavioral traces are high-risk even when not formally health data. | contextual integrity, de-identification risk, purpose limitation, scoped consent, anti-surveillance architecture. |
+| Philosophy of science / epistemology | The system makes claims from traces and must preserve falsifiability. | construct validity, Goodhart/Campbell/Lucas, proxy validity, theory-ladenness, epistemic humility. |
+
+### Peripheral / Future-Relevant Domains
+
+| Domain | Why to study it | Default stance |
+| --- | --- | --- |
+| Computational social science | Cohorts will eventually require panel data, multilevel models, heterogeneity, survivorship bias, and causal inference. | Future-gated; do not overfit small alpha data. |
+| Digital phenotyping | Passive behavioral traces overlap with clinical/passive-sensing fields and their ethical failures. | Negative/guardrail reference unless explicit successor governance exists. |
+| Persuasive technology | Lyra uses influence but must avoid captology/dark-pattern failure modes. | Study mostly to reject manipulative loops and preserve autonomy. |
+| Systems neuroscience | Useful for dynamical-systems intuition and future neuroadaptive work. | Indirect; do not neurologize normal execution behavior. |
+
+### Five High-Value Intersections
+
+| Intersection | Lyra translation | Divergence |
+| --- | --- | --- |
+| HCI x behavioral science x control theory | Interfaces that observe and shape execution dynamics through feedback loops. | Lyra logs exposure and treats interventions as experimental surfaces, not neutral UI. |
+| Measurement science x AI x epistemology | Deterministic evidence packets first; AI only translates uncertainty and competing hypotheses. | Most AI products collapse ambiguity; Lyra should preserve it. |
+| EdTech x execution modeling | Academic systems provide obligations; Lyra models whether students can execute against them. | Lyra must not infer learning, mastery, or student risk from activity alone. |
+| AI alignment x behavioral systems | Adaptive systems model human behavior longitudinally while preserving agency. | Alignment means honesty/contact with reality, not obedience or engagement. |
+| Personal informatics x systems dynamics | Drift, pressure, recovery, interruption, and cascades become dynamic state transitions. | Lyra treats lapses/missingness as topology, not mere data failure. |
+
+## 4. What Is Actually New
 
 The individual components are mostly not new:
 
@@ -99,7 +142,7 @@ as if each concept was invented here.
 
 ---
 
-## 4. Current Data Against Doctrine
+## 5. Current Data Against Doctrine
 
 Current operator/cohort data is too small and contaminated to validate broad
 claims. It is still useful as a direction-of-travel check.
@@ -126,7 +169,7 @@ Circuit Breaker**, with morning skip as one subtype.
 
 ---
 
-## 5. Literature Mapping
+## 6. Literature Mapping
 
 ### Personal Informatics And Self-Tracking
 
@@ -291,20 +334,79 @@ Lyra mapping:
 
 ---
 
-## 6. Documentation Gaps Found
+## 7. Archived Lineage Recovered
+
+The archive scan matters because several "new" ideas were already parked in
+older language. The goal is not to resurrect everything, but to recover the
+valuable lineage before it disappears.
+
+| Recovered idea | Where it was already present | Current action |
+| --- | --- | --- |
+| Execution substrate before middleware language | `archive/hackathon_video_script_v1.md`; `archive/docs_history/complexity_stress_test_2026_05_01.md`; `docs/LyraOS_evolution.md` | Treat as lineage for the current execution-reality middleware framing. |
+| Exposure Ledger as causal firewall | `archive/prompts/lyraos_complexity_check_prompt.md`; `archive/appstore/summary_of_app.md` | Keep in current Cortex/product-research doctrine; do not leave only in archive. |
+| Cascade interrupt prevention | `archive/FEATURES.md` captured first-skip/cascade metrics and skip-confirm warnings. | Reframe as Cascade Intercept / Sequence Disruption Circuit Breaker, not only morning-skip VT-32. |
+| JARVIS/operator synthesis | `archive/docs_history/data_utilization_inventory_2026_05_02.md` and `docs/parked_ideas.md` | Keep as hypothesis discovery and operator-only synthesis until evidence packets mature. |
+| Control-system policy update after error | `docs/parked_ideas.md` | Preserve the policy-update intuition, but avoid latent "internal faction" truth claims. |
+
+Archive warnings:
+
+- Older "dashboard" cascade surfaces are superseded; cascade math survives.
+- Older LLM-as-planner/agent ambitions must not leak into non-operator
+  product without exposure and authority gates.
+- Any archived "first system" or "nobody measured" language is historical
+  enthusiasm, not current external-review wording.
+
+---
+
+## 8. Failure Patterns To Track
+
+| Failure pattern | Domain source | Lyra protection |
+| --- | --- | --- |
+| Proxy becomes truth | Learning analytics, digital phenotyping, measurement validity | Activity is evidence, not learning/focus/effort/identity. |
+| Metric corruption | Goodhart/Campbell/Lucas, persuasive systems | Keep metrics descriptive; avoid engagement/compliance targets. |
+| Exposure contamination | Self-monitoring reactivity, JITAIs, causal inference | Exposure ledger, no clean baseline learning without exposure context. |
+| Context collapse | Privacy/contextual integrity | Keep academic, productivity, health, identity, and institutional claims separated. |
+| De-anonymization fantasy | Privacy/security | Treat sparse behavioral traces as potentially identifying even after redaction. |
+| Paternalistic EdTech | Learning analytics ethics | No teacher/admin risk scoring from student execution traces without new governance. |
+| Neuroadaptive overreach | Passive BCI/neuroethics | BCI remains future-gated, complementary, and never truth authority. |
+| Fluent AI certainty | Human-AI/XAI | AI synthesis must cite evidence packets, alternatives, and confidence provenance. |
+| Rumination loop | Personal informatics reflection research | Nonjudgmental copy plus repair paths, not identity labels or shame. |
+
+---
+
+## 9. Terminology Mapping
+
+| Lyra term | Adjacent literature term |
+| --- | --- |
+| execution-reality layer | joint cognitive system, ecological interface, personal informatics substrate |
+| plan as hypothesis | situated action, implementation intention, self-regulated learning plan |
+| execution drift | control error, prediction error, plan-action gap |
+| exposure ledger | intervention provenance, treatment exposure, audit trail, measurement reactivity log |
+| clean-data profile | validity filter, exclusion rule, construct-validity boundary |
+| pressure map | learning analytics dashboard, workload model, decision-support display |
+| missingness as signal | informative missingness, avoidance trace, nonresponse behavior |
+| earned adaptation authority | calibrated automation, human-in-the-loop control, uncertain objective alignment |
+| no identity labels | anti-essentialist classification, posterior not persona, classification caution |
+| AI role boundary | non-authoritative model assistance, decision support, provenance-constrained inference |
+
+---
+
+## 10. Documentation Gaps Found
 
 | Gap | Current state | Recommended home |
 | --- | --- | --- |
 | Literature compression loop | Not explicitly documented before this audit. | This doc; later short section in `docs/research_mapping.md`. |
 | AI synthesis layer boundary | Mentioned only as "synthesize cautiously" / operator synthesis. | Keep later; add to parked ideas or future architecture only when implementation is near. |
-| Cascade intercept as broad product priority | Morning-skip subtype exists in `docs/parked_ideas.md`; broad "first skip as phase transition" not named. | `docs/parked_ideas.md` when revisited; do not implement yet. |
+| Cascade intercept as broad product priority | Morning-skip subtype exists in `docs/parked_ideas.md`; archive has stronger first-skip/cascade interrupt lineage. | `docs/parked_ideas.md` when revisited; do not implement yet. |
 | Nonjudgmental interface prior art | Low-authority doctrine exists, but DIS 2024 paper is not cited. | `docs/research_mapping.md`. |
 | Reflection vs rumination | Psychological safety doctrine exists, but rumination risk is not named. | `docs/product_research_assumption_register.md` or copy review docs. |
 | Control-system terminology guard | "Execution physics" is strong, but formal control terms are not yet bounded. | `docs/behavioral_instrumentation_doctrine.md` if control terms enter product/research prose. |
+| EdTech/learning analytics boundary | Academic substrate exists but learning/mastery/institutional-risk vocabulary is thin. | `docs/academic_execution_substrate.md`. |
+| Digital phenotyping/passive sensing boundary | Provider/passive doctrine exists but the neighboring risk domain is not named. | `docs/provider_adapter_contract.md`. |
 
 ---
 
-## 7. Reading Pipeline Rule
+## 11. Reading Pipeline Rule
 
 Every new high-level Lyra idea should be captured in this format before it
 mutates schema, product copy, or research doctrine:
@@ -329,14 +431,18 @@ This prevents:
 
 ---
 
-## 8. Source Set Consulted
+## 12. Source Set Consulted
 
 Core sources used in this audit:
 
 - Li, Dey, and Forlizzi, "A Stage-Based Model of Personal Informatics Systems,"
   CHI 2010: https://www.ianli.com/publications/2010-ianli-chi-stage-based-model.pdf
+- Rooksby et al., "Personal Tracking as Lived Informatics," CHI 2014:
+  https://doi.org/10.1145/2556288.2557039
 - Epstein, Ping, Fogarty, and Munson, "A Lived Informatics Model of Personal
   Informatics," UbiComp 2015: https://homes.cs.washington.edu/~jfogarty/publications/ubicomp2015.pdf
+- Baumer, "Reflective Informatics," CHI 2015:
+  https://doi.org/10.1145/2702123.2702234
 - Mols et al., "Personal Informatics, Self-Insight, and Behavior Change: A
   Critical Review of Current Literature," HCI 2017:
   https://www.tandfonline.com/doi/full/10.1080/07370024.2016.1276456
@@ -353,10 +459,37 @@ Core sources used in this audit:
   https://research.chalmers.se/en/publication/534349
 - Suchman, "Plans and Situated Actions," 1987/2007:
   https://course.ccs.neu.edu/cs5100f12/resources/reading/suchman-situatedactions.pdf
+- Dourish, "What We Talk About When We Talk About Context," Personal and
+  Ubiquitous Computing 2004: https://isr.uci.edu/node/1094.html
+- Ackerman, "The Intellectual Challenge of CSCW: The Gap Between Social
+  Requirements and Technical Feasibility," HCI 2000:
+  https://www.tandfonline.com/doi/abs/10.1207/S15327051HCI1523_5
+- Nelson and Hayes, "Theoretical Explanations for Reactivity in
+  Self-Monitoring," 1981: https://doi.org/10.1177/014544558151001
+- Klasnja et al., "Microrandomized Trials," Health Psychology 2015:
+  https://doi.org/10.1037/hea0000305
+- Wiener, "Cybernetics," MIT Press OA:
+  https://direct.mit.edu/books/oa-monograph/4581/Cybernetics-or-Control-and-Communication-in-the
+- Ashby, "An Introduction to Cybernetics":
+  https://ashby.info/Ashby-Introduction-to-Cybernetics.pdf
+- Hekler et al., "Tutorial for Using Control Systems Engineering to Optimize
+  Adaptive Mobile Health Interventions," JMIR 2018:
+  https://doi.org/10.2196/jmir.8622
+- Messick, "Validity of Psychological Assessment," 1995:
+  https://doi.org/10.1037/0003-066X.50.9.741
+- Kane, "Validating the Interpretations and Uses of Test Scores," 2013:
+  https://doi.org/10.1111/jedm.12000
+- W3C PROV overview: https://www.w3.org/TR/prov-overview/
 - Horvitz, "Principles of Mixed-Initiative User Interfaces," CHI 1999:
   https://erichorvitz.com/chi99horvitz.pdf
+- Parasuraman and Riley, "Humans and Automation," 1997:
+  https://doi.org/10.1518/001872097778543886
+- Lee and See, "Trust in Automation," 2004:
+  https://doi.org/10.1518/hfes.46.1.50_30392
 - Amershi et al., "Guidelines for Human-AI Interaction," CHI 2019:
   https://haoyuma20492350.github.io/data/papers_pdf/AmershiSaleema2019Gfhi.pdf
+- Liao et al., "Question-driven Design Process for Explainable AI User
+  Experiences," 2020: https://arxiv.org/abs/2001.02478
 - Nahum-Shani et al., "Just-in-Time Adaptive Interventions in Mobile Health,"
   Annals of Behavioral Medicine 2018:
   https://academic.oup.com/abm/article/52/6/446/4733473
@@ -374,4 +507,16 @@ Core sources used in this audit:
   https://pmc.ncbi.nlm.nih.gov/articles/PMC10373115/
 - "Digital Twins for Just-in-Time Adaptive Interventions," JMIR 2026:
   https://www.jmir.org/2026/1/e72830
-
+- Onnela and Rauch, "Harnessing Smartphone-Based Digital Phenotyping," 2016:
+  https://www.nature.com/articles/npp20167
+- Nissenbaum, "Privacy as Contextual Integrity," 2004:
+  https://digitalcommons.law.uw.edu/wlr/vol79/iss1/10/
+- Narayanan and Shmatikov, "Robust De-anonymization of Large Sparse Datasets,"
+  2008:
+  https://collaborate.princeton.edu/en/publications/robust-de-anonymization-of-large-sparse-datasets/
+- Slade and Prinsloo, "Learning Analytics: Ethical Issues and Dilemmas," 2013:
+  https://journals.sagepub.com/doi/10.1177/0002764213479366
+- Gray et al., "The Dark (Patterns) Side of UX Design," CHI 2018:
+  https://darkpatterns.uxp2.com/publication/chi18/
+- Zander and Kothe, "Towards Passive Brain-Computer Interfaces," 2011:
+  https://www.zanderlabs.com/resources/towards-passive-brain-computer-interfaces

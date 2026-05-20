@@ -42,8 +42,31 @@ See `docs/design_patterns/notification_patterns.md §Progressive Revelation Patt
 ## Aggressive notification schemes
 **Rejected.** Lyra's notification philosophy is minimal and informational: timer overflow alerts (2 min cycle), reminders (1 min cycle, single fire), overdue detection (30 min cycle). No engagement-driving notifications, no "you haven't logged today" guilt prompts, no streak-preservation nudges. Notifications that serve the system's retention goals rather than the user's information needs violate the custodianship trust frame.
 
-## Auto-suggested task durations
-**Rejected.** Would corrupt the user's own planning signal. The `planned_duration_minutes` field must reflect the user's genuine estimate, not a system suggestion. If the system suggests "45 min based on your history," the user's subsequent estimate is anchored (Tversky & Kahneman 1974) and no longer measures their independent planning ability. The calibration architecture (Phase 6) depends on observing uncontaminated planning inputs. Bias-factor feedback is surfaced AFTER the task, never before.
+## Auto-suggested task durations without provenance
+**Rejected.** A system-suggested duration that is accepted unchanged and then
+treated as the user's independent estimate corrupts the planning signal. If
+the system suggests "45 min based on your history," the user's subsequent
+estimate is anchored (Tversky & Kahneman 1974) and no longer measures their
+independent planning ability.
+
+**Permitted only with provenance and clean-data exclusion.** Low-authority
+duration priors may appear as editable product scaffolding when the row records
+the suggestion source, user decision, exposure state, and whether the user
+accepted or edited it. Unedited accepted suggestions must be excluded from
+pure user-estimate calibration unless a successor clean-data profile explicitly
+admits them as a separate source class.
+
+Distinction:
+
+- **Independent user estimate:** eligible for planning-calibration baselines
+  if all other clean-data rules pass.
+- **System-suggested accepted duration:** product-useful but contaminated for
+  independent-estimate claims.
+- **System-suggested edited duration:** may become a distinct negotiation
+  signal, not a pure user estimate.
+
+Bias-factor feedback remains safest after the task. Any pre-task duration
+suggestion is an exposure surface.
 
 ## Mobile native apps before PWA proves form factor
 **Rejected as current priority.** PWA support (Phase 7, ~4 hours) proves 80% of the mobile form factor hypothesis. Native apps require ongoing maintenance burden (App Store review, platform-specific bugs, CI pipeline per platform) that is disproportionate to a pre-retention research instrument. If PWA retention data shows mobile is critical, native apps enter the backlog. Not before.
