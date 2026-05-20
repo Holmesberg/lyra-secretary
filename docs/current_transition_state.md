@@ -46,6 +46,9 @@ Use these documents as the current authority chain:
 7. `docs/tightened_docs/15_long_term_repo_strategy.md` and
    `docs/tightened_docs/17_immediate_freeze_targets.md` - semantic-entropy and
    freeze-gate constraints.
+8. `docs/architecture_freeze_priority_hold_2026_05_20.md` - temporary
+   priority hold for the evidence/synthesis breakthrough; preserve it for
+   later, but do not implement it during this branch.
 
 `docs/building_phases.md` remains useful historical/product roadmap context,
 but it is stale April phase planning and is not the only active phase
@@ -88,3 +91,8 @@ The following remain later phases:
 
 Those phases require separate implementation plans and must re-check exposure,
 clean-data, and output-surface gates before code lands.
+
+The temporary priority hold in
+`docs/architecture_freeze_priority_hold_2026_05_20.md` is the current reminder
+that AI synthesis and public cascade intervention remain later, not hidden
+Phase 1 scope.
