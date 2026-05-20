@@ -76,6 +76,25 @@ def test_execution_correction_is_append_only_and_query_exposes_effective_fields(
     assert corrected["execution_correction_id"] == body["correction_id"]
 
 
+def test_execution_correction_accepts_corrected_end_time(client, db):
+    task = _seed_executed(db, task_id="exec-correction-end-time")
+
+    r = client.post(
+        f"/v1/tasks/{task.task_id}/execution-correction",
+        json={"corrected_end_time": "2026-05-10T11:15:00Z"},
+        headers=auth_headers(USER_ID),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["corrected"] is True
+    assert body["corrected_executed_duration_minutes"] == 75
+    assert body["corrected_executed_end"].startswith("2026-05-10T")
+
+    row = db.query(TaskExecutionCorrection).filter_by(task_id=task.task_id).one()
+    assert row.corrected_executed_end_utc == datetime(2026, 5, 10, 11, 15, 0)
+    assert row.corrected_executed_duration_minutes == 75
+
+
 def test_execution_correction_rejects_non_executed_tasks(client, db):
     start = datetime(2026, 5, 10, 11, 0, 0)
     task = Task(
