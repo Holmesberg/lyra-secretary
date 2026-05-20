@@ -1,7 +1,7 @@
 # LyraOS Research Claim Map
 
 > **Status:** explanatory research map for professor/external review.
-> **Last updated:** 2026-05-16
+> **Last updated:** 2026-05-20
 > **Authority note:** this document is not canonical governance. `MANIFESTO.md`
 > remains the highest-authority doctrine for research/product boundaries.
 
@@ -9,6 +9,10 @@ This map separates what LyraOS can honestly claim today from what remains
 speculative. The current system is strongest as an implemented behavioral
 measurement substrate. It has not yet validated cross-user behavioral
 prediction, adaptive scheduling, or archetype effectiveness.
+
+For the 2026-05-20 cross-domain literature compression pass, including the
+current breakthrough register and HCI/control/JITAI mapping, see
+`docs/cross_domain_breakthrough_audit_2026_05_20.md`.
 
 ---
 
