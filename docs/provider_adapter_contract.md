@@ -137,19 +137,29 @@ Additional rules for passive/provider-adjacent traces:
 Adapters must translate into these provider-blind primitives where applicable:
 
 ```text
-obligation
-intention
+provider_connection
+external_obligation
+academic_asset
+activity_event
 execution_event
-outcome
-interruption
+outcome_trace
 exposure
-drift
-recalibration
+trust_state
+provenance
+authority_level
+redaction_status
+idempotency_key
 ```
 
-Provider imports usually create obligations or weak activity traces. They do
-not create planning calibration unless the user accepted or confirmed an
-intention.
+Provider imports usually create external obligations or weak activity traces.
+They do not create planning calibration unless the user accepted or confirmed
+an intention.
+
+Pressure-map and analytics consumers must branch on provider-blind fields such
+as `source_class`, `evidence_class`, `trust_state`, `authority_level`, and
+`redaction_status`. Provider labels such as Moodle or Baseet may remain in
+adapter UI/display mapping, but they must not become core pressure, Cortex,
+ClaimCompiler, or clean-data admission branches.
 
 ## 5. Provider Failure Invariant
 

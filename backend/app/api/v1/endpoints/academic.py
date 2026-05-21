@@ -57,8 +57,8 @@ def _pressure_map_exposure_snapshot(
         "estimated_high_minutes": payload.estimated_high_minutes,
         "source_summary": {
             "deadlines_total": source_summary.deadlines_total,
-            "external_obligation_count": source_summary.moodle_deadlines,
-            "native_obligation_count": source_summary.native_deadlines,
+            "external_obligation_count": source_summary.external_obligation_count,
+            "native_obligation_count": source_summary.native_obligation_count,
             "academic_task_count": source_summary.academic_task_count,
             "study_task_count": source_summary.study_task_count,
             "academic_task_minutes": source_summary.academic_task_minutes,

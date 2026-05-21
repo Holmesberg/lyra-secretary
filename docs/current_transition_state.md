@@ -170,3 +170,34 @@ not every piece of copy and provider-derived detail the user saw.
 | --- | --- | --- |
 | Full render-content retention | Useful for exact replay/debugging, but too broad for behavioral/provider-derived surfaces. | Revisit after defining per-surface retention policy, redaction class, and operator access controls. |
 | Rich evidence audit store | Needed eventually for forensics and research validation. | Implement separately from public payloads and exposure render snapshots, with typed fields and retention rules. |
+
+---
+
+## Wave 5 Deletion And Parking Ledger
+
+Baseet and future providers must enter through provider-neutral seams, not by
+teaching Pressure Map or ClaimCompiler to understand every provider dialect.
+
+### Removed Or Renamed From Pressure Map Core
+
+| Concept | Status | Why | Reintroduction condition |
+| --- | --- | --- | --- |
+| `moodle_deadlines` | Renamed to `external_obligation_count`. | Moodle is one provider, not a substrate category. | Do not reintroduce to core schemas; provider display names belong at adapter/UI edges. |
+| `native_deadlines` | Renamed to `native_obligation_count`. | Pressure Map reasons about obligations, not provider-specific deadline dialects. | Only add provider-specific counts in a provider-native/admin view. |
+| Raw `external_source` as item `source` | Replaced with provider-blind `source`, `source_class`, `evidence_class`, `provider_kind`, `raw_authority_level`, and `redaction_status`. | Core pressure logic should branch on evidence authority and provenance class, not provider string names. | Provider labels may be used for display only after adapter redaction/provenance rules are explicit. |
+| Public Baseet-specific methodology copy | Replaced with provider-boundary wording. | Baseet readiness is an internal seam, not a user-facing claim. | Reintroduce only on a Baseet-native adapter/sync surface. |
+
+### Kept
+
+| Concept | Why it stays |
+| --- | --- |
+| `provider_kind` | Kept as provenance/display metadata, not as clean-data or claim authority. |
+| Recovery options on Pressure Map | They remain low-authority suggestions requiring explicit user action. |
+| Moodle fixtures in tests | They still simulate an existing provider, but tests assert provider-neutral output contracts. |
+
+### Parked
+
+| Concept | Why parked | Revisit condition |
+| --- | --- | --- |
+| Full provider connection abstraction | Useful before live Baseet scale, but no migration is needed for this seam pass. | Revisit when a second provider must persist connections or sync state. |
+| Provider-native pressure cards | Allowed at the edge, but not required for current pressure-map containment. | Revisit with Baseet live integration and UI copy review. |

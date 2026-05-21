@@ -23,6 +23,12 @@ AcademicTrustState = Literal[
 AcademicComplexityTier = Literal["low", "medium", "high", "unknown"]
 AcademicConfidence = Literal["low", "medium", "high"]
 AcademicPressureLevel = Literal["low", "medium", "high", "overdue"]
+AcademicSourceClass = Literal["external", "native", "lyra_task"]
+AcademicEvidenceClass = Literal[
+    "external_obligation",
+    "native_obligation",
+    "scheduled_intention",
+]
 AcademicCompressionKind = Literal[
     "due_soon",
     "overdue",
@@ -51,6 +57,11 @@ class AcademicPressureItem(BaseModel):
     title: str
     due_at_utc: datetime
     source: str
+    source_class: AcademicSourceClass
+    evidence_class: AcademicEvidenceClass
+    provider_kind: Optional[str] = None
+    raw_authority_level: str
+    redaction_status: str
     obligation_type: str
     trust_state: AcademicTrustState
     complexity_tier: AcademicComplexityTier
@@ -69,8 +80,8 @@ class AcademicPressureItem(BaseModel):
 
 class AcademicSourceSummary(BaseModel):
     deadlines_total: int
-    moodle_deadlines: int
-    native_deadlines: int
+    external_obligation_count: int
+    native_obligation_count: int
     academic_task_count: int = 0
     study_task_count: int = 0
     academic_task_minutes: int = 0

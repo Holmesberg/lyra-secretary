@@ -32,7 +32,7 @@ function fmtDue(days: number): string {
 }
 
 function fmtTiming(item: AcademicPressureItem): string {
-  const isTask = item.source === "lyra_self_study_task" || item.source === "lyra_academic_task";
+  const isTask = item.source_class === "lyra_task";
   const days = item.days_until_due;
   if (!isTask) return fmtDue(days);
   if (days < 0) return "started";
@@ -97,8 +97,8 @@ export function PulseAcademicPressureMap({
                   pressure.estimated_low_minutes,
                   pressure.estimated_high_minutes
                 )}{" "}
-                visible load / {pressure.source_summary.moodle_deadlines} Moodle /{" "}
-                {pressure.source_summary.native_deadlines} native /{" "}
+                visible load / {pressure.source_summary.external_obligation_count} external /{" "}
+                {pressure.source_summary.native_obligation_count} native /{" "}
                 {pressure.source_summary.academic_task_count} academic /{" "}
                 {pressure.source_summary.study_task_count} study
               </p>

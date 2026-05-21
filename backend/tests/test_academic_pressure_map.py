@@ -102,6 +102,13 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     titles = [item["title"] for item in data["items"]]
     assert titles == ["Algorithms Quiz 2"]
     item = data["items"][0]
+    assert item["source"] == "external_obligation"
+    assert item["source_class"] == "external"
+    assert item["evidence_class"] == "external_obligation"
+    assert item["provider_kind"] == "moodle"
+    assert item["raw_authority_level"] == "provider_reachable"
+    assert item["redaction_status"] == "metadata_only"
+    assert "moodle_ics" not in " ".join(item["estimate"]["assumptions"])
     assert item["estimate"]["low_minutes"] < item["estimate"]["high_minutes"]
     assert item["estimate"]["low_minutes"] % 30 == 0
     assert item["estimate"]["high_minutes"] % 30 == 0
@@ -119,6 +126,10 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     assert "3-5 student confirmations" in data["coverage_questions"][0]["reason"]
     assert data["capacity_context"]["google_calendar_connected"] is False
     assert "not true free time" in data["capacity_context"]["caveat"]
+    assert data["source_summary"]["external_obligation_count"] == 1
+    assert data["source_summary"]["native_obligation_count"] == 0
+    assert "moodle_deadlines" not in data["source_summary"]
+    assert "native_deadlines" not in data["source_summary"]
 
     decision = (
         db.query(ExposureDecisionEvent)

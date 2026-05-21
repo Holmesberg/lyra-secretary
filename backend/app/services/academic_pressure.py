@@ -80,6 +80,16 @@ class _TypePrior:
     assumption: str
 
 
+@dataclass(frozen=True)
+class _ProviderBoundary:
+    source: str
+    source_class: str
+    evidence_class: str
+    provider_kind: str | None
+    raw_authority_level: str
+    redaction_status: str
+
+
 _TYPE_PRIORS: dict[str, _TypePrior] = {
     "quiz": _TypePrior(240, 420, "quiz prior from assessment type"),
     "midterm": _TypePrior(480, 840, "midterm prior from assessment type"),
@@ -188,10 +198,56 @@ def _pressure_level(due_at: datetime, now: datetime) -> AcademicPressureLevel:
     return "low"
 
 
+def _provider_kind(external_source: str | None) -> str | None:
+    source = (external_source or "").strip().lower()
+    if not source:
+        return None
+    if source.startswith("moodle"):
+        return "moodle"
+    if source.startswith("baseet"):
+        return "baseet"
+    if source.startswith("google"):
+        return "calendar"
+    return "external_provider"
+
+
+def _deadline_boundary(deadline: Deadline) -> _ProviderBoundary:
+    if deadline.external_source:
+        return _ProviderBoundary(
+            source="external_obligation",
+            source_class="external",
+            evidence_class="external_obligation",
+            provider_kind=_provider_kind(deadline.external_source),
+            raw_authority_level="provider_reachable",
+            redaction_status="metadata_only",
+        )
+    return _ProviderBoundary(
+        source="native_obligation",
+        source_class="native",
+        evidence_class="native_obligation",
+        provider_kind="lyra",
+        raw_authority_level="self_reported",
+        redaction_status="not_provider_payload",
+    )
+
+
+def _task_boundary(kind: str) -> _ProviderBoundary:
+    return _ProviderBoundary(
+        source="lyra_self_study_task" if kind == "study" else "lyra_academic_task",
+        source_class="lyra_task",
+        evidence_class="scheduled_intention",
+        provider_kind="lyra",
+        raw_authority_level=(
+            "user_planned" if kind == "study" else "scheduled_structure"
+        ),
+        redaction_status="not_provider_payload",
+    )
+
+
 def _trust_state(deadline: Deadline) -> AcademicTrustState:
-    if deadline.external_source == "moodle_ics":
-        # Imported calendar entries are reachable/imported, but coverage
-        # correctness is not guaranteed by the iCal feed alone.
+    if deadline.external_source:
+        # Imported provider entries are reachable/imported, but coverage
+        # correctness is not guaranteed by provider metadata alone.
         return "verified_reachable"
     return "requires_user_confirmation"
 
@@ -210,7 +266,7 @@ def _estimate(deadline: Deadline) -> AcademicPressureEstimate:
         "no personal execution history applied to this estimate yet",
     ]
     if deadline.external_source:
-        assumptions.append(f"imported from {deadline.external_source}; source remains canonical")
+        assumptions.append("external obligation metadata; provider source remains canonical")
     else:
         assumptions.append("manually/native Lyra deadline; coverage needs user confirmation")
     return AcademicPressureEstimate(
@@ -560,6 +616,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
     items: list[AcademicPressureItem] = []
     for deadline in deadlines:
         due_at = strip_tz(deadline.due_at_utc) or deadline.due_at_utc
+        boundary = _deadline_boundary(deadline)
         estimate = _estimate(deadline)
         days_until = (due_at - generated_at).total_seconds() / 86400
         trust = _trust_state(deadline)
@@ -573,7 +630,12 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
                 obligation_id=deadline.deadline_id,
                 title=deadline.title,
                 due_at_utc=due_at,
-                source=deadline.external_source or "lyra_native",
+                source=boundary.source,
+                source_class=boundary.source_class,
+                evidence_class=boundary.evidence_class,
+                provider_kind=boundary.provider_kind,
+                raw_authority_level=boundary.raw_authority_level,
+                redaction_status=boundary.redaction_status,
                 obligation_type=_classify_obligation(deadline.title),
                 trust_state=trust,
                 complexity_tier=_complexity_tier(deadline.title, deadline.category_hint),
@@ -589,9 +651,9 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
     for task in academic_tasks:
         scheduled_at = strip_tz(task.planned_start_utc) or task.planned_start_utc
         kind = _academic_pressure_task_kind(task)
+        boundary = _task_boundary(kind)
         estimate = _task_estimate(task)
         days_until = (scheduled_at - generated_at).total_seconds() / 86400
-        source = "lyra_self_study_task" if kind == "study" else "lyra_academic_task"
         trust: AcademicTrustState = (
             "verified_exact" if kind == "study" else "requires_user_confirmation"
         )
@@ -605,7 +667,12 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
                 obligation_id=task.task_id,
                 title=task.title,
                 due_at_utc=scheduled_at,
-                source=source,
+                source=boundary.source,
+                source_class=boundary.source_class,
+                evidence_class=boundary.evidence_class,
+                provider_kind=boundary.provider_kind,
+                raw_authority_level=boundary.raw_authority_level,
+                redaction_status=boundary.redaction_status,
                 obligation_type=_classify_task_obligation(task),
                 trust_state=trust,
                 complexity_tier=_complexity_tier(task.title, task.category),
@@ -624,7 +691,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
     calendar_busy, gcal_connected = _calendar_busy_minutes(uid, user, generated_at, window_end)
     planned_minutes = _planned_task_minutes(db, uid, generated_at, window_end)
     native_count = sum(1 for d in deadlines if not d.external_source)
-    moodle_count = sum(1 for d in deadlines if d.external_source == "moodle_ics")
+    external_count = sum(1 for d in deadlines if d.external_source)
     academic_task_minutes = sum(
         int(t.planned_duration_minutes or 0)
         for t in academic_tasks
@@ -681,8 +748,8 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
         estimated_high_minutes=high_total,
         source_summary=AcademicSourceSummary(
             deadlines_total=len(deadlines),
-            moodle_deadlines=moodle_count,
-            native_deadlines=native_count,
+            external_obligation_count=external_count,
+            native_obligation_count=native_count,
             academic_task_count=sum(
                 1 for t in academic_tasks
                 if _academic_pressure_task_kind(t) == "academic"
@@ -702,7 +769,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             "complexity tier as one signal, never final-hour authority",
             "rounded uncertainty ranges instead of exact-hour claims",
             "personal timer traces will override priors after enough evidence",
-            "Baseet-ready provider boundary: metadata and canonical links only",
+            "provider-boundary ready: metadata and canonical links only",
             "clarity-and-agency copy rule: name pressure points with recovery options, not doom",
             "trust-state copy is governed by docs/academic_pressure_map_contract.md",
             "validity threats and research integrity are checked before calibration admission",
