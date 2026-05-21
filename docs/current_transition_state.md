@@ -139,3 +139,34 @@ AI-synthesis container.
 `data_points`, `confidence`, `strength`, and sanitized `facts` only. It must not
 carry provider raw payloads, URLs, tokens, resource bodies, OAuth data,
 Baseet-specific rows, Moodle blobs, latent labels, or moralized terms.
+
+---
+
+## Wave 4 Deletion And Parking Ledger
+
+Exposure render snapshots are not public payload archives. They are durable
+audit records, so they should store the smallest safe proof of what was shown,
+not every piece of copy and provider-derived detail the user saw.
+
+### Removed From Long-Lived Exposure Snapshots
+
+| Surface | Removed | Why | Reintroduction condition |
+| --- | --- | --- | --- |
+| `analytics.insights` | Full public insight response JSON. | It included observation copy and could accidentally retain internal/debug fields if the translator changed. | Only store richer payloads in a typed audit store with explicit retention and redaction rules. |
+| `analytics.insights` | Evidence packet internals. | Packet internals are claim-governance data, not public render content. | Store only safe packet IDs/source refs unless a typed audit reader needs more. |
+| `academic.pressure_map` | Assignment/deadline titles in exposure snapshots. | Provider-derived titles are useful in the response but should not become durable exposure exhaust by default. | Reintroduce only with a surface-specific retention justification. |
+| `academic.pressure_map` | Recovery copy, coverage-question text, compression details, and item warnings in exposure snapshots. | These can contain provider-derived titles or user-salient context. Counts and action types are enough for render/audit proof. | Reintroduce only through a redacted summary schema. |
+
+### Kept In Exposure Snapshots
+
+| Surface | Kept | Why it stays |
+| --- | --- | --- |
+| `analytics.insights` | Surface metadata, rendered insight IDs, suppressed generator IDs, sample counts, and safe audit envelopes. | This proves the rendered set and its claim lineage without persisting copy or packet bodies. |
+| `academic.pressure_map` | Surface role, horizon, item counts, pressure/trust/complexity counts, recovery action types, coverage-question count, estimate range, and source counts. | This preserves operational auditability while avoiding durable provider-content retention. |
+
+### Parked
+
+| Concept | Why parked | Revisit condition |
+| --- | --- | --- |
+| Full render-content retention | Useful for exact replay/debugging, but too broad for behavioral/provider-derived surfaces. | Revisit after defining per-surface retention policy, redaction class, and operator access controls. |
+| Rich evidence audit store | Needed eventually for forensics and research validation. | Implement separately from public payloads and exposure render snapshots, with typed fields and retention rules. |

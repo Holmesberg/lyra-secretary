@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -132,7 +133,16 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     assert decision.user_id == alice.user_id
     assert decision.exposure_category == "scheduling_suggestion"
     assert render.surface == "academic.pressure_map"
-    assert "Algorithms Quiz 2" in render.content_snapshot
+    assert "Algorithms Quiz 2" not in render.content_snapshot
+    assert "Private Final Exam" not in render.content_snapshot
+    assert "coverage correctness" not in render.content_snapshot
+    snapshot = json.loads(render.content_snapshot)
+    assert snapshot["schema_version"] == "academic_pressure_map_exposure_snapshot_v1"
+    assert snapshot["surface_role"] == "diagnostic_planning_surface"
+    assert snapshot["item_count"] == 1
+    assert snapshot["coverage_question_count"] == 1
+    assert snapshot["source_summary"]["external_obligation_count"] == 1
+    assert snapshot["recovery_actions"]
 
 
 def test_pressure_map_marks_overdue_without_inferring_completion(db):

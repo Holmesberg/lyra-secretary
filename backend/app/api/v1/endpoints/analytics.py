@@ -22,7 +22,11 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import get_current_user_id
-from app.schemas.insights import PublicEvidenceRow, UserFacingInsightCard
+from app.schemas.insights import (
+    InsightAuditEnvelope,
+    PublicEvidenceRow,
+    UserFacingInsightCard,
+)
 from app.services.exposure_ledger import baseline_clean_task_ids
 from app.services.claim_compiler import (
     PRIMARY_SYNTHESIS_ID,
@@ -374,6 +378,68 @@ def _public_insight(result: dict) -> dict:
         public_translator=result.get("public_translator"),
     )
     return card.public_dict()
+
+
+def _insights_exposure_snapshot(
+    response_payload: dict,
+    candidates: list[dict],
+) -> dict:
+    """Build the non-public, redacted exposure render snapshot.
+
+    Public cards keep the legacy response shape. The render ledger only needs
+    enough structure to prove what was shown and which safe audit handles backed
+    it, without storing observation copy or packet internals.
+    """
+    public_insights = response_payload.get("insights") or []
+    rendered_ids = [
+        str(insight.get("id"))
+        for insight in public_insights
+        if insight.get("id") is not None
+    ]
+    rendered_id_set = set(rendered_ids)
+    suppressed_generators = response_payload.get("suppressed_generators") or []
+
+    audit_envelopes = []
+    for candidate in candidates:
+        insight_id = str(candidate.get("id") or "")
+        if insight_id not in rendered_id_set:
+            continue
+        audit = candidate.get("_audit")
+        if not isinstance(audit, dict):
+            continue
+        try:
+            envelope = InsightAuditEnvelope(**audit)
+        except Exception:
+            continue
+        audit_envelopes.append(
+            {
+                "insight_id": insight_id,
+                "surface_id": candidate.get("surface_id"),
+                **envelope.model_dump(exclude_none=True),
+            }
+        )
+
+    return {
+        "schema_version": "analytics_insights_exposure_snapshot_v1",
+        "surface_id": response_payload.get("surface_id"),
+        "truth_class": response_payload.get("truth_class"),
+        "usage_class": response_payload.get("usage_class"),
+        "clean_profile": response_payload.get("clean_profile"),
+        "ready": bool(response_payload.get("ready")),
+        "insight_count": len(public_insights),
+        "insight_ids": rendered_ids,
+        "suppressed_generator_count": len(suppressed_generators),
+        "suppressed_generator_ids": [
+            str(row.get("id"))
+            for row in suppressed_generators
+            if row.get("id") is not None
+        ],
+        "eligible_sample_count": response_payload.get("eligible_sample_count"),
+        "min_n_required": response_payload.get("min_n_required"),
+        "sessions_analyzed": response_payload.get("sessions_analyzed"),
+        "history_events_analyzed": response_payload.get("history_events_analyzed"),
+        "audit_envelopes": audit_envelopes,
+    }
 
 
 def _surface_metadata(
@@ -1291,7 +1357,10 @@ def get_insights(
                     db,
                     surface_id=surface_id,
                     user_id=uid,
-                    content_snapshot=json.dumps(response_payload, sort_keys=True, default=str),
+                    content_snapshot=_insights_exposure_snapshot(
+                        response_payload,
+                        candidates,
+                    ),
                     eligible_at=eligible_at,
                     rendered_at=eligible_at,
                     content_template_id="analytics_insights",

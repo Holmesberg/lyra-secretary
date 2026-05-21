@@ -3,10 +3,18 @@ Tests for LYR-061: Insights must not fire on noise data.
 - _insight_discrepancy_signal() must return None when no real signal
 - Global gate must block insights below MIN_SESSIONS
 """
+import json
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from app.db.models import ExposureDecisionEvent, SuppressionEvent, Task, TaskState, User
+from app.db.models import (
+    ExposureDecisionEvent,
+    ExposureRenderEvent,
+    SuppressionEvent,
+    Task,
+    TaskState,
+    User,
+)
 from app.api.v1.endpoints import analytics as analytics_module
 from app.api.v1.endpoints.analytics import (
     _insight_abandonment,
@@ -418,6 +426,29 @@ def test_insights_endpoint_primary_synthesis_preserves_source_cards_when_support
     }
     assert "abandonment_pattern" in evidence_sources
     assert "time_of_day_bias" in evidence_sources
+
+    render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.render_id == payload["render_id"])
+        .one()
+    )
+    assert "study tasks" not in render.content_snapshot
+    assert "late-day execution" not in render.content_snapshot
+    assert "_audit" not in render.content_snapshot
+    assert "_facts" not in render.content_snapshot
+    snapshot = json.loads(render.content_snapshot)
+    assert snapshot["schema_version"] == "analytics_insights_exposure_snapshot_v1"
+    assert snapshot["insight_count"] == len(payload["insights"])
+    assert snapshot["insight_ids"] == ids
+    audit_by_id = {
+        envelope["insight_id"]: envelope
+        for envelope in snapshot["audit_envelopes"]
+    }
+    assert PRIMARY_SYNTHESIS_ID in audit_by_id
+    primary_audit = audit_by_id[PRIMARY_SYNTHESIS_ID]
+    assert primary_audit["evidence_packet_ids"]
+    assert primary_audit["source_refs"]
+    assert primary_audit["admissibility"]["packet_count"] >= 2
 
 
 def test_insights_endpoint_scopes_before_sample_gate_and_reports_suppression(
