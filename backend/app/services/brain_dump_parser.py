@@ -271,6 +271,20 @@ def _has_deadline_kw(segment_lower: str) -> bool:
     )
 
 
+def _has_explicit_deadline_framing(segment_lower: str) -> bool:
+    """True when the text explicitly frames the item as an obligation.
+
+    Study-context words like "revision" and "review" can make phrases
+    such as "AI final revision tomorrow" task-like. But explicit due/deadline
+    language should still win: "Paper review due Friday" is an obligation,
+    not a task to review paper.
+    """
+    return any(
+        re.search(rf"\b{re.escape(kw)}\b", segment_lower)
+        for kw in ("deadline", "due", "submission")
+    )
+
+
 def _now_local(now_iso: Optional[str]) -> datetime:
     """Resolve the user's "current local time" anchor. Falls back to
     server local time. Strips tz to match Lyra's naive-internal
@@ -298,6 +312,7 @@ def _classify_kind(segment: str) -> tuple[str, float]:
     """
     lower = segment.lower()
     has_deadline_kw = _has_deadline_kw(lower)
+    has_explicit_deadline_framing = _has_explicit_deadline_framing(lower)
     # First alpha word after any leading punctuation / bullet / digits.
     # "1. study chapter" → "study"; "- read chapter" → "read"
     first_word = re.match(r"^[\W_\d]*([a-z]+)", lower)
@@ -312,7 +327,7 @@ def _classify_kind(segment: str) -> tuple[str, float]:
         return "task", 0.88
     if has_action:
         return "task", 0.70
-    if has_task_context and has_deadline_kw:
+    if has_task_context and has_deadline_kw and not has_explicit_deadline_framing:
         return "task", 0.82 if has_date else 0.68
     # 2. Deadline keyword without a leading verb.
     if has_deadline_kw and has_date:

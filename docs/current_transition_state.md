@@ -239,3 +239,25 @@ mutation_permission: explicit_user_confirmation_required
 | --- | --- | --- |
 | One-click plan execution | Useful product path, but it crosses from suggestion into mutation. | Revisit with explicit confirmation flow, exposure tracking, and rollback semantics. |
 | Provider-fed calibration | Not admissible during Phase 1. | Revisit only after provider data has clean-data admission rules and contradiction handling. |
+
+---
+
+## Parked Governance Ledger
+
+Waves 7-11 are preserved as parked pressure memory in
+`docs/parked_governance_specs.md`.
+
+They are not implementation authority for this branch. They document future
+seams for agent authority, repair quarantine, test taxonomy, public copy
+alignment, and global enforcement checks, but no runtime machinery should be
+added from those waves until a current boundary failure promotes one of them.
+
+### Parked
+
+| Wave | Status | Promotion condition |
+| --- | --- | --- |
+| Wave 7: Agent / JARVIS / OpenClaw authority | Parked. | Promote only if a mutation-capable agent flow or confirmation path creates a current authority risk. |
+| Wave 8: Repair jobs and mutation quarantine | Parked. | Promote only if repair-derived state can enter clean analytics or public evidence without an admission rule. |
+| Wave 9: Test suite as membrane system | Parked. | Promote only if tests block boundary simplification by preserving decorative internals. |
+| Wave 10: Public / AI-readable copy alignment | Parked. | Promote only if public or AI-readable copy implies authority the runtime does not have. |
+| Wave 11: Global enforcement checks | Parked. | Promote only after a real boundary regression proves prose invariants are not enough. |
