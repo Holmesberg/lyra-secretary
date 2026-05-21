@@ -141,6 +141,12 @@ class AcademicPressureMapResponse(BaseModel):
     signal_targets: Optional[list[str]] = None
     clean_profile: Optional[str] = None
     fallback_mode: Optional[str] = None
+    authority_rung: Optional[str] = None
+    mutation_permission: Optional[str] = None
+    public_translator: Optional[str] = None
+    surface_role: Optional[str] = None
+    allowed_authority: list[str] = Field(default_factory=list)
+    denied_authority: list[str] = Field(default_factory=list)
     exposure_id: Optional[str] = None
     render_id: Optional[str] = None
 

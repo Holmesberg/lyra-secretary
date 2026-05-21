@@ -10,7 +10,11 @@ from app.api.deps import get_db
 from app.db.scoping import get_current_user_id
 from app.schemas.academic import AcademicPressureMapResponse
 from app.services.academic_pressure import build_pressure_map
-from app.services.output_surfaces import emit_surface_render
+from app.services.output_surfaces import (
+    emit_surface_render,
+    get_output_surface_spec,
+)
+from app.core.authority import authority_for_surface
 
 router = APIRouter()
 
@@ -32,11 +36,14 @@ def _pressure_map_exposure_snapshot(
     context, so provider-derived titles/details do not become durable exhaust.
     """
     source_summary = payload.source_summary
+    authority = authority_for_surface(
+        get_output_surface_spec("academic.pressure_map")
+    ).as_dict()
     return {
         "schema_version": "academic_pressure_map_exposure_snapshot_v1",
         "surface_id": "academic.pressure_map",
         "truth_class": "interpretation",
-        "surface_role": "diagnostic_planning_surface",
+        **authority,
         "horizon_days": payload.horizon_days,
         "item_count": len(payload.items),
         "pressure_levels": _count_by(
@@ -117,6 +124,12 @@ def get_academic_pressure_map(
             "signal_targets": emitted["signal_targets"],
             "clean_profile": emitted["clean_profile"],
             "fallback_mode": emitted["fallback_mode"],
+            "authority_rung": emitted["authority_rung"],
+            "mutation_permission": emitted["mutation_permission"],
+            "public_translator": emitted["public_translator"],
+            "surface_role": emitted.get("surface_role"),
+            "allowed_authority": emitted.get("allowed_authority", []),
+            "denied_authority": emitted.get("denied_authority", []),
             "exposure_id": emitted["exposure_id"],
             "render_id": emitted["render_id"],
         }

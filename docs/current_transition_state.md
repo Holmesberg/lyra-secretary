@@ -201,3 +201,41 @@ teaching Pressure Map or ClaimCompiler to understand every provider dialect.
 | --- | --- | --- |
 | Full provider connection abstraction | Useful before live Baseet scale, but no migration is needed for this seam pass. | Revisit when a second provider must persist connections or sync state. |
 | Provider-native pressure cards | Allowed at the edge, but not required for current pressure-map containment. | Revisit with Baseet live integration and UI copy review. |
+
+---
+
+## Wave 6 Authority Ledger
+
+Pressure Map stays smart, but its authority is now explicit:
+
+```text
+surface_role: diagnostic_planning_surface
+authority_rung: suggestion
+mutation_permission: explicit_user_confirmation_required
+```
+
+### Allowed
+
+| Capability | Why it stays |
+| --- | --- |
+| Pressure clusters | Helps the user see where the week compresses. |
+| Visible load ranges | Preserves useful planning intelligence without fake precision. |
+| Recovery options | Keeps the surface actionable rather than an anxiety visualization. |
+| Trust states and coverage questions | Makes uncertainty visible before planning. |
+
+### Denied
+
+| Authority | Status | Reason |
+| --- | --- | --- |
+| Automatic task creation | Denied. | Recovery options require explicit user action. |
+| Automatic calendar mutation | Denied. | Pressure Map may suggest schedule repair, not mutate time. |
+| Student-risk scoring | Denied. | Pressure is a planning surface, not institutional risk classification. |
+| Learning/mastery inference | Denied. | Provider/deadline structure does not prove learning or competence. |
+| Clean behavioral calibration from provider data | Denied. | Provider-derived pressure may guide planning, but it does not enter clean execution evidence. |
+
+### Parked
+
+| Concept | Why parked | Revisit condition |
+| --- | --- | --- |
+| One-click plan execution | Useful product path, but it crosses from suggestion into mutation. | Revisit with explicit confirmation flow, exposure tracking, and rollback semantics. |
+| Provider-fed calibration | Not admissible during Phase 1. | Revisit only after provider data has clean-data admission rules and contradiction handling. |

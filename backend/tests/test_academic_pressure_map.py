@@ -120,6 +120,15 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     assert data["signal_targets"] == ["planning_estimate", "deadline_behavior"]
     assert data["clean_profile"] is None
     assert data["fallback_mode"] == "suppress"
+    assert data["authority_rung"] == "suggestion"
+    assert data["mutation_permission"] == "explicit_user_confirmation_required"
+    assert data["public_translator"] == "registered_surface_translator"
+    assert data["surface_role"] == "diagnostic_planning_surface"
+    assert "recovery_options" in data["allowed_authority"]
+    assert "trust_states" in data["allowed_authority"]
+    assert "automatic_task_creation" in data["denied_authority"]
+    assert "automatic_calendar_mutation" in data["denied_authority"]
+    assert "learning_or_mastery_inference" in data["denied_authority"]
     assert data["exposure_id"]
     assert data["render_id"]
     assert data["coverage_questions"][0]["trust_state"] == "verified_reachable"
@@ -150,6 +159,8 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     snapshot = json.loads(render.content_snapshot)
     assert snapshot["schema_version"] == "academic_pressure_map_exposure_snapshot_v1"
     assert snapshot["surface_role"] == "diagnostic_planning_surface"
+    assert snapshot["authority_rung"] == "suggestion"
+    assert "automatic_task_creation" in snapshot["denied_authority"]
     assert snapshot["item_count"] == 1
     assert snapshot["coverage_question_count"] == 1
     assert snapshot["source_summary"]["external_obligation_count"] == 1
@@ -169,6 +180,7 @@ def test_pressure_map_marks_overdue_without_inferring_completion(db):
     assert "No completion is inferred" in " ".join(data["warnings"])
     assert any(point["kind"] == "overdue" for point in data["compression_points"])
     assert any(option["action"] == "create_plan" for option in data["recovery_options"])
+    assert db.query(Task).count() == 0
 
 
 def test_pressure_map_includes_planned_task_load_but_not_deleted_or_executed(db):

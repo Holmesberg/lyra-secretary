@@ -120,6 +120,12 @@ export interface AcademicPressureMapResponse {
   signal_targets?: string[] | null;
   clean_profile?: string | null;
   fallback_mode?: string | null;
+  authority_rung?: string | null;
+  mutation_permission?: string | null;
+  public_translator?: string | null;
+  surface_role?: string | null;
+  allowed_authority?: string[];
+  denied_authority?: string[];
   exposure_id?: string | null;
   render_id?: string | null;
 }
