@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 
 from app.api.deps import get_db, operator_user_from_scope
+from app.core.authority import authority_for_surface
 from app.db.models import (
     Archetype,
     ArchetypeAssignment,
@@ -21,6 +22,7 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import get_current_user_id
+from app.schemas.insights import PublicEvidenceRow, UserFacingInsightCard
 from app.services.exposure_ledger import baseline_clean_task_ids
 from app.services.claim_compiler import (
     PRIMARY_SYNTHESIS_ID,
@@ -39,6 +41,40 @@ from app.utils.time_utils import to_local, now_utc, strip_tz
 from app.utils.redis_client import RedisClient
 
 router = APIRouter()
+
+INSIGHT_TITLES = {
+    "primary_synthesis": "Primary pattern",
+    "time_of_day_bias": "Time of day",
+    "readiness_predicts_outcome": "Readiness signal",
+    "abandonment_pattern": "Not started",
+    "estimation_accuracy_trend": "Estimation trend",
+    "best_category": "Best category",
+    "worst_category": "Worst category",
+    "discrepancy_signal": "Discrepancy",
+    "pause_pattern": "Pause pattern",
+    "morning_anchor_cascade": "Morning plan",
+    "retroactive_rate": "Retroactive rate",
+    "initiation_delay": "Start delay",
+    "archetype_divergence": "Starting profile drift",
+    "calibration_maturation": "Personal calibration",
+}
+
+CONFIDENCE_LABELS = {
+    "high": "High confidence",
+    "medium": "Medium confidence",
+    "low": "Watching this pattern",
+}
+
+AUTHORITY_LABELS = {
+    "observed_trace": "Observed trace",
+    "derived_metric": "Derived metric",
+    "interpretation": "Interpretation",
+    "suggestion": "Suggestion",
+    "intervention": "Intervention",
+    "adaptation": "Future-gated adaptation",
+    "mutation": "Mutation",
+    "operator_only_action": "Operator-only action",
+}
 
 
 def _time_of_day(local_dt) -> str:
@@ -293,11 +329,51 @@ def _insight(
 
 
 def _public_insight(result: dict) -> dict:
-    return {
-        key: value
-        for key, value in result.items()
-        if not key.startswith("_")
-    }
+    """Translate an internal insight candidate into an explicit public card."""
+    insight_id = str(result["id"])
+    confidence = result.get("confidence") or "low"
+    if confidence not in CONFIDENCE_LABELS:
+        confidence = "low"
+    data_points = int(result.get("data_points") or 0)
+    evidence_rows = [
+        PublicEvidenceRow(
+            label=str(row.get("label", "")),
+            value=str(row.get("value", "")),
+            source_insight_id=str(row.get("source_insight_id", "")),
+        )
+        for row in (result.get("evidence") or [])
+    ]
+    authority_rung = result.get("authority_rung") or "interpretation"
+    card = UserFacingInsightCard(
+        id=insight_id,
+        surface_id=result.get("surface_id"),
+        title=INSIGHT_TITLES.get(insight_id, insight_id.replace("_", " ").title()),
+        body=str(result.get("observation") or ""),
+        confidence_label=CONFIDENCE_LABELS[confidence],
+        authority_label=AUTHORITY_LABELS.get(authority_rung, "Interpretation"),
+        sample_label=f"{data_points} history event{'s' if data_points != 1 else ''}",
+        observation=str(result.get("observation") or ""),
+        data_points=data_points,
+        confidence=confidence,
+        strength=round(float(result.get("strength") or 0.0), 3),
+        seen=bool(result.get("seen")),
+        evidence=evidence_rows or None,
+        evidence_rows=evidence_rows,
+        truth_class=result.get("truth_class"),
+        usage_class=result.get("usage_class"),
+        clean_profile=result.get("clean_profile"),
+        eligible_sample_count=result.get("eligible_sample_count"),
+        min_n_required=result.get("min_n_required"),
+        suppressed_reason=result.get("suppressed_reason"),
+        fallback_mode=result.get("fallback_mode"),
+        legacy_adapter=result.get("legacy_adapter"),
+        exposure_id=result.get("exposure_id"),
+        render_id=result.get("render_id"),
+        authority_rung=result.get("authority_rung"),
+        mutation_permission=result.get("mutation_permission"),
+        public_translator=result.get("public_translator"),
+    )
+    return card.public_dict()
 
 
 def _surface_metadata(
@@ -307,6 +383,7 @@ def _surface_metadata(
     suppressed_reason: Optional[str] = None,
 ) -> dict:
     spec = get_output_surface_spec(surface_id)
+    authority = authority_for_surface(spec).as_dict()
     return {
         "surface_id": surface_id,
         "truth_class": spec.truth_class,
@@ -317,6 +394,7 @@ def _surface_metadata(
         "suppressed_reason": suppressed_reason,
         "fallback_mode": spec.fallback_mode,
         "legacy_adapter": spec.legacy_adapter,
+        **authority,
     }
 
 

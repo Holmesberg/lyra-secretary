@@ -17,10 +17,6 @@ PRIMARY_SYNTHESIS_ID = "primary_synthesis"
 PRIMARY_SYNTHESIS_SURFACE_ID = "analytics.insights.primary_synthesis"
 PRIMARY_SYNTHESIS_MIN_HISTORY_EVENTS = 30
 
-DEFAULT_ALLOWED_CLAIMS = (
-    "descriptive_pattern",
-    "bounded_synthesis",
-)
 DEFAULT_PROHIBITED_CLAIMS = (
     "identity_label",
     "causal_claim",
@@ -39,20 +35,91 @@ def _stable_hash(prefix: str, payload: dict[str, Any]) -> str:
     return f"{prefix}_{digest[:24]}"
 
 
+_ALLOWED_OBSERVED_METRIC_KEYS = {
+    "insight_id",
+    "data_points",
+    "confidence",
+    "strength",
+    "facts",
+}
+_FORBIDDEN_METRIC_KEY_PARTS = (
+    "url",
+    "token",
+    "oauth",
+    "payload",
+    "body",
+    "baseet",
+    "moodle",
+    "provider_raw",
+    "raw_provider",
+    "secret",
+)
+_FORBIDDEN_FACT_KEY_PARTS = (
+    "url",
+    "token",
+    "oauth",
+    "payload",
+    "body",
+    "secret",
+)
+
+
+def _sanitize_scalar(value: Any, *, key: str) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise ValueError(f"non_scalar_observed_metric:{key}")
+
+
+def _sanitize_facts(facts: dict[str, Any]) -> dict[str, Any]:
+    sanitized: dict[str, Any] = {}
+    for key, value in facts.items():
+        key_text = str(key)
+        lowered = key_text.lower()
+        if any(part in lowered for part in _FORBIDDEN_FACT_KEY_PARTS):
+            raise ValueError(f"forbidden_fact_key:{key_text}")
+        sanitized[key_text] = _sanitize_scalar(value, key=key_text)
+    return sanitized
+
+
+def _sanitize_observed_metrics(observed_metrics: dict[str, Any]) -> dict[str, Any]:
+    sanitized: dict[str, Any] = {}
+    for key, value in observed_metrics.items():
+        key_text = str(key)
+        lowered = key_text.lower()
+        if key_text not in _ALLOWED_OBSERVED_METRIC_KEYS:
+            raise ValueError(f"unknown_observed_metric:{key_text}")
+        if any(part in lowered for part in _FORBIDDEN_METRIC_KEY_PARTS):
+            raise ValueError(f"forbidden_observed_metric:{key_text}")
+        if key_text == "facts":
+            if not isinstance(value, dict):
+                raise ValueError("facts_must_be_dict")
+            sanitized[key_text] = _sanitize_facts(value)
+        else:
+            sanitized[key_text] = _sanitize_scalar(value, key=key_text)
+    return sanitized
+
+
+def _sanitize_source_refs(source_refs: list[dict[str, Any]]) -> list[dict[str, str]]:
+    sanitized: list[dict[str, str]] = []
+    for ref in source_refs:
+        sanitized.append(
+            {
+                "type": str(ref.get("type") or ""),
+                "id": str(ref.get("id") or ""),
+                "surface_id": str(ref.get("surface_id") or ""),
+            }
+        )
+    return sanitized
+
+
 @dataclass(frozen=True)
 class EvidencePacket:
     packet_id: str
-    source_surface_id: str
-    signal_family: str
-    truth_class: str
     clean_profile: Optional[str]
     eligible_sample_count: int
     min_n_required: int
-    confidence_tier: str
     observed_metrics: dict[str, Any]
-    source_refs: list[dict[str, Any]]
-    competing_hypotheses: list[str]
-    allowed_claims: list[str]
+    source_refs: list[dict[str, str]]
     prohibited_claims: list[str]
     suppression_reason: Optional[str] = None
 
@@ -60,32 +127,20 @@ class EvidencePacket:
     def build(
         cls,
         *,
-        source_surface_id: str,
-        signal_family: str,
-        truth_class: str,
         clean_profile: Optional[str],
         eligible_sample_count: int,
         min_n_required: int,
-        confidence_tier: str,
         observed_metrics: dict[str, Any],
         source_refs: list[dict[str, Any]],
-        competing_hypotheses: Optional[list[str]] = None,
-        allowed_claims: Optional[list[str]] = None,
         prohibited_claims: Optional[list[str]] = None,
         suppression_reason: Optional[str] = None,
     ) -> "EvidencePacket":
         body = {
-            "source_surface_id": source_surface_id,
-            "signal_family": signal_family,
-            "truth_class": truth_class,
             "clean_profile": clean_profile,
             "eligible_sample_count": int(eligible_sample_count),
             "min_n_required": int(min_n_required),
-            "confidence_tier": confidence_tier,
-            "observed_metrics": observed_metrics,
-            "source_refs": source_refs,
-            "competing_hypotheses": competing_hypotheses or [],
-            "allowed_claims": allowed_claims or list(DEFAULT_ALLOWED_CLAIMS),
+            "observed_metrics": _sanitize_observed_metrics(observed_metrics),
+            "source_refs": _sanitize_source_refs(source_refs),
             "prohibited_claims": prohibited_claims or list(DEFAULT_PROHIBITED_CLAIMS),
             "suppression_reason": suppression_reason,
         }
@@ -114,9 +169,8 @@ class ClaimCandidate:
     strength: float
     evidence: list[dict[str, Any]]
     evidence_packet_ids: list[str]
-    competing_hypotheses: list[str]
-    allowed_claims: list[str]
     prohibited_claims: list[str]
+    audit_envelope: dict[str, Any]
     suppression_reason: Optional[str] = None
 
     def to_insight_payload(self) -> Optional[dict[str, Any]]:
@@ -128,10 +182,7 @@ class ClaimCandidate:
             "data_points": self.data_points,
             "confidence": self.confidence,
             "strength": round(self.strength, 3),
-            "_evidence_packet_ids": self.evidence_packet_ids,
-            "_competing_hypotheses": self.competing_hypotheses,
-            "_allowed_claims": self.allowed_claims,
-            "_prohibited_claims": self.prohibited_claims,
+            "_audit": self.audit_envelope,
         }
         if self.evidence:
             payload["evidence"] = self.evidence
@@ -156,25 +207,11 @@ class ClaimCompiler:
         required_packet_count: int = 1,
     ) -> ClaimCandidate:
         claim_tags = claim_tags or ("descriptive_pattern",)
-        allowed_claims = sorted(
-            {
-                claim
-                for packet in evidence_packets
-                for claim in packet.allowed_claims
-            }
-        )
         prohibited_claims = sorted(
             {
                 claim
                 for packet in evidence_packets
                 for claim in packet.prohibited_claims
-            }
-        )
-        competing_hypotheses = sorted(
-            {
-                hypothesis
-                for packet in evidence_packets
-                for hypothesis in packet.competing_hypotheses
             }
         )
 
@@ -201,20 +238,20 @@ class ClaimCompiler:
             strength=strength,
             evidence=evidence or [],
             evidence_packet_ids=[packet.packet_id for packet in evidence_packets],
-            competing_hypotheses=competing_hypotheses,
-            allowed_claims=allowed_claims,
             prohibited_claims=prohibited_claims,
+            audit_envelope=claim_audit_envelope(
+                evidence_packets,
+                suppression_reason=suppression_reason,
+            ),
             suppression_reason=suppression_reason,
         )
 
 
 def evidence_packet_from_insight(
     insight: dict[str, Any],
-    *,
-    signal_family: str = "planning_calibration",
 ) -> EvidencePacket:
     facts = insight.get("_facts") or {}
-    source_surface_id = (
+    source_ref_surface_id = (
         insight.get("surface_id")
         or f"analytics.insights.{insight.get('id')}"
     )
@@ -227,24 +264,55 @@ def evidence_packet_from_insight(
     if facts:
         observed_metrics["facts"] = facts
     return EvidencePacket.build(
-        source_surface_id=source_surface_id,
-        signal_family=signal_family,
-        truth_class=insight.get("truth_class") or "interpretation",
         clean_profile=insight.get("clean_profile"),
         eligible_sample_count=int(insight.get("eligible_sample_count") or 0),
         min_n_required=int(insight.get("min_n_required") or 0),
-        confidence_tier=insight.get("confidence") or "low",
         observed_metrics=observed_metrics,
         source_refs=[
             {
                 "type": "insight",
                 "id": insight.get("id"),
-                "surface_id": source_surface_id,
+                "surface_id": source_ref_surface_id,
             }
         ],
-        competing_hypotheses=list(insight.get("_competing_hypotheses") or []),
         suppression_reason=insight.get("suppressed_reason"),
     )
+
+
+def claim_audit_envelope(
+    packets: list[EvidencePacket],
+    *,
+    suppression_reason: Optional[str] = None,
+) -> dict[str, Any]:
+    return {
+        "evidence_packet_ids": [packet.packet_id for packet in packets],
+        "source_refs": [
+            ref
+            for packet in packets
+            for ref in packet.source_refs
+        ],
+        "suppression_reason": suppression_reason,
+        "admissibility": {
+            "packet_count": len(packets),
+            "clean_profiles": sorted(
+                {
+                    packet.clean_profile
+                    for packet in packets
+                    if packet.clean_profile
+                }
+            ),
+            "eligible_sample_count_min": (
+                min(packet.eligible_sample_count for packet in packets)
+                if packets
+                else 0
+            ),
+            "min_n_required_max": (
+                max(packet.min_n_required for packet in packets)
+                if packets
+                else 0
+            ),
+        },
+    }
 
 
 def _evidence_item(label: str, value: str, source_insight_id: str) -> dict[str, str]:
@@ -406,10 +474,7 @@ def compile_primary_synthesis(
     sources = [abandonment, *supports]
     data_points = max(source.get("data_points", 0) for source in sources)
     strength = max(source.get("strength", 0.0) for source in sources) + 50.0
-    packets = [
-        evidence_packet_from_insight(source, signal_family="planning_calibration")
-        for source in sources
-    ]
+    packets = [evidence_packet_from_insight(source) for source in sources]
     claim = ClaimCompiler().compile_claim(
         claim_id=PRIMARY_SYNTHESIS_ID,
         surface_id=PRIMARY_SYNTHESIS_SURFACE_ID,
@@ -431,5 +496,4 @@ def compile_primary_synthesis(
     payload = claim.to_insight_payload()
     if payload is None:
         return None
-    payload["_evidence_packets"] = [packet.as_dict() for packet in packets]
     return payload

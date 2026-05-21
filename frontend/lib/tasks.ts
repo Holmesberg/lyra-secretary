@@ -545,12 +545,22 @@ export interface BiasLookupResponse {
 
 export interface Insight {
   id: string;
+  title?: string;
+  body?: string;
+  confidence_label?: string;
+  authority_label?: string;
+  sample_label?: string;
   observation: string;
   data_points: number;
   confidence: "low" | "medium" | "high";
   strength: number;
   seen: boolean;
   evidence?: {
+    label: string;
+    value: string;
+    source_insight_id: string;
+  }[];
+  evidence_rows?: {
     label: string;
     value: string;
     source_insight_id: string;
@@ -566,6 +576,9 @@ export interface Insight {
   legacy_adapter?: string | null;
   exposure_id?: string | null;
   render_id?: string | null;
+  authority_rung?: string | null;
+  mutation_permission?: string | null;
+  public_translator?: string | null;
 }
 
 export interface SuppressedInsightGenerator {

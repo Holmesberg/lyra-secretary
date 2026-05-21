@@ -23,20 +23,40 @@ CLEAN_DATA_PROFILES: Final[frozenset[str]] = frozenset(
         "measured_execution",
         "pause_process",
         "descriptive_history",
+        "deadline_completion_behavior",
     }
 )
 
 SUBSTRATE_PRIMITIVES: Final[frozenset[str]] = frozenset(
     {
+        "provider_connection",
         "obligation",
+        "academic_asset",
+        "activity_event",
         "intention",
         "execution_event",
-        "outcome",
+        "outcome_trace",
         "interruption",
         "exposure",
         "drift",
         "recalibration",
+        "trust_state",
+        "provenance",
+        "authority_level",
+        "redaction_status",
+        "idempotency_key",
     }
+)
+
+AUTHORITY_RUNGS: Final[tuple[str, ...]] = (
+    "observed_trace",
+    "derived_metric",
+    "interpretation",
+    "suggestion",
+    "intervention",
+    "adaptation",
+    "mutation",
+    "operator_only_action",
 )
 
 FORBIDDEN_INFERENCE_INPUTS: Final[frozenset[str]] = frozenset(

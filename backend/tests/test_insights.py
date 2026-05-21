@@ -53,6 +53,41 @@ def _task(
     return t
 
 
+def test_public_insight_translator_allowlists_fields():
+    public = analytics_module._public_insight(
+        {
+            "id": "primary_synthesis",
+            "observation": "Planning drift is clustering.",
+            "data_points": 30,
+            "confidence": "high",
+            "strength": 52.0,
+            "seen": True,
+            "surface_id": "analytics.insights.primary_synthesis",
+            "truth_class": "interpretation",
+            "usage_class": "product",
+            "clean_profile": "planning_calibration",
+            "eligible_sample_count": 30,
+            "min_n_required": 3,
+            "authority_rung": "interpretation",
+            "mutation_permission": "none",
+            "public_translator": "registered_surface_translator",
+            "internal_debug": "must not leak",
+            "_facts": {"raw": "nope"},
+            "_audit": {"evidence_packet_ids": ["evpkt_x"]},
+        }
+    )
+
+    assert public["id"] == "primary_synthesis"
+    assert public["title"] == "Primary pattern"
+    assert public["body"] == "Planning drift is clustering."
+    assert public["observation"] == public["body"]
+    assert public["authority_label"] == "Interpretation"
+    assert public["confidence_label"] == "High confidence"
+    assert "internal_debug" not in public
+    assert "_facts" not in public
+    assert "_audit" not in public
+
+
 def test_discrepancy_signal_returns_none_when_no_signal():
     """No 20% spread between high/low discrepancy buckets → None, not a noise message."""
     tasks = (

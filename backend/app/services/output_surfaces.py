@@ -27,6 +27,7 @@ from app.db.models import (
     TaskState,
     User,
 )
+from app.core.authority import authority_for_surface
 from app.services.exposure_ledger import (
     baseline_clean_task_ids,
     exposure_results_for_task,
@@ -77,6 +78,7 @@ class OutputSurfaceSpec:
     salience_level: str
 
     def as_dict(self) -> dict[str, Any]:
+        authority = authority_for_surface(self).as_dict()
         return {
             "surface_id": self.surface_id,
             "truth_class": self.truth_class,
@@ -93,6 +95,7 @@ class OutputSurfaceSpec:
             "render_policy_version": self.render_policy_version,
             "interruptiveness": self.interruptiveness,
             "salience_level": self.salience_level,
+            **authority,
         }
 
 
@@ -297,6 +300,7 @@ def emit_surface_render(
         db.flush()
         legacy_view_id = row.view_id
 
+    authority = authority_for_surface(spec).as_dict()
     return {
         "surface_id": surface_id,
         "truth_class": spec.truth_class,
@@ -308,6 +312,7 @@ def emit_surface_render(
         "exposure_id": decision.exposure_id,
         "render_id": render.render_id,
         "legacy_view_id": legacy_view_id,
+        **authority,
     }
 
 
@@ -353,6 +358,7 @@ def emit_surface_suppression(
         would_have_rendered_template_id=content_template_id,
         generating_confidence=generating_confidence,
     )
+    authority = authority_for_surface(spec).as_dict()
     return {
         "surface_id": surface_id,
         "truth_class": spec.truth_class,
@@ -364,6 +370,7 @@ def emit_surface_suppression(
         "exposure_id": decision.exposure_id,
         "suppression_id": suppression.suppression_id,
         "suppressed_reason": suppression_reason,
+        **authority,
     }
 
 

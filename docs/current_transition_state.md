@@ -96,3 +96,46 @@ The temporary priority hold in
 `docs/architecture_freeze_priority_hold_2026_05_20.md` is the current reminder
 that AI synthesis and public cascade intervention remain later, not hidden
 Phase 1 scope.
+
+---
+
+## Wave 3 Deletion And Parking Ledger
+
+EvidencePacket remains the class name for branch continuity, but it is no
+longer allowed to become a provider DTO, output-surface grammar, or future
+AI-synthesis container.
+
+### Kept In EvidencePacket
+
+| Field | Why it stays now |
+| --- | --- |
+| `packet_id` | Stable audit handle for compiled claims. |
+| `clean_profile` | Suppresses missing clean-data admission. |
+| `eligible_sample_count` | Suppresses under-sampled claims with `min_n_required`. |
+| `min_n_required` | Declares the sample floor for the packet. |
+| `observed_metrics` | Carries sanitized scalar analytics evidence already present in insight candidates. |
+| `source_refs` | Minimal non-provider-specific provenance: `type`, `id`, `surface_id`. |
+| `prohibited_claims` | Blocks claim tags that would overstate authority. |
+| `suppression_reason` | Carries explicit suppression from upstream gates. |
+
+### Deleted Or Moved Out Of EvidencePacket
+
+| Field | Status | Reason | Reintroduction condition |
+| --- | --- | --- | --- |
+| `source_surface_id` | Deleted as duplicate. | `source_refs[*].surface_id` already carries the provenance handle. | Only reintroduce if a separate packet-level surface identity is proven non-duplicative by a failing trace/debug test. |
+| `signal_family` | Deleted. | Hardcoded taxonomy with no Phase 1 decision effect. | Only reintroduce when multiple signal families drive different gates, wording, or suppression. |
+| `truth_class` | Moved to output-surface metadata. | Publication truth belongs to registered surfaces, not packet grammar. | Do not reintroduce to EvidencePacket. Add or revise output-surface registry metadata instead. |
+| `confidence_tier` | Deleted. | Claim confidence is computed by deterministic synthesis logic; a packet copy creates a second source of truth. | Only reintroduce if packet-level confidence directly changes suppression or public wording. |
+| `allowed_claims` | Deleted. | It looked like an allowlist but was not enforced. False assurance is worse than absence. | Only reintroduce as an enforced positive gate with tests showing a claim is blocked without it. |
+
+### Parked
+
+| Concept | Why parked | Revisit condition |
+| --- | --- | --- |
+| `competing_hypotheses` | Epistemically useful later, but decorative in Phase 1 because it did not change wording, confidence, or suppression. | Revisit when deterministic claim wording or suppression explicitly weakens claims in the presence of alternatives. |
+| Rich evidence/provenance records | Valid future need, but unsafe inside `observed_metrics` as a raw data bag. | Revisit with a typed evidence/audit store and redaction rules, not by expanding EvidencePacket. |
+
+`observed_metrics` is intentionally narrow: scalar `insight_id`,
+`data_points`, `confidence`, `strength`, and sanitized `facts` only. It must not
+carry provider raw payloads, URLs, tokens, resource bodies, OAuth data,
+Baseet-specific rows, Moodle blobs, latent labels, or moralized terms.

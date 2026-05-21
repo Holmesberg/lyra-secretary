@@ -77,7 +77,11 @@ function ConfidenceBar({
 const CONFIDENCE_THRESHOLDS: Record<string, number> = { low: 6, medium: 15 };
 
 function FeaturedCard({ insight }: { insight: Insight }) {
-  const label = ID_LABELS[insight.id] ?? insight.id;
+  const label = insight.title ?? ID_LABELS[insight.id] ?? insight.id;
+  const body = insight.body ?? insight.observation;
+  const confidenceLabel = insight.confidence_label ?? "High confidence";
+  const sampleLabel = insight.sample_label ?? `${insight.data_points} sessions`;
+  const evidenceRows = insight.evidence_rows ?? insight.evidence ?? [];
   return (
     <div className="terminal-panel p-6">
       <div className="mb-3 flex items-center gap-3">
@@ -85,15 +89,15 @@ function FeaturedCard({ insight }: { insight: Insight }) {
           {label}
         </span>
         <span className="font-mono text-[10px] uppercase tracking-widest text-dust">
-          High confidence · {insight.data_points} sessions
+          {confidenceLabel} / {sampleLabel}
         </span>
       </div>
       <p className="text-base leading-relaxed text-parchment">
-        {insight.observation}
+        {body}
       </p>
-      {insight.evidence && insight.evidence.length > 0 && (
+      {evidenceRows.length > 0 && (
         <div className="mt-5 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
-          {insight.evidence.map((item) => (
+          {evidenceRows.map((item) => (
             <div key={`${item.source_insight_id}-${item.label}`} className="min-w-0">
               <div className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
                 {item.label}
@@ -111,7 +115,9 @@ function FeaturedCard({ insight }: { insight: Insight }) {
 
 function StandardCard({ insight }: { insight: Insight }) {
   const conf = CONFIDENCE_STYLE[insight.confidence] ?? CONFIDENCE_STYLE.low;
-  const label = ID_LABELS[insight.id] ?? insight.id;
+  const label = insight.title ?? ID_LABELS[insight.id] ?? insight.id;
+  const body = insight.body ?? insight.observation;
+  const confidenceLabel = insight.confidence_label ?? conf.label;
   const nextTier = CONFIDENCE_THRESHOLDS[insight.confidence];
   const bodyColor =
     insight.confidence === "low" ? "text-dust-deep" : "text-parchment";
@@ -128,11 +134,11 @@ function StandardCard({ insight }: { insight: Insight }) {
             conf.text
           )}
         >
-          {conf.label}
+          {confidenceLabel}
         </span>
       </div>
       <p className={cn("text-sm leading-relaxed", bodyColor)}>
-        {insight.observation}
+        {body}
       </p>
       {nextTier && (
         <ConfidenceBar
