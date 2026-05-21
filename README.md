@@ -1,5 +1,11 @@
 # LyraOS
 
+People do not see how obligations, time, and actual execution are interacting
+until pressure has already compounded into failure or recovery mode.
+
+Lyra helps humans build more accurate internal models of their own execution
+dynamics without collapsing into shame, dependence, or optimization theater.
+
 [![CI](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml/badge.svg)](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Repository](https://img.shields.io/badge/GitHub-lyra--secretary-181717?logo=github)](https://github.com/Holmesberg/lyra-secretary)
