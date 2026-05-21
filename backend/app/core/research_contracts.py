@@ -35,6 +35,7 @@ SUBSTRATE_PRIMITIVES: Final[frozenset[str]] = frozenset(
         "activity_event",
         "intention",
         "execution_event",
+        "outcome",
         "outcome_trace",
         "interruption",
         "exposure",

@@ -143,6 +143,7 @@ academic_asset
 activity_event
 execution_event
 outcome_trace
+outcome
 exposure
 trust_state
 provenance
@@ -152,8 +153,8 @@ idempotency_key
 ```
 
 Provider imports usually create external obligations or weak activity traces.
-They do not create planning calibration unless the user accepted or confirmed
-an intention.
+They do not create planning calibration unless the user accepted or confirmed an
+intention.
 
 Pressure-map and analytics consumers must branch on provider-blind fields such
 as `source_class`, `evidence_class`, `trust_state`, `authority_level`, and
