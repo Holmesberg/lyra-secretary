@@ -235,6 +235,39 @@ Implementation status:
 
 - Planned for review. Not implemented until explicitly green-lit.
 
+## Hypothesis Collapse Condition
+
+Competing hypotheses must not stay open forever. In LyraSim, a
+`TraceHypothesisSet` collapses when one hypothesis becomes the unique
+highest-scoring candidate.
+
+Collapse rule:
+
+```text
+if one hypothesis has the unique highest score:
+  collapse to that hypothesis
+else:
+  remain unresolved and lower authority
+```
+
+Optional scenario thresholds may require a minimum score or minimum margin, but
+the base condition is still a unique highest score. Ties remain unresolved.
+
+Important boundary:
+
+```text
+hypothesis collapse resolves the simulator's operational explanation
+not human truth
+```
+
+Collapse can support a clearer next action, but it does not by itself authorize
+identity claims, clean calibration, mutation, adaptation, or public certainty.
+
+Implementation status:
+
+- Implemented simulator-only in `scripts/lyrasim/trace/hypotheses.py`.
+- Not wired into runtime product code or `EvidencePacket`.
+
 ## Next Scenario
 
 The first post-V0 Baseet scenario should not be another timer case.
@@ -367,6 +400,7 @@ forbidden_outputs
 Expected result:
 
 - unresolved hypotheses reduce authority;
+- uniquely highest-scored hypotheses eventually collapse for simulator scoring;
 - no hypothesis becomes identity;
 - no runtime `EvidencePacket` expansion.
 

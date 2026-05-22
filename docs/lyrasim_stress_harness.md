@@ -55,6 +55,8 @@ user, or runtime failures reveal new classes of ambiguity.
 - Missingness is signal, not truth.
 - Self-report is evidence, not authority.
 - Competing hypotheses lower authority.
+- Competing hypotheses eventually collapse only to the unique highest-scoring
+  hypothesis.
 - `UNKNOWN` fails closed.
 - Capability does not grant publication, mutation, learning, or intervention
   authority.
@@ -215,3 +217,19 @@ changes, cascade alerts, or adaptive scheduling in V0.
 - This increment still does not validate live Baseet behavior, passive
   telemetry product capture, pressure-map correctness, AI synthesis, recovery
   safety, or emotional safety.
+
+## Hypothesis Collapse
+
+LyraSim may model competing explanations for ambiguous traces, but those
+explanations must not become endless contradiction absorption.
+
+The simulator-only collapse condition is:
+
+```text
+unique highest score -> collapsed operational hypothesis
+tie or insufficient scenario threshold -> unresolved
+```
+
+Collapse resolves the simulator's operational explanation, not human truth. It
+does not authorize identity claims, clean calibration, mutation, adaptation, or
+public certainty.
