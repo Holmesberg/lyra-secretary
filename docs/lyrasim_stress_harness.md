@@ -323,6 +323,30 @@ progress creates automatic task mutation, clean calibration, execution truth,
 completion truth, learning/focus/understanding claims, or safe-action
 paralysis.
 
+## Product-Seam And Kill-Switch Increment
+
+2026-05-22:
+
+- Added `baseet_duplicate_stale_deadline_pressure` as the first product-seam
+  validation scenario.
+- Kept the CLI path as a stubbed harness control.
+- Added a DB-backed seam test that seeds synthetic Baseet-like `Deadline` rows,
+  calls the real academic pressure-map endpoint, and converts the product
+  response back into LyraSim scorer input.
+- The seam verifies `product_seam_validated=true`, `external_obligation`
+  boundaries, `baseet` provider kind, suggestion-level authority, no task or
+  calendar mutation, no clean calibration, range-based pressure, coverage
+  confirmation, and redacted exposure snapshots.
+- Added initial pre-scale kill switches:
+  - `LYRA_SAFE_MODE=read_only_pressure`
+  - `LYRA_BASEET_PRESSURE_INPUT_ENABLED`
+  - `LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED`
+  - `LYRA_RECOVERY_NUDGES_ENABLED`
+- Added tests proving Baseet pressure inputs can be suppressed, pressure-map
+  recovery options can be suppressed, and read-only pressure mode disables
+  recovery nudges and provider-progress signals while leaving pressure context
+  visible.
+
 ## Hypothesis Collapse
 
 LyraSim may model competing explanations for ambiguous traces, but those

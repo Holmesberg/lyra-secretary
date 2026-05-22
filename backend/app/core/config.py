@@ -108,6 +108,20 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     CORS_ALLOWED_ORIGINS: str = ""
 
+    # Pre-scale containment switches (LyraSim/Baseet 2026-05-22).
+    # Defaults preserve current behavior. Operators can disable risky paths
+    # without a deploy if a Baseet-scale inference pattern misbehaves.
+    LYRA_SAFE_MODE: str = Field("", env="LYRA_SAFE_MODE")
+    LYRA_BASEET_PRESSURE_INPUT_ENABLED: bool = Field(
+        True, env="LYRA_BASEET_PRESSURE_INPUT_ENABLED"
+    )
+    LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED: bool = Field(
+        True, env="LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED"
+    )
+    LYRA_RECOVERY_NUDGES_ENABLED: bool = Field(
+        True, env="LYRA_RECOVERY_NUDGES_ENABLED"
+    )
+
     @property
     def cors_allowed_origins(self) -> list[str]:
         """Frontend origins allowed to call the API from browsers."""

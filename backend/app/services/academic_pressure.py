@@ -14,6 +14,11 @@ from math import ceil
 
 from sqlalchemy.orm import Session
 
+from app.core.kill_switches import (
+    baseet_pressure_input_enabled,
+    read_only_pressure_mode_enabled,
+    recovery_nudges_enabled,
+)
 from app.db.models import Deadline, Task, TaskState, User
 from app.db.scoping import get_current_user_id
 from app.schemas.academic import (
@@ -512,6 +517,9 @@ def _recovery_options(
     coverage_questions: list[AcademicCoverageQuestion],
     gcal_connected: bool,
 ) -> list[AcademicRecoveryOption]:
+    if not recovery_nudges_enabled():
+        return []
+
     if not items:
         return [
             AcademicRecoveryOption(
@@ -612,6 +620,12 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
         .order_by(Deadline.due_at_utc.asc())
         .all()
     )
+    if not baseet_pressure_input_enabled():
+        deadlines = [
+            deadline
+            for deadline in deadlines
+            if _provider_kind(deadline.external_source) != "baseet"
+        ]
 
     items: list[AcademicPressureItem] = []
     for deadline in deadlines:
@@ -712,6 +726,14 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
         warnings.append("Some imported items need coverage confirmation before plan generation.")
     if not gcal_connected:
         warnings.append("Google Calendar is not connected, so free-time mismatch is incomplete.")
+    if read_only_pressure_mode_enabled():
+        warnings.append(
+            "Read-only pressure safe mode is active; recovery nudges and mutations are disabled."
+        )
+    elif not recovery_nudges_enabled():
+        warnings.append("Recovery nudges are disabled by operator safety switch.")
+    if not baseet_pressure_input_enabled():
+        warnings.append("Baseet pressure inputs are disabled by operator safety switch.")
 
     coverage_questions = _coverage_questions(items)
     return AcademicPressureMapResponse(
@@ -773,6 +795,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             "clarity-and-agency copy rule: name pressure points with recovery options, not doom",
             "trust-state copy is governed by docs/academic_pressure_map_contract.md",
             "validity threats and research integrity are checked before calibration admission",
+            "pre-scale kill switches may suppress Baseet inputs or recovery nudges",
         ],
         warnings=warnings,
     )

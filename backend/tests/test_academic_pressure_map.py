@@ -16,6 +16,11 @@ from app.db.models import (
 )
 from app.db.scoping import set_current_user_id
 from app.main import app
+from app.core.config import settings
+from app.core.kill_switches import (
+    provider_progress_signals_enabled,
+    recovery_nudges_enabled,
+)
 from tests.conftest import auth_headers
 
 
@@ -334,3 +339,61 @@ def test_pressure_map_names_deadline_clusters_and_biggest_split_option(db):
     data = resp.json()
     assert any(point["kind"] == "cluster" for point in data["compression_points"])
     assert any(option["action"] == "split_into_blocks" for option in data["recovery_options"])
+
+
+def test_baseet_pressure_input_kill_switch_suppresses_baseet_rows(db, monkeypatch):
+    monkeypatch.setattr(settings, "LYRA_BASEET_PRESSURE_INPUT_ENABLED", False)
+    user = _user(db, "baseet-kill-switch@example.com")
+    _deadline(db, user.user_id, "Baseet Assignment 1", days=2, external_source="baseet_mock")
+    _deadline(db, user.user_id, "Moodle Quiz", days=2, external_source="moodle_ics")
+
+    resp = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert [item["title"] for item in data["items"]] == ["Moodle Quiz"]
+    assert {item["provider_kind"] for item in data["items"]} == {"moodle"}
+    assert data["source_summary"]["external_obligation_count"] == 1
+    assert any("Baseet pressure inputs are disabled" in warning for warning in data["warnings"])
+
+
+def test_recovery_nudge_kill_switch_suppresses_pressure_map_recovery_options(db, monkeypatch):
+    monkeypatch.setattr(settings, "LYRA_RECOVERY_NUDGES_ENABLED", False)
+    user = _user(db, "recovery-kill-switch@example.com")
+    _deadline(db, user.user_id, "Algorithms Quiz", days=1, external_source="moodle_ics")
+
+    resp = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["items"]
+    assert data["recovery_options"] == []
+    assert recovery_nudges_enabled() is False
+    assert any("Recovery nudges are disabled" in warning for warning in data["warnings"])
+
+
+def test_read_only_pressure_safe_mode_suppresses_risky_paths(db, monkeypatch):
+    monkeypatch.setattr(settings, "LYRA_SAFE_MODE", "read_only_pressure")
+    monkeypatch.setattr(settings, "LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED", True)
+    monkeypatch.setattr(settings, "LYRA_RECOVERY_NUDGES_ENABLED", True)
+    user = _user(db, "safe-mode-pressure@example.com")
+    _deadline(db, user.user_id, "Algorithms Quiz", days=1, external_source="moodle_ics")
+
+    resp = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["items"]
+    assert data["recovery_options"] == []
+    assert recovery_nudges_enabled() is False
+    assert provider_progress_signals_enabled() is False
+    assert any("Read-only pressure safe mode is active" in warning for warning in data["warnings"])

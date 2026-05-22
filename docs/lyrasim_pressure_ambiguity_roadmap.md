@@ -578,18 +578,28 @@ claim, boundary change, product fix, or parked observation.
 Before Baseet-scale exposure, Lyra needs containment that can turn a bad
 inference pattern into a contained incident instead of a 400-user failure.
 
-Implementation status: planned. These flags are not claimed to exist until a
-code/config pass adds and tests them.
+Implementation status:
 
-Minimum useful proposed flags:
+- Implemented initial backend containment flags:
+  - `LYRA_SAFE_MODE=read_only_pressure`
+  - `LYRA_BASEET_PRESSURE_INPUT_ENABLED`
+  - `LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED`
+  - `LYRA_RECOVERY_NUDGES_ENABLED`
+- `LYRA_BASEET_PRESSURE_INPUT_ENABLED=false` suppresses Baseet-derived
+  pressure-map deadline inputs while preserving other provider/native rows.
+- `LYRA_RECOVERY_NUDGES_ENABLED=false` suppresses pressure-map recovery
+  options while still rendering pressure context and assumptions.
+- `LYRA_SAFE_MODE=read_only_pressure` suppresses recovery nudges and provider
+  progress signals while leaving the read-only pressure surface available.
+- `LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED` is centralized in
+  `backend/app/core/kill_switches.py` so future provider-progress paths must
+  pass through a suppressible gate before becoming runtime behavior.
+
+Minimum useful proposed flags not yet implemented:
 
 ```text
-LYRA_SAFE_MODE=read_only_pressure
 LYRA_BASEET_IMPORT_ENABLED
-LYRA_BASEET_PRESSURE_INPUT_ENABLED
-LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED
 LYRA_PASSIVE_TRACE_INFERENCE_ENABLED
-LYRA_RECOVERY_NUDGES_ENABLED
 LYRA_AI_SYNTHESIS_ENABLED
 LYRA_ADAPTIVE_SCHEDULING_ENABLED
 ```
@@ -616,8 +626,8 @@ the risky path and produce a deterministic report naming what was disabled.
 5. Add the Product Seam Connection Plan. Done.
 6. Implement provider-noise scenario: duplicate/stale Baseet-like deadline
    inflates pressure against the real pressure-map seam. Done.
-7. Add kill-switch validation before adding more Baseet chaos. Next.
-8. Stop, run local gates, push, and wait for CI. Required after each increment.
+7. Add kill-switch validation before adding more Baseet chaos. Done.
+8. Stop, run local gates, push, and wait for CI. Current halt point.
 
 Do not jump to archetypes, AI synthesis, adaptive scheduling, full chaos waves,
 or broad simulation realism yet.
