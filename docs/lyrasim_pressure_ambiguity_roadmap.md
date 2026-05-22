@@ -152,6 +152,10 @@ Catastrophic failures require immediate triage. Warnings do not authorize
 architecture changes by themselves.
 ```
 
+Implementation status:
+
+- Planned for review. Not implemented until explicitly green-lit.
+
 ## Scenario Promotion And Scope Rules
 
 Real provider/user failures outrank synthetic failures. If a Baseet user creates
@@ -175,6 +179,10 @@ Every scenario must declare:
 - `expected_authority_ceiling`;
 - `expected_clean_data_decision`;
 - `expected_safe_actions`.
+
+Implementation status:
+
+- Planned for review. Not implemented until explicitly green-lit.
 
 ## Resolution Under Uncertainty
 
@@ -223,6 +231,10 @@ it should not fall to Level 0 unless no safe user action exists.
 `uncertainty_paralysis_rate` exists to catch cases where Lyra avoids forbidden
 claims but also fails to offer a safe clarifying or recovery action.
 
+Implementation status:
+
+- Planned for review. Not implemented until explicitly green-lit.
+
 ## Next Scenario
 
 The first post-V0 Baseet scenario should not be another timer case.
@@ -257,8 +269,8 @@ Implementation status:
 
 - Implemented as a harness-only, stub-output scenario. It does not validate a
   live product seam yet.
-- The scenario declares an explicit expected-output contract and reports
-  failure severity.
+- Proposed next guardrail: make scenarios declare explicit expected-output
+  contracts and report failure severity after review/green light.
 
 ## Near-Term Sequence
 

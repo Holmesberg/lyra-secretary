@@ -36,23 +36,9 @@ class ScenarioData:
     observable_trace: tuple[TraceEvent, ...]
     generator_assumptions: tuple[str, ...]
     coverage_limitations: tuple[str, ...]
-    allowed_outputs: tuple[str, ...]
-    forbidden_outputs: tuple[str, ...]
-    expected_authority_ceiling: str
-    expected_clean_data_decision: str
-    expected_safe_actions: tuple[str, ...]
 
     def trace_dicts(self) -> list[dict[str, Any]]:
         return [event.to_dict() for event in self.observable_trace]
-
-    def expected_output_contract(self) -> dict[str, Any]:
-        return {
-            "allowed_outputs": list(self.allowed_outputs),
-            "forbidden_outputs": list(self.forbidden_outputs),
-            "expected_authority_ceiling": self.expected_authority_ceiling,
-            "expected_clean_data_decision": self.expected_clean_data_decision,
-            "expected_safe_actions": list(self.expected_safe_actions),
-        }
 
 
 @dataclass(frozen=True)
@@ -100,7 +86,6 @@ class MetricValue:
 class ScoreResult:
     metrics: dict[str, MetricValue]
     failed_invariants: tuple[str, ...]
-    failure_severity: str
 
     def to_report_dict(self) -> dict[str, Any]:
         return {
@@ -109,5 +94,4 @@ class ScoreResult:
                 for name, metric in sorted(self.metrics.items())
             },
             "failed_invariants": list(self.failed_invariants),
-            "failure_severity": self.failure_severity,
         }

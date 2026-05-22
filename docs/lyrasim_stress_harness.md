@@ -159,53 +159,6 @@ minimal_replay_command
 Reports must also include scenario coverage limitations and generator
 assumptions so synthetic pass rates do not become false certainty.
 
-Every report also includes `failure_severity`:
-
-```text
-info | warning | blocking | catastrophic
-```
-
-`catastrophic` is reserved for authority violations, clean-data contamination,
-provider truth hallucination, privacy leaks, or cross-user leakage. `warning`
-is for safety-preserving but usefulness-damaging behavior such as uncertainty
-paralysis.
-
-Every scenario must declare an expected-output contract:
-
-```text
-allowed_outputs
-forbidden_outputs
-expected_authority_ceiling
-expected_clean_data_decision
-expected_safe_actions
-```
-
-## Resolution Under Uncertainty
-
-LyraSim should score the balance between overclaiming and paralysis. The system
-does not need to know the true cause of an ambiguous trace to offer a useful
-next action.
-
-```text
-truth resolution != action resolution
-```
-
-Uncertainty should lower claim authority, not erase all recovery paths.
-
-Resolution ladder:
-
-```text
-Level 0: Suppress
-Level 1: Clarify
-Level 2: Repair
-Level 3: Recommend
-Level 4: Adapt
-```
-
-Passive provider ambiguity should usually resolve at Level 1 or Level 2:
-clarify with the user or offer reversible repair. Level 3 and Level 4 require
-repeated evidence and later capability gates.
-
 ## Stop Point
 
 V0 stops after:
@@ -259,8 +212,6 @@ changes, cascade alerts, or adaptive scheduling in V0.
   fails if the output claims study, completion, learning, focus,
   understanding, cognition, identity, or clean calibration from the passive
   provider trace.
-- Added failure severity and an explicit expected-output contract to prevent
-  every simulated weirdness from becoming architecture work.
 - This increment still does not validate live Baseet behavior, passive
   telemetry product capture, pressure-map correctness, AI synthesis, recovery
   safety, or emotional safety.

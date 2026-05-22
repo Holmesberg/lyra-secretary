@@ -31,7 +31,6 @@ def build_report(
         "synthetic_user_id": scenario.synthetic_user_id,
         "hidden_state_summary": scenario.hidden_state.to_summary(),
         "observable_trace_sequence": scenario.trace_dicts(),
-        "expected_output_contract": scenario.expected_output_contract(),
         "lyra_output": output.to_dict(),
         **score.to_report_dict(),
         "coverage_limitations": list(scenario.coverage_limitations),
