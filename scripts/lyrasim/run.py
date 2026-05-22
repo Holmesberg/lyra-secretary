@@ -33,6 +33,9 @@ PROGRESS_CANDIDATE_SCENARIOS = {
     "baseet_multidevice_upload_collision",
     "baseet_reverse_progress_signal",
 }
+DEADLINE_PRESSURE_SCENARIOS = {
+    "baseet_duplicate_stale_deadline_pressure",
+}
 
 
 def stubbed_lyra_output_for_v0(scenario_id: str | None = None) -> LyraOutput:
@@ -134,6 +137,35 @@ def stubbed_lyra_output_for_v0(scenario_id: str | None = None) -> LyraOutput:
                 if scenario_id == "baseet_multidevice_upload_collision"
                 else "clarify"
             ),
+        )
+
+    if scenario_id in DEADLINE_PRESSURE_SCENARIOS:
+        return LyraOutput(
+            stubbed=True,
+            product_seams_exercised=(),
+            authority_rung="suggestion",
+            text_outputs=(
+                "Baseet-like deadline pressure is noisy; confirm coverage before turning it into a plan.",
+            ),
+            clean_data_admissions=(
+                CleanDataAdmission(
+                    profile="planning_calibration",
+                    admitted=False,
+                    reason="external_obligation_pressure",
+                ),
+                CleanDataAdmission(
+                    profile="measured_execution",
+                    admitted=False,
+                    reason="external_obligation_pressure",
+                ),
+            ),
+            published_claim_tags=(
+                "external_obligation",
+                "low_confidence_pressure",
+            ),
+            safe_actions=("confirm_coverage",),
+            safe_action_type="confirm_coverage",
+            resolution_rung="clarify",
         )
 
     return LyraOutput(

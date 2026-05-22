@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.lyrasim.generators.task_started_never_stopped import generate
+from scripts.lyrasim.generators.baseet_deadline_pressure import (
+    SCENARIO_ID as BASEET_DEADLINE_PRESSURE_SCENARIO_ID,
+)
 from scripts.lyrasim.generators.baseet_resource_open_idle_45m import (
     generate as generate_baseet_idle,
 )
@@ -33,10 +37,17 @@ from scripts.lyrasim.reports.writer import (
     format_cli_findings,
     write_report,
 )
+from scripts.lyrasim.product_seams.academic_pressure import (
+    lyra_output_from_pressure_map_response,
+    seed_baseet_deadlines_from_scenario,
+)
 from scripts.lyrasim.run import run_scenario, stubbed_lyra_output_for_v0
 from scripts.lyrasim.scenarios import SCENARIOS, generate_scenario
 from scripts.lyrasim.scorers import score_scenario
 from scripts.lyrasim.scorers.core import _rate_metric
+
+from app.db.models import ExposureRenderEvent, Task, User
+from tests.conftest import auth_headers
 
 
 def test_generator_is_deterministic_by_seed():
@@ -178,6 +189,19 @@ def test_cli_findings_summary_includes_replay_and_resolution():
     assert "safe_action_type=ask_pause_continue_split" in rendered
     assert "replay=python scripts/lyrasim/run.py" in rendered
     assert "harness validation only, not product safety" in rendered
+
+
+def test_baseet_deadline_pressure_stub_control_is_cli_safe():
+    report = run_scenario(
+        scenario_id=BASEET_DEADLINE_PRESSURE_SCENARIO_ID,
+        seed=20260522,
+        output_path=None,
+    )
+
+    assert report["stubbed"] is True
+    assert report["findings_summary"]["overall_status"] == "pass"
+    assert report["findings_summary"]["product_seam_validated"] is False
+    assert report["findings_summary"]["safe_action_type"] == "confirm_coverage"
 
 
 def test_metric_zero_denominator_is_not_applicable():
@@ -388,6 +412,96 @@ def test_baseet_progress_candidate_scenarios_remain_low_authority(
     assert score.metrics["uncertainty_paralysis_rate"].value == 0.0
     assert score.metrics["clean_data_contamination_rate"].status == "pass"
     assert score.metrics["provider_truth_hallucination_rate"].status == "pass"
+
+
+def test_baseet_deadline_pressure_validates_real_pressure_map_product_seam(
+    db,
+    client,
+):
+    user = User(
+        email="lyrasim-pressure-seam@example.test",
+        google_id=None,
+        timezone="Africa/Cairo",
+        is_operator=False,
+        notion_enabled=False,
+        terms_accepted_at=datetime.utcnow(),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    scenario = generate_scenario(BASEET_DEADLINE_PRESSURE_SCENARIO_ID, 20260522)
+    rows = seed_baseet_deadlines_from_scenario(
+        db,
+        scenario,
+        user_id=user.user_id,
+        base_time=datetime.utcnow(),
+    )
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    output = lyra_output_from_pressure_map_response(data)
+    score = score_scenario(scenario, output)
+    report = build_report(scenario=scenario, output=output, score=score)
+
+    assert len(rows) == 3
+    assert output.stubbed is False
+    assert output.product_seams_exercised == (
+        "academic_pressure.pressure_map",
+        "output_surfaces.exposure_ledger",
+    )
+    assert report["findings_summary"]["product_seam_validated"] is True
+    assert score.failed_invariants == ()
+    assert score.metrics["authority_violation_rate"].status == "pass"
+    assert score.metrics["clean_data_contamination_rate"].status == "pass"
+    assert score.metrics["provider_truth_hallucination_rate"].status == "pass"
+    assert score.metrics["safe_action_availability_rate"].value == 1.0
+    assert score.metrics["uncertainty_paralysis_rate"].value == 0.0
+
+    assert data["clean_profile"] is None
+    assert data["authority_rung"] == "suggestion"
+    assert data["mutation_permission"] == "explicit_user_confirmation_required"
+    assert "automatic_task_creation" in data["denied_authority"]
+    assert "automatic_calendar_mutation" in data["denied_authority"]
+    assert db.query(Task).filter(Task.user_id == user.user_id).count() == 0
+
+    assert data["items"]
+    assert {item["provider_kind"] for item in data["items"]} == {"baseet"}
+    assert {item["evidence_class"] for item in data["items"]} == {
+        "external_obligation"
+    }
+    assert {item["trust_state"] for item in data["items"]} == {
+        "verified_reachable"
+    }
+    assert all(
+        "coverage correctness" in " ".join(item["warnings"])
+        for item in data["items"]
+    )
+    assert data["estimated_low_minutes"] < data["estimated_high_minutes"]
+    assert data["coverage_questions"]
+    assert any(
+        option["action"] == "confirm_coverage"
+        for option in data["recovery_options"]
+    )
+    assert "overloaded" not in data["headline"].lower()
+    assert "overloaded" not in data["pressure_summary"].lower()
+
+    render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.render_id == data["render_id"])
+        .one()
+    )
+    snapshot = render.content_snapshot
+    assert "Assignment 1" not in snapshot
+    assert "hash_baseet" not in snapshot
+    assert "baseet_mock" not in snapshot
+    assert "lyrasim-pressure-seam" not in snapshot
+    assert "external_obligation_count" in snapshot
 
 
 def test_provider_progress_candidate_cannot_auto_execute_or_enter_clean_data():

@@ -18,9 +18,10 @@ RESOLUTION_RUNGS = ("suppress", "clarify", "repair", "recommend", "adapt")
 EXPECTED_RESOLUTION_RUNGS = RESOLUTION_RUNGS + ("clarify_or_repair",)
 SAFE_ACTION_TYPES = (
     "confirm_done_partial_discard",
+    "confirm_coverage",
     "adjust_session_duration",
     "mark_open_unconfirmed",
     "ask_pause_continue_split",
     "none",
 )
-SCORER_VERSION = "lyrasim_scorers_v3"
+SCORER_VERSION = "lyrasim_scorers_v4"

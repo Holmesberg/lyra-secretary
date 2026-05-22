@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from scripts.lyrasim.generators import baseet_deadline_pressure
 from scripts.lyrasim.generators import baseet_resource_open_idle_45m
 from scripts.lyrasim.generators import baseet_progress_candidates
 from scripts.lyrasim.generators import task_started_never_stopped
@@ -18,6 +19,11 @@ class ScenarioDefinition:
 
 
 SCENARIOS: dict[str, ScenarioDefinition] = {
+    baseet_deadline_pressure.SCENARIO_ID: ScenarioDefinition(
+        scenario_id=baseet_deadline_pressure.SCENARIO_ID,
+        generator=baseet_deadline_pressure.generate,
+        scorer_names=("score_scenario",),
+    ),
     baseet_progress_candidates.BACKGROUND_VIDEO_SCENARIO_ID: ScenarioDefinition(
         scenario_id=baseet_progress_candidates.BACKGROUND_VIDEO_SCENARIO_ID,
         generator=baseet_progress_candidates.generate_background_video_fakeout,

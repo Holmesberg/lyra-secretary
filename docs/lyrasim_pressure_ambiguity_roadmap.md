@@ -164,6 +164,7 @@ findings_summary:
 
 ```text
 confirm_done_partial_discard
+confirm_coverage
 adjust_session_duration
 mark_open_unconfirmed
 ask_pause_continue_split
@@ -445,6 +446,166 @@ Implementation status:
   calibration, learning claims, completion claims, or automatic `EXECUTED`
   transitions.
 
+## Product Seam Connection Plan
+
+Current state:
+
+- V0 and the current Baseet/provider scenarios are harness-only controls.
+- `stubbed=true` validates generation, scoring, replay, findings, and report
+  shape. It does not validate product behavior.
+- `product_seam_validated=false` until generated trace/provider data enters a
+  real app service or endpoint and LyraSim scores the actual product output.
+
+Definition:
+
+```text
+product_seam_validated=true
+only when a scenario exercises at least one real product seam
+and the report names the seam that was exercised
+```
+
+Eligible first seams:
+
+- `backend/app/services/academic_pressure.py` and `/v1/academic/pressure-map`;
+- Baseet/provider normalizer fixture path once it exists;
+- clean-data admission logic;
+- `EvidencePacket` / `ClaimCompiler`;
+- output surface registry and exposure ledger;
+- recovery/safe-action surfaces;
+- DB-backed integration tests with synthetic rows.
+
+Phases:
+
+1. Stubbed harness-only scenarios.
+2. Pure service adapter tests with no DB mutation unless required.
+3. DB-backed integration seam using synthetic test rows.
+4. Output/exposure seam validating `ClaimCompiler`, output surfaces, exposure
+   ledger, forbidden-copy scanning, and authority rungs.
+5. Kill-switch seam validating suppression of Baseet pressure inputs, provider
+   progress, passive inference, nudges, AI synthesis, and adaptive scheduling.
+6. Pre-scale replay pack before approximately 400 Baseet users.
+
+Gates:
+
+- A stubbed scenario may not be used as product confidence.
+- A scenario may not mark `product_seam_validated=true` unless it exercises at
+  least one real service or endpoint.
+- Product seam validation must not require live Baseet or public API changes.
+- Product seam runs must stay deterministic and replayable.
+- Hidden state must never enter product-facing inputs.
+- Product seam tests must preserve redaction and user scoping.
+- Authority violation, clean-data contamination, provider truth hallucination,
+  privacy leak, or cross-user leakage in a product seam is catastrophic.
+
+Rule:
+
+```text
+one real seam before one new wave
+```
+
+Recommended first product seam:
+
+```text
+scenario_id: baseet_duplicate_stale_deadline_pressure
+path: synthetic Baseet-like deadlines -> real pressure map -> LyraSim scorer
+```
+
+Scenario shape:
+
+- create synthetic `Deadline` rows with `external_source="baseet_mock"`;
+- include duplicate/stale/changing/vague deadline pressure;
+- call `build_pressure_map()` or `/v1/academic/pressure-map`;
+- score the actual response for external-obligation boundaries.
+
+Expected product-seam result:
+
+- no task creation;
+- no calendar mutation;
+- no clean calibration;
+- `evidence_class == external_obligation`;
+- provider kind resolves to `baseet`;
+- pressure uses ranges, not exact fake certainty;
+- assumptions/warnings preserve provider and coverage uncertainty;
+- duplicate/stale pressure does not become unchecked certainty;
+- exposure snapshot contains no raw titles, tokens, URLs, or external IDs.
+
+Keep the existing stubbed scenario as a control. The first win is not
+"connect LyraSim to the product." The first win is one Baseet-like
+provider-noise scenario deterministically failing or passing against the real
+pressure-map seam.
+
+Implementation status:
+
+- Implemented as a DB-backed test seam using synthetic Baseet-like `Deadline`
+  rows and the real `/v1/academic/pressure-map` path.
+- The scenario keeps `stubbed=false`, names `academic_pressure.pressure_map`
+  and `output_surfaces.exposure_ledger` as exercised seams, and verifies the
+  report marks `product_seam_validated=true`.
+- The original stubbed scenarios remain harness controls.
+
+## Adversarial Council Review
+
+LyraSim does not run an agent council for every pass. Scorers are the invariant
+judges. The council is adversarial interpretation, and Aly remains the
+authority.
+
+Trigger council review only for:
+
+- new scenario families;
+- catastrophic failures;
+- product-seam validation failures;
+- authority boundary ambiguity;
+- privacy or surveillance risk;
+- emotional-posture risk;
+- cases where the run passes but feels suspicious.
+
+Review flow:
+
+```text
+LyraSim deterministic report
+-> council review only when triggered
+-> human/operator decision
+-> failing test | reduced claim | boundary change | product fix | parked observation
+```
+
+Agent council, JARVIS, and OpenClaw may answer what a human should consider.
+They do not own doctrine, code, runtime mutation, or product authority. Council
+output is advisory until converted by the operator into a failing test, reduced
+claim, boundary change, product fix, or parked observation.
+
+## Pre-Scale Kill Switch Plan
+
+Before Baseet-scale exposure, Lyra needs containment that can turn a bad
+inference pattern into a contained incident instead of a 400-user failure.
+
+Implementation status: planned. These flags are not claimed to exist until a
+code/config pass adds and tests them.
+
+Minimum useful proposed flags:
+
+```text
+LYRA_SAFE_MODE=read_only_pressure
+LYRA_BASEET_IMPORT_ENABLED
+LYRA_BASEET_PRESSURE_INPUT_ENABLED
+LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED
+LYRA_PASSIVE_TRACE_INFERENCE_ENABLED
+LYRA_RECOVERY_NUDGES_ENABLED
+LYRA_AI_SYNTHESIS_ENABLED
+LYRA_ADAPTIVE_SCHEDULING_ENABLED
+```
+
+`read_only_pressure` means:
+
+- no task mutation;
+- no calendar mutation;
+- no adaptive scheduling;
+- no passive inference;
+- no recovery nudges;
+- pressure map only, with assumptions visible.
+
+Kill-switch validation is a product seam. It should prove the flags suppress
+the risky path and produce a deterministic report naming what was disabled.
+
 ## Near-Term Sequence
 
 1. Add V0 PR/merge note language to future PR notes.
@@ -452,9 +613,11 @@ Implementation status:
 3. Add `uncertainty_paralysis_rate` and/or `safe_action_availability_rate`.
    Done.
 4. Implement `baseet_resource_open_idle_45m`. Done.
-5. Implement provider-noise scenario: duplicate/stale deadline inflates pressure.
-   Next.
-6. Stop, run local gates, push, and wait for CI. Required after each increment.
+5. Add the Product Seam Connection Plan. Done.
+6. Implement provider-noise scenario: duplicate/stale Baseet-like deadline
+   inflates pressure against the real pressure-map seam. Done.
+7. Add kill-switch validation before adding more Baseet chaos. Next.
+8. Stop, run local gates, push, and wait for CI. Required after each increment.
 
 Do not jump to archetypes, AI synthesis, adaptive scheduling, full chaos waves,
 or broad simulation realism yet.

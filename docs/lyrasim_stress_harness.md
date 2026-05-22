@@ -34,6 +34,27 @@ V0 may use stubbed Lyra outputs while the harness is being brought up, but every
 stub must be labeled `stubbed=true`. Stubbed outputs cannot count as product
 seam validation.
 
+## Product Seam Boundary
+
+This V0 document records harness bring-up. The active post-V0 bridge from
+stubbed scenarios to real product behavior lives in
+`docs/lyrasim_pressure_ambiguity_roadmap.md` under Product Seam Connection
+Plan.
+
+Rules:
+
+- `stubbed=true` remains harness validation only.
+- `product_seam_validated=true` requires generated scenario data to enter at
+  least one real product service or endpoint.
+- The report must name the exercised seam.
+- Hidden state must never enter product-facing inputs.
+- Product seam validation must stay deterministic, replayable, redacted, and
+  user-scoped.
+
+The recommended first seam is a Baseet-like duplicate/stale deadline pressure
+scenario against the real academic pressure-map path, while keeping the stubbed
+scenario as a control.
+
 ## Non-Claims
 
 LyraSim does not prove:
@@ -200,6 +221,7 @@ Safe action types:
 
 ```text
 confirm_done_partial_discard
+confirm_coverage
 adjust_session_duration
 mark_open_unconfirmed
 ask_pause_continue_split
