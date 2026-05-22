@@ -14,6 +14,12 @@ superseded_by:
 This document preserves the LyraSim plan across context compaction. It is not a
 runtime product feature spec. It authorizes incremental harness work only.
 
+LyraSim exists to pressure the current system before the expected Baseet user
+surge. It is a breakage harness for finding catastrophic authority, privacy,
+provider, pressure-map, and contamination failures before approximately 400
+users generate real traces. It is not a completeness claim and not a source of
+new product doctrine.
+
 ## V0 Status
 
 LyraSim V0 is complete.
@@ -41,6 +47,12 @@ ambiguous trace -> confident surveillance claim -> polluted learning loop
 ```
 
 LyraSim is a pressure-and-ambiguity wind tunnel, not a human simulator.
+
+The goal is to make the system break in synthetic pressure before it breaks
+under real Baseet pressure. Passing LyraSim means only that Lyra survived the
+modeled pressure class; failing LyraSim means the failure is worth triaging.
+Only catastrophic failures, repeated real-world failures, or failures that map
+to an existing authority boundary should produce code architecture changes.
 
 The primary failure loop to attack:
 
@@ -76,6 +88,15 @@ LyraSim does not prove:
 
 LyraSim covers major known failure-mode families and must expand when real
 provider, user, or runtime failures reveal new classes of ambiguity.
+
+LyraSim also does not authorize building new intelligence merely because a
+scenario imagined it. Simulation findings become action only when they produce:
+
+- a failing test;
+- a documented scenario;
+- a reduced claim;
+- an operational fix;
+- or a concrete boundary change for a catastrophic risk.
 
 ## Metric Additions
 
@@ -411,6 +432,12 @@ If a simulated failure does not produce one of:
 - concrete boundary change,
 
 then it stays observational and does not become architecture.
+```
+
+Default response to non-catastrophic simulated findings:
+
+```text
+document -> monitor -> rerun after real pressure
 ```
 
 ## Human Cohort Boundary
