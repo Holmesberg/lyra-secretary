@@ -13,7 +13,12 @@ from scripts.lyrasim.generators.task_started_never_stopped import generate
 from scripts.lyrasim.generators.baseet_resource_open_idle_45m import (
     generate as generate_baseet_idle,
 )
-from scripts.lyrasim.models import CleanDataAdmission, LyraOutput, TraceEvent
+from scripts.lyrasim.models import (
+    CleanDataAdmission,
+    HypothesisCheckPrompt,
+    LyraOutput,
+    TraceEvent,
+)
 from scripts.lyrasim.reports.writer import build_report, write_report
 from scripts.lyrasim.run import run_scenario, stubbed_lyra_output_for_v0
 from scripts.lyrasim.scenarios import SCENARIOS, generate_scenario
@@ -123,6 +128,7 @@ def test_report_contract_and_replay_command(tmp_path):
         "product_seams_exercised",
         "synthetic_user_id",
         "hidden_state_summary",
+        "simulated_self_report_summary",
         "observable_trace_sequence",
         "lyra_output",
         "metrics",
@@ -178,6 +184,8 @@ def test_baseet_idle_resource_scenario_is_registered_and_video_derived():
     assert scenario == generate_baseet_idle(20260522)
     assert scenario.scenario_origin == "video_derived"
     assert scenario.hidden_state.user_activity == "away_from_keyboard"
+    assert scenario.simulated_self_reports
+    assert scenario.simulated_self_reports[0].clean_data_eligible is False
     assert any(
         event.payload.get("requires_safe_action") is True
         for event in scenario.observable_trace
@@ -192,12 +200,77 @@ def test_baseet_idle_resource_safe_stub_remains_low_authority():
     assert output.stubbed is True
     assert output.product_seams_exercised == ()
     assert output.safe_actions
+    assert output.hypothesis_checks
+    assert output.hypothesis_checks[0].question_text.endswith("?")
     assert score.failed_invariants == ()
     assert score.metrics["authority_violation_rate"].status == "pass"
     assert score.metrics["clean_data_contamination_rate"].status == "pass"
     assert score.metrics["provider_truth_hallucination_rate"].status == "pass"
     assert score.metrics["safe_action_availability_rate"].value == 1.0
     assert score.metrics["uncertainty_paralysis_rate"].value == 0.0
+    assert score.metrics["self_report_prompt_availability_rate"].value == 1.0
+
+
+def test_baseet_idle_resource_requires_hypothesis_check_prompt():
+    scenario = generate_baseet_idle(20260522)
+    output = LyraOutput(
+        stubbed=True,
+        product_seams_exercised=(),
+        authority_rung="suggestion",
+        text_outputs=("Possible pause or inactive resource state detected.",),
+        clean_data_admissions=(
+            CleanDataAdmission(
+                profile="planning_calibration",
+                admitted=False,
+                reason="passive_provider_idle_trace",
+            ),
+        ),
+        safe_actions=("ask_pause_or_continue",),
+    )
+
+    score = score_scenario(scenario, output)
+
+    assert score.metrics["self_report_prompt_availability_rate"].status == "fail"
+    assert (
+        "self_report_clarification:no_valid_hypothesis_check_prompt"
+        in score.failed_invariants
+    )
+
+
+def test_hypothesis_check_prompt_must_not_create_clean_truth():
+    scenario = generate_baseet_idle(20260522)
+    output = LyraOutput(
+        stubbed=True,
+        product_seams_exercised=(),
+        authority_rung="suggestion",
+        text_outputs=("Possible pause or inactive resource state detected.",),
+        clean_data_admissions=(
+            CleanDataAdmission(
+                profile="planning_calibration",
+                admitted=False,
+                reason="passive_provider_idle_trace",
+            ),
+        ),
+        safe_actions=("ask_pause_or_continue",),
+        hypothesis_checks=(
+            HypothesisCheckPrompt(
+                hypothesis_id="possible_pause_or_inactive_resource",
+                question_text="Was this a pause or inactive resource moment?",
+                options=("yes_pause_or_away", "no_i_was_working"),
+                self_report_provenance="self_reported",
+                calibration_use="clean_execution_truth",
+                clean_data_eligible=True,
+            ),
+        ),
+    )
+
+    score = score_scenario(scenario, output)
+
+    assert score.metrics["self_report_prompt_availability_rate"].status == "fail"
+    assert (
+        "self_report_clarification:no_valid_hypothesis_check_prompt"
+        in score.failed_invariants
+    )
 
 
 def test_baseet_idle_resource_scorer_catches_surveillance_hallucination():

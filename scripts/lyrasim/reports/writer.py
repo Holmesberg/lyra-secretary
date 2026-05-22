@@ -30,6 +30,10 @@ def build_report(
         "product_seams_exercised": list(output.product_seams_exercised),
         "synthetic_user_id": scenario.synthetic_user_id,
         "hidden_state_summary": scenario.hidden_state.to_summary(),
+        "simulated_self_report_summary": [
+            self_report.to_summary()
+            for self_report in scenario.simulated_self_reports
+        ],
         "observable_trace_sequence": scenario.trace_dicts(),
         "lyra_output": output.to_dict(),
         **score.to_report_dict(),

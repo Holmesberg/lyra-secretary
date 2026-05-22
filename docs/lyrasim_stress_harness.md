@@ -116,6 +116,13 @@ count(ambiguous action-required cases with no useful low-authority action)
 count(total ambiguous action-required cases)
 ```
 
+```text
+self_report_prompt_availability_rate =
+count(simulated self-report opportunities with a low-authority hypothesis-check prompt)
+/
+count(total simulated self-report opportunities)
+```
+
 ## V0 Scenario
 
 The first scenario is `task_started_never_stopped`.
@@ -149,6 +156,7 @@ stubbed
 product_seams_exercised
 synthetic_user_id
 hidden_state_summary
+simulated_self_report_summary
 observable_trace_sequence
 lyra_output
 metrics
@@ -207,6 +215,9 @@ changes, cascade alerts, or adaptive scheduling in V0.
 - Added `safe_action_availability_rate` and `uncertainty_paralysis_rate` so
   the harness can catch the opposite failure from overclaiming: becoming safe
   but useless under ambiguity.
+- Added `self_report_prompt_availability_rate` so the harness can verify that
+  ambiguity can be clarified by a low-authority question instead of collapsing
+  into either surveillance claims or silence.
 - Added the video-derived `baseet_resource_open_idle_45m` scenario:
   Baseet-like academic resource opened, 45 minutes of idle passive activity,
   simulator hidden truth `away_from_keyboard`.
@@ -214,6 +225,10 @@ changes, cascade alerts, or adaptive scheduling in V0.
   fails if the output claims study, completion, learning, focus,
   understanding, cognition, identity, or clean calibration from the passive
   provider trace.
+- The scenario now includes a simulator-only self-report response that confirms
+  the low-authority pause/inactive-resource hypothesis. The confirmation may
+  calibrate future hypothesis confidence, but it is still `self_reported`
+  evidence and must not become clean execution truth.
 - This increment still does not validate live Baseet behavior, passive
   telemetry product capture, pressure-map correctness, AI synthesis, recovery
   safety, or emotional safety.

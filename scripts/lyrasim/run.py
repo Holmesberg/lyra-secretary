@@ -11,7 +11,11 @@ if __package__ in {None, ""}:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-from scripts.lyrasim.models import CleanDataAdmission, LyraOutput
+from scripts.lyrasim.models import (
+    CleanDataAdmission,
+    HypothesisCheckPrompt,
+    LyraOutput,
+)
 from scripts.lyrasim.reports.writer import build_report, write_report
 from scripts.lyrasim.scenarios import generate_scenario
 from scripts.lyrasim.scorers import score_scenario
@@ -49,6 +53,21 @@ def stubbed_lyra_output_for_v0(scenario_id: str | None = None) -> LyraOutput:
             safe_actions=(
                 "ask_pause_or_continue",
                 "split_remaining_work",
+            ),
+            hypothesis_checks=(
+                HypothesisCheckPrompt(
+                    hypothesis_id="possible_pause_or_inactive_resource",
+                    question_text="Was this a pause or inactive resource moment?",
+                    options=(
+                        "yes_pause_or_away",
+                        "no_i_was_working",
+                        "partly_or_mixed",
+                        "ignore",
+                    ),
+                    self_report_provenance="self_reported",
+                    calibration_use="future_hypothesis_confidence_only",
+                    clean_data_eligible=False,
+                ),
             ),
         )
 

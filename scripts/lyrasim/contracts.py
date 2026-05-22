@@ -14,4 +14,4 @@ from app.core.research_contracts import AUTHORITY_RUNGS  # noqa: E402
 
 
 AUTHORITY_LADDER_VERSION = "research_contracts.AUTHORITY_RUNGS:v1"
-SCORER_VERSION = "lyrasim_scorers_v1"
+SCORER_VERSION = "lyrasim_scorers_v2"

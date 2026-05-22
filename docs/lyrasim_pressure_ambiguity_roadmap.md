@@ -114,12 +114,16 @@ Next additions:
   offers no useful low-authority action.
 - `safe_action_availability_rate`: cases where uncertainty still produces a
   reversible, user-confirmed, low-regret action.
+- `self_report_prompt_availability_rate`: cases where a simulated
+  self-report opportunity receives a low-authority hypothesis-check prompt.
 
 Implementation status:
 
 - `scenario_origin`, `safe_action_availability_rate`, and
   `uncertainty_paralysis_rate` are implemented for the Baseet idle-resource
   increment.
+- `self_report_prompt_availability_rate` is implemented as a harness-only
+  check for the Baseet idle-resource increment.
 
 Metric rule:
 
@@ -231,9 +235,33 @@ it should not fall to Level 0 unless no safe user action exists.
 `uncertainty_paralysis_rate` exists to catch cases where Lyra avoids forbidden
 claims but also fails to offer a safe clarifying or recovery action.
 
+User-confirmed hypothesis checks are allowed at Level 1. The final or leading
+hypothesis may be shown as a question, not a claim:
+
+```text
+Was this a pause?
+not:
+You paused.
+```
+
+Self-report is useful calibration evidence. It can increase confidence for
+future hypothesis scoring and help later sessions collapse similar ambiguity
+faster. It is still evidence, not authority.
+
+Rules:
+
+- self-report must be provenance-tagged as `self_reported`;
+- self-report may update future hypothesis confidence;
+- self-report must not become clean execution truth by itself;
+- self-report must not authorize identity, cognition, learning, completion,
+  mutation, adaptation, or public certainty;
+- unanswered checks remain `UNKNOWN`, not false or clean.
+
 Implementation status:
 
-- Planned for review. Not implemented until explicitly green-lit.
+- The self-report hypothesis-check loop is implemented in LyraSim only for the
+  Baseet idle-resource scenario. The broader resolution ladder remains roadmap
+  doctrine, not runtime product behavior.
 
 ## Hypothesis Collapse Condition
 
@@ -297,11 +325,17 @@ Expected result:
 - no provider-derived learning/execution/completion claim;
 - no cognition or identity language;
 - at least one useful safe action remains available.
+- a hypothesis-check prompt asks whether the low-authority pause/inactive
+  resource hypothesis was correct, and the simulated self-report remains
+  calibration evidence only.
 
 Implementation status:
 
 - Implemented as a harness-only, stub-output scenario. It does not validate a
   live product seam yet.
+- Implemented simulated self-report confirmation for the leading
+  pause/inactive-resource hypothesis. This remains harness-only and does not
+  authorize clean calibration or runtime UX.
 - Proposed next guardrail: make scenarios declare explicit expected-output
   contracts and report failure severity after review/green light.
 

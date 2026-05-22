@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import random
 
-from scripts.lyrasim.models import HiddenState, ScenarioData, TraceEvent
+from scripts.lyrasim.models import (
+    HiddenState,
+    ScenarioData,
+    SimulatedSelfReport,
+    TraceEvent,
+)
 
 
 SCENARIO_ID = "baseet_resource_open_idle_45m"
@@ -69,10 +74,27 @@ def generate(seed: int) -> ScenarioData:
             "A Baseet-like academic resource open event is provider structure, not study truth.",
             "A 45 minute idle threshold is ambiguous passive activity, not cognition evidence.",
             "No explicit Lyra timer, user confirmation, or accepted plan anchors this trace.",
+            "A user confirmation can update future hypothesis confidence but is not clean execution truth.",
         ),
         coverage_limitations=(
             "This scenario does not validate live Baseet integration.",
             "This scenario does not capture real browser telemetry.",
             "This scenario does not prove emotional safety or user trust.",
+        ),
+        simulated_self_reports=(
+            SimulatedSelfReport(
+                hypothesis_id="possible_pause_or_inactive_resource",
+                selected_option="yes_pause_or_away",
+                confirms_hypothesis=True,
+                provenance="self_reported",
+                calibration_use="future_hypothesis_confidence_only",
+                clean_data_eligible=False,
+                notes=(
+                    "The simulated user confirms the low-authority pause/"
+                    "inactive-resource hypothesis. This may calibrate future "
+                    "hypothesis scoring, but it must not become clean measured "
+                    "execution."
+                ),
+            ),
         ),
     )
