@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from scripts.lyrasim.generators import baseet_resource_open_idle_45m
+from scripts.lyrasim.generators import baseet_progress_candidates
 from scripts.lyrasim.generators import task_started_never_stopped
 from scripts.lyrasim.models import ScenarioData
 
@@ -17,9 +18,29 @@ class ScenarioDefinition:
 
 
 SCENARIOS: dict[str, ScenarioDefinition] = {
+    baseet_progress_candidates.BACKGROUND_VIDEO_SCENARIO_ID: ScenarioDefinition(
+        scenario_id=baseet_progress_candidates.BACKGROUND_VIDEO_SCENARIO_ID,
+        generator=baseet_progress_candidates.generate_background_video_fakeout,
+        scorer_names=("score_scenario",),
+    ),
+    baseet_progress_candidates.MULTIDEVICE_UPLOAD_SCENARIO_ID: ScenarioDefinition(
+        scenario_id=baseet_progress_candidates.MULTIDEVICE_UPLOAD_SCENARIO_ID,
+        generator=baseet_progress_candidates.generate_multidevice_upload_collision,
+        scorer_names=("score_scenario",),
+    ),
     baseet_resource_open_idle_45m.SCENARIO_ID: ScenarioDefinition(
         scenario_id=baseet_resource_open_idle_45m.SCENARIO_ID,
         generator=baseet_resource_open_idle_45m.generate,
+        scorer_names=("score_scenario",),
+    ),
+    baseet_progress_candidates.REVERSE_PROGRESS_SCENARIO_ID: ScenarioDefinition(
+        scenario_id=baseet_progress_candidates.REVERSE_PROGRESS_SCENARIO_ID,
+        generator=baseet_progress_candidates.generate_reverse_progress_signal,
+        scorer_names=("score_scenario",),
+    ),
+    baseet_progress_candidates.STALE_PROGRESS_SCENARIO_ID: ScenarioDefinition(
+        scenario_id=baseet_progress_candidates.STALE_PROGRESS_SCENARIO_ID,
+        generator=baseet_progress_candidates.generate_stale_task_progress_candidate,
         scorer_names=("score_scenario",),
     ),
     task_started_never_stopped.SCENARIO_ID: ScenarioDefinition(

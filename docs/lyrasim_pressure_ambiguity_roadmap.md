@@ -116,6 +116,8 @@ Next additions:
   reversible, user-confirmed, low-regret action.
 - `self_report_prompt_availability_rate`: cases where a simulated
   self-report opportunity receives a low-authority hypothesis-check prompt.
+- `safe_action_spam_rate`: cases where Lyra offers a recovery or confirmation
+  action despite ambiguity being too weak, already resolved, or irrelevant.
 
 Implementation status:
 
@@ -124,12 +126,54 @@ Implementation status:
   increment.
 - `self_report_prompt_availability_rate` is implemented as a harness-only
   check for the Baseet idle-resource increment.
+- `safe_action_spam_rate` is implemented for low-severity ambiguity tests.
 
 Metric rule:
 
 ```text
 If a denominator is zero, report null plus not_applicable, not 0.
 ```
+
+Balance rule:
+
+```text
+no overclaim
+no silence
+no spam
+```
+
+## Findings Summary
+
+Every LyraSim run reports findings in JSON and CLI output.
+
+Report field:
+
+```text
+findings_summary:
+  overall_status: pass | fail
+  finding_count
+  failed_invariants
+  stubbed
+  product_seam_validated
+  summary_lines
+  resolution_rung
+  safe_action_type
+```
+
+`safe_action_type` values:
+
+```text
+confirm_done_partial_discard
+adjust_session_duration
+mark_open_unconfirmed
+ask_pause_continue_split
+none
+```
+
+Implementation status:
+
+- Implemented in LyraSim reports and CLI output.
+- Stubbed runs explicitly remain harness validation only, not product safety.
 
 ## Failure Severity
 
@@ -212,19 +256,19 @@ clear about safe next step
 Resolution ladder:
 
 ```text
-Level 0: Suppress
+Level 0: suppress
   No safe claim and no useful action.
 
-Level 1: Clarify
+Level 1: clarify
   Ask the user to resolve ambiguity.
 
-Level 2: Repair
+Level 2: repair
   Offer reversible, low-regret recovery.
 
-Level 3: Recommend
+Level 3: recommend
   Suggest a bounded action from repeated evidence.
 
-Level 4: Adapt
+Level 4: adapt
   Change future plans only after validated patterns.
 ```
 
@@ -234,6 +278,17 @@ it should not fall to Level 0 unless no safe user action exists.
 
 `uncertainty_paralysis_rate` exists to catch cases where Lyra avoids forbidden
 claims but also fails to offer a safe clarifying or recovery action.
+
+`safe_action_spam_rate` catches the opposite failure: Lyra prompting on every
+tiny ambiguity.
+
+Rule:
+
+```text
+unknown truth + safe action available = pass
+unknown truth + no safe action = paralysis failure
+weak/resolved/irrelevant ambiguity + action = spam failure
+```
 
 User-confirmed hypothesis checks are allowed at Level 1. The final or leading
 hypothesis may be shown as a question, not a claim:
@@ -338,6 +393,57 @@ Implementation status:
   authorize clean calibration or runtime UX.
 - Proposed next guardrail: make scenarios declare explicit expected-output
   contracts and report failure severity after review/green light.
+
+## Abandoned-Inference Provider Progress Scenarios
+
+Provider progress must be represented as:
+
+```text
+provider_progress_candidate
+```
+
+not:
+
+```text
+execution_progress
+```
+
+This naming prevents passive/provider progress from drifting into execution
+truth.
+
+Implemented scenarios:
+
+- `baseet_stale_task_progress_candidate`: stale Lyra timer plus Baseet-like
+  slide/resource progress. Expected safe action type:
+  `confirm_done_partial_discard`.
+- `baseet_background_video_fakeout`: video reaches high provider progress while
+  muted/backgrounded/idle. Expected safe action type:
+  `confirm_done_partial_discard`.
+- `baseet_multidevice_upload_collision`: desktop timer stale while mobile
+  upload appears. Expected safe action type: `adjust_session_duration`.
+- `baseet_reverse_progress_signal`: provider progress moves backward from a
+  submitted/complete-looking state to draft/open. Expected safe action type:
+  `mark_open_unconfirmed`.
+
+For these scenarios:
+
+```text
+expected_resolution_rung = clarify_or_repair
+```
+
+The intended meaning is:
+
+```text
+truth unresolved
+but safe next action exists
+```
+
+Implementation status:
+
+- Implemented as harness-only, stub-output scenarios.
+- Provider progress candidates do not authorize runtime task mutation, clean
+  calibration, learning claims, completion claims, or automatic `EXECUTED`
+  transitions.
 
 ## Near-Term Sequence
 

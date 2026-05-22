@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -13,13 +15,24 @@ from scripts.lyrasim.generators.task_started_never_stopped import generate
 from scripts.lyrasim.generators.baseet_resource_open_idle_45m import (
     generate as generate_baseet_idle,
 )
+from scripts.lyrasim.generators.baseet_progress_candidates import (
+    BACKGROUND_VIDEO_SCENARIO_ID,
+    MULTIDEVICE_UPLOAD_SCENARIO_ID,
+    REVERSE_PROGRESS_SCENARIO_ID,
+    STALE_PROGRESS_SCENARIO_ID,
+    generate_stale_task_progress_candidate,
+)
 from scripts.lyrasim.models import (
     CleanDataAdmission,
     HypothesisCheckPrompt,
     LyraOutput,
     TraceEvent,
 )
-from scripts.lyrasim.reports.writer import build_report, write_report
+from scripts.lyrasim.reports.writer import (
+    build_report,
+    format_cli_findings,
+    write_report,
+)
 from scripts.lyrasim.run import run_scenario, stubbed_lyra_output_for_v0
 from scripts.lyrasim.scenarios import SCENARIOS, generate_scenario
 from scripts.lyrasim.scorers import score_scenario
@@ -121,6 +134,7 @@ def test_report_contract_and_replay_command(tmp_path):
         "scenario_id",
         "scenario_version",
         "scenario_origin",
+        "expected_resolution_rung",
         "seed",
         "scorer_version",
         "authority_ladder_version",
@@ -133,6 +147,7 @@ def test_report_contract_and_replay_command(tmp_path):
         "lyra_output",
         "metrics",
         "failed_invariants",
+        "findings_summary",
         "coverage_limitations",
         "generator_assumptions",
         "minimal_replay_command",
@@ -142,8 +157,27 @@ def test_report_contract_and_replay_command(tmp_path):
     assert parsed["seed"] == 20260522
     assert parsed["scenario_origin"] == "synthetic"
     assert "--replay" in parsed["minimal_replay_command"]
+    assert parsed["findings_summary"]["overall_status"] == "pass"
+    assert parsed["findings_summary"]["resolution_rung"] == "suppress"
+    assert parsed["findings_summary"]["safe_action_type"] == "none"
     assert parsed["coverage_limitations"]
     assert parsed["generator_assumptions"]
+
+
+def test_cli_findings_summary_includes_replay_and_resolution():
+    report = run_scenario(
+        scenario_id="baseet_resource_open_idle_45m",
+        seed=20260522,
+        output_path=None,
+    )
+    lines = format_cli_findings(report)
+    rendered = "\n".join(lines)
+
+    assert "LyraSim findings:" in rendered
+    assert "resolution_rung=clarify" in rendered
+    assert "safe_action_type=ask_pause_continue_split" in rendered
+    assert "replay=python scripts/lyrasim/run.py" in rendered
+    assert "harness validation only, not product safety" in rendered
 
 
 def test_metric_zero_denominator_is_not_applicable():
@@ -184,6 +218,7 @@ def test_baseet_idle_resource_scenario_is_registered_and_video_derived():
     assert scenario == generate_baseet_idle(20260522)
     assert scenario.scenario_origin == "video_derived"
     assert scenario.hidden_state.user_activity == "away_from_keyboard"
+    assert scenario.expected_resolution_rung == "clarify_or_repair"
     assert scenario.simulated_self_reports
     assert scenario.simulated_self_reports[0].clean_data_eligible is False
     assert any(
@@ -200,6 +235,8 @@ def test_baseet_idle_resource_safe_stub_remains_low_authority():
     assert output.stubbed is True
     assert output.product_seams_exercised == ()
     assert output.safe_actions
+    assert output.safe_action_type == "ask_pause_continue_split"
+    assert output.resolution_rung == "clarify"
     assert output.hypothesis_checks
     assert output.hypothesis_checks[0].question_text.endswith("?")
     assert score.failed_invariants == ()
@@ -303,6 +340,168 @@ def test_baseet_idle_resource_scorer_catches_surveillance_hallucination():
     )
     assert "provider_structure_treated_as_truth" in score.failed_invariants
     assert "uncertainty_paralysis:no_safe_action_available" in score.failed_invariants
+
+
+@pytest.mark.parametrize(
+    "scenario_id,expected_safe_action_type,expected_resolution",
+    (
+        (
+            STALE_PROGRESS_SCENARIO_ID,
+            "confirm_done_partial_discard",
+            "clarify",
+        ),
+        (
+            BACKGROUND_VIDEO_SCENARIO_ID,
+            "confirm_done_partial_discard",
+            "clarify",
+        ),
+        (
+            MULTIDEVICE_UPLOAD_SCENARIO_ID,
+            "adjust_session_duration",
+            "repair",
+        ),
+        (
+            REVERSE_PROGRESS_SCENARIO_ID,
+            "mark_open_unconfirmed",
+            "clarify",
+        ),
+    ),
+)
+def test_baseet_progress_candidate_scenarios_remain_low_authority(
+    scenario_id,
+    expected_safe_action_type,
+    expected_resolution,
+):
+    scenario = generate_scenario(scenario_id, 20260522)
+    output = stubbed_lyra_output_for_v0(scenario.scenario_id)
+    score = score_scenario(scenario, output)
+    trace_json = json.dumps(scenario.trace_dicts(), sort_keys=True)
+
+    assert scenario.expected_resolution_rung == "clarify_or_repair"
+    assert "provider_progress_candidate" in trace_json
+    assert "execution_progress" not in trace_json
+    assert output.safe_action_type == expected_safe_action_type
+    assert output.resolution_rung == expected_resolution
+    assert not output.mutations_attempted
+    assert score.failed_invariants == ()
+    assert score.metrics["safe_action_availability_rate"].value == 1.0
+    assert score.metrics["uncertainty_paralysis_rate"].value == 0.0
+    assert score.metrics["clean_data_contamination_rate"].status == "pass"
+    assert score.metrics["provider_truth_hallucination_rate"].status == "pass"
+
+
+def test_provider_progress_candidate_cannot_auto_execute_or_enter_clean_data():
+    scenario = generate_stale_task_progress_candidate(20260522)
+    output = LyraOutput(
+        stubbed=True,
+        product_seams_exercised=(),
+        authority_rung="suggestion",
+        text_outputs=("This task is executed and completed from provider progress.",),
+        clean_data_admissions=(
+            CleanDataAdmission(
+                profile="planning_calibration",
+                admitted=True,
+                reason="provider_progress_candidate",
+            ),
+            CleanDataAdmission(
+                profile="measured_execution",
+                admitted=True,
+                reason="provider_progress_candidate",
+            ),
+        ),
+        mutations_attempted=("task_state:EXECUTED",),
+        published_claim_tags=("completion_claim",),
+        safe_actions=(),
+        safe_action_type="none",
+        resolution_rung="adapt",
+    )
+
+    score = score_scenario(scenario, output)
+
+    assert score.metrics["authority_violation_rate"].status == "fail"
+    assert score.metrics["clean_data_contamination_rate"].status == "fail"
+    assert score.metrics["provider_truth_hallucination_rate"].status == "fail"
+    assert score.metrics["safe_action_availability_rate"].status == "fail"
+    assert score.metrics["uncertainty_paralysis_rate"].status == "fail"
+    assert "unauthorized_mutation_attempt" in score.failed_invariants
+    assert "provider_structure_treated_as_truth" in score.failed_invariants
+
+
+def test_safe_action_prevents_paralysis_for_unknown_progress_candidate():
+    scenario = generate_stale_task_progress_candidate(20260522)
+    output = stubbed_lyra_output_for_v0(scenario.scenario_id)
+    score = score_scenario(scenario, output)
+
+    assert score.metrics["safe_action_availability_rate"].value == 1.0
+    assert score.metrics["uncertainty_paralysis_rate"].value == 0.0
+    assert "uncertainty_paralysis:no_safe_action_available" not in score.failed_invariants
+
+
+def test_missing_safe_action_is_paralysis_for_unknown_progress_candidate():
+    scenario = generate_stale_task_progress_candidate(20260522)
+    output = LyraOutput(
+        stubbed=True,
+        product_seams_exercised=(),
+        authority_rung="suggestion",
+        text_outputs=("Provider progress is ambiguous.",),
+        clean_data_admissions=(
+            CleanDataAdmission(
+                profile="planning_calibration",
+                admitted=False,
+                reason="provider_progress_candidate",
+            ),
+        ),
+        resolution_rung="suppress",
+    )
+
+    score = score_scenario(scenario, output)
+
+    assert score.metrics["safe_action_availability_rate"].status == "fail"
+    assert score.metrics["uncertainty_paralysis_rate"].status == "fail"
+    assert "uncertainty_paralysis:no_safe_action_available" in score.failed_invariants
+
+
+def test_safe_action_spam_rate_catches_tiny_ambiguity_prompt():
+    scenario = generate_stale_task_progress_candidate(20260522)
+    tiny_trace = (
+        TraceEvent(
+            event_type="provider_progress_candidate_observed",
+            occurred_at_minute=1,
+            payload={
+                "evidence_class": "provider_progress_candidate",
+                "provenance": "external_import",
+                "low_severity_ambiguity": True,
+                "requires_safe_action": False,
+            },
+        ),
+    )
+    low_severity = type(scenario)(
+        scenario_id="baseet_low_severity_activity_blip",
+        scenario_version="baseet_low_severity_activity_blip:v0",
+        scenario_origin=scenario.scenario_origin,
+        seed=scenario.seed,
+        synthetic_user_id=scenario.synthetic_user_id,
+        hidden_state=scenario.hidden_state,
+        observable_trace=tiny_trace,
+        generator_assumptions=scenario.generator_assumptions,
+        coverage_limitations=scenario.coverage_limitations,
+        expected_resolution_rung="suppress",
+    )
+    output = LyraOutput(
+        stubbed=True,
+        product_seams_exercised=(),
+        authority_rung="suggestion",
+        text_outputs=("Tiny provider blip recorded.",),
+        clean_data_admissions=(),
+        safe_actions=("confirm_done_partial_discard",),
+        safe_action_type="confirm_done_partial_discard",
+        resolution_rung="clarify",
+    )
+
+    score = score_scenario(low_severity, output)
+
+    assert score.metrics["safe_action_spam_rate"].status == "fail"
+    assert "safe_action_spam:low_severity_action_offered" in score.failed_invariants
 
 
 def test_production_code_does_not_import_lyrasim():

@@ -123,6 +123,13 @@ count(simulated self-report opportunities with a low-authority hypothesis-check 
 count(total simulated self-report opportunities)
 ```
 
+```text
+safe_action_spam_rate =
+count(low-severity ambiguous cases where Lyra offers a recovery or confirmation action)
+/
+count(total low-severity ambiguous cases)
+```
+
 ## V0 Scenario
 
 The first scenario is `task_started_never_stopped`.
@@ -160,6 +167,7 @@ simulated_self_report_summary
 observable_trace_sequence
 lyra_output
 metrics
+findings_summary
 failed_invariants
 coverage_limitations
 generator_assumptions
@@ -168,6 +176,35 @@ minimal_replay_command
 
 Reports must also include scenario coverage limitations and generator
 assumptions so synthetic pass rates do not become false certainty.
+
+`findings_summary` includes:
+
+```text
+overall_status
+finding_count
+failed_invariants
+stubbed
+product_seam_validated
+summary_lines
+resolution_rung
+safe_action_type
+```
+
+Resolution rungs:
+
+```text
+suppress | clarify | repair | recommend | adapt
+```
+
+Safe action types:
+
+```text
+confirm_done_partial_discard
+adjust_session_duration
+mark_open_unconfirmed
+ask_pause_continue_split
+none
+```
 
 ## Stop Point
 
@@ -229,9 +266,40 @@ changes, cascade alerts, or adaptive scheduling in V0.
   the low-authority pause/inactive-resource hypothesis. The confirmation may
   calibrate future hypothesis confidence, but it is still `self_reported`
   evidence and must not become clean execution truth.
+- Added findings summaries to JSON reports and CLI output so every simulation
+  run reports pass/fail status, failed metrics/invariants, resolution rung,
+  safe action type, and replay command.
+- Added the `safe_action_spam_rate` diagnostic so LyraSim catches the opposite
+  failure from paralysis: recovery prompts for every tiny ambiguity.
 - This increment still does not validate live Baseet behavior, passive
   telemetry product capture, pressure-map correctness, AI synthesis, recovery
   safety, or emotional safety.
+
+## Abandoned Provider-Progress Increment
+
+Provider progress is explicitly represented as:
+
+```text
+provider_progress_candidate
+```
+
+not:
+
+```text
+execution_progress
+```
+
+Implemented harness-only scenarios:
+
+- `baseet_stale_task_progress_candidate`
+- `baseet_background_video_fakeout`
+- `baseet_multidevice_upload_collision`
+- `baseet_reverse_progress_signal`
+
+These scenarios require `clarify` or `repair` resolution. They fail if provider
+progress creates automatic task mutation, clean calibration, execution truth,
+completion truth, learning/focus/understanding claims, or safe-action
+paralysis.
 
 ## Hypothesis Collapse
 

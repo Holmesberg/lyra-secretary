@@ -37,6 +37,7 @@ class ScenarioData:
     generator_assumptions: tuple[str, ...]
     coverage_limitations: tuple[str, ...]
     simulated_self_reports: tuple["SimulatedSelfReport", ...] = ()
+    expected_resolution_rung: str = "suppress"
 
     def trace_dicts(self) -> list[dict[str, Any]]:
         return [event.to_dict() for event in self.observable_trace]
@@ -83,6 +84,8 @@ class LyraOutput:
     mutations_attempted: tuple[str, ...] = ()
     published_claim_tags: tuple[str, ...] = ()
     safe_actions: tuple[str, ...] = ()
+    safe_action_type: str = "none"
+    resolution_rung: str = "suppress"
     hypothesis_checks: tuple[HypothesisCheckPrompt, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:

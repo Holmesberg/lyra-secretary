@@ -97,4 +97,5 @@ def generate(seed: int) -> ScenarioData:
                 ),
             ),
         ),
+        expected_resolution_rung="clarify_or_repair",
     )

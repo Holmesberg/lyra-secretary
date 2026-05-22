@@ -16,13 +16,23 @@ from scripts.lyrasim.models import (
     HypothesisCheckPrompt,
     LyraOutput,
 )
-from scripts.lyrasim.reports.writer import build_report, write_report
+from scripts.lyrasim.reports.writer import (
+    build_report,
+    format_cli_findings,
+    write_report,
+)
 from scripts.lyrasim.scenarios import generate_scenario
 from scripts.lyrasim.scorers import score_scenario
 
 
 DEFAULT_SCENARIO = "task_started_never_stopped"
 DEFAULT_REPORT_DIR = Path(__file__).resolve().parent / "reports"
+PROGRESS_CANDIDATE_SCENARIOS = {
+    "baseet_stale_task_progress_candidate",
+    "baseet_background_video_fakeout",
+    "baseet_multidevice_upload_collision",
+    "baseet_reverse_progress_signal",
+}
 
 
 def stubbed_lyra_output_for_v0(scenario_id: str | None = None) -> LyraOutput:
@@ -54,6 +64,8 @@ def stubbed_lyra_output_for_v0(scenario_id: str | None = None) -> LyraOutput:
                 "ask_pause_or_continue",
                 "split_remaining_work",
             ),
+            safe_action_type="ask_pause_continue_split",
+            resolution_rung="clarify",
             hypothesis_checks=(
                 HypothesisCheckPrompt(
                     hypothesis_id="possible_pause_or_inactive_resource",
@@ -68,6 +80,59 @@ def stubbed_lyra_output_for_v0(scenario_id: str | None = None) -> LyraOutput:
                     calibration_use="future_hypothesis_confidence_only",
                     clean_data_eligible=False,
                 ),
+            ),
+        )
+
+    if scenario_id in PROGRESS_CANDIDATE_SCENARIOS:
+        text_by_scenario = {
+            "baseet_stale_task_progress_candidate": (
+                "Provider progress may indicate partial work; confirm done, partial, or discard before Lyra changes anything."
+            ),
+            "baseet_background_video_fakeout": (
+                "Video progress was provider-observed with weak local activity; mark coverage, review later, or discard?"
+            ),
+            "baseet_multidevice_upload_collision": (
+                "A mobile upload appeared while the desktop timer went stale; adjust session duration, mark partial, or discard."
+            ),
+            "baseet_reverse_progress_signal": (
+                "Provider progress moved backward; keep the obligation open and unconfirmed until user or provider confirms."
+            ),
+        }
+        safe_action_type_by_scenario = {
+            "baseet_stale_task_progress_candidate": "confirm_done_partial_discard",
+            "baseet_background_video_fakeout": "confirm_done_partial_discard",
+            "baseet_multidevice_upload_collision": "adjust_session_duration",
+            "baseet_reverse_progress_signal": "mark_open_unconfirmed",
+        }
+        return LyraOutput(
+            stubbed=True,
+            product_seams_exercised=(),
+            authority_rung="suggestion",
+            text_outputs=(text_by_scenario[scenario_id],),
+            clean_data_admissions=(
+                CleanDataAdmission(
+                    profile="planning_calibration",
+                    admitted=False,
+                    reason="provider_progress_candidate",
+                ),
+                CleanDataAdmission(
+                    profile="measured_execution",
+                    admitted=False,
+                    reason="provider_progress_candidate",
+                ),
+            ),
+            published_claim_tags=(
+                "provider_progress_candidate",
+                "low_confidence_activity",
+            ),
+            safe_actions=(
+                safe_action_type_by_scenario[scenario_id],
+            ),
+            safe_action_type=safe_action_type_by_scenario[scenario_id],
+            resolution_rung=(
+                "repair"
+                if scenario_id == "baseet_multidevice_upload_collision"
+                else "clarify"
             ),
         )
 
@@ -129,6 +194,8 @@ def main() -> None:
     )
     print(f"LyraSim report written: {output_path}")
     print(f"scenario={report['scenario_id']} seed={report['seed']} stubbed={report['stubbed']}")
+    for line in format_cli_findings(report):
+        print(line)
 
 
 if __name__ == "__main__":
