@@ -75,4 +75,23 @@ def generate(seed: int) -> ScenarioData:
             "This scenario does not capture real browser telemetry.",
             "This scenario does not prove emotional safety or user trust.",
         ),
+        allowed_outputs=(
+            "possible_session_instability",
+            "possible_pause",
+            "low_confidence_activity",
+        ),
+        forbidden_outputs=(
+            "studied",
+            "distracted",
+            "completed",
+            "focused",
+            "learned",
+            "understood",
+        ),
+        expected_authority_ceiling="suggestion",
+        expected_clean_data_decision="exclude_from_measured_execution_and_planning_calibration",
+        expected_safe_actions=(
+            "ask_pause_or_continue",
+            "split_remaining_work",
+        ),
     )

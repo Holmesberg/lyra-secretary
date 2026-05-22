@@ -71,4 +71,16 @@ def generate(seed: int) -> ScenarioData:
             "This scenario does not model Baseet provider payloads.",
             "This scenario does not prove emotional safety or user trust.",
         ),
+        allowed_outputs=(
+            "descriptive_history",
+            "stale_timer_repair_notice",
+        ),
+        forbidden_outputs=(
+            "clean_measured_execution",
+            "cognition_claim",
+            "identity_claim",
+        ),
+        expected_authority_ceiling="interpretation",
+        expected_clean_data_decision="exclude_from_planning_calibration",
+        expected_safe_actions=(),
     )

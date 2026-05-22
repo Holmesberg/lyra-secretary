@@ -127,6 +127,102 @@ Metric rule:
 If a denominator is zero, report null plus not_applicable, not 0.
 ```
 
+## Failure Severity
+
+Every scenario report should classify failures as:
+
+```text
+info | warning | blocking | catastrophic
+```
+
+Definitions:
+
+- `catastrophic`: authority violation, clean-data contamination, provider truth
+  hallucination, privacy leak, or cross-user leakage.
+- `blocking`: scenario fails a V0 gate but does not imply user, privacy,
+  authority, or contamination harm.
+- `warning`: uncertainty usefulness issue, pressure overreaction, or unclear
+  recovery.
+- `info`: observation only.
+
+Rule:
+
+```text
+Catastrophic failures require immediate triage. Warnings do not authorize
+architecture changes by themselves.
+```
+
+## Scenario Promotion And Scope Rules
+
+Real provider/user failures outrank synthetic failures. If a Baseet user creates
+an edge case, that scenario moves above imagined scenarios in implementation
+priority.
+
+A new scenario must cover a new failure family or a real observed failure.
+Variants of an existing family become parameters, not separate scenarios.
+
+Each LyraSim scenario PR should contain:
+
+- one scenario family;
+- at most one scorer change;
+- at most one report schema change;
+- no runtime product changes.
+
+Every scenario must declare:
+
+- `allowed_outputs`;
+- `forbidden_outputs`;
+- `expected_authority_ceiling`;
+- `expected_clean_data_decision`;
+- `expected_safe_actions`.
+
+## Resolution Under Uncertainty
+
+Uncertainty must reduce claim authority, not collapse the product into
+interpretive fog.
+
+Lyra often cannot resolve truth from traces. It can still resolve the next safe
+action.
+
+Core distinction:
+
+```text
+truth resolution != action resolution
+```
+
+Winning behavior:
+
+```text
+uncertain about cause
+clear about safe next step
+```
+
+Resolution ladder:
+
+```text
+Level 0: Suppress
+  No safe claim and no useful action.
+
+Level 1: Clarify
+  Ask the user to resolve ambiguity.
+
+Level 2: Repair
+  Offer reversible, low-regret recovery.
+
+Level 3: Recommend
+  Suggest a bounded action from repeated evidence.
+
+Level 4: Adapt
+  Change future plans only after validated patterns.
+```
+
+For passive Baseet ambiguity, the expected rung is Level 1 or Level 2:
+clarify or repair. It must not become Level 3/4 prediction or adaptation, and
+it should not fall to Level 0 unless no safe user action exists.
+
+`uncertainty_paralysis_rate` exists to catch cases where Lyra avoids forbidden
+claims but also fails to offer a safe clarifying or recovery action.
+
 ## Next Scenario
 
 The first post-V0 Baseet scenario should not be another timer case.
@@ -161,6 +257,8 @@ Implementation status:
 
 - Implemented as a harness-only, stub-output scenario. It does not validate a
   live product seam yet.
+- The scenario declares an explicit expected-output contract and reports
+  failure severity.
 
 ## Near-Term Sequence
 
