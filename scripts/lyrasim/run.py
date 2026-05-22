@@ -21,7 +21,37 @@ DEFAULT_SCENARIO = "task_started_never_stopped"
 DEFAULT_REPORT_DIR = Path(__file__).resolve().parent / "reports"
 
 
-def stubbed_lyra_output_for_v0() -> LyraOutput:
+def stubbed_lyra_output_for_v0(scenario_id: str | None = None) -> LyraOutput:
+    if scenario_id == "baseet_resource_open_idle_45m":
+        return LyraOutput(
+            stubbed=True,
+            product_seams_exercised=(),
+            authority_rung="suggestion",
+            text_outputs=(
+                "Possible pause or inactive resource state detected; mark it paused, continue, or split the remaining work.",
+            ),
+            clean_data_admissions=(
+                CleanDataAdmission(
+                    profile="planning_calibration",
+                    admitted=False,
+                    reason="passive_provider_idle_trace",
+                ),
+                CleanDataAdmission(
+                    profile="measured_execution",
+                    admitted=False,
+                    reason="passive_provider_idle_trace",
+                ),
+            ),
+            published_claim_tags=(
+                "possible_session_instability",
+                "low_confidence_activity",
+            ),
+            safe_actions=(
+                "ask_pause_or_continue",
+                "split_remaining_work",
+            ),
+        )
+
     return LyraOutput(
         stubbed=True,
         product_seams_exercised=(),
@@ -46,7 +76,7 @@ def run_scenario(
     output_path: Path | None = None,
 ) -> dict:
     scenario = generate_scenario(scenario_id, seed)
-    lyra_output = stubbed_lyra_output_for_v0()
+    lyra_output = stubbed_lyra_output_for_v0(scenario.scenario_id)
     score = score_scenario(scenario, lyra_output)
     report = build_report(scenario=scenario, output=lyra_output, score=score)
     if output_path is not None:

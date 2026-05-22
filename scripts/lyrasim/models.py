@@ -29,6 +29,7 @@ class HiddenState:
 class ScenarioData:
     scenario_id: str
     scenario_version: str
+    scenario_origin: str
     seed: int
     synthetic_user_id: str
     hidden_state: HiddenState
@@ -56,6 +57,7 @@ class LyraOutput:
     clean_data_admissions: tuple[CleanDataAdmission, ...]
     mutations_attempted: tuple[str, ...] = ()
     published_claim_tags: tuple[str, ...] = ()
+    safe_actions: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -63,6 +65,7 @@ class LyraOutput:
         data["text_outputs"] = list(self.text_outputs)
         data["mutations_attempted"] = list(self.mutations_attempted)
         data["published_claim_tags"] = list(self.published_claim_tags)
+        data["safe_actions"] = list(self.safe_actions)
         return data
 
 
@@ -92,4 +95,3 @@ class ScoreResult:
             },
             "failed_invariants": list(self.failed_invariants),
         }
-

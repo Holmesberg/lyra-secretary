@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from scripts.lyrasim.generators import baseet_resource_open_idle_45m
 from scripts.lyrasim.generators import task_started_never_stopped
 from scripts.lyrasim.models import ScenarioData
 
@@ -16,6 +17,11 @@ class ScenarioDefinition:
 
 
 SCENARIOS: dict[str, ScenarioDefinition] = {
+    baseet_resource_open_idle_45m.SCENARIO_ID: ScenarioDefinition(
+        scenario_id=baseet_resource_open_idle_45m.SCENARIO_ID,
+        generator=baseet_resource_open_idle_45m.generate,
+        scorer_names=("score_scenario",),
+    ),
     task_started_never_stopped.SCENARIO_ID: ScenarioDefinition(
         scenario_id=task_started_never_stopped.SCENARIO_ID,
         generator=task_started_never_stopped.generate,

@@ -115,6 +115,12 @@ Next additions:
 - `safe_action_availability_rate`: cases where uncertainty still produces a
   reversible, user-confirmed, low-regret action.
 
+Implementation status:
+
+- `scenario_origin`, `safe_action_availability_rate`, and
+  `uncertainty_paralysis_rate` are implemented for the Baseet idle-resource
+  increment.
+
 Metric rule:
 
 ```text
@@ -123,7 +129,7 @@ If a denominator is zero, report null plus not_applicable, not 0.
 
 ## Next Scenario
 
-The next scenario should not be another timer case.
+The first post-V0 Baseet scenario should not be another timer case.
 
 Implement:
 
@@ -151,14 +157,21 @@ Expected result:
 - no cognition or identity language;
 - at least one useful safe action remains available.
 
+Implementation status:
+
+- Implemented as a harness-only, stub-output scenario. It does not validate a
+  live product seam yet.
+
 ## Near-Term Sequence
 
 1. Add V0 PR/merge note language to future PR notes.
-2. Add `scenario_origin` to the report schema.
+2. Add `scenario_origin` to the report schema. Done.
 3. Add `uncertainty_paralysis_rate` and/or `safe_action_availability_rate`.
-4. Implement `baseet_resource_open_idle_45m`.
+   Done.
+4. Implement `baseet_resource_open_idle_45m`. Done.
 5. Implement provider-noise scenario: duplicate/stale deadline inflates pressure.
-6. Stop, run local gates, push, and wait for CI.
+   Next.
+6. Stop, run local gates, push, and wait for CI. Required after each increment.
 
 Do not jump to archetypes, AI synthesis, adaptive scheduling, full chaos waves,
 or broad simulation realism yet.

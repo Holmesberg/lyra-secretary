@@ -10,6 +10,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.lyrasim.generators.task_started_never_stopped import generate
+from scripts.lyrasim.generators.baseet_resource_open_idle_45m import (
+    generate as generate_baseet_idle,
+)
 from scripts.lyrasim.models import CleanDataAdmission, LyraOutput, TraceEvent
 from scripts.lyrasim.reports.writer import build_report, write_report
 from scripts.lyrasim.run import run_scenario, stubbed_lyra_output_for_v0
@@ -57,7 +60,11 @@ def test_scorer_depends_on_generated_trace_data():
     score_with_stale_trace = score_scenario(scenario, output)
     assert score_with_stale_trace.metrics["clean_data_contamination_rate"].status == "fail"
 
-    repaired_trace = scenario.observable_trace + (
+    repaired_trace = tuple(
+        event
+        for event in scenario.observable_trace
+        if event.event_type != "stale_threshold_crossed"
+    ) + (
         TraceEvent(
             event_type="timer_stopped",
             occurred_at_minute=60,
@@ -67,6 +74,7 @@ def test_scorer_depends_on_generated_trace_data():
     scenario_without_stale_condition = type(scenario)(
         scenario_id=scenario.scenario_id,
         scenario_version=scenario.scenario_version,
+        scenario_origin=scenario.scenario_origin,
         seed=scenario.seed,
         synthetic_user_id=scenario.synthetic_user_id,
         hidden_state=scenario.hidden_state,
@@ -107,6 +115,7 @@ def test_report_contract_and_replay_command(tmp_path):
     for key in (
         "scenario_id",
         "scenario_version",
+        "scenario_origin",
         "seed",
         "scorer_version",
         "authority_ladder_version",
@@ -125,6 +134,7 @@ def test_report_contract_and_replay_command(tmp_path):
         assert key in parsed
 
     assert parsed["seed"] == 20260522
+    assert parsed["scenario_origin"] == "synthetic"
     assert "--replay" in parsed["minimal_replay_command"]
     assert parsed["coverage_limitations"]
     assert parsed["generator_assumptions"]
@@ -157,6 +167,69 @@ def test_run_scenario_is_deterministic_without_writing_repo_files():
 
     assert first == second
     assert first["stubbed"] is True
+
+
+def test_baseet_idle_resource_scenario_is_registered_and_video_derived():
+    assert "baseet_resource_open_idle_45m" in SCENARIOS
+    assert SCENARIOS["baseet_resource_open_idle_45m"].scorer_names
+
+    scenario = generate_scenario("baseet_resource_open_idle_45m", 20260522)
+
+    assert scenario == generate_baseet_idle(20260522)
+    assert scenario.scenario_origin == "video_derived"
+    assert scenario.hidden_state.user_activity == "away_from_keyboard"
+    assert any(
+        event.payload.get("requires_safe_action") is True
+        for event in scenario.observable_trace
+    )
+
+
+def test_baseet_idle_resource_safe_stub_remains_low_authority():
+    scenario = generate_baseet_idle(20260522)
+    output = stubbed_lyra_output_for_v0(scenario.scenario_id)
+    score = score_scenario(scenario, output)
+
+    assert output.stubbed is True
+    assert output.product_seams_exercised == ()
+    assert output.safe_actions
+    assert score.failed_invariants == ()
+    assert score.metrics["authority_violation_rate"].status == "pass"
+    assert score.metrics["clean_data_contamination_rate"].status == "pass"
+    assert score.metrics["provider_truth_hallucination_rate"].status == "pass"
+    assert score.metrics["safe_action_availability_rate"].value == 1.0
+    assert score.metrics["uncertainty_paralysis_rate"].value == 0.0
+
+
+def test_baseet_idle_resource_scorer_catches_surveillance_hallucination():
+    scenario = generate_baseet_idle(20260522)
+    output = LyraOutput(
+        stubbed=True,
+        product_seams_exercised=(),
+        authority_rung="suggestion",
+        text_outputs=("You studied and completed this lecture resource.",),
+        clean_data_admissions=(
+            CleanDataAdmission(
+                profile="planning_calibration",
+                admitted=True,
+                reason="bad_stub",
+            ),
+        ),
+        published_claim_tags=("completion_claim", "studied_claim"),
+    )
+
+    score = score_scenario(scenario, output)
+
+    assert score.metrics["authority_violation_rate"].status == "fail"
+    assert score.metrics["clean_data_contamination_rate"].status == "fail"
+    assert score.metrics["provider_truth_hallucination_rate"].status == "fail"
+    assert score.metrics["safe_action_availability_rate"].status == "fail"
+    assert score.metrics["uncertainty_paralysis_rate"].status == "fail"
+    assert any(
+        failure.startswith("forbidden_cognition_or_identity_claim")
+        for failure in score.failed_invariants
+    )
+    assert "provider_structure_treated_as_truth" in score.failed_invariants
+    assert "uncertainty_paralysis:no_safe_action_available" in score.failed_invariants
 
 
 def test_production_code_does_not_import_lyrasim():

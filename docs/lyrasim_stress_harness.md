@@ -100,6 +100,20 @@ suppress, or remain descriptive)
 count(total evaluated unknown cases)
 ```
 
+```text
+safe_action_availability_rate =
+count(ambiguous action-required cases with a reversible low-authority safe action)
+/
+count(total ambiguous action-required cases)
+```
+
+```text
+uncertainty_paralysis_rate =
+count(ambiguous action-required cases with no useful low-authority action)
+/
+count(total ambiguous action-required cases)
+```
+
 ## V0 Scenario
 
 The first scenario is `task_started_never_stopped`.
@@ -125,6 +139,7 @@ Every run writes a deterministic JSON report containing:
 ```text
 scenario_id
 scenario_version
+scenario_origin
 seed
 scorer_version
 authority_ladder_version
@@ -179,3 +194,24 @@ changes, cascade alerts, or adaptive scheduling in V0.
 - Parked Baseet/provider chaos, passive telemetry simulation, TraceHypothesisSet
   runtime use, AI synthesis, session-continuity prediction, recovery engine
   changes, cascade alerts, and adaptive scheduling for later waves.
+
+## Baseet Idle-Resource Increment
+
+2026-05-22:
+
+- Added `scenario_origin` to reports so later runs can distinguish synthetic,
+  video-derived, repo-derived, real-user, provider-failure, and cohort-observed
+  scenarios.
+- Added `safe_action_availability_rate` and `uncertainty_paralysis_rate` so
+  the harness can catch the opposite failure from overclaiming: becoming safe
+  but useless under ambiguity.
+- Added the video-derived `baseet_resource_open_idle_45m` scenario:
+  Baseet-like academic resource opened, 45 minutes of idle passive activity,
+  simulator hidden truth `away_from_keyboard`.
+- The scenario permits low-authority pause/continue/split actions only. It
+  fails if the output claims study, completion, learning, focus,
+  understanding, cognition, identity, or clean calibration from the passive
+  provider trace.
+- This increment still does not validate live Baseet behavior, passive
+  telemetry product capture, pressure-map correctness, AI synthesis, recovery
+  safety, or emotional safety.

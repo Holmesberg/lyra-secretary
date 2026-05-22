@@ -22,6 +22,7 @@ def build_report(
     return {
         "scenario_id": scenario.scenario_id,
         "scenario_version": scenario.scenario_version,
+        "scenario_origin": scenario.scenario_origin,
         "seed": scenario.seed,
         "scorer_version": SCORER_VERSION,
         "authority_ladder_version": AUTHORITY_LADDER_VERSION,
@@ -45,4 +46,3 @@ def write_report(report: dict[str, Any], output_path: Path) -> Path:
         encoding="utf-8",
     )
     return output_path
-

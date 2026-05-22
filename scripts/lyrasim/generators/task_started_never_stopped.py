@@ -52,6 +52,7 @@ def generate(seed: int) -> ScenarioData:
     return ScenarioData(
         scenario_id=SCENARIO_ID,
         scenario_version=SCENARIO_VERSION,
+        scenario_origin="synthetic",
         seed=seed,
         synthetic_user_id=synthetic_user_id,
         hidden_state=HiddenState(
@@ -71,4 +72,3 @@ def generate(seed: int) -> ScenarioData:
             "This scenario does not prove emotional safety or user trust.",
         ),
     )
-
