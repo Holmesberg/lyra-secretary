@@ -89,6 +89,27 @@ This is a strength. The architecture is coherent because the model is forced
 to be causal, structural, operational, and epistemically bounded instead of
 outsourcing ambiguity to "the model will figure it out."
 
+## 2.1 Trajectory Integrity
+
+The deeper invariant is not productivity optimization. LyraOS treats repeated
+human-system interactions as trajectory-shaping. A plan suggestion, pressure
+map, insight, reminder, or future adaptive action can change what the user
+does next and how they interpret themselves.
+
+Therefore the instrument must optimize for reality contact before it optimizes
+for retention, status, throughput, or any other proxy. The system should make
+the relationship between intention, constraint, action, and consequence more
+legible without turning that legibility into hidden pressure.
+
+Operational consequences:
+
+- measurement must preserve provenance and exposure context;
+- stronger claims must be earned from clean repeated evidence;
+- guidance must remain challengeable and reversible;
+- sequencing matters because the order of revelation changes interpretation;
+- proxy wins that reduce user agency are product failures even when short-term
+  metrics improve.
+
 ## 3. AI Role Boundary
 
 AI may be used as:

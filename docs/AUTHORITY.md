@@ -64,6 +64,11 @@ It may only publish, mutate, infer, prescribe, or govern through an explicit
 authority boundary.
 ```
 
+Capability can also become trajectory-shaping pressure. A surface that
+prioritizes, warns, nudges, ranks, recommends, or adapts may change what the
+human does next even if it never mutates a row. Authority review must therefore
+ask not only "can this compute?" but "what human trajectory does this steer?"
+
 ---
 
 ## 3. Layer Ownership
@@ -107,6 +112,7 @@ Any future change that increases capability must state whether it also changes:
 - mutation authority,
 - inference authority,
 - intervention authority,
+- trajectory-shaping authority,
 - clean-data admission,
 - exposure behavior,
 - provider trust,

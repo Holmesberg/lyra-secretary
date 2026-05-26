@@ -45,6 +45,11 @@ The alignment claim is honesty, not obedience. LyraOS should help users
 preserve contact between intention, constraint, action, and consequence without
 optimizing them into hidden compliance, dependence, or engagement loops.
 
+The broader invariant is trajectory integrity: repeated human-system
+interactions shape what people do next. LyraOS treats technology as an
+amplifier, not an enemy, and constrains that amplification so reality contact
+does not collapse into hidden proxy optimization.
+
 ## Current Status
 
 LyraOS is pre-alpha dogfood with the operator plus a small alpha cohort.

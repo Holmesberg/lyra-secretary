@@ -21,6 +21,7 @@
 *Revised: May 18, 2026. Day 45 - friction-tested instrument methodology, publish-path optionality, provider-adapter scalability, drift-rollup scalability, and future-gated neuroadaptive sequencing documented.*
 *Revised: May 19, 2026. Day 46 - product/research assumption register added for professor review, investor diligence, hypothesis validation, and falsification tracking.*
 *Revised: May 20, 2026. Day 47 - alignment-through-honesty, conscious influence, middleware execution substrate, dirty-pipe provider doctrine, and earned adaptation authority clarified.*
+*Revised: May 25, 2026. Day 52 - trajectory-integrity invariant added: LyraOS operationalizes reality contact under pressure, not hidden proxy optimization.*
 
 ---
 
@@ -315,6 +316,56 @@ between the human, the model, and the feedback loop connecting them.
 The strongest future version of Lyra is not a permanently weak assistant. It
 is an evidence-governed system whose adaptive authority scales only after
 validity survives cohort data, exposure controls, and falsifiable comparison.
+
+---
+
+## Trajectory Integrity Under Pressure
+*Added: May 25, 2026.*
+
+LyraOS is the first operational organ of a broader deterministic and
+probabilistic worldview. It is not built on AGI, omniscience, or the claim that
+an AI model can understand a human life from hidden signals. Its serious claim
+is narrower:
+
+```text
+Repeated human-system interactions shape trajectory.
+Therefore useful systems must preserve reality contact while they act.
+```
+
+Technology is not the enemy. Technology amplifies whatever a system is
+actually optimizing. The danger appears when engagement, status, retention,
+growth, productivity, or institutional convenience become hidden proxy targets
+that gradually pull humans away from intention, constraint, action, and
+consequence.
+
+Lyra's design response is not to avoid influence. It is to make influence
+bounded, inspectable, reversible, sequenced, and accountable to evidence.
+Every prompt, pressure map, insight, nudge, reminder, synthesis, or future
+adaptive feature must be treated as trajectory-shaping. It may help only when
+it increases the user's ability to stay oriented, correct the system, recover
+from drift, and reject the interpretation.
+
+This invariant explains why Lyra resists:
+
+- hidden engagement optimization;
+- stable identity labels;
+- productivity scores detached from context;
+- claims that outrun provenance;
+- institutional monitoring shortcuts;
+- and adaptive authority before clean evidence exists.
+
+Reality-contact bandwidth is a real constraint, not a vanity concern. Network,
+credibility, budget, cohort access, user trust, and operational stability
+determine how much contact the system can have with the world before its
+claims become story-driven. Lyra should prefer slower, evidence-preserving
+progress over faster proxy wins that make the instrument less truthful.
+
+Operational translation:
+
+```text
+optimize for contact with reality
+not for obedience to plans, institutional convenience, or product vanity
+```
 
 ---
 
