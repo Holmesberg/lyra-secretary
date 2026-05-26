@@ -1,99 +1,105 @@
-# LyraOS - Comprehensive Product And Architecture Summary
+# LyraOS - Current Product And Architecture Summary
 
-> **Snapshot date:** 2026-05-15
-> **Repository state:** 478 commits, 50 Alembic migrations, 82 backend test files
-> **Status:** Pre-alpha dogfood with operator plus small alpha cohort
+> **Snapshot date:** 2026-05-24
+> **Repository state:** Pre-alpha, actively dogfooded, small alpha cohort,
+> evidence-packet / ClaimCompiler branch with LyraSim product-seam increments
+> in progress.
+> **Status:** Factual architecture summary. This document is descriptive, not
+> implementation authorization.
 
-This document is a factual summary of the current LyraOS app and architecture.
-It distinguishes shipped product behavior from operator-only tooling and
-future-gated research concepts. It should not be read as authorization for new
-inference, automatic rescheduling, hidden behavioral intervention, or expanded
-user-burden surfaces.
+This summary reflects the current repo shape after the May authority,
+pressure-map, LyraSim, kill-switch, and university-review framing work. It is
+grounded in the checked-in app, backend services, docs, and scripts. It should
+not be read as permission to add inference, autonomous scheduling, live Baseet
+integration, public AI synthesis, hidden telemetry, or new user-burden surfaces.
 
 ---
 
 ## 1. Product Identity
 
-LyraOS is a low-friction planning and execution product built around a
-research-grade behavioral measurement system.
+LyraOS is a generalized execution-state modeling system wrapped in a planning
+and recovery product.
 
-It is not a generic todo app and it is not pure research software. The app helps
-users plan tasks, execute them with timers, recover from missed plans, and view
-patterns in their own planning/execution data. The research layer interprets
-those traces under explicit provenance, clean-data, exposure, and uncertainty
-contracts.
-
-The central product question is:
+The current student-facing framing is deliberately simpler:
 
 ```text
-Why do people plan well and still fail themselves?
+academic load becomes visible
+plans become executable
+drift becomes recoverable
 ```
 
-The central research question is:
+The deeper product substrate is broader than students. LyraOS models recurring
+obligations, intentions, execution sessions, interruptions, drift,
+recalibration, exposure, provenance, and authority. Academic use is the first
+high-pressure domain because courses, deadlines, resources, and recurring work
+make the intention/execution gap unusually visible.
+
+At the doctrine level, LyraOS is the first operational organ of a broader
+deterministic/probabilistic worldview: repeated human-system interactions
+shape trajectory, and technology amplifies whatever target the system actually
+optimizes. Lyra's target is reality contact, not hidden proxy optimization.
+
+Current core loop:
 
 ```text
-Are humans wrong about their own execution capacity in structured,
-modelable ways?
+plan -> anchor session -> drift happens -> recover -> calibrate
 ```
 
 Current doctrine:
 
-- preserve runtime identity authority through bearer/JWT
-- resolve request scope before user data reads or writes
-- keep product friction low
-- preserve measurement validity
-- treat insights as time-local, context-bound hypotheses
-- never collapse behavior into a stable user identity label
-- register user-facing output surfaces before render
-- treat nudges, predictions, and insights as exposure candidates
-- fail closed when exposure state is unknown
-- verify topology before trusting browser verification
-
-Canonical governance lives in:
-
-- `MANIFESTO.md`
-- `docs/professor_review_packet.md`
-- `docs/cortex_contract_v0.md`
-- `docs/cortex_product_research_contract_v0.md`
-- `docs/behavioral_instrumentation_doctrine.md`
-- `docs/context_window_blast_radius_contract.md`
-- `docs/deployment_architecture.md`
-- `docs/adaptive_scheduling_progressive_inference.md`
-- `docs/openclaw_orchestration_contract_v0.md`
+- partial structure is useful, but not truth;
+- user confirmations are high-signal anchors, not perfect ground truth;
+- provider data is context and obligation structure, not execution truth;
+- passive or ambiguous activity must not become focus, mastery, learning, or
+  completion claims;
+- stronger capability must be earned by clean longitudinal evidence;
+- uncertainty should reduce claim authority, not erase safe recovery actions;
+- sequencing is part of alignment because revelation order changes
+  interpretation and future behavior;
+- capability that nudges, prioritizes, ranks, or adapts is trajectory-shaping
+  authority and must stay bounded;
+- governance exists to keep the product simple and bounded, not to become the
+  product.
 
 ---
 
-## 2. Current System Shape
+## 2. Current Architecture In One Pass
 
 ```text
 Next.js web app
   -> NextAuth Google identity
-  -> frontend backendToken JWT
-  -> FastAPI v1 API
-  -> request user scope middleware
-  -> service-layer mutation authorities
-  -> SQLAlchemy models / Supabase Postgres
+  -> backendToken JWT
+  -> FastAPI /v1 API
+  -> UserScopeMiddleware
+  -> request-scoped SQLAlchemy reads/writes
+  -> Supabase Postgres
   -> Redis hot state and queues
-  -> APScheduler workers
+  -> APScheduler repair/sync/prediction jobs
 
-Research and governance layer:
-  raw product events and rows
+Product/research interpretation:
+  raw rows and events
   -> Cortex read-time projections
   -> clean-data profiles
+  -> EvidencePacket
+  -> ClaimCompiler
   -> output surface registry
-  -> exposure ledger and render acknowledgement
-  -> insights, diagnostics, predictions, and policy audits
+  -> exposure ledger
+  -> bounded user-facing claims, nudges, pressure, insights, and recovery
+
+Provider/module layer:
+  Google Calendar, Moodle, future Baseet, future provider adapters
+  -> provider-blind facts and evidence classes
+  -> pressure/recovery surfaces
 
 Operator-only layer:
-  JARVIS
-  OpenClaw
-  Telegram operator notifications
-  admin dashboard
+  admin dashboard, JARVIS, OpenClaw, topology verification,
+  notifications, diagnostics, and adversarial review
 ```
 
-The user-facing product is the web app. JARVIS, OpenClaw, admin diagnostics,
-and operator Telegram flows are not public research surfaces unless a successor
-contract explicitly admits them.
+The app is not currently an OS-level telemetry product. The repo is converging
+on sparse, trustworthy causal anchors: explicit starts/stops, pauses,
+completion updates, corrections, confirmations, and low-friction recovery
+questions.
 
 ---
 
@@ -103,405 +109,417 @@ contract explicitly admits them.
 
 | Layer | Current stack |
 | --- | --- |
-| Framework | Next.js 15.5.15, App Router |
-| Language | TypeScript 5.6 |
-| Runtime | React 18 |
-| Styling | Tailwind CSS, custom dark visual system |
-| Auth | NextAuth.js 4 with Google OAuth |
-| Server state | TanStack Query v5 with persisted cache support |
-| Calendar UI | Schedule-X |
-| UI primitives | Radix, Lucide, Tremor, Sonner, Motion |
-| Public topology endpoint | `/api/topology` |
+| Framework | Next.js App Router |
+| Language | TypeScript |
+| Auth | NextAuth with Google OAuth |
+| Server state | TanStack Query with persisted localStorage cache |
+| Styling | Tailwind CSS with the Lyra dark/cyan visual system |
+| Main surfaces | Landing, Pulse, Today, Calendar, Deadlines, Insights, Table, Settings |
 
 ### Backend
 
 | Layer | Current stack |
 | --- | --- |
-| Framework | FastAPI 0.109, Uvicorn |
-| Language | Python 3.11 |
-| ORM | SQLAlchemy 2 typed models |
-| Migrations | Alembic, 50 revisions |
-| Database | Supabase Postgres for public runtime; SQLite supported for dev/tests |
+| Framework | FastAPI |
+| Language | Python |
+| ORM | SQLAlchemy typed models |
+| Migrations | Alembic |
+| Database | Supabase Postgres in public runtime; SQLite remains useful for tests/dev |
 | Hot state | Redis |
-| Workers | APScheduler `BackgroundScheduler` |
-| Settings | Pydantic v2, pydantic-settings |
-| Public topology endpoint | `/v1/health/topology` |
+| Workers | APScheduler |
+| Auth | Bearer JWT from frontend NextAuth session |
 
-### AI And Operator Runtime
+### AI And Tooling
 
 | Surface | Current role |
 | --- | --- |
-| LLM enrichment worker | Async task enrichment; not critical-path |
-| NVIDIA NIM | Optional hosted model path for operator/JARVIS and enrichment |
-| Ollama | Local fallback for enrichment |
-| JARVIS | Operator-only in-app assistant with confirmation-gated writes |
-| OpenClaw | Operator-only multi-agent orchestration/runtime |
+| LLM enrichment | Async task enrichment suggestions, not truth authority |
+| NVIDIA NIM / Ollama paths | Optional model paths for enrichment/operator workflows |
+| JARVIS | Operator-only assistant with confirmation-gated writes |
+| OpenClaw/Codex | Operator development, review, and orchestration tooling |
 
-The user-facing behavioral core is rule-based, probabilistic, inspectable, and
-evidence-constrained. AI components assist enrichment, operator synthesis, and
-interface work; they are not the core authority for behavioral truth.
-
-### Deployment
-
-| Layer | Current shape |
-| --- | --- |
-| Public frontend | `https://lyraos.org` |
-| Public API | `https://api.lyraos.org` |
-| Edge | Cloudflare Tunnel from operator host |
-| Containers | Docker Compose |
-| Backend port | `8000` |
-| Frontend port | `3000` |
-| Runtime topology verifier | `node scripts/verify_runtime_topology.mjs --topology public` |
-
-Ports, hostnames, CORS policy, auth semantics, and production wires are kernel
-surfaces. They should not change without explicit operator approval and live
-verification.
+The user-facing behavioral core remains rule-governed, probabilistic,
+inspectable, and constrained by clean-data and exposure contracts.
 
 ---
 
-## 4. Authentication, Identity, And Scoping
+## 4. Runtime Topology
 
-LyraOS uses Google sign-in through NextAuth for identity. The frontend mints a
-backend JWT (`backendToken`) signed with `NEXTAUTH_SECRET`; the backend verifies
-that token using `JWT_SECRET`.
-
-Important invariant:
+Current public topology:
 
 ```text
-frontend NEXTAUTH_SECRET == backend JWT_SECRET
+frontend: https://lyraos.org
+api:      https://api.lyraos.org
+auth:     https://lyraos.org
 ```
 
-If those secrets diverge, Google login can appear to succeed while the backend
-rejects `/v1/users/me`, causing the app to sign the user out and return them to
-the landing page.
+Topology is treated as correctness, not deployment trivia.
 
-Current identity rules:
+Relevant artifacts:
 
-- bearer/JWT is the runtime identity authority
-- backend middleware resolves the authenticated user before request handling
-- first Google login auto-provisions a `User` row
-- user-owned ORM reads are scoped through `ContextVar`-based request scope
-- Redis hot keys are namespaced by user id
-- raw SQL must scope manually
-- frontend requests never override backend suppression or user scope
+- `runtime_topology.json`
+- frontend `/api/topology`
+- backend `/v1/health/topology`
+- `scripts/verify_runtime_topology.mjs`
+- `scripts/browser_smoke_two_users.mjs`
+- `docs/deployment_architecture.md`
 
-The app also has an account deletion path and tests around deletion of modern
-auxiliary rows. Deletion work is part of product trust and data hygiene, not a
-research shortcut.
+Browser verification is meaningful only when frontend origin, API origin,
+auth base URL, CORS, and runtime topology agree.
 
 ---
 
-## 5. Frontend Routes
+## 5. Authentication, Scoping, And Data Boundaries
 
-| Route | Access | Purpose |
-| --- | --- | --- |
-| `/` | Public | Landing page with LyraOS positioning and real Insights screenshot |
-| `/today` | Authenticated users | Main task execution surface |
-| `/pulse` | Authenticated users | Operational dashboard, quick capture, deadlines, system insight |
-| `/calendar` | Authenticated users | Schedule-X calendar with Lyra tasks and Google Calendar overlay |
-| `/deadlines` | Authenticated users | Native and Moodle-imported deadline management |
-| `/insights` | Authenticated users | Behavioral insight cards, synthesis, confidence tiers |
-| `/table` | Authenticated users | Raw task table with filters and bulk actions |
-| `/settings` | Authenticated users | Integrations, account controls, archetype/settings surfaces |
-| `/admin/dashboard` | Operator-only | Admin and cohort dashboard |
-| `/privacy` | Public | Privacy page |
-| `/terms` | Public | Terms page |
+Runtime identity authority is bearer/JWT, resolved by
+`UserScopeMiddleware` in `backend/app/main.py`.
+
+Current invariants:
+
+- Google sign-in happens through NextAuth.
+- The frontend forwards a backend JWT as `Authorization: Bearer`.
+- The backend verifies it with `JWT_SECRET`.
+- First valid login can provision a `User` row.
+- `X-User-Id` is test-only and cannot authenticate normal runtime HTTP.
+- Bearer identity beats test identity if both are present.
+- Backend reads/writes are request-scoped through a `ContextVar`.
+- Operator/admin/JARVIS routes require operator authority.
+- Account export and deletion exist in `/v1/users/me`.
+
+This matters because a locally hacked frontend or extension can create shadow
+usage, but it does not write to the backend unless it has a valid authenticated
+API path.
+
+---
+
+## 6. Current User-Facing Surfaces
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Public landing page and product framing |
+| `/pulse` | Operational dashboard: quick capture, deadlines, pressure, recovery, system insight |
+| `/today` | Main task execution surface |
+| `/calendar` | Schedule view with Lyra tasks and Google Calendar overlay |
+| `/deadlines` | Native and imported deadline management |
+| `/insights` | Deterministic insight cards and primary synthesis |
+| `/table` | Raw task table, filters, bulk actions, CSV export |
+| `/settings` | Integrations, archetype survey, export/delete, account controls |
+| `/admin/dashboard` | Operator-only dashboard |
 
 There is no standalone onboarding route. Onboarding is a component-level gate
 inside the authenticated app shell.
 
 ---
 
-## 6. Core User-Facing Product Features
+## 7. Planning, Capture, And Brain Dump
 
-### Planning And Task Capture
+LyraOS supports:
 
-- manual task creation
-- task title and description
-- planned start/end time
-- planned duration
-- category selection
-- deadline binding
-- duplicate/conflict checks
-- LLM-assisted enrichment suggestions after creation
-- quick capture through Pulse
-- brain-dump parse and commit flow
-- task table review and filtering
+- manual task creation;
+- quick capture on Pulse;
+- title, description, category, planned start/end, and planned duration;
+- deadline binding;
+- conflict and duplicate checks;
+- task table review/filtering;
+- CSV export from the table;
+- full JSON export from Settings;
+- brain-dump parsing for low-friction onboarding and capture.
 
-### Brain-Dump Onboarding
+Brain-dump parsing is split into a pure parse step and a commit step. The parse
+path proposes candidate tasks/deadlines; the commit path writes through normal
+task/deadline authorities. No starter/meta task should be created merely to
+mark onboarding.
 
-The onboarding flow asks the user to dump tasks and deadlines in free text.
-The backend parses it, proposes task/deadline items, and commits rows through
-normal task/deadline authorities.
+Important current distinction:
 
-Important details:
+```text
+brain dump = useful capture surface
+not = proof of execution, clean calibration, or provider truth
+```
 
-- parse endpoint is pure and does not write database state
-- commit endpoint writes tasks/deadlines
-- no starter/meta task should be created
-- users with only skipped/deleted/voided task history can be shown onboarding
-  again even if `onboarding_completed_at` was stamped
-- meaningful onboarding is treated as `onboarding_completed_at` plus active
-  non-skipped task history
-
-### Execution Flow
-
-- start task
-- pause task
-- resume task
-- stop task
-- switch from one paused task to another
-- completion percentage updates
-- pre-task readiness where already part of the flow
-- post-task reflection where already part of the flow
-- scope outcome capture
-- pause reason capture where already part of the flow
-- active timer banner
-- overrun and completion check-ins
-- undo support where Redis has stored enough context
-
-### Recovery Flow
-
-- mark overdue planned/skipped tasks done retroactively
-- mark tasks abandoned/skipped
-- delete or void tasks depending on path
-- recover active timer state from Redis/database
-- worker repair for stale sessions
-- worker repair for orphan executing tasks
-
-Retroactive completion is a product recovery affordance. It is not measured
-real-time execution evidence.
+Brain dump may become less central for the academic module if provider
+deadline/resource supersession is strong enough, but it remains useful for
+other modules and free-form planning.
 
 ---
 
-## 7. Calendar, Deadlines, And External Context
+## 8. Execution, Timers, And Recovery
 
-### Native Deadlines
+Core execution features:
 
-LyraOS supports native deadline rows separate from tasks. Tasks may bind to
-deadlines, and deadline outcomes are reconciled after execution.
+- start task;
+- pause task;
+- resume task;
+- stop task;
+- switch active work from one paused task to another;
+- update task completion percentage while active;
+- capture readiness/reflection where the existing flow asks for it;
+- undo where Redis has sufficient context;
+- active timer banner;
+- pause/resume prediction surfaces.
 
-Deadline features:
+Recovery features:
 
-- deadline CRUD
-- planned/active/completed/missed states
-- task-deadline binding
-- frozen `TaskDeadlineOutcome` rows
-- missed deadline sweep
-- mark overdue done from product recovery surfaces
+- mark overdue tasks done retroactively;
+- abandon/skip tasks;
+- delete or void tasks depending on path;
+- append execution corrections;
+- recover timer state from Redis/database;
+- background repair for stale sessions and orphan executing tasks.
 
-### Google Calendar
+Critical measurement rule:
 
-Google Calendar is a read-only integration.
+```text
+retroactive completion and repaired sessions are recovery evidence,
+not clean measured execution by default
+```
 
-Current behavior:
-
-- user connects Calendar from Settings
-- refresh token is stored on `User`
-- events are fetched as ambient calendar context
-- Google events render on the calendar
-- Google events are not silently converted into tasks
-- attendance/outcome reporting is tracked separately through
-  `ExternalEventOutcome`
-
-### Moodle iCal
-
-Moodle iCal import persists LMS events as Lyra `Deadline` rows.
-
-Current behavior:
-
-- private Moodle iCal URL stored on user
-- sync every 6 hours
-- events upsert by external source/id
-- imported rows are tagged `external_source='moodle_ics'`
-- imported deadline rows are handled as external context, not natural Lyra
-  planning evidence by default
-
-### Moodle Web Services
-
-Moodle Web Services can detect submitted/graded assignments and mark matching
-Moodle deadlines complete.
-
-Current behavior:
-
-- per-user Moodle token support
-- submission/grade status detection
-- conservative matching by assignment title and due time
-- backfill for Moodle assignments absent from the iCal window
-- new Moodle WS tokens are Fernet-encrypted with `fernet:` prefix
+This rule is now central because real data contains stale sessions, outliers,
+extension/local shadow usage, and other messy states.
 
 ---
 
-## 8. Insights And Behavioral Feedback
+## 9. Task And Deadline State
 
-The `/insights` page is a product mirror and a research-sensitive exposure
-surface. It shows deterministic, data-triggered cards rather than open-ended
-AI interpretation.
-
-Current structure:
+Task state machine:
 
 ```text
-Primary synthesis
-High confidence cards
-Medium confidence cards
-Emerging patterns
+PLANNED   -> EXECUTING, SKIPPED, DELETED
+EXECUTING -> PAUSED, EXECUTED, SKIPPED
+PAUSED    -> EXECUTING, SKIPPED
+EXECUTED  -> immutable
+SKIPPED   -> DELETED
+DELETED   -> immutable
 ```
 
-Current insight types include:
+`TaskManager` owns task mutation. `DeadlineManager` owns deadline mutation.
+Deadline rows are separate from tasks and can represent native or external
+obligations.
 
-- primary synthesis
-- not-started/abandonment pattern
-- pause pattern
-- start delay
-- readiness signal
-- time-of-day bias
-- estimation accuracy trend
-- best category
-- worst category
-- discrepancy signal
-- retroactive rate
-- morning anchor cascade
-- archetype divergence
-- calibration maturation
+Deadline behavior includes:
 
-The primary synthesis card is rule-composed from source insights and user data.
-The text template is constrained, but the card appears, changes, or disappears
-based on current evidence. It is descriptive synthesis, not a prescription.
+- CRUD/state transitions;
+- planned/active/completed/missed states;
+- task-deadline binding;
+- missed-deadline sweeps;
+- frozen task-deadline outcome rows;
+- recovery marking for overdue work.
 
-Example of the intended safe shape:
-
-```text
-Planning drift is currently clustering around study tasks and late-day
-execution.
-```
-
-Forbidden shape without future evidence:
-
-```text
-You should study in the morning.
-```
-
-The `work` category is quarantined from category claims because it was a legacy
-fallback/default bucket and can contaminate interpretation.
+Provider or submission signals may inform recovery or obligation state, but
+they must not silently become clean execution truth.
 
 ---
 
-## 9. Output Surface Registry
+## 10. Providers, Modules, And The Baseet Reframe
 
-Behavior-shaping outputs must be registered before render. The registry source
-of truth is:
+LyraOS core should remain provider-agnostic. Providers and modules translate
+domain-specific structure into provider-blind primitives.
+
+Current provider/module surfaces:
+
+- Google Calendar read-only context;
+- Moodle iCal deadlines;
+- Moodle Web Services submission/grade detection;
+- Notion outbound sync/retry plumbing;
+- planned/future Baseet academic module.
+
+Current Baseet lesson:
+
+```text
+Baseet is likely a strong obligation/resource substrate,
+but a weak behavioral substrate.
+```
+
+That means Baseet can provide:
+
+- courses;
+- deadlines;
+- resources;
+- possible progress candidates;
+- pressure topology.
+
+It should not be treated as:
+
+- continuous execution truth;
+- focus signal;
+- mastery signal;
+- proof of study;
+- proof of completion.
+
+The architecture now points toward:
+
+```text
+sparse academic structure
++ explicit user confirmations
++ local/session anchors
+-> bounded pressure and recovery
+```
+
+not OS-level continuous observability.
+
+---
+
+## 11. Academic Pressure Map
+
+`backend/app/services/academic_pressure.py` produces a bounded workload-pressure
+snapshot from existing deadlines, planned tasks, and read-only calendar
+context.
+
+Current properties:
+
+- no new persistence required for V1 pressure maps;
+- uses ranges instead of fake exact certainty;
+- distinguishes native obligations from external obligations;
+- uses provider-boundary metadata such as source class, evidence class,
+  provider kind, raw authority level, and redaction status;
+- emits recovery options as low-authority suggestions;
+- does not claim behavioral personalization;
+- does not feed clean learning paths;
+- does not mutate tasks or calendars by itself.
+
+Pressure Map authority:
+
+```text
+surface_role: diagnostic_planning_surface
+authority_rung: suggestion
+mutation_permission: explicit_user_confirmation_required
+```
+
+This is currently the most realistic Baseet-adjacent product seam.
+
+---
+
+## 12. Kill Switches And Containment
+
+Pre-scale containment switches live in `backend/app/core/kill_switches.py` and
+settings.
+
+Current switches:
+
+- `LYRA_SAFE_MODE=read_only_pressure`
+- `LYRA_BASEET_PRESSURE_INPUT_ENABLED`
+- `LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED`
+- `LYRA_RECOVERY_NUDGES_ENABLED`
+
+Current behavior:
+
+- read-only pressure safe mode disables provider progress signals;
+- read-only pressure safe mode disables recovery nudges;
+- Baseet pressure input can be disabled independently;
+- recovery nudges can be disabled independently.
+
+The purpose is containment, not bureaucracy: if a provider-derived pathway
+starts producing bad pressure or bad recovery, the system can degrade toward a
+read-only pressure map instead of mutating or nudging.
+
+---
+
+## 13. Insights, EvidencePacket, And ClaimCompiler
+
+The `/insights` page is a product mirror and exposure-sensitive surface. It
+renders deterministic cards, confidence tiers, and primary synthesis. It is
+not open-ended AI interpretation.
+
+Current insight families include:
+
+- primary synthesis;
+- abandonment/not-started pattern;
+- pause pattern;
+- start delay;
+- readiness signal;
+- time-of-day bias;
+- estimation accuracy trend;
+- best/worst category;
+- discrepancy signal;
+- retroactive rate;
+- morning anchor cascade;
+- archetype divergence;
+- calibration maturation.
+
+The evidence-packet branch centralizes claim governance:
+
+```text
+already-computed analytics output
+-> EvidencePacket
+-> ClaimCompiler
+-> bounded claim candidate
+-> registered output surface
+```
+
+`EvidencePacket` is intentionally narrow. It carries clean profile, sample
+count, scalar observed metrics, source refs, prohibited claims, and suppression
+reason. It must not become a provider DTO, output grammar, raw payload bag, or
+future AI synthesis container.
+
+`ClaimCompiler` compiles existing deterministic claims only. It suppresses
+claims when evidence is insufficient or prohibited claim tags are crossed.
+
+---
+
+## 14. Output Surfaces And Exposure Ledger
+
+Behavior-shaping outputs must be registered before render. The registry lives
+at:
 
 ```text
 backend/app/core/output_surface_registry.json
 ```
 
-Runtime output writes and exposure-safe emission go through:
+Runtime contract code lives in:
 
 ```text
 backend/app/services/output_surfaces.py
+backend/app/services/exposure_ledger.py
 ```
 
-Registered surface families currently include:
+Output surfaces declare:
 
-- stopwatch micro-mirror
-- stopwatch calibration nudge
-- task creation nudge
-- worker reminder
-- worker pause prediction
-- worker resume prediction
-- analytics archetype proximity
-- analytics insights
-- analytics insights primary synthesis
-- insight sub-surfaces for estimation trend, initiation delay, retroactive
-  rate, time-of-day bias, readiness, abandonment, best/worst category,
-  discrepancy, pause pattern, morning anchor cascade, archetype divergence,
-  and calibration maturation
+- truth class;
+- usage class;
+- channel;
+- exposure category;
+- signal targets;
+- clean profile;
+- minimum sample count;
+- time window;
+- fallback mode;
+- operator-only status;
+- render policy version;
+- authority metadata.
 
-Each surface declares:
-
-- `truth_class`
-- `usage_class`
-- `channel`
-- `exposure_category`
-- `signal_targets`
-- `clean_profile`
-- `min_n`
-- `time_window_days`
-- `fallback_mode`
-- `operator_only`
-- `legacy_adapter`
-- `render_policy_version`
-- interruptiveness and salience metadata
-
-Frontend render acknowledgement is supported through the exposure acknowledgement
-path. Render acknowledgement is governance telemetry and should not block the
-user's current view.
-
----
-
-## 10. Exposure Ledger v0
-
-Exposure Ledger v0 is implemented as a causal firewall and replay boundary. It
-is not an attribution engine and does not prove an exposure caused later
-behavior.
-
-The ledger answers:
+Exposure Ledger v0 is a causal firewall and replay boundary. It answers:
 
 ```text
-Can this measurement still be interpreted as baseline under the current
-exposure horizon policy?
+can this later measurement still be interpreted as baseline?
 ```
 
-Core states:
+Core exposure states:
 
 - `NONE`
 - `EXPOSED`
 - `INTERVENTION`
 - `UNKNOWN`
 
-Only `NONE` can certify baseline-clean under the current policy. Missing ledger
-state returns `UNKNOWN`, not `NONE`.
-
-Implemented atoms:
-
-- `ExposureDecisionEvent`
-- `ExposureRenderEvent`
-- `ExposureAckEvent`
-- `SuppressionEvent`
-- `ExposurePolicyEffectLog`
-
-Legacy adapters:
-
-- `ReflectionViewLog`
-- `CalibrationNudgeEvent`
-- `PausePredictionLog`
-- `ResumePredictionLog`
-
-Deferred by design:
-
-- attention proxies
-- temporal association atoms
-
-Temporal association must remain correlational. It must not be described as
-causal response linkage.
+Only `NONE` can certify baseline-clean under current policy. Missing exposure
+state becomes `UNKNOWN`, not `NONE`.
 
 ---
 
-## 11. Cortex Product-Research Architecture
+## 15. Cortex And Clean Data
 
 Cortex is the read-time canonicalization layer for research-grade metrics. It
 does not silently rewrite product state.
 
-Core metric vocabulary:
+Core vocabulary:
 
-| Symbol | Name | Meaning |
-| --- | --- | --- |
-| `P` | planned active minutes | user plan |
-| `E` | executed active minutes | execution excluding pauses |
-| `W` | wall-clock elapsed minutes | elapsed real time |
-| `B` | paused minutes | total pause duration |
-| `m` | execution multiplier | `E / P` |
-| `z` | log execution multiplier | `log(E / P)` |
+```text
+planned active minutes
+executed active minutes
+wall-clock elapsed minutes
+paused minutes
+execution multiplier
+log execution multiplier
+```
 
 Clean-data profiles:
 
@@ -509,219 +527,246 @@ Clean-data profiles:
 - `planning_calibration`
 - `pause_process`
 - `descriptive_history`
+- `deadline_completion_behavior`
 
-Important rules:
+Rules:
 
-- derived metrics are recomputed at read time
-- latent constructs are not persisted as observed facts
-- unknowns never become neutral defaults
-- repaired/retroactive data is excluded from measured-execution baselines
-  unless a successor profile explicitly admits it
-- exposed or unknown-exposure rows do not silently update clean learning paths
-
----
-
-## 12. Prediction, Calibration, And Research Surfaces
-
-### Bias Factor / Execution Multiplier
-
-The legacy `bias_factor` path estimates how actual task duration compares to
-planned duration. It blends personal history with seeded archetype/category
-priors using sample-size weighting.
-
-Cascade:
-
-1. category x time-of-day x duration bucket
-2. category x time-of-day
-3. category
-4. research prior
-
-This is a product-facing estimate and research hypothesis. It is not a stable
-identity trait.
-
-### Archetype Survey And Proximity
-
-LyraOS has a survey-backed archetype system and a dynamic archetype proximity
-surface.
-
-Current safeguards:
-
-- archetype outputs are hypotheses
-- proximity is time-local
-- no stable identity label should be treated as fact
-- posterior displays are gated by enough evidence
-- baseline evidence is exposure-aware
-
-### Pause Prediction
-
-Pause prediction uses historical pause patterns and work rhythm signals.
-
-Current mechanisms include:
-
-- clock-anchor timing
-- category-specific pause rhythm
-- pause prediction logs
-- cooldown and firing windows
-- reconciliation of user response windows
-
-### Resume Prediction
-
-Resume prediction fires while a task is paused when pause duration approaches
-historical category/time-of-day patterns or a cold-start fallback.
-
-Current mechanisms include:
-
-- category/time-of-day p75 duration
-- absolute cold-start floor
-- per-session cooldown
-- resume prediction logs
-
-### Inference Engine
-
-The inference engine can classify behavioral hypotheses such as friction,
-flow, scope creep, under-plan, and disagreement classes. These remain inferred
-labels, not observed truth.
+- derived metrics are recomputed at read time;
+- latent constructs are not persisted as observed facts;
+- unknowns never become neutral defaults;
+- repaired/stale/retroactive/provider-only data is excluded from clean
+  measured-execution baselines unless a successor profile admits it;
+- exposed or unknown-exposure rows do not silently update clean learning paths.
 
 ---
 
-## 13. Adaptive Scheduling Direction
+## 16. Prediction, Priors, And Progressive Capability
 
-Adaptive scheduling is not currently autonomous scheduling.
+Current prediction/calibration surfaces include:
 
-Current status:
+- bias factor / execution multiplier;
+- category and time-of-day priors;
+- archetype survey and dynamic proximity;
+- pause prediction;
+- resume prediction;
+- inference-engine hypotheses.
 
-- descriptive synthesis is feasible and partially implemented through the
-  Insights primary synthesis card
-- low-authority experiment language is documented as a future direction
-- validated adaptive scheduling is not shipped
-- automatic rescheduling is not authorized
-- hidden calendar mutation is not authorized
+These are bounded estimates and hypotheses, not identity truth.
 
-The intended future loop is:
+The strategic direction is progressive capability:
 
 ```text
-observe
-  -> synthesize
-  -> suggest a small experiment
-  -> measure the result
-  -> adapt confidence
+few clean anchors -> descriptive help
+more clean anchors -> better estimates
+many clean anchors -> bounded recommendations
+validated history -> optional adaptive scheduling
 ```
 
-The unlock model is evidence-driven, not arbitrary gamification. Stronger
-guidance should appear only as the system accumulates enough clean,
-longitudinal evidence for a specific user and context.
+Potential future unlock language such as “50 clean sessions to unlock adaptive
+scheduling” is a product/research direction, not a shipped capability.
 
-Future-gated stages:
-
-- raw tracking
-- descriptive insights
-- bounded synthesis
-- operator-only experiment suggestions
-- measured experiment outcomes
-- local adaptive confidence
-
-No public adaptive scheduling, intervention suggestions, or confidence-backed
-recommendations should ship without the future contract items listed in
-`docs/adaptive_scheduling_progressive_inference.md`.
+Adaptive scheduling remains future-gated. The current system may describe,
+summarize, and suggest low-authority recovery paths, but it must not silently
+reschedule or auto-manage users.
 
 ---
 
-## 14. Brain Dump And Parsing Details
+## 17. Research Doctrine
 
-Current brain-dump parsing is deterministic and lives in the backend service
-layer.
+The current research stance is not “track psychology.” It is:
 
-The parser can:
+```text
+instrument the gap between intention and execution
+while preserving authority boundaries
+```
 
-- split raw text into candidate items
-- classify tasks versus deadlines
-- parse date/time with `dateparser`
-- infer durations where supported
-- strip scheduling tokens from titles
-- score confidence
-- suggest task-deadline bindings
+Important doctrines:
 
-The product also supports a Pulse quick-capture modal that uses the same typed
-brain-dump client path.
+- `docs/behavioral_instrumentation_doctrine.md`
+- `docs/cortex_contract_v0.md`
+- `docs/cortex_product_research_contract_v0.md`
+- `docs/research_mapping.md`
+- `docs/adaptive_scheduling_progressive_inference.md`
+- `docs/execution_anomaly_edge_case_register.md`
+- `docs/design_patterns/sequential_revelation_doctrine.md`
 
-LLM enrichment is separate. It runs asynchronously after task creation and
-must not silently replace user-visible canonical fields.
+Current conceptual primitives from `backend/app/core/research_contracts.py`:
 
----
+- provider connection;
+- obligation;
+- academic asset;
+- activity event;
+- intention;
+- execution event;
+- outcome;
+- interruption;
+- exposure;
+- drift;
+- recalibration;
+- trust state;
+- provenance;
+- authority level;
+- redaction status.
 
-## 15. LLM Enrichment
+Sequential revelation doctrine is now a design principle:
 
-LLM enrichment is a background worker, not a critical-path task creation
-dependency.
+```text
+understanding is staged at the rate humans can metabolize it
+```
 
-Current behavior:
+This applies to presentations, onboarding, insight surfaces, recovery prompts,
+and future adaptive flows.
 
-- selects pending tasks
-- attempts configured hosted model path when available
-- falls back to local model path where configured
-- validates structured output
-- writes suggestions into `llm_*` fields
-- does not silently overwrite user-confirmed deadline bindings
-- supports sticky rejection to avoid repeated unwanted suggestions
+Trajectory-integrity doctrine is now the deeper philosophical invariant:
 
-Potential enrichment fields:
+```text
+optimize for contact with reality
+not for obedience to plans, institutional convenience, or product vanity
+```
 
-- priority
-- sub-items
-- inferred deadline id
-- deadline candidates
-- alternative suggestions
-
-LLM output is suggestion/proposal material, not observed truth.
-
----
-
-## 16. JARVIS
-
-JARVIS is an operator-only in-app assistant.
-
-Current properties:
-
-- only available to operator users
-- reads Lyra context
-- exposes a curated tool registry
-- executes read tools immediately
-- queues write tools for explicit confirmation
-- writes `JarvisInvocation` audit rows
-- can support task creation, focus-session start, deadline completion, Moodle
-  sync, and hypothesis logging through confirmation-gated tools
-
-JARVIS output is operator tooling. It is not Lyra product research data unless
-a successor contract explicitly admits operator-session analysis.
+This does not make Lyra anti-technology or anti-optimization. It makes Lyra
+anti-hidden-proxy optimization. Engagement, retention, status, productivity,
+and institutional convenience are not allowed to outrank user agency,
+provenance, exposure awareness, reversibility, or correction.
 
 ---
 
-## 17. OpenClaw
+## 18. LyraSim
 
-OpenClaw is an operator-only multi-agent runtime external to the product app.
+LyraSim is the synthetic pressure-and-ambiguity harness. Its active roadmap is:
 
-Current role:
+```text
+docs/lyrasim_pressure_ambiguity_roadmap.md
+```
 
-- orchestration and adversarial review
-- codebase exploration
-- implementation assistance
-- operator research synthesis
+V0 harness log:
 
-OpenClaw must not:
+```text
+docs/lyrasim_stress_harness.md
+```
 
-- bypass Lyra auth, topology, exposure, or clean-data constraints
-- become public user-facing research output
-- merge agent claims into product truth without contract promotion
-- treat local operator runtime traces as Lyra product research data
+LyraSim purpose:
 
-The runtime topology contract and context-window blast-radius contract exist
-partly because OpenClaw/Codex work can span many layers at once.
+```text
+ambiguous trace -> bounded hypothesis -> safe output/recovery
+not:
+ambiguous trace -> confident surveillance claim -> polluted learning loop
+```
+
+Current implemented scenario families include:
+
+- `task_started_never_stopped`;
+- `baseet_resource_open_idle_45m`;
+- `baseet_stale_task_progress_candidate`;
+- `baseet_background_video_fakeout`;
+- `baseet_multidevice_upload_collision`;
+- `baseet_reverse_progress_signal`;
+- `baseet_duplicate_stale_deadline_pressure`;
+- `execution_outlier_single_trace_does_not_generalize`.
+
+LyraSim now reports findings summaries, resolution rungs, safe-action types,
+safe-action availability, uncertainty paralysis, self-report prompt
+availability, and safe-action spam diagnostics.
+
+Product-seam validation is earned only when generated scenario data enters a
+real product service or endpoint and the report names that seam. Stubbed runs
+remain harness validation only.
 
 ---
 
-## 18. Persistence Model
+## 19. Execution Anomalies And Client Integrity
 
-Current model families include:
+The repo now treats execution anomalies as first-class design pressure.
+
+Known anomaly families:
+
+- stale sessions;
+- auto-closed sessions;
+- extreme duration outliers;
+- retroactive completion;
+- repaired sessions;
+- provider-only progress candidates;
+- background video/resource fakeouts;
+- multi-device collisions;
+- reverse provider progress;
+- extension/local shadow usage that bypasses backend persistence.
+
+Core rule:
+
+```text
+one anomalous trace may become a bounded review hypothesis;
+it must not become a stable user pattern by itself
+```
+
+The extension/local-storage incident adds another doctrine:
+
+```text
+client state is not trustworthy evidence by default
+```
+
+This does not invalidate Lyra. It reinforces the need for explicit causal
+anchors, provenance, clean-data gates, and recovery-first UX.
+
+---
+
+## 20. API Surface
+
+All backend routes mount under `/v1`.
+
+| Module | Responsibility |
+| --- | --- |
+| `health.py` | Health, env invariants, topology |
+| `parse.py` | Single task parse and deadline preview |
+| `query.py` | Task range queries and last-task lookup |
+| `tasks.py` | Task CRUD, state transitions, recovery |
+| `stopwatch.py` | Start, pause, resume, stop, switch, status |
+| `undo.py` | Redis-backed undo |
+| `notifications.py` | Notification queue/operator bridge |
+| `analytics.py` | Insights, diagnostics, Cortex analytics, bias/prediction endpoints |
+| `users.py` | `/users/me`, consent, onboarding stamps, export/deletion |
+| `pause_predictions.py` | Pause prediction responses |
+| `reflection_view.py` | Reflection exposure/view/dismiss logging |
+| `calendar.py` | Google Calendar read-only events/outcomes |
+| `integrations.py` | Integration status |
+| `admin.py` | Operator dashboard |
+| `deadlines.py` | Deadline CRUD/state transitions |
+| `feedback.py` | Alpha feedback |
+| `brain_dump.py` | Brain-dump parse/commit |
+| `moodle.py` | Moodle iCal/WS connect, preview, sync |
+| `jarvis.py` | Operator-only JARVIS |
+| `exposures.py` | Render acknowledgement and exposure utilities |
+| `academic.py` | Academic pressure map |
+| `skill_check.py` | OpenClaw skill ping |
+
+---
+
+## 21. Background Jobs
+
+APScheduler runs in process. Jobs are designed to be idempotent where replay on
+wake is expected.
+
+| Job | Purpose |
+| --- | --- |
+| `reminders` | Upcoming task reminders |
+| `notion_sync` | Retry failed Notion syncs |
+| `timer_overflow` | Check overflowing stopwatch sessions |
+| `overdue_tasks` | Detect and skip overdue unstarted tasks |
+| `stale_session_recovery` | Close old unclosed sessions |
+| `orphan_task_recovery` | Recover executing tasks without open sessions |
+| `pause_prediction` | Fire/log/queue pause predictions |
+| `reconcile_responses` | Reconcile pause prediction outcomes |
+| `reconcile_deadline_outcomes` | Write task-deadline outcome rows |
+| `sweep_missed_deadlines` | Mark overdue active deadlines missed |
+| `llm_enrichment` | Async semantic task enrichment |
+| `resume_prediction` | Fire resume banner while paused |
+| `moodle_ics_sync` | Import Moodle iCal deadlines |
+| `moodle_submissions_sync` | Detect Moodle submissions and complete deadlines |
+
+---
+
+## 22. Persistence Model
+
+Model families include:
 
 ### Core Product Rows
 
@@ -736,7 +781,7 @@ Current model families include:
 - `ExternalEventOutcome`
 - `Feedback`
 
-### Research And Inference Rows
+### Research / Inference Rows
 
 - `Archetype`
 - `ArchetypeAssignment`
@@ -746,269 +791,209 @@ Current model families include:
 - `PausePredictionLog`
 - `ResumePredictionLog`
 
-### Exposure And Governance Rows
+### Exposure / Governance Rows
 
 - `ExposureDecisionEvent`
 - `ExposureRenderEvent`
 - `ExposureAckEvent`
 - `SuppressionEvent`
 - `ExposurePolicyEffectLog`
+- security/audit rows where present in the current model layer
 
 ### Operator Rows
 
 - `JarvisInvocation`
 
-All analytics/research reads must respect `voided_at` discipline where
-applicable.
+All analytics/research reads must respect user scoping, `voided_at`, clean-data
+profile, and exposure state where applicable.
 
 ---
 
-## 19. Task State Machine
+## 23. Operator-Only Systems
+
+JARVIS is an operator-only assistant. It can read context, call curated tools,
+and queue writes for explicit confirmation. It is not a public user feature.
+
+OpenClaw/Codex workflows are operator-side development and research tools. They
+may propose, review, and implement code under operator authority, but they do
+not own doctrine, runtime mutation, or user-facing truth.
+
+Agent council work is useful for adversarial interpretation after new scenario
+families, warnings, catastrophic failures, or suspicious passes. It should not
+become an automatic judge of every tiny simulation pass.
+
+---
+
+## 24. Security, Privacy, And Data Access Posture
+
+Current posture:
+
+- bearer/JWT runtime auth;
+- operator-only gates for admin/JARVIS;
+- per-user scoped reads/writes;
+- account export and deletion;
+- no individual instructor dashboard in the intended university framing;
+- student-facing personal layer;
+- research/export layer should be explicit-consent, pseudonymized/aggregated,
+  exposure-aware;
+- institutional layer should remain aggregate and thresholded, not
+  individually traceable.
+
+Known security/privacy debts:
+
+- public deployment still depends on operator-hosted Cloudflare Tunnel;
+- Google refresh tokens and Moodle iCal URLs are security-sensitive;
+- some credential storage remains legacy/plaintext debt depending on provider;
+- public privacy/legal posture needs real review before broad deployment;
+- client/extension-local shadow usage can bypass product instrumentation;
+- client-shadow recovery must use the canonical read-only protocol and script,
+  never improvised/generated DevTools code;
+- frontend persisted cache requires careful auth clearing.
+
+---
+
+## 25. Current User Activity Read
+
+As of the May 24 production aggregate check:
+
+- backend-visible non-operator users: 18;
+- non-operator users with any tasks: 12;
+- non-operator users with sessions: 7;
+- non-operator backend-visible tasks: 107;
+- non-operator backend-visible sessions: 32;
+- top visible non-operator users show real but shallow use;
+- one trusted hidden extension/local user reportedly tracked about 133 sessions
+  outside the expected backend instrumentation path.
+
+Interpretation:
 
 ```text
-PLANNED   -> EXECUTING, SKIPPED, DELETED
-EXECUTING -> PAUSED, EXECUTED, SKIPPED
-PAUSED    -> EXECUTING, SKIPPED
-EXECUTED  -> immutable
-SKIPPED   -> DELETED
-DELETED   -> immutable
+backend-visible retention is weak-to-moderate;
+hidden/local usage may contain the strongest retained-use signal;
+observability is incomplete.
 ```
 
-Important details:
-
-- `EXECUTED` and `DELETED` are terminal
-- `PAUSED -> EXECUTED` is handled by auto-resume before stop
-- `TaskManager` is the task mutation authority
-- `DeadlineManager` is the deadline mutation authority
-- overdue recovery may stamp retroactive completion but does not create a
-  measured stopwatch trace
-- voiding a task must clear or invalidate related live/session state
-
----
-
-## 20. Background Jobs
-
-APScheduler runs in-process. Jobs are designed to be idempotent where replay on
-wake is expected.
-
-| Job | Cadence | Purpose |
-| --- | --- | --- |
-| `reminders` | 1 minute | upcoming task reminders |
-| `notion_sync` | 5 minutes | retry failed Notion syncs |
-| `timer_overflow` | 2 minutes | check overflowing stopwatch sessions |
-| `overdue_tasks` | 30 minutes | detect and skip overdue unstarted tasks |
-| `stale_session_recovery` | 15 minutes | close old unclosed stopwatch sessions |
-| `orphan_task_recovery` | 15 minutes | recover EXECUTING tasks without open session |
-| `pause_prediction` | 1 minute | fire/log/queue pause predictions |
-| `reconcile_responses` | 5 minutes | reconcile pause prediction outcomes |
-| `reconcile_deadline_outcomes` | 30 minutes | write task-deadline outcome rows |
-| `sweep_missed_deadlines` | 1 hour | mark overdue active deadlines missed |
-| `llm_enrichment` | 5 seconds | async semantic task enrichment |
-| `resume_prediction` | 2 minutes | fire resume banner while paused |
-| `moodle_ics_sync` | 6 hours | import Moodle iCal deadlines |
-| `moodle_submissions_sync` | 6 hours | detect Moodle submissions and complete deadlines |
-
----
-
-## 21. API Surface
-
-All backend routes are mounted under `/v1`.
-
-| Module | Responsibility |
-| --- | --- |
-| `health.py` | health, env invariants, topology report |
-| `parse.py` | single task parse and deadline preview |
-| `query.py` | range task queries and last-task lookup |
-| `tasks.py` | task CRUD/state transitions/recovery/LLM binding actions |
-| `stopwatch.py` | start, pause, resume, stop, switch, status |
-| `undo.py` | Redis-backed undo |
-| `notifications.py` | notification queue/operator bridge |
-| `analytics.py` | insights, diagnostics, Cortex analytics, bias/prediction endpoints |
-| `users.py` | `/users/me`, consent, onboarding stamps, account export/deletion |
-| `pause_predictions.py` | pause prediction response and confirmation |
-| `reflection_view.py` | reflection exposure/view/dismiss logging |
-| `calendar.py` | Google Calendar read-only events/outcomes |
-| `integrations.py` | integration availability/status |
-| `admin.py` | operator dashboard |
-| `deadlines.py` | deadline CRUD/state transitions |
-| `feedback.py` | alpha feedback |
-| `brain_dump.py` | brain-dump parse and commit |
-| `moodle.py` | Moodle iCal/WS connect, preview, sync |
-| `jarvis.py` | operator-only JARVIS chat/confirm/health/stream |
-| `exposures.py` | render acknowledgement and exposure utilities |
-| `skill_check.py` | OpenClaw skill ping |
-
----
-
-## 22. Runtime Topology
-
-Runtime topology is part of correctness. Browser smoke is not trusted until the
-frontend, backend, auth base, API origin, and CORS contract agree.
-
-Topology artifacts:
-
-- `runtime_topology.json`
-- frontend `/api/topology`
-- backend `/v1/health/topology`
-- `scripts/verify_runtime_topology.mjs`
-
-Current public topology:
-
-```text
-frontend: https://lyraos.org
-api:      https://api.lyraos.org
-auth:     https://lyraos.org
-```
-
-The verifier checks:
-
-- frontend topology class
-- compiled API origin
-- NextAuth URL
-- backend topology class
-- CORS behavior
-- auth provider URL shape
-- cross-topology poisoning
-
----
-
-## 23. Security, Privacy, And Credential Status
-
-Current security posture:
-
-- Google identity through NextAuth
-- backend bearer JWT validation
-- per-user request scoping
-- user-namespaced Redis hot keys
-- operator-only gates for admin/JARVIS
-- account export and deletion surfaces
-- secrets must not be logged or returned through API responses
-
-Credential status:
-
-- Moodle WS token: Fernet-encrypted for new connections
-- Google refresh token: plaintext security debt
-- Moodle iCal URL: plaintext security debt
-- Notion token: environment/configured integration secret
-
-Known privacy/legal debt:
-
-- public privacy and terms pages exist but may still need production-grade
-  review and hosted-model disclosure language
-- public marketing copy must avoid overclaiming adaptive scheduling
-
----
-
-## 24. Testing And Verification
-
-The repository contains backend tests for:
-
-- config and topology invariants
-- multi-user isolation
-- task state transitions
-- stopwatch and pause/resume behavior
-- deadline behavior
-- brain-dump parsing
-- LLM parser guards
-- Cortex metrics
-- exposure ledger behavior
-- output surface registry
-- insights and primary synthesis
-- account deletion auxiliary rows
-- Moodle and integration paths
-
-Current operational gate discipline:
-
-- re-anchor before continuing after context drift
-- run focused tests for the touched layer
-- run backend CI-equivalent for backend changes when available
-- verify runtime topology before browser smoke
-- browser smoke before push
-- watch CI after push
-- do not push without browser verification
-
-Recent local caveat: some ad hoc test attempts can fail if the local/container
-environment lacks test dependencies. That is an environment issue, not proof
-that the feature is verified.
-
----
-
-## 25. Current Known Risks And Debts
-
-1. Cloudflare Tunnel from the operator host is still an operational dependency.
-2. Google refresh tokens and Moodle iCal URLs remain plaintext.
-3. Analytics code is large and mixes product analytics, research diagnostics,
-   and operator diagnostics.
-4. Exposure Ledger v0 has no attention proxies or temporal association atom.
-5. Historical exposure coverage is adapter-based rather than physically
-   backfilled.
-6. Adaptive scheduling is not validated beyond descriptive/operator dogfood
-   concepts.
-7. JARVIS and OpenClaw are powerful operator tools and must not become hidden
-   product research authorities.
-8. Frontend persisted cache can create confusing stale-state moments if auth
-   transitions are not cleared correctly.
-9. Any new research input risks violating the fixed observation surface.
-10. The `work` category remains contaminated legacy data and should stay
-    quarantined from category-level insight claims.
-11. The public landing page describes adaptive scheduling as a direction; copy
-    must remain careful not to imply autonomous scheduling is live.
-12. Runtime auth depends on `NEXTAUTH_SECRET` and backend `JWT_SECRET` staying
-    aligned.
+This is a product lesson, not proof of product-market fit. The immediate
+research need is reality contact: interviews, recovered shadow data where
+consented, and small-cohort testing of the pressure/session/recovery loop.
 
 ---
 
 ## 26. Shipped vs Future-Gated
 
-### Shipped/User-Facing
+### Shipped / User-Facing
 
-- Google sign-in
-- brain-dump onboarding
-- task planning
-- timer execution
-- pause/resume/stop/switch
-- overdue recovery
-- calendar view
-- deadlines
-- Moodle import/submission detection
-- Google Calendar read-only context
-- Pulse dashboard
-- Insights page
-- primary synthesis insight card
-- confidence-tiered insight cards
-- pause and resume prediction surfaces
-- archetype survey/proximity
-- settings and integrations
-- account export/deletion
-- feedback widget
+- Google sign-in;
+- brain-dump onboarding;
+- task planning;
+- timer execution;
+- pause/resume/stop/switch;
+- completion percentage updates;
+- overdue and stale-session recovery;
+- calendar and deadline views;
+- Moodle iCal / Moodle WS surfaces;
+- Google Calendar read-only context;
+- Pulse dashboard;
+- academic pressure map;
+- Insights page and primary synthesis;
+- confidence-tiered insight cards;
+- pause and resume prediction surfaces;
+- archetype survey/proximity;
+- settings, integrations, export/delete;
+- feedback widget.
 
-### Shipped/Operator-Only
+### Shipped / Operator-Only
 
-- admin dashboard
-- JARVIS
-- OpenClaw workflows
-- operator notifications
-- Notion outbound sync/retry plumbing
-- topology verification discipline
-- exposure diagnostics and policy logs
+- admin dashboard;
+- JARVIS;
+- OpenClaw/Codex workflows;
+- operator notifications;
+- topology verification scripts;
+- exposure diagnostics and policy logs;
+- LyraSim harness and product-seam tests.
 
 ### Future-Gated / Not Publicly Shipped
 
-- automatic rescheduling
-- hidden calendar mutation
-- validated adaptive scheduling
-- intervention suggestions beyond carefully bounded/operator-only experiments
-- confidence-backed behavioral recommendations
-- learning from exposed/intervened behavior without stratified exposure modeling
-- new required user input for research enrichment
-- public Notion OAuth/import or non-operator Notion configuration
+- live Baseet integration;
+- autonomous rescheduling;
+- hidden calendar/task mutation;
+- OS-level telemetry;
+- passive activity inference as execution truth;
+- AI synthesis over evidence packets;
+- public cascade intervention;
+- hypothesis-based interventions;
+- adaptive scheduling;
+- archetype-driven recommendations;
+- institutional individual-risk dashboards.
 
 ---
 
-## 27. One-Line Summary
+## 27. Current Known Risks And Debts
 
-LyraOS is a planning and execution app whose deeper architecture is a
-measurement-valid behavioral instrument: users plan and work normally, the
-system preserves the trace, Cortex interprets it under clean-data constraints,
-the exposure ledger protects baseline validity, and stronger guidance is only
-allowed when evidence, topology, identity, and governance all hold together.
+1. Reality contact is still too thin relative to the ambition.
+2. Backend-visible user retention is shallow, while extension/local usage shows
+   instrumentation blind spots.
+3. Provider data can easily be overread unless pressure/recovery seams stay
+   strict.
+4. Baseet is likely strong structure but weak behavioral continuity.
+5. Adaptive scheduling requires more clean evidence than most users currently
+   provide.
+6. Prompt/confirmation fatigue is a real product risk.
+7. Stale sessions and extreme outliers can distort estimates if not handled.
+8. Governance complexity can become product complexity if not kept behind the
+   scenes.
+9. Cloudflare Tunnel/operator-hosted deployment remains operational debt.
+10. Some provider credentials/secrets need stronger production-grade handling.
+11. Analytics code remains broad and mixed across product, research, and
+    operator concerns.
+12. Public/university language must sell value first and avoid surfacing
+    objections before reviewers understand the product.
+
+---
+
+## 28. Immediate Strategic Frame
+
+The current best next question is not:
+
+```text
+Can Lyra perfectly model execution reality?
+```
+
+It is:
+
+```text
+What is the minimum viable truthful utility?
+```
+
+The realistic near-term loop:
+
+```text
+see pressure
+anchor a session
+drift happens
+receive a low-friction recovery choice
+confirm enough truth to improve the next estimate
+```
+
+Commercially and scientifically, Lyra should now validate:
+
+- whether students/users reopen the pressure and recovery loop;
+- which confirmations feel useful rather than annoying;
+- how sparse causal anchors can be before value collapses;
+- whether recovered hidden/power-user data shows a durable value loop;
+- whether provider modules can provide useful structure without behavioral
+  overclaiming.
+
+The architecture remains coherent, but its claims have narrowed:
+
+```text
+not omniscient cognition tracking
+not one-provider behavioral truth
+not autonomous planner
+
+yes bounded execution-state modeling
+yes pressure topology
+yes sparse confirmations
+yes recovery from drift
+yes progressively earned confidence
+```
