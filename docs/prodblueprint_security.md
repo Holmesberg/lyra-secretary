@@ -43,6 +43,19 @@ existing connection state where safe, or retry later. It must not bypass bearer
 identity, fall back to operator scope, widen user queries, or accept
 provider-returned identity as a substitute for Lyra user scoping.
 
+Client-side recovery must preserve before interpreting.
+
+```text
+Do not improvise destructive DevTools recovery code during an incident.
+```
+
+When a consenting trusted-alpha user has local or extension-side Lyra data
+outside the backend path, operators must use
+`docs/client_shadow_data_recovery_protocol.md` and the canonical read-only
+script at `scripts/client_shadow_export_readonly.js`. Generated snippets,
+storage clearing, IndexedDB deletion, or extension-storage mutation are not
+allowed as recovery steps.
+
 ## 2. Access-Control Model
 
 Trusted alpha has two roles:
