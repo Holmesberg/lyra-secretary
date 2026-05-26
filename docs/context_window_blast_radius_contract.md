@@ -153,6 +153,38 @@ The default alt-account smoke accounts are:
 These accounts are verification tools, not authorization shortcuts. Manual and
 browser verification must still use the bearer/session path.
 
+## Pre-Final Git Hygiene Gate
+
+Before any final response after repository changes, Codex must run a git
+hygiene check and report the result. This is required even for docs-only work.
+
+Minimum command:
+
+```powershell
+.\scripts\git_hygiene_summary.ps1
+```
+
+Preferred command when the touched paths are known:
+
+```powershell
+.\scripts\git_hygiene_summary.ps1 -Paths @(
+  "docs/example.md",
+  "backend/tests/example_test.py"
+)
+```
+
+The final response must explicitly separate:
+
+- files intentionally changed in this turn;
+- pre-existing or unrelated dirty files left untouched;
+- verification that passed;
+- verification that could not run and why;
+- whether changes were committed or pushed.
+
+If the dirty worktree includes files outside the task scope, do not stage,
+format, revert, or summarize them as your work. Name them as unrelated dirty
+state or say they were already dirty when observed.
+
 ## Stop Conditions
 
 Codex should stop and re-anchor instead of continuing when:
