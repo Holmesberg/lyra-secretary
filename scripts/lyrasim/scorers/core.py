@@ -72,6 +72,16 @@ FORBIDDEN_CLAIM_TAGS = (
     "mastery_claim",
     "studied_claim",
 )
+FORBIDDEN_SINGLE_OUTLIER_GENERALIZATION_TERMS = (
+    "always",
+    "normal pattern",
+    "normally",
+    "stable pattern",
+    "typical",
+    "usually",
+    "your baseline",
+    "you tend",
+)
 
 CLEAN_PROFILES = {"measured_execution", "planning_calibration"}
 
@@ -143,10 +153,19 @@ def _has_clean_contamination_risk(scenario: ScenarioData) -> bool:
     return _has_unclosed_stale_timer(scenario) or any(
         event.event_type.startswith("provider_")
         or str(event.payload.get("evidence_class")) == "passive_activity"
+        or event.payload.get("clean_data_eligible") is False
         or str(event.payload.get("provenance")) in {
             "external_import",
             "system_recovered",
+            "user_repaired",
         }
+        for event in scenario.observable_trace
+    )
+
+
+def _has_single_outlier_generalization_probe(scenario: ScenarioData) -> bool:
+    return any(
+        event.payload.get("generalization_probe") == "single_outlier"
         for event in scenario.observable_trace
     )
 
@@ -301,6 +320,17 @@ def score_scenario(scenario: ScenarioData, output: LyraOutput) -> ScoreResult:
         failures.append(
             "forbidden_claim_tag:" + ",".join(sorted(forbidden_claim_tags))
         )
+    if _has_single_outlier_generalization_probe(scenario):
+        overgeneralization_terms = [
+            term for term in FORBIDDEN_SINGLE_OUTLIER_GENERALIZATION_TERMS
+            if term in lowered_text
+        ]
+        if overgeneralization_terms:
+            authority_violations += 1
+            failures.append(
+                "single_outlier_overgeneralized:"
+                + ",".join(sorted(overgeneralization_terms))
+            )
 
     clean_denominator = len(output.clean_data_admissions)
     clean_contaminations = 0

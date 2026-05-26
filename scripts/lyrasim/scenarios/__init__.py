@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from scripts.lyrasim.generators import baseet_deadline_pressure
 from scripts.lyrasim.generators import baseet_resource_open_idle_45m
 from scripts.lyrasim.generators import baseet_progress_candidates
+from scripts.lyrasim.generators import execution_anomaly_generalization
 from scripts.lyrasim.generators import task_started_never_stopped
 from scripts.lyrasim.models import ScenarioData
 
@@ -37,6 +38,11 @@ SCENARIOS: dict[str, ScenarioDefinition] = {
     baseet_resource_open_idle_45m.SCENARIO_ID: ScenarioDefinition(
         scenario_id=baseet_resource_open_idle_45m.SCENARIO_ID,
         generator=baseet_resource_open_idle_45m.generate,
+        scorer_names=("score_scenario",),
+    ),
+    execution_anomaly_generalization.SCENARIO_ID: ScenarioDefinition(
+        scenario_id=execution_anomaly_generalization.SCENARIO_ID,
+        generator=execution_anomaly_generalization.generate,
         scorer_names=("score_scenario",),
     ),
     baseet_progress_candidates.REVERSE_PROGRESS_SCENARIO_ID: ScenarioDefinition(

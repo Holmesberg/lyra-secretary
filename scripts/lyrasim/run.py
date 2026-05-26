@@ -36,6 +36,9 @@ PROGRESS_CANDIDATE_SCENARIOS = {
 DEADLINE_PRESSURE_SCENARIOS = {
     "baseet_duplicate_stale_deadline_pressure",
 }
+EXECUTION_ANOMALY_SCENARIOS = {
+    "execution_outlier_single_trace_does_not_generalize",
+}
 
 
 def stubbed_lyra_output_for_v0(scenario_id: str | None = None) -> LyraOutput:
@@ -166,6 +169,27 @@ def stubbed_lyra_output_for_v0(scenario_id: str | None = None) -> LyraOutput:
             safe_actions=("confirm_coverage",),
             safe_action_type="confirm_coverage",
             resolution_rung="clarify",
+        )
+
+    if scenario_id in EXECUTION_ANOMALY_SCENARIOS:
+        return LyraOutput(
+            stubbed=True,
+            product_seams_exercised=(),
+            authority_rung="interpretation",
+            text_outputs=(
+                "A corrected outlier remains descriptive and is not used as a stable planning pattern.",
+            ),
+            clean_data_admissions=(
+                CleanDataAdmission(
+                    profile="planning_calibration",
+                    admitted=False,
+                    reason="corrected_execution_anomaly",
+                ),
+            ),
+            published_claim_tags=("single_outlier_descriptive_only",),
+            safe_actions=(),
+            safe_action_type="none",
+            resolution_rung="suppress",
         )
 
     return LyraOutput(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -26,6 +26,10 @@ from scripts.lyrasim.generators.baseet_progress_candidates import (
     STALE_PROGRESS_SCENARIO_ID,
     generate_stale_task_progress_candidate,
 )
+from scripts.lyrasim.generators.execution_anomaly_generalization import (
+    SCENARIO_ID as EXECUTION_OUTLIER_SCENARIO_ID,
+    generate as generate_execution_outlier,
+)
 from scripts.lyrasim.models import (
     CleanDataAdmission,
     HypothesisCheckPrompt,
@@ -41,13 +45,41 @@ from scripts.lyrasim.product_seams.academic_pressure import (
     lyra_output_from_pressure_map_response,
     seed_baseet_deadlines_from_scenario,
 )
+from scripts.lyrasim.product_seams.insights import (
+    lyra_output_from_insights_response,
+    seed_execution_tasks_from_scenario,
+)
 from scripts.lyrasim.run import run_scenario, stubbed_lyra_output_for_v0
 from scripts.lyrasim.scenarios import SCENARIOS, generate_scenario
 from scripts.lyrasim.scorers import score_scenario
 from scripts.lyrasim.scorers.core import _rate_metric
 
+from app.api.v1.endpoints import analytics as analytics_module
 from app.db.models import ExposureRenderEvent, Task, User
+from app.services import academic_pressure as academic_pressure_service
 from tests.conftest import auth_headers
+
+
+class _LyraSimFakeRedis:
+    def __init__(self):
+        self.client = self
+        self.keys: set[str] = set()
+
+    def exists(self, key, *_args, **_kwargs):
+        return key in self.keys
+
+    def setex(self, key, _ttl, value):
+        self.keys.add(key)
+        return value
+
+    def sismember(self, *_args, **_kwargs):
+        return False
+
+    def sadd(self, *_args, **_kwargs):
+        return None
+
+    def expire(self, *_args, **_kwargs):
+        return None
 
 
 def test_generator_is_deterministic_by_seed():
@@ -417,6 +449,7 @@ def test_baseet_progress_candidate_scenarios_remain_low_authority(
 def test_baseet_deadline_pressure_validates_real_pressure_map_product_seam(
     db,
     client,
+    monkeypatch,
 ):
     user = User(
         email="lyrasim-pressure-seam@example.test",
@@ -429,6 +462,16 @@ def test_baseet_deadline_pressure_validates_real_pressure_map_product_seam(
     db.add(user)
     db.commit()
     db.refresh(user)
+    monkeypatch.setattr(
+        academic_pressure_service,
+        "baseet_pressure_input_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        academic_pressure_service,
+        "recovery_nudges_enabled",
+        lambda: True,
+    )
 
     scenario = generate_scenario(BASEET_DEADLINE_PRESSURE_SCENARIO_ID, 20260522)
     rows = seed_baseet_deadlines_from_scenario(
@@ -502,6 +545,144 @@ def test_baseet_deadline_pressure_validates_real_pressure_map_product_seam(
     assert "baseet_mock" not in snapshot
     assert "lyrasim-pressure-seam" not in snapshot
     assert "external_obligation_count" in snapshot
+
+
+def test_execution_outlier_scenario_is_registered_and_repo_derived():
+    assert EXECUTION_OUTLIER_SCENARIO_ID in SCENARIOS
+    assert SCENARIOS[EXECUTION_OUTLIER_SCENARIO_ID].scorer_names
+
+    scenario = generate_scenario(EXECUTION_OUTLIER_SCENARIO_ID, 20260522)
+
+    assert scenario == generate_execution_outlier(20260522)
+    assert scenario.scenario_origin == "repo_derived"
+    assert scenario.expected_resolution_rung == "suppress"
+    assert any(
+        event.payload.get("generalization_probe") == "single_outlier"
+        for event in scenario.observable_trace
+    )
+    assert any(
+        event.payload.get("clean_data_eligible") is False
+        for event in scenario.observable_trace
+    )
+
+
+def test_execution_outlier_stub_control_is_cli_safe():
+    report = run_scenario(
+        scenario_id=EXECUTION_OUTLIER_SCENARIO_ID,
+        seed=20260522,
+        output_path=None,
+    )
+
+    assert report["stubbed"] is True
+    assert report["findings_summary"]["overall_status"] == "pass"
+    assert report["findings_summary"]["product_seam_validated"] is False
+    assert report["findings_summary"]["resolution_rung"] == "suppress"
+
+
+def test_single_outlier_overgeneralization_invariant_fails():
+    scenario = generate_scenario(EXECUTION_OUTLIER_SCENARIO_ID, 20260522)
+    output = LyraOutput(
+        stubbed=True,
+        product_seams_exercised=(),
+        authority_rung="interpretation",
+        text_outputs=(
+            "You usually take far longer on study tasks; this is your baseline.",
+        ),
+        clean_data_admissions=(
+            CleanDataAdmission(
+                profile="planning_calibration",
+                admitted=False,
+                reason="corrected_execution_anomaly",
+            ),
+        ),
+        resolution_rung="suppress",
+    )
+
+    score = score_scenario(scenario, output)
+
+    assert score.metrics["authority_violation_rate"].status == "fail"
+    assert any(
+        failure.startswith("single_outlier_overgeneralized")
+        for failure in score.failed_invariants
+    )
+
+
+def test_dirty_execution_outlier_admission_fails_clean_data_gate():
+    scenario = generate_scenario(EXECUTION_OUTLIER_SCENARIO_ID, 20260522)
+    output = lyra_output_from_insights_response(
+        {
+            "sessions_analyzed": 11,
+            "insights": [],
+            "authority_rung": "interpretation",
+            "suppressed_reason": "test_dirty_admission",
+        },
+        scenario=scenario,
+    )
+
+    score = score_scenario(scenario, output)
+
+    assert score.metrics["clean_data_contamination_rate"].status == "fail"
+    assert (
+        "unsafe_trace_admitted_to_clean_profile:planning_calibration"
+        in score.failed_invariants
+    )
+
+
+def test_execution_outlier_validates_real_insights_product_seam(
+    db,
+    client,
+    monkeypatch,
+):
+    user = User(
+        email="lyrasim-insights-outlier-seam@example.test",
+        google_id=None,
+        timezone="Africa/Cairo",
+        is_operator=False,
+        notion_enabled=False,
+        terms_accepted_at=datetime.utcnow(),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    scenario = generate_scenario(EXECUTION_OUTLIER_SCENARIO_ID, 20260522)
+    seeded = seed_execution_tasks_from_scenario(
+        db,
+        scenario,
+        user_id=user.user_id,
+        base_time=datetime.utcnow() - timedelta(days=30),
+    )
+    monkeypatch.setattr(
+        analytics_module,
+        "RedisClient",
+        lambda: _LyraSimFakeRedis(),
+    )
+
+    response = client.get(
+        "/v1/analytics/insights",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    output = lyra_output_from_insights_response(data, scenario=scenario)
+    score = score_scenario(scenario, output)
+    report = build_report(scenario=scenario, output=output, score=score)
+
+    assert len(seeded["tasks"]) == 11
+    assert len(seeded["corrections"]) == 1
+    assert data["sessions_analyzed"] == 10
+    assert data["insights"] == []
+    assert data["suppressed_reason"] == "no_contract_safe_insights"
+    assert output.stubbed is False
+    assert output.product_seams_exercised == (
+        "analytics.insights",
+        "output_surfaces.exposure_ledger",
+    )
+    assert report["findings_summary"]["product_seam_validated"] is True
+    assert score.failed_invariants == ()
+    assert score.metrics["authority_violation_rate"].status == "pass"
+    assert score.metrics["clean_data_contamination_rate"].status == "pass"
 
 
 def test_provider_progress_candidate_cannot_auto_execute_or_enter_clean_data():

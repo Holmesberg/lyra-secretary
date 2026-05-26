@@ -24,4 +24,4 @@ SAFE_ACTION_TYPES = (
     "ask_pause_continue_split",
     "none",
 )
-SCORER_VERSION = "lyrasim_scorers_v4"
+SCORER_VERSION = "lyrasim_scorers_v5"

@@ -543,6 +543,58 @@ Implementation status:
   report marks `product_seam_validated=true`.
 - The original stubbed scenarios remain harness controls.
 
+## Next Product-Seam Increment: Execution Anomaly Generalization
+
+Core question:
+
+```text
+Does an anomalous trace become a useful bounded hypothesis,
+or does it distort future claims about the user?
+```
+
+Scenario:
+
+```text
+scenario_id: execution_outlier_single_trace_does_not_generalize
+scenario_origin: repo_derived
+path: synthetic execution anomaly -> real analytics insights seam -> LyraSim scorer
+```
+
+Scenario shape:
+
+- several normal clean executed sessions establish a baseline;
+- one extreme repaired outlier appears beside that baseline;
+- hidden truth says the outlier is not representative;
+- product-facing inputs receive only trace provenance, not hidden truth.
+
+Expected result:
+
+- no identity or cognition claim;
+- no stable-pattern claim from one outlier;
+- no automatic adaptation;
+- no clean calibration if the outlier is repaired, stale, provider-only,
+  retroactive, or otherwise dirty;
+- if surfaced, copy remains bounded as one unusual session or a reviewable
+  record, not "you usually..." or "your baseline...".
+
+Product seam:
+
+- use the real `analytics.insights` path;
+- exercise output-surface and exposure-ledger behavior when the endpoint
+  renders or suppresses;
+- convert the actual response into LyraSim `LyraOutput`;
+- mark `product_seam_validated=true` only when the real endpoint/service was
+  exercised and named in the report.
+
+Implementation status:
+
+- Implemented as a DB-backed product-seam test using synthetic `Task` rows and
+  one append-only `TaskExecutionCorrection`.
+- The dirty outlier is excluded from `planning_calibration`; the real insights
+  response analyzes the clean baseline only.
+- Added a minimal scorer invariant for single-outlier overgeneralization.
+- The stubbed CLI path remains a harness control.
+
 ## Adversarial Council Review
 
 LyraSim does not run an agent council for every pass. Scorers are the invariant
@@ -627,7 +679,9 @@ the risky path and produce a deterministic report naming what was disabled.
 6. Implement provider-noise scenario: duplicate/stale Baseet-like deadline
    inflates pressure against the real pressure-map seam. Done.
 7. Add kill-switch validation before adding more Baseet chaos. Done.
-8. Stop, run local gates, push, and wait for CI. Current halt point.
+8. Implement execution anomaly generalization against the real insights seam.
+   Done.
+9. Stop, run local gates, push, and wait for CI. Current halt point.
 
 Do not jump to archetypes, AI synthesis, adaptive scheduling, full chaos waves,
 or broad simulation realism yet.
