@@ -83,8 +83,9 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
   retention risk, clean-data impact, burden offset, and sunset criteria.
 - Optimize for information gain per unit user friction; passive/internal signal
   expansion is preferred over expanding the user input surface.
-- Push completed repository changes to GitHub in structured commits unless the
-  operator explicitly says not to.
+- Prepare completed repository changes as structured commit buckets, then ask
+  the operator for explicit confirmation before any commit, push, pull, merge,
+  rebase, stash, or branch switch.
 - Stage explicit paths only. Never bundle unrelated dirty-worktree files.
 - Keep docs either active in `docs/` or intentionally archived under
   `archive/`; do not create ambiguous documentation sediment.

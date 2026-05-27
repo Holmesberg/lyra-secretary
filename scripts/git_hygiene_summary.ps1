@@ -42,8 +42,11 @@ if ($Paths.Count -gt 0) {
 
 Write-Host ""
 Write-Host "### Final-Response Checklist"
+Write-Host "- state the current branch"
 Write-Host "- mention dirty worktree status"
 Write-Host "- separate changes made this turn from pre-existing/unrelated changes"
 Write-Host "- list files intentionally changed"
 Write-Host "- list verification run and blockers"
 Write-Host "- say whether anything was not committed/pushed"
+Write-Host "- ask for explicit confirmation before commit, push, pull, merge, rebase, stash, or branch switch"
+Write-Host "- give the exact next git command only after naming the commit bucket it affects"

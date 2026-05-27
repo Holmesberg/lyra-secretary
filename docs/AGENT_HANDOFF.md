@@ -107,6 +107,10 @@ Docker and frontend workflows: **`agent bootstrap doc`** Commands section.
 - **`docs/design_patterns/structural_investigation_rule.md`** — features touching measurement.
 - **Multi-tenant isolation** — JARVIS and analytics must stay operator-scoped where required; see existing tests and `ContextVar` patterns in backend.
 - **Commit discipline:** meaningful chunks, verify gates operator uses (`CONTRIBUTING.md`, CI).
+- **Git mutation confirmation:** before any `commit`, `push`, `pull`,
+  `merge`, `rebase`, `stash`, or branch switch, state the current branch,
+  name the exact change bucket, list the exact command, and wait for operator
+  confirmation.
 - **Pre-final git hygiene:** before the final response, run
   `.\scripts\git_hygiene_summary.ps1` and report dirty worktree status,
   intentionally changed files, unrelated dirty files, verification, and
