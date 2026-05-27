@@ -316,6 +316,8 @@ def test_upsert_external_deadline_updates_on_due_at_change(db):
     user = _make_user(db)
     set_current_user_id(user.user_id)
     manager = DeadlineManager(db)
+    initial_due = (datetime.utcnow() + timedelta(days=7)).replace(microsecond=0)
+    extended_due = initial_due + timedelta(days=7)
 
     base = dict(
         external_source="moodle_ics",
@@ -325,10 +327,20 @@ def test_upsert_external_deadline_updates_on_due_at_change(db):
         category_hint="CSE201",
     )
     manager.upsert_external_deadline(
-        **base, due_at_utc=datetime(2026, 5, 15, 23, 59, 0),
+        **base, due_at_utc=initial_due,
     )
+    first_imported_at = (
+        db.query(Deadline.imported_at)
+        .filter(
+            Deadline.user_id == user.user_id,
+            Deadline.external_id == "evt-3@lms.example.test",
+        )
+        .scalar()
+    )
+    assert first_imported_at is not None
+
     op = manager.upsert_external_deadline(
-        **base, due_at_utc=datetime(2026, 5, 22, 23, 59, 0),  # extended a week
+        **base, due_at_utc=extended_due,
     )
     assert op == "updated"
 
@@ -340,9 +352,9 @@ def test_upsert_external_deadline_updates_on_due_at_change(db):
         )
         .first()
     )
-    assert row.due_at_utc == datetime(2026, 5, 22, 23, 59, 0)
+    assert row.due_at_utc == extended_due
     # imported_at is the FIRST-import timestamp; not overwritten on updates.
-    assert row.imported_at <= row.due_at_utc
+    assert row.imported_at == first_imported_at
 
 
 def test_upsert_external_deadline_skips_voided_rows(db):
