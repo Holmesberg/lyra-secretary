@@ -737,24 +737,10 @@ class TaskManager:
         # in MANIFESTO Rule 12's exploratory secondary analysis.
         task.scope_bullet_count_at_execute = extract_scope_bullets(task.description)
 
-        # Loop 1 (alembic 034) — stamp calibration_nudge_event outcome if
-        # one exists for this task. Inline UPDATE in the same transaction
-        # as the task transition (cheaper than an APScheduler reconciliation
-        # job; sub-millisecond per stop). voided_at filter respects the
-        # voided_at_guard discipline — if the nudge event was invalidated
-        # post-creation we don't resurrect it.
-        nudge_event = (
-            self.db.query(CalibrationNudgeEvent)
-            .filter(
-                CalibrationNudgeEvent.task_id == task.task_id,
-                CalibrationNudgeEvent.executed_duration_minutes.is_(None),
-                CalibrationNudgeEvent.voided_at.is_(None),
-            )
-            .first()
-        )
-        if nudge_event is not None:
-            nudge_event.executed_duration_minutes = executed_duration
-            nudge_event.resolved_at = now_utc()
+        # Loop 1 (alembic 034) - stamp calibration_nudge_event outcome.
+        # StopwatchManager may call the same helper again after pause
+        # subtraction so the event records active execution, not wall clock.
+        self.reconcile_calibration_nudge_outcome(task.task_id, executed_duration)
 
         task = self.state_machine.transition(task, TaskState.EXECUTED)
 
@@ -770,6 +756,26 @@ class TaskManager:
         except Exception as e:
             logger.warning("complete_task: last_task cache write failed (non-blocking): %s", e)
         return task, notion_synced
+
+    def reconcile_calibration_nudge_outcome(
+        self,
+        task_id: str,
+        executed_duration_minutes: int,
+    ) -> None:
+        """Stamp or correct calibration-nudge outcome with active execution."""
+        nudge_event = (
+            self.db.query(CalibrationNudgeEvent)
+            .filter(
+                CalibrationNudgeEvent.task_id == task_id,
+                CalibrationNudgeEvent.voided_at.is_(None),
+            )
+            .first()
+        )
+        if nudge_event is None:
+            return
+        nudge_event.executed_duration_minutes = executed_duration_minutes
+        if nudge_event.resolved_at is None:
+            nudge_event.resolved_at = now_utc()
 
     def skip_task(self, task_id: str, reason: Optional[str] = None) -> Task:
         """

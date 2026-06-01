@@ -119,6 +119,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     delta: number | null;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
   // Bug fix #2 (ultrathink): if status flips inactive while we're
@@ -136,10 +137,34 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   // Mutations
   const startM = useMutation<StartStopwatchResponse, Error, { taskId: string; readiness: number }>({
     mutationFn: ({ taskId, readiness }) => startStopwatch(taskId, readiness),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setMode("idle");
       setErrorMsg(null);
       setReadiness(null);
+      if (res.is_future_task && res.planned_start) {
+        try {
+          const planned = new Date(res.planned_start);
+          const minutesEarly = Math.max(
+            0,
+            Math.round((planned.getTime() - Date.now()) / 60000)
+          );
+          const timeLabel = planned.toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          });
+          const msg = `Heads up: this was scheduled for ${timeLabel}; you started ${minutesEarly} min early. The session will record from now.`;
+          setInfoMsg(msg);
+          setTimeout(() => {
+            setInfoMsg((prev) => (prev === msg ? null : prev));
+          }, 5000);
+        } catch {
+          setInfoMsg(
+            "Heads up: this was scheduled later. The session will record from now."
+          );
+        }
+      } else {
+        setInfoMsg(null);
+      }
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
     },
@@ -175,6 +200,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       setMode("next-prompt");
       setRequiresConfirm(false);
       setErrorMsg(null);
+      setInfoMsg(null);
       setReflection(null);
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
@@ -334,7 +360,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       {/* IDLE — no PLANNED tasks. Calmer empty state under the timer. */}
       {showIdle && plannedTasks.length === 0 && (
         <p className="mt-4 max-w-xs text-center text-xs text-dust">
-          Nothing planned yet. Brain-dump in the footer to add what you're
+          Nothing planned yet. Use quick capture above to add what you're
           working on.
         </p>
       )}
@@ -482,7 +508,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
             if (!next) {
               return (
                 <p className="text-center text-xs text-dust">
-                  Nothing else on the plan. Brain-dump in the footer for more.
+                  Nothing else on the plan. Use quick capture above for more.
                 </p>
               );
             }
@@ -541,6 +567,15 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
           className="mt-3 w-full max-w-md rounded-sm border border-ember/40 bg-ember/5 px-3 py-1.5 text-left text-[11px] text-ember"
         >
           {errorMsg} <span className="text-ember/60">· tap to dismiss</span>
+        </button>
+      )}
+      {infoMsg && !errorMsg && (
+        <button
+          type="button"
+          onClick={() => setInfoMsg(null)}
+          className="mt-3 w-full max-w-md rounded-sm border border-signal/35 bg-signal/5 px-3 py-1.5 text-left text-[11px] text-signal"
+        >
+          {infoMsg} <span className="text-signal/60">· tap to dismiss</span>
         </button>
       )}
     </div>

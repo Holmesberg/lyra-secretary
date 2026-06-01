@@ -239,6 +239,8 @@ The research layer must not:
 - mix minute, ratio, and log spaces in one equation
 - convert unknowns into neutral defaults
 - require product friction for speculative model gain
+- convert self-reported readiness by time of day into ability, capacity,
+  cognition, focus, mastery, or identity claims
 
 ### 5.4 Identity Rule
 
@@ -246,6 +248,11 @@ No inference output may be treated as a stable user identity.
 
 All research outputs are time-local, context-bound hypotheses unless validated
 by a later contract.
+
+Readiness-by-time-window outputs are allowed only as planning-context
+hypotheses, for example: "In rated sessions, afternoon starts landed closer to
+plan." They must not be rendered as "your best brain time", "when you are most
+functional", or any equivalent stable trait.
 
 Archetype outputs are especially constrained. They may function as cold-start
 priors or similarity hypotheses, but they must not be rendered or consumed as
@@ -314,6 +321,25 @@ Allowed passive/internal expansion:
 - read-time derived metrics
 - clean-data profile labels
 - evaluation-version stamps
+
+### 7.1 Interruption Metrics
+
+Execution measurement must stay clean:
+
+- `Execution Time` is active work time.
+- `Session Span` is the observed stopwatch span, including pauses.
+- `Pause Overhead` is bounded interruption/recovery gap evidence from clean
+  closed sessions, including zero-pause sessions.
+- `Occupancy Time` is the product-facing planning footprint:
+  `Execution Time + bounded Pause Overhead`.
+- `Execution Efficiency` is `Execution Time / Session Span`.
+- `Recovery Friction` is the typical pause-to-resume duration from clean
+  pause events.
+
+`Task.executed_duration_minutes`, `bias_factor_final`, and calibration outcome
+rows remain active execution measurements. Pause overhead may inform planning
+windows, insights, micro-mirrors, nudges, and resume continuity prompts, but it
+must not be folded into clean execution calibration.
 
 Not allowed without successor contract:
 

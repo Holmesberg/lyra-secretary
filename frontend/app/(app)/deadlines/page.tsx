@@ -124,7 +124,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
       </div>
       <div className="flex shrink-0 flex-col gap-1">
         {/* One-click mark-done — operator pain point 2026-05-01 with
-            Moodle-imported overdue assignments they submitted out-of-
+            Moodle-imported overdue items they completed out-of-
             band but Lyra had no way to know about (iCal carries due
             dates, NOT submission status). Surfaced on planned/active
             plus missed deadlines, because missed only means the sweeper

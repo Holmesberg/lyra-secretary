@@ -10,6 +10,7 @@ from uuid import uuid4
 from app.db.models import (
     ExposureDecisionEvent,
     ExposureRenderEvent,
+    StopwatchSession,
     SuppressionEvent,
     Task,
     TaskState,
@@ -21,8 +22,10 @@ from app.api.v1.endpoints.analytics import (
     _insight_best_category,
     PRIMARY_SYNTHESIS_ID,
     _insight_discrepancy_signal,
+    _insight_occupancy_footprint,
     _insight_pause_pattern,
     _insight_readiness,
+    _insight_readiness_time_of_day,
     _insight_time_of_day,
     _insight_worst_category,
 )
@@ -41,6 +44,8 @@ def _task(
     category="study",
     initiation_status="started",
     pause_count=0,
+    pause_overhead=0,
+    session_span=60,
 ):
     t = MagicMock(spec=Task)
     t.state = state
@@ -58,6 +63,14 @@ def _task(
     t.category = category
     t.initiation_status = initiation_status
     t.pause_count = pause_count
+    t.is_anchor = False
+    session = MagicMock(spec=StopwatchSession)
+    session.start_time_utc = t.planned_start_utc
+    session.end_time_utc = t.planned_start_utc + timedelta(minutes=session_span)
+    session.total_paused_minutes = pause_overhead
+    session.auto_closed = False
+    session.data_quality_flag = None
+    t.stopwatch_sessions = [session]
     return t
 
 
@@ -157,6 +170,53 @@ def test_rewritten_insight_copy_avoids_identity_language():
     assert pause is not None
     assert "Recorded pauses" in pause["observation"]
     assert "interruptions" not in pause["observation"]
+
+
+def test_readiness_time_of_day_insight_is_bounded_planning_context():
+    result = _insight_readiness_time_of_day(
+        [_task(delta=-5, pre=5, tod_hour=6) for _ in range(3)]
+        + [_task(delta=-40, pre=2, tod_hour=16) for _ in range(3)]
+    )
+
+    assert result is not None
+    assert result["id"] == "readiness_time_of_day"
+    observation = result["observation"].lower()
+    assert "rated sessions" in observation
+    assert "planning-context signal" in observation
+    assert "ability or identity claim" in observation
+    assert "cognitive" not in observation
+    assert "functional" not in observation
+    assert "focus" not in observation
+    assert "mastery" not in observation
+
+
+def test_occupancy_footprint_uses_neutral_downstream_language():
+    result = _insight_occupancy_footprint(
+        [
+            _task(delta=-10, pause_overhead=20, session_span=80)
+            for _ in range(5)
+        ]
+    )
+
+    assert result is not None
+    assert result["id"] == "occupancy_footprint"
+    observation = result["observation"].lower()
+    assert "active work" in observation
+    assert "pause overhead" in observation
+    assert "planning-window guidance" in observation
+    for banned in ("avoid", "focus", "motivation", "identity"):
+        assert banned not in observation
+
+
+def test_occupancy_footprint_suppresses_without_meaningful_overhead():
+    result = _insight_occupancy_footprint(
+        [
+            _task(delta=0, pause_overhead=5, session_span=65)
+            for _ in range(5)
+        ]
+    )
+
+    assert result is None
 
 
 def test_category_insights_require_multiple_categories():
@@ -318,11 +378,13 @@ def test_insights_endpoint_only_returns_contract_safe_generators(
         "retroactive_rate",
         "time_of_day_bias",
         "readiness_predicts_outcome",
+        "readiness_time_of_day",
         "abandonment_pattern",
         "best_category",
         "worst_category",
         "discrepancy_signal",
         "pause_pattern",
+        "occupancy_footprint",
         "morning_anchor_cascade",
         "archetype_divergence",
         "calibration_maturation",

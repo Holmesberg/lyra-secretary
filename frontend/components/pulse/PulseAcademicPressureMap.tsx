@@ -54,6 +54,16 @@ function fmtTrust(trust: AcademicPressureItem["trust_state"]): string {
   return trust.replaceAll("_", " ");
 }
 
+function genericPressureCopy(copy: string): string {
+  return copy
+    .replaceAll("visible academic load", "visible load")
+    .replaceAll("academic load", "visible load")
+    .replaceAll("academic obligations", "obligations")
+    .replaceAll("academic tasks", "linked tasks")
+    .replaceAll("Academic obligations", "Obligations")
+    .replaceAll("Academic tasks", "Linked tasks");
+}
+
 export function PulseAcademicPressureMap({
   pressure,
   loading = false,
@@ -66,7 +76,7 @@ export function PulseAcademicPressureMap({
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <div className="font-display text-[10px] font-medium uppercase tracking-macro text-dust">
           <span className="opacity-50">[ </span>
-          Academic pressure
+          Pressure map
           <span className="opacity-50"> ]</span>
         </div>
         <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
@@ -76,7 +86,7 @@ export function PulseAcademicPressureMap({
 
       {loading ? (
         <div className="flex flex-1 items-center text-sm text-dust">
-          Reading academic load...
+          Reading visible load...
         </div>
       ) : !pressure ? (
         <div className="flex flex-1 items-center text-sm text-dust">
@@ -90,7 +100,7 @@ export function PulseAcademicPressureMap({
             </div>
             <div className="min-w-0">
               <p className="text-[15px] leading-snug text-parchment">
-                {pressure.pressure_summary || pressure.headline}
+                {genericPressureCopy(pressure.pressure_summary || pressure.headline)}
               </p>
               <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
                 {fmtHours(
@@ -99,8 +109,8 @@ export function PulseAcademicPressureMap({
                 )}{" "}
                 visible load / {pressure.source_summary.external_obligation_count} external /{" "}
                 {pressure.source_summary.native_obligation_count} native /{" "}
-                {pressure.source_summary.academic_task_count} academic /{" "}
-                {pressure.source_summary.study_task_count} study
+                {pressure.source_summary.academic_task_count} linked tasks /{" "}
+                {pressure.source_summary.study_task_count} focus blocks
               </p>
             </div>
           </div>
@@ -112,7 +122,7 @@ export function PulseAcademicPressureMap({
                 Why the week feels compressed
               </div>
               <p className="text-[12px] leading-snug text-dust">
-                {pressure.compression_points[0].detail}
+                {genericPressureCopy(pressure.compression_points[0].detail)}
               </p>
             </div>
           )}
@@ -152,7 +162,7 @@ export function PulseAcademicPressureMap({
           ) : (
             <div className="flex flex-1 items-center gap-3 rounded-sm border border-hairline bg-void-2/40 px-3 py-4 text-sm text-dust">
               <CheckCircle2 size={16} className="shrink-0 text-signal" />
-              No active academic obligations in this window.
+              No active obligations in this window.
             </div>
           )}
 
@@ -166,7 +176,7 @@ export function PulseAcademicPressureMap({
                 {pressure.recovery_options[0].label}
               </p>
               <p className="mt-1 text-[11px] leading-snug text-dust">
-                {pressure.recovery_options[0].detail}
+                {genericPressureCopy(pressure.recovery_options[0].detail)}
               </p>
             </div>
           )}

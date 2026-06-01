@@ -28,6 +28,7 @@ from app.schemas.insights import (
     UserFacingInsightCard,
 )
 from app.services.exposure_ledger import baseline_clean_task_ids
+from app.services.interruption_metrics import task_interruption_metrics_from_sessions
 from app.services.claim_compiler import (
     PRIMARY_SYNTHESIS_ID,
     PRIMARY_SYNTHESIS_SURFACE_ID,
@@ -50,12 +51,14 @@ INSIGHT_TITLES = {
     "primary_synthesis": "Primary pattern",
     "time_of_day_bias": "Time of day",
     "readiness_predicts_outcome": "Readiness signal",
+    "readiness_time_of_day": "Readiness timing",
     "abandonment_pattern": "Not started",
     "estimation_accuracy_trend": "Estimation trend",
     "best_category": "Best category",
     "worst_category": "Worst category",
     "discrepancy_signal": "Discrepancy",
     "pause_pattern": "Pause pattern",
+    "occupancy_footprint": "Planning footprint",
     "morning_anchor_cascade": "Morning plan",
     "retroactive_rate": "Retroactive rate",
     "initiation_delay": "Start delay",
@@ -627,6 +630,67 @@ def _insight_readiness(tasks: list) -> Optional[dict]:
     )
 
 
+def _insight_readiness_time_of_day(tasks: list) -> Optional[dict]:
+    """Self-reported readiness as context for time-window planning fit.
+
+    This deliberately avoids "best brain time" or cognitive-capacity copy.
+    The user reported readiness; Lyra observed planning error by time window.
+    The output is a low-authority placement/recovery hypothesis only.
+    """
+    buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    for t in tasks:
+        if t.state != TaskState.EXECUTED:
+            continue
+        if t.pre_task_readiness is None or t.duration_delta_minutes is None:
+            continue
+        tod = _time_of_day(to_local(t.planned_start_utc))
+        buckets[tod].append((int(t.pre_task_readiness), abs(int(t.duration_delta_minutes))))
+
+    summaries = []
+    for tod, pairs in buckets.items():
+        if len(pairs) < 3:
+            continue
+        readiness_vals = [readiness for readiness, _error in pairs]
+        error_vals = [error for _readiness, error in pairs]
+        summaries.append(
+            {
+                "time_of_day": tod,
+                "sessions": len(pairs),
+                "avg_readiness": _avg(readiness_vals),
+                "avg_abs_error": _avg(error_vals),
+            }
+        )
+
+    if len(summaries) < 2:
+        return None
+
+    best = min(summaries, key=lambda row: row["avg_abs_error"])
+    comparison = max(summaries, key=lambda row: row["avg_abs_error"])
+    diff = comparison["avg_abs_error"] - best["avg_abs_error"]
+    if diff < 8:
+        return None
+
+    obs = (
+        f"In rated sessions, {best['time_of_day']} starts landed "
+        f"{_abs_minutes(diff)} min closer to plan than {comparison['time_of_day']}. "
+        f"Self-reported readiness averaged {best['avg_readiness']:.1f}/5 in that window. "
+        "This is a planning-context signal, not an ability or identity claim."
+    )
+    return _insight(
+        "readiness_time_of_day",
+        obs,
+        sum(row["sessions"] for row in summaries),
+        strength=diff,
+        facts={
+            "best_time_of_day": best["time_of_day"],
+            "comparison_time_of_day": comparison["time_of_day"],
+            "best_average_readiness": best["avg_readiness"],
+            "best_average_absolute_error_minutes": best["avg_abs_error"],
+            "comparison_average_absolute_error_minutes": comparison["avg_abs_error"],
+        },
+    )
+
+
 def _insight_abandonment(tasks: list) -> Optional[dict]:
     """Not-started planned-task rate by TOD and category."""
     tod_total: dict[str, int] = defaultdict(int)
@@ -870,6 +934,56 @@ def _insight_pause_pattern(tasks: list) -> Optional[dict]:
         ),
         len(executed),
         strength=rate * 100,
+    )
+
+
+def _insight_occupancy_footprint(tasks: list) -> Optional[dict]:
+    """Planning-window footprint from active work plus bounded pause overhead."""
+    rows = []
+    for task in tasks:
+        if task.state != TaskState.EXECUTED:
+            continue
+        if getattr(task, "is_anchor", False):
+            continue
+        sessions = list(getattr(task, "stopwatch_sessions", []) or [])
+        metrics = task_interruption_metrics_from_sessions(task, sessions)
+        if (
+            metrics.execution_time_minutes is None
+            or metrics.session_span_minutes is None
+            or metrics.execution_efficiency is None
+        ):
+            continue
+        rows.append(metrics)
+
+    if len(rows) < 5:
+        return None
+
+    pause_values = [row.pause_overhead_minutes for row in rows]
+    execution_values = [row.execution_time_minutes for row in rows if row.execution_time_minutes is not None]
+    span_values = [row.session_span_minutes for row in rows if row.session_span_minutes is not None]
+    median_pause = _median(pause_values)
+    if median_pause < 15:
+        return None
+
+    median_execution = _median(execution_values)
+    median_span = _median(span_values)
+    obs = (
+        f"Across {len(rows)} completed sessions with clean timer data, "
+        f"median active work was {_abs_minutes(median_execution)} min, "
+        f"median session span was {_abs_minutes(median_span)} min, "
+        f"and median pause overhead was {_abs_minutes(median_pause)} min. "
+        "Treat occupancy as planning-window guidance, not execution time."
+    )
+    return _insight(
+        "occupancy_footprint",
+        obs,
+        len(rows),
+        strength=median_pause,
+        facts={
+            "median_execution_minutes": median_execution,
+            "median_session_span_minutes": median_span,
+            "median_pause_overhead_minutes": median_pause,
+        },
     )
 
 
@@ -1133,11 +1247,13 @@ CONTRACT_SAFE_INSIGHT_GENERATORS = [
     ("analytics.insights.retroactive_rate", _insight_retroactive_rate),
     ("analytics.insights.time_of_day_bias", _insight_time_of_day),
     ("analytics.insights.readiness_predicts_outcome", _insight_readiness),
+    ("analytics.insights.readiness_time_of_day", _insight_readiness_time_of_day),
     ("analytics.insights.abandonment_pattern", _insight_abandonment),
     ("analytics.insights.best_category", _insight_best_category),
     ("analytics.insights.worst_category", _insight_worst_category),
     ("analytics.insights.discrepancy_signal", _insight_discrepancy_signal),
     ("analytics.insights.pause_pattern", _insight_pause_pattern),
+    ("analytics.insights.occupancy_footprint", _insight_occupancy_footprint),
     ("analytics.insights.morning_anchor_cascade", _insight_morning_anchor),
 ]
 
@@ -1913,8 +2029,20 @@ def bias_factor_lookup(
     if magnitude is None and cell is not None:
         magnitude = cell.get("bias_factor")
     threshold = 1.20 if result.get("source") == "research" else 1.25
-    if cell is not None and magnitude is not None and magnitude >= threshold:
-        suggested_minutes = max(5, round((planned_minutes * magnitude) / 5) * 5)
+    occupancy_factor = result.get("occupancy_factor")
+    pause_sample_size = result.get("pause_overhead_sample_size") or 0
+    execution_triggered = magnitude is not None and magnitude >= threshold
+    occupancy_triggered = (
+        occupancy_factor is not None
+        and occupancy_factor >= threshold
+        and pause_sample_size >= 3
+    )
+    if cell is not None and (execution_triggered or occupancy_triggered):
+        suggested_minutes = (
+            result.get("occupancy_suggested_minutes")
+            or result.get("execution_suggested_minutes")
+            or max(5, round((planned_minutes * (magnitude or 1.0)) / 5) * 5)
+        )
         surface_id = "task.creation_nudge"
         eligible_at = now_utc()
         arm, policy = rule11_randomization_fields(
@@ -1943,6 +2071,12 @@ def bias_factor_lookup(
                     "sessions": result.get("sessions", 0),
                     "min_sessions": result.get("min_sessions", 3),
                     "source": result.get("source"),
+                    "execution_suggested_minutes": result.get("execution_suggested_minutes"),
+                    "pause_overhead_minutes": result.get("pause_overhead_minutes"),
+                    "pause_overhead_sample_size": result.get("pause_overhead_sample_size"),
+                    "occupancy_suggested_minutes": result.get("occupancy_suggested_minutes"),
+                    "occupancy_strategy": result.get("occupancy_strategy"),
+                    "occupancy_factor": result.get("occupancy_factor"),
                     "suppressed_reason": emitted["suppressed_reason"],
                     "surface_id": emitted["surface_id"],
                     "truth_class": emitted["truth_class"],
@@ -1959,13 +2093,20 @@ def bias_factor_lookup(
                 content_snapshot={
                     "copy": (
                         f"Suggested window is {suggested_minutes} min "
-                        f"for {category} / {tod} from a {round(magnitude, 3)}x "
-                        f"Rule-13 factor."
+                        f"for {category} / {tod}: execution "
+                        f"{result.get('execution_suggested_minutes')} min + "
+                        f"pause overhead {result.get('pause_overhead_minutes')} min."
                     ),
                     "category": category,
                     "time_of_day": tod,
                     "planned_minutes": planned_minutes,
                     "suggested_minutes": suggested_minutes,
+                    "execution_suggested_minutes": result.get("execution_suggested_minutes"),
+                    "pause_overhead_minutes": result.get("pause_overhead_minutes"),
+                    "pause_overhead_sample_size": result.get("pause_overhead_sample_size"),
+                    "occupancy_suggested_minutes": result.get("occupancy_suggested_minutes"),
+                    "occupancy_strategy": result.get("occupancy_strategy"),
+                    "occupancy_factor": result.get("occupancy_factor"),
                     "bias_factor": round(magnitude, 3),
                     "personal_bias_factor": cell.get("bias_factor"),
                     "personal_weight": result.get("personal_weight"),
@@ -2002,10 +2143,16 @@ def bias_factor_lookup(
                 "sessions": result.get("sessions", 0),
                 "min_sessions": result.get("min_sessions", 3),
                 "source": result.get("source"),
+                "execution_suggested_minutes": result.get("execution_suggested_minutes"),
+                "pause_overhead_minutes": result.get("pause_overhead_minutes"),
+                "pause_overhead_sample_size": result.get("pause_overhead_sample_size"),
+                "occupancy_suggested_minutes": result.get("occupancy_suggested_minutes"),
+                "occupancy_strategy": result.get("occupancy_strategy"),
+                "occupancy_factor": result.get("occupancy_factor"),
                 "suppressed_reason": "exposure_emit_failed",
                 "surface_id": "task.creation_nudge",
                 "truth_class": "intervention",
-                "signal_targets": ["planning_estimate"],
+                "signal_targets": ["planning_estimate", "pause_behavior"],
                 "clean_profile": "planning_calibration",
                 "fallback_mode": "suppress",
             }

@@ -8,6 +8,7 @@ import logging
 import uuid
 
 from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
+from app.services.interruption_metrics import task_interruption_metrics
 from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, to_local, strip_tz
@@ -27,7 +28,16 @@ class StopwatchNotPausedError(Exception):
     pass
 
 
-def _compute_micro_mirror(task: Task) -> Optional[str]:
+def _format_micro_duration(minutes: Optional[int]) -> str:
+    if minutes is None:
+        return "unknown"
+    if minutes >= 60:
+        hours, mins = divmod(int(minutes), 60)
+        return f"{hours}h {mins:02d}m"
+    return f"{int(minutes)} min"
+
+
+def _compute_micro_mirror(task: Task, interruption_metrics=None) -> Optional[str]:
     """One-line behavioral observation on stop. Priority: initiation > delta > pauses.
 
     Text is deliberately neutral — no evaluative framing ("strong focus",
@@ -39,6 +49,17 @@ def _compute_micro_mirror(task: Task) -> Optional[str]:
     delta = task.duration_delta_minutes
     duration = task.executed_duration_minutes or 0
     pauses = task.pause_count or 0
+
+    if interruption_metrics is not None:
+        pause_overhead = interruption_metrics.pause_overhead_minutes or 0
+        execution = interruption_metrics.execution_time_minutes or duration
+        span = interruption_metrics.session_span_minutes
+        if pause_overhead >= 30 and execution > 0 and pause_overhead >= execution:
+            return (
+                f"Active work: {int(execution)} min. "
+                f"Session span: {_format_micro_duration(span)}. "
+                f"Pause overhead: {_format_micro_duration(pause_overhead)}."
+            )
 
     if delay is not None and delay > 10:
         return f"Started {delay} min late."
@@ -1162,6 +1183,10 @@ class StopwatchManager:
             task.executed_duration_minutes = max(
                 0, (task.executed_duration_minutes or 0) - int(round(total_paused))
             )
+            self.task_manager.reconcile_calibration_nudge_outcome(
+                task.task_id,
+                int(task.executed_duration_minutes or 0),
+            )
             self.db.commit()
             self.db.refresh(task)
 
@@ -1179,7 +1204,8 @@ class StopwatchManager:
             self.db.commit()
             self.db.refresh(session)
 
-        micro_mirror = _compute_micro_mirror(task)
+        interruption = task_interruption_metrics(self.db, task)
+        micro_mirror = _compute_micro_mirror(task, interruption)
         calibration_nudge = _compute_calibration_nudge(task, self.db)
 
         self.redis.clear_active_stopwatch(user_id)

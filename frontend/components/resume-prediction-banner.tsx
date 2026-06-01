@@ -7,11 +7,8 @@
  * (category, time_of_day) cell, OR when the cold-start 30-min flat cap
  * is hit (no training data yet).
  *
- * Two render variants:
- *   - mechanism === 'category_tod': "You usually resume by now on
- *     {time_of_day} {category} blocks. Pick it back up?"
- *   - mechanism === 'cold_start_synthetic': "Lyra hasn't seen enough
- *     yet — picking it up?" (warmer copy per feedback_warm_tone_copy)
+ * Copy is continuity support, not productivity pressure:
+ *   "You left {task} paused {duration} ago. Pick it back up?"
  *
  * Two buttons:
  *   - [Resume]   → triggers /v1/stopwatch/resume + dismisses banner
@@ -22,9 +19,8 @@
  * Plus dismiss × in corner.
  *
  * Per docs/manifesto_alignment_audit_2026_04_28.md item #4: VT-17
- * sibling instrument-intervention threats apply. The banner copy is
- * deliberately observational ("you usually") not directive ("you
- * should") to mitigate anchor-drift contamination.
+ * sibling instrument-intervention threats apply. The banner copy keeps
+ * the surface in recovery-continuity language.
  */
 import { useState } from "react";
 import { Play, X, Clock } from "lucide-react";
@@ -40,11 +36,14 @@ interface Props {
   onDismissed: () => void;
 }
 
-function timeOfDayFromHour(hour: number): string {
-  if (hour >= 5 && hour < 12) return "morning";
-  if (hour >= 12 && hour < 17) return "afternoon";
-  if (hour >= 17 && hour < 22) return "evening";
-  return "night";
+function formatPausedFor(minutes: number): string {
+  const rounded = Math.max(0, Math.round(minutes));
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return `${h}h ${String(m).padStart(2, "0")}m`;
+  }
+  return `${rounded} min`;
 }
 
 export function ResumePredictionBanner({ prediction, onResume, onDismissed }: Props) {
@@ -52,18 +51,16 @@ export function ResumePredictionBanner({ prediction, onResume, onDismissed }: Pr
 
   const isColdStart = prediction.mechanism === "cold_start_synthetic";
 
-  // Build the contextual copy from the local hour. Server-provided p75
-  // is shown when warm; cold-start hides the number and uses gentle copy.
-  const tod = timeOfDayFromHour(new Date().getHours());
-  const category = prediction.category ?? "this category";
-  const headline = isColdStart
-    ? "Lyra hasn't seen enough yet — picking it up?"
-    : `You usually resume by now on ${tod} ${category} blocks. Pick it back up?`;
-
   const pausedFor = Math.max(0, Math.round(prediction.paused_for_minutes));
+  const headline = `You left ${prediction.task_title ?? "this task"} paused ${formatPausedFor(pausedFor)} ago. Pick it back up?`;
   const p75 = prediction.p75_pause_minutes
     ? Math.round(prediction.p75_pause_minutes)
     : null;
+  const detail = isColdStart
+    ? "Quiet check-in while Lyra learns your resume rhythm."
+    : p75 !== null
+      ? `Usual resume point for similar pauses is about ${formatPausedFor(p75)}.`
+      : "Resume timing came from similar pauses.";
 
   return (
     <div className="mb-4 rounded-sm border border-signal/30 bg-signal/5 px-4 py-3">
@@ -73,8 +70,7 @@ export function ResumePredictionBanner({ prediction, onResume, onDismissed }: Pr
           <div className="text-xs text-signal">
             <span className="font-medium text-parchment">{headline}</span>
             <span className="ml-1.5 text-[10px] text-dust-deep">
-              ({pausedFor}min paused
-              {p75 !== null && ` · usual ~${p75}min`})
+              {detail}
             </span>
           </div>
         </div>

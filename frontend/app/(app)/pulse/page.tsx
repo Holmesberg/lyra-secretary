@@ -121,7 +121,7 @@ export default function PulsePage() {
     staleTime: 60_000,
   });
   const pressureQ = useQuery<AcademicPressureMapResponse>({
-    queryKey: ["academic-pressure-map", 14],
+    queryKey: ["pressure-map", 14],
     queryFn: () => getAcademicPressureMap(14),
     staleTime: 60_000,
   });
@@ -174,6 +174,8 @@ export default function PulsePage() {
         overdueCount={overdueCount}
       />
 
+      <PulseQuickCaptureV2 />
+
       {/* HERO ROW — Today's Plan | Focus Card | Deadlines */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="lg:col-span-3">
@@ -208,8 +210,6 @@ export default function PulsePage() {
           <PulseIntegrationsV2 integrations={integrations} />
         </div>
       </div>
-
-      <PulseQuickCaptureV2 />
 
       <div className="text-center font-mono text-[10px] uppercase tracking-widest text-dust-deep">
         // /pulse v2 · Neural Noir command surface · {recentTasks.length}{" "}

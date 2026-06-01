@@ -533,6 +533,12 @@ export interface BiasLookupResponse {
   archetype_prior_for_cell?: number;
   archetype_scaling?: number;
   archetype_prior_citation?: string;
+  execution_suggested_minutes?: number;
+  pause_overhead_minutes?: number;
+  pause_overhead_sample_size?: number;
+  occupancy_suggested_minutes?: number;
+  occupancy_strategy?: string;
+  occupancy_factor?: number | null;
   surface_id?: string | null;
   truth_class?: string | null;
   signal_targets?: string[] | null;

@@ -378,7 +378,7 @@ function TodayInner() {
       //       passed — the sweep just hasn't run yet (up to ~1h window).
       // Both paths render the loud OVERDUE pill + pin to /today until
       // the user explicitly handles them. Operator-flagged 2026-04-29:
-      // missed academic deadlines are the highest-signal procrastination
+      // missed imported deadlines are high-signal recovery candidates
       // data point and must be impossible to miss in the UI.
       const isOverdue =
         d.state === "missed" ||
@@ -405,8 +405,8 @@ function TodayInner() {
 
   // Overdue aggregate for the top banner. Only surfaces on /today (don't
   // pollute past/future-day views with action prompts about today). LMS
-  // breakout shows the "from your school" sub-count when imported rows
-  // are present — academic stakes get explicit emphasis per operator
+  // breakout shows the connected-source sub-count when imported rows
+  // are present, without implying one fixed obligation source.
   // call 2026-04-29 evening.
   const overdueDeadlines = isViewingToday
     ? dueDeadlines.filter((x) => x.overdue)
@@ -881,11 +881,10 @@ function TodayInner() {
         />
       )}
 
-      {/* W2 resume prediction banner (only when paused). Operator-locked
-          2026-04-28: surfaces "you usually resume by now" or cold-start
-          "Lyra hasn't seen enough yet" copy. Resume button hits
-          /v1/stopwatch/resume; dismiss is local-state. */}
-      {resumePrediction && status?.active && status?.paused && (
+      {/* W2 resume prediction banner (only when the matching task is still
+          paused). Resume button hits /v1/stopwatch/resume; dismiss is
+          local-state. */}
+      {resumePrediction && status?.active && status?.paused && status.task_id === resumePrediction.task_id && (
         <ResumePredictionBanner
           prediction={resumePrediction}
           onResume={async () => {
@@ -948,12 +947,12 @@ function TodayInner() {
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
             <p className="font-display text-[11px] font-medium uppercase tracking-macro text-ember">
               <span className="opacity-50">[ </span>
-              {overdueCount === 1 ? "Overdue assignment" : "Overdue assignments"}
+              {overdueCount === 1 ? "Overdue obligation" : "Overdue obligations"}
               <span className="opacity-50"> ]</span>
             </p>
             <p className="text-xs text-ember/85">
               {overdueFromLms > 0
-                ? `${overdueFromLms} from your school${
+                ? `${overdueFromLms} from connected sources${
                     overdueFromLms < overdueCount
                       ? `, ${overdueCount - overdueFromLms} other`
                       : ""

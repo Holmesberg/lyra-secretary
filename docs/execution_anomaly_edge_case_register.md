@@ -206,6 +206,9 @@ Examples:
 
 - one abnormal session shifts category averages;
 - low-readiness sessions finish closer to plan than high-readiness sessions;
+- self-reported readiness clusters by time of day and appears to line up with
+  easier starts, overruns, or recovery moments;
+- one forgotten overnight pause creates a huge apparent task footprint;
 - study and work behave like different execution systems;
 - time-of-day effects appear in dogfood data but remain underpowered.
 
@@ -214,6 +217,12 @@ Rules:
 - baseline changes should require repeated eligible evidence;
 - anomalous sessions should remain visible without becoming identity labels;
 - readiness, category, and time-window signals are hypotheses until validated;
+- readiness-by-time-window is a planning-context signal, not a measure of
+  cognitive ability, capacity, focus, or truth;
+- pause overhead must be bounded and downstream-only; it may shape occupancy
+  guidance, but must not redefine execution or `bias_factor_final`;
+- calibration nudge outcomes must record active execution after pause
+  subtraction, not raw wall-clock span;
 - confirmed patterns may improve estimates, but should not become stable
   personality claims.
 
@@ -222,6 +231,8 @@ Candidate safe actions:
 - show bounded estimate ranges;
 - ask for confirmation after surprising outcomes;
 - tag findings as hypothesis or emerging pattern;
+- suggest small placement or recovery experiments only when the evidence is
+  clean, exposure-aware, and reversible;
 - require minimum sample thresholds before stronger copy.
 
 ### Safe-Action Spam

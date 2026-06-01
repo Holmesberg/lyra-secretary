@@ -516,11 +516,14 @@ def test_task_creation_nudge_lookup_emits_exposure_when_it_will_render(db):
     assert body["cell"] is not None
     assert body["surface_id"] == "task.creation_nudge"
     assert body["truth_class"] == "intervention"
-    assert body["signal_targets"] == ["planning_estimate"]
+    assert body["signal_targets"] == ["planning_estimate", "pause_behavior"]
     assert body["clean_profile"] == "planning_calibration"
     assert body["fallback_mode"] == "suppress"
     assert body["exposure_id"]
     assert body["render_id"]
+    assert body["execution_suggested_minutes"] >= 5
+    assert body["pause_overhead_minutes"] == 0
+    assert body["occupancy_suggested_minutes"] == body["execution_suggested_minutes"]
 
     decision = (
         db.query(ExposureDecisionEvent)
@@ -537,6 +540,9 @@ def test_task_creation_nudge_lookup_emits_exposure_when_it_will_render(db):
     assert decision.trigger_source == "analytics.bias_factor.lookup"
     assert render.surface == "task.creation_nudge"
     assert "Suggested window is" in render.content_snapshot
+    assert "execution_suggested_minutes" in render.content_snapshot
+    assert "pause_overhead_minutes" in render.content_snapshot
+    assert "occupancy_suggested_minutes" in render.content_snapshot
     assert "personal_weight" in render.content_snapshot
     assert "prior_weight" in render.content_snapshot
 

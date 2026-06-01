@@ -250,6 +250,62 @@ def test_work_rhythm_fires_when_category_has_enough_samples(clean_db):
     assert result.sample_size == 5
 
 
+def test_work_rhythm_uses_open_session_start_for_live_task(clean_db):
+    """Live EXECUTING tasks do not get executed_start_utc until stop.
+
+    The predictor must anchor against the open StopwatchSession start while
+    the timer is running; otherwise the work-rhythm mechanism can never fire
+    in the moment it is meant to help.
+    """
+    now = datetime(2026, 4, 13, 10, 45)
+    active_start = now - timedelta(minutes=25)
+
+    _seed_pause_event(
+        clean_db, user_id=1,
+        paused_at=now - timedelta(days=10),
+        category="other",
+    )
+    for d in [2, 3, 4, 5, 6]:
+        _seed_rhythm_session(
+            clean_db, user_id=1, category="study",
+            start_utc=now - timedelta(days=d),
+            first_pause_after_min=28,
+        )
+
+    active_task = Task(
+        task_id=str(uuid4()),
+        user_id=1,
+        title="active study",
+        category="study",
+        state=TaskState.EXECUTING,
+        planned_start_utc=active_start,
+        planned_end_utc=active_start + timedelta(minutes=60),
+        planned_duration_minutes=60,
+        executed_start_utc=None,
+        source="manual",
+    )
+    active_session = StopwatchSession(
+        session_id=str(uuid4()),
+        task_id=active_task.task_id,
+        user_id=1,
+        start_time_utc=active_start,
+        end_time_utc=None,
+        auto_closed=False,
+        total_paused_minutes=0.0,
+    )
+    clean_db.add_all([active_task, active_session])
+    clean_db.commit()
+
+    result = PausePredictor(clean_db).predict(
+        user_id=1, active_task=active_task, now=now
+    )
+
+    assert result is not None
+    assert result.mechanism == "work_rhythm"
+    assert 2 <= result.lead_minutes <= 3
+    assert result.active_task_id == active_task.task_id
+
+
 def test_work_rhythm_excludes_contaminated_sessions(clean_db):
     """Flagged / auto_closed / voided sessions must not contribute."""
     now = datetime(2026, 4, 13, 10, 45)

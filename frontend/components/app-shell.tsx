@@ -30,7 +30,6 @@ import {
   CalendarDays,
   CalendarRange,
   Flag,
-  LayoutGrid,
   LogOut,
   Menu,
   Settings,
@@ -44,15 +43,11 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  /** Marker for experimental routes; renders a small (preview) tag. */
-  preview?: boolean;
 }
 
 const NAV: NavItem[] = [
+  { href: "/pulse", label: "Pulse", icon: Activity },
   { href: "/today", label: "Today", icon: CalendarDays },
-  // Pulse is the Neural Noir dashboard. Listed second per its
-  // dashboard-iness (operator's preferred-but-not-yet-promoted surface).
-  { href: "/pulse", label: "Pulse", icon: Activity, preview: true },
   { href: "/calendar", label: "Calendar", icon: CalendarRange },
   { href: "/deadlines", label: "Deadlines", icon: Flag },
   { href: "/table", label: "Table", icon: Table2 },
@@ -136,10 +131,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {/* Brand mark */}
         <Link
-          href="/today"
+          href="/pulse"
           prefetch={false}
           className="flex items-center gap-2.5 border-b border-hairline-signal/30 px-5 py-5"
-          aria-label="LyraOS — Today"
+          aria-label="LyraOS - Pulse"
         >
           <Image
             src="/lyraos-logo.png"
@@ -205,11 +200,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                 />
                 <span className="flex-1 truncate">{item.label}</span>
-                {item.preview && (
-                  <span className="shrink-0 rounded-sm border border-signal/30 bg-signal/5 px-1.5 py-px text-[8px] font-medium uppercase tracking-widest text-signal/80">
-                    new
-                  </span>
-                )}
               </Link>
             );
           })}
@@ -260,9 +250,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="border-b border-hairline-signal/40 bg-void/90 backdrop-blur-sm lg:hidden">
           <div className="flex items-center justify-between px-4 py-3">
             <Link
-              href="/today"
+              href="/pulse"
               className="flex items-center gap-2.5"
-              aria-label="LyraOS — back to today"
+              aria-label="LyraOS - back to Pulse"
             >
               <Image
                 src="/lyraos-logo.png"
@@ -326,11 +316,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                           )}
                         />
                         <span className="flex-1">{item.label}</span>
-                        {item.preview && (
-                          <span className="rounded-sm border border-signal/30 bg-signal/5 px-1.5 py-px text-[8px] uppercase tracking-widest text-signal/80">
-                            new
-                          </span>
-                        )}
                       </Link>
                     </li>
                   );

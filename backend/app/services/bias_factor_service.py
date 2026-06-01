@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Archetype, Task, User
 from app.services.archetype_service import DIFFUSE_AVERAGE_ID
 from app.services.exposure_ledger import baseline_clean_task_ids
+from app.services.interruption_metrics import occupancy_projection
 from app.utils.time_utils import to_local
 
 # Normalization anchor for the composite scaling rule (Rule 13). The
@@ -362,6 +363,17 @@ def blend(
         + personal_weight * personal_value
     )
 
+    occupancy = occupancy_projection(
+        db,
+        tasks=clean_tasks,
+        category=category,
+        tod=tod,
+        planned_minutes=planned_minutes,
+        bias_factor_final=bias_factor_final,
+        source=personal.get("source"),
+        signal_level=personal.get("signal_level"),
+    )
+
     return {
         **personal,
         "bias_factor_final": round(bias_factor_final, 3),
@@ -372,4 +384,5 @@ def blend(
         "archetype_prior_for_cell": round(archetype_prior_for_cell, 3),
         "archetype_scaling": round(archetype_scaling, 3),
         "archetype_prior_citation": citation,
+        **occupancy,
     }

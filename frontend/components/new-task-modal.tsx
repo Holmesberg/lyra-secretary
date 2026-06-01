@@ -92,6 +92,15 @@ function roundTo5(n: number): number {
   return Math.round(n / 5) * 5 || 5;
 }
 
+function formatPlanDeltaFromFactor(factor: number | null | undefined): string {
+  if (factor === null || factor === undefined || Number.isNaN(factor)) {
+    return "unknown";
+  }
+  const pct = Math.round((factor - 1) * 100);
+  if (pct === 0) return "on plan";
+  return `${Math.abs(pct)}% ${pct > 0 ? "over" : "under"} plan`;
+}
+
 interface PausedConflict {
   taskId: string;
   title: string;
@@ -156,6 +165,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     priorFactor?: number | null;
     priorCitation?: string | null;
     suggestedMin: number;
+    executionSuggestedMin: number;
+    pauseOverheadMin: number;
+    pauseOverheadSampleSize: number;
+    occupancySuggestedMin: number;
+    occupancyStrategy?: string | null;
     // ISO timestamp captured at the moment the nudge first appeared in
     // the UI. Sent as `nudge_viewed_at` with the createTask payload so
     // backend can compute dwell_seconds for the V3 ReflectionViewLog
@@ -186,6 +200,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     // − fire_time for the ReflectionViewLog row.
     viewed_at: string;
   } | null>(null);
+  const [editScheduleTouched, setEditScheduleTouched] = useState(false);
 
   // Loop 11 Phase K — deadline picker. `deadlineId` carries the user's
   // explicit choice (or the confirmed parser suggestion). `parserSuggestion`
@@ -197,7 +212,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     useState<DeadlinePreviewResponse | null>(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
 
-  // Fetch bias_factor when category or start time changes (debounced).
+  // Fetch bias_factor when category, start time, or duration changes
+  // (debounced). Create mode remains eligible as soon as the form has a
+  // real duration. Edit mode waits until the operator actually touches
+  // the schedule/duration; opening an existing task should not nag, but
+  // changing the plan should re-run the estimate.
   // Gated on a valid positive planned duration — a 0-min estimate with
   // a `|| 30` fallback (prior behavior) fired the "adjust to X min"
   // popup on an invalid form, visually drowning the end-before-start
@@ -205,7 +224,12 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // real duration AND the range is valid AND the user hasn't already
   // made a decision on a prior nudge this session.
   useEffect(() => {
-    if (!open || isEdit || nudgeDecisionMade) { setCalibrationNudge(null); return; }
+    const eligible = open && !nudgeDecisionMade && (!isEdit || editScheduleTouched);
+    if (!eligible) {
+      setCalibrationNudge(null);
+      setNudgeSource(null);
+      return;
+    }
     const planned = durHours * 60 + durMinutes;
     const rangeValid = diffMinutes(start, end) > 0;
     if (planned <= 0 || !rangeValid) {
@@ -226,7 +250,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           // raw cell.bias_factor separate so the UI does not relabel a
           // prior-blended estimate as pure "early data".
           const magnitude = res.bias_factor_final ?? res.cell?.bias_factor ?? null;
-          if (res.cell && magnitude !== null && magnitude >= threshold) {
+          const executionSuggestedMin =
+            res.execution_suggested_minutes ?? (magnitude !== null ? roundTo5(planned * magnitude) : planned);
+          const pauseOverheadMin = res.pause_overhead_minutes ?? 0;
+          const pauseOverheadSampleSize = res.pause_overhead_sample_size ?? 0;
+          const occupancySuggestedMin = res.occupancy_suggested_minutes ?? executionSuggestedMin;
+          const occupancyFactor = res.occupancy_factor ?? (planned > 0 ? occupancySuggestedMin / planned : null);
+          const executionTriggered = magnitude !== null && magnitude >= threshold;
+          const occupancyTriggered =
+            occupancyFactor !== null && occupancyFactor >= threshold && pauseOverheadSampleSize >= 3;
+          if (res.cell && magnitude !== null && (executionTriggered || occupancyTriggered)) {
             setCalibrationNudge({
               cell: res.cell,
               factor: magnitude,
@@ -236,7 +269,12 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               priorWeight: res.prior_weight ?? null,
               priorFactor: res.archetype_prior_for_cell ?? null,
               priorCitation: res.archetype_prior_citation ?? res.cell.citation ?? null,
-              suggestedMin: roundTo5(planned * magnitude),
+              suggestedMin: occupancySuggestedMin,
+              executionSuggestedMin,
+              pauseOverheadMin,
+              pauseOverheadSampleSize,
+              occupancySuggestedMin,
+              occupancyStrategy: res.occupancy_strategy ?? null,
               firedAt: new Date().toISOString(),
               exposureId: res.exposure_id,
             });
@@ -250,7 +288,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     }, 400);
     return () => { clearTimeout(timer); abortCtl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, category, start, end, durHours, durMinutes, isEdit, nudgeDecisionMade]);
+  }, [open, category, start, end, durHours, durMinutes, isEdit, editScheduleTouched, nudgeDecisionMade]);
 
   useEffect(() => {
     void ackExposureRender(calibrationNudge?.exposureId);
@@ -390,6 +428,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       setPausedConflict(null);
       setNudgeDecisionMade(false);
       setNudgeDecisionData(null);
+      setEditScheduleTouched(false);
       setDeadlineId(null);
       setParserSuggestion(null);
       setShowDeadlinePicker(false);
@@ -434,6 +473,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
+    setCalibrationNudge(null);
+    setNudgeSource(null);
+    setNudgeDecisionMade(false);
+    setNudgeDecisionData(null);
+    setEditScheduleTouched(false);
     setLastEditId(editingTask.task_id);
   }
 
@@ -455,6 +499,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setNudgeSource(null);
     setNudgeDecisionMade(false);
     setNudgeDecisionData(null);
+    setEditScheduleTouched(false);
     setDeadlineId(null);
     setParserSuggestion(null);
     setShowDeadlinePicker(false);
@@ -463,7 +508,15 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
 
   // --- Bidirectional binding helpers ---
 
+  function markEditScheduleChanged() {
+    if (!isEdit) return;
+    setEditScheduleTouched(true);
+    setNudgeDecisionMade(false);
+    setNudgeDecisionData(null);
+  }
+
   function handleStartChange(newStart: string) {
+    markEditScheduleChanged();
     // Preserve current duration, shift end
     const dur = durHours * 60 + durMinutes;
     setStart(newStart);
@@ -471,6 +524,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   }
 
   function handleEndChange(newEnd: string) {
+    markEditScheduleChanged();
     setEnd(newEnd);
     const mins = diffMinutes(start, newEnd);
     // Always update duration so the UI stays consistent with start/end.
@@ -490,12 +544,14 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   }
 
   function handleDurHoursChange(h: number) {
+    markEditScheduleChanged();
     const clamped = Math.max(0, h);
     setDurHours(clamped);
     setEnd(addMinutes(start, clamped * 60 + durMinutes));
   }
 
   function handleDurMinutesChange(m: number) {
+    markEditScheduleChanged();
     const clamped = Math.max(0, m);
     setDurMinutes(clamped);
     setEnd(addMinutes(start, durHours * 60 + clamped));
@@ -1008,7 +1064,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 {nudgeSource === "research" ? (
                   <>
                     Research prior for <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
-                    sizes this about <span className="font-medium text-parchment">{Math.round((calibrationNudge.factor - 1) * 100)}%</span> over your estimate.
+                    sizes this about <span className="font-medium text-parchment">{formatPlanDeltaFromFactor(calibrationNudge.factor)}</span>.
                     {" "}Your estimate: {durHours * 60 + durMinutes} min.
                     {calibrationNudge.cell.citation && (
                       <span className="block mt-0.5 text-[10px] text-signal/60">{calibrationNudge.cell.citation}</span>
@@ -1025,9 +1081,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     {calibrationNudge.cell.time_of_day !== "all" && (
                       <> in the <span className="font-medium text-parchment">{calibrationNudge.cell.time_of_day}</span></>
                     )}
-                    {" "}are sized <span className="font-medium text-parchment">{Math.round((calibrationNudge.factor - 1) * 100)}%</span> over plan.
+                    {" "}are sized <span className="font-medium text-parchment">{formatPlanDeltaFromFactor(calibrationNudge.factor)}</span>.
                     <span className="block mt-0.5 text-[10px] text-signal/70">
-                      Raw session average: {Math.round(((calibrationNudge.personalFactor ?? calibrationNudge.factor) - 1) * 100)}% over;
+                      Raw session average: {formatPlanDeltaFromFactor(calibrationNudge.personalFactor ?? calibrationNudge.factor)};
                       {" "}personal weight {Math.round(calibrationNudge.personalWeight * 100)}%,
                       prior weight {Math.round(calibrationNudge.priorWeight * 100)}%.
                       {calibrationNudge.priorCitation ? ` ${calibrationNudge.priorCitation}` : ""}
@@ -1040,10 +1096,23 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                     {calibrationNudge.cell.time_of_day !== "all" && (
                       <> in the <span className="font-medium text-parchment">{calibrationNudge.cell.time_of_day}</span></>
                     )}
-                    {" "}run <span className="font-medium text-parchment">{Math.round((calibrationNudge.factor - 1) * 100)}%</span> over plan.
+                    {" "}run <span className="font-medium text-parchment">{formatPlanDeltaFromFactor(calibrationNudge.factor)}</span>.
                   </>
                 )}
-                {" "}Suggested window: {calibrationNudge.suggestedMin} min.
+              </div>
+              <div className="mt-2 grid gap-1 rounded-sm border border-signal/15 bg-void/30 p-2 text-[11px] text-dust">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Execution Time</span>
+                  <span className="font-medium text-parchment">{calibrationNudge.executionSuggestedMin} min</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Pause Overhead</span>
+                  <span className="font-medium text-parchment">+{calibrationNudge.pauseOverheadMin} min</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 border-t border-signal/10 pt-1 text-signal">
+                  <span>Occupancy Time</span>
+                  <span className="font-medium text-parchment">{calibrationNudge.occupancySuggestedMin} min</span>
+                </div>
               </div>
               <div className="mt-2 flex gap-2">
                 <button

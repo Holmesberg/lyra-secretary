@@ -206,13 +206,41 @@ class PausePredictor:
             active_task=active_task,
         )
 
+    def _active_task_start(self, user_id: int, active_task: Task) -> Optional[datetime]:
+        """Return the live session anchor for an active task.
+
+        `Task.executed_start_utc` is finalized on stop, so an EXECUTING task
+        can legitimately have a NULL executed_start while its open
+        StopwatchSession carries the real live start. Pause prediction runs
+        during the session, so it must use the open session anchor.
+        """
+        if active_task.executed_start_utc is not None:
+            return strip_tz(active_task.executed_start_utc)
+
+        session = (
+            self.db.query(StopwatchSession.start_time_utc)
+            .filter(
+                StopwatchSession.user_id == user_id,
+                StopwatchSession.task_id == active_task.task_id,
+                StopwatchSession.end_time_utc.is_(None),
+                StopwatchSession.auto_closed == False,  # noqa: E712
+                StopwatchSession.data_quality_flag.is_(None),
+            )
+            .order_by(StopwatchSession.start_time_utc.desc())
+            .first()
+        )
+        if session is None or session[0] is None:
+            return None
+        return strip_tz(session[0])
+
     def _work_rhythm(
         self,
         user_id: int,
         now: datetime,
         active_task: Task,
     ) -> Optional[PausePrediction]:
-        if active_task.executed_start_utc is None or active_task.category is None:
+        active_start = self._active_task_start(user_id, active_task)
+        if active_start is None or active_task.category is None:
             return None
 
         lookback = now - timedelta(days=LOOKBACK_DAYS)
@@ -262,7 +290,7 @@ class PausePredictor:
             return None
 
         median_delta = median(deltas)
-        predicted_at = active_task.executed_start_utc + timedelta(minutes=median_delta)
+        predicted_at = active_start + timedelta(minutes=median_delta)
         if predicted_at <= now:
             return None
 
