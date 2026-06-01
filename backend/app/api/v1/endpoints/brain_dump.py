@@ -126,6 +126,8 @@ def brain_dump_commit(
             return ("deadline_terminal_state", msg, "remove_deadline_binding")
         if "deadline_not_found" in msg or "deadline_user_mismatch" in msg:
             return ("deadline_not_found", msg, "remove_deadline_binding")
+        if "deadline_duplicate_title_same_day" in msg:
+            return ("duplicate_deadline", msg, "use_existing_deadline")
         if isinstance(exc, ValueError):
             return ("validation", msg, "edit_when_local")
         return ("internal", repr(exc)[:200], None)
@@ -150,6 +152,26 @@ def brain_dump_commit(
             continue
         try:
             due_at_utc = to_utc(item.when_local)
+            duplicate = deadline_manager.find_duplicate_deadline(
+                title=item.title,
+                due_at_utc=due_at_utc,
+            )
+            if duplicate is not None:
+                # Reuse the existing deadline for confirmed bindings instead
+                # of inflating the pressure map with a second same-day anchor.
+                deadline_id_map[item.item_id] = duplicate.deadline_id
+                failed_items.append(BrainDumpFailedItem(
+                    item_id=item.item_id,
+                    kind=item.kind,
+                    title=item.title,
+                    reason="duplicate_deadline",
+                    detail=(
+                        "A deadline with this title already exists on the "
+                        "same due date; tasks will bind to the existing row."
+                    ),
+                    retry_hint="use_existing_deadline",
+                ))
+                continue
             deadline = deadline_manager.create_deadline(
                 title=item.title,
                 description=item.description,

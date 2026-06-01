@@ -49,6 +49,7 @@ export interface DeadlineCreateRequest {
   description?: string;
   due_at_utc: string;
   category_hint?: string;
+  force_duplicate?: boolean;
 }
 
 export interface DeadlineUpdateRequest {

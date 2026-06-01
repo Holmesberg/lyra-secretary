@@ -84,6 +84,92 @@ def test_create_deadline_happy_path(db):
     assert data["user_id"] == user.user_id
 
 
+def test_create_deadline_duplicate_same_title_same_day_warns(db):
+    user = _make_user(db, "deadline-dupe@example.com")
+    h = _hdr(user.user_id)
+    due = (datetime.utcnow() + timedelta(days=10)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+
+    first = client.post(
+        "/v1/deadlines",
+        json={
+            **_create_deadline_payload(title="AI final"),
+            "due_at_utc": due.isoformat(),
+        },
+        headers=h,
+    )
+    assert first.status_code == 201
+
+    duplicate = client.post(
+        "/v1/deadlines",
+        json={
+            **_create_deadline_payload(title="ai   FINAL"),
+            "due_at_utc": due.replace(hour=12).isoformat(),
+        },
+        headers=h,
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"]["error"] == "deadline_duplicate_title_same_day"
+
+    rows = client.get("/v1/deadlines", headers=h).json()["deadlines"]
+    assert len(rows) == 1
+
+
+def test_create_deadline_duplicate_can_be_forced(db):
+    user = _make_user(db, "deadline-dupe-force@example.com")
+    h = _hdr(user.user_id)
+    due = (datetime.utcnow() + timedelta(days=10)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+
+    client.post(
+        "/v1/deadlines",
+        json={
+            **_create_deadline_payload(title="AI final"),
+            "due_at_utc": due.isoformat(),
+        },
+        headers=h,
+    )
+    forced = client.post(
+        "/v1/deadlines",
+        json={
+            **_create_deadline_payload(title="AI final"),
+            "due_at_utc": due.replace(hour=12).isoformat(),
+            "force_duplicate": True,
+        },
+        headers=h,
+    )
+    assert forced.status_code == 201, forced.text
+    assert client.get("/v1/deadlines", headers=h).json()["total"] == 2
+
+
+def test_create_deadline_same_title_different_day_allowed(db):
+    user = _make_user(db, "deadline-dupe-day@example.com")
+    h = _hdr(user.user_id)
+    due = (datetime.utcnow() + timedelta(days=10)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+
+    client.post(
+        "/v1/deadlines",
+        json={
+            **_create_deadline_payload(title="AI final"),
+            "due_at_utc": due.isoformat(),
+        },
+        headers=h,
+    )
+    second = client.post(
+        "/v1/deadlines",
+        json={
+            **_create_deadline_payload(title="ai final"),
+            "due_at_utc": (due + timedelta(days=1)).isoformat(),
+        },
+        headers=h,
+    )
+    assert second.status_code == 201, second.text
+
+
 def test_response_datetimes_carry_explicit_utc_offset(db):
     """Regression — Apr 27 dogfood: deadline created at 18:00 Cairo
     rendered as 3pm in the list view because the response emitted naive

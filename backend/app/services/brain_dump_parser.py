@@ -136,6 +136,19 @@ DATE_HINTS = re.compile(
 # in practice for brain-dump format). " then " is a sequence marker.
 SEGMENT_SPLIT = re.compile(r"[,\n;]+|\s+then\s+|\s+\+\s+", re.IGNORECASE)
 
+# Stemmed-list expansion: "CO lec 1, 2, 3" should become
+# "CO lec 1", "CO lec 2", "CO lec 3" rather than "2" / "3".
+# This is intentionally generic and not lecture-specific: it works for
+# "chapter 1, 2", "phase A, B", "ticket #12, #13", etc.
+SERIES_SUFFIX_RE = re.compile(
+    r"^(?:#?\d+[a-z]?|[A-Z]|[ivxlcdm]+)$",
+    re.IGNORECASE,
+)
+SERIES_STEM_RE = re.compile(
+    r"^(?P<stem>.+?)\s+(?P<suffix>#?\d+[a-z]?|[A-Z]|[ivxlcdm]+)$",
+    re.IGNORECASE,
+)
+
 
 # LYR-115 fix (2026-04-30): explicit user-provided durations.
 # Surfaced by stress test cases D2/D3/D5/D7/D8/E1/E3/E5/E7/E8 — the
@@ -521,6 +534,35 @@ def _default_when_for_task(now_local: datetime, task_index: int) -> datetime:
     return now_local + timedelta(minutes=30 + 30 * task_index)
 
 
+def _first_non_overlapping_start(
+    start: datetime,
+    duration_minutes: int,
+    occupied_slots: list[tuple[datetime, datetime]],
+) -> datetime:
+    """Move a proposed task start after already-parsed task slots.
+
+    Brain dump previews are planning candidates, not a proof that the user
+    intends multitasking. If one parsed task is 90 minutes long, the next
+    default slot should begin after that 90-minute block, not 30 minutes
+    later. Explicit anchors are also nudged only when they collide with
+    earlier parsed tasks in the same batch; the user can still edit before
+    locking in.
+    """
+    candidate = start
+    duration = timedelta(minutes=max(1, duration_minutes))
+    sorted_slots = sorted(occupied_slots, key=lambda slot: slot[0])
+    while True:
+        moved = False
+        candidate_end = candidate + duration
+        for slot_start, slot_end in sorted_slots:
+            if candidate < slot_end and candidate_end > slot_start:
+                candidate = slot_end
+                moved = True
+                break
+        if not moved:
+            return candidate
+
+
 def _binding_tier(score: float) -> str:
     """Map heuristic score to chip-style tier label."""
     if score >= 0.85:
@@ -528,6 +570,36 @@ def _binding_tier(score: float) -> str:
     if score >= 0.45:
         return "tier2_ask"
     return "tier3_skip"
+
+
+def _split_segments(raw: str) -> list[str]:
+    """Split raw dump text, then expand bare continuation suffixes.
+
+    Commas are useful because people write compact lists, but a plain
+    split loses the inherited stem in forms like "read chapter 1, 2, 3".
+    This pass carries the most recent explicit stem only across bare
+    numeric/letter/roman suffix fragments. Non-bare fragments reset the
+    stem unless they themselves establish a new one.
+    """
+    base_segments = [s.strip() for s in SEGMENT_SPLIT.split(raw) if s.strip()]
+    expanded: list[str] = []
+    series_stem: str | None = None
+
+    for segment in base_segments:
+        current = segment
+        is_bare_suffix = SERIES_SUFFIX_RE.fullmatch(segment) is not None
+        if is_bare_suffix and series_stem:
+            current = f"{series_stem} {segment}"
+
+        expanded.append(current)
+
+        stem_match = SERIES_STEM_RE.fullmatch(current)
+        if stem_match:
+            series_stem = stem_match.group("stem").strip()
+        elif not is_bare_suffix:
+            series_stem = None
+
+    return expanded
 
 
 def parse_brain_dump(
@@ -547,13 +619,15 @@ def parse_brain_dump(
     if not raw:
         return BrainDumpParseResponse(items=[], bindings=[], parser_status="empty")
 
-    # Split on commas/newlines/semicolons/" then "
-    segments = [s.strip() for s in SEGMENT_SPLIT.split(raw) if s.strip()]
+    # Split on commas/newlines/semicolons/" then ", then restore
+    # inherited stems for compact enumerated lists.
+    segments = _split_segments(raw)
     if not segments:
         return BrainDumpParseResponse(items=[], bindings=[], parser_status="empty")
 
     items: list[BrainDumpParsedItem] = []
-    task_default_index = 0
+    next_default_task_start = _default_when_for_task(now_local, 0)
+    scheduled_task_slots: list[tuple[datetime, datetime]] = []
 
     for seg in segments:
         # Two-stage extraction (LYR-115 + time-range fix 2026-04-30):
@@ -600,12 +674,14 @@ def parse_brain_dump(
         if when is not None:
             conf = min(1.0, conf + 0.05)
 
-        if kind == "deadline":
-            # Deadlines REQUIRE a when. If we couldn't parse one, demote
-            # to a task — better to schedule it than reject it.
-            if when is None:
-                kind = "task"
-                conf = max(0.40, conf - 0.20)
+        if kind == "deadline" and when is None:
+            # Keep deadline-shaped items as deadline candidates even when
+            # the due date is missing. Earlier builds demoted them to tasks
+            # to avoid an unschedulable row, but that hides load-bearing
+            # obligations like "AI final" from the pressure map. Commit still
+            # refuses to create a deadline without when_local and surfaces a
+            # missing_when recovery prompt.
+            conf = max(0.45, conf - 0.15)
 
         if kind == "task":
             # Duration precedence: extracted (explicit user value) >
@@ -624,10 +700,19 @@ def parse_brain_dump(
                     duration_confidence = 0.35
                     duration_basis = "no explicit duration or category prior matched"
             duration = max(1, min(720, duration))
+            used_default_when = when is None
             if when is None:
-                when = _default_when_for_task(now_local, task_default_index)
-                task_default_index += 1
+                when = next_default_task_start
                 conf = max(0.35, conf - 0.10)
+            when = _first_non_overlapping_start(
+                when,
+                duration,
+                scheduled_task_slots,
+            )
+            task_end = when + timedelta(minutes=duration)
+            scheduled_task_slots.append((when, task_end))
+            if used_default_when and task_end > next_default_task_start:
+                next_default_task_start = task_end
             items.append(BrainDumpParsedItem(
                 item_id=str(uuid4()),
                 kind="task",

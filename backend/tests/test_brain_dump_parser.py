@@ -45,6 +45,18 @@ def test_splits_on_commas():
     assert len(res.items) == 3
 
 
+def test_comma_list_carries_numeric_stem():
+    res = parse_brain_dump("CO lec 1, 2, 3, 4, 5", NOW_ISO)
+    titles = [item.title for item in res.items]
+    assert titles == ["CO lec 1", "CO lec 2", "CO lec 3", "CO lec 4", "CO lec 5"]
+
+
+def test_comma_list_stem_expansion_is_not_lecture_specific():
+    res = parse_brain_dump("review chapter 1, 2, 3", NOW_ISO)
+    titles = [item.title for item in res.items]
+    assert titles == ["review chapter 1", "review chapter 2", "review chapter 3"]
+
+
 def test_splits_on_then():
     raw = "finish reading then write summary then send to advisor"
     res = parse_brain_dump(raw, NOW_ISO)
@@ -96,13 +108,43 @@ def test_multiple_undated_tasks_stagger_defaults():
         assert d >= 25  # 30min target with some tolerance
 
 
-def test_deadline_without_date_demoted_to_task():
-    # "deadline X" with no parseable date → demotes to task rather
-    # than reject (better to schedule than drop).
+def test_default_schedule_uses_previous_task_duration_not_fixed_30m():
+    res = parse_brain_dump("CO lec 1, 2, 3", NOW_ISO)
+    tasks = [item for item in res.items if item.kind == "task"]
+    assert [task.title for task in tasks] == ["CO lec 1", "CO lec 2", "CO lec 3"]
+    assert all(task.duration_minutes == 90 for task in tasks)
+
+    for previous, current in zip(tasks, tasks[1:]):
+        previous_end = previous.when_local + timedelta(minutes=previous.duration_minutes)
+        assert current.when_local >= previous_end
+
+
+def test_explicit_relative_task_is_nudged_after_batch_overlap():
+    raw = "CO lec 1, 2\ngym session in 2 hours"
+    res = parse_brain_dump(raw, NOW_ISO)
+    tasks = [item for item in res.items if item.kind == "task"]
+
+    for previous, current in zip(tasks, tasks[1:]):
+        previous_end = previous.when_local + timedelta(minutes=previous.duration_minutes)
+        assert current.when_local >= previous_end
+
+
+def test_deadline_without_date_stays_deadline_candidate():
+    # "deadline X" with no parseable date stays deadline-shaped so the
+    # UI can ask for the missing due date instead of hiding the obligation
+    # as a task.
     raw = "deadline X"
     res = parse_brain_dump(raw, NOW_ISO)
     assert len(res.items) == 1
-    assert res.items[0].kind == "task"
+    assert res.items[0].kind == "deadline"
+    assert res.items[0].when_local is None
+
+
+def test_final_without_date_stays_deadline_candidate():
+    res = parse_brain_dump("AI final", NOW_ISO)
+    assert len(res.items) == 1
+    assert res.items[0].kind == "deadline"
+    assert res.items[0].when_local is None
 
 
 def test_binding_suggestion_links_task_to_deadline():

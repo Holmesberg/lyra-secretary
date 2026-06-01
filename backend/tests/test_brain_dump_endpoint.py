@@ -13,6 +13,7 @@ import pytest
 
 from app.db.models import Task, TaskState, Deadline, User
 from app.db.scoping import set_current_user_id
+from app.utils.time_utils import to_utc
 from tests.conftest import auth_headers
 
 
@@ -200,3 +201,66 @@ def test_commit_deadline_without_when_lands_in_failed_items(client, db):
     assert len(body["failed_items"]) == 1
     assert body["failed_items"][0]["reason"] == "missing_when"
     assert body["failed_items"][0]["retry_hint"] == "edit_when_local"
+
+
+def test_commit_duplicate_deadline_reuses_existing_for_bindings(client, db):
+    """Brain dump should not inflate pressure by creating same-day duplicate
+    deadlines. If a confirmed task binding targets that parsed duplicate, it
+    should resolve to the existing deadline instead.
+    """
+    user = _make_user(db)
+    when_local = (datetime.utcnow() + timedelta(days=10)).replace(
+        hour=10, minute=0, second=0, microsecond=0
+    )
+    due_at_utc = to_utc(when_local)
+    existing = Deadline(
+        deadline_id=str(uuid4()),
+        user_id=user.user_id,
+        title="AI final",
+        due_at_utc=due_at_utc,
+        state="active",
+        created_at=datetime.utcnow(),
+    )
+    db.add(existing)
+    db.commit()
+
+    deadline_item_id = str(uuid4())
+    task_item_id = str(uuid4())
+    r = client.post(
+        "/v1/brain-dump/commit",
+        json=_commit_payload(
+            [
+                {
+                    "item_id": deadline_item_id,
+                    "kind": "deadline",
+                    "title": "ai FINAL",
+                    "when_local": when_local.isoformat(),
+                    "duration_minutes": None,
+                },
+                {
+                    "item_id": task_item_id,
+                    "kind": "task",
+                    "title": "AI final review",
+                    "when_local": (datetime.utcnow() + timedelta(hours=6)).isoformat(),
+                    "duration_minutes": 30,
+                },
+            ],
+            bindings=[
+                {
+                    "task_item_id": task_item_id,
+                    "deadline_item_id": deadline_item_id,
+                }
+            ],
+        ),
+        headers=auth_headers(user.user_id),
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["deadlines_created"] == 0
+    assert body["tasks_created"] == 1
+    assert body["bindings_applied"] == 1
+    assert body["failed_items"][0]["reason"] == "duplicate_deadline"
+    assert db.query(Deadline).filter(Deadline.user_id == user.user_id).count() == 1
+    task = db.query(Task).filter(Task.task_id == body["task_ids"][0]).one()
+    assert task.deadline_id == existing.deadline_id

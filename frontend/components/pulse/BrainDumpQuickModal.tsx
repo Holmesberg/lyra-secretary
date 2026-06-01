@@ -52,6 +52,8 @@ function failureCopy(reason: string): string {
       return "the linked deadline is already finished";
     case "deadline_not_found":
       return "couldn't find the linked deadline";
+    case "duplicate_deadline":
+      return "already exists; linked tasks use the existing deadline";
     case "conflict_blocked":
       return "blocked by a hard conflict with an active session";
     case "validation":
@@ -69,6 +71,8 @@ function retryCopy(hint: string | null): string {
       return "Open in /today or the calendar to set a new time.";
     case "remove_deadline_binding":
       return "Unbind from the deadline and retry.";
+    case "use_existing_deadline":
+      return "No duplicate deadline was created.";
     default:
       return "";
   }
@@ -226,6 +230,7 @@ export function BrainDumpQuickModal({
       qc.invalidateQueries({ queryKey: ["deadlines"] });
       qc.invalidateQueries({ queryKey: ["me"] });
       qc.invalidateQueries({ queryKey: ["tasks-range"] });
+      qc.invalidateQueries({ queryKey: ["pressure-map"] });
       onCompleted?.({
         tasks: res.tasks_created,
         deadlines: res.deadlines_created,
@@ -468,7 +473,7 @@ gym sat morning"
                 . But{" "}
                 <span className="text-ember">
                   {failures.length} item{failures.length === 1 ? "" : "s"}{" "}
-                  couldn&apos;t be scheduled
+                  need review
                 </span>
                 :
               </p>

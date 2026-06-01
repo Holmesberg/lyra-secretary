@@ -26,6 +26,13 @@ class DeadlineCreateRequest(BaseModel):
     description: Optional[str] = Field(None, max_length=2000)
     due_at_utc: datetime
     category_hint: Optional[str] = Field(None, max_length=100)
+    force_duplicate: bool = Field(
+        False,
+        description=(
+            "Allow same-title/same-day duplicate creation after the UI has "
+            "shown the duplicate warning."
+        ),
+    )
 
     @validator("due_at_utc")
     def due_must_be_future(cls, v):
