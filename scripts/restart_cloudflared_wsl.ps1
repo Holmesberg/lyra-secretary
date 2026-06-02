@@ -21,10 +21,10 @@ if [ ! -x "$CLOUDFLARED" ]; then
   exit 41
 fi
 
-if pgrep -f "cloudflared tunnel run .*lyra-prod" >/dev/null; then
+if pgrep -f "cloudflared tunnel .*lyra-prod" >/dev/null; then
   if [ "$FORCE_RESTART" = "1" ]; then
     echo "Stopping existing cloudflared connector(s)..."
-    pkill -f "cloudflared tunnel run .*lyra-prod" || true
+    pkill -f "cloudflared tunnel .*lyra-prod" || true
     sleep 3
   else
     echo "cloudflared already appears to be running for lyra-prod."
@@ -35,7 +35,9 @@ fi
 
 echo "Starting cloudflared tunnel for $TUNNEL_NAME..."
 echo "Log: $LOG_FILE"
-nohup "$CLOUDFLARED" tunnel run \
+nohup "$CLOUDFLARED" tunnel \
+  --edge-ip-version 4 \
+  run \
   --dns-resolver-addrs 1.1.1.1:53 \
   --dns-resolver-addrs 8.8.8.8:53 \
   "$TUNNEL_NAME" > "$LOG_FILE" 2>&1 &
@@ -43,7 +45,7 @@ disown
 
 sleep 10
 
-if ! pgrep -f "cloudflared tunnel run .*lyra-prod" >/dev/null; then
+if ! pgrep -f "cloudflared tunnel .*lyra-prod" >/dev/null; then
   echo "ERROR: cloudflared did not remain running." >&2
   tail -120 "$LOG_FILE" >&2 || true
   exit 42
