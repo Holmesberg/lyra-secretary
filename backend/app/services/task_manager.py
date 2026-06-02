@@ -924,12 +924,17 @@ class TaskManager:
         reason: str = "forgot_to_stop_timer",
         note: Optional[str] = None,
     ) -> TaskExecutionCorrection:
-        """Append a retroactive timer-stop correction for an EXECUTED task.
+        """Append a retroactive execution correction for an EXECUTED task.
 
         The observed Task.executed_* values and StopwatchSession rows remain
         unchanged. Clean research baselines should exclude any task with at
         least one TaskExecutionCorrection row; user-facing views may use the
         task.effective_* properties.
+
+        Stopwatch-backed rows are strict forgotten-stop corrections: the user
+        can only move the observed stop earlier. Retroactive self-reported rows
+        have no stopwatch evidence to preserve, so correction means editing the
+        reported end/duration while keeping the original report append-only.
         """
         has_end = corrected_end_time is not None
         has_duration = corrected_duration_minutes is not None
@@ -957,23 +962,20 @@ class TaskManager:
             or task.executed_duration_minutes is None
         ):
             raise ValueError("Task has no observed execution timestamps to correct")
-        if task.initiation_status == "retroactive":
-            raise ValueError(
-                "Retroactive execution logs are already user-reported; "
-                "timer-stop corrections are only for observed stopwatch sessions"
+        is_retroactive_report = task.initiation_status == "retroactive"
+        if not is_retroactive_report:
+            observed_session = (
+                self.db.query(StopwatchSession.session_id)
+                .filter(
+                    StopwatchSession.task_id == task.task_id,
+                    StopwatchSession.end_time_utc.isnot(None),
+                )
+                .first()
             )
-        observed_session = (
-            self.db.query(StopwatchSession.session_id)
-            .filter(
-                StopwatchSession.task_id == task.task_id,
-                StopwatchSession.end_time_utc.isnot(None),
-            )
-            .first()
-        )
-        if observed_session is None:
-            raise ValueError(
-                "Timer-stop corrections require a closed stopwatch session"
-            )
+            if observed_session is None:
+                raise ValueError(
+                    "Timer-stop corrections require a closed stopwatch session"
+                )
 
         original_start = strip_tz(task.executed_start_utc)
         original_end = strip_tz(task.executed_end_utc)
@@ -982,7 +984,11 @@ class TaskManager:
 
         original_duration = int(task.executed_duration_minutes)
         observed_wall = max(0.0, (original_end - original_start).total_seconds() / 60.0)
-        observed_paused = max(0.0, observed_wall - float(original_duration))
+        observed_paused = (
+            0.0
+            if is_retroactive_report
+            else max(0.0, observed_wall - float(original_duration))
+        )
 
         if corrected_end_time is not None:
             corrected_end = strip_tz(to_utc(corrected_end_time))
@@ -990,7 +996,7 @@ class TaskManager:
                 raise ValueError("corrected_end_time is invalid")
             if corrected_end <= original_start:
                 raise ValueError("corrected_end_time must be after execution start")
-            if corrected_end >= original_end:
+            if not is_retroactive_report and corrected_end >= original_end:
                 raise ValueError(
                     "Forgot-to-stop corrections must move the stop time earlier"
                 )
@@ -999,7 +1005,7 @@ class TaskManager:
         else:
             assert corrected_duration_minutes is not None
             corrected_duration = int(corrected_duration_minutes)
-            if corrected_duration >= original_duration:
+            if not is_retroactive_report and corrected_duration >= original_duration:
                 raise ValueError(
                     "Forgot-to-stop corrections must reduce executed duration"
                 )
@@ -1009,14 +1015,18 @@ class TaskManager:
 
         if corrected_duration < 1:
             raise ValueError("Corrected duration must be at least 1 minute")
-        if corrected_duration >= original_duration:
-            raise ValueError(
-                "Forgot-to-stop corrections must reduce executed duration"
-            )
-        if corrected_end >= original_end:
-            raise ValueError(
-                "Forgot-to-stop corrections must move the stop time earlier"
-            )
+        if is_retroactive_report:
+            if corrected_duration == original_duration and corrected_end == original_end:
+                raise ValueError("Correction must change the reported execution")
+        else:
+            if corrected_duration >= original_duration:
+                raise ValueError(
+                    "Forgot-to-stop corrections must reduce executed duration"
+                )
+            if corrected_end >= original_end:
+                raise ValueError(
+                    "Forgot-to-stop corrections must move the stop time earlier"
+                )
 
         uid = _require_current_user("correct_execution_duration")
         correction = TaskExecutionCorrection(

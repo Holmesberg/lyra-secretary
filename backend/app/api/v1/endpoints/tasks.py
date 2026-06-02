@@ -401,12 +401,14 @@ def correct_execution_duration(
     db: Session = Depends(get_db),
 ) -> ExecutionCorrectionResponse:
     """
-    Append a retroactive timer-stop correction for an EXECUTED task.
+    Append an effective execution-window correction for an EXECUTED task.
 
-    This repairs the common "forgot to stop the timer" case without
-    overwriting observed state-machine history. Clean research baselines
-    exclude corrected sessions; user-facing history can display effective
-    duration via the query endpoint.
+    Stopwatch-backed tasks remain constrained to the common "forgot to stop
+    the timer" case. Retroactive self-reported tasks can correct their
+    reported end/duration. In both cases, the original state-machine history is
+    preserved append-only; clean research baselines exclude corrected sessions,
+    while user-facing history can display effective duration through the query
+    endpoint.
     """
     try:
         correction = TaskManager(db).correct_execution_duration(

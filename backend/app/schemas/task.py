@@ -338,11 +338,13 @@ EXECUTION_CORRECTION_REASONS = {
 
 
 class ExecutionCorrectionRequest(BaseModel):
-    """Retroactively correct an EXECUTED task whose timer was left running.
+    """Retroactively correct an EXECUTED task's effective execution window.
 
     Exactly one of corrected_end_time or corrected_duration_minutes must be
     supplied. The backend records an append-only correction row and does not
-    mutate the observed task/session timestamps.
+    mutate the original task/session timestamps. Stopwatch-backed tasks are
+    constrained to forgotten-stop corrections; retroactive self-reported tasks
+    can correct the reported end/duration without stopwatch evidence.
     """
 
     corrected_end_time: Optional[datetime] = None
