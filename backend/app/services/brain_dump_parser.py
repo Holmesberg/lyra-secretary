@@ -749,7 +749,10 @@ def parse_brain_dump(
     parsed_tasks = [i for i in items if i.kind == "task"]
 
     bindings: list[BrainDumpBindingSuggestion] = []
-    parsed_bound_task_ids: set[str] = set()
+    task_order = {
+        item.item_id: index
+        for index, item in enumerate(parsed_tasks)
+    }
     if parsed_deadlines:
         # Build mock Deadline objects compatible with score_deadlines.
         # Only fields the heuristic reads: deadline_id + title.
@@ -778,7 +781,6 @@ def parse_brain_dump(
             tier = _binding_tier(top.score)
             if tier == "tier3_skip":
                 continue  # don't surface low-confidence bindings
-            parsed_bound_task_ids.add(t.item_id)
             bindings.append(BrainDumpBindingSuggestion(
                 binding_id=f"{t.item_id}:parsed:{top.deadline_id}",
                 task_item_id=t.item_id,
@@ -799,8 +801,6 @@ def parse_brain_dump(
     ]
     if bindable_existing:
         for t in parsed_tasks:
-            if t.item_id in parsed_bound_task_ids:
-                continue
             match = score_deadlines(
                 title=t.title,
                 description=None,
@@ -835,6 +835,15 @@ def parse_brain_dump(
                 target_state=deadline.state,
                 target_origin=deadline.external_source or "manual",
             ))
+
+    bindings.sort(
+        key=lambda b: (
+            task_order.get(b.task_item_id, 10_000),
+            -b.confidence,
+            0 if b.target_kind == "existing_deadline" else 1,
+            b.deadline_title.lower(),
+        )
+    )
 
     return BrainDumpParseResponse(
         items=items,

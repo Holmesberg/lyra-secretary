@@ -307,6 +307,60 @@ def test_parse_suggests_existing_bindable_deadline(client, db):
     assert existing_bindings[0]["deadline_title"] == "CO final"
 
 
+def test_parse_ranks_specific_existing_obligation_above_broad_same_dump_deadline(
+    client,
+    db,
+):
+    """Wave 1 regression: same-dump deadlines must not mask better existing
+    obligations.
+
+    User case: after adding "AI final" in the same dump, "read notes for AI
+    discussion" was linked to AI final instead of the existing AI project
+    discussion obligation.
+    """
+    user = _make_user(db)
+    existing = Deadline(
+        deadline_id=str(uuid4()),
+        user_id=user.user_id,
+        title="AI project discussion",
+        due_at_utc=to_utc(datetime.utcnow() + timedelta(days=5)),
+        state="active",
+        created_at=datetime.utcnow(),
+    )
+    db.add(existing)
+    db.commit()
+
+    r = client.post(
+        "/v1/brain-dump/parse",
+        json={
+            "raw_text": (
+                "read notes for AI discussion tomorrow\n"
+                "AI final next Thursday 9am\n"
+                "AI final revision tomorrow"
+            ),
+            "current_local_iso": datetime.utcnow().isoformat(),
+        },
+        headers=auth_headers(user.user_id),
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    read_task = next(
+        item for item in body["items"]
+        if item["title"] == "read notes for AI discussion"
+    )
+    read_bindings = [
+        binding for binding in body["bindings"]
+        if binding["task_item_id"] == read_task["item_id"]
+    ]
+
+    assert len(read_bindings) >= 2
+    assert read_bindings[0]["target_kind"] == "existing_deadline"
+    assert read_bindings[0]["deadline_id"] == existing.deadline_id
+    assert read_bindings[0]["deadline_title"] == "AI project discussion"
+    assert read_bindings[0]["confidence"] > read_bindings[1]["confidence"]
+
+
 def test_commit_can_bind_task_to_existing_deadline(client, db):
     """Wave 1 commit path: explicit existing-deadline binding is canonical."""
     user = _make_user(db)

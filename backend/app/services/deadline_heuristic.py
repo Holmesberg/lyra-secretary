@@ -203,6 +203,14 @@ def _score_one(haystack_norm: str, haystack_tokens: set[str], deadline: Deadline
         & _subject_tokens_from_tokens(title_tokens)
     )
     if subject_overlap:
+        distinctive_overlap = (
+            (haystack_tokens & title_tokens)
+            - subject_overlap
+            - BRITTLE_TOKENS
+            - GENERIC_DEADLINE_TOKENS
+        )
+        if distinctive_overlap:
+            return 0.85, "heuristic_substring"
         return 0.7, "heuristic_substring"
 
     # Plain substring match (case-insensitive)
