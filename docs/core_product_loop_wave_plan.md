@@ -145,7 +145,7 @@ This is a planning snapshot, not a release claim.
 | Wave -1 Repo Scan | Completed. | Keep as audit artifact and complexity gate. |
 | Wave 0 Existing Loop Stabilization | Mostly implemented; keep dogfooding. | Pulse is hub, quick capture is top-mounted, timer/recovery/account smoke exists. |
 | Wave 1 Brain Dump To Existing Obligations | Implemented for bindable deadlines/imported deadline rows. | Brain dump preview can suggest existing obligations, commit can bind confirmed tasks to them, and same-dump vs existing bindings are distinct. Live scheduled-event binding remains Wave 5/provider-contract work. |
-| Wave 2 Pressure/Occupancy Map To Confirmed Plan | Not implemented. | Pressure Map remains diagnostic; confirmed plan preview/commit is missing. |
+| Wave 2 Pressure/Occupancy Map To Confirmed Plan | Implemented for deadline-backed recovery blocks. | Pressure Map has day/week/14d views, explicit preview rows, editable title/start/duration, dismiss-without-side-effects, and confirmed task creation with obligation links. Duration provenance is visible and saved in task description; no dedicated schema field yet. |
 | Wave 3 Session Tracking And Recovery Intelligence | Partially implemented. | Stopwatch, pause/resume, resume banner, occupancy metrics, and correction paths exist; missed-plan recovery options are still incomplete. |
 | Wave 4 Estimates And AI Priors | Partially implemented. | Bias/occupancy rows exist; explicit AI cold-start ranges with provenance are not complete. |
 | Wave 5 Repeated Schedules And Provider Imports | Partially implemented for narrow providers only. | Moodle ICS/submissions and Google Calendar read-only context exist; general recurrence/import contract is not complete. |

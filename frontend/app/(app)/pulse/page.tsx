@@ -26,7 +26,7 @@
  * Zero new backend endpoints. Zero schema changes. All data sourced
  * from endpoints that existed before this commit.
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 import { ackExposureRender, api } from "@/lib/api";
@@ -90,6 +90,7 @@ export default function PulsePage() {
   const today = todayKey();
   const fortnightStart = fourteenDaysAgoKey();
   const { data: session } = useSession();
+  const [pressureHorizonDays, setPressureHorizonDays] = useState(14);
 
   const meQ = useQuery<MeLite>({
     queryKey: ["me"],
@@ -121,8 +122,8 @@ export default function PulsePage() {
     staleTime: 60_000,
   });
   const pressureQ = useQuery<AcademicPressureMapResponse>({
-    queryKey: ["pressure-map", 14],
-    queryFn: () => getAcademicPressureMap(14),
+    queryKey: ["pressure-map", pressureHorizonDays],
+    queryFn: () => getAcademicPressureMap(pressureHorizonDays),
     staleTime: 60_000,
   });
 
@@ -201,6 +202,8 @@ export default function PulsePage() {
           <PulseAcademicPressureMap
             pressure={pressureQ.data ?? null}
             loading={pressureQ.isLoading}
+            horizonDays={pressureHorizonDays}
+            onHorizonChange={setPressureHorizonDays}
           />
         </div>
         <div className="lg:col-span-2">
