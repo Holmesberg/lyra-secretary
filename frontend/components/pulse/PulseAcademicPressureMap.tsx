@@ -316,6 +316,10 @@ export function PulseAcademicPressureMap({
       null
     );
   }, [pressure]);
+  const canPreviewPlan = useMemo(() => {
+    if (!pressure) return false;
+    return planItemsForOption(pressure, planOption).length > 0;
+  }, [pressure, planOption]);
 
   function openPlanPreview(option: AcademicRecoveryOption | null) {
     if (!pressure) return;
@@ -501,7 +505,7 @@ export function PulseAcademicPressureMap({
                   <ClipboardCheck size={12} />
                   Next recovery option
                 </div>
-                {planOption && (
+                {planOption && canPreviewPlan && (
                   <button
                     type="button"
                     onClick={() => openPlanPreview(planOption)}
@@ -521,7 +525,7 @@ export function PulseAcademicPressureMap({
             </div>
           )}
 
-          {!pressure.recovery_options.some((option) => option.action === "create_plan" || option.action === "split_into_blocks") && hasItems && (
+          {!pressure.recovery_options.some((option) => option.action === "create_plan" || option.action === "split_into_blocks") && canPreviewPlan && (
             <button
               type="button"
               onClick={() => openPlanPreview(null)}
