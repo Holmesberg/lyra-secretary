@@ -125,15 +125,14 @@ function planItemsForOption(
   option: AcademicRecoveryOption | null
 ): AcademicPressureItem[] {
   const ids = new Set(option?.obligation_ids ?? []);
+  const eligible = pressure.items.filter((item) => item.source_class !== "lyra_task");
   const selected = ids.size
-    ? pressure.items.filter((item) => ids.has(item.obligation_id))
+    ? eligible.filter((item) => ids.has(item.obligation_id))
     : [];
-  const fallback = pressure.items.filter((item) =>
+  const fallback = eligible.filter((item) =>
     item.pressure_level === "high" || item.pressure_level === "overdue"
   );
-  return (selected.length ? selected : fallback.length ? fallback : pressure.items.slice(0, 2))
-    .filter((item) => item.source_class !== "lyra_task")
-    .slice(0, 4);
+  return (selected.length ? selected : fallback.length ? fallback : eligible).slice(0, 4);
 }
 
 function buildRows(
