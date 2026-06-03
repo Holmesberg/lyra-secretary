@@ -260,8 +260,11 @@ Implementation posture:
 
 - Pressure Map remains a diagnostic planning surface.
 - `create_plan` opens a preview, not an automatic mutation.
-- Preview rows show title, linked obligation, suggested duration, start/window,
-  estimate source, and editable fields.
+- Preview rows show title, linked obligation, editable start/end window,
+  derived duration, estimate source, and editable fields.
+- Estimate source order is evidence-first: same-obligation planned/executed
+  history, pause/occupancy overhead, completion-adjusted active work, dominant
+  category behavior, then archetype/research priors for cold start.
 - Commit creates tasks only after explicit confirmation.
 - Created tasks preserve obligation links and duration provenance.
 - User can dismiss without side effects.

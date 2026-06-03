@@ -16,7 +16,12 @@ import type {
   AcademicPressureMapResponse,
   AcademicRecoveryOption,
 } from "@/lib/academic";
-import { createTask } from "@/lib/tasks";
+import {
+  createTask,
+  lookupBiasFactor,
+  type BiasLookupResponse,
+  type TaskRow,
+} from "@/lib/tasks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,6 +38,7 @@ export interface PulseAcademicPressureMapProps {
   loading?: boolean;
   horizonDays?: number;
   onHorizonChange?: (days: number) => void;
+  taskEvidence?: TaskRow[];
 }
 
 interface PlanRow {
@@ -42,13 +48,25 @@ interface PlanRow {
   deadlineId: string | null;
   title: string;
   startLocal: string;
+  endLocal: string;
   durationMinutes: number;
   category: string;
   estimateSource: string;
+  estimateBasis: "linked_deadline_history" | "cold_start_prior";
   status: "pending" | "created" | "failed";
   error: string | null;
   enabled: boolean;
 }
+
+interface EvidenceEstimate {
+  minutes: number;
+  source: string;
+  category: string;
+}
+
+const SLOT_GRANULARITY_MINUTES = 15;
+const MIN_RECOVERY_BLOCK_MINUTES = SLOT_GRANULARITY_MINUTES;
+const DEFAULT_RECOVERY_CATEGORY = "planning";
 
 function fmtHours(lowMinutes: number, highMinutes: number): string {
   const low = Math.round(lowMinutes / 30) / 2;
@@ -114,10 +132,208 @@ function roundUpToNextHalfHour(date: Date): Date {
   return d;
 }
 
+function roundToSlot(minutes: number): number {
+  return Math.round(minutes / SLOT_GRANULARITY_MINUTES) * SLOT_GRANULARITY_MINUTES;
+}
+
+function floorToMinimumBlock(minutes: number): number {
+  return Math.max(MIN_RECOVERY_BLOCK_MINUTES, minutes);
+}
+
+function mean(values: number[]): number | null {
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function fmtMinutes(minutes: number | null): string {
+  if (minutes === null || !Number.isFinite(minutes)) return "n/a";
+  const rounded = Math.round(minutes);
+  if (rounded < 60) return `${rounded}m`;
+  const hours = Math.floor(rounded / 60);
+  const mins = rounded % 60;
+  return mins ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+function parseLocalInput(value: string): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function durationFromLocal(startLocal: string, endLocal: string): number {
+  const start = parseLocalInput(startLocal);
+  const end = parseLocalInput(endLocal);
+  if (!start || !end) return 0;
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000));
+}
+
+function endLocalFromDuration(startLocal: string, durationMinutes: number): string {
+  const start = parseLocalInput(startLocal) ?? new Date();
+  return toLocalInput(new Date(start.getTime() + floorToMinimumBlock(durationMinutes) * 60_000));
+}
+
+function executedMinutes(task: TaskRow): number | null {
+  const value = task.effective_executed_duration_minutes ?? task.executed_duration_minutes;
+  return value !== null && value > 0 ? value : null;
+}
+
+function plannedMinutes(task: TaskRow): number | null {
+  return task.planned_duration_minutes !== null && task.planned_duration_minutes > 0
+    ? task.planned_duration_minutes
+    : null;
+}
+
+function normalizeTitle(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function completionScaledMinutes(task: TaskRow): number | null {
+  const executed = executedMinutes(task);
+  const completion = task.task_completion_percentage;
+  if (executed === null || completion === null || completion <= 0 || completion >= 100) {
+    return executed;
+  }
+  return executed / (completion / 100);
+}
+
+function dominantCategory(tasks: TaskRow[]): string {
+  const counts = new Map<string, number>();
+  for (const task of tasks) {
+    if (!task.category) continue;
+    counts.set(task.category, (counts.get(task.category) ?? 0) + 1);
+  }
+  let best = DEFAULT_RECOVERY_CATEGORY;
+  let bestCount = 0;
+  for (const [category, count] of counts) {
+    if (count > bestCount) {
+      best = category;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function timeOfDayFromLocalInput(value: string): string {
+  const date = parseLocalInput(value);
+  const hour = date?.getHours() ?? new Date().getHours();
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 21) return "evening";
+  return "night";
+}
+
+function calibratedMinutes(row: PlanRow, calibration: BiasLookupResponse): number | null {
+  const suggested =
+    calibration.occupancy_suggested_minutes ??
+    calibration.execution_suggested_minutes ??
+    (calibration.bias_factor_final
+      ? row.durationMinutes * calibration.bias_factor_final
+      : null);
+  if (suggested === null || suggested <= 0) return null;
+  return floorToMinimumBlock(roundToSlot(suggested));
+}
+
+function calibrationSource(row: PlanRow, calibration: BiasLookupResponse): string {
+  const source = calibration.source === "personal"
+    ? `personal ${calibration.signal_level ?? "calibration"}`
+    : "research prior";
+  const archetype = calibration.archetype_id
+    ? `archetype ${calibration.archetype_id}`
+    : "archetype fallback";
+  const sample = calibration.sessions
+    ? `${calibration.sessions} eligible session${calibration.sessions === 1 ? "" : "s"}`
+    : "cold start";
+  const occupancy = calibration.pause_overhead_sample_size && calibration.pause_overhead_sample_size > 0
+    ? `; pause overhead ${fmtMinutes(calibration.pause_overhead_minutes ?? null)} from ${calibration.pause_overhead_sample_size} sample${calibration.pause_overhead_sample_size === 1 ? "" : "s"}`
+    : "";
+  return `${source} + ${archetype}: ${sample}; base ${fmtMinutes(row.durationMinutes)} -> ${fmtMinutes(calibratedMinutes(row, calibration))}${occupancy}`;
+}
+
+function linkedDeadlineTasks(item: AcademicPressureItem, tasks: TaskRow[]): TaskRow[] {
+  const itemTitle = normalizeTitle(item.title);
+  return tasks.filter((task) =>
+    (task.deadline_id === item.obligation_id ||
+      normalizeTitle(task.deadline_title) === itemTitle) &&
+    task.state !== "DELETED" &&
+    task.voided_at === null
+  );
+}
+
+function estimateFromDeadlineEvidence(
+  item: AcademicPressureItem,
+  tasks: TaskRow[]
+): EvidenceEstimate | null {
+  const linked = linkedDeadlineTasks(item, tasks);
+  if (!linked.length) return null;
+
+  const plannedValues = linked
+    .map(plannedMinutes)
+    .filter((value): value is number => value !== null);
+  const executedValues = linked
+    .map(executedMinutes)
+    .filter((value): value is number => value !== null);
+  const completionScaledValues = linked
+    .map(completionScaledMinutes)
+    .filter((value): value is number => value !== null);
+  const occupancyValues = linked
+    .map((task) => {
+      const executed = completionScaledMinutes(task);
+      if (executed === null) return null;
+      return executed + Math.max(0, task.total_paused_minutes ?? 0);
+    })
+    .filter((value): value is number => value !== null);
+  const pauseValues = linked
+    .map((task) => Math.max(0, task.total_paused_minutes ?? 0))
+    .filter((value) => value > 0);
+
+  const plannedAvg = mean(plannedValues);
+  const executedAvg = mean(executedValues);
+  const completionScaledAvg = mean(completionScaledValues);
+  const occupancyAvg = mean(occupancyValues);
+  const pauseAvg = mean(pauseValues) ?? 0;
+  const baseline = Math.max(plannedAvg ?? 0, completionScaledAvg ?? executedAvg ?? 0);
+  const occupancyMeaningful =
+    occupancyAvg !== null &&
+    (pauseAvg >= SLOT_GRANULARITY_MINUTES ||
+      (baseline > 0 && occupancyAvg >= baseline + SLOT_GRANULARITY_MINUTES));
+
+  const candidates = [
+    plannedAvg,
+    completionScaledAvg,
+    occupancyMeaningful ? occupancyAvg : null,
+  ].filter((value): value is number => value !== null && value > 0);
+
+  if (!candidates.length) return null;
+
+  const minutes = floorToMinimumBlock(roundToSlot(Math.max(...candidates)));
+  const parts = [];
+  if (executedAvg !== null) {
+    parts.push(`avg active ${fmtMinutes(executedAvg)} across ${executedValues.length} session${executedValues.length === 1 ? "" : "s"}`);
+  }
+  if (
+    completionScaledAvg !== null &&
+    executedAvg !== null &&
+    completionScaledAvg >= executedAvg + SLOT_GRANULARITY_MINUTES
+  ) {
+    parts.push(`completion-adjusted active ${fmtMinutes(completionScaledAvg)}`);
+  }
+  if (occupancyAvg !== null) {
+    parts.push(`avg occupancy ${fmtMinutes(occupancyAvg)}${occupancyMeaningful ? " with pause/recovery overhead" : ""}`);
+  }
+  if (plannedAvg !== null) {
+    parts.push(`avg planned ${fmtMinutes(plannedAvg)} across ${plannedValues.length} task${plannedValues.length === 1 ? "" : "s"}`);
+  }
+
+  return {
+    minutes,
+    source: `linked-deadline history: ${parts.join("; ")}`,
+    category: dominantCategory(linked),
+  };
+}
+
 function suggestedBlockMinutes(item: AcademicPressureItem): number {
   const midpoint = (item.estimate.low_minutes + item.estimate.high_minutes) / 2;
-  const block = Math.round((midpoint / 4) / 30) * 30;
-  return Math.min(120, Math.max(30, block || 60));
+  return floorToMinimumBlock(roundToSlot(midpoint || item.estimate.high_minutes));
 }
 
 function planItemsForOption(
@@ -137,22 +353,28 @@ function planItemsForOption(
 
 function buildRows(
   pressure: AcademicPressureMapResponse,
-  option: AcademicRecoveryOption | null
+  option: AcademicRecoveryOption | null,
+  taskEvidence: TaskRow[]
 ): PlanRow[] {
   const base = roundUpToNextHalfHour(new Date(Date.now() + 30 * 60_000));
+  const fallbackCategory = dominantCategory(taskEvidence);
   return planItemsForOption(pressure, option).map((item, index) => {
-    const duration = suggestedBlockMinutes(item);
+    const evidenceEstimate = estimateFromDeadlineEvidence(item, taskEvidence);
+    const duration = evidenceEstimate?.minutes ?? suggestedBlockMinutes(item);
     const start = new Date(base.getTime() + index * (duration + 15) * 60_000);
+    const startLocal = toLocalInput(start);
     return {
       id: `${item.obligation_id}:${index}`,
       obligationId: item.obligation_id,
       obligationTitle: item.title,
       deadlineId: item.source_class === "lyra_task" ? null : item.obligation_id,
       title: `Recovery block: ${item.title}`,
-      startLocal: toLocalInput(start),
+      startLocal,
+      endLocal: endLocalFromDuration(startLocal, duration),
       durationMinutes: duration,
-      category: "study",
-      estimateSource: `${item.estimate.confidence} confidence ${item.complexity_source}; ${item.estimate.assumptions[0] ?? "pressure-map prior"}`,
+      category: evidenceEstimate?.category ?? fallbackCategory,
+      estimateSource: evidenceEstimate?.source ?? `${item.estimate.confidence} confidence ${item.complexity_source}; ${item.estimate.assumptions[0] ?? "pressure-map prior"}`,
+      estimateBasis: evidenceEstimate ? "linked_deadline_history" : "cold_start_prior",
       status: "pending",
       error: null,
       enabled: true,
@@ -180,6 +402,18 @@ function PlanPreviewDialog({
   const enabledCount = rows.filter((row) => row.enabled).length;
   const updateRow = (id: string, patch: Partial<PlanRow>) => {
     onRowsChange(rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  };
+  const updateStart = (row: PlanRow, startLocal: string) => {
+    updateRow(row.id, {
+      startLocal,
+      endLocal: endLocalFromDuration(startLocal, row.durationMinutes),
+    });
+  };
+  const updateEnd = (row: PlanRow, endLocal: string) => {
+    updateRow(row.id, {
+      endLocal,
+      durationMinutes: durationFromLocal(row.startLocal, endLocal),
+    });
   };
 
   return (
@@ -221,7 +455,7 @@ function PlanPreviewDialog({
                   </button>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-[1.4fr_0.9fr_0.6fr]">
+                <div className="grid gap-3 md:grid-cols-[1.4fr_0.85fr_0.85fr_0.45fr]">
                   <label className="flex flex-col gap-1">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
                       Title
@@ -234,31 +468,38 @@ function PlanPreviewDialog({
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                      Start window
+                      Start
                     </span>
                     <Input
                       type="datetime-local"
                       value={row.startLocal}
                       disabled={!row.enabled || committing}
-                      onChange={(event) => updateRow(row.id, { startLocal: event.target.value })}
+                      onChange={(event) => updateStart(row, event.target.value)}
                     />
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                      Minutes
+                      End
                     </span>
                     <Input
-                      type="number"
-                      min={15}
-                      max={240}
-                      step={15}
-                      value={row.durationMinutes}
+                      type="datetime-local"
+                      value={row.endLocal}
                       disabled={!row.enabled || committing}
-                      onChange={(event) => updateRow(row.id, {
-                        durationMinutes: Number(event.target.value || 0),
-                      })}
+                      onChange={(event) => updateEnd(row, event.target.value)}
                     />
                   </label>
+                  <div className="flex flex-col gap-1">
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                      Duration
+                    </span>
+                    <div className={`flex min-h-10 items-center rounded-sm border px-3 font-mono text-[12px] ${
+                      row.durationMinutes >= 15
+                        ? "border-hairline bg-void/40 text-parchment"
+                        : "border-ember/40 bg-ember/5 text-ember"
+                    }`}>
+                      {row.durationMinutes >= 15 ? fmtMinutes(row.durationMinutes) : "invalid"}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mt-3 rounded-sm border border-hairline/70 bg-void/40 px-2 py-2 text-[11px] leading-relaxed text-dust">
@@ -299,6 +540,7 @@ export function PulseAcademicPressureMap({
   loading = false,
   horizonDays = 14,
   onHorizonChange,
+  taskEvidence = [],
 }: PulseAcademicPressureMapProps) {
   const qc = useQueryClient();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -321,12 +563,52 @@ export function PulseAcademicPressureMap({
     return planItemsForOption(pressure, planOption).length > 0;
   }, [pressure, planOption]);
 
+  async function enrichColdStartRows(baseRows: PlanRow[]) {
+    const updatedRows = await Promise.all(
+      baseRows.map(async (row) => {
+        if (row.estimateBasis !== "cold_start_prior") return row;
+        try {
+          const calibration = await lookupBiasFactor(
+            row.category,
+            timeOfDayFromLocalInput(row.startLocal),
+            row.durationMinutes
+          );
+          const minutes = calibratedMinutes(row, calibration);
+          if (minutes === null) return row;
+          return {
+            ...row,
+            durationMinutes: minutes,
+            endLocal: endLocalFromDuration(row.startLocal, minutes),
+            estimateSource: calibrationSource(row, calibration),
+          };
+        } catch {
+          return row;
+        }
+      })
+    );
+    setRows((currentRows) =>
+      currentRows.map((current) => {
+        const updated = updatedRows.find((row) => row.id === current.id);
+        if (!updated || current.status !== "pending") return current;
+        return {
+          ...current,
+          durationMinutes: updated.durationMinutes,
+          endLocal: endLocalFromDuration(current.startLocal, updated.durationMinutes),
+          category: updated.category,
+          estimateSource: updated.estimateSource,
+        };
+      })
+    );
+  }
+
   function openPlanPreview(option: AcademicRecoveryOption | null) {
     if (!pressure) return;
     setCommitError(null);
     setPreviewOption(option);
-    setRows(buildRows(pressure, option));
+    const baseRows = buildRows(pressure, option, taskEvidence);
+    setRows(baseRows);
     setPreviewOpen(true);
+    void enrichColdStartRows(baseRows);
   }
 
   async function commitPlan() {
@@ -342,7 +624,18 @@ export function PulseAcademicPressureMap({
       const index = nextRows.findIndex((candidate) => candidate.id === row.id);
       try {
         const start = new Date(row.startLocal);
-        const end = new Date(start.getTime() + Math.max(15, row.durationMinutes) * 60_000);
+        const end = new Date(row.endLocal);
+        const duration = durationFromLocal(row.startLocal, row.endLocal);
+        if (
+          Number.isNaN(start.getTime()) ||
+          Number.isNaN(end.getTime()) ||
+          duration < 15
+        ) {
+          const message = "Set an end time at least 15 minutes after the start.";
+          nextRows[index] = { ...nextRows[index], status: "failed", error: message };
+          firstError = firstError ?? message;
+          continue;
+        }
         const response = await createTask({
           title: row.title.trim() || `Recovery block: ${row.obligationTitle}`,
           start: start.toISOString(),

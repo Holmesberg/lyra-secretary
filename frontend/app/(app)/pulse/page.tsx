@@ -80,17 +80,25 @@ function todayKey(): string {
 }
 
 function fourteenDaysAgoKey(): string {
+  return dateKeyOffset(-13); // inclusive of today = 14 days total
+}
+
+function dateKeyOffset(offsetDays: number): string {
   const d = new Date();
-  d.setDate(d.getDate() - 13); // inclusive of today = 14 days total
+  d.setDate(d.getDate() + offsetDays);
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+const TASK_EVIDENCE_HISTORY_DAYS = 62;
 
 export default function PulsePage() {
   const today = todayKey();
   const fortnightStart = fourteenDaysAgoKey();
   const { data: session } = useSession();
   const [pressureHorizonDays, setPressureHorizonDays] = useState(14);
+  const taskEvidenceStart = dateKeyOffset(-TASK_EVIDENCE_HISTORY_DAYS);
+  const taskEvidenceEnd = dateKeyOffset(pressureHorizonDays);
 
   const meQ = useQuery<MeLite>({
     queryKey: ["me"],
@@ -109,6 +117,11 @@ export default function PulsePage() {
   const tasksRangeQ = useQuery<QueryResponse>({
     queryKey: ["tasks-range", fortnightStart, today],
     queryFn: () => queryTasksRange(fortnightStart, today),
+    staleTime: 60_000,
+  });
+  const taskEvidenceQ = useQuery<QueryResponse>({
+    queryKey: ["tasks-evidence", taskEvidenceStart, taskEvidenceEnd],
+    queryFn: () => queryTasksRange(taskEvidenceStart, taskEvidenceEnd),
     staleTime: 60_000,
   });
   const deadlinesQ = useQuery<DeadlineListResponse>({
@@ -133,6 +146,7 @@ export default function PulsePage() {
 
   const tasksToday = tasksTodayQ.data ?? [];
   const recentTasks = tasksRangeQ.data?.tasks ?? [];
+  const taskEvidence = taskEvidenceQ.data?.tasks ?? recentTasks;
   const deadlines = deadlinesQ.data?.deadlines ?? [];
   const integrations = integrationsQ.data?.integrations ?? [];
 
@@ -204,6 +218,7 @@ export default function PulsePage() {
             loading={pressureQ.isLoading}
             horizonDays={pressureHorizonDays}
             onHorizonChange={setPressureHorizonDays}
+            taskEvidence={taskEvidence}
           />
         </div>
         <div className="lg:col-span-2">
