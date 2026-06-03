@@ -440,6 +440,35 @@ export function rescheduleTask(input: RescheduleInput) {
   });
 }
 
+export interface DeadlineBindingInput {
+  deadline_id?: string | null;
+  clear_deadline?: boolean;
+}
+
+export interface DeadlineBindingResult {
+  task_id: string;
+  deadline_id_after: string | null;
+  deadline_title_after: string | null;
+  deadline_match_source_after: string | null;
+  metadata_correction: boolean;
+}
+
+export function updateTaskDeadlineBinding(
+  taskId: string,
+  input: DeadlineBindingInput
+) {
+  return api<DeadlineBindingResult>(
+    `/v1/tasks/${encodeURIComponent(taskId)}/deadline-binding`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        deadline_id: input.deadline_id ?? undefined,
+        clear_deadline: input.clear_deadline ?? false,
+      }),
+    }
+  );
+}
+
 export function deleteTask(task_id: string) {
   return api<{ task_id: string; deleted: boolean }>("/v1/delete", {
     method: "POST",
@@ -747,10 +776,9 @@ export function confirmLlmBinding(
 
 /**
  * User clicked "Not relevant" on the chip — teaches the model that the
- * inferred binding was wrong. The user's existing deadline_id (if any)
- * stays unchanged; only `llm_binding_rejected_at` is stamped, which
- * tells the chip to stop rendering and feeds future precision/recall
- * analysis.
+ * inferred binding was wrong. For "Possible better match" this keeps the
+ * current binding and drops only the alternative; for system-auto bindings
+ * with no current alternative, the backend may clear the binding.
  */
 export function rejectLlmBinding(
   taskId: string

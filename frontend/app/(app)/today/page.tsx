@@ -36,6 +36,7 @@ import { PausePredictionBanner } from "@/components/pause-prediction-banner";
 import { ResumePredictionBanner } from "@/components/resume-prediction-banner";
 import { DeadlineRow } from "@/components/deadline-row";
 import { DeadlineModal } from "@/components/deadline-modal";
+import { DeadlineBindingDialog } from "@/components/deadline-binding-dialog";
 import { listDeadlines, type DeadlineResponse } from "@/lib/deadlines";
 import { PauseConfirmChip } from "@/components/pause-confirm-chip";
 import { listPendingConfirmations } from "@/lib/pause-predictions";
@@ -301,6 +302,7 @@ function TodayInner() {
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
   const [correctionTask, setCorrectionTask] = useState<TaskRowType | null>(null);
+  const [bindingTask, setBindingTask] = useState<TaskRowType | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
@@ -1127,6 +1129,7 @@ function TodayInner() {
                       setEditingTask(task);
                     }
                   }}
+                  onEditBinding={(task) => setBindingTask(task)}
                   selected={selectedIds.has(item.task.task_id)}
                   showCheckbox={selectedIds.size > 0}
                   onToggleSelect={toggleSelect}
@@ -1217,6 +1220,16 @@ function TodayInner() {
         task={correctionTask}
         onClose={() => setCorrectionTask(null)}
         onSaved={refresh}
+      />
+
+      <DeadlineBindingDialog
+        task={bindingTask}
+        open={!!bindingTask}
+        onClose={() => setBindingTask(null)}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["deadlines"] });
+          refresh();
+        }}
       />
 
       <VoidModal

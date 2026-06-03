@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { Play, Square, Ban, Trash2, Check } from "lucide-react";
+import { Play, Square, Ban, Trash2, Check, Link2 } from "lucide-react";
 import type { TaskRow as TaskRowType } from "@/lib/tasks";
 import { getCategoryColor, STATE_STYLES } from "@/lib/categories";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ interface Props {
   onDone?: (task: TaskRowType) => void;
   onDelete?: (task: TaskRowType) => void;
   onEdit?: (task: TaskRowType) => void;
+  onEditBinding?: (task: TaskRowType) => void;
   selected?: boolean;
   showCheckbox?: boolean;
   onToggleSelect?: (taskId: string) => void;
@@ -69,7 +70,7 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
 }
 
 export function TaskRow({
-  task, disableStart, onStart, onStop, onSkip, onDone, onDelete, onEdit,
+  task, disableStart, onStart, onStop, onSkip, onDone, onDelete, onEdit, onEditBinding,
   selected, showCheckbox, onToggleSelect, onStartHover, startAsInterruption,
   onLlmChipChanged,
 }: Props) {
@@ -161,6 +162,23 @@ export function TaskRow({
         {state}
       </span>
       <div className="flex items-center gap-1">
+        {onEditBinding && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditBinding(task);
+            }}
+            title={
+              task.deadline_title
+                ? "Change linked deadline"
+                : "Link deadline"
+            }
+          >
+            <Link2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
         {state === "PLANNED" && (
           <>
             <Button

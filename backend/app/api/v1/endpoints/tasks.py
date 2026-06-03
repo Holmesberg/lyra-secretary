@@ -28,8 +28,10 @@ from app.schemas.task import (
     LlmConfirmResponse,
     LlmRejectRequest,
     LlmRejectResponse,
+    TaskDeadlineBindingRequest,
+    TaskDeadlineBindingResponse,
 )
-from app.db.models import TaskState
+from app.db.models import Deadline, TaskState
 from app.utils.time_utils import now_utc as _now_utc
 from app.services.task_manager import TaskManager
 from app.services.stopwatch_manager import StopwatchManager, NoActiveStopwatchError
@@ -39,6 +41,7 @@ from app.core.exceptions import ImmutableTaskError
 from app.db.models import Task
 from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_local
+from app.utils.tasks_range_cache import invalidate_user_ranges
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -745,6 +748,113 @@ def reject_llm_binding(
 
     db.commit()
     return LlmRejectResponse(task_id=task.task_id, rejected_at=task.llm_binding_rejected_at)
+
+
+@router.post(
+    "/tasks/{task_id}/deadline-binding",
+    response_model=TaskDeadlineBindingResponse,
+)
+def update_task_deadline_binding(
+    task_id: str,
+    request: TaskDeadlineBindingRequest,
+    db: Session = Depends(get_db),
+) -> TaskDeadlineBindingResponse:
+    """Correct task ↔ deadline context without editing execution truth.
+
+    This endpoint deliberately bypasses full task mutability: users can
+    discover or correct the relevant obligation while a task is running or
+    after it has been executed. Only binding metadata changes here; planned
+    times, executed times, duration calibration, and correction rows are not
+    touched.
+    """
+    current_user_id = get_current_user_id()
+    if current_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if request.clear_deadline and request.deadline_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="clear_deadline_conflicts_with_deadline_id",
+        )
+    if not request.clear_deadline and request.deadline_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="deadline_id_required_unless_clear_deadline",
+        )
+
+    task = (
+        db.query(Task)
+        .filter(Task.task_id == task_id, Task.user_id == current_user_id)
+        .first()
+    )
+    if not task or task.voided_at is not None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.state == TaskState.DELETED:
+        raise HTTPException(status_code=400, detail="Cannot bind a deleted task")
+
+    previous_deadline_id = task.deadline_id
+    correction_at = _now_utc()
+    deadline: Optional[Deadline] = None
+
+    if request.clear_deadline:
+        task.deadline_id = None
+        task.deadline_match_source = None
+        task.deadline_match_confidence = None
+    else:
+        deadline = (
+            db.query(Deadline)
+            .filter(
+                Deadline.deadline_id == request.deadline_id,
+                Deadline.user_id == current_user_id,
+                Deadline.voided_at.is_(None),
+            )
+            .first()
+        )
+        if deadline is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Deadline not bindable (not found or voided)",
+            )
+        task.deadline_id = deadline.deadline_id
+        task.deadline_match_source = "user_corrected"
+        task.deadline_match_confidence = 1.0
+        if deadline.state == "planned" and task.state in (
+            TaskState.PLANNED,
+            TaskState.EXECUTING,
+            TaskState.PAUSED,
+        ):
+            deadline.state = "active"
+
+    task.llm_inferred_deadline_id = None
+    task.llm_deadline_match_confidence = None
+    task.llm_deadline_candidates = None
+    task.llm_alternative_suggestion = None
+    task.llm_binding_rejected_at = None
+    task.last_modified_at = correction_at
+
+    if task.state == TaskState.EXECUTED:
+        note = (
+            "deadline_binding_correction: "
+            f"previous={previous_deadline_id or 'none'} "
+            f"new={task.deadline_id or 'none'} "
+            f"at={correction_at.isoformat()}"
+        )
+        task.notes = f"{task.notes or ''}\n{note}".strip()
+
+    db.commit()
+    try:
+        invalidate_user_ranges(current_user_id)
+    except Exception as e:
+        logger.warning(
+            "deadline-binding: cache invalidate failed for user %s: %s",
+            current_user_id,
+            e,
+        )
+    return TaskDeadlineBindingResponse(
+        task_id=task.task_id,
+        deadline_id_after=task.deadline_id,
+        deadline_title_after=deadline.title if deadline is not None else None,
+        deadline_match_source_after=task.deadline_match_source,
+    )
 
 
 @router.get("/tasks/{task_id}", response_model=TaskDetail)
