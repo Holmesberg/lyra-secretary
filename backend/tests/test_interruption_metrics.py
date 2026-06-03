@@ -119,6 +119,25 @@ def test_pause_overhead_samples_include_zero_and_exclude_dirty_or_stale(db):
     assert samples == [0, 20, 40]
 
 
+def test_pause_overhead_samples_exclude_forgotten_timer_scale_pauses(db):
+    tasks = [_task(db, i) for i in range(4)]
+    _session(db, tasks[0], pause=0)
+    _session(db, tasks[1], pause=20)
+    _session(db, tasks[2], pause=40)
+    _session(db, tasks[3], pause=9 * 60, wall=10 * 60)
+
+    samples = pause_overhead_samples_for_signal(
+        db,
+        tasks=tasks,
+        category="study",
+        tod="afternoon",
+        planned_minutes=60,
+        signal_level="category_tod_duration",
+    )
+
+    assert samples == [0, 20, 40]
+
+
 def test_occupancy_projection_adds_bounded_pause_overhead_without_changing_bias(db):
     tasks = [_task(db, i) for i in range(3)]
     for task, pause in zip(tasks, [0, 15, 30]):

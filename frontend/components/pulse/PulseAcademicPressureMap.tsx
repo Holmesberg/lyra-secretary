@@ -67,6 +67,8 @@ interface EvidenceEstimate {
 const SLOT_GRANULARITY_MINUTES = 15;
 const MIN_RECOVERY_BLOCK_MINUTES = SLOT_GRANULARITY_MINUTES;
 const DEFAULT_RECOVERY_CATEGORY = "planning";
+// Mirrors backend/app/services/interruption_metrics.py clean pause-overhead gate.
+const MAX_CLEAN_LEARNING_PAUSE_MINUTES = 240;
 
 function fmtHours(lowMinutes: number, highMinutes: number): string {
   const low = Math.round(lowMinutes / 30) / 2;
@@ -196,6 +198,12 @@ function completionScaledMinutes(task: TaskRow): number | null {
   return executed / (completion / 100);
 }
 
+function cleanPauseOverheadMinutes(task: TaskRow): number | null {
+  const pause = Math.max(0, task.total_paused_minutes ?? 0);
+  if (pause > MAX_CLEAN_LEARNING_PAUSE_MINUTES) return null;
+  return pause;
+}
+
 function dominantCategory(tasks: TaskRow[]): string {
   const counts = new Map<string, number>();
   for (const task of tasks) {
@@ -279,12 +287,17 @@ function estimateFromDeadlineEvidence(
     .map((task) => {
       const executed = completionScaledMinutes(task);
       if (executed === null) return null;
-      return executed + Math.max(0, task.total_paused_minutes ?? 0);
+      const cleanPause = cleanPauseOverheadMinutes(task);
+      if (cleanPause === null) return null;
+      return executed + cleanPause;
     })
     .filter((value): value is number => value !== null);
   const pauseValues = linked
-    .map((task) => Math.max(0, task.total_paused_minutes ?? 0))
-    .filter((value) => value > 0);
+    .map(cleanPauseOverheadMinutes)
+    .filter((value): value is number => value !== null && value > 0);
+  const ignoredPauseAnomalies = linked.filter(
+    (task) => cleanPauseOverheadMinutes(task) === null
+  ).length;
 
   const plannedAvg = mean(plannedValues);
   const executedAvg = mean(executedValues);
@@ -322,6 +335,9 @@ function estimateFromDeadlineEvidence(
   }
   if (plannedAvg !== null) {
     parts.push(`avg planned ${fmtMinutes(plannedAvg)} across ${plannedValues.length} task${plannedValues.length === 1 ? "" : "s"}`);
+  }
+  if (ignoredPauseAnomalies > 0) {
+    parts.push(`${ignoredPauseAnomalies} overlong pause sample${ignoredPauseAnomalies === 1 ? "" : "s"} ignored as likely forgotten-timer evidence`);
   }
 
   return {

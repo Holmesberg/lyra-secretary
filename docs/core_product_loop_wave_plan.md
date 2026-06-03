@@ -265,6 +265,9 @@ Implementation posture:
 - Estimate source order is evidence-first: same-obligation planned/executed
   history, pause/occupancy overhead, completion-adjusted active work, dominant
   category behavior, then archetype/research priors for cold start.
+- Occupancy evidence must exclude forgotten-timer-scale pause anomalies and
+  stale/dirty/auto-repaired sessions. Long pauses can remain descriptive
+  recovery facts, but they do not enter average pause-overhead estimates.
 - Commit creates tasks only after explicit confirmation.
 - Created tasks preserve obligation links and duration provenance.
 - User can dismiss without side effects.
