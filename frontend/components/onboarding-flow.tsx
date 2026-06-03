@@ -108,6 +108,42 @@ function formatWhen(iso: string | null): string {
   });
 }
 
+function bindingKey(b: BrainDumpBindingSuggestion): string {
+  return (
+    b.binding_id ||
+    `${b.task_item_id}:${b.target_kind}:${b.deadline_id ?? b.deadline_item_id}`
+  );
+}
+
+function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
+  return b.target_kind === "existing_deadline"
+    ? "existing obligation"
+    : "deadline";
+}
+
+function initialBindingChoices(
+  nextBindings: BrainDumpBindingSuggestion[],
+): Record<string, "yes" | "no"> {
+  const choices: Record<string, "yes" | "no"> = {};
+  const acceptedTasks = new Set<string>();
+
+  for (const b of nextBindings) {
+    if (b.tier === "tier1_auto" && !acceptedTasks.has(b.task_item_id)) {
+      choices[bindingKey(b)] = "yes";
+      acceptedTasks.add(b.task_item_id);
+    }
+  }
+
+  for (const b of nextBindings) {
+    const key = bindingKey(b);
+    if (acceptedTasks.has(b.task_item_id) && choices[key] !== "yes") {
+      choices[key] = "no";
+    }
+  }
+
+  return choices;
+}
+
 export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
   const [step, setStep] = useState<Step>("dump");
   const [rawText, setRawText] = useState("");
@@ -143,6 +179,14 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
     return map;
   }, [bindings]);
 
+  const tier2Unanswered = useMemo(
+    () =>
+      bindings.some(
+        (b) => b.tier === "tier2_ask" && !bindingChoices[bindingKey(b)],
+      ),
+    [bindings, bindingChoices],
+  );
+
   async function handleParse() {
     if (parsing) return;
     setError(null);
@@ -158,13 +202,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
 
       // Tier 1 auto-bindings start pre-checked "yes". Tier 2 asks
       // start unanswered — user must explicitly tap.
-      const initial: Record<string, "yes" | "no"> = {};
-      for (const b of res.bindings) {
-        if (b.tier === "tier1_auto") {
-          initial[b.task_item_id] = "yes";
-        }
-      }
-      setBindingChoices(initial);
+      setBindingChoices(initialBindingChoices(res.bindings));
 
       if (res.items.length === 0) {
         setError(
@@ -203,10 +241,14 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
         duration_basis: i.duration_basis,
       }));
       const commitBindings: BrainDumpCommitBinding[] = bindings
-        .filter((b) => bindingChoices[b.task_item_id] === "yes")
+        .filter((b) => bindingChoices[bindingKey(b)] === "yes")
         .map((b) => ({
           task_item_id: b.task_item_id,
-          deadline_item_id: b.deadline_item_id,
+          deadline_item_id:
+            b.target_kind === "parsed_deadline" ? b.deadline_item_id : null,
+          deadline_id:
+            b.target_kind === "existing_deadline" ? b.deadline_id : null,
+          target_kind: b.target_kind,
         }));
       const res = await commitBrainDump(commitItems, commitBindings);
       // LYR-114 fix: pause exit on failures so the user actually
@@ -233,6 +275,28 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
     setSkipping(true);
     onSkipped();
     void api("/v1/users/me/skip-onboarding", { method: "POST" });
+  }
+
+  function setBindingChoice(
+    binding: BrainDumpBindingSuggestion,
+    choice: "yes" | "no",
+  ) {
+    const key = bindingKey(binding);
+    setBindingChoices((s) => {
+      const next = { ...s, [key]: choice };
+      if (choice === "yes") {
+        for (const other of bindings) {
+          const otherKey = bindingKey(other);
+          if (
+            other.task_item_id === binding.task_item_id &&
+            otherKey !== key
+          ) {
+            next[otherKey] = "no";
+          }
+        }
+      }
+      return next;
+    });
   }
 
   return (
@@ -322,7 +386,6 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
           <div className="flex flex-col gap-4">
             {items.map((it) => {
               const taskBindings = bindingsForTask[it.item_id] || [];
-              const choice = bindingChoices[it.item_id] ?? null;
               return (
                 <div key={it.item_id} className="terminal-panel p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -381,28 +444,29 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                     <div className="mt-3 border-t border-hairline-signal/20 pt-3">
                       {taskBindings.map((b) => (
                         <div
-                          key={b.deadline_item_id}
+                          key={bindingKey(b)}
                           className="flex items-center justify-between gap-2"
                         >
                           <p className="text-xs text-dust">
-                            Link to deadline{" "}
+                            Link to {bindingTargetLabel(b)}{" "}
                             <span className="text-parchment">
                               &ldquo;{b.deadline_title}&rdquo;
                             </span>
+                            {b.target_due_at && (
+                              <span className="text-dust-deep">
+                                {" "}
+                                - due {formatWhen(b.target_due_at)}
+                              </span>
+                            )}
                             ?
                           </p>
                           <div className="flex gap-1">
                             <button
                               type="button"
-                              onClick={() =>
-                                setBindingChoices((s) => ({
-                                  ...s,
-                                  [b.task_item_id]: "yes",
-                                }))
-                              }
+                              onClick={() => setBindingChoice(b, "yes")}
                               className={cn(
                                 "rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-colors",
-                                choice === "yes"
+                                bindingChoices[bindingKey(b)] === "yes"
                                   ? "border-signal bg-signal/15 text-signal"
                                   : "border-hairline-signal/30 text-dust hover:text-parchment",
                               )}
@@ -411,15 +475,10 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                setBindingChoices((s) => ({
-                                  ...s,
-                                  [b.task_item_id]: "no",
-                                }))
-                              }
+                              onClick={() => setBindingChoice(b, "no")}
                               className={cn(
                                 "rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-colors",
-                                choice === "no"
+                                bindingChoices[bindingKey(b)] === "no"
                                   ? "border-ember bg-ember/15 text-ember"
                                   : "border-hairline-signal/30 text-dust hover:text-parchment",
                               )}
@@ -455,9 +514,14 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
               >
                 ← Edit dump
               </button>
+              {tier2Unanswered && (
+                <span className="text-[10px] text-ember/80">
+                  Answer the binding questions to lock in.
+                </span>
+              )}
               <button
                 onClick={handleCommit}
-                disabled={committing || items.length === 0}
+                disabled={committing || items.length === 0 || tier2Unanswered}
                 className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
                 {committing ? "Saving…" : "Lock in"}

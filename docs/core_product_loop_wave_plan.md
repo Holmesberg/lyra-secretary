@@ -2,7 +2,7 @@
 
 **Status:** Active product-maintenance plan.
 **Created:** 2026-06-01.
-**Updated:** 2026-06-01.
+**Updated:** 2026-06-03.
 **Authority:** Implementation guidance. Does not override `MANIFESTO.md`,
 `docs/AUTHORITY.md`, `docs/academic_pressure_map_contract.md`,
 `docs/academic_execution_substrate.md`, or provider adapter contracts.
@@ -51,8 +51,9 @@ brain dump -> bind to existing obligations -> pressure/occupancy map
 Recent dogfood/repo findings:
 
 - Tracking friction is still high; users forget timers are running.
-- Browser-extension/passive activity capture may reduce friction, but only as
-  scoped, opt-in, confirmation-gated weak evidence.
+- Browser-extension/passive activity capture may reduce friction later, but it
+  is postponed until the core loop, provider imports, recurrence, privacy,
+  confirmation, and recovery surfaces can absorb the added complexity.
 - Brain dump is the friction killer, but it must not create clutter.
 - Existing code currently binds brain-dump tasks to deadlines parsed in the
   same dump; binding against already-existing obligations is the key gap.
@@ -135,6 +136,21 @@ This is a planning map, not an authorization to build every adapter now.
 | Jira / Linear | Work tickets and issue relationships. | `external_obligation`, `task_intention`, `relation`, `estimate_signal`, `status_signal`. | Dependencies, blockers, parent-child work, estimates. | Treating ticket status as human execution truth. |
 | Slack / chat surfaces | Conversation context and possible action items. | `resource_artifact`, `external_obligation`, `reminder_signal`. | Follow-up candidates tied to a source thread. | Reading message history broadly, private surveillance, or auto-created obligations. |
 
+## Wave Status Snapshot
+
+This is a planning snapshot, not a release claim.
+
+| Wave | Current status | Implementation verdict |
+| --- | --- | --- |
+| Wave -1 Repo Scan | Completed. | Keep as audit artifact and complexity gate. |
+| Wave 0 Existing Loop Stabilization | Mostly implemented; keep dogfooding. | Pulse is hub, quick capture is top-mounted, timer/recovery/account smoke exists. |
+| Wave 1 Brain Dump To Existing Obligations | Implemented for bindable deadlines/imported deadline rows. | Brain dump preview can suggest existing obligations, commit can bind confirmed tasks to them, and same-dump vs existing bindings are distinct. Live scheduled-event binding remains Wave 5/provider-contract work. |
+| Wave 2 Pressure/Occupancy Map To Confirmed Plan | Not implemented. | Pressure Map remains diagnostic; confirmed plan preview/commit is missing. |
+| Wave 3 Session Tracking And Recovery Intelligence | Partially implemented. | Stopwatch, pause/resume, resume banner, occupancy metrics, and correction paths exist; missed-plan recovery options are still incomplete. |
+| Wave 4 Estimates And AI Priors | Partially implemented. | Bias/occupancy rows exist; explicit AI cold-start ranges with provenance are not complete. |
+| Wave 5 Repeated Schedules And Provider Imports | Partially implemented for narrow providers only. | Moodle ICS/submissions and Google Calendar read-only context exist; general recurrence/import contract is not complete. |
+| Passive Browser Extension Candidate | Parked/postponed. | Do not implement until system complexity can handle passive evidence without breaking intention -> execution -> drift -> interruption -> recalibration. |
+
 ## Minimal Task Grouping Primitive
 
 Brain dump, imports, and recovery plans will create flat clutter unless Lyra can
@@ -200,7 +216,9 @@ Implementation posture:
 Browser verify after this pass:
 
 - `/pulse` is the main loop hub.
-- Brain dump opens from Pulse quick capture at the bottom of the page.
+- Brain dump opens from Pulse quick capture at the top of the page.
+- Do not permanently duplicate quick capture top and bottom; use a small
+  floating/collapsible affordance later only if dogfood proves it is needed.
 - Any Pulse brain-dump link points to `/pulse#quick-capture`, not `/today`.
 - Timer start/pause/resume/stop survives refresh and page switches.
 - Resume banner copy is continuity support: "Pick it back up?"
@@ -214,8 +232,9 @@ Goal: make brain dump obligation-aware enough to protect the pressure map.
 Implementation posture:
 
 - Parse messy input as today.
-- Include existing bindable deadlines, scheduled events, and imported
-  obligations in the preview candidate set.
+- Include existing bindable deadlines and imported deadline obligations in the
+  preview candidate set. Live scheduled events remain context until Wave 5
+  defines a canonical recurrence/provider binding contract.
 - Keep same-dump bindings and existing-obligation bindings visually distinct.
 - High-confidence candidate may be prechecked.
 - Ambiguous candidate requires explicit Yes/No.
@@ -329,12 +348,23 @@ Browser verify after this pass:
   completed work.
 - Verify recurring items can be corrected without corrupting the series.
 
-## Wave 6: Passive Browser Extension Candidate
+## Parked: Passive Browser Extension Candidate
 
-Goal: reduce timer friction without creating surveillance hallucination.
+Status: postponed until the system can handle the complexity safely.
+
+Goal, when revisited: reduce timer friction without creating surveillance
+hallucination or breaking the core invariant:
+
+```text
+intention -> execution -> drift -> interruption -> recalibration
+```
+
+This is not Wave 6 implementation work. It is a parked candidate that may be
+reopened only after Waves 1-5 have enough stability and browser verification.
 
 Implementation posture:
 
+- Not part of current wave execution.
 - Private, opt-in prototype only.
 - Visible tracking indicator.
 - Capture session candidates, not execution truth.

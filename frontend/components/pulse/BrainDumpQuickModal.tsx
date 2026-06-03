@@ -105,6 +105,42 @@ function fmtWhen(iso: string | null): string {
   }
 }
 
+function bindingKey(b: BrainDumpBindingSuggestion): string {
+  return (
+    b.binding_id ||
+    `${b.task_item_id}:${b.target_kind}:${b.deadline_id ?? b.deadline_item_id}`
+  );
+}
+
+function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
+  return b.target_kind === "existing_deadline"
+    ? "existing obligation"
+    : "same dump";
+}
+
+function initialBindingChoices(
+  nextBindings: BrainDumpBindingSuggestion[],
+): Record<string, "yes" | "no"> {
+  const choices: Record<string, "yes" | "no"> = {};
+  const acceptedTasks = new Set<string>();
+
+  for (const b of nextBindings) {
+    if (b.tier === "tier1_auto" && !acceptedTasks.has(b.task_item_id)) {
+      choices[bindingKey(b)] = "yes";
+      acceptedTasks.add(b.task_item_id);
+    }
+  }
+
+  for (const b of nextBindings) {
+    const key = bindingKey(b);
+    if (acceptedTasks.has(b.task_item_id) && choices[key] !== "yes") {
+      choices[key] = "no";
+    }
+  }
+
+  return choices;
+}
+
 export interface BrainDumpQuickModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -176,13 +212,7 @@ export function BrainDumpQuickModal({
       setItems(res.items);
       setBindings(res.bindings);
       // Tier 1 auto-bindings start pre-checked yes.
-      const initial: Record<string, "yes" | "no"> = {};
-      for (const b of res.bindings) {
-        if (b.tier === "tier1_auto") {
-          initial[b.task_item_id] = "yes";
-        }
-      }
-      setBindingChoices(initial);
+      setBindingChoices(initialBindingChoices(res.bindings));
       if (res.items.length === 0) {
         setError(
           "Couldn't pull anything out. Try one item per line — 'submit assignment Friday', 'read chapter 3 tomorrow'."
@@ -217,10 +247,14 @@ export function BrainDumpQuickModal({
         duration_basis: i.duration_basis,
       }));
       const commitBindings: BrainDumpCommitBinding[] = bindings
-        .filter((b) => bindingChoices[b.task_item_id] === "yes")
+        .filter((b) => bindingChoices[bindingKey(b)] === "yes")
         .map((b) => ({
           task_item_id: b.task_item_id,
-          deadline_item_id: b.deadline_item_id,
+          deadline_item_id:
+            b.target_kind === "parsed_deadline" ? b.deadline_item_id : null,
+          deadline_id:
+            b.target_kind === "existing_deadline" ? b.deadline_id : null,
+          target_kind: b.target_kind,
         }));
       const res = await commitBrainDump(commitItems, commitBindings);
       // Invalidate every cache key the dashboard depends on so the
@@ -257,8 +291,26 @@ export function BrainDumpQuickModal({
     }
   }
 
-  function setBindingChoice(taskItemId: string, choice: "yes" | "no") {
-    setBindingChoices((s) => ({ ...s, [taskItemId]: choice }));
+  function setBindingChoice(
+    binding: BrainDumpBindingSuggestion,
+    choice: "yes" | "no",
+  ) {
+    const key = bindingKey(binding);
+    setBindingChoices((s) => {
+      const next = { ...s, [key]: choice };
+      if (choice === "yes") {
+        for (const other of bindings) {
+          const otherKey = bindingKey(other);
+          if (
+            other.task_item_id === binding.task_item_id &&
+            otherKey !== key
+          ) {
+            next[otherKey] = "no";
+          }
+        }
+      }
+      return next;
+    });
   }
 
   const tasksParsed = items.filter((i) => i.kind === "task");
@@ -268,7 +320,7 @@ export function BrainDumpQuickModal({
     (bindingsForTask[b.task_item_id] ||= []).push(b);
   }
   const tier2Unanswered = bindings.some(
-    (b) => b.tier === "tier2_ask" && !bindingChoices[b.task_item_id]
+    (b) => b.tier === "tier2_ask" && !bindingChoices[bindingKey(b)]
   );
 
   return (
@@ -382,23 +434,29 @@ gym sat morning"
                     {itemBindings.length > 0 && (
                       <div className="mt-2 flex flex-col gap-1.5">
                         {itemBindings.map((b) => {
-                          const choice = bindingChoices[b.task_item_id];
+                          const choice = bindingChoices[bindingKey(b)];
                           return (
                             <div
-                              key={b.deadline_item_id}
-                              className="flex items-center gap-2 text-[11px]"
+                              key={bindingKey(b)}
+                              className="flex flex-wrap items-center gap-2 text-[11px]"
                             >
                               <span className="text-dust-deep">
-                                Link to{" "}
+                                Link to {bindingTargetLabel(b)}{" "}
                                 <span className="text-parchment">
                                   {b.deadline_title}
                                 </span>
+                                {b.target_due_at && (
+                                  <span>
+                                    {" "}
+                                    - due {fmtWhen(b.target_due_at)}
+                                  </span>
+                                )}
                                 ?
                               </span>
                               <button
                                 type="button"
                                 onClick={() =>
-                                  setBindingChoice(b.task_item_id, "yes")
+                                  setBindingChoice(b, "yes")
                                 }
                                 className={`rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
                                   choice === "yes"
@@ -411,7 +469,7 @@ gym sat morning"
                               <button
                                 type="button"
                                 onClick={() =>
-                                  setBindingChoice(b.task_item_id, "no")
+                                  setBindingChoice(b, "no")
                                 }
                                 className={`rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
                                   choice === "no"

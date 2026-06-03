@@ -264,3 +264,99 @@ def test_commit_duplicate_deadline_reuses_existing_for_bindings(client, db):
     assert db.query(Deadline).filter(Deadline.user_id == user.user_id).count() == 1
     task = db.query(Task).filter(Task.task_id == body["task_ids"][0]).one()
     assert task.deadline_id == existing.deadline_id
+
+
+def test_parse_suggests_existing_bindable_deadline(client, db):
+    """Wave 1: Pulse preview should see existing obligations before commit.
+
+    This protects the pressure map by letting new brain-dump tasks bind to
+    already-created deadlines instead of relying on duplicate deadline creation.
+    """
+    user = _make_user(db)
+    due_local = (datetime.utcnow() + timedelta(days=14)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+    existing = Deadline(
+        deadline_id=str(uuid4()),
+        user_id=user.user_id,
+        title="CO final",
+        due_at_utc=to_utc(due_local),
+        state="active",
+        created_at=datetime.utcnow(),
+    )
+    db.add(existing)
+    db.commit()
+
+    r = client.post(
+        "/v1/brain-dump/parse",
+        json={
+            "raw_text": "CO lec 1 tomorrow",
+            "current_local_iso": datetime.utcnow().isoformat(),
+        },
+        headers=auth_headers(user.user_id),
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    existing_bindings = [
+        b for b in body["bindings"]
+        if b["target_kind"] == "existing_deadline"
+    ]
+    assert len(existing_bindings) == 1
+    assert existing_bindings[0]["deadline_id"] == existing.deadline_id
+    assert existing_bindings[0]["deadline_title"] == "CO final"
+
+
+def test_commit_can_bind_task_to_existing_deadline(client, db):
+    """Wave 1 commit path: explicit existing-deadline binding is canonical."""
+    user = _make_user(db)
+    due_local = (datetime.utcnow() + timedelta(days=10)).replace(
+        hour=10, minute=0, second=0, microsecond=0
+    )
+    existing = Deadline(
+        deadline_id=str(uuid4()),
+        user_id=user.user_id,
+        title="CO final",
+        due_at_utc=to_utc(due_local),
+        state="planned",
+        created_at=datetime.utcnow(),
+    )
+    db.add(existing)
+    db.commit()
+
+    task_item_id = str(uuid4())
+    r = client.post(
+        "/v1/brain-dump/commit",
+        json=_commit_payload(
+            [
+                {
+                    "item_id": task_item_id,
+                    "kind": "task",
+                    "title": "CO lec 1",
+                    "when_local": (
+                        datetime.utcnow() + timedelta(hours=6)
+                    ).isoformat(),
+                    "duration_minutes": 90,
+                },
+            ],
+            bindings=[
+                {
+                    "task_item_id": task_item_id,
+                    "target_kind": "existing_deadline",
+                    "deadline_id": existing.deadline_id,
+                }
+            ],
+        ),
+        headers=auth_headers(user.user_id),
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["deadlines_created"] == 0
+    assert body["tasks_created"] == 1
+    assert body["bindings_applied"] == 1
+
+    task = db.query(Task).filter(Task.task_id == body["task_ids"][0]).one()
+    assert task.deadline_id == existing.deadline_id
+    db.refresh(existing)
+    assert existing.state == "active"

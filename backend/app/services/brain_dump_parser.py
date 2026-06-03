@@ -605,6 +605,7 @@ def _split_segments(raw: str) -> list[str]:
 def parse_brain_dump(
     raw_text: str,
     now_local_iso: Optional[str] = None,
+    existing_deadlines: Optional[list[Deadline]] = None,
 ) -> BrainDumpParseResponse:
     """Heuristic fan-out of a free-text brain-dump into tasks + deadlines.
 
@@ -748,6 +749,7 @@ def parse_brain_dump(
     parsed_tasks = [i for i in items if i.kind == "task"]
 
     bindings: list[BrainDumpBindingSuggestion] = []
+    parsed_bound_task_ids: set[str] = set()
     if parsed_deadlines:
         # Build mock Deadline objects compatible with score_deadlines.
         # Only fields the heuristic reads: deadline_id + title.
@@ -776,13 +778,62 @@ def parse_brain_dump(
             tier = _binding_tier(top.score)
             if tier == "tier3_skip":
                 continue  # don't surface low-confidence bindings
+            parsed_bound_task_ids.add(t.item_id)
             bindings.append(BrainDumpBindingSuggestion(
+                binding_id=f"{t.item_id}:parsed:{top.deadline_id}",
                 task_item_id=t.item_id,
                 deadline_item_id=top.deadline_id,
                 deadline_title=top.title,
                 confidence=top.score,
                 tier=tier,
                 source=top.source,
+                target_kind="parsed_deadline",
+            ))
+
+    # Wave 1: bind to already-existing obligations/deadlines when the user
+    # dumps work that belongs to something already in the account. This stays
+    # read-only until the user confirms a binding in the preview UI.
+    bindable_existing = [
+        d for d in (existing_deadlines or [])
+        if getattr(d, "is_bindable", False)
+    ]
+    if bindable_existing:
+        for t in parsed_tasks:
+            if t.item_id in parsed_bound_task_ids:
+                continue
+            match = score_deadlines(
+                title=t.title,
+                description=None,
+                deadlines=bindable_existing,
+            )
+            if not match.candidates:
+                continue
+            top = match.candidates[0]
+            tier = _binding_tier(top.score)
+            if tier == "tier3_skip":
+                continue
+            deadline = next(
+                (
+                    d for d in bindable_existing
+                    if d.deadline_id == top.deadline_id
+                ),
+                None,
+            )
+            if deadline is None:
+                continue
+            bindings.append(BrainDumpBindingSuggestion(
+                binding_id=f"{t.item_id}:existing:{deadline.deadline_id}",
+                task_item_id=t.item_id,
+                deadline_item_id=f"existing:{deadline.deadline_id}",
+                deadline_title=deadline.title,
+                confidence=top.score,
+                tier=tier,
+                source=top.source,
+                target_kind="existing_deadline",
+                deadline_id=deadline.deadline_id,
+                target_due_at=deadline.due_at_utc,
+                target_state=deadline.state,
+                target_origin=deadline.external_source or "manual",
             ))
 
     return BrainDumpParseResponse(

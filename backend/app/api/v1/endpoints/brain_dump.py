@@ -29,7 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.db.models import User
+from app.db.models import Deadline, User
 from app.db.scoping import get_current_user_id
 from app.schemas.brain_dump import (
     BrainDumpCommitRequest,
@@ -61,12 +61,20 @@ def brain_dump_parse(
     """
     # Authentication still required even though we don't write — keeps
     # the surface behind the same gate as /v1/users/me.
-    if get_current_user_id() is None:
+    uid = get_current_user_id()
+    if uid is None:
         raise HTTPException(status_code=401, detail="not authenticated")
+
+    existing_deadlines = db.query(Deadline).filter(
+        Deadline.user_id == uid,
+        Deadline.voided_at.is_(None),
+        Deadline.state.in_(("planned", "active")),
+    ).order_by(Deadline.due_at_utc.asc()).limit(100).all()
 
     return parse_brain_dump(
         raw_text=request.raw_text,
         now_local_iso=request.current_local_iso,
+        existing_deadlines=existing_deadlines,
     )
 
 
@@ -201,9 +209,16 @@ def brain_dump_commit(
     # avoids a second update_task round-trip.
     binding_for_task: dict[str, str] = {}
     for b in request.bindings:
-        resolved = deadline_id_map.get(b.deadline_item_id)
+        resolved: Optional[str] = None
+        if b.target_kind == "existing_deadline" or b.deadline_id:
+            resolved = b.deadline_id
+        elif b.deadline_item_id:
+            resolved = deadline_id_map.get(b.deadline_item_id)
         if resolved is not None:
-            binding_for_task[b.task_item_id] = resolved
+            # One canonical deadline binding per task. The preview UI enforces
+            # this too, but keep the backend deterministic if an old or custom
+            # client submits multiple "yes" bindings for the same task.
+            binding_for_task.setdefault(b.task_item_id, resolved)
 
     bindings_applied = 0
     for item in request.items:
