@@ -45,6 +45,15 @@ import {
   type ExternalCalendarEvent,
 } from "@/lib/calendar";
 import { ackExposureRender } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ToastEntry {
   id: string;
@@ -62,6 +71,43 @@ function localDateKey(d: Date) {
 function parseDate(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+function InterruptionStartDialog({
+  open,
+  taskTitle,
+  activeTaskTitle,
+  onCancel,
+  onContinue,
+}: {
+  open: boolean;
+  taskTitle: string;
+  activeTaskTitle: string;
+  onCancel: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Start as interruption?</DialogTitle>
+          <DialogDescription>
+            This will pause <span className="text-parchment">{activeTaskTitle}</span> and
+            start <span className="text-parchment">{taskTitle}</span>. You can resume the
+            paused task later.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button onClick={onContinue}>
+            Start as interruption
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /** Inner component that reads search params (requires Suspense boundary). */
@@ -243,6 +289,8 @@ function TodayInner() {
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [retroOpen, setRetroOpen] = useState(false);
   const [readinessFor, setReadinessFor] = useState<TaskRowType | null>(null);
+  const [interruptionStartFor, setInterruptionStartFor] = useState<TaskRowType | null>(null);
+  const [readinessInterruptionType, setReadinessInterruptionType] = useState<string | null>(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [earlyStop, setEarlyStop] = useState<{
     elapsed: number;
@@ -317,6 +365,28 @@ function TodayInner() {
       setOrphanWarnShown(true);
     }
   }, [status?.paused, orphanWarnDismissed]);
+
+  function requestTaskStart(task: TaskRowType) {
+    setErrorMsg(null);
+    if (timerBusy && activeTaskId && task.task_id !== activeTaskId) {
+      setInterruptionStartFor(task);
+      return;
+    }
+    setReadinessInterruptionType(null);
+    setReadinessFor(task);
+  }
+
+  function continueInterruptionStart() {
+    if (!interruptionStartFor) return;
+    setReadinessInterruptionType("scheduled_override");
+    setReadinessFor(interruptionStartFor);
+    setInterruptionStartFor(null);
+  }
+
+  function cancelReadiness() {
+    setReadinessFor(null);
+    setReadinessInterruptionType(null);
+  }
 
   function sortKey(t: TaskRowType): number {
     const parse = (s: string | null) => (s ? new Date(s).getTime() : null);
@@ -480,7 +550,11 @@ function TodayInner() {
     return { top: topItems, bottom: bottomItems };
   })();
 
-  async function handleStart(task: TaskRowType, readiness: number) {
+  async function handleStart(
+    task: TaskRowType,
+    readiness: number,
+    interruptionType?: string | null
+  ) {
     setErrorMsg(null);
     // Optimistic flip — the API call is ~1.5s over the Supabase pooler,
     // so close the readiness modal and flip status immediately. Snapshot
@@ -489,6 +563,8 @@ function TodayInner() {
     // active-timer-banner.tsx §applyPause.
     await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
     const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    const interruptedTaskId =
+      interruptionType && snapshot?.active ? snapshot.task_id : undefined;
     qc.setQueryData<StopwatchStatus>(["stopwatch-status"], {
       active: true,
       task_id: task.task_id,
@@ -502,13 +578,22 @@ function TodayInner() {
     // Optimistic task-state flip — the task card flips from "PLANNED" to
     // "EXECUTING" immediately instead of waiting 1.4 s for refresh().
     qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
-      old?.map((t) =>
-        t.task_id === task.task_id ? { ...t, state: "EXECUTING" } : t
-      )
+      old?.map((t) => {
+        if (t.task_id === task.task_id) return { ...t, state: "EXECUTING" };
+        if (interruptedTaskId && t.task_id === interruptedTaskId) {
+          return { ...t, state: "PAUSED" };
+        }
+        return t;
+      })
     );
     setReadinessFor(null);
+    setReadinessInterruptionType(null);
     try {
-      const startResp = await startStopwatch(task.task_id, readiness);
+      const startResp = await startStopwatch(
+        task.task_id,
+        readiness,
+        interruptionType
+      );
       // LYR-097 (2026-04-28): surface "started early" hint when backend
       // flags the task as future. Inline 4s toast — non-blocking,
       // visible-once acknowledgment so the user knows the session
@@ -540,9 +625,13 @@ function TodayInner() {
         qc.setQueryData(["stopwatch-status"], snapshot);
       }
       qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
-        old?.map((t) =>
-          t.task_id === task.task_id ? { ...t, state: "PLANNED" } : t
-        )
+        old?.map((t) => {
+          if (t.task_id === task.task_id) return { ...t, state: "PLANNED" };
+          if (interruptedTaskId && t.task_id === interruptedTaskId) {
+            return { ...t, state: "EXECUTING" };
+          }
+          return t;
+        })
       );
       setErrorMsg(e?.message ?? "Failed to start timer");
     }
@@ -1009,11 +1098,9 @@ function TodayInner() {
               <div key={item.task.task_id} className="flex flex-col gap-1.5">
                 <TaskRow
                   task={item.task}
-                  disableStart={
-                    isPast ||
-                    (timerBusy && item.task.task_id !== activeTaskId)
-                  }
-                  onStart={(task) => setReadinessFor(task)}
+                  disableStart={isPast}
+                  startAsInterruption={timerBusy && item.task.task_id !== activeTaskId}
+                  onStart={requestTaskStart}
                   onStartHover={
                     item.task.task_id !== activeTaskId
                       ? notifyPotentialStart
@@ -1080,12 +1167,22 @@ function TodayInner() {
         </div>
       )}
 
+      {interruptionStartFor && (
+        <InterruptionStartDialog
+          open={!!interruptionStartFor}
+          taskTitle={interruptionStartFor.title}
+          activeTaskTitle={status?.task_title ?? "the current task"}
+          onCancel={() => setInterruptionStartFor(null)}
+          onContinue={continueInterruptionStart}
+        />
+      )}
+
       {readinessFor && (
         <ReadinessModal
           open={!!readinessFor}
           taskTitle={readinessFor.title}
-          onCancel={() => setReadinessFor(null)}
-          onConfirm={(r) => handleStart(readinessFor, r)}
+          onCancel={cancelReadiness}
+          onConfirm={(r) => handleStart(readinessFor, r, readinessInterruptionType)}
         />
       )}
 

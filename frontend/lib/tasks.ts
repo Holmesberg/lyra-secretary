@@ -285,12 +285,20 @@ export interface StartStopwatchResponse {
   interruption_type?: string | null;
 }
 
-export function startStopwatch(task_id: string, pre_task_readiness: number): Promise<StartStopwatchResponse> {
+export function startStopwatch(
+  task_id: string,
+  pre_task_readiness: number,
+  interruption_type?: string | null
+): Promise<StartStopwatchResponse> {
   return api<StartStopwatchResponse>(
     "/v1/stopwatch/start",
     {
       method: "POST",
-      body: JSON.stringify({ task_id, pre_task_readiness }),
+      body: JSON.stringify({
+        task_id,
+        pre_task_readiness,
+        interruption_type: interruption_type || undefined,
+      }),
     }
   );
 }

@@ -24,6 +24,7 @@ interface Props {
   // owner uses this to surface a contextual orphan-warning when a paused
   // timer is present (see ActiveTimerBanner orphan-warning prop).
   onStartHover?: () => void;
+  startAsInterruption?: boolean;
   // Fires after the LLM enrichment chip has confirmed/rejected a binding.
   // Page-level owner refetches /tasks/query so the chip stops rendering.
   onLlmChipChanged?: () => void;
@@ -69,7 +70,8 @@ function ResearchLayer({ task }: { task: TaskRowType }) {
 
 export function TaskRow({
   task, disableStart, onStart, onStop, onSkip, onDone, onDelete, onEdit,
-  selected, showCheckbox, onToggleSelect, onStartHover, onLlmChipChanged,
+  selected, showCheckbox, onToggleSelect, onStartHover, startAsInterruption,
+  onLlmChipChanged,
 }: Props) {
   // P1-1: 12-hour format.
   const start = task.start ? format(new Date(task.start), "h:mm a") : "—";
@@ -168,7 +170,13 @@ export function TaskRow({
               onFocus={onStartHover}
               onClick={(e) => { e.stopPropagation(); onStartHover?.(); onStart(task); }}
               disabled={disableStart}
-              title={disableStart ? "Another timer is active" : "Start timer"}
+              title={
+                disableStart
+                  ? "Cannot start from this day"
+                  : startAsInterruption
+                    ? "Start as interruption"
+                    : "Start timer"
+              }
             >
               <Play className="h-3.5 w-3.5" />
             </Button>

@@ -8,6 +8,7 @@ import logging
 import uuid
 
 from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
+from app.core.exceptions import InvalidStateTransitionError
 from app.services.interruption_metrics import task_interruption_metrics
 from app.services.task_manager import TaskManager
 from app.utils.redis_client import RedisClient
@@ -437,14 +438,30 @@ class StopwatchManager:
         """Start stopwatch. Returns (session, task, is_future_task).
 
         If the current stopwatch is PAUSED, the new task is linked as an
-        interruption via parent_task_id. The paused session stays in DB
-        (unclosed) and can be resumed later.
+        interruption via parent_task_id. If the current stopwatch is running,
+        callers must pass interruption_type; the running task is paused with
+        pause_reason='task_switch' before the child starts. The parent session
+        stays in DB (unclosed) and can be resumed later.
         """
         user_id = self._user_key()
         active = self._get_active(user_id)
         paused_task_id = None
+        target_task = None
+
+        if task_id:
+            target_task = self.db.query(Task).filter(Task.task_id == task_id).first()
+            if not target_task:
+                raise ValueError("Task not found")
+            if target_task.voided_at is not None:
+                raise ValueError("Cannot start a timer on a voided task")
+        elif not title:
+            raise ValueError("Title required for unplanned task")
 
         if active:
+            if task_id and active["task_id"] == task_id:
+                raise StopwatchAlreadyRunningError(
+                    f"Stopwatch already running for task {active['task_id']}"
+                )
             pause_state = self.redis.get_pause_state(user_id)
             if pause_state:
                 # Current timer is paused — allow starting a new task
@@ -452,20 +469,28 @@ class StopwatchManager:
                 # Clear active stopwatch from Redis (DB session stays unclosed)
                 self.redis.clear_stopwatch_state(user_id)
             else:
-                raise StopwatchAlreadyRunningError(
-                    f"Stopwatch already running for task {active['task_id']}"
-                )
+                if not interruption_type:
+                    raise StopwatchAlreadyRunningError(
+                        f"Stopwatch already running for task {active['task_id']}"
+                    )
+                if target_task is not None and not self.task_manager.state_machine.can_transition(
+                    target_task, TaskState.EXECUTING
+                ):
+                    state = (
+                        target_task.state.value
+                        if hasattr(target_task.state, "value")
+                        else str(target_task.state)
+                    )
+                    raise InvalidStateTransitionError(
+                        f"Cannot transition from {state} to {TaskState.EXECUTING.value}"
+                    )
+                self.pause(pause_reason="task_switch", pause_initiator="self")
+                paused_task_id = active["task_id"]
+                self.redis.clear_stopwatch_state(user_id)
 
         if task_id:
-            task = self.db.query(Task).filter(Task.task_id == task_id).first()
-            if not task:
-                raise ValueError("Task not found")
-            if task.voided_at is not None:
-                raise ValueError("Cannot start a timer on a voided task")
             task = self.task_manager.start_task(task_id)
         else:
-            if not title:
-                raise ValueError("Title required for unplanned task")
             # create_task() expects Cairo local time (calls to_utc internally)
             local_now = to_local(now_utc())
             task, _, _ = self.task_manager.create_task(
