@@ -685,10 +685,14 @@ def reject_llm_binding(
     Records the rejection (`llm_binding_rejected_at = now()`) so the chip
     stops rendering. Then, source-aware unbind:
 
-      - If `deadline_match_source` is system-auto — `heuristic_*`,
-        `llm_auto_confirmed`, or legacy `parser_auto` — also clear
-        `task.deadline_id` and reset `task.deadline_match_source` to
-        NULL. The user is rejecting a binding the SYSTEM made, so
+      - If this is a trust-not-rewrite alternative suggestion
+        ("Possible better match") and the user clicks "Keep current",
+        clear only the alternative suggestion. The current canonical
+        binding is exactly what the user chose to keep.
+      - Otherwise, if `deadline_match_source` is system-auto —
+        `heuristic_*`, `llm_auto_confirmed`, or legacy `parser_auto` —
+        also clear `task.deadline_id` and reset `task.deadline_match_source`
+        to NULL. The user is rejecting a binding the SYSTEM made, so
         "Not relevant" must actually unbind.
       - If source is `user_explicit` or `manual_user`, leave the
         binding alone — user owns it; the chip rejection only stops
@@ -706,9 +710,16 @@ def reject_llm_binding(
     task = db.query(Task).filter(Task.task_id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    task.llm_binding_rejected_at = _now_utc()
+    rejected_at = _now_utc()
+    task.llm_binding_rejected_at = rejected_at
 
     src = task.deadline_match_source
+    alt = task.llm_alternative_suggestion or {}
+    rejecting_alternative_only = (
+        task.deadline_id is not None
+        and alt.get("deadline_id") is not None
+        and alt.get("deadline_id") != task.deadline_id
+    )
     SYSTEM_AUTO_SOURCES = {
         "heuristic_exact_title",
         "heuristic_startswith",
@@ -717,9 +728,20 @@ def reject_llm_binding(
         "llm_auto_confirmed",
         "parser_auto",
     }
-    if src in SYSTEM_AUTO_SOURCES:
+    if rejecting_alternative_only:
+        task.llm_alternative_suggestion = None
+    elif src in SYSTEM_AUTO_SOURCES:
         task.deadline_id = None
         task.deadline_match_source = None
+        task.deadline_match_confidence = None
+
+    # The user resolved the current chip, so stale suggestion payloads
+    # should not keep rendering or look like live intelligence.
+    task.llm_inferred_deadline_id = None
+    task.llm_deadline_match_confidence = None
+    task.llm_deadline_candidates = None
+    if not rejecting_alternative_only:
+        task.llm_alternative_suggestion = None
 
     db.commit()
     return LlmRejectResponse(task_id=task.task_id, rejected_at=task.llm_binding_rejected_at)
