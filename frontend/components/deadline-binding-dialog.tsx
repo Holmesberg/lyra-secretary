@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link2, X } from "lucide-react";
 
-import { listDeadlines } from "@/lib/deadlines";
+import { listDeadlines, sortDeadlinesActiveFirst } from "@/lib/deadlines";
 import {
   updateTaskDeadlineBinding,
   type TaskRow,
@@ -49,8 +49,10 @@ export function DeadlineBindingDialog({ task, open, onClose, onSaved }: Props) {
 
   const deadlines = useMemo(
     () =>
-      (deadlinesQ.data?.deadlines ?? []).filter(
-        (deadline) => !deadline.voided_at
+      sortDeadlinesActiveFirst(
+        (deadlinesQ.data?.deadlines ?? []).filter(
+          (deadline) => !deadline.voided_at
+        )
       ),
     [deadlinesQ.data?.deadlines]
   );

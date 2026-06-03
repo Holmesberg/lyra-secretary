@@ -62,6 +62,27 @@ export interface DeadlineUpdateRequest {
   state?: "planned" | "active" | "completed" | "skipped";
 }
 
+export function sortDeadlinesActiveFirst<T extends DeadlineResponse>(
+  deadlines: T[]
+): T[] {
+  const stateRank = (deadline: DeadlineResponse) => {
+    if (deadline.state === "active") return 0;
+    if (deadline.state === "planned") return 1;
+    if (deadline.state === "missed") return 2;
+    if (deadline.state === "completed") return 3;
+    if (deadline.state === "skipped") return 4;
+    return 5;
+  };
+  return [...deadlines].sort((a, b) => {
+    const stateDelta = stateRank(a) - stateRank(b);
+    if (stateDelta !== 0) return stateDelta;
+    const dueDelta =
+      new Date(a.due_at_utc).getTime() - new Date(b.due_at_utc).getTime();
+    if (dueDelta !== 0) return dueDelta;
+    return a.title.localeCompare(b.title);
+  });
+}
+
 export function listDeadlines(
   state?: DeadlineState,
   includeVoided = false

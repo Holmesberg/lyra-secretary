@@ -25,6 +25,7 @@ import { ackExposureRender } from "@/lib/api";
 import {
   listDeadlines,
   previewDeadlineBinding,
+  sortDeadlinesActiveFirst,
   type DeadlineResponse,
   type DeadlinePreviewResponse,
 } from "@/lib/deadlines";
@@ -1223,8 +1224,10 @@ function DeadlinePickerSlot({
     queryFn: () => listDeadlines(),
     enabled: showPicker,
   });
-  const bindable = (data?.deadlines ?? []).filter(
-    (d) => d.state === "planned" || d.state === "active"
+  const bindable = sortDeadlinesActiveFirst(
+    (data?.deadlines ?? []).filter(
+      (d) => d.state === "planned" || d.state === "active"
+    )
   );
 
   const boundDeadline = bindable.find((d) => d.deadline_id === deadlineId);

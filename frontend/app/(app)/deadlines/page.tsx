@@ -5,6 +5,7 @@ import {
   type DeadlineResponse,
   type DeadlineState,
   listDeadlines,
+  sortDeadlinesActiveFirst,
   updateDeadline,
   voidDeadline,
 } from "@/lib/deadlines";
@@ -307,10 +308,12 @@ export default function DeadlinesPage() {
 
   // Active = planned/active but NOT yet overdue. Prevents double-render
   // (overdue planned rows would otherwise appear in both buckets).
-  const active = sorted.filter(
-    (d) =>
-      (d.state === "planned" || d.state === "active") &&
-      !overdueIds.has(d.deadline_id)
+  const active = sortDeadlinesActiveFirst(
+    sorted.filter(
+      (d) =>
+        (d.state === "planned" || d.state === "active") &&
+        !overdueIds.has(d.deadline_id)
+    )
   );
   const completed = sorted
     .filter((d) => d.state === "completed")
