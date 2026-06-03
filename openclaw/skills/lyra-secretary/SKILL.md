@@ -147,3 +147,11 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 
 **Notifications:** Poll GET /v1/notifications/pending every 30s. Dispatch on `type`: `timer_overflow` → see overflow flow above. `pause_prediction` → relay "Pause predicted in ~{lead_minutes} min ({mechanism}) — reply pause, dismiss, or snooze" → WAIT → POST /v1/pause_predictions/{firing_id}/respond with `user_response` (pause_now|dismiss|snooze). If `pause_now`: follow Pause flow. NEVER infer from silence.
 <!-- Excluded (operator/web-UI, not agent): /v1/users/me +{/export,/data-summary,/consent,DELETE}, /v1/analytics/{bias_factor,insights,discrepancy}. Do not add without operator approval — 150-line total is a HARD GATE. -->
+ 
+**Current notification dispatch override:** Poll GET /v1/notifications/pending every 30s. Dispatch on `type`:
+- `operator_alert` -> relay `message` exactly to the operator. Do not call any Lyra mutation endpoint.
+- `reminder` -> relay `message` exactly. If the user says start, follow the normal Start timer flow.
+- `timer_overflow` -> see overflow flow above.
+- `pause_prediction` -> relay "Pause predicted in ~{lead_minutes} min ({mechanism}) - reply pause, dismiss, or snooze" -> WAIT -> POST /v1/pause_predictions/{firing_id}/respond with `user_response` (pause_now|dismiss|snooze). If `pause_now`: follow Pause flow. NEVER infer from silence.
+- `resume_prediction` -> relay `message` if present, otherwise "You left a task paused. Pick it back up?" If user agrees, follow the normal Resume flow. NEVER auto-resume.
+- unknown type with `message` -> relay `message` exactly and do not mutate state.

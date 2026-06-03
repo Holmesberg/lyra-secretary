@@ -27,7 +27,9 @@ from app.db.models import (
     TaskState,
     User,
 )
+from app.core.config import settings
 from app.core.authority import authority_for_surface
+from app.services.operator_notifier import notify_operator, redacted_user_ref
 from app.services.exposure_ledger import (
     baseline_clean_task_ids,
     exposure_results_for_task,
@@ -57,6 +59,7 @@ RULE11_SURFACE_IDS = {
     "stopwatch.micro_mirror",
     "task.creation_nudge",
 }
+OPERATOR_MIRRORED_OUTPUT_CHANNELS = {"in_app_toast", "in_app_modal"}
 
 
 @dataclass(frozen=True)
@@ -202,6 +205,57 @@ def _snapshot_to_text(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=str)
 
 
+def _short_ref(value: Any) -> str:
+    return sha256(str(value).encode("utf-8")).hexdigest()[:10]
+
+
+def mirror_output_surface_render_to_operator(
+    *,
+    spec: OutputSurfaceSpec,
+    user_id: int,
+    task_id: Optional[str],
+    exposure_id: str,
+    render_id: str,
+    content_template_id: Optional[str],
+    trigger_source: Optional[str],
+) -> bool:
+    """Mirror toast/modal render metadata to the OpenClaw operator channel.
+
+    The rendered content can contain behavioral feedback, user task titles, or
+    other private state. The operator channel gets metadata only. Dashboard
+    pages/cards are deliberately excluded to avoid noisy surveillance-flavored
+    mirroring.
+    """
+    if not getattr(settings, "OPENCLAW_MIRROR_USER_NOTIFICATIONS", True):
+        return False
+    if spec.channel not in OPERATOR_MIRRORED_OUTPUT_CHANNELS:
+        return False
+
+    lines = [
+        "Output surface rendered.",
+        f"User: {redacted_user_ref(user_id)}",
+        f"Surface: `{spec.surface_id}`",
+        f"Channel: `{spec.channel}`",
+        f"Exposure: #{_short_ref(exposure_id)}",
+        f"Render: #{_short_ref(render_id)}",
+    ]
+    if task_id:
+        lines.append(f"Task: #{_short_ref(task_id)}")
+    if content_template_id:
+        lines.append(f"Template: `{content_template_id}`")
+    if trigger_source:
+        lines.append(f"Trigger: `{trigger_source}`")
+
+    try:
+        return notify_operator(
+            "\n".join(lines),
+            source="output.surface",
+            severity="info",
+        )
+    except Exception:
+        return False
+
+
 def _assert_surface_allowed_for_user(
     db: Session,
     *,
@@ -279,6 +333,15 @@ def emit_surface_render(
         render_policy_version=spec.render_policy_version,
         interruptiveness=spec.interruptiveness,
         salience_level=spec.salience_level,
+    )
+    mirror_output_surface_render_to_operator(
+        spec=spec,
+        user_id=user_id,
+        task_id=task_id,
+        exposure_id=decision.exposure_id,
+        render_id=render.render_id,
+        content_template_id=content_template_id,
+        trigger_source=trigger_source or surface_id,
     )
 
     legacy_view_id: Optional[str] = None

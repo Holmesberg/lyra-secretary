@@ -58,8 +58,8 @@ def _run_for_one_user(db, user: User):
             except Exception as e:
                 logger.warning(f"Redis queue fallback failed for session {session.session_id}: {e}")
 
-            # The Telegram bot is a shared operator channel, so only mirror
-            # operator-owned timer events there.
+            # OpenClaw owns Telegram delivery. Operator-owned timer events may
+            # also get an operator_alert envelope.
             if user.is_operator:
                 sent_direct = notify_operator(
                     message,
@@ -70,7 +70,7 @@ def _run_for_one_user(db, user: User):
                 )
                 delivered = delivered or sent_direct
                 if sent_direct:
-                    logger.info(f"Overflow alert sent via operator Telegram (user {user.user_id})")
+                    logger.info(f"Overflow alert queued for OpenClaw operator channel (user {user.user_id})")
 
             if delivered:
                 redis.client.setex(notified_key, 86400, "1")

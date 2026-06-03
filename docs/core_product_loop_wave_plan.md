@@ -287,6 +287,20 @@ Browser verify after this pass:
 
 Goal: make recovery useful without turning it into pressure or surveillance.
 
+Current re-entry anchor:
+
+- External outreach re-entry should usually land on `https://lyraos.org` so
+  returning users re-enter through the product frame before choosing a path.
+  In-app brain-dump links still target `/pulse#quick-capture`.
+- In-app re-entry should then be anchored on Pulse, using existing confirmed
+  state only: paused sessions, auto-skipped/missed plans, and overdue planned
+  blocks.
+- The surface may offer explicit actions such as resume, open, mark done
+  retroactively, hide, drop, or reschedule. It must not infer execution from
+  absence, presence, or passive activity.
+- Email, notification, and browser-extension ideas are acquisition/re-entry
+  candidates only when they return the user to this explicit confirmation loop.
+
 Implementation posture:
 
 - Execution Time remains active work.

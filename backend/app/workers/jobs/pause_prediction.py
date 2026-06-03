@@ -234,7 +234,7 @@ def _run_for_one_user(db, user: User):
     # Operator Telegram fanout is gated below; non-operator behavioral events
     # must not leak into the shared operator bot.
     _enqueue_notification(db, user, row)
-    _deliver_telegram(user, row)
+    _deliver_operator_alert(user, row)
 
 
 def _resolve_active_task(db, user: User):
@@ -331,7 +331,7 @@ def _enqueue_notification(db, user: User, row: PausePredictionLog) -> None:
         )
 
 
-def _format_telegram_text(row: PausePredictionLog) -> str:
+def _format_operator_text(row: PausePredictionLog) -> str:
     """Short operator-facing text — tuned for a Telegram push.
 
     Lead-minutes first so the attention-grab is up top. `firing_id` is
@@ -347,7 +347,7 @@ def _format_telegram_text(row: PausePredictionLog) -> str:
     )
 
 
-def _deliver_telegram(user: User, row: PausePredictionLog) -> None:
+def _deliver_operator_alert(user: User, row: PausePredictionLog) -> None:
     """Send operator-owned pause-prediction text via Telegram.
 
     The bot is a shared operator channel. Non-operator user-facing delivery
@@ -357,7 +357,7 @@ def _deliver_telegram(user: User, row: PausePredictionLog) -> None:
         return
     try:
         notify_operator(
-            _format_telegram_text(row),
+            _format_operator_text(row),
             source="scheduler.pause-prediction",
             severity="alert",
             dedupe_key=f"pause-prediction:{user.user_id}:{row.firing_id}",

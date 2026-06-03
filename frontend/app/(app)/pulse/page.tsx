@@ -62,6 +62,7 @@ import { PulseAcademicPressureMap } from "@/components/pulse/PulseAcademicPressu
 import { PulseRecovery } from "@/components/pulse/PulseRecovery";
 import { PulseIntegrationsV2 } from "@/components/pulse/PulseIntegrationsV2";
 import { PulseQuickCaptureV2 } from "@/components/pulse/PulseQuickCaptureV2";
+import { PulseReentryQueue } from "@/components/pulse/PulseReentryQueue";
 import { JarvisFloatingButton } from "@/components/jarvis/JarvisFloatingButton";
 
 interface MeLite {
@@ -190,6 +191,8 @@ export default function PulsePage() {
       />
 
       <PulseQuickCaptureV2 />
+
+      <PulseReentryQueue tasks={taskEvidence} />
 
       {/* HERO ROW — Today's Plan | Focus Card | Deadlines */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">

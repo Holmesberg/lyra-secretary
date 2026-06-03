@@ -47,12 +47,12 @@ def get_pending(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Operator-only Telegram mirror (2026-04-30)
+# Operator-only OpenClaw channel mirror (2026-04-30)
 # ---------------------------------------------------------------------------
 
 
 class OperatorNotifyRequest(BaseModel):
-    """Frontend-driven Telegram mirror payload."""
+    """Frontend-driven OpenClaw operator-channel payload."""
 
     message: str = Field(..., min_length=1, max_length=2000)
     severity: Literal["info", "warn", "error", "alert"] = "info"
@@ -65,7 +65,7 @@ def post_operator_notification(
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    """Mirror a frontend signal into the operator's Telegram."""
+    """Mirror a frontend signal into the OpenClaw operator channel."""
     operator_user_from_scope(db, request=request)
     sent = notify_operator(
         payload.message,

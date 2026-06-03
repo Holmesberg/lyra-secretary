@@ -128,6 +128,78 @@ def test_emit_surface_render_serializes_structured_payloads_and_legacy_adapter(d
     assert legacy.payload == expected_payload
 
 
+def test_emit_surface_render_mirrors_to_operator_without_content(db, monkeypatch):
+    user = User(email=f"surface-mirror-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(
+        output_surface_module.settings,
+        "OPENCLAW_MIRROR_USER_NOTIFICATIONS",
+        True,
+    )
+    monkeypatch.setattr(
+        output_surface_module,
+        "notify_operator",
+        lambda message, **kwargs: calls.append((message, kwargs)) or True,
+    )
+
+    emitted = emit_surface_render(
+        db,
+        surface_id="stopwatch.micro_mirror",
+        user_id=user.user_id,
+        content_snapshot="Secret behavioral mirror copy",
+        task_id="task-private-123",
+        content_template_id="micro_mirror",
+        trigger_source="stopwatch.stop",
+    )
+
+    assert emitted["surface_id"] == "stopwatch.micro_mirror"
+    assert len(calls) == 1
+    message, kwargs = calls[0]
+    assert kwargs == {"source": "output.surface", "severity": "info"}
+    assert "Output surface rendered." in message
+    assert "User: user#" in message
+    assert "Surface: `stopwatch.micro_mirror`" in message
+    assert "Channel: `in_app_toast`" in message
+    assert "Template: `micro_mirror`" in message
+    assert "Trigger: `stopwatch.stop`" in message
+    assert "Exposure: #" in message
+    assert "Render: #" in message
+    assert "Task: #" in message
+    assert "Secret behavioral mirror copy" not in message
+    assert "task-private-123" not in message
+
+
+def test_dashboard_output_surfaces_do_not_mirror_to_operator(db, monkeypatch):
+    user = User(email=f"surface-dashboard-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(
+        output_surface_module.settings,
+        "OPENCLAW_MIRROR_USER_NOTIFICATIONS",
+        True,
+    )
+    monkeypatch.setattr(
+        output_surface_module,
+        "notify_operator",
+        lambda message, **kwargs: calls.append((message, kwargs)) or True,
+    )
+
+    emit_surface_render(
+        db,
+        surface_id="analytics.insights",
+        user_id=user.user_id,
+        content_snapshot={"private": "dashboard insight copy"},
+        content_template_id="insights",
+    )
+
+    assert calls == []
+
+
 def test_rule11_no_nudge_control_is_deterministic_after_baseline(db):
     created_at = now_utc() - timedelta(days=30)
     user = User(

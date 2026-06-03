@@ -205,9 +205,9 @@ def _run_for_one_user(db, user: User):
                 db.rollback()
             logger.warning(f"Redis queue fallback failed for task {task.task_id}: {e}")
 
-        # The Telegram bot is a shared operator channel, so only mirror
-        # operator-owned reminders there. Other users receive the queued
-        # notification through their authenticated poller.
+        # OpenClaw owns Telegram delivery. Operator-owned reminders may also
+        # get an operator_alert envelope; other users receive only their
+        # authenticated queue payload.
         if user.is_operator:
             sent_direct = notify_operator(
                 message,
@@ -218,7 +218,7 @@ def _run_for_one_user(db, user: User):
             )
             delivered = delivered or sent_direct
             if sent_direct:
-                logger.info(f"Reminder for task {task.task_id} sent via operator Telegram (user {user.user_id})")
+                    logger.info(f"Reminder for task {task.task_id} queued for OpenClaw operator channel (user {user.user_id})")
 
         # Mark notified per-user only after at least one delivery path succeeds.
         if delivered:

@@ -306,6 +306,7 @@ function TodayInner() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
+  const surfacedNotificationKeys = useRef<Set<string>>(new Set());
   // Orphan warning: shown inside ActiveTimerBanner when the user
   // hovers/clicks a Start button on another task while paused. Dismiss
   // persists for the session (one dismissal = no more nagging).
@@ -330,18 +331,51 @@ function TodayInner() {
     setOrphanWarnShown(false);
   }, []);
 
-  function pushToast(
+  const pushToast = useCallback((
     message: string,
     viewId: string | null,
     lifespan: "auto" | "pin",
     detailHref?: string,
-  ) {
+  ) => {
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setToasts((prev) => [...prev, { id, message, viewId, lifespan, detailHref }]);
-  }
+  }, []);
+
+  useEffect(() => {
+    for (const notification of notifQ.data?.notifications ?? []) {
+      const type =
+        typeof notification.type === "string" ? notification.type : "unknown";
+      if (type === "pause_prediction" || type === "resume_prediction") {
+        continue;
+      }
+      const message =
+        typeof notification.message === "string"
+          ? notification.message
+          : `Lyra notification: ${type}`;
+      const durableId =
+        typeof notification.firing_id === "string"
+          ? notification.firing_id
+          : typeof notification.session_id === "string"
+            ? notification.session_id
+            : typeof notification.task_id === "string"
+              ? notification.task_id
+              : message;
+      const key = `${type}:${durableId}`;
+      if (surfacedNotificationKeys.current.has(key)) {
+        continue;
+      }
+      surfacedNotificationKeys.current.add(key);
+      pushToast(
+        message,
+        null,
+        type === "timer_overflow" ? "pin" : "auto",
+        "/today",
+      );
+    }
+  }, [notifQ.data?.notifications, pushToast]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });

@@ -3,8 +3,8 @@
 User submission → /v1/feedback (any authenticated user).
 Operator triage → /v1/admin/feedback*  (operator-only).
 
-Every submission fans out to email + Telegram (best-effort, non-blocking;
-the feedback row commits regardless of notifier failures).
+Every submission fans out to email + OpenClaw operator alert (best-effort,
+non-blocking; the feedback row commits regardless of notifier failures).
 """
 from __future__ import annotations
 

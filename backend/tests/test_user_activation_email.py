@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core import security
 from app.db.models import User
-from app.services import user_mailer
+from app.services import email_delivery, user_mailer
 from app.services.user_mailer import (
     ActivationEmailResult,
     activation_email_text,
@@ -53,7 +53,7 @@ def test_activation_mailer_skips_when_disabled(monkeypatch):
     def fail_post(*_args, **_kwargs):
         raise AssertionError("Resend should not be called when disabled")
 
-    monkeypatch.setattr(user_mailer.requests, "post", fail_post)
+    monkeypatch.setattr(email_delivery.requests, "post", fail_post)
 
     result = send_activation_email(_user())
 
@@ -67,7 +67,7 @@ def test_activation_mailer_skips_without_resend_key(monkeypatch):
     def fail_post(*_args, **_kwargs):
         raise AssertionError("Resend should not be called without API key")
 
-    monkeypatch.setattr(user_mailer.requests, "post", fail_post)
+    monkeypatch.setattr(email_delivery.requests, "post", fail_post)
 
     result = send_activation_email(_user())
 
@@ -85,7 +85,7 @@ def test_activation_mailer_sends_plain_transactional_payload(monkeypatch):
         calls.append(kwargs)
         return SimpleNamespace(status_code=202, text="accepted")
 
-    monkeypatch.setattr(user_mailer.requests, "post", fake_post)
+    monkeypatch.setattr(email_delivery.requests, "post", fake_post)
 
     result = send_activation_email(_user("student@example.test"))
 
@@ -117,12 +117,12 @@ def test_activation_mailer_redacts_provider_failures(monkeypatch):
     def fake_post(*_args, **_kwargs):
         return SimpleNamespace(status_code=401, text="raw provider token secret")
 
-    monkeypatch.setattr(user_mailer.requests, "post", fake_post)
+    monkeypatch.setattr(email_delivery.requests, "post", fake_post)
 
     result = send_activation_email(_user())
 
     assert result.sent is False
-    assert result.error == "http_401"
+    assert result.error == "http_401:provider_error_redacted"
     assert "secret" not in result.error
 
 
@@ -133,7 +133,7 @@ def test_activation_mailer_request_exception_is_non_throwing(monkeypatch):
     def fake_post(*_args, **_kwargs):
         raise RuntimeError("raw network failure with secret")
 
-    monkeypatch.setattr(user_mailer.requests, "post", fake_post)
+    monkeypatch.setattr(email_delivery.requests, "post", fake_post)
 
     result = send_activation_email(_user())
 
