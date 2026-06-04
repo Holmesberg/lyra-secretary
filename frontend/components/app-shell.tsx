@@ -121,6 +121,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const userEmail = session?.user?.email ?? null;
   const userInitial = userEmail ? userEmail.charAt(0).toUpperCase() : "·";
+  const isOperatorDashboard = pathname?.startsWith("/operator") ?? false;
+  const identityLabel = isOperatorDashboard
+    ? "operator account"
+    : userEmail?.split("@")[0];
+  const identityDetail = isOperatorDashboard
+    ? "diagnostic view"
+    : userEmail
+      ? `@${userEmail.split("@")[1] ?? ""}`
+      : "";
 
   return (
     <div className="min-h-screen bg-void text-parchment lg:flex">
@@ -218,12 +227,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="min-w-0 flex-1 leading-tight">
                 <div
                   className="truncate font-mono text-[10px] text-parchment"
-                  title={userEmail}
+                  title={isOperatorDashboard ? "operator account" : userEmail}
                 >
-                  {userEmail.split("@")[0]}
+                  {identityLabel}
                 </div>
                 <div className="truncate font-mono text-[9px] text-dust-deep">
-                  @{userEmail.split("@")[1] ?? ""}
+                  {identityDetail}
                 </div>
               </div>
             </div>
@@ -323,7 +332,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <li className="mt-1 border-t border-hairline-signal/20 px-5 py-2">
                   <div className="flex flex-col gap-0.5 leading-tight">
                     <span className="font-mono text-[10px] tracking-wider text-dust-deep">
-                      {userEmail}
+                      {isOperatorDashboard ? "operator account" : userEmail}
                     </span>
                     <FeedbackLink />
                   </div>
