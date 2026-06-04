@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+
+import { useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,11 +13,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const ANCHORS = [
-  { value: 1, label: "Very poor — barely focused the whole time" },
-  { value: 2, label: "Weak — distracted more than working" },
-  { value: 3, label: "Average — some flow, some drift" },
-  { value: 4, label: "Focused — solid deep work" },
-  { value: 5, label: "Excellent — sharpest I've been all day" },
+  { value: 1, label: "Very poor - barely focused the whole time" },
+  { value: 2, label: "Weak - distracted more than working" },
+  { value: 3, label: "Average - some flow, some drift" },
+  { value: 4, label: "Focused - solid deep work" },
+  { value: 5, label: "Excellent - sharpest I've been all day" },
 ];
 
 type ScopeOutcome = "stuck_to_plan" | "expanded" | "reduced";
@@ -35,6 +36,11 @@ interface Props {
     planned: number;
     message: string;
   } | null;
+  description?: ReactNode;
+  contextNote?: ReactNode;
+  completionRequired?: boolean;
+  scopeRequired?: boolean;
+  confirmLabel?: string;
   onConfirm: (
     rating: number,
     opts?: { confirmed?: boolean; completionPct?: number; scopeOutcome?: ScopeOutcome }
@@ -46,6 +52,11 @@ export function ReflectionModal({
   open,
   taskTitle,
   earlyStop,
+  description,
+  contextNote,
+  completionRequired = false,
+  scopeRequired = false,
+  confirmLabel,
   onConfirm,
   onCancel,
 }: Props) {
@@ -53,6 +64,32 @@ export function ReflectionModal({
   const [pct, setPct] = useState<string>("");
   const [scope, setScope] = useState<ScopeOutcome | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const completionValid = !completionRequired || pct !== "";
+  const scopeValid = !scopeRequired || scope !== null;
+  const canSubmit = value !== null && completionValid && scopeValid && !submitting;
+
+  const submit = async () => {
+    if (value === null || !completionValid || !scopeValid) return;
+    let clampedPct: number | undefined;
+    if (pct !== "") {
+      const n = Number(pct);
+      clampedPct = Number.isFinite(n)
+        ? Math.max(0, Math.min(100, Math.round(n)))
+        : undefined;
+    }
+    setSubmitting(true);
+    try {
+      await onConfirm(value, {
+        confirmed: !!earlyStop,
+        completionPct: clampedPct,
+        scopeOutcome: scope ?? undefined,
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent
@@ -60,33 +97,27 @@ export function ReflectionModal({
           if (e.key !== "Enter") return;
           if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
           if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
-          if (value === null || submitting) return;
+          if (!canSubmit) return;
           e.preventDefault();
-          let clampedPct: number | undefined;
-          if (pct !== "") {
-            const n = Number(pct);
-            clampedPct = Number.isFinite(n)
-              ? Math.max(0, Math.min(100, Math.round(n)))
-              : undefined;
-          }
-          setSubmitting(true);
-          try {
-            await onConfirm(value, {
-              confirmed: !!earlyStop,
-              completionPct: clampedPct,
-              scopeOutcome: scope ?? undefined,
-            });
-          } finally {
-            setSubmitting(false);
-          }
+          await submit();
         }}
       >
         <DialogHeader>
           <DialogTitle>How was your focus?</DialogTitle>
           <DialogDescription>
-            Reflecting on <span className="text-parchment">{taskTitle}</span>.
+            {description ?? (
+              <>
+                Reflecting on <span className="text-parchment">{taskTitle}</span>.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
+
+        {contextNote && (
+          <div className="rounded-sm border border-signal/35 bg-signal/5 p-3 text-xs leading-relaxed text-dust">
+            {contextNote}
+          </div>
+        )}
 
         {earlyStop && (
           <div className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
@@ -113,24 +144,23 @@ export function ReflectionModal({
           ))}
         </div>
 
-        {/* LYR-098 sibling (Apr 16 ungate): completion % input is shown on
-            EVERY stop now, not just early-stop confirmations. Was gated on
-            earlyStop && for the pre-4.5 flow; the ungate lets the research
-            layer capture task_completion_percentage across normal/overrun
-            stops too (currently null on 77% of EXECUTED tasks per Apr 16
-            data audit). Input stays optional — user can leave blank. */}
         <div className="flex items-center gap-2 text-xs text-dust">
-          <label htmlFor="pct">Completion % (optional)</label>
+          <label htmlFor="pct">
+            Completion % {completionRequired ? "(required)" : "(optional)"}
+          </label>
           <input
             id="pct"
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
-            placeholder="0–100"
+            placeholder="0-100"
             value={pct}
             onChange={(e) => {
               const raw = e.target.value.replace(/[^0-9]/g, "");
-              if (raw === "") { setPct(""); return; }
+              if (raw === "") {
+                setPct("");
+                return;
+              }
               const n = parseInt(raw, 10);
               setPct(String(Math.min(100, n)));
             }}
@@ -139,7 +169,9 @@ export function ReflectionModal({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs text-dust">Scope (optional)</span>
+          <span className="text-xs text-dust">
+            Scope {scopeRequired ? "(required)" : "(optional)"}
+          </span>
           <div className="flex gap-2">
             {SCOPE_OPTIONS.map((o) => (
               <button
@@ -163,36 +195,8 @@ export function ReflectionModal({
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>
             Cancel
           </Button>
-          <Button
-            disabled={value === null || submitting}
-            onClick={async () => {
-              if (value === null) return;
-              // Clamp completion % to [0,100]. HTML min/max only constrains
-              // the spinner, not pasted/typed values — the backend enforces
-              // ge/le at the Pydantic layer but we reject early so the user
-              // sees the clamp instead of a 422.
-              let clampedPct: number | undefined;
-              if (pct !== "") {
-                const n = Number(pct);
-                if (!Number.isFinite(n)) {
-                  clampedPct = undefined;
-                } else {
-                  clampedPct = Math.max(0, Math.min(100, Math.round(n)));
-                }
-              }
-              setSubmitting(true);
-              try {
-                await onConfirm(value, {
-                  confirmed: !!earlyStop,
-                  completionPct: clampedPct,
-                  scopeOutcome: scope ?? undefined,
-                });
-              } finally {
-                setSubmitting(false);
-              }
-            }}
-          >
-            {earlyStop ? "Confirm early stop" : "Stop timer"}
+          <Button disabled={!canSubmit} onClick={submit}>
+            {confirmLabel ?? (earlyStop ? "Confirm early stop" : "Stop timer")}
           </Button>
         </DialogFooter>
       </DialogContent>

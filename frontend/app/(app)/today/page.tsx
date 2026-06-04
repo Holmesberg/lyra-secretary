@@ -13,13 +13,9 @@ import {
   markDone,
   deleteTask,
   voidTask,
-  getPendingNotifications,
   type TaskRow as TaskRowType,
   type StopResponse,
   type StopwatchStatus,
-  type PausePredictionNotification,
-  type ResumePredictionNotification,
-  resumeStopwatch,
 } from "@/lib/tasks";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import { TaskRow } from "@/components/task-row";
@@ -32,8 +28,6 @@ import { ExecutionCorrectionDialog } from "@/components/execution-correction-dia
 import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
-import { PausePredictionBanner } from "@/components/pause-prediction-banner";
-import { ResumePredictionBanner } from "@/components/resume-prediction-banner";
 import { DeadlineRow } from "@/components/deadline-row";
 import { DeadlineModal } from "@/components/deadline-modal";
 import { DeadlineBindingDialog } from "@/components/deadline-binding-dialog";
@@ -214,13 +208,6 @@ function TodayInner() {
 
   const [editingDeadline, setEditingDeadline] = useState<DeadlineResponse | null>(null);
 
-  const notifQ = useQuery({
-    queryKey: ["notifications-pending"],
-    queryFn: getPendingNotifications,
-    staleTime: 10_000,
-    refetchInterval: 30_000,
-  });
-
   // Retroactive pause-confirmation chips. Backend applies all three
   // gates: user_response='no_response', fired_at within 24h, no
   // pause_event within ±10 min of predicted_at. We just render what
@@ -266,27 +253,6 @@ function TodayInner() {
       queryKey: ["pause-predictions-pending-confirmation"],
     });
   }
-  const [dismissedFirings, setDismissedFirings] = useState<Set<string>>(new Set());
-  const pausePrediction: PausePredictionNotification | null = (() => {
-    for (const n of notifQ.data?.notifications ?? []) {
-      if (n.type === "pause_prediction" && typeof n.firing_id === "string" && !dismissedFirings.has(n.firing_id)) {
-        return n as unknown as PausePredictionNotification;
-      }
-    }
-    return null;
-  })();
-  // W2 magic-for-alpha (alembic 038, 2026-04-28). Mirrors pause-prediction
-  // selection above. Banner mounts when status?.paused === true and a
-  // matching firing hasn't been dismissed.
-  const resumePrediction: ResumePredictionNotification | null = (() => {
-    for (const n of notifQ.data?.notifications ?? []) {
-      if (n.type === "resume_prediction" && typeof n.firing_id === "string" && !dismissedFirings.has(n.firing_id)) {
-        return n as unknown as ResumePredictionNotification;
-      }
-    }
-    return null;
-  })();
-
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [retroOpen, setRetroOpen] = useState(false);
   const [readinessFor, setReadinessFor] = useState<TaskRowType | null>(null);
@@ -306,7 +272,6 @@ function TodayInner() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
-  const surfacedNotificationKeys = useRef<Set<string>>(new Set());
   // Orphan warning: shown inside ActiveTimerBanner when the user
   // hovers/clicks a Start button on another task while paused. Dismiss
   // persists for the session (one dismissal = no more nagging).
@@ -343,39 +308,6 @@ function TodayInner() {
         : `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setToasts((prev) => [...prev, { id, message, viewId, lifespan, detailHref }]);
   }, []);
-
-  useEffect(() => {
-    for (const notification of notifQ.data?.notifications ?? []) {
-      const type =
-        typeof notification.type === "string" ? notification.type : "unknown";
-      if (type === "pause_prediction" || type === "resume_prediction") {
-        continue;
-      }
-      const message =
-        typeof notification.message === "string"
-          ? notification.message
-          : `Lyra notification: ${type}`;
-      const durableId =
-        typeof notification.firing_id === "string"
-          ? notification.firing_id
-          : typeof notification.session_id === "string"
-            ? notification.session_id
-            : typeof notification.task_id === "string"
-              ? notification.task_id
-              : message;
-      const key = `${type}:${durableId}`;
-      if (surfacedNotificationKeys.current.has(key)) {
-        continue;
-      }
-      surfacedNotificationKeys.current.add(key);
-      pushToast(
-        message,
-        null,
-        type === "timer_overflow" ? "pin" : "auto",
-        "/today",
-      );
-    }
-  }, [notifQ.data?.notifications, pushToast]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });
@@ -990,42 +922,6 @@ function TodayInner() {
           </button>
         </div>
       </div>
-
-      {/* VT-17 pause prediction banner (above active timer) */}
-      {pausePrediction && status?.active && !status?.paused && (
-        <PausePredictionBanner
-          prediction={pausePrediction}
-          onPauseNow={(quick) => {
-            setDismissedFirings((s) => new Set(s).add(pausePrediction!.firing_id));
-            setQuickPauseReason(quick ? "intentional_break" : undefined);
-            setRequestPause(true);
-          }}
-          onDismissed={() =>
-            setDismissedFirings((s) => new Set(s).add(pausePrediction!.firing_id))
-          }
-        />
-      )}
-
-      {/* W2 resume prediction banner (only when the matching task is still
-          paused). Resume button hits /v1/stopwatch/resume; dismiss is
-          local-state. */}
-      {resumePrediction && status?.active && status?.paused && status.task_id === resumePrediction.task_id && (
-        <ResumePredictionBanner
-          prediction={resumePrediction}
-          onResume={async () => {
-            setDismissedFirings((s) => new Set(s).add(resumePrediction!.firing_id));
-            try {
-              await resumeStopwatch();
-              refresh();
-            } catch (e: any) {
-              setErrorMsg(e?.message ?? "Failed to resume");
-            }
-          }}
-          onDismissed={() =>
-            setDismissedFirings((s) => new Set(s).add(resumePrediction!.firing_id))
-          }
-        />
-      )}
 
       {/* Active timer banner: always visible regardless of viewed date */}
       {status && (

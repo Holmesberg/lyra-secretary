@@ -219,6 +219,7 @@ export interface PausedOther {
   elapsed_seconds?: number;
   start_time: string | null;
   total_paused_minutes: number;
+  planned_duration_minutes?: number | null;
 }
 
 export interface StopwatchStatus {
@@ -248,6 +249,42 @@ export interface StopwatchStatus {
 
 export function getStopwatchStatus() {
   return api<StopwatchStatus>("/v1/stopwatch/status");
+}
+
+export type ScopeOutcome = "stuck_to_plan" | "expanded" | "reduced";
+
+export interface StalePauseResolutionInput {
+  post_task_reflection: number;
+  task_completion_percentage: number;
+  scope_outcome: ScopeOutcome;
+}
+
+export interface StalePauseResolutionResponse {
+  resolved: boolean;
+  task_id: string;
+  session_id: string;
+  new_state: string;
+  active_minutes: number;
+  planned_duration_minutes: number | null;
+  paused_minutes: number;
+  task_completion_percentage: number;
+  post_task_reflection: number;
+  scope_outcome: ScopeOutcome;
+  data_quality_flag: string;
+  closed_at: string;
+}
+
+export function resolveStalePause(
+  sessionId: string,
+  input: StalePauseResolutionInput
+) {
+  return api<StalePauseResolutionResponse>(
+    `/v1/stopwatch/stale-pauses/${encodeURIComponent(sessionId)}/resolve`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    }
+  );
 }
 
 export interface SwitchResponse {
@@ -524,7 +561,14 @@ export interface PendingNotificationsResponse {
 }
 
 export function getPendingNotifications() {
-  return api<PendingNotificationsResponse>("/v1/notifications/pending");
+  return api<PendingNotificationsResponse>("/v1/notifications/web/pending");
+}
+
+export function ackPendingNotifications(notificationIds: string[]) {
+  return api<{ acknowledged: number }>("/v1/notifications/web/ack", {
+    method: "POST",
+    body: JSON.stringify({ notification_ids: notificationIds }),
+  });
 }
 
 export function respondToPausePrediction(

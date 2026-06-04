@@ -47,7 +47,11 @@ def test_enqueue_user_notification_mirrors_redacted_metadata(monkeypatch):
 
     notification_queue.enqueue_user_notification(42, payload)
 
-    assert pushes == [("notifications:pending:42", json.dumps(payload))]
+    assert len(pushes) == 1
+    assert pushes[0][0] == "notifications:pending:42"
+    queued_payload = json.loads(pushes[0][1])
+    assert queued_payload["notification_id"]
+    assert {k: v for k, v in queued_payload.items() if k != "notification_id"} == payload
     assert len(calls) == 1
     message, kwargs = calls[0]
     assert kwargs["source"] == "user.notification-queue"
@@ -161,3 +165,66 @@ def test_user_notification_mirror_hashes_unsafe_safe_field_values(monkeypatch):
     assert "private message" not in message
     assert "Type: `#" in message
     assert "mechanism=`#" in message
+
+
+def test_web_channel_preserves_operator_alerts_for_openclaw(monkeypatch):
+    class QueueRedis:
+        def __init__(self):
+            self.items = [
+                json.dumps({"notification_id": "op-1", "type": "operator_alert", "message": "internal triage"}),
+                json.dumps({"notification_id": "web-1", "type": "timer_overflow", "message": "Open the task."}),
+                json.dumps({"notification_id": "op-2", "type": "operator_alert", "message": "second alert"}),
+            ]
+            self.rpushed = []
+
+        def lrange(self, _key, _start, _end):
+            return list(self.items)
+
+        def lpop(self, _key):
+            if not self.items:
+                return None
+            return self.items.pop(0)
+
+        def delete(self, _key):
+            self.items = []
+
+        def rpush(self, key, value):
+            self.rpushed.append((key, value))
+            self.items.append(value)
+
+    queue = QueueRedis()
+
+    class QueueRedisClient:
+        client = queue
+
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: QueueRedisClient(),
+    )
+
+    web_items = notification_queue.peek_user_notifications(1, channel="web")
+    assert web_items == [
+        {
+            "notification_id": "web-1",
+            "type": "timer_overflow",
+            "message": "Open the task.",
+        }
+    ]
+    assert [json.loads(raw)["type"] for raw in queue.items] == [
+        "operator_alert",
+        "timer_overflow",
+        "operator_alert",
+    ]
+
+    assert notification_queue.ack_user_notifications(1, ["web-1"]) == 1
+    assert [json.loads(raw)["type"] for raw in queue.items] == [
+        "operator_alert",
+        "operator_alert",
+    ]
+
+    openclaw_items = notification_queue.drain_user_notifications(1)
+    assert [item["message"] for item in openclaw_items] == [
+        "internal triage",
+        "second alert",
+    ]

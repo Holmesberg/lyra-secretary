@@ -20,6 +20,8 @@ from app.schemas.stopwatch import (
     ReadinessCorrectionResponse,
     UpdateCompletionRequest,
     UpdateCompletionResponse,
+    StalePauseResolveRequest,
+    StalePauseResolveResponse,
     RetroactiveRequest,
     RetroactiveResponse,
     PAUSE_REASONS,
@@ -427,6 +429,31 @@ def correct_readiness(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Readiness correction error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post(
+    "/stale-pauses/{session_id}/resolve",
+    response_model=StalePauseResolveResponse,
+)
+def resolve_stale_pause(
+    session_id: str,
+    request: StalePauseResolveRequest,
+    db: Session = Depends(get_db),
+) -> StalePauseResolveResponse:
+    """Resolve a 72h+ paused session with explicit post-task reflection."""
+    try:
+        result = StopwatchManager(db).resolve_stale_pause(
+            session_id,
+            post_task_reflection=request.post_task_reflection,
+            task_completion_percentage=request.task_completion_percentage,
+            scope_outcome=request.scope_outcome,
+        )
+        return StalePauseResolveResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Stale pause resolve error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

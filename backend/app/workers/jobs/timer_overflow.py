@@ -48,11 +48,25 @@ def _run_for_one_user(db, user: User):
                 "Reply with 'done' to stop, or a completion percentage (e.g. 75%)."
             )
 
+            operator_message = message
+            web_message = (
+                f"'{task.title}' is past its planned window "
+                f"({elapsed_minutes} min active; planned {planned} min). "
+                "Open the task to stop or correct the timer."
+            )
+
             delivered = False
             try:
                 enqueue_user_notification(
                     user.user_id,
-                    {"type": "timer_overflow", "message": message},
+                    {
+                        "type": "timer_overflow",
+                        "message": web_message,
+                        "task_id": task.task_id,
+                        "session_id": session.session_id,
+                        "elapsed_minutes": elapsed_minutes,
+                        "planned_minutes": planned,
+                    },
                 )
                 delivered = True
             except Exception as e:
@@ -62,7 +76,7 @@ def _run_for_one_user(db, user: User):
             # also get an operator_alert envelope.
             if user.is_operator:
                 sent_direct = notify_operator(
-                    message,
+                    operator_message,
                     source="scheduler.timer-overflow",
                     severity="alert",
                     dedupe_key=f"timer-overflow:{user.user_id}:{session.session_id}",

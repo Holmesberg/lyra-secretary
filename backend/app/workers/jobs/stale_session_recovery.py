@@ -52,11 +52,17 @@ from app.workers.jobs._scheduler_contract import (
 
 logger = logging.getLogger(__name__)
 
-STALE_PAUSE_HOURS = 48
+STALE_PAUSE_HOURS = 72
 STALE_ACTIVE_HOURS = 48
 EARLY_STOP_FRACTION = 0.5  # mirrors stopwatch_manager early-stop gate
 STALE_BOOTSTRAP_MAX_ATTEMPTS = 2
 STALE_BOOTSTRAP_RETRY_DELAY_SECONDS = 1.0
+
+# 2026-06-04 K04 policy: paused sessions that cross STALE_PAUSE_HOURS are
+# not auto-resolved. They remain open for explicit user resolution through
+# POST /v1/stopwatch/stale-pauses/{session_id}/resolve, which captures focus,
+# completion percentage, and scope outcome and flags the session dirty for
+# calibration. Only unattended active timers remain auto-abandoned here.
 
 
 def run_stale_session_recovery() -> JobResult:
@@ -206,9 +212,14 @@ def _run_for_one_user(db, user: User):
             planned = max((task.planned_duration_minutes if task else None) or 60, 1)
 
             if is_paused_branch:
-                # Honest end_time = the moment the user paused (intent-to-resume
-                # never realized). Executed time excludes prior closed pauses.
-                end_time = session.paused_at_utc
+                logger.info(
+                    "stale_session_recovery: paused session_id=%s user_id=%s "
+                    "is >%sh stale; leaving open for user reflection resolution",
+                    session.session_id,
+                    user.user_id,
+                    STALE_PAUSE_HOURS,
+                )
+                continue
             else:
                 # Active branch: synthetic end_time = start + planned. SKIPPED
                 # regardless, so this is for session-row data integrity only.

@@ -10,6 +10,7 @@ import json
 import logging
 import hashlib
 import re
+from uuid import uuid4
 from typing import Any
 
 from app.core.config import settings
@@ -134,21 +135,108 @@ def mirror_user_notification_to_operator(
 
 
 def enqueue_user_notification(user_id: int, payload: dict[str, Any]) -> None:
+    payload = dict(payload)
+    payload.setdefault("notification_id", str(uuid4()))
     redis = RedisClient()
     redis.client.rpush(
         f"notifications:pending:{int(user_id)}",
-        json.dumps(payload),
+        json.dumps(payload, sort_keys=True),
     )
     mirror_user_notification_to_operator(int(user_id), payload)
 
 
-def drain_user_notifications(user_id: int) -> list[dict[str, Any]]:
+def _queue_key(user_id: int) -> str:
+    return f"notifications:pending:{int(user_id)}"
+
+
+def _web_visible(payload: dict[str, Any]) -> bool:
+    return payload.get("type") != "operator_alert"
+
+
+def _payload_id(payload: dict[str, Any]) -> str:
+    explicit = payload.get("notification_id")
+    if explicit:
+        return str(explicit)
+    stable = json.dumps(payload, sort_keys=True, default=str)
+    return f"legacy:{_short_hash(stable)}"
+
+
+def peek_user_notifications(
+    user_id: int,
+    *,
+    channel: str = "web",
+) -> list[dict[str, Any]]:
+    """Return pending notifications without removing them from Redis.
+
+    Web delivery is reserve/ack shaped: the frontend fetches, renders, then
+    acknowledges by notification_id. This prevents resume/pause recovery
+    prompts from vanishing just because a background poll fired.
+    """
     redis = RedisClient()
-    key = f"notifications:pending:{int(user_id)}"
     items: list[dict[str, Any]] = []
+    for raw in redis.client.lrange(_queue_key(int(user_id)), 0, -1):
+        payload = json.loads(raw)
+        if channel == "web" and not _web_visible(payload):
+            continue
+        payload = dict(payload)
+        payload.setdefault("notification_id", _payload_id(payload))
+        items.append(payload)
+    return items
+
+
+def ack_user_notifications(user_id: int, notification_ids: list[str]) -> int:
+    """Remove rendered web notifications by ID while preserving operator alerts."""
+    wanted = {str(nid) for nid in notification_ids if nid}
+    if not wanted:
+        return 0
+    redis = RedisClient()
+    key = _queue_key(int(user_id))
+    raw_items = list(redis.client.lrange(key, 0, -1))
+    removed = 0
+    preserved: list[str] = []
+    for raw in raw_items:
+        payload = json.loads(raw)
+        payload_id = _payload_id(payload)
+        if payload_id in wanted and _web_visible(payload):
+            removed += 1
+            continue
+        preserved.append(
+            raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+        )
+    if removed:
+        redis.client.delete(key)
+        for raw in preserved:
+            redis.client.rpush(key, raw)
+    return removed
+
+
+def drain_user_notifications(
+    user_id: int,
+    *,
+    channel: str = "openclaw",
+) -> list[dict[str, Any]]:
+    """Drain pending notifications for one delivery channel.
+
+    The Redis queue is shared with OpenClaw for historical reasons. The web app
+    must not consume operator alerts because those payloads contain incident
+    triage text and reply-oriented instructions intended for the operator bot.
+    OpenClaw keeps the default full drain; the web channel preserves
+    ``operator_alert`` payloads in queue for OpenClaw and returns only
+    user-facing notifications.
+    """
+    redis = RedisClient()
+    key = _queue_key(int(user_id))
+    items: list[dict[str, Any]] = []
+    preserved: list[dict[str, Any]] = []
     while True:
         item = redis.client.lpop(key)
         if not item:
             break
-        items.append(json.loads(item))
+        payload = json.loads(item)
+        if channel == "web" and payload.get("type") == "operator_alert":
+            preserved.append(payload)
+            continue
+        items.append(payload)
+    for payload in preserved:
+        redis.client.rpush(key, json.dumps(payload, sort_keys=True))
     return items

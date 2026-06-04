@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Clock, ExternalLink, RotateCcw, X } from "lucide-react";
+import { ReflectionModal } from "@/components/reflection-modal";
 import {
   getStopwatchStatus,
   markAbandoned,
   markDone,
+  resolveStalePause,
   resumeStopwatch,
+  type ScopeOutcome,
   switchStopwatch,
   type StopwatchStatus,
   type TaskRow,
@@ -25,8 +28,12 @@ type ReentryCandidate =
       title: string;
       detail: string;
       taskId: string;
+      sessionId: string;
+      activeMinutes: number;
+      plannedMinutes: number | null;
+      pausedMinutes: number;
       dateHref: string;
-      action: "resume_current" | "switch_paused";
+      action: "resume_current" | "switch_paused" | "resolve_stale";
       priority: number;
     }
   | {
@@ -61,6 +68,21 @@ function formatMinutes(minutes: number | null | undefined): string {
   return `${rounded}m`;
 }
 
+const STALE_PAUSE_THRESHOLD_MINUTES = 72 * 60;
+
+function pausedAgeDetail(pausedMinutes: number): string {
+  if (pausedMinutes >= STALE_PAUSE_THRESHOLD_MINUTES) {
+    return `Parked for ${formatMinutes(pausedMinutes)}. Resolve what happened.`;
+  }
+  if (pausedMinutes >= 24 * 60) {
+    return `Open thread from earlier. Parked for ${formatMinutes(pausedMinutes)}.`;
+  }
+  if (pausedMinutes >= 2 * 60) {
+    return `Parked for ${formatMinutes(pausedMinutes)}. Pick up, reschedule, or leave parked.`;
+  }
+  return `Paused for ${formatMinutes(pausedMinutes)}. Pick it back up?`;
+}
+
 function missedDetail(task: TaskRow): string {
   const planned = task.planned_duration_minutes
     ? `${task.planned_duration_minutes}m block`
@@ -78,9 +100,7 @@ function buildCandidates(
   const candidates: ReentryCandidate[] = [];
 
   if (status?.active && status.paused && status.task_id && status.task_title) {
-    const pausedFor = formatMinutes(
-      Math.max(0, (status.current_pause_seconds ?? 0) / 60)
-    );
+    const pausedMinutes = Math.max(0, (status.current_pause_seconds ?? 0) / 60);
     const dateHref = `/today?date=${todayKey()}`;
     const id = `paused:${status.task_id}`;
     if (!dismissed.has(id)) {
@@ -89,12 +109,16 @@ function buildCandidates(
         id,
         title: status.task_title,
         taskId: status.task_id,
-        detail:
-          pausedFor === "0m"
-            ? "Paused now. Pick it back up or leave it parked."
-            : `Paused for ${pausedFor}. Pick it back up or leave it parked.`,
+        sessionId: status.session_id ?? "",
+        activeMinutes: status.elapsed_minutes ?? 0,
+        plannedMinutes: status.planned_duration_minutes ?? null,
+        pausedMinutes,
+        detail: pausedAgeDetail(pausedMinutes),
         dateHref,
-        action: "resume_current",
+        action:
+          pausedMinutes >= STALE_PAUSE_THRESHOLD_MINUTES
+            ? "resolve_stale"
+            : "resume_current",
         priority: 0,
       });
     }
@@ -108,9 +132,16 @@ function buildCandidates(
       id,
       title: paused.title,
       taskId: paused.task_id,
-      detail: `Parked for ${formatMinutes(paused.paused_minutes)} during an interruption chain.`,
+      sessionId: paused.session_id,
+      activeMinutes: paused.elapsed_minutes ?? 0,
+      plannedMinutes: paused.planned_duration_minutes ?? null,
+      pausedMinutes: paused.paused_minutes,
+      detail: pausedAgeDetail(paused.paused_minutes),
       dateHref: `/today?date=${todayKey()}`,
-      action: "switch_paused",
+      action:
+        paused.paused_minutes >= STALE_PAUSE_THRESHOLD_MINUTES
+          ? "resolve_stale"
+          : "switch_paused",
       priority: 2 + paused.paused_minutes / 10_000,
     });
   }
@@ -152,6 +183,8 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
   const qc = useQueryClient();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [resolving, setResolving] =
+    useState<Extract<ReentryCandidate, { kind: "paused" }> | null>(null);
 
   const statusQ = useQuery<StopwatchStatus>({
     queryKey: ["stopwatch-status"],
@@ -169,6 +202,7 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
     qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
     qc.invalidateQueries({ queryKey: ["tasks"] });
     qc.invalidateQueries({ queryKey: ["tasks-range"] });
+    qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
     qc.invalidateQueries({ queryKey: ["pressure-map"] });
   };
 
@@ -184,20 +218,73 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
     onError: (e: Error) => setError(e.message ?? "Failed to resume"),
   });
 
-  const doneM = useMutation({
-    mutationFn: (taskId: string) => markDone(taskId),
-    onSuccess: () => {
+  const resolveM = useMutation({
+    mutationFn: ({
+      candidate,
+      rating,
+      completionPct,
+      scopeOutcome,
+    }: {
+      candidate: Extract<ReentryCandidate, { kind: "paused" }>;
+      rating: number;
+      completionPct: number;
+      scopeOutcome: ScopeOutcome;
+    }) =>
+      resolveStalePause(candidate.sessionId, {
+        post_task_reflection: rating,
+        task_completion_percentage: completionPct,
+        scope_outcome: scopeOutcome,
+      }),
+    onSuccess: (_data, vars) => {
       setError(null);
+      setResolving(null);
+      setDismissed((prev) => {
+        const next = new Set(prev);
+        next.add(vars.candidate.id);
+        return next;
+      });
       refresh();
     },
-    onError: (e: Error) => setError(e.message ?? "Failed to mark done"),
+    onError: (e: Error) => setError(e.message ?? "Failed to resolve session"),
+  });
+
+  const doneM = useMutation({
+    mutationFn: (taskId: string) => markDone(taskId),
+    onSuccess: (_data, taskId) => {
+      setError(null);
+      setDismissed((prev) => {
+        const next = new Set(prev);
+        next.add(`missed:${taskId}`);
+        return next;
+      });
+      refresh();
+    },
+    onError: (e: Error, taskId) => {
+      const message = e.message ?? "Failed to mark done";
+      if (message.includes("current state: EXECUTED")) {
+        setDismissed((prev) => {
+          const next = new Set(prev);
+          next.add(`missed:${taskId}`);
+          return next;
+        });
+        setError(null);
+        refresh();
+        return;
+      }
+      setError(message);
+    },
   });
 
   const dropM = useMutation({
     mutationFn: (taskId: string) =>
       markAbandoned(taskId, "reentry_recovery_drop_from_pulse"),
-    onSuccess: () => {
+    onSuccess: (_data, taskId) => {
       setError(null);
+      setDismissed((prev) => {
+        const next = new Set(prev);
+        next.add(`missed:${taskId}`);
+        return next;
+      });
       refresh();
     },
     onError: (e: Error) => setError(e.message ?? "Failed to drop from plan"),
@@ -267,11 +354,17 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
               {candidate.kind === "paused" ? (
                 <button
                   type="button"
-                  disabled={resumeM.isPending}
-                  onClick={() => resumeM.mutate(candidate)}
+                  disabled={resumeM.isPending || resolveM.isPending}
+                  onClick={() =>
+                    candidate.action === "resolve_stale"
+                      ? setResolving(candidate)
+                      : resumeM.mutate(candidate)
+                  }
                   className="rounded-sm border border-signal/40 bg-signal/10 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20 disabled:opacity-50"
                 >
-                  Pick it back up
+                  {candidate.action === "resolve_stale"
+                    ? "Resolve session"
+                    : "Pick it back up"}
                 </button>
               ) : (
                 <>
@@ -331,6 +424,50 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
         >
           {error} <span className="text-ember/60">· tap to dismiss</span>
         </button>
+      )}
+      {resolving && (
+        <ReflectionModal
+          open
+          taskTitle={resolving.title}
+          completionRequired
+          scopeRequired
+          confirmLabel="Resolve session"
+          description={
+            <>
+              Resolve parked session for{" "}
+              <span className="text-parchment">{resolving.title}</span>.
+            </>
+          }
+          contextNote={
+            <div className="space-y-1">
+              <div>Active work: {formatMinutes(resolving.activeMinutes)}.</div>
+              <div>
+                Planned:{" "}
+                {resolving.plannedMinutes
+                  ? formatMinutes(resolving.plannedMinutes)
+                  : "not recorded"}.
+              </div>
+              <div>Paused: {formatMinutes(resolving.pausedMinutes)}.</div>
+              <div>Lyra will close the session at the time you paused it.</div>
+            </div>
+          }
+          onCancel={() => setResolving(null)}
+          onConfirm={async (rating, opts) => {
+            if (
+              opts?.completionPct === undefined ||
+              opts?.scopeOutcome === undefined
+            ) {
+              setError("Completion and scope are required to resolve this session.");
+              return;
+            }
+            await resolveM.mutateAsync({
+              candidate: resolving,
+              rating,
+              completionPct: opts.completionPct,
+              scopeOutcome: opts.scopeOutcome,
+            });
+          }}
+        />
       )}
     </section>
   );
