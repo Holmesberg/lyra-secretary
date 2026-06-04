@@ -65,6 +65,8 @@ Recent dogfood/repo findings:
   and adaptive disengagement.
 - Overlapping tasks and multitasking use a separate terminology boundary; see
   `docs/tightened_docs/09_semantic_conflicts.md`.
+- Context-switching is now documented as a footprint hypothesis, not a causal
+  claim; see `docs/context_switching_footprint_hypothesis.md`.
 
 ## Definition Of Done
 
@@ -147,6 +149,7 @@ This is a planning snapshot, not a release claim.
 | Wave 1 Brain Dump To Existing Obligations | Implemented for bindable deadlines/imported deadline rows. | Brain dump preview can suggest existing obligations, commit can bind confirmed tasks to them, and same-dump vs existing bindings are distinct. Live scheduled-event binding remains Wave 5/provider-contract work. |
 | Wave 2 Pressure/Occupancy Map To Confirmed Plan | Implemented for deadline-backed recovery blocks. | Pressure Map has day/week/14d views, explicit preview rows, editable title/start/duration, dismiss-without-side-effects, and confirmed task creation with obligation links. Duration provenance is visible and saved in task description; no dedicated schema field yet. |
 | Wave 3 Session Tracking And Recovery Intelligence | Partially implemented. | Stopwatch, pause/resume, resume banner, occupancy metrics, and correction paths exist; missed-plan recovery options are still incomplete. |
+| Wave 3.5 Context-Switching Footprint | Documentation-only / planned. | Treat switching as observable consequence topology first, causal hypothesis second. Derived metrics may support re-entry and insights later, but no passive tracking, automatic mutation, or failure prediction. |
 | Wave 4 Estimates And AI Priors | Partially implemented. | Bias/occupancy rows exist; explicit AI cold-start ranges with provenance are not complete. |
 | Wave 5 Repeated Schedules And Provider Imports | Partially implemented for narrow providers only. | Moodle ICS/submissions and Google Calendar read-only context exist; general recurrence/import contract is not complete. |
 | Passive Browser Extension Candidate | Parked/postponed. | Do not implement until system complexity can handle passive evidence without breaking intention -> execution -> drift -> interruption -> recalibration. |
@@ -322,6 +325,109 @@ Browser verify after this pass:
   cooldown/dismiss behavior.
 - Let a planned task pass without starting; verify recovery options are
   useful and non-shaming.
+
+## Wave 3.5: Context-Switching Footprint And Re-entry Intelligence
+
+Goal: model context switching as a recoverable execution footprint without
+claiming Lyra knows why the switch happened.
+
+Primary product posture:
+
+```text
+open threads -> recovery options
+```
+
+Not:
+
+```text
+switches -> fragmentation score
+```
+
+The near-term surface should strengthen re-entry, not produce a weekly insight
+that says the user switches a lot.
+
+Hypothesis:
+
+```text
+Explicit task switches and interruption chains may correlate with later
+recovery friction, planning-window overhead, and execution drift.
+```
+
+Non-claim:
+
+```text
+High switching does not yet prove the cause of fragmentation.
+```
+
+Implementation posture:
+
+- Use existing explicit state only: `PauseEvent`, `StopwatchSession`,
+  `Task.parent_task_id`, `Task.interruption_type`, active execution duration,
+  completion percentage, missed plans, obligation/deadline links, and exposure
+  state.
+- Treat metacognitive discrepancy as a modifier: switched work that also
+  resembles prior over-plan work is stronger recovery-risk evidence than switch
+  topology alone.
+- Do not use passive browser activity, provider completion, calendar
+  attendance, or security/audit state.
+- Do not add pause overhead to `executed_duration_minutes`.
+- Do not surface "failure," "degradation," "focus," "motivation,"
+  "avoidance," or identity language.
+- V1 is read-only derived metrics. Add a durable switch-event table only if
+  exact edge attribution cannot be reconstructed from existing rows.
+
+Candidate derived metrics:
+
+- `task_switch_count`
+- `interruption_chain_count`
+- `parked_task_count`
+- `reentry_latency_minutes`
+- `reentry_resolution_type`
+- `time_to_resolution_minutes`
+- `open_thread_end_of_day_count`
+- `switch_load_level`
+- `post_switch_active_delta_minutes`
+- `planning_window_footprint_minutes`
+
+Resolution outcomes are required before interpreting whether switching
+mattered: resumed, completed later, rescheduled, dropped, marked irrelevant,
+stale/open at day end, or auto-closed.
+
+Validity threats to preserve in code/docs:
+
+- hard tasks, unclear tasks, emergencies, deadline overload, excessive
+  commitments, emotional avoidance, provider changes, and forgotten timers can
+  produce similar switch signatures;
+- exposure to a switch-footprint insight changes future switching behavior;
+- session span and execution efficiency are footprint metrics, not proof of
+  causal degradation.
+
+Kill criteria:
+
+- usefulness requires passive tracking;
+- user-facing copy implies Lyra knows why the user switched;
+- false positives dominate trusted-user feedback;
+- the surface causes shame, pressure, or churn;
+- exposure logging cannot separate clean behavior from post-insight behavior;
+- switch topology adds no lift over simpler "paused work" and "missed plan"
+  recovery affordances.
+- the feature becomes a `fragmentation_score`, `switching_score`, or other
+  user-facing scalar judgment.
+
+Browser verify after this pass:
+
+- Start a task, start another as interruption, then switch back.
+- Verify the parent remains recoverable from Today and Pulse.
+- Verify any re-entry copy is neutral and action-oriented.
+- Verify user-facing copy says "open threads" or "parked work," not
+  `context_switching_footprint`.
+- Verify each open thread offers explicit actions: pick it back up,
+  reschedule, drop, mark done, or keep parked.
+- Verify resolution outcome is visible internally before any insight uses the
+  switch.
+- Verify no execution duration includes pause overhead.
+- Verify no passive/provider evidence becomes canonical execution truth.
+- Verify insights remain hidden or low-confidence until sample support exists.
 
 ## Wave 4: Estimates And AI Priors
 

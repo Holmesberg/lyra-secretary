@@ -94,9 +94,15 @@ For the evidence-packet branch:
 - no new public analytics claims,
 - no AI synthesis promotion,
 - no public cascade intervention,
+- no public context-switching causal claim,
 - no new adaptive authority,
 - no Baseet live integration,
 - no DB migration unless a later implementation plan explicitly authorizes it.
+
+`docs/context_switching_footprint_hypothesis.md` and Manifesto H8 authorize
+documentation and future read-only derived metrics only. They do not authorize
+passive tracking, automatic mutation, user-facing failure prediction, or
+psychological explanations for why a user switched tasks.
 
 Baseet and Moodle are provider edges. They may preserve local vocabulary for UI,
 but Cortex, clean-data admission, ClaimCompiler, and adaptive logic must consume

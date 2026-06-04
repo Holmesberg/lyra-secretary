@@ -26,6 +26,7 @@ def _make_user(db, *, is_operator: bool) -> User:
 
 OPERATOR_GET_PATHS = (
     "/v1/admin/dashboard",
+    "/v1/admin/email-engagement",
     "/v1/admin/alpha_funnel",
     "/v1/admin/feedback",
     "/v1/jarvis/health",

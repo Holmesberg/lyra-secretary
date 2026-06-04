@@ -1,6 +1,6 @@
 """V1 API Router."""
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines, feedback, brain_dump, moodle, jarvis, exposures, academic
+from app.api.v1.endpoints import health, parse, tasks, stopwatch, query, undo, notifications, analytics, skill_check, users, pause_predictions, reflection_view, calendar, integrations, admin, deadlines, feedback, brain_dump, moodle, jarvis, exposures, academic, email_engagement
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -32,3 +32,4 @@ api_router.include_router(moodle.router, tags=["moodle"])
 api_router.include_router(jarvis.router, tags=["jarvis"])
 api_router.include_router(exposures.router, tags=["exposures"])
 api_router.include_router(academic.router, tags=["academic"])
+api_router.include_router(email_engagement.router, tags=["email_engagement"])

@@ -17,3 +17,22 @@ def test_recipient_first_name_prefers_explicit_name():
     )
 
     assert send_reactivation_email._recipient_first_name(user) == "Ali"
+
+
+def test_reactivation_html_uses_signed_tracking_links(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.email_engagement.settings.EMAIL_TRACKING_BASE_URL",
+        "https://api.lyraos.org",
+    )
+    user = send_reactivation_email._Recipient(
+        "explicit-test",
+        "operator@example.test",
+        "Ali",
+    )
+
+    text, html = send_reactivation_email._render_body(user)
+
+    assert "https://lyraos.org" in text
+    assert "https://api.lyraos.org/v1/email-engagement/click?t=" in html
+    assert "https://api.lyraos.org/v1/email-engagement/open.gif?t=" in html
+    assert "operator@example.test" not in html

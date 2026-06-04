@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     )
     USER_EMAIL_ENABLED: bool = Field(False, env="USER_EMAIL_ENABLED")
     USER_EMAIL_FROM: str = Field("hello@lyraos.org", env="USER_EMAIL_FROM")
+    EMAIL_TRACKING_BASE_URL: str = Field(
+        "https://api.lyraos.org", env="EMAIL_TRACKING_BASE_URL"
+    )
 
     # Local LLM enrichment (Workstream 1, magic-for-alpha 2026-04-28).
     # Optional. When OLLAMA_URL is unreachable or the model is not loaded,

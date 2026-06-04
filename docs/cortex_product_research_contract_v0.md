@@ -675,6 +675,8 @@ Cortex Product-Research work must not:
 - introduce hidden user-burden variables
 - create a productivity, quality, worth, or performance score
 - present latent states as facts
+- present context-switch topology as causal proof of failure, avoidance,
+  focus loss, motivation, or cognitive state
 - use research needs to justify friction creep
 - learn from its own interventions without exposure modeling
 - describe self-report as measured cognition
@@ -696,6 +698,8 @@ Before any product or research change touching Cortex-adjacent behavior:
   on `UNKNOWN`, `EXPOSED`, or `INTERVENTION`?
 - Does this preserve unknown propagation?
 - Does this preserve clean-data profile declarations?
+- If this uses context-switch, interruption, or parked-work topology, does it
+  preserve the distinction between correlation and cause?
 - Does every user-facing output surface declare `truth_class`, `usage_class`,
   fallback mode, threshold, and exposure targets?
 - Does mixed-row consumption use an explicit projection class?

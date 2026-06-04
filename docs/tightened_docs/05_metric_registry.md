@@ -27,6 +27,10 @@
 | `signed_discrepancy` | `post - pre` | ordinal difference | self-report shift, not objective outcome | `Task` property |
 | `cascade_score` | `P(skip N+1 | skip N)` | probability | skip causality not established | `analytics.py` |
 | `deadline delay_minutes` | executed end - deadline | minutes | positive miss, negative met early | `TaskDeadlineOutcome` |
+| `context_switching_footprint` | derived from task switches, interruption chains, parked work, reentry latency, and bounded pause overhead | mixed summary | descriptive footprint, not causal cost | future `pause_process` / `measured_execution` profile |
+| `open_thread_end_of_day_count` | parked or interrupted work still unresolved at local day end | mixed summary | recovery load indicator, not failure score | future `pause_process` / `measured_execution` profile |
+| `reentry_resolution_type` | resumed, completed later, rescheduled, dropped, marked irrelevant, stale/open at day end, or auto-closed | categorical | required to know whether a switch mattered | future `pause_process` / `measured_execution` profile |
+| `time_to_resolution_minutes` | time from switch/pause/miss to explicit resolution | mixed summary | censored when unresolved | future `pause_process` / `measured_execution` profile |
 
 ## Heuristic Confidence Metrics
 
@@ -60,6 +64,8 @@
 | `scope_bullet_count_*` | bullet decomposition vs true expansion |
 | `bias_factor_final` | priors may not match task topology/category semantics |
 | `archetype_proximity` | non-iid tasks, outlier winsorization, label internalization |
+| `context_switching_footprint` | reverse causality, task difficulty, emergencies, overload, forgotten timers, and exposure to prior switch insights |
+| `fragmentation_score` / `switching_score` | forbidden user-facing scalar; turns recoverable open-thread state into judgment |
 
 ## Required Metric Documentation
 

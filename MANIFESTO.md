@@ -1,4 +1,4 @@
-# LyraOS - Manifesto v1.19
+# LyraOS - Manifesto v1.20
 *Written: April 4, 2026. Day 1 of the discrepancy experiment.*
 *Revised: April 5, 2026. Day 2 — cascade failure discovery, validity threats.*
 *Revised: April 8, 2026. Day 4 — kill criterion, pre-registered analysis rules.*
@@ -22,6 +22,7 @@
 *Revised: May 19, 2026. Day 46 - product/research assumption register added for professor review, investor diligence, hypothesis validation, and falsification tracking.*
 *Revised: May 20, 2026. Day 47 - alignment-through-honesty, conscious influence, middleware execution substrate, dirty-pipe provider doctrine, and earned adaptation authority clarified.*
 *Revised: May 25, 2026. Day 52 - trajectory-integrity invariant added: LyraOS operationalizes reality contact under pressure, not hidden proxy optimization.*
+*Revised: June 3, 2026. Day 61 - H8 context-switching footprint hypothesis added: switching is documented as observable consequence topology and recovery-footprint evidence, not causal proof of failure, focus loss, avoidance, or motivation.*
 
 ---
 
@@ -40,6 +41,7 @@ governance sections first:
 - Manifesto Governance Rule
 - Rule-Based Instrumentation, Not AI Theater
 - Substrate Kill Criterion
+- H8 Context-Switching Footprint
 - Academic Execution Substrate Governance
 - Operational Alert Classification
 - Trusted-Alpha Security Governance
@@ -103,6 +105,9 @@ The current research optionality is:
 - Paper 3: unplanned execution rate as a missing measurement variable, likely
   the fastest construct paper once the instrument is externally reviewed.
 - Paper 4: VT-22 scope inflation, only if mediation evidence supports it.
+- Paper 5 candidate: context-switching footprint and recovery friction, only
+  if H8 survives matched non-switch baselines, metacognitive-discrepancy
+  controls, and exposure accounting.
 
 These are optional publish paths, not product claims. Publication remains
 quality-control infrastructure.
@@ -114,6 +119,120 @@ validity as semantic grounding for those noisy signals.
 
 Companion doctrine:
 `docs/research_optionality_and_friction_methodology.md`.
+
+---
+
+## H8 - Context-Switching Footprint (PROVISIONAL)
+
+*Added June 3, 2026. Status: PROVISIONAL / KILLABLE. Canonical supporting
+document: `docs/context_switching_footprint_hypothesis.md`. H8 does not
+authorize passive tracking, automatic rescheduling, a public failure predictor,
+new notification authority, or causal/psychological user-facing claims.*
+
+Lyra already records context-switching machinery: explicit `task_switch` pause
+reasons, parent-child `interruption` chains, parked paused work, re-entry
+latency, pause overhead, active execution drift, missed downstream planned
+blocks, deadline/pressure context, and metacognitive discrepancy.
+
+This makes context switching modelable as execution topology. It does not make
+it causally explained.
+
+Core distinction:
+
+```text
+switching topology can show that a plan fragmented
+switching topology cannot, by itself, show why it fragmented
+```
+
+Hard tasks, unclear tasks, genuine emergencies, deadline overload, excessive
+commitments, provider changes, emotional avoidance, and forgotten timers can all
+produce similar switch signatures.
+
+Relationship to other hypotheses:
+
+- H1 remains the metacognitive-discrepancy hypothesis.
+- H2 remains the sequential abandonment / cascade hypothesis.
+- VT-22 remains the scope-inflation alternative.
+- H3 remains diagnostic and provisional. Any H3 signature that reads switching,
+  pausing, escape, avoidance, or internal conflict must now pass the H8
+  cause-vs-consequence boundary before it is promoted. Older H3 language is
+  historical/provisional and does not authorize user-facing avoidance or escape
+  claims.
+- H8 asks whether switch/interruption topology adds predictive value after the
+  above mechanisms and ordinary context controls are considered.
+
+H8 is falsified or demoted if, after clean-data and exposure controls:
+
+1. switch/interruption sessions do not predict higher re-entry latency than
+   matched non-switch pauses;
+2. switch topology adds no lift over user, category, time of day, planned
+   duration, deadline pressure, sequence position, prior pause history, and
+   exposure state;
+3. metacognitive discrepancy explains the observed recovery friction and switch
+   topology adds no incremental signal;
+4. effects are unstable across users, windows, or comparable contexts;
+5. trusted users repeatedly report that the surface misreads emergencies,
+   planned switches, or external commitments as product-relevant friction.
+
+Any H8-derived product surface is killed or parked if usefulness requires
+passive tracking, UI copy implies Lyra knows why the user switched, false
+positives dominate trusted-user feedback, the surface causes shame/pressure/
+churn, exposure logging cannot separate clean behavior from post-insight
+behavior, or switch topology adds no value over simpler paused-work and
+missed-plan recovery affordances.
+
+Primary product posture:
+
+```text
+open threads -> recovery options
+```
+
+Not:
+
+```text
+switches -> fragmentation score
+```
+
+`context_switching_footprint` is internal terminology only. User-facing
+surfaces should prefer "parked work," "open threads," "re-entry load,"
+"resume load," or "planning footprint." The strongest near-term surface is
+not a weekly insight that says the user switches a lot. It is a re-entry
+surface that helps the user resolve parked work:
+
+```text
+You have 3 open threads from earlier today.
+Pick one back up, reschedule, or drop it.
+```
+
+Any H8 implementation must track resolution outcomes before interpreting
+switch topology: resumed, completed later, rescheduled, dropped, marked
+irrelevant, stale/open at day end, or auto-closed. Without resolution outcome,
+Lyra only knows that switching happened, not whether it mattered.
+
+Allowed user-facing language:
+
+```text
+Parked after a task switch.
+Paused for 42m.
+You have 3 open threads from earlier today.
+This re-entry has taken longer than similar clean sessions.
+This is planning context, not a judgment about focus.
+```
+
+Forbidden user-facing language:
+
+```text
+You failed because you switched.
+You avoided this task.
+You lost focus.
+You are context switching too much.
+Your motivation dropped.
+Your fragmentation score increased.
+```
+
+H8 may support neutral re-entry and insights only after exposure-aware sample
+support. It may not become a nudge, warning, or intervention without a separate
+authority and exposure contract.
 
 ---
 

@@ -20,11 +20,15 @@ from app.core.config import settings
 from app.db.models import User
 from app.db.session import SessionLocal
 from app.services.email_delivery import LYRA_FROM_HEADER, send_resend_email
+from app.services.email_engagement import (
+    build_click_tracking_url,
+    build_open_tracking_url,
+)
 
 SUBJECT = "Forgot about Lyra?"
 LANDING_URL = "https://lyraos.org"
 LOGO_URL = "https://lyraos.org/lyraos-logo.png"
-CAMPAIGN_VERSION = "landing-html-v6"
+CAMPAIGN_VERSION = "landing-html-v7"
 
 BODY_TEMPLATE = """Hey {first_name},
 
@@ -68,7 +72,7 @@ HTML_TEMPLATE = """\
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#13161e;border:1px solid #252836;">
             <tr>
               <td style="padding:28px 28px 8px;">
-                <img src="https://lyraos.org/lyraos-logo.png" alt="LyraOS" width="104" style="display:block;border:0;margin-bottom:24px;">
+                <img src="{logo_url}" alt="LyraOS" width="104" style="display:block;border:0;margin-bottom:24px;">
                 <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#e8eaf0;">Hey {first_name},</p>
                 <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#e8eaf0;">Quick one - did Lyra slip off your radar?</p>
                 <p style="margin:0 0 10px;font-size:16px;line-height:1.55;color:#e8eaf0;">Try this:</p>
@@ -88,9 +92,10 @@ HTML_TEMPLATE = """\
                 <p style="margin:0 0 4px;font-size:15px;line-height:1.55;color:#e8eaf0;">- Ali</p>
                 <p style="margin:0 0 24px;font-size:13px;line-height:1.55;color:#6b7280;">LyraOS</p>
                 <p style="margin:0 0 14px;">
-                  <a href="https://lyraos.org" style="display:inline-block;background:#3bdcff;color:#071013;text-decoration:none;font-weight:700;font-size:14px;padding:12px 18px;border-radius:4px;">Open Lyra</a>
+                  <a href="{click_url}" style="display:inline-block;background:#3bdcff;color:#071013;text-decoration:none;font-weight:700;font-size:14px;padding:12px 18px;border-radius:4px;">Open Lyra</a>
                 </p>
-                <p style="margin:0;font-size:13px;line-height:1.55;color:#8b93a7;"><a href="https://lyraos.org" style="color:#8b93a7;text-decoration:underline;">https://lyraos.org</a></p>
+                <p style="margin:0;font-size:13px;line-height:1.55;color:#8b93a7;"><a href="{click_url}" style="color:#8b93a7;text-decoration:underline;">https://lyraos.org</a></p>
+                <img src="{open_url}" alt="" width="1" height="1" style="display:none;opacity:0;width:1px;height:1px;border:0;">
               </td>
             </tr>
           </table>
@@ -125,11 +130,35 @@ def _first_name_from_email(email: str) -> str | None:
     return token[:1].upper() + token[1:].lower()
 
 
-def _render_body(first_name: str | None) -> tuple[str, str]:
+def _tracking_user_id(user) -> int | None:
+    raw = getattr(user, "user_id", None)
+    return raw if isinstance(raw, int) else None
+
+
+def _render_body(user) -> tuple[str, str]:
+    first_name = _recipient_first_name(user)
     safe_first = (first_name or "").strip() or "there"
+    recipient_key = _recipient_key(user.email)
+    tracking_user_id = _tracking_user_id(user)
+    click_url = build_click_tracking_url(
+        campaign_version=CAMPAIGN_VERSION,
+        recipient_key=recipient_key,
+        user_id=tracking_user_id,
+        target_url=LANDING_URL,
+    )
+    open_url = build_open_tracking_url(
+        campaign_version=CAMPAIGN_VERSION,
+        recipient_key=recipient_key,
+        user_id=tracking_user_id,
+    )
     return (
         BODY_TEMPLATE.format(first_name=safe_first),
-        HTML_TEMPLATE.format(first_name=safe_first),
+        HTML_TEMPLATE.format(
+            first_name=safe_first,
+            logo_url=LOGO_URL,
+            click_url=click_url,
+            open_url=open_url,
+        ),
     )
 
 
@@ -266,9 +295,8 @@ def main() -> int:
 
     if not args.send:
         print("\ndry_run=true; no emails sent.")
-        first = _recipient_first_name(recipients[0]) if recipients else None
         print("\nBody:\n")
-        text, _html = _render_body(first)
+        text, _html = _render_body(recipients[0]) if recipients else ("", "")
         print(text)
         return 0
 
@@ -279,8 +307,7 @@ def main() -> int:
     sent = 0
     failed = 0
     for user in recipients:
-        first_name = _recipient_first_name(user)
-        text, html = _render_body(first_name)
+        text, html = _render_body(user)
         if _send_one(
             user=user,
             subject=SUBJECT,

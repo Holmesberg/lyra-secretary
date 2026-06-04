@@ -21,6 +21,8 @@
 | external-source contamination | imported deadlines constrain user planning | medium/high | Cortex planning profile excludes external deadline-bound tasks | enforce in all H1 queries |
 | timer artifacts | forgotten timers, stale sessions, auto-close | medium/high | recovery jobs and flags | artifact flags in all learning profiles |
 | LLM suggestion contamination | LLM changes task/deadline interpretation | medium | trust-not-rewrite fields | exposure ledger for chips |
+| context-switch causal overclaim | switch/interruption topology is treated as the cause of recovery friction rather than a correlated consequence | high | `docs/context_switching_footprint_hypothesis.md` documents observational framing | matched no-switch baselines, confound controls, exposure-aware analysis |
+| fragmentation scoring drift | open-thread recovery support turns into a scalar score that makes users feel judged | high | Manifesto H8 and Wave 3.5 ban user-facing fragmentation/switching scores | keep surface action-oriented: pick back up, reschedule, drop, mark done, keep parked |
 
 ## Most Dangerous Current Failure Mode
 
@@ -54,6 +56,9 @@ not solve exposure contamination.
 - `personal_weight` is count-based, not variance/stationarity based.
 - Pause predictor confidence uses absolute minute dispersion.
 - Scope bullet growth is an ambiguous proxy.
+- Context-switch topology is consequence evidence first; causal attribution
+  requires controls for task difficulty, ambiguity, emergencies, overload,
+  deadline pressure, exposure state, and metacognitive discrepancy.
 
 ## Falsifiability Preservation Rules
 

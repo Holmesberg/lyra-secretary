@@ -853,6 +853,44 @@ class User(Base):
     activation_email_last_error: Mapped[Optional[str]] = mapped_column(String(80))
 
 
+class EmailEngagementEvent(Base):
+    """Operational email engagement telemetry.
+
+    These rows measure campaign delivery outcomes such as opens and clicks.
+    They are not clean execution evidence and must not feed behavioral
+    inference, Cortex, calibration, adaptive scheduling, or user-facing claims.
+    Open events are best-effort because email clients often block tracking
+    pixels; click events are the stronger re-entry signal.
+    """
+
+    __tablename__ = "email_engagement_event"
+
+    event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("user.user_id", ondelete="SET NULL"), nullable=True
+    )
+    campaign_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient_key: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_url: Mapped[Optional[str]] = mapped_column(String(1024))
+    provider_message_id: Mapped[Optional[str]] = mapped_column(String(128))
+    request_metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_email_engagement_campaign_event",
+            "campaign_version",
+            "event_type",
+            "occurred_at",
+        ),
+        Index("idx_email_engagement_user", "user_id", "occurred_at"),
+        Index("idx_email_engagement_recipient", "campaign_version", "recipient_key"),
+    )
+
+
 class Archetype(Base):
     """Behavioral archetype lookup. Seeded from docs/methodology.md §1."""
 
