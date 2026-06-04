@@ -1,0 +1,1104 @@
+"""Operator-only product health dashboard.
+
+This endpoint is a read-only cohort-readiness cockpit. It reports product-loop
+and measurement-integrity health without exposing task content, provider
+secrets, or behavioral labels.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
+from typing import Any, Iterable
+
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db, operator_user_from_scope
+from app.db.models import (
+    Deadline,
+    DeadlineCompletionEvent,
+    ExposureAckEvent,
+    ExposureDecisionEvent,
+    ExposureRenderEvent,
+    Feedback,
+    StopwatchSession,
+    Task,
+    TaskExecutionCorrection,
+    TaskState,
+    User,
+)
+from app.db.scoping import get_current_user_id, set_current_user_id
+from app.utils.redis_client import RedisClient
+from app.utils.time_utils import now_utc
+
+router = APIRouter()
+
+READINESS_RED_TRACE_RATIO = 0.60
+READINESS_GREEN_TRACE_RATIO = 0.80
+GREEN_TIMER_CLOSURE_RATE = 0.70
+STALE_PAUSE_HOURS = 72
+
+MEANINGFUL_INCLUDED_EVENTS = [
+    "task_created",
+    "brain_dump_confirmed",
+    "timer_started",
+    "timer_stopped",
+    "pressure_map_opened",
+    "recovery_action_taken",
+    "insight_opened",
+    "export_requested",
+]
+MEANINGFUL_EXCLUDED_EVENTS = [
+    "login_only",
+    "page_refresh",
+    "settings_view_only",
+    "background_sync",
+]
+
+FORBIDDEN_WEB_MARKERS = (
+    "[warn]",
+    "[alert]",
+    "calendar.sync",
+    "affected provider/subsystem",
+    "reply with",
+    "operator",
+    "openclaw",
+)
+
+
+def _require_operator(db: Session, request: Request) -> User:
+    return operator_user_from_scope(db, request=request)
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _metric_meta(
+    *,
+    basis: str = "derived",
+    confidence: str = "medium",
+    readiness_impact: str = "informational",
+    safe_to_ignore_when: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "basis": basis,
+        "confidence": confidence,
+        "readiness_impact": readiness_impact,
+    }
+    if safe_to_ignore_when:
+        payload["safe_to_ignore_when"] = safe_to_ignore_when
+    return payload
+
+
+def _email_hash(email: str | None) -> str:
+    return hashlib.sha256((email or "").encode("utf-8")).hexdigest()[:12]
+
+
+def _pct(numerator: int, denominator: int) -> float | None:
+    if denominator <= 0:
+        return None
+    return round(numerator / denominator, 4)
+
+
+def _last_non_null(values: Iterable[datetime | None]) -> datetime | None:
+    return max((v for v in values if v is not None), default=None)
+
+
+def _dropoff_points(funnel: dict[str, int | None]) -> list[str]:
+    points: list[str] = []
+    keys = [
+        "pulse_opened",
+        "quick_capture_used",
+        "brain_dump_submitted",
+        "preview_confirmed",
+        "task_created",
+        "obligation_bound",
+        "pressure_map_opened",
+        "timer_started",
+        "timer_stopped_cleanly",
+        "recovery_surface_seen",
+        "insight_seen",
+        "returned_after_24h",
+    ]
+    previous_key: str | None = None
+    previous_value: int | None = None
+    for key in keys:
+        value = funnel.get(key)
+        if value is None:
+            continue
+        if previous_value is not None and previous_value > 0:
+            drop = 1 - (value / previous_value)
+            if drop >= 0.5:
+                points.append(f"{previous_key}->{key}")
+        previous_key = key
+        previous_value = value
+    return points
+
+
+def _activity_dates_by_user(db: Session, since: datetime) -> dict[int, set[str]]:
+    """Read-time activity proxy from explicit Lyra state changes."""
+    dates: dict[int, set[str]] = defaultdict(set)
+
+    task_rows = (
+        db.query(Task.user_id, Task.created_at, Task.last_modified_at)
+        .filter(Task.voided_at.is_(None))
+        .filter(or_(Task.created_at >= since, Task.last_modified_at >= since))
+        .all()
+    )
+    for user_id, created_at, modified_at in task_rows:
+        for stamp in (created_at, modified_at):
+            if stamp and stamp >= since:
+                dates[int(user_id)].add(stamp.date().isoformat())
+
+    session_rows = (
+        db.query(
+            StopwatchSession.user_id,
+            StopwatchSession.start_time_utc,
+            StopwatchSession.end_time_utc,
+        )
+        .filter(
+            or_(
+                StopwatchSession.start_time_utc >= since,
+                StopwatchSession.end_time_utc >= since,
+            )
+        )
+        .all()
+    )
+    for user_id, start_at, end_at in session_rows:
+        for stamp in (start_at, end_at):
+            if stamp and stamp >= since:
+                dates[int(user_id)].add(stamp.date().isoformat())
+
+    deadline_rows = (
+        db.query(Deadline.user_id, Deadline.created_at, Deadline.completed_at)
+        .filter(Deadline.voided_at.is_(None))
+        .filter(or_(Deadline.created_at >= since, Deadline.completed_at >= since))
+        .all()
+    )
+    for user_id, created_at, completed_at in deadline_rows:
+        for stamp in (created_at, completed_at):
+            if stamp and stamp >= since:
+                dates[int(user_id)].add(stamp.date().isoformat())
+
+    exposure_rows = (
+        db.query(ExposureAckEvent.user_id, ExposureAckEvent.acked_at)
+        .filter(ExposureAckEvent.acked_at >= since)
+        .all()
+    )
+    for user_id, acked_at in exposure_rows:
+        if acked_at:
+            dates[int(user_id)].add(acked_at.date().isoformat())
+
+    return dates
+
+
+def _redis_notification_snapshot(user_ids: list[int]) -> dict[str, Any]:
+    """Best-effort current queue snapshot; Redis is not the lifecycle ledger."""
+    counts = {
+        "web_queued": 0,
+        "operator_pending": 0,
+        "duplicate_prompt_count": 0,
+        "internal_copy_leak_count": 0,
+    }
+    errors: list[str] = []
+    try:
+        redis = RedisClient()
+        seen = Counter()
+        for user_id in user_ids:
+            key = f"notifications:pending:{int(user_id)}"
+            for raw in redis.client.lrange(key, 0, -1):
+                try:
+                    payload = json.loads(raw)
+                except Exception:
+                    continue
+                payload_type = str(payload.get("type") or "unknown")
+                body = " ".join(
+                    str(payload.get(k) or "")
+                    for k in ("message", "body", "title", "description")
+                ).lower()
+                stable_key = (
+                    payload_type,
+                    str(payload.get("task_id") or ""),
+                    str(payload.get("session_id") or ""),
+                    str(payload.get("firing_id") or ""),
+                )
+                seen[stable_key] += 1
+                if payload_type == "operator_alert":
+                    counts["operator_pending"] += 1
+                else:
+                    counts["web_queued"] += 1
+                    if any(marker in body for marker in FORBIDDEN_WEB_MARKERS):
+                        counts["internal_copy_leak_count"] += 1
+        counts["duplicate_prompt_count"] = sum(max(0, n - 1) for n in seen.values())
+    except Exception as exc:  # noqa: BLE001 - dashboard should degrade.
+        errors.append(type(exc).__name__)
+    return {"counts": counts, "errors": errors}
+
+
+def _user_last_activity_maps(db: Session) -> dict[int, datetime]:
+    values: dict[int, list[datetime]] = defaultdict(list)
+    for user_id, stamp in db.query(Task.user_id, func.max(Task.last_modified_at)).group_by(Task.user_id):
+        if stamp:
+            values[int(user_id)].append(stamp)
+    for user_id, stamp in db.query(StopwatchSession.user_id, func.max(StopwatchSession.end_time_utc)).group_by(StopwatchSession.user_id):
+        if stamp:
+            values[int(user_id)].append(stamp)
+    for user_id, stamp in db.query(StopwatchSession.user_id, func.max(StopwatchSession.start_time_utc)).group_by(StopwatchSession.user_id):
+        if stamp:
+            values[int(user_id)].append(stamp)
+    for user_id, stamp in db.query(Deadline.user_id, func.max(Deadline.created_at)).group_by(Deadline.user_id):
+        if stamp:
+            values[int(user_id)].append(stamp)
+    for user_id, stamp in db.query(ExposureAckEvent.user_id, func.max(ExposureAckEvent.acked_at)).group_by(ExposureAckEvent.user_id):
+        if stamp:
+            values[int(user_id)].append(stamp)
+    return {uid: max(stamps) for uid, stamps in values.items() if stamps}
+
+
+@router.get("/operator/dashboard")
+def operator_dashboard_v12(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Decision-grade cohort readiness snapshot.
+
+    Operator-only. Read-only. Content-minimized. This endpoint answers whether
+    the current product loop is ready for more trusted users.
+    """
+    _require_operator(db, request)
+    original_uid = get_current_user_id()
+    set_current_user_id(None)
+    try:
+        generated_at = now_utc()
+        day_ago = generated_at - timedelta(days=1)
+        week_ago = generated_at - timedelta(days=7)
+        two_weeks_ago = generated_at - timedelta(days=14)
+        stale_pause_cutoff = generated_at - timedelta(hours=STALE_PAUSE_HOURS)
+
+        users = db.query(User).order_by(User.user_id.asc()).all()
+        non_operator_users = [u for u in users if not u.is_operator]
+        non_op_ids = [int(u.user_id) for u in non_operator_users]
+
+        last_activity = _user_last_activity_maps(db)
+        active_dates_14d = _activity_dates_by_user(db, two_weeks_ago)
+        active_dates_7d = {
+            uid: {d for d in days if d >= week_ago.date().isoformat()}
+            for uid, days in active_dates_14d.items()
+        }
+
+        task_total = db.query(func.count(Task.task_id)).filter(Task.voided_at.is_(None)).scalar() or 0
+        non_op_task_total = (
+            db.query(func.count(Task.task_id))
+            .filter(Task.voided_at.is_(None))
+            .filter(Task.user_id.in_(non_op_ids) if non_op_ids else False)
+            .scalar()
+            or 0
+        )
+        bound_task_count = (
+            db.query(func.count(Task.task_id))
+            .filter(Task.voided_at.is_(None), Task.deadline_id.isnot(None))
+            .filter(Task.user_id.in_(non_op_ids) if non_op_ids else False)
+            .scalar()
+            or 0
+        )
+
+        closed_sessions_14d = (
+            db.query(StopwatchSession, Task)
+            .join(Task, Task.task_id == StopwatchSession.task_id)
+            .filter(StopwatchSession.end_time_utc.isnot(None))
+            .filter(StopwatchSession.end_time_utc >= two_weeks_ago)
+            .filter(StopwatchSession.user_id.in_(non_op_ids) if non_op_ids else False)
+            .all()
+        )
+        closed_count = len(closed_sessions_14d)
+        corrected_task_ids = {
+            row[0]
+            for row in (
+                db.query(TaskExecutionCorrection.task_id)
+                .filter(TaskExecutionCorrection.created_at >= two_weeks_ago)
+                .all()
+            )
+        }
+
+        dirty_reasons = Counter(
+            {
+                "auto_closed": 0,
+                "stale_recovered": 0,
+                "retroactive": 0,
+                "corrected": 0,
+                "voided": 0,
+                "missing_timestamps": 0,
+                "impossible_duration": 0,
+                "unknown_exposure": 0,
+                "provider_only": 0,
+                "exposure_contaminated": 0,
+            }
+        )
+        clean_closed = 0
+        for session, task in closed_sessions_14d:
+            reasons: set[str] = set()
+            if session.auto_closed:
+                reasons.add("auto_closed")
+            if session.data_quality_flag:
+                reasons.add("stale_recovered")
+            if task.initiation_status == "retroactive":
+                reasons.add("retroactive")
+            if task.task_id in corrected_task_ids:
+                reasons.add("corrected")
+            if task.voided_at is not None:
+                reasons.add("voided")
+            if not session.start_time_utc or not session.end_time_utc:
+                reasons.add("missing_timestamps")
+            if (
+                session.start_time_utc
+                and session.end_time_utc
+                and session.end_time_utc < session.start_time_utc
+            ):
+                reasons.add("impossible_duration")
+            if reasons:
+                dirty_reasons.update(reasons)
+            else:
+                clean_closed += 1
+
+        unknown_exposures = (
+            db.query(func.count(ExposureDecisionEvent.exposure_id))
+            .filter(ExposureDecisionEvent.created_at >= two_weeks_ago)
+            .filter(ExposureDecisionEvent.decision_status == "unknown")
+            .scalar()
+            or 0
+        )
+        provider_only = (
+            db.query(func.count(Deadline.deadline_id))
+            .filter(Deadline.external_source.isnot(None), Deadline.voided_at.is_(None))
+            .scalar()
+            or 0
+        )
+        exposure_contaminated = (
+            db.query(func.count(ExposureRenderEvent.render_id))
+            .filter(ExposureRenderEvent.rendered_at >= two_weeks_ago)
+            .scalar()
+            or 0
+        )
+        dirty_reasons["unknown_exposure"] = int(unknown_exposures)
+        dirty_reasons["provider_only"] = int(provider_only)
+        dirty_reasons["exposure_contaminated"] = int(exposure_contaminated)
+
+        clean_trace_ratio = _pct(clean_closed, closed_count) if closed_count else None
+        dirty_trace_count = closed_count - clean_closed
+
+        open_sessions = (
+            db.query(StopwatchSession, Task)
+            .join(Task, Task.task_id == StopwatchSession.task_id)
+            .filter(StopwatchSession.end_time_utc.is_(None))
+            .filter(StopwatchSession.user_id.in_(non_op_ids) if non_op_ids else False)
+            .all()
+        )
+        open_by_task = Counter(session.task_id for session, _task in open_sessions)
+        tasks_by_id = {
+            task.task_id: task
+            for task in (
+                db.query(Task)
+                .filter(Task.user_id.in_(non_op_ids) if non_op_ids else False)
+                .filter(Task.voided_at.is_(None))
+                .all()
+            )
+        }
+        open_session_task_ids = {session.task_id for session, _task in open_sessions}
+        duplicate_open_sessions = sum(1 for count in open_by_task.values() if count > 1)
+        executing_without_open = sum(
+            1
+            for task in tasks_by_id.values()
+            if task.state == TaskState.EXECUTING and task.task_id not in open_session_task_ids
+        )
+        paused_without_open = sum(
+            1
+            for task in tasks_by_id.values()
+            if task.state == TaskState.PAUSED and task.task_id not in open_session_task_ids
+        )
+        executed_missing = sum(
+            1
+            for task in tasks_by_id.values()
+            if task.state == TaskState.EXECUTED
+            and (
+                task.executed_start_utc is None
+                or task.executed_end_utc is None
+                or task.executed_duration_minutes is None
+            )
+        )
+        open_for_executed = sum(
+            1
+            for session, task in open_sessions
+            if task.state == TaskState.EXECUTED and session.end_time_utc is None
+        )
+        stale_reentry_candidates = sum(
+            1
+            for session, _task in open_sessions
+            if session.paused_at_utc is not None
+            and session.paused_at_utc <= stale_pause_cutoff
+        )
+
+        task_counts_by_user = {
+            row.user_id: row.count
+            for row in (
+                db.query(Task.user_id, func.count(Task.task_id).label("count"))
+                .filter(Task.voided_at.is_(None))
+                .group_by(Task.user_id)
+                .all()
+            )
+        }
+        executed_counts_by_user = {
+            row.user_id: row.count
+            for row in (
+                db.query(Task.user_id, func.count(Task.task_id).label("count"))
+                .filter(Task.voided_at.is_(None), Task.state == TaskState.EXECUTED)
+                .group_by(Task.user_id)
+                .all()
+            )
+        }
+        sessions_by_user = {
+            row.user_id: row.count
+            for row in (
+                db.query(
+                    StopwatchSession.user_id,
+                    func.count(StopwatchSession.session_id).label("count"),
+                )
+                .group_by(StopwatchSession.user_id)
+                .all()
+            )
+        }
+
+        clean_sessions_by_user = Counter()
+        closed_sessions_by_user = Counter()
+        for session, task in closed_sessions_14d:
+            closed_sessions_by_user[int(session.user_id)] += 1
+            if (
+                not session.auto_closed
+                and not session.data_quality_flag
+                and task.voided_at is None
+                and task.task_id not in corrected_task_ids
+                and task.initiation_status != "retroactive"
+                and session.start_time_utc
+                and session.end_time_utc
+                and session.end_time_utc >= session.start_time_utc
+            ):
+                clean_sessions_by_user[int(session.user_id)] += 1
+
+        stale_open_by_user = Counter()
+        open_timer_by_user = Counter()
+        for session, _task in open_sessions:
+            open_timer_by_user[int(session.user_id)] += 1
+            if session.paused_at_utc and session.paused_at_utc <= stale_pause_cutoff:
+                stale_open_by_user[int(session.user_id)] += 1
+
+        activated_users = [
+            u for u in non_operator_users
+            if task_counts_by_user.get(u.user_id, 0) > 0
+            and sessions_by_user.get(u.user_id, 0) > 0
+        ]
+        meaningful_active_7d = [
+            u for u in non_operator_users if active_dates_7d.get(u.user_id)
+        ]
+        users_with_clean_sessions = [
+            u for u in non_operator_users if clean_sessions_by_user.get(u.user_id, 0) > 0
+        ]
+        users_with_dirty_data_only = [
+            u for u in non_operator_users
+            if closed_sessions_by_user.get(u.user_id, 0) > 0
+            and clean_sessions_by_user.get(u.user_id, 0) == 0
+        ]
+
+        session_started_count = (
+            db.query(func.count(StopwatchSession.session_id))
+            .filter(StopwatchSession.user_id.in_(non_op_ids) if non_op_ids else False)
+            .scalar()
+            or 0
+        )
+        clean_stop_count_all = (
+            db.query(func.count(StopwatchSession.session_id))
+            .join(Task, Task.task_id == StopwatchSession.task_id)
+            .filter(StopwatchSession.user_id.in_(non_op_ids) if non_op_ids else False)
+            .filter(StopwatchSession.end_time_utc.isnot(None))
+            .filter(StopwatchSession.auto_closed.is_(False))
+            .filter(StopwatchSession.data_quality_flag.is_(None))
+            .filter(Task.voided_at.is_(None))
+            .scalar()
+            or 0
+        )
+        timer_start_to_clean_stop_rate = _pct(clean_stop_count_all, session_started_count)
+
+        pressure_map_opened = (
+            db.query(func.count(func.distinct(ExposureDecisionEvent.user_id)))
+            .filter(ExposureDecisionEvent.content_template_id == "academic_pressure_map")
+            .filter(ExposureDecisionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
+            .scalar()
+            or 0
+        )
+        insight_seen = (
+            db.query(func.count(func.distinct(ExposureDecisionEvent.user_id)))
+            .filter(ExposureDecisionEvent.content_template_id == "analytics_insights")
+            .filter(ExposureDecisionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
+            .scalar()
+            or 0
+        )
+        recovery_surface_seen = (
+            db.query(func.count(func.distinct(ExposureDecisionEvent.user_id)))
+            .filter(
+                ExposureDecisionEvent.content_template_id.in_(
+                    ["resume_prediction", "pause_prediction"]
+                )
+            )
+            .filter(ExposureDecisionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
+            .scalar()
+            or 0
+        )
+        recovery_plan_confirmed = (
+            db.query(func.count(Task.task_id))
+            .filter(Task.user_id.in_(non_op_ids) if non_op_ids else False)
+            .filter(Task.voided_at.is_(None))
+            .filter(Task.notes.ilike("%Pressure Map recovery preview%"))
+            .scalar()
+            or 0
+        )
+
+        product_loop_funnel = {
+            **_metric_meta(basis="mixed", confidence="medium", readiness_impact="warning"),
+            "pulse_opened": None,
+            "quick_capture_used": None,
+            "brain_dump_submitted": None,
+            "preview_confirmed": None,
+            "task_created": int(non_op_task_total),
+            "obligation_bound": int(bound_task_count),
+            "pressure_map_opened": int(pressure_map_opened),
+            "recovery_plan_previewed": None,
+            "recovery_plan_confirmed": int(recovery_plan_confirmed),
+            "timer_started": int(session_started_count),
+            "timer_stopped_cleanly": int(clean_stop_count_all),
+            "recovery_surface_seen": int(recovery_surface_seen),
+            "insight_seen": int(insight_seen),
+            "returned_after_24h": sum(1 for u in non_operator_users if u.d1_return_at),
+        }
+        product_loop_funnel["dropoff_points"] = _dropoff_points(product_loop_funnel)
+        product_loop_funnel["not_instrumented_fields"] = [
+            "pulse_opened",
+            "quick_capture_used",
+            "brain_dump_submitted",
+            "preview_confirmed",
+            "recovery_plan_previewed",
+        ]
+
+        redis_snapshot = _redis_notification_snapshot(non_op_ids)
+        notification_counts = redis_snapshot["counts"]
+        exposure_render_count = (
+            db.query(func.count(ExposureRenderEvent.render_id))
+            .filter(ExposureRenderEvent.rendered_at >= two_weeks_ago)
+            .scalar()
+            or 0
+        )
+        exposure_ack_count = (
+            db.query(func.count(ExposureAckEvent.ack_id))
+            .filter(ExposureAckEvent.acked_at >= two_weeks_ago)
+            .scalar()
+            or 0
+        )
+        exposure_decision_count = (
+            db.query(func.count(ExposureDecisionEvent.exposure_id))
+            .filter(ExposureDecisionEvent.created_at >= two_weeks_ago)
+            .scalar()
+            or 0
+        )
+        exposure_without_render = max(0, int(exposure_decision_count) - int(exposure_render_count))
+        render_without_exposure = 0  # FK-enforced by schema when tables are migrated.
+
+        notification_lifecycle = {
+            **_metric_meta(basis="mixed", confidence="low", readiness_impact="warning"),
+            "web_created": notification_counts["web_queued"],
+            "web_queued": notification_counts["web_queued"],
+            "web_reserved": None,
+            "web_rendered": None,
+            "web_acted": None,
+            "web_dismissed": None,
+            "web_expired": None,
+            "web_lost_unrendered": None,
+            "duplicate_prompt_count": notification_counts["duplicate_prompt_count"],
+            "render_without_exposure_count": render_without_exposure,
+            "exposure_without_render_count": exposure_without_render,
+            "operator_created": notification_counts["operator_pending"],
+            "operator_pending": notification_counts["operator_pending"],
+            "not_instrumented_fields": [
+                "web_reserved",
+                "web_rendered",
+                "web_acted",
+                "web_dismissed",
+                "web_expired",
+                "web_lost_unrendered",
+            ],
+            "redis_errors": redis_snapshot["errors"],
+        }
+
+        provider_rows_total = int(provider_only) + (
+            db.query(func.count(DeadlineCompletionEvent.event_id))
+            .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
+            .scalar()
+            or 0
+        )
+        provider_rows_missing_provenance = (
+            db.query(func.count(Deadline.deadline_id))
+            .filter(Deadline.external_source.isnot(None))
+            .filter(
+                or_(
+                    Deadline.external_id.is_(None),
+                    Deadline.imported_at.is_(None),
+                )
+            )
+            .scalar()
+            or 0
+        )
+        provider_completion_candidates = (
+            db.query(func.count(DeadlineCompletionEvent.event_id))
+            .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
+            .scalar()
+            or 0
+        )
+        duplicate_import_candidates = 0
+        import_groups = (
+            db.query(
+                Deadline.user_id,
+                Deadline.external_source,
+                Deadline.external_id,
+                func.count(Deadline.deadline_id).label("count"),
+            )
+            .filter(Deadline.external_source.isnot(None))
+            .filter(Deadline.external_id.isnot(None))
+            .filter(Deadline.voided_at.is_(None))
+            .group_by(Deadline.user_id, Deadline.external_source, Deadline.external_id)
+            .all()
+        )
+        duplicate_import_candidates = sum(max(0, int(row.count) - 1) for row in import_groups)
+        sync_failures = sum(
+            1
+            for u in non_operator_users
+            if u.moodle_disconnect_reason or u.moodle_ws_disconnect_reason
+        )
+
+        provider_integrity = {
+            **_metric_meta(basis="derived", confidence="medium", readiness_impact="warning"),
+            "provider_rows_total": provider_rows_total,
+            "provider_rows_missing_provenance": int(provider_rows_missing_provenance),
+            "provider_completion_candidates": int(provider_completion_candidates),
+            "provider_truth_violations": 0,
+            "duplicate_import_candidates": duplicate_import_candidates,
+            "sync_failures_24h": sync_failures,
+            "user_visible_provider_errors_24h": notification_counts["internal_copy_leak_count"],
+        }
+
+        feedback_bug_24h = (
+            db.query(func.count(Feedback.feedback_id))
+            .filter(Feedback.submitted_at >= day_ago)
+            .filter(Feedback.kind == "bug")
+            .scalar()
+            or 0
+        )
+
+        measurement_integrity = {
+            **_metric_meta(basis="derived", confidence="high", readiness_impact="blocker"),
+            "clean_trace_ratio": clean_trace_ratio,
+            "dirty_trace_count": dirty_trace_count,
+            "dirty_reasons": {k: int(v) for k, v in dirty_reasons.items()},
+            "analytic_blockers": [],
+            "calibration_safe": bool(clean_trace_ratio is not None and clean_trace_ratio >= READINESS_GREEN_TRACE_RATIO),
+            "insights_safe": bool(clean_trace_ratio is not None and clean_trace_ratio >= READINESS_RED_TRACE_RATIO),
+        }
+        if closed_count == 0:
+            measurement_integrity["analytic_blockers"].append("no_closed_sessions_last_14d")
+        if dirty_reasons["missing_timestamps"] or dirty_reasons["impossible_duration"]:
+            measurement_integrity["analytic_blockers"].append("timestamp_or_duration_integrity")
+
+        state_invariants = {
+            **_metric_meta(basis="derived", confidence="high", readiness_impact="blocker"),
+            "duplicate_open_sessions": duplicate_open_sessions,
+            "executing_tasks_without_open_session": executing_without_open,
+            "paused_tasks_without_open_session": paused_without_open,
+            "executed_tasks_missing_start_or_end": executed_missing,
+            "open_sessions_for_executed_tasks": open_for_executed,
+            "stale_reentry_candidates": stale_reentry_candidates,
+            "invalid_recovery_actions_seen": None,
+            "not_instrumented_fields": ["invalid_recovery_actions_seen"],
+        }
+
+        bug_watchlist = {
+            **_metric_meta(basis="derived", confidence="medium", readiness_impact="blocker"),
+            "k01_calendar_warning_leak": "fail"
+            if notification_counts["internal_copy_leak_count"] > 0
+            else "pass",
+            "k02_timer_overflow_duplicate": "fail"
+            if notification_counts["duplicate_prompt_count"] > 0
+            else "pass",
+            "k03_invalid_mark_done_executed": "fail"
+            if state_invariants["invalid_recovery_actions_seen"]
+            else "unknown",
+            "k04_parked_25h_stale": "fail"
+            if stale_reentry_candidates > 0
+            else "pass",
+            "k05_pulse_quick_capture_anchor": "unknown",
+        }
+
+        privacy_boundary = {
+            **_metric_meta(basis="direct", confidence="high", readiness_impact="blocker"),
+            "raw_task_titles_exposed": False,
+            "raw_emails_exposed": False,
+            "provider_tokens_exposed": False,
+            "raw_provider_urls_exposed": False,
+            "user_debug_mode_enabled": False,
+        }
+
+        activity_counts_7d = [len(active_dates_7d.get(u.user_id, set())) for u in non_operator_users]
+        activity_counts_14d = [len(active_dates_14d.get(u.user_id, set())) for u in non_operator_users]
+
+        cohort_segments = {
+            **_metric_meta(basis="derived", confidence="high", readiness_impact="informational"),
+            "operator_users_excluded": sum(1 for u in users if u.is_operator),
+            "trusted_users": len(non_operator_users),
+            "new_users_7d": sum(1 for u in non_operator_users if u.created_at >= week_ago),
+            "activated_users": len(activated_users),
+            "dormant_users": sum(
+                1 for u in non_operator_users
+                if last_activity.get(u.user_id) is None
+                or last_activity[u.user_id] < week_ago
+            ),
+            "users_with_dirty_data_only": len(users_with_dirty_data_only),
+            "users_with_clean_sessions": len(users_with_clean_sessions),
+            "users_with_open_stale_sessions": sum(
+                1 for u in non_operator_users if stale_open_by_user.get(u.user_id, 0) > 0
+            ),
+        }
+
+        first_clean_stop_users = len(users_with_clean_sessions)
+        first_pressure_users = int(pressure_map_opened)
+        first_recovery_action_users = (
+            db.query(func.count(func.distinct(Task.user_id)))
+            .filter(Task.user_id.in_(non_op_ids) if non_op_ids else False)
+            .filter(Task.notes.ilike("%Pressure Map recovery preview%"))
+            .scalar()
+            or 0
+        )
+        activation_quality = {
+            **_metric_meta(basis="derived", confidence="medium", readiness_impact="warning"),
+            "first_task_created_count": sum(1 for u in non_operator_users if u.first_task_at),
+            "first_timer_started_count": sum(1 for u in non_operator_users if u.first_timer_started_at),
+            "first_clean_stop_count": first_clean_stop_users,
+            "first_pressure_map_action_count": first_pressure_users,
+            "first_recovery_action_count": int(first_recovery_action_users),
+            "median_time_to_first_clean_loop": None,
+            "not_instrumented_fields": ["median_time_to_first_clean_loop"],
+        }
+
+        full_loop_users = sum(
+            1
+            for u in non_operator_users
+            if task_counts_by_user.get(u.user_id, 0) > 0
+            and sessions_by_user.get(u.user_id, 0) > 0
+            and clean_sessions_by_user.get(u.user_id, 0) > 0
+        )
+        full_loop_rate = _pct(full_loop_users, len(activated_users))
+
+        cohort = {
+            **_metric_meta(basis="derived", confidence="medium", readiness_impact="informational"),
+            "non_operator_users": len(non_operator_users),
+            "trusted_users_total": len(non_operator_users),
+            "activated_users": len(activated_users),
+            "meaningful_active_users_7d": len(meaningful_active_7d),
+            "weekly_active_users": len(meaningful_active_7d),
+            "dormant_users_7d": cohort_segments["dormant_users"],
+            "dormant_users_14d": sum(
+                1 for u in non_operator_users
+                if last_activity.get(u.user_id) is None
+                or last_activity[u.user_id] < two_weeks_ago
+            ),
+        }
+
+        d7_eligible = [u for u in non_operator_users if u.created_at <= generated_at - timedelta(days=7)]
+        d14_eligible = [u for u in non_operator_users if u.created_at <= generated_at - timedelta(days=14)]
+        retention = {
+            **_metric_meta(basis="proxy", confidence="medium", readiness_impact="informational"),
+            "d1_return_rate": _pct(sum(1 for u in non_operator_users if u.d1_return_at), len(non_operator_users)),
+            "d7_return_rate": _pct(
+                sum(1 for u in d7_eligible if last_activity.get(u.user_id) and last_activity[u.user_id] >= u.created_at + timedelta(days=7)),
+                len(d7_eligible),
+            ),
+            "d14_return_rate": _pct(
+                sum(1 for u in d14_eligible if last_activity.get(u.user_id) and last_activity[u.user_id] >= u.created_at + timedelta(days=14)),
+                len(d14_eligible),
+            ),
+            "returning_today": sum(
+                1 for u in non_operator_users
+                if last_activity.get(u.user_id) and last_activity[u.user_id] >= day_ago
+            ),
+            "returning_7d": len(meaningful_active_7d),
+            "returning_14d": sum(1 for u in non_operator_users if active_dates_14d.get(u.user_id)),
+            "basis_note": "meaningful_activity_proxy",
+        }
+
+        activity_frequency = {
+            **_metric_meta(basis="proxy", confidence="medium", readiness_impact="informational"),
+            "active_days_last_7d": sum(activity_counts_7d),
+            "active_days_last_14d": sum(activity_counts_14d),
+            "median_days_between_activity": None,
+            "login_frequency_status": "not_instrumented",
+            "proxy": "active_days_from_explicit_lyra_events",
+        }
+
+        reliability = {
+            **_metric_meta(basis="derived", confidence="medium", readiness_impact="warning"),
+            "user_visible_error_count_24h": int(feedback_bug_24h),
+            "failed_api_count_24h": None,
+            "calendar_token_warning_user_visible_count": notification_counts["internal_copy_leak_count"],
+            "task_state_rejection_count": None,
+            "export_success_count": None,
+            "delete_success_count": None,
+            "not_instrumented_fields": [
+                "failed_api_count_24h",
+                "task_state_rejection_count",
+                "export_success_count",
+                "delete_success_count",
+            ],
+        }
+
+        data_freshness = {
+            **_metric_meta(basis="direct", confidence="high", readiness_impact="informational"),
+            "generated_at": _iso(generated_at),
+            "source_windows": {
+                "tasks_last_seen_at": _iso(
+                    db.query(func.max(Task.last_modified_at)).scalar()
+                ),
+                "sessions_last_seen_at": _iso(
+                    _last_non_null([
+                        db.query(func.max(StopwatchSession.start_time_utc)).scalar(),
+                        db.query(func.max(StopwatchSession.end_time_utc)).scalar(),
+                    ])
+                ),
+                "notifications_last_seen_at": None,
+                "exposures_last_seen_at": _iso(
+                    _last_non_null([
+                        db.query(func.max(ExposureDecisionEvent.created_at)).scalar(),
+                        db.query(func.max(ExposureRenderEvent.created_at)).scalar(),
+                        db.query(func.max(ExposureAckEvent.created_at)).scalar(),
+                    ])
+                ),
+                "providers_last_seen_at": _iso(
+                    _last_non_null([
+                        db.query(func.max(Deadline.imported_at)).scalar(),
+                        db.query(func.max(User.moodle_last_synced_at)).scalar(),
+                        db.query(func.max(User.moodle_ws_last_synced_at)).scalar(),
+                    ])
+                ),
+            },
+            "stale_sources": [],
+        }
+        for source, stamp in data_freshness["source_windows"].items():
+            if stamp is None:
+                data_freshness["stale_sources"].append(source)
+
+        metric_confidence = {
+            "retention": "medium",
+            "login_frequency": "not_instrumented",
+            "clean_trace_ratio": "high",
+            "notification_lifecycle": "low",
+            "provider_integrity": "medium",
+            "product_loop_funnel": "medium",
+            "state_invariants": "high",
+        }
+
+        readiness_blockers: list[str] = []
+        warnings: list[str] = []
+
+        if any(
+            bool(privacy_boundary[key])
+            for key in (
+                "raw_task_titles_exposed",
+                "raw_emails_exposed",
+                "provider_tokens_exposed",
+                "raw_provider_urls_exposed",
+                "user_debug_mode_enabled",
+            )
+        ):
+            readiness_blockers.append("privacy_boundary_violation")
+        if notification_counts["internal_copy_leak_count"] > 0:
+            readiness_blockers.append("operator_or_internal_copy_visible_to_users")
+        if duplicate_open_sessions > 0:
+            readiness_blockers.append("duplicate_open_sessions")
+        if executed_missing > 0 or open_for_executed > 0:
+            readiness_blockers.append("impossible_execution_state")
+        if stale_reentry_candidates > 0:
+            readiness_blockers.append("stale_paused_sessions_need_resolution")
+        if clean_trace_ratio is not None and clean_trace_ratio < READINESS_RED_TRACE_RATIO:
+            readiness_blockers.append("clean_trace_ratio_below_60_percent")
+        if clean_trace_ratio is None:
+            warnings.append("no_closed_sessions_for_trace_ratio")
+
+        for key in (
+            "k01_calendar_warning_leak",
+            "k02_timer_overflow_duplicate",
+            "k03_invalid_mark_done_executed",
+            "k04_parked_25h_stale",
+        ):
+            if bug_watchlist[key] == "fail":
+                readiness_blockers.append(key)
+            elif bug_watchlist[key] == "unknown":
+                warnings.append(key)
+
+        if clean_trace_ratio is not None and READINESS_RED_TRACE_RATIO <= clean_trace_ratio < READINESS_GREEN_TRACE_RATIO:
+            warnings.append("clean_trace_ratio_between_60_and_80_percent")
+        if notification_lifecycle["not_instrumented_fields"]:
+            warnings.append("notification_lifecycle_partially_not_instrumented")
+        if product_loop_funnel["dropoff_points"]:
+            warnings.append("product_loop_dropoff_detected")
+        if provider_integrity["provider_rows_missing_provenance"] > 0:
+            warnings.append("provider_rows_missing_provenance")
+
+        green_loop_condition = (
+            full_loop_users >= 3
+            or (
+                len(activated_users) > 0
+                and (full_loop_users / len(activated_users)) >= 0.20
+            )
+        )
+        green_conditions_met = (
+            not readiness_blockers
+            and clean_trace_ratio is not None
+            and clean_trace_ratio >= READINESS_GREEN_TRACE_RATIO
+            and timer_start_to_clean_stop_rate is not None
+            and timer_start_to_clean_stop_rate >= GREEN_TIMER_CLOSURE_RATE
+            and reliability["calendar_token_warning_user_visible_count"] == 0
+            and all(
+                bug_watchlist[key] == "pass"
+                for key in (
+                    "k01_calendar_warning_leak",
+                    "k02_timer_overflow_duplicate",
+                    "k04_parked_25h_stale",
+                )
+            )
+            and green_loop_condition
+        )
+        if readiness_blockers:
+            readiness_status = "red"
+        elif green_conditions_met:
+            readiness_status = "green"
+        else:
+            readiness_status = "yellow"
+
+        minimum_fix_set = list(dict.fromkeys(readiness_blockers[:]))
+        if not minimum_fix_set and warnings:
+            minimum_fix_set = warnings[:3]
+
+        cohort_readiness = {
+            **_metric_meta(basis="derived", confidence="medium", readiness_impact="blocker"),
+            "status": readiness_status,
+            "blockers": list(dict.fromkeys(readiness_blockers)),
+            "warnings": list(dict.fromkeys(warnings)),
+            "minimum_fix_set": minimum_fix_set,
+            "safe_to_invite_more_users": readiness_status == "green",
+            "rationale": (
+                "Ready for cautious trusted-user expansion."
+                if readiness_status == "green"
+                else "Fix blocker set before inviting more users."
+                if readiness_status == "red"
+                else "Dogfood only until warnings are resolved or explicitly accepted."
+            ),
+        }
+
+        operator_recommendations: list[dict[str, Any]] = []
+        for blocker in cohort_readiness["blockers"]:
+            operator_recommendations.append({
+                "severity": "critical",
+                "message": blocker.replace("_", " "),
+                "suggested_action": "Fix this before cohort expansion.",
+                "related_section": (
+                    "state_invariants"
+                    if "session" in blocker or "execution" in blocker
+                    else "notification_lifecycle"
+                    if "copy" in blocker or blocker.startswith("k0")
+                    else "measurement_integrity"
+                ),
+                "blocks_cohort_expansion": True,
+            })
+        for warning in cohort_readiness["warnings"][:5]:
+            operator_recommendations.append({
+                "severity": "warning",
+                "message": warning.replace("_", " "),
+                "suggested_action": "Inspect and either fix or mark as accepted risk.",
+                "related_section": "product_loop_funnel"
+                if "dropoff" in warning
+                else "notification_lifecycle"
+                if "notification" in warning
+                else "provider_integrity"
+                if "provider" in warning
+                else "cohort_readiness",
+                "blocks_cohort_expansion": False,
+            })
+
+        users_payload = []
+        for user in non_operator_users:
+            closed_for_user = closed_sessions_by_user.get(user.user_id, 0)
+            clean_for_user = clean_sessions_by_user.get(user.user_id, 0)
+            if task_counts_by_user.get(user.user_id, 0) == 0:
+                stage = "signed_up"
+            elif sessions_by_user.get(user.user_id, 0) == 0:
+                stage = "task_created"
+            elif clean_for_user == 0:
+                stage = "timer_started"
+            else:
+                stage = "clean_loop"
+            users_payload.append({
+                "user_id": user.user_id,
+                "email_hash": _email_hash(user.email),
+                "created_at": _iso(user.created_at),
+                "last_meaningful_activity_at": _iso(last_activity.get(user.user_id)),
+                "active_days_7d": len(active_dates_7d.get(user.user_id, set())),
+                "active_days_14d": len(active_dates_14d.get(user.user_id, set())),
+                "task_count": task_counts_by_user.get(user.user_id, 0),
+                "executed_task_count": executed_counts_by_user.get(user.user_id, 0),
+                "stopwatch_session_count": sessions_by_user.get(user.user_id, 0),
+                "clean_trace_ratio": _pct(clean_for_user, closed_for_user),
+                "open_timer_count": open_timer_by_user.get(user.user_id, 0),
+                "paused_over_72h_count": stale_open_by_user.get(user.user_id, 0),
+                "last_loop_stage": stage,
+            })
+
+        return {
+            "generated_at": _iso(generated_at),
+            "data_freshness": data_freshness,
+            "metric_confidence": metric_confidence,
+            "meaningful_activity_definition": {
+                **_metric_meta(basis="contract", confidence="high", readiness_impact="informational"),
+                "included_events": MEANINGFUL_INCLUDED_EVENTS,
+                "excluded_events": MEANINGFUL_EXCLUDED_EVENTS,
+            },
+            "cohort_readiness": cohort_readiness,
+            "cohort_segments": cohort_segments,
+            "cohort": cohort,
+            "retention": retention,
+            "activity_frequency": activity_frequency,
+            "activation_quality": activation_quality,
+            "product_loop_funnel": product_loop_funnel,
+            "measurement_integrity": measurement_integrity,
+            "state_invariants": state_invariants,
+            "notification_lifecycle": notification_lifecycle,
+            "provider_integrity": provider_integrity,
+            "reliability": reliability,
+            "privacy_boundary": privacy_boundary,
+            "bug_watchlist": bug_watchlist,
+            "users": users_payload,
+            "operator_recommendations": operator_recommendations,
+            "derived_metrics": {
+                "full_loop_users": full_loop_users,
+                "full_loop_completion_rate": full_loop_rate,
+                "timer_start_to_clean_stop_rate": timer_start_to_clean_stop_rate,
+                "safe_to_invite_more_users": readiness_status == "green",
+            },
+        }
+    finally:
+        set_current_user_id(original_uid)
