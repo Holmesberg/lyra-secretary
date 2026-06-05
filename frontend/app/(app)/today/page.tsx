@@ -40,6 +40,7 @@ import {
   type ExternalCalendarEvent,
 } from "@/lib/calendar";
 import { ackExposureRender } from "@/lib/api";
+import { announceUndoAvailable } from "@/lib/undo";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -813,6 +814,7 @@ function TodayInner() {
     );
     try {
       await deleteTask(task.task_id);
+      announceUndoAvailable("Task deleted.");
       refresh();
     } catch (e: any) {
       setErrorMsg(e?.message ?? "Failed to delete task");

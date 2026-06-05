@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,6 +14,10 @@ from app.db.models import (
     ExposureRenderEvent,
     ReflectionViewLog,
     SuppressionEvent,
+    StopwatchSession,
+    Task,
+    TaskSource,
+    TaskState,
     User,
 )
 from app.main import app
@@ -617,6 +621,69 @@ def test_task_creation_nudge_lookup_emits_exposure_when_it_will_render(db):
     assert "occupancy_suggested_minutes" in render.content_snapshot
     assert "personal_weight" in render.content_snapshot
     assert "prior_weight" in render.content_snapshot
+
+
+def test_task_creation_nudge_lookup_excludes_dirty_personal_rows(db):
+    user = User(
+        email=f"creation-nudge-dirty-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=False,
+    )
+    db.add(user)
+    if db.query(Archetype).filter_by(archetype_id="diffuse_average").first() is None:
+        db.add(
+            Archetype(
+                archetype_id="diffuse_average",
+                name="Diffuse Average",
+                prior_bias_factor=1.30,
+                prior_sigma=0.30,
+            )
+        )
+    db.flush()
+
+    base = datetime.utcnow() - timedelta(days=2)
+    for idx in range(5):
+        task = Task(
+            task_id=str(uuid4()),
+            title=f"dirty-study-{idx}",
+            planned_start_utc=base + timedelta(hours=idx),
+            planned_end_utc=base + timedelta(hours=idx, minutes=30),
+            planned_duration_minutes=30,
+            executed_start_utc=base + timedelta(hours=idx),
+            executed_end_utc=base + timedelta(hours=idx, minutes=180),
+            executed_duration_minutes=180,
+            state=TaskState.EXECUTED,
+            source=TaskSource.MANUAL,
+            user_id=user.user_id,
+            category="study",
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            StopwatchSession(
+                session_id=str(uuid4()),
+                task_id=task.task_id,
+                user_id=user.user_id,
+                start_time_utc=task.executed_start_utc,
+                end_time_utc=task.executed_end_utc,
+                total_paused_minutes=0.0,
+                auto_closed=False,
+                data_quality_flag="user_resolved_stale_pause",
+            )
+        )
+    db.commit()
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/v1/analytics/bias_factor/lookup?category=study&tod=morning&planned_minutes=30",
+            headers=auth_headers(user.user_id),
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["source"] == "research"
+    assert body["cell"]["sessions"] == 0
+    assert body["personal_weight"] == 0.0
 
 
 def test_task_creation_nudge_lookup_suppresses_if_exposure_logging_fails(db, monkeypatch):

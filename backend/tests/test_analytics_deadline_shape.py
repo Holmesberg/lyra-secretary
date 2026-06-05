@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from app.db.models import (
     Deadline,
+    StopwatchSession,
     Task,
     TaskDeadlineOutcome,
     TaskSource,
@@ -32,6 +33,7 @@ client = TestClient(app, raise_server_exceptions=False)
 def _clean_slate(db):
     db.rollback()
     db.query(TaskDeadlineOutcome).delete()
+    db.query(StopwatchSession).delete()
     db.query(Task).delete()
     db.query(Deadline).delete()
     db.query(User).delete()
@@ -39,6 +41,7 @@ def _clean_slate(db):
     yield
     db.rollback()
     db.query(TaskDeadlineOutcome).delete()
+    db.query(StopwatchSession).delete()
     db.query(Task).delete()
     db.query(Deadline).delete()
     db.query(User).delete()
@@ -110,6 +113,17 @@ def _seed_outcome(
     )
     db.add(task)
     db.flush()
+    db.add(
+        StopwatchSession(
+            session_id=str(uuid4()),
+            task_id=task.task_id,
+            user_id=user_id,
+            start_time_utc=task.executed_start_utc,
+            end_time_utc=task.executed_end_utc,
+            total_paused_minutes=0.0,
+            auto_closed=False,
+        )
+    )
 
     outcome = TaskDeadlineOutcome(
         task_id=task.task_id,
@@ -295,6 +309,17 @@ def test_per_deadline_aggregates(db):
             )
             db.add(t)
             db.flush()
+            db.add(
+                StopwatchSession(
+                    session_id=str(uuid4()),
+                    task_id=t.task_id,
+                    user_id=user.user_id,
+                    start_time_utc=t.executed_start_utc,
+                    end_time_utc=t.executed_end_utc,
+                    total_paused_minutes=0.0,
+                    auto_closed=False,
+                )
+            )
 
             o = TaskDeadlineOutcome(
                 task_id=t.task_id,
@@ -318,3 +343,22 @@ def test_per_deadline_aggregates(db):
     # bias_factor_observed exposed (Rule 15)
     assert per_dl["DL-A"]["bias_factor_observed"] is not None
     assert per_dl["DL-B"]["bias_factor_observed"] is not None
+
+
+def test_dirty_stopwatch_session_excluded(db):
+    user = _make_user(db, "dirty-session@example.com")
+    _seed_outcome(db, user.user_id, delay_minutes=-5)
+    _, dirty_task, _ = _seed_outcome(db, user.user_id, delay_minutes=10)
+    session = (
+        db.query(StopwatchSession)
+        .filter(StopwatchSession.task_id == dirty_task.task_id)
+        .one()
+    )
+    session.data_quality_flag = "user_resolved_stale_pause"
+    db.commit()
+
+    resp = client.get("/v1/analytics/deadline-shape", headers=_hdr(user.user_id))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["summary"]["total_outcomes"] == 1
+    assert body["summary"]["deadline_met_count"] == 1

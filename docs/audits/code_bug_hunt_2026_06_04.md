@@ -105,8 +105,8 @@ Verification method:
   - one paused stopwatch session parked for `73h`;
 - opened `/pulse#quick-capture` directly, without visiting Today;
 - screenshots:
-  - `C:\Users\alina\AppData\Local\Temp\lyra-wave-a-1780658138440\pulse-wave-a.png`;
-  - `C:\Users\alina\AppData\Local\Temp\lyra-wave-a-1780658138440\stale-resolution-modal.png`;
+  - `tmp/lyra-wave-a-1780658138440/pulse-wave-a.png`;
+  - `tmp/lyra-wave-a-1780658138440/stale-resolution-modal.png`;
 - synthetic user, rows, notification queue, stopwatch Redis state, task-range
   cache, `/me` cache, and exposure-ledger rows were cleaned up afterward.
 
@@ -129,6 +129,322 @@ clean-measurement work, Wave C provider/data-sovereignty work, or Wave D
 formal exposure-registration work.
 ```
 
+## Wave B Implementation And Verification - 2026-06-05
+
+Status: implemented and verified on the deployed public web app.
+
+What changed:
+
+- visible undo UX:
+  - added a global app-shell undo toast with a visible `UNDO` button;
+  - task creation and task deletion now announce undo availability;
+  - undo invalidates task, range, evidence, stopwatch, deadline, operator, and
+    `/me` query state after completion;
+  - Pulse/Today no longer depend on an invisible 30-second backend capability.
+- Pulse stop flow:
+  - captures post-task focus rating;
+  - captures completion percentage;
+  - captures scope outcome (`Plan`, `Expanded`, `Reduced`);
+  - keeps the entered completion/scope values through the early-stop
+    confirmation gate;
+  - fixed the readiness control so the visible default `Steady` value is a real
+    selectable value and does not leave `Start session` disabled.
+- clean measurement gates:
+  - bias lookup now sources personal evidence from the shared planning
+    calibration clean primitive instead of hand-rolled task filters;
+  - planning-calibration output surfaces now reuse the same clean task
+    primitive before exposure filtering;
+  - deadline-shape outcomes now require clean stopwatch evidence and exclude
+    dirty, repaired, auto-closed, corrected, retroactive, imported, voided, and
+    incomplete execution rows.
+
+Verification:
+
+- backend targeted tests:
+  - `backend/tests/test_analytics_deadline_shape.py`;
+  - `backend/tests/test_output_surfaces.py::test_task_creation_nudge_lookup_emits_exposure_when_it_will_render`;
+  - `backend/tests/test_output_surfaces.py::test_task_creation_nudge_lookup_excludes_dirty_personal_rows`;
+  - `backend/tests/test_output_surfaces.py::test_product_surfaces_do_not_fall_back_to_operator_without_identity`;
+  - `backend/tests/test_last_task_and_undo_scoping.py`;
+  - result: `16 passed`.
+- frontend build:
+  - `npm run build`;
+  - result: passed.
+- public browser verification through an authenticated app account:
+  - undo toast was visible after task creation with a `30s undo window`
+    countdown;
+  - clicking `UNDO` successfully soft-deleted the created task on the backend;
+  - Pulse stop modal showed focus, `Done %`, and `Scope`;
+  - submitting `90%`, focus `4`, and `Expanded` persisted:
+    - `Task.post_task_reflection=4`;
+    - `Task.scope_outcome=expanded`;
+    - `StopwatchSession.task_completion_percentage=90`;
+  - exact synthetic verification task/session rows were deleted after proof.
+
+Screenshots:
+
+- `tmp/lyra-wave-b-1780661587319/undo-visible-final.png`;
+- `tmp/lyra-wave-b-1780661587319/undo-clicked-final.png`;
+- `tmp/lyra-wave-b-1780661587319/pulse-readiness-default.png`;
+- `tmp/lyra-wave-b-1780661587319/pulse-reflection-controls.png`;
+- `tmp/lyra-wave-b-1780661587319/pulse-early-confirm-values-persist.png`.
+
+Important nuance:
+
+```text
+Wave B closes the current clean-measurement implementation pass for bias lookup,
+insights/task-surface clean selection, deadline-shape filtering, and Pulse stop
+field capture. Wave C provider/data-sovereignty work and Wave D formal exposure
+registration remain open.
+```
+
+## Six-Agent Neutralization Verification - 2026-06-05
+
+Status: verification report only.
+May authorize code: false.
+Runtime owner: none.
+
+Scope:
+
+- the original K01-K05 and B01-B10 bug hunt classes;
+- the two attached hidden-bug-class prompts:
+  - Redis/Postgres concurrency fractures;
+  - temporal boundary tearing;
+  - provider backpressure;
+  - local cache/polling failure modes;
+  - scheduler idempotency/stale reads;
+  - denominator/operator/test contamination;
+  - soft-delete leakage;
+  - unit/time-source mismatch;
+  - optimistic/multi-tab races;
+  - partial transactions;
+  - cache-key collisions;
+  - not-instrumented-as-zero;
+  - dashboard self-contamination;
+  - over-strict cleanliness.
+
+Screenshot hygiene:
+
+```text
+All new verification screenshots for this pass must live under repo tmp/.
+Do not save or document new screenshots under C:\Users\...\Temp.
+```
+
+The previous Wave A screenshots were moved into:
+
+- `tmp/lyra-wave-a-1780658138440/pulse-wave-a.png`
+- `tmp/lyra-wave-a-1780658138440/stale-resolution-modal.png`
+
+### Executive Result
+
+The visible Wave A failures are neutralized for the tested web path, but the
+broader bug classes are not fully neutralized.
+
+```text
+User-facing notification leaks: mostly neutralized.
+Stale-pause reflection UX: neutralized for the seeded Pulse path.
+Clean measurement integrity: still occurring.
+Provider/data sovereignty: still occurring.
+Brain-dump/idempotency loop: still occurring.
+Temporal/deploy reliability: still occurring.
+```
+
+The highest-risk remaining pattern:
+
+```text
+The app often looks correct while Lyra's measurement belief about reality can
+still become wrong.
+```
+
+### Agent 1 - Notifications, Exposure, Scheduler Outputs
+
+| Bug class | Status | Evidence | Required verification |
+|---|---|---|---|
+| Web fetch drains before render | Neutralized | Web delivery uses peek/ack: `backend/app/api/v1/endpoints/notifications.py`, `backend/app/services/notification_queue.py`. | Browser/API: repeated `/web/pending` polls do not remove queued prompts until ack. |
+| Operator alert web leakage | Neutralized | `operator_alert` is filtered from web-visible notifications and preserved for OpenClaw. | Browser: seed `operator_alert`; verify Pulse/Today show nothing. |
+| Pulse/app notification host | Neutralized | App shell mounts `AppNotificationHost`; Pulse receives queued web notifications without Today. | Browser route on `/pulse`, not `/today`. |
+| Raw float / OpenClaw copy web leak | Neutralized | Timer overflow web copy ignores raw payload message and formats integer minutes. | Browser: seed raw-float/`Reply with` payload. |
+| Ack before actual display | Still occurring | `AppNotificationHost` acks all fetched IDs, including unknown, duplicate, or truncated invisible toasts. | Queue 4+ notifications and an unknown type; assert only rendered IDs are acked. |
+| Queued/rendered/acted/dismissed lifecycle separation | Still occurring | Notification ack is still one removal primitive, not a lifecycle state machine. | Add lifecycle tests for queued, rendered, dismissed, acted, expired, lost-unrendered. |
+| Timer overflow output surface | Still occurring | Output registry has reminders/pause/resume, but no registered timer-overflow surface. | Timer overflow should emit registered decision and render ack. |
+| Timer overflow duplicate durability | Still occurring | Dedupe is Redis TTL / process-local, not durable across Redis/process restart. | Restart/clear Redis/process and assert no duplicate overflow event. |
+| Pause/resume duplicate prompts | Neutralized | Pause/resume prediction logs use durable DB cooldown/caps. | Keep restart-simulation regression optional. |
+
+Agent test note:
+
+- Targeted notification/exposure scheduler tests passed: `48 passed`.
+
+### Agent 2 - Stopwatch, Re-entry, Cache Invalidation
+
+| Bug class | Status | Evidence | Required verification |
+|---|---|---|---|
+| Stale recovery incomplete `EXECUTED` truth | Neutralized | Old paused sessions are left for user resolution; stale resolution stamps execution interval and dirty flag. | Add exact assertion for `executed_start_utc` / `executed_end_utc` after resolution. |
+| User-resolved stale pause clean-calibration exclusion | Neutralized | `data_quality_flag=user_resolved_stale_pause`; Cortex clean session gate excludes dirty rows. | Keep clean-profile regression. |
+| Redis-active stale pauses | Still occurring | `stale_session_recovery.py` skips Redis-active sessions before stale-age handling. Pulse can show them if pause state exists, but job does not clear/recover them. | Seed Redis active+paused `73h`; run recovery; assert it surfaces/resolves and clears Redis. |
+| Task-range/evidence cache invalidation | Still occurring | Stopwatch paths mostly invalidate; `skip_task`, `delete_task`, `swap_tasks`, `reschedule_task`, and workers still commit without broad range invalidation. | Warm `/tasks/query`, mutate via each path, refetch before TTL. |
+| K03 invalid mark-done on `EXECUTED` | Still occurring as a class | Backend rejects and Pulse dismisses after rejection, but stale cached evidence can still render an invalid card. | Browser: warm Pulse, execute elsewhere, return without hard refresh. |
+| K04 stale pause UX | Partially neutralized | Age tiers and required modal fields exist. Redis-active stale pause escape remains. | Browser seed 30m/8h/25h/73h, including Redis-active 73h. |
+| 72h and 80% boundaries | Unknown | Code uses `>=72h` and `>=80%`; tests cover near cases but not exact threshold edges. | Add 71h59m/72h/72h+1s and 79/80/81% tests. |
+| Double-tap / multi-tab idempotency | Still occurring | UI pending guards exist, but stopwatch/mark-done endpoints lack request idempotency keys. | Multi-tab POST race tests for start/pause/resume/stop/mark-done. |
+
+Agent test note:
+
+- Targeted stale-pause/state/switch tests passed: `28 passed`.
+
+### Agent 3 - Measurement Cleanliness And Operator Dashboard
+
+| Bug class | Status | Evidence | Required verification |
+|---|---|---|---|
+| Exposure firewall primitive | Neutralized | Rendered relevant exposure dirties baseline; suppression stays clean; Cortex baseline excludes exposed tasks. | Keep exposure-ledger regression tests. |
+| Bias lookup dirty personal evidence | Still occurring | `/analytics/bias_factor/lookup` builds local candidates and `blend()` gates exposure/corrections, but not full stopwatch provenance. | Seed no-stopwatch/auto-closed/dirty/corrected/exposed tasks and compare to Cortex clean primitive. |
+| Insights clean-profile overclaim | Still occurring | Insights declare planning-calibration but use endpoint-local filters, not full clean stopwatch/native-deadline profile. | Seed imported, retroactive, auto-closed, dirty-session rows. |
+| Deadline-shape clean profile | Still occurring | Default filters exclude voided/imported but not all auto-closed, dirty, corrected, or exposed rows. | Seed dirty `TaskDeadlineOutcome` rows and assert default exclusion. |
+| Dashboard denominator semantics | Still occurring | `clean_trace_ratio` denominator differs from dirty-reason populations such as exposure/provider counts. | Every dashboard rate needs numerator/denominator profile metadata. |
+| Operator exclusion in aggregates | Still occurring | Non-operator users are selected, but exposure/provider aggregate queries are global in places. | Seed operator-only exposure/provider rows; cohort metrics must not change. |
+| Voided/deleted/test/synthetic rows | Still occurring | `DELETED` rows and synthetic non-operator users are not consistently excluded or surfaced. | Seed deleted/synthetic rows and assert exclusion or explicit bucket. |
+| `exposure_contaminated` dashboard count | Still occurring | Dashboard counts render events, not contamination joined to matching sessions/tasks. | Seed unrelated render row; count should remain 0 until linked contamination exists. |
+| Shared clean-profile primitive usage | Still occurring | `planning_calibration_query()` exists but bias/insights/deadline-shape do not uniformly call it. | Add shared `candidate_tasks_for_surface()` and endpoint snapshots. |
+| Metric confidence honesty | Still occurring | Some local/mismatched metrics still report high confidence; frontend hides some not-instrumented detail. | Incomplete/local metrics cannot claim `high`; UI must show instrumentation gaps. |
+
+Concrete exposure trace:
+
+1. `/analytics/insights` calls `emit_surface_render()`.
+2. That writes `ExposureDecisionEvent` and `ExposureRenderEvent` with category
+   `behavioral_insight`.
+3. A later task inside the policy window is marked `EXPOSED` by the exposure
+   ledger.
+4. Cortex baseline excludes it correctly.
+5. Operator dashboard does not yet trace render rows to task/session
+   contamination, so `exposure_contaminated` can overcount or misclassify.
+
+Agent test note:
+
+- Targeted measurement tests passed: `55 passed`.
+
+### Agent 4 - Providers, Integrations, Data Sovereignty
+
+| Bug class | Status | Evidence | Required verification |
+|---|---|---|---|
+| Provider provenance marking | Neutralized | Deadlines carry `external_source`/`imported_at`; completion events carry provenance; pressure map separates external load. | Browser check that `moodle_ws_backfill` displays as external Moodle source. |
+| Moodle iCal/WS SSRF/private URL/redirect guard | Still occurring | URL shape checks exist, but loopback/private/link-local/metadata and redirect-to-private are not fully blocked. | Add backend SSRF tests for localhost, RFC1918, link-local, metadata, redirects. |
+| Google refresh token + Moodle iCal encryption | Still occurring | Model comments and storage paths still store Google refresh token and Moodle iCal URL plaintext; Moodle WS token is encrypted. | DB assertions after connect: stored values encrypted/prefixed and decryptable. |
+| Provider facts becoming canonical truth | Still occurring | Moodle WS can directly set `Deadline.state=completed` and backfill terminal rows. | Test requiring confirmation or explicit provider-truth policy. |
+| Native/imported duplicate deadlines | Still occurring | Manual duplicate warning exists; imported duplicates key mostly by external ID, not normalized title/date against native rows. | Native same-title/date plus import should surface/link duplicate. |
+| Terminal deadline binding correction | Still occurring | Normal create guard rejects terminal deadlines; deadline-binding correction endpoint checks not-found/voided but not terminal states. | Regression for completed/missed/skipped deadline binding correction. |
+| Export completeness | Still occurring | Export returns user/tasks/stopwatch/archetype only; omits deadlines, pauses, feedback, exposure, external outcomes, email engagement, integration state. | Export registry/completeness test. |
+| Delete completeness + Redis purge | Still occurring | DB auxiliary purge improved; delete does not clearly purge Redis runtime keys. | Delete test with Redis keys: notifications, stopwatch, gcal, me, task ranges. |
+| Provider sync backpressure | Still occurring | Per-request timeouts exist, but per-user sync loops lack wall-clock cap/circuit breaker. | Stress test blackholed URLs plus many users. |
+
+Agent test note:
+
+- Focused provider/delete/deadline tests passed: `96 passed` plus `3`
+  deadline-binding correction tests.
+
+### Agent 5 - Temporal, Unit, Deploy Reliability
+
+| Bug class | Status | Evidence | Required verification |
+|---|---|---|---|
+| Timer overflow web copy/formatting | Neutralized | Web overflow copy formats integer minutes and excludes operator reply text. | Browser trigger remains useful. |
+| Stale paused auto-execution | Neutralized | Current stale job leaves old paused sessions open for user resolution. | Keep stale-pause modal browser smoke. |
+| UTC/local conversion centralization | Still occurring | Central helper exists, but callers still use naive UTC and caller-side stripping. | Aware Supabase-style datetimes, local-midnight, non-Cairo tests. |
+| Query/date-range local boundaries | Still occurring | Omitted `date_to` uses UTC now as if local; responses emit local ISO without offset. | Freeze around Cairo midnight; compare inclusion. |
+| Rollover session daily bucketing | Still occurring | Pulse buckets whole executed duration by executed-end day; pressure/capacity do not split cross-midnight blocks. | Seed 23:30-00:30 and assert 30/30 split where required. |
+| Frontend/backend overdue alignment | Still occurring | Frontend parses naive local strings in browser timezone; Today has Cairo assumptions. | Playwright in Cairo and non-Cairo browser timezones. |
+| Worker naive-aware datetime hazards | Still occurring | Workers still compare/subtract raw ORM datetimes; scheduler has no explicit timezone. | Seed aware DB datetimes and run workers. |
+| Redis-active stale pause escape | Still occurring | Same B05 issue: stale recovery skips Redis-active sessions. | Seed active paused >72h; run job. |
+| Duration unit centralization | Still occurring | API/schema still mix seconds, int minutes, and float pause minutes; frontends have local formatters. | Unit snapshot tests; fractional pause overflow regression. |
+| Static chunk/deploy cache reliability | Still occurring | Topology scripts help deploy correctness, but Next/Cloudflare cache headers and old-tab chunk recovery are not handled. | Keep old tab across deploy; request stale chunk; verify graceful reload/no 400. |
+
+### Agent 6 - Frontend Product Loop, Brain Dump, Cache, Feedback
+
+| Bug class | Status | Evidence | Required verification |
+|---|---|---|---|
+| Quick-capture anchor | Neutralized | Pulse has stable `#quick-capture`; Today empty-state link points to `/pulse#quick-capture`; Wave A browser pass verified. | Route from Today empty-state to Pulse anchor. |
+| Polling/zombie loops | Neutralized | React Query hosts polling; manual intervals clear on unmount. | Route-churn network test for duplicate polls. |
+| In-app feedback end-to-end | Neutralized | Shell link, modal, backend submit/admin/resolve endpoints, and tests exist. | Browser submit feedback and verify operator view row. |
+| Brain-dump double-create idempotency | Still occurring | `/brain-dump/commit` posts no idempotency key; backend has no commit-level idempotency; per-item commits can duplicate. | POST same commit payload twice; assert no duplicate tasks/deadlines. |
+| Brain-dump partial failure recovery | Still occurring | Backend surfaces failures; UI lists hints and `Got it`, but no edit/retry without retyping. | Mixed valid/failed commit browser test. |
+| Obligation binding dropoff telemetry | Still occurring | Accepted bindings commit; rejected/ignored suggestions are not fully instrumented as product-loop degradation. | Track suggested/accepted/rejected/dismissed bindings. |
+| Pressure-map safe mode | Still occurring | Backend safe mode suppresses recovery options; frontend can still derive fallback preview from pressure items. | Safe-mode browser test: no preview/lock-in when `recovery_options=[]`. |
+| React Query persisted cache scoping | Still occurring | Persisted cache key is global; query keys often omit user id and rely on signout clearing. | Two-user same-browser cache poisoning test. |
+
+## Neutralized Vs Still Occurring Summary
+
+Neutralized enough for current dogfood/browser path:
+
+- K01 web calendar/operator alert leak;
+- K02 web timer overflow raw float and `Reply with` copy;
+- app-shell notification host for Pulse/Today;
+- K04 stale-pause reflection modal for the seeded path;
+- stale-pause user resolution marks dirty calibration rows;
+- exposure firewall primitive inside Cortex;
+- provider provenance marking;
+- quick-capture anchor;
+- in-app feedback submission path;
+- app-level polling cleanup in normal route changes.
+
+Still occurring and cohort-relevant:
+
+- notification lifecycle lacks durable queued/rendered/acted/dismissed states;
+- timer overflow is not a registered output surface and dedupe is not durable
+  across Redis/process restart;
+- Redis-active stale pauses can evade stale-session recovery;
+- task-range/evidence cache invalidation is incomplete outside stopwatch paths;
+- K03 invalid mark-done can still reappear through stale cached evidence;
+- stopwatch/mark-done paths lack request idempotency for double-tap/multi-tab
+  races;
+- bias lookup, insights, and deadline-shape endpoints do not uniformly use the
+  shared Cortex clean primitive;
+- dashboard denominator/operator/test/synthetic contamination risks remain;
+- `exposure_contaminated` dashboard counts render rows rather than joined
+  contaminated task/session rows;
+- provider URL SSRF guards, credential encryption, export/delete registry, and
+  Redis purge remain open;
+- Moodle WS can still mutate canonical deadline terminal state;
+- imported/native duplicate deadlines remain insufficiently surfaced;
+- local/UTC/naive-aware time boundaries and rollover sessions remain unsafe;
+- brain-dump commit idempotency and partial-failure retry remain open;
+- pressure-map safe mode can still be bypassed by frontend fallback previews;
+- persisted frontend cache is not user-scoped by key.
+
+Unknown or insufficiently proven:
+
+- exact `72h` and `80%` threshold behavior;
+- multi-tab stopwatch races under real browser concurrency;
+- old-tab/static-chunk behavior across deployment;
+- non-Cairo browser timezone behavior;
+- dashboard side-effect freedom under all operator paths.
+
+## Revised Priority After Six-Agent Verification
+
+Do not broaden features. Fix in this order:
+
+1. Measurement safety:
+   - shared clean-profile primitive for bias lookup, insights, deadline-shape,
+     and dashboard;
+   - explicit denominator profiles and operator/test/synthetic exclusion.
+2. Notification lifecycle:
+   - ack only rendered notifications;
+   - add rendered/dismissed/acted/expired/lost-unrendered states;
+   - register or explicitly classify timer overflow.
+3. State freshness:
+   - invalidate range/evidence caches on all task/deadline/session transitions;
+   - close Redis-active stale-pause escape.
+4. Idempotency:
+   - brain-dump commit;
+   - stopwatch start/pause/resume/stop;
+   - mark done/drop/swap paths.
+5. Provider/data sovereignty:
+   - SSRF protection;
+   - credential encryption;
+   - export/delete registry and Redis purge;
+   - terminal-provider truth confirmation.
+6. Temporal reliability:
+   - timezone boundary tests;
+   - rollover splitting or explicit bucketing doctrine;
+   - aware/naive worker tests;
+   - deploy stale-chunk mitigation.
+
 ## Bug-Fix Waves
 
 Use this order for the next passes.
@@ -146,6 +462,8 @@ Definition of done:
 - Pulse receives queued notifications without visiting Today.
 
 ### Wave B - Measurement Cleanliness
+
+Status: implemented and targeted/browser verified on 2026-06-05.
 
 Fix:
 

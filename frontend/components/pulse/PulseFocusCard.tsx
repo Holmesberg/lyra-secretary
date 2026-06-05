@@ -9,8 +9,8 @@
  * compactly. The previous A1 ship hid the timer in idle and let the
  * picker dominate the card; that wasn't the vibe.
  *
- * Operator-narrowed action set still applies (no Switch button, no
- * pause-reason picker, no scope-outcome). The interactivity from the
+ * Operator-narrowed action set still applies (no Switch button and no
+ * pause-reason picker). The interactivity from the
  * inline shipped as A1 stays — just visually subordinated to the
  * timer-as-hero composition.
  *
@@ -45,6 +45,7 @@ import {
   resumeStopwatch,
   startStopwatch,
   stopStopwatch,
+  type ScopeOutcome,
   type StartStopwatchResponse,
   type StopResponse,
   type StopwatchStatus,
@@ -76,6 +77,12 @@ function fmtTime(iso: string | null | undefined): string {
 // applies to both surfaces. Established 5-point energy scales (Karolinska,
 // Stanford) use state words, not identity words — this aligns with that.
 const READINESS_LABELS = ["Tired", "Low", "Steady", "Sharp", "Peak"];
+
+const SCOPE_OPTIONS: { value: ScopeOutcome; label: string }[] = [
+  { value: "stuck_to_plan", label: "Plan" },
+  { value: "expanded", label: "Expanded" },
+  { value: "reduced", label: "Reduced" },
+];
 
 export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const qc = useQueryClient();
@@ -112,8 +119,10 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     setSelectedTaskId(plannedTasks[0]?.task_id ?? null);
   }, [plannedTasks, selectedTaskId]);
 
-  const [readiness, setReadiness] = useState<number | null>(null);
+  const [readiness, setReadiness] = useState<number>(3);
   const [reflection, setReflection] = useState<number | null>(null);
+  const [completionPct, setCompletionPct] = useState("");
+  const [scopeOutcome, setScopeOutcome] = useState<ScopeOutcome | null>(null);
   const [stoppedSummary, setStoppedSummary] = useState<{
     minutes: number;
     delta: number | null;
@@ -121,6 +130,19 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const lastStoppedTaskIdRef = useRef<string | null>(null);
+
+  function beginReflection() {
+    setCompletionPct("");
+    setScopeOutcome(null);
+    setMode("reflection");
+  }
+
+  function parsedCompletionPct(): number | undefined {
+    if (completionPct.trim() === "") return undefined;
+    const parsed = Number(completionPct);
+    if (!Number.isFinite(parsed)) return undefined;
+    return Math.max(0, Math.min(100, Math.round(parsed)));
+  }
 
   // Bug fix #2 (ultrathink): if status flips inactive while we're
   // in reflection mode (e.g. another tab stopped the session), reset
@@ -140,7 +162,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     onSuccess: (res) => {
       setMode("idle");
       setErrorMsg(null);
-      setReadiness(null);
+      setReadiness(3);
       if (res.is_future_task && res.planned_start) {
         try {
           const planned = new Date(res.planned_start);
@@ -183,8 +205,22 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     onError: (e) => setErrorMsg(e.message ?? "Failed to resume"),
   });
 
-  const stopM = useMutation<StopResponse, Error, { reflection: number; confirmed?: boolean }>({
-    mutationFn: ({ reflection, confirmed }) => stopStopwatch(reflection, { confirmed }),
+  const stopM = useMutation<
+    StopResponse,
+    Error,
+    {
+      reflection: number;
+      confirmed?: boolean;
+      completionPct?: number;
+      scopeOutcome?: ScopeOutcome;
+    }
+  >({
+    mutationFn: ({ reflection, confirmed, completionPct, scopeOutcome }) =>
+      stopStopwatch(reflection, {
+        confirmed,
+        task_completion_percentage: completionPct,
+        scope_outcome: scopeOutcome,
+      }),
     onSuccess: (res) => {
       if (res.requires_confirmation) {
         // Bug fix #1 (ultrathink): typed flag, not string match.
@@ -202,6 +238,8 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       setErrorMsg(null);
       setInfoMsg(null);
       setReflection(null);
+      setCompletionPct("");
+      setScopeOutcome(null);
       qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["tasks-range"] });
@@ -327,24 +365,22 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               min={1}
               max={5}
               step={1}
-              value={readiness ?? 3}
+              value={readiness}
               onChange={(e) => setReadiness(Number(e.target.value))}
               className="lyra-range h-2 flex-1"
               aria-label="Pre-task readiness 1 to 5"
             />
             <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
-              {readiness === null ? "Choose" : READINESS_LABELS[readiness - 1]}
+              {READINESS_LABELS[readiness - 1]}
             </span>
           </div>
 
           <button
             type="button"
             onClick={() =>
-              selectedTaskId &&
-              readiness !== null &&
-              startM.mutate({ taskId: selectedTaskId, readiness })
+              selectedTaskId && startM.mutate({ taskId: selectedTaskId, readiness })
             }
-            disabled={!selectedTaskId || readiness === null || startM.isPending}
+            disabled={!selectedTaskId || startM.isPending}
             className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-5 py-2.5 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon disabled:opacity-50"
           >
             {startM.isPending ? (
@@ -383,7 +419,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
           </button>
           <button
             type="button"
-            onClick={() => setMode("reflection")}
+            onClick={beginReflection}
             className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon"
           >
             <Square className="h-3.5 w-3.5" />
@@ -410,7 +446,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
           </button>
           <button
             type="button"
-            onClick={() => setMode("reflection")}
+            onClick={beginReflection}
             className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-dust transition-colors hover:border-signal/40 hover:text-parchment"
           >
             <Square className="h-3.5 w-3.5" />
@@ -440,6 +476,54 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               {reflection === null ? "Choose" : READINESS_LABELS[reflection - 1]}
             </span>
           </div>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+            <label className="flex min-h-[38px] items-center gap-2 rounded-sm border border-hairline bg-void/35 px-2.5 text-xs text-dust">
+              <span className="shrink-0 font-display text-[9px] uppercase tracking-macro text-dust-deep">
+                Done %
+              </span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="0-100"
+                value={completionPct}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                  if (raw === "") {
+                    setCompletionPct("");
+                    return;
+                  }
+                  setCompletionPct(String(Math.min(100, parseInt(raw, 10))));
+                }}
+                className="min-w-0 flex-1 bg-transparent text-right font-mono text-xs text-parchment outline-none placeholder:text-dust-deep"
+              />
+            </label>
+            <div className="flex min-h-[38px] items-center gap-1.5 rounded-sm border border-hairline bg-void/35 px-2">
+              <span className="shrink-0 font-display text-[9px] uppercase tracking-macro text-dust-deep">
+                Scope
+              </span>
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
+                {SCOPE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      setScopeOutcome((prev) =>
+                        prev === option.value ? null : option.value
+                      )
+                    }
+                    className={`min-h-7 rounded-sm border px-2 font-mono text-[9px] uppercase tracking-widest transition-colors ${
+                      scopeOutcome === option.value
+                        ? "border-signal/60 bg-signal/10 text-signal"
+                        : "border-hairline text-dust-deep hover:border-signal/40 hover:text-parchment"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
           <div className="flex items-center justify-center gap-3">
             <button
               type="button"
@@ -447,6 +531,8 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
                 setMode("idle");
                 setRequiresConfirm(false);
                 setErrorMsg(null);
+                setCompletionPct("");
+                setScopeOutcome(null);
               }}
               disabled={stopM.isPending}
               className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-dust transition-colors hover:border-signal/40 hover:text-parchment disabled:opacity-50"
@@ -460,6 +546,8 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
                 stopM.mutate({
                   reflection,
                   confirmed: requiresConfirm ? true : undefined,
+                  completionPct: parsedCompletionPct(),
+                  scopeOutcome: scopeOutcome ?? undefined,
                 })
               }
               disabled={stopM.isPending || reflection === null}

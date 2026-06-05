@@ -50,14 +50,50 @@ Verification artifact:
 - synthetic user:
   `wave-a-verify-1780658138440@example.test`;
 - screenshots:
-  - `C:\Users\alina\AppData\Local\Temp\lyra-wave-a-1780658138440\pulse-wave-a.png`;
-  - `C:\Users\alina\AppData\Local\Temp\lyra-wave-a-1780658138440\stale-resolution-modal.png`;
+  - `tmp/lyra-wave-a-1780658138440/pulse-wave-a.png`;
+  - `tmp/lyra-wave-a-1780658138440/stale-resolution-modal.png`;
 - cleanup confirmed zero remaining `wave-a-verify-*` users.
 
 Still open:
 
 - timer overflow output-surface registration remains open;
 - Gate 2 and Gate 3 remain open.
+
+## 2026-06-05 Wave B Status
+
+Gate 2 now has a targeted implementation pass for the current measurement
+cleanliness blockers.
+
+Implemented:
+
+- bias lookup uses the shared planning-calibration clean task primitive for
+  personal evidence;
+- planning-calibration output surfaces reuse the clean primitive before
+  exposure filtering;
+- deadline-shape outcomes exclude dirty stopwatch evidence, repaired rows,
+  auto-closed sessions, corrected tasks, imported/external deadlines,
+  retroactive/system-error tasks, voided rows, and incomplete execution rows;
+- Pulse stop flow captures focus rating, completion percentage, and scope
+  outcome;
+- app-shell undo toast makes the existing undo capability visible after task
+  creation/deletion.
+
+Verified:
+
+- targeted backend suite: `16 passed`;
+- frontend production build: passed;
+- browser verification on deployed `lyraos.org` confirmed:
+  - visible undo toast with `UNDO`;
+  - Pulse stop modal includes `Done %` and `Scope`;
+  - exported proof before cleanup showed focus `4`, completion `90`, and
+    `scope_outcome=expanded`;
+  - exact synthetic verification rows were deleted afterward.
+
+Still open:
+
+- Gate 3 provider/data-sovereignty work;
+- Wave D formal exposure-registration work;
+- broader full-suite regression beyond the targeted Wave B suite.
 
 ## Gate 0 - Notification And Re-entry Delivery
 

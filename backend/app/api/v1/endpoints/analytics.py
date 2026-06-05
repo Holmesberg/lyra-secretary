@@ -29,6 +29,7 @@ from app.schemas.insights import (
 )
 from app.services.exposure_ledger import baseline_clean_task_ids
 from app.services.interruption_metrics import task_interruption_metrics_from_sessions
+from app.services.cortex import planning_calibration_baseline_tasks
 from app.services.claim_compiler import (
     PRIMARY_SYNTHESIS_ID,
     PRIMARY_SYNTHESIS_SURFACE_ID,
@@ -471,6 +472,21 @@ def _eligible_tasks_for_surface(db: Session, tasks: list, surface_id: str) -> li
     spec = get_output_surface_spec(surface_id)
     if spec.clean_profile == "descriptive_history":
         return tasks
+    if spec.clean_profile == "planning_calibration":
+        if not tasks:
+            return []
+        user_id = getattr(tasks[0], "user_id", None)
+        if user_id is None:
+            return []
+        clean_ids = {
+            task.task_id
+            for task in planning_calibration_baseline_tasks(db, user_id=int(user_id))
+        }
+        return [
+            task
+            for task in tasks
+            if task.task_id in clean_ids and not getattr(task, "is_anchor", False)
+        ]
     clean_ids = baseline_clean_task_ids(
         db,
         tasks=tasks,
@@ -1991,6 +2007,8 @@ def bias_factor_lookup(
     user still benefits from a research-backed prior at cold start.
     """
     uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
     # Rule 13 operational definition of n_sessions_in_cell (MANIFESTO
     # v1.10 §13): planned_duration_minutes >= 5. The 5-minute floor
     # matches the H1 exclusion threshold (Rule 4) — sub-5-minute tasks
@@ -1998,30 +2016,7 @@ def bias_factor_lookup(
     #
     # VT-29 filter (added 2026-04-30): exclude tasks bound to externally-
     # imported deadlines. Same rationale as the bias_factor surface above.
-    tasks = (
-        db.query(Task)
-        .outerjoin(Deadline, Task.deadline_id == Deadline.deadline_id)
-        .filter(
-            Task.state == TaskState.EXECUTED,
-            Task.initiation_status != "system_error",
-            Task.voided_at.is_(None),
-            Task.initiation_status != "retroactive",
-            Task.is_anchor.is_(False),
-            Task.executed_duration_minutes != None,
-            Task.planned_duration_minutes >= 5,
-            ~db.query(TaskExecutionCorrection.correction_id)
-            .filter(TaskExecutionCorrection.task_id == Task.task_id)
-            .exists(),
-            # VT-29: exclude tasks bound to imported deadlines.
-            (Task.deadline_id.is_(None)) | (Deadline.external_source.is_(None)),
-        )
-        .all()
-    )
-    # If scoping is absent (admin or test path), fall through to the
-    # legacy personal-only cascade — blend() requires a user_id to look
-    # up the archetype. This should not happen under normal auth flow.
-    if uid is None:
-        return _adaptive_calibration(tasks, category, tod, planned_minutes)
+    tasks = planning_calibration_baseline_tasks(db, user_id=uid)
     from app.services.bias_factor_service import blend
     result = blend(db, uid, tasks, category, tod, planned_minutes)
     cell = result.get("cell")
@@ -2301,6 +2296,35 @@ def get_deadline_shape(
     """
     uid = get_current_user_id()
 
+    clean_stopwatch_exists = (
+        db.query(StopwatchSession.session_id)
+        .filter(
+            StopwatchSession.task_id == Task.task_id,
+            StopwatchSession.user_id == TaskDeadlineOutcome.user_id,
+            StopwatchSession.end_time_utc.isnot(None),
+            StopwatchSession.auto_closed.is_(False),
+            StopwatchSession.data_quality_flag.is_(None),
+        )
+        .exists()
+    )
+    dirty_stopwatch_exists = (
+        db.query(StopwatchSession.session_id)
+        .filter(
+            StopwatchSession.task_id == Task.task_id,
+            StopwatchSession.user_id == TaskDeadlineOutcome.user_id,
+            (
+                StopwatchSession.auto_closed.is_(True)
+                | StopwatchSession.data_quality_flag.isnot(None)
+            ),
+        )
+        .exists()
+    )
+    corrected_task_exists = (
+        db.query(TaskExecutionCorrection.correction_id)
+        .filter(TaskExecutionCorrection.task_id == Task.task_id)
+        .exists()
+    )
+
     # Per-task outcome rows + joined task fields. voided_at filtered
     # on all three tables (outcome, task, deadline) per the discipline.
     rows = (
@@ -2315,6 +2339,16 @@ def get_deadline_shape(
             TaskDeadlineOutcome.voided_at.is_(None),
             Task.voided_at.is_(None),
             Deadline.voided_at.is_(None),
+            Task.state == TaskState.EXECUTED,
+            Task.initiation_status != "system_error",
+            Task.initiation_status != "retroactive",
+            Task.executed_start_utc.isnot(None),
+            Task.executed_end_utc.isnot(None),
+            Task.executed_duration_minutes.isnot(None),
+            Task.planned_duration_minutes >= 5,
+            clean_stopwatch_exists,
+            ~dirty_stopwatch_exists,
+            ~corrected_task_exists,
         )
     )
     if uid is not None:
