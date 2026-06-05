@@ -88,11 +88,54 @@ Still open:
   shared-clean-profile pass.
 - Provider/data-sovereignty issues in Gate 3 remain open.
 
+## Wave A Browser Verification - 2026-06-05
+
+Status: passed on the deployed public web app.
+
+Verification method:
+
+- deployed frontend build: `f251653`;
+- disposable production user:
+  `wave-a-verify-1780658138440@example.test`;
+- seeded only synthetic Wave A rows:
+  - one queued `operator_alert` containing `[calendar.sync]` diagnostic copy;
+  - one queued `timer_overflow` payload containing a raw float and `Reply with`
+    text in the raw payload;
+  - one `EXECUTED` task that would be invalid as a missed-plan action;
+  - one paused stopwatch session parked for `73h`;
+- opened `/pulse#quick-capture` directly, without visiting Today;
+- screenshots:
+  - `C:\Users\alina\AppData\Local\Temp\lyra-wave-a-1780658138440\pulse-wave-a.png`;
+  - `C:\Users\alina\AppData\Local\Temp\lyra-wave-a-1780658138440\stale-resolution-modal.png`;
+- synthetic user, rows, notification queue, stopwatch Redis state, task-range
+  cache, `/me` cache, and exposure-ledger rows were cleaned up afterward.
+
+Checks:
+
+| Check | Result | Evidence |
+|---|---|---|
+| K01 calendar warning leak | Pass | Web Pulse did not render `[calendar.sync]`, Google token-refresh diagnostic copy, affected-user scope, or data-integrity technical text. |
+| K02 timer overflow duplicate/raw float | Pass | Pulse rendered exactly one user-safe toast: `Task is past its planned window (36m active; planned 30m). Open it to stop or correct.` No raw float or `Reply with` copy rendered. |
+| K03 invalid mark-done on `EXECUTED` task | Pass | The seeded `EXECUTED` task appeared only in the Today-plan list as done, not in the re-entry queue or missed-plan action surface. |
+| K04 stale parked pause resolution | Pass | The `73h` parked session showed `Resolve session`; clicking it opened the reflection modal with active work, planned time, paused duration, completion % required, scope required, and the close-at-pause-time notice. |
+| K05 quick-capture anchor | Pass | `/pulse#quick-capture` landed on the top quick-capture bar. |
+| Pulse notification host | Pass | The queued web notification rendered on Pulse without visiting Today. |
+
+Important nuance:
+
+```text
+Wave A verifies the current web/re-entry behavior. It does not close Wave B
+clean-measurement work, Wave C provider/data-sovereignty work, or Wave D
+formal exposure-registration work.
+```
+
 ## Bug-Fix Waves
 
 Use this order for the next passes.
 
 ### Wave A - Browser Verify Implemented K01-K04
+
+Status: passed on 2026-06-05.
 
 Definition of done:
 

@@ -13,9 +13,12 @@ Do not expand beyond current dogfood/trusted users until Gate 0 and Gate 1 pass.
 Lyra can continue operator dogfooding, but it is not ready for a fresh 15-20
 user push if the goal is trustworthy product behavior and clean execution data.
 
-## 2026-06-04 Evening Implementation Status
+## 2026-06-05 Wave A Status
 
-Gate 0 and Gate 1 are partially implemented in code, not yet browser-passed.
+Gate 0 and Gate 1 now have a Wave A browser pass for the current K01-K04/K05
+surface checks. This does not mean all Gate 0/Gate 1 engineering is complete;
+timer-overflow exposure registration and deeper measurement-cleanliness gates
+remain open.
 
 Implemented:
 
@@ -30,9 +33,29 @@ Implemented:
 - `Lyra waves` incident repaired for user-facing truth while flagged dirty for
   clean calibration.
 
-Still not passed:
+Browser-passed on deployed build `f251653`:
 
-- K01-K05 browser verification has not been completed after this patch;
+- K01: seeded `[calendar.sync]` operator diagnostic did not render in the web
+  app;
+- K02: seeded timer-overflow payload rendered once on Pulse with integer
+  minutes and no `Reply with` or raw float;
+- K03: seeded `EXECUTED` task did not appear as a missed-plan mark-done card;
+- K04: seeded `73h` parked paused session opened the required stale-resolution
+  reflection modal;
+- K05: `/pulse#quick-capture` landed on the top quick-capture bar;
+- Pulse rendered the queued web notification without visiting Today.
+
+Verification artifact:
+
+- synthetic user:
+  `wave-a-verify-1780658138440@example.test`;
+- screenshots:
+  - `C:\Users\alina\AppData\Local\Temp\lyra-wave-a-1780658138440\pulse-wave-a.png`;
+  - `C:\Users\alina\AppData\Local\Temp\lyra-wave-a-1780658138440\stale-resolution-modal.png`;
+- cleanup confirmed zero remaining `wave-a-verify-*` users.
+
+Still open:
+
 - timer overflow output-surface registration remains open;
 - Gate 2 and Gate 3 remain open.
 
@@ -144,8 +167,11 @@ No Critical findings remain open
 High findings have owner, test, and rollback path
 ```
 
-Gate 2 and Gate 3 can continue in parallel for deep research readiness, but any
-user-facing estimate/insight/integration push should wait for the relevant gate.
+The K01-K05 browser checks have now passed once on Wave A. Cohort expansion
+still should wait for the remaining Critical/High items in the code bug hunt,
+especially Wave B measurement cleanliness, Wave C provider/data-sovereignty
+safety, and Wave D exposure registration. Any user-facing estimate, insight, or
+integration push should wait for its relevant gate.
 
 ## What Can Continue Now
 
