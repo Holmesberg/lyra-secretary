@@ -60,6 +60,7 @@ type Me = {
   // data on /calendar. The /api/calendar/setup handshake below flips
   // this from false to true once the refresh_token reaches the backend.
   google_calendar_connected: boolean;
+  is_operator: boolean;
 };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -259,7 +260,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AppShell>
+    <AppShell isOperator={!!me.is_operator}>
       {needsConsent && <ConsentModal onAccepted={refetchMe} />}
       {!needsConsent && children}
       {!needsConsent && <AppNotificationHost />}

@@ -23,7 +23,7 @@ import { useSession } from "next-auth/react";
 import { FeedbackLink } from "@/components/feedback-link";
 import { signOutAndClear } from "@/lib/sign-out-and-clear";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -33,6 +33,7 @@ import {
   LogOut,
   Menu,
   Settings,
+  ShieldCheck,
   Table2,
   TrendingUp,
   X,
@@ -55,7 +56,19 @@ const NAV: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+const OPERATOR_NAV: NavItem = {
+  href: "/operator",
+  label: "Operator",
+  icon: ShieldCheck,
+};
+
+export function AppShell({
+  children,
+  isOperator = false,
+}: {
+  children: React.ReactNode;
+  isOperator?: boolean;
+}) {
   const { data: session } = useSession();
   const pathname = usePathname();
   const router = useRouter();
@@ -63,6 +76,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const prefetchedRoutesRef = useRef<Set<string>>(new Set());
+  const navItems = useMemo(
+    () => (isOperator ? [...NAV, OPERATOR_NAV] : NAV),
+    [isOperator]
+  );
 
   const prefetchRoute = useCallback(
     (href: string) => {
@@ -80,7 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    const queue = NAV.filter((item) => item.href !== pathname);
+    const queue = navItems.filter((item) => item.href !== pathname);
     let index = 0;
     const timers: number[] = [];
 
@@ -100,7 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       cancelled = true;
       timers.forEach((id) => window.clearTimeout(id));
     };
-  }, [pathname, prefetchRoute]);
+  }, [navItems, pathname, prefetchRoute]);
 
   function handleNavClick(
     event: React.MouseEvent<HTMLAnchorElement>,
@@ -170,7 +187,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="px-3 pb-2 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
             // Main
           </div>
-          {NAV.map((item) => {
+          {navItems.map((item) => {
             const currentPath = pendingHref ?? pathname;
             const active =
               currentPath === item.href ||
@@ -297,7 +314,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               aria-label="App navigation (mobile)"
             >
               <ul className="flex flex-col py-2">
-                {NAV.map((item) => {
+                {navItems.map((item) => {
                   const currentPath = pendingHref ?? pathname;
                   const active = currentPath === item.href;
                   const Icon = item.icon;
