@@ -760,6 +760,8 @@ class User(Base):
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     google_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True)
+    google_display_name: Mapped[Optional[str]] = mapped_column(String(120))
+    google_first_name: Mapped[Optional[str]] = mapped_column(String(80))
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Africa/Cairo")
     is_operator: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     notion_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

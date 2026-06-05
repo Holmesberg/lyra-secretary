@@ -95,6 +95,22 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail=f"invalid token: {e}")
 
 
+def _clean_profile_name(value: object, *, max_length: int) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    cleaned = " ".join(value.strip().split())
+    if not cleaned:
+        return None
+    return cleaned[:max_length]
+
+
+def _first_name_from_display_name(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    first = value.split()[0].strip(".,;:()[]{}")
+    return first[:80] if first else None
+
+
 def resolve_user_from_token(token: str) -> User:
     """Decode the JWT and return the matching User, creating it on first login.
 
@@ -111,6 +127,10 @@ def resolve_user_from_token(token: str) -> User:
     payload = decode_token(token)
     email = payload.get("email")
     google_id = payload.get("sub") or payload.get("google_id")
+    google_display_name = _clean_profile_name(payload.get("name"), max_length=120)
+    google_first_name = _clean_profile_name(
+        payload.get("given_name"), max_length=80
+    ) or _first_name_from_display_name(google_display_name)
     if not email:
         raise HTTPException(status_code=401, detail="token missing email claim")
 
@@ -122,6 +142,8 @@ def resolve_user_from_token(token: str) -> User:
                 user = User(
                     email=email,
                     google_id=google_id,
+                    google_display_name=google_display_name,
+                    google_first_name=google_first_name,
                     timezone="Africa/Cairo",
                     is_operator=False,
                     notion_enabled=False,
@@ -165,11 +187,26 @@ def resolve_user_from_token(token: str) -> User:
                         detail="user provisioning failed (race-recovery)",
                     )
         else:
+            changed = False
             if google_id and user.google_id is None:
                 # Backfill google_id on the operator's existing row at first login
                 user.google_id = google_id
+                changed = True
+            if google_display_name and user.google_display_name != google_display_name:
+                user.google_display_name = google_display_name
+                changed = True
+            if google_first_name and user.google_first_name != google_first_name:
+                user.google_first_name = google_first_name
+                changed = True
+            if changed:
                 db.commit()
                 db.refresh(user)
+                try:
+                    from app.utils.me_cache import invalidate_me
+
+                    invalidate_me(user.user_id)
+                except Exception:
+                    pass
         return user
     finally:
         db.close()

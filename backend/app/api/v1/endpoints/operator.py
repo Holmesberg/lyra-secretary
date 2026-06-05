@@ -1054,6 +1054,8 @@ def operator_dashboard_v12(
                 stage = "clean_loop"
             users_payload.append({
                 "user_id": user.user_id,
+                "first_name": user.google_first_name,
+                "name_source": "google_profile" if user.google_first_name else None,
                 "email_hash": _email_hash(user.email),
                 "created_at": _iso(user.created_at),
                 "last_meaningful_activity_at": _iso(last_activity.get(user.user_id)),

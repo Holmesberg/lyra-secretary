@@ -34,6 +34,8 @@ interface Recommendation {
 
 interface OperatorUserRow {
   user_id: number;
+  first_name: string | null;
+  name_source: string | null;
   email_hash: string;
   created_at: string | null;
   last_meaningful_activity_at: string | null;
@@ -376,6 +378,7 @@ export default function OperatorDashboardPage() {
             <thead className="text-[10px] uppercase tracking-[0.18em] text-dust-deep">
               <tr>
                 <th className="py-2 pr-4">User</th>
+                <th className="py-2 pr-4">First name</th>
                 <th className="py-2 pr-4">Last activity</th>
                 <th className="py-2 pr-4">Active days 7d</th>
                 <th className="py-2 pr-4">Tasks</th>
@@ -391,6 +394,13 @@ export default function OperatorDashboardPage() {
                 <tr key={row.user_id} className="border-t border-cyan/10 text-dust">
                   <td className="py-2 pr-4 text-parchment">
                     #{row.user_id} / {row.email_hash}
+                  </td>
+                  <td className="py-2 pr-4">
+                    {row.first_name ? (
+                      <span title={row.name_source ?? undefined}>{row.first_name}</span>
+                    ) : (
+                      "unknown"
+                    )}
                   </td>
                   <td className="py-2 pr-4">
                     {row.last_meaningful_activity_at

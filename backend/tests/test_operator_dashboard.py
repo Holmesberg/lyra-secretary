@@ -18,7 +18,7 @@ def _clear_ids(db, ids: list[int]) -> None:
 
 
 def _user(user_id: int, *, operator: bool = False) -> User:
-    return User(
+    user = User(
         user_id=user_id,
         email=f"user-{user_id}@example.test",
         google_id=f"google-{user_id}",
@@ -27,6 +27,10 @@ def _user(user_id: int, *, operator: bool = False) -> User:
         created_at=datetime.utcnow() - timedelta(days=10),
         terms_accepted_at=datetime.utcnow() - timedelta(days=10),
     )
+    if not operator:
+        user.google_first_name = f"User{user_id}"
+        user.google_display_name = f"User{user_id} Example"
+    return user
 
 
 def _task(user_id: int, task_id: str, *, state: TaskState = TaskState.PLANNED) -> Task:
@@ -135,6 +139,9 @@ def test_operator_dashboard_reports_state_and_privacy_boundaries(client, db):
     assert body["privacy_boundary"]["raw_emails_exposed"] is False
     assert "user-9112@example.test" not in str(body)
     assert "Task clean-task" not in str(body)
+    row = next(row for row in body["users"] if row["user_id"] == 9112)
+    assert row["first_name"] == "User9112"
+    assert row["name_source"] == "google_profile"
 
 
 def test_operator_dashboard_marks_uninstrumented_metrics(client, db):

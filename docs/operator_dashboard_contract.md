@@ -30,6 +30,9 @@ or productivity evaluation surface.
 - Provider provenance and sync health.
 - Privacy-boundary checks.
 - Read-only operator recommendations.
+- Google first names as operator-only identity labels in user rows, when the
+  user's Google profile has supplied them. These labels support cohort
+  debugging only; they are not behavioral evidence.
 
 ## Forbidden Use
 
@@ -41,6 +44,16 @@ or productivity evaluation surface.
 - Automatic user nudges from dashboard output.
 - Raw task title, raw email, provider token, or raw provider URL exposure by
   default.
+
+## Identity Metadata
+
+The user table may include `first_name` sourced from the user's Google profile.
+This is allowed in `/operator` user rows so the operator can distinguish
+trusted users without exposing full emails. The response must include source
+metadata such as `name_source = google_profile` when available.
+
+Do not derive first names from emails for analytics. If Google profile metadata
+is not available yet, return `null` / `unknown`.
 
 ## Metric Semantics
 
