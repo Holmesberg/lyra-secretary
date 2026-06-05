@@ -563,6 +563,7 @@ function TodayInner() {
         readiness,
         interruptionType
       );
+      announceUndoAvailable("Timer started.");
       // LYR-097 (2026-04-28): surface "started early" hint when backend
       // flags the task as future. Inline 4s toast — non-blocking,
       // visible-once acknowledgment so the user knows the session

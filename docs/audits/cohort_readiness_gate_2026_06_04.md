@@ -75,15 +75,17 @@ Implemented:
   retroactive/system-error tasks, voided rows, and incomplete execution rows;
 - Pulse stop flow captures focus rating, completion percentage, and scope
   outcome;
-- app-shell undo toast makes the existing undo capability visible after task
-  creation/deletion.
+- app-shell undo toast makes timer-start undo visible after accidental session
+  starts; task creation no longer announces undo.
 
 Verified:
 
-- targeted backend suite: `16 passed`;
+- targeted backend suite: `17 passed`;
 - frontend production build: passed;
 - browser verification on deployed `lyraos.org` confirmed:
-  - visible undo toast with `UNDO`;
+  - visible timer-start undo toast with `UNDO`;
+  - undo reverted the task to `PLANNED`, removed the just-created stopwatch
+    session, and left no active timer;
   - Pulse stop modal includes `Done %` and `Scope`;
   - exported proof before cleanup showed focus `4`, completion `90`, and
     `scope_outcome=expanded`;

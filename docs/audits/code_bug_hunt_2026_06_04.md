@@ -137,10 +137,15 @@ What changed:
 
 - visible undo UX:
   - added a global app-shell undo toast with a visible `UNDO` button;
-  - task creation and task deletion now announce undo availability;
+  - timer start and task deletion now announce undo availability;
+  - task creation no longer announces undo availability; timer start is the
+    primary accidental-action rollback surface;
   - undo invalidates task, range, evidence, stopwatch, deadline, operator, and
     `/me` query state after completion;
-  - Pulse/Today no longer depend on an invisible 30-second backend capability.
+  - Pulse/Today no longer depend on an invisible 30-second backend capability;
+  - timer-start undo reverts the task to its previous state, clears the active
+    stopwatch state, and deletes the just-created stopwatch session when the
+    exact started session is still active.
 - Pulse stop flow:
   - captures post-task focus rating;
   - captures completion percentage;
@@ -166,14 +171,16 @@ Verification:
   - `backend/tests/test_output_surfaces.py::test_task_creation_nudge_lookup_excludes_dirty_personal_rows`;
   - `backend/tests/test_output_surfaces.py::test_product_surfaces_do_not_fall_back_to_operator_without_identity`;
   - `backend/tests/test_last_task_and_undo_scoping.py`;
-  - result: `16 passed`.
+  - result: `17 passed`.
 - frontend build:
   - `npm run build`;
   - result: passed.
 - public browser verification through an authenticated app account:
-  - undo toast was visible after task creation with a `30s undo window`
+  - undo toast was visible after timer start with a `30s undo window`
     countdown;
-  - clicking `UNDO` successfully soft-deleted the created task on the backend;
+  - clicking `UNDO` reverted the started task to `PLANNED`, cleared
+    pre-task readiness/initiation metadata, removed the stopwatch session, and
+    left no active timer;
   - Pulse stop modal showed focus, `Done %`, and `Scope`;
   - submitting `90%`, focus `4`, and `Expanded` persisted:
     - `Task.post_task_reflection=4`;
@@ -183,8 +190,8 @@ Verification:
 
 Screenshots:
 
-- `tmp/lyra-wave-b-1780661587319/undo-visible-final.png`;
-- `tmp/lyra-wave-b-1780661587319/undo-clicked-final.png`;
+- `tmp/lyra-timer-undo-1780663900000/timer-start-undo-visible.png`;
+- `tmp/lyra-timer-undo-1780663900000/timer-start-undo-clicked.png`;
 - `tmp/lyra-wave-b-1780661587319/pulse-readiness-default.png`;
 - `tmp/lyra-wave-b-1780661587319/pulse-reflection-controls.png`;
 - `tmp/lyra-wave-b-1780661587319/pulse-early-confirm-values-persist.png`.

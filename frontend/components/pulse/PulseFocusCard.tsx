@@ -52,6 +52,7 @@ import {
   type TaskRow,
 } from "@/lib/tasks";
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
+import { announceUndoAvailable } from "@/lib/undo";
 
 type Mode = "idle" | "reflection" | "next-prompt";
 
@@ -163,6 +164,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       setMode("idle");
       setErrorMsg(null);
       setReadiness(3);
+      announceUndoAvailable("Timer started.");
       if (res.is_future_task && res.planned_start) {
         try {
           const planned = new Date(res.planned_start);

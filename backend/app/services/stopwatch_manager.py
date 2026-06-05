@@ -464,8 +464,12 @@ class StopwatchManager:
         """
         user_id = self._user_key()
         active = self._get_active(user_id)
+        active_before_start = dict(active) if active else None
+        pause_state_before_start = self.redis.get_pause_state(user_id) if active else None
+        parent_pause_state_after_switch = None
         paused_task_id = None
         target_task = None
+        undo_task_snapshot = None
 
         if task_id:
             target_task = self.db.query(Task).filter(Task.task_id == task_id).first()
@@ -505,10 +509,24 @@ class StopwatchManager:
                     )
                 self.pause(pause_reason="task_switch", pause_initiator="self")
                 paused_task_id = active["task_id"]
+                parent_pause_state_after_switch = self.redis.get_pause_state(user_id)
                 self.redis.clear_stopwatch_state(user_id)
 
         if task_id:
+            undo_task_snapshot = {
+                "state": (
+                    target_task.state.value
+                    if hasattr(target_task.state, "value")
+                    else str(target_task.state)
+                ),
+                "pre_task_readiness": target_task.pre_task_readiness,
+                "initiation_status": target_task.initiation_status,
+                "initiation_delay_minutes": target_task.initiation_delay_minutes,
+                "parent_task_id": target_task.parent_task_id,
+                "interruption_type": target_task.interruption_type,
+            }
             task = self.task_manager.start_task(task_id)
+            created_task_for_start = False
         else:
             # create_task() expects Cairo local time (calls to_utc internally)
             local_now = to_local(now_utc())
@@ -518,6 +536,7 @@ class StopwatchManager:
                 end=local_now + timedelta(hours=1),
                 state=TaskState.EXECUTING
             )
+            created_task_for_start = True
 
         is_future_task = False
         if hasattr(task, "planned_start_utc") and task.planned_start_utc:
@@ -574,6 +593,28 @@ class StopwatchManager:
             title=task.title,
             start_time=session.start_time_utc.isoformat()
         )
+        try:
+            self.redis.cache_undo_action(
+                "start_stopwatch",
+                session.session_id,
+                {
+                    "task_id": task.task_id,
+                    "title": task.title,
+                    "session_id": session.session_id,
+                    "created_task": created_task_for_start,
+                    "task_snapshot": undo_task_snapshot,
+                    "active_before_start": active_before_start,
+                    "pause_state_before_start": pause_state_before_start,
+                    "parent_pause_state_after_switch": parent_pause_state_after_switch,
+                },
+                user_id=user_id,
+            )
+            # A task may have been created moments before it was started.
+            # The visible undo surface is now "undo timer start"; do not leave
+            # an older hidden task-creation undo key competing with it.
+            self.redis.clear_undo_data(task.task_id, user_id=user_id)
+        except Exception as e:
+            logger.warning("stopwatch.start: undo cache write failed: %s", e)
 
         return session, task, is_future_task
 

@@ -22,7 +22,6 @@ import {
   type BiasFactorCell,
 } from "@/lib/tasks";
 import { ackExposureRender } from "@/lib/api";
-import { announceUndoAvailable } from "@/lib/undo";
 import {
   listDeadlines,
   previewDeadlineBinding,
@@ -661,7 +660,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         return;
       }
       resetForm();
-      announceUndoAvailable("Task created.");
       onCreated();
       onClose();
     } catch (e: any) {
@@ -707,7 +705,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         return;
       }
       resetForm();
-      announceUndoAvailable("Task created.");
       onCreated();
       onClose();
     } catch (e: any) {
@@ -747,7 +744,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       const createdTitle = title.trim();
       const createdId = res.task_id;
       resetForm();
-      announceUndoAvailable("Interruption task created.");
       onClose();
       onInterruptionCreated?.(createdId, createdTitle);
     } catch (e: any) {
