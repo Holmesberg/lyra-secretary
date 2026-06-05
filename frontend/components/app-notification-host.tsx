@@ -57,9 +57,11 @@ function notificationId(notification: Record<string, unknown>): string {
 function toUserToast(notification: Record<string, unknown>): Omit<ToastEntry, "id"> | null {
   const type = asString(notification.type);
   if (type === "timer_overflow") {
+    const elapsed = formatMinutes(notification.elapsed_minutes);
+    const planned = formatMinutes(notification.planned_minutes);
     return {
       dedupeKey: "timer_overflow",
-      message: "Task is past its planned window. Open it to stop or correct.",
+      message: `Task is past its planned window (${elapsed} active; planned ${planned}). Open it to stop or correct.`,
       lifespan: "pin",
       detailHref: "/pulse",
       priority: 0,
