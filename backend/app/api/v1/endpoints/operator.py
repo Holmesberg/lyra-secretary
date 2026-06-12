@@ -720,7 +720,13 @@ def operator_dashboard_v12(
         )
         exposure_decision_count = (
             db.query(func.count(ExposureDecisionEvent.exposure_id))
-            .filter(ExposureDecisionEvent.created_at >= two_weeks_ago)
+            .filter(
+                or_(
+                    ExposureDecisionEvent.created_at >= two_weeks_ago,
+                    ExposureDecisionEvent.eligible_at >= two_weeks_ago,
+                    ExposureDecisionEvent.delivered_at >= two_weeks_ago,
+                )
+            )
             .scalar()
             or 0
         )

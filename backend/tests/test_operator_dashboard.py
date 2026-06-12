@@ -219,17 +219,19 @@ def test_operator_dashboard_blocks_on_exposure_without_render(client, db):
     _clear_ids(db, ids)
     db.add(_user(9131, operator=True))
     db.add(_user(9132, operator=False))
-    record_decision(
+    exposure_stamp = datetime.utcnow() - timedelta(minutes=5)
+    decision = record_decision(
         db,
         user_id=9132,
-        eligible_at=datetime.utcnow() - timedelta(minutes=5),
-        delivered_at=datetime.utcnow() - timedelta(minutes=5),
+        eligible_at=exposure_stamp,
+        delivered_at=exposure_stamp,
         decision_status="shown",
         exposure_category="behavioral_insight",
         content_template_id="analytics_insights",
         initiative="system",
         trigger_source="test",
     )
+    decision.created_at = exposure_stamp
     db.commit()
 
     res = client.get("/v1/operator/dashboard", headers=auth_headers(9131))
