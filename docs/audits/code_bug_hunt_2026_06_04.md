@@ -451,6 +451,123 @@ Wave 5A data sovereignty, Wave 5B provider security, temporal reliability, or
 the Wave 6 final green cohort proof.
 ```
 
+## Wave 4 Closure - Operator Dashboard Dynamic Issues And Measurement Truth - 2026-06-12
+
+Status: implemented, targeted-tested, production-built, and Codex-browser
+verified locally. User-side browser verification is required before Wave 5A
+begins.
+
+Scope closed:
+
+- `/operator` now emits `dynamic_issues` derived from live invariants and
+  diagnostic rules rather than hard-coded K01-K05 names;
+- K01-K05 appear as tags/statuses on the watchlist, while blockers are concrete
+  invariant issues such as duplicate open sessions, stale unresolved sessions,
+  internal web-copy leaks, duplicate prompts, or low clean-trace ratio;
+- readiness blockers, minimum fix set, and operator recommendations are derived
+  from `dynamic_issues`;
+- `clean_trace_ratio` is explicitly:
+  `clean eligible explicit stopwatch sessions / all eligible explicit stopwatch
+  sessions`;
+- the denominator excludes and separately reports:
+  - operator-user sessions;
+  - test/synthetic-user sessions;
+  - voided/deleted task sessions;
+  - deleted-retained sessions;
+  - provider-only rows;
+  - non-session tasks;
+- `dirty_reason_distribution` mirrors the dirty buckets so a low ratio is
+  explainable;
+- `exposure_contaminated` is now computed per eligible task/session through the
+  exposure horizon policy for `planning_estimate` and `duration_behavior`;
+- unrelated exposure renders no longer make every closed session dirty;
+- per-user clean trace rows use the same aggregate cleanliness decision;
+- dirty-session reason samples use hashed session identifiers, not raw task
+  content or raw email/provider data;
+- provider-integrity counts are scoped to trusted cohort users, excluding
+  operator/test/synthetic fixtures;
+- `/operator` renders dynamic issues and object-shaped metrics without
+  `[object Object]`.
+
+Wave 4A cockpit weighting correction:
+
+- `exposure_without_render_count > 0` is now a critical dynamic issue:
+  `exposure_records_without_render_evidence`;
+- the issue message includes the live count, for example:
+  `Exposure ledger contains 17 exposure records without render evidence`;
+- this blocks cohort expansion because exposure-influenced metrics are not
+  valid without render linkage proof;
+- `notifications_last_seen_at` missing from data freshness now surfaces as:
+  `notification_source_freshness_not_instrumented`;
+- notification source freshness is a warning by default because it makes
+  lifecycle counts incomplete rather than proving a direct product-state
+  violation;
+- the corrected cockpit read is:
+  - critical blockers: duplicate notification prompts or duplicate/open state
+    invariants when present, plus exposure records without render evidence;
+  - warnings/readiness suppressors: no eligible closed sessions, invalid
+    recovery actions not instrumented, product-loop dropoff, and notification
+    source freshness not instrumented.
+
+Read-only verification rule:
+
+```text
+/operator observes readiness; it must not participate in the user/product
+measurement system.
+```
+
+Visual browser checks are necessary but insufficient. Read-only proof requires
+a before/after snapshot of notification lifecycle counts, pending/reserved/
+rendered IDs, exposure counts, user activity timestamps, and relevant user
+metric fields. The backend test
+`test_operator_dashboard_read_is_side_effect_free` captures that invariant for
+the operator endpoint.
+
+Automated verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_operator_dashboard.py -q`
+  - result: `5 passed`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_exposure_ledger_v0.py tests/test_output_surfaces.py -q`
+  - result: `36 passed`;
+- `cd frontend && npm run build`
+  - result: production build passed;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest -q`
+  - result: timed out after 10 minutes before returning a suite result.
+
+Codex browser verification:
+
+- local-only topology was used:
+  `http://localhost:3000` frontend and `http://localhost:8000` API;
+- `node scripts/verify_runtime_topology.mjs --topology local --skip-browser`
+  passed before browser verification;
+- browser session and `/v1/operator/dashboard` payload were mocked to verify UI
+  rendering without mutating production data or a real user account;
+- screenshots and verifier output:
+  - `tmp/wave4-operator-dashboard.png`;
+  - `tmp/wave4-browser-verify-result.json`.
+
+Checks:
+
+| Check | Result | Evidence |
+|---|---|---|
+| Dynamic issue visibility | Pass | `/operator` rendered a `Dynamic Issues` section with a seeded duplicate-open-session blocker. |
+| Readiness impact | Pass | The seeded invariant produced red readiness, minimum fix set, and operator recommendation entries. |
+| K tag boundary | Pass | K03 appeared as a tag/status, not as the issue identity. |
+| Clean-trace denominator copy | Pass | UI rendered the explicit denominator definition and exclusion buckets. |
+| Object rendering | Pass | Browser body did not contain `[object Object]`. |
+| Forbidden copy snapshot | Pass | Browser body did not include `avoidance`, `motivation`, `discipline`, `fragmentation score`, or `focus score`. |
+
+Important nuance:
+
+```text
+Wave 4 makes the operator dashboard more decision-grade and fixes the
+measurement-integrity denominator/exposure bug. It does not close Wave 5A data
+sovereignty, Wave 5B provider security/integrity, or the Wave 6 final green
+cohort proof.
+```
+
 ## Wave B Implementation And Verification - 2026-06-05
 
 Status: implemented and verified on the deployed public web app.

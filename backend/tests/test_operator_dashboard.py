@@ -1,7 +1,17 @@
 from datetime import datetime, timedelta
 
-from app.db.models import NotificationLifecycleEvent, StopwatchSession, Task, TaskState, User
+from app.db.models import (
+    ExposureAckEvent,
+    ExposureDecisionEvent,
+    ExposureRenderEvent,
+    NotificationLifecycleEvent,
+    StopwatchSession,
+    Task,
+    TaskState,
+    User,
+)
 from app.db.scoping import get_current_user_id, set_current_user_id
+from app.services.exposure_ledger import record_decision, record_render
 from tests.conftest import auth_headers
 
 
@@ -9,6 +19,30 @@ def _clear_ids(db, ids: list[int]) -> None:
     original_uid = get_current_user_id()
     set_current_user_id(None)
     try:
+        exposure_ids = [
+            row[0]
+            for row in (
+                db.query(ExposureDecisionEvent.exposure_id)
+                .filter(ExposureDecisionEvent.user_id.in_(ids))
+                .all()
+            )
+        ]
+        if exposure_ids:
+            db.query(NotificationLifecycleEvent).filter(
+                NotificationLifecycleEvent.exposure_id.in_(exposure_ids)
+            ).delete(synchronize_session=False)
+            db.query(ExposureAckEvent).filter(
+                ExposureAckEvent.exposure_id.in_(exposure_ids)
+            ).delete(synchronize_session=False)
+            db.query(ExposureRenderEvent).filter(
+                ExposureRenderEvent.exposure_id.in_(exposure_ids)
+            ).delete(synchronize_session=False)
+        db.query(NotificationLifecycleEvent).filter(
+            NotificationLifecycleEvent.user_id.in_(ids)
+        ).delete(synchronize_session=False)
+        db.query(ExposureDecisionEvent).filter(
+            ExposureDecisionEvent.user_id.in_(ids)
+        ).delete(synchronize_session=False)
         db.query(StopwatchSession).filter(StopwatchSession.user_id.in_(ids)).delete()
         db.query(Task).filter(Task.user_id.in_(ids)).delete()
         db.query(User).filter(User.user_id.in_(ids)).delete()
@@ -30,7 +64,7 @@ def _clear_notification_lifecycle(db) -> None:
 def _user(user_id: int, *, operator: bool = False) -> User:
     user = User(
         user_id=user_id,
-        email=f"user-{user_id}@example.test",
+        email=f"user-{user_id}@cohort.example.com",
         google_id=f"google-{user_id}",
         is_operator=operator,
         timezone="Africa/Cairo",
@@ -147,7 +181,12 @@ def test_operator_dashboard_reports_state_and_privacy_boundaries(client, db):
     assert body["state_invariants"]["stale_reentry_candidates"] >= 1
     assert body["privacy_boundary"]["raw_task_titles_exposed"] is False
     assert body["privacy_boundary"]["raw_emails_exposed"] is False
-    assert "user-9112@example.test" not in str(body)
+    issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
+    assert "duplicate_open_sessions" in issue_ids
+    assert "executed_tasks_missing_execution_interval" in issue_ids
+    assert "stale_paused_sessions_need_resolution" in issue_ids
+    assert "duplicate_open_sessions" in body["cohort_readiness"]["minimum_fix_set"]
+    assert "user-9112@cohort.example.com" not in str(body)
     assert "Task clean-task" not in str(body)
     row = next(row for row in body["users"] if row["user_id"] == 9112)
     assert row["first_name"] == "User9112"
@@ -171,3 +210,165 @@ def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
     assert "web_rendered" not in body["notification_lifecycle"]["not_instrumented_fields"]
     assert "login_only" in body["meaningful_activity_definition"]["excluded_events"]
     assert "task_created" in body["meaningful_activity_definition"]["included_events"]
+    issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
+    assert "notification_source_freshness_not_instrumented" in issue_ids
+
+
+def test_operator_dashboard_blocks_on_exposure_without_render(client, db):
+    ids = list(range(9101, 9150))
+    _clear_ids(db, ids)
+    db.add(_user(9131, operator=True))
+    db.add(_user(9132, operator=False))
+    record_decision(
+        db,
+        user_id=9132,
+        eligible_at=datetime.utcnow() - timedelta(minutes=5),
+        delivered_at=datetime.utcnow() - timedelta(minutes=5),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="analytics_insights",
+        initiative="system",
+        trigger_source="test",
+    )
+    db.commit()
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9131))
+    assert res.status_code == 200
+    body = res.json()
+    assert body["notification_lifecycle"]["exposure_without_render_count"] >= 1
+    issue = next(
+        issue
+        for issue in body["dynamic_issues"]
+        if issue["id"] == "exposure_records_without_render_evidence"
+    )
+    assert issue["severity"] == "critical"
+    assert issue["blocks_cohort_expansion"] is True
+    assert "exposure_records_without_render_evidence" in body["cohort_readiness"]["blockers"]
+    assert "exposure_records_without_render_evidence" in body["cohort_readiness"]["minimum_fix_set"]
+
+
+def test_operator_dashboard_exposure_contamination_is_task_window_scoped(client, db):
+    ids = list(range(9101, 9150))
+    _clear_ids(db, ids)
+    db.add(_user(9131, operator=True))
+    db.add(_user(9132, operator=False))
+
+    clean_task = _task(9132, "exposure-clean-task", state=TaskState.EXECUTED)
+    clean_task.created_at = datetime.utcnow() - timedelta(hours=3)
+    clean_task.planned_start_utc = datetime.utcnow() - timedelta(hours=2)
+    clean_task.planned_end_utc = clean_task.planned_start_utc + timedelta(minutes=60)
+    clean_task.executed_start_utc = clean_task.planned_start_utc
+    clean_task.executed_end_utc = clean_task.planned_start_utc + timedelta(minutes=50)
+    clean_task.executed_duration_minutes = 50
+    db.add(clean_task)
+    db.add(
+        StopwatchSession(
+            session_id="exposure-clean-session",
+            task_id="exposure-clean-task",
+            user_id=9132,
+            start_time_utc=clean_task.executed_start_utc,
+            end_time_utc=clean_task.executed_end_utc,
+            total_paused_minutes=0.0,
+            auto_closed=False,
+        )
+    )
+    db.flush()
+
+    unrelated = record_decision(
+        db,
+        user_id=9132,
+        eligible_at=clean_task.executed_start_utc + timedelta(minutes=5),
+        delivered_at=clean_task.executed_start_utc + timedelta(minutes=5),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="analytics_insights",
+        initiative="system",
+        trigger_source="test",
+    )
+    record_render(
+        db,
+        exposure_id=unrelated.exposure_id,
+        rendered_at=clean_task.executed_start_utc + timedelta(minutes=5),
+        surface="operator_test",
+        channel="web",
+        content_snapshot="unrelated after-start insight",
+        render_policy_version="test",
+        interruptiveness="low",
+        salience_level="low",
+    )
+    db.commit()
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9131))
+    assert res.status_code == 200
+    body = res.json()
+    assert body["measurement_integrity"]["clean_trace_ratio"] == 1.0
+    assert body["measurement_integrity"]["dirty_reasons"]["exposure_contaminated"] == 0
+
+    contaminating = record_decision(
+        db,
+        user_id=9132,
+        eligible_at=clean_task.executed_start_utc - timedelta(minutes=5),
+        delivered_at=clean_task.executed_start_utc - timedelta(minutes=5),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="analytics_insights",
+        initiative="system",
+        trigger_source="test",
+    )
+    record_render(
+        db,
+        exposure_id=contaminating.exposure_id,
+        rendered_at=clean_task.executed_start_utc - timedelta(minutes=5),
+        surface="operator_test",
+        channel="web",
+        content_snapshot="in-window insight",
+        render_policy_version="test",
+        interruptiveness="low",
+        salience_level="low",
+    )
+    db.commit()
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9131))
+    assert res.status_code == 200
+    body = res.json()
+    assert body["measurement_integrity"]["clean_trace_ratio"] == 0.0
+    assert body["measurement_integrity"]["dirty_trace_count"] == 1
+    assert body["measurement_integrity"]["dirty_reasons"]["exposure_contaminated"] == 1
+    assert body["measurement_integrity"]["dirty_reason_distribution"]["exposure_contaminated"] == 1
+    assert body["measurement_integrity"]["clean_trace_ratio_basis"]["denominator"] == 1
+
+
+def test_operator_dashboard_read_is_side_effect_free(client, db):
+    ids = list(range(9101, 9150))
+    _clear_ids(db, ids)
+    db.add(_user(9141, operator=True))
+    db.add(_user(9142, operator=False))
+    event = NotificationLifecycleEvent(
+        event_id="operator-readonly-lifecycle",
+        user_id=9142,
+        notification_id="operator-readonly-notification",
+        channel="web",
+        notification_type="timer_overflow",
+        status="queued",
+        queued_at=datetime.utcnow(),
+        last_transition_at=datetime.utcnow(),
+        created_at=datetime.utcnow(),
+    )
+    db.add(event)
+    db.commit()
+
+    before = {
+        "notifications": db.query(NotificationLifecycleEvent).count(),
+        "decisions": db.query(ExposureDecisionEvent).count(),
+        "renders": db.query(ExposureRenderEvent).count(),
+        "acks": db.query(ExposureAckEvent).count(),
+    }
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9141))
+    assert res.status_code == 200
+    after = {
+        "notifications": db.query(NotificationLifecycleEvent).count(),
+        "decisions": db.query(ExposureDecisionEvent).count(),
+        "renders": db.query(ExposureRenderEvent).count(),
+        "acks": db.query(ExposureAckEvent).count(),
+    }
+    assert after == before

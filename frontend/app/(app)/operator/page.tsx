@@ -32,6 +32,12 @@ interface Recommendation {
   blocks_cohort_expansion: boolean;
 }
 
+interface DynamicIssue extends Recommendation {
+  id: string;
+  readiness_impact: string;
+  tags: string[];
+}
+
 interface OperatorUserRow {
   user_id: number;
   first_name: string | null;
@@ -84,6 +90,7 @@ interface OperatorDashboard {
   bug_watchlist: SectionMeta & Record<string, string | undefined>;
   users: OperatorUserRow[];
   operator_recommendations: Recommendation[];
+  dynamic_issues: DynamicIssue[];
   derived_metrics: Record<string, number | boolean | null>;
 }
 
@@ -110,6 +117,11 @@ function fmt(value: unknown): string {
     return String(value);
   }
   if (Array.isArray(value)) return value.length ? value.join(", ") : "none";
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (!entries.length) return "none";
+    return entries.map(([key, item]) => `${titleize(key)} ${fmt(item)}`).join(" / ");
+  }
   return String(value);
 }
 
@@ -315,6 +327,41 @@ export default function OperatorDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Dynamic Issues</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2">
+          {data.dynamic_issues.length ? (
+            data.dynamic_issues.map((issue) => (
+              <div
+                key={issue.id}
+                className={`rounded-sm border px-3 py-2 text-sm ${
+                  issue.blocks_cohort_expansion
+                    ? "border-ember/40 bg-ember/5"
+                    : "border-cyan/10 bg-ink/40"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="font-semibold text-parchment">{issue.message}</div>
+                  <div className="shrink-0 text-[10px] uppercase tracking-[0.18em] text-dust-deep">
+                    {issue.severity}
+                  </div>
+                </div>
+                <div className="mt-1 text-xs text-dust">{issue.suggested_action}</div>
+                {issue.tags.length ? (
+                  <div className="mt-2 text-[10px] uppercase tracking-[0.18em] text-cyan">
+                    {issue.tags.join(" / ")}
+                  </div>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <div className="text-sm text-dust">No dynamic issues detected.</div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-4">
         <CompactStat label="trusted users" value={data.cohort.trusted_users_total} />

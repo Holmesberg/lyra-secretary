@@ -32,6 +32,7 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import get_current_user_id, set_current_user_id
+from app.services.exposure_ledger import exposure_results_for_task
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
 
@@ -95,14 +96,63 @@ def _metric_meta(
     return payload
 
 
+def _short_hash(value: str | None) -> str:
+    return hashlib.sha256((value or "").encode("utf-8")).hexdigest()[:12]
+
+
 def _email_hash(email: str | None) -> str:
-    return hashlib.sha256((email or "").encode("utf-8")).hexdigest()[:12]
+    return _short_hash(email)
+
+
+def _is_test_or_synthetic_user(user: User) -> bool:
+    email = (user.email or "").strip().lower()
+    return (
+        email.endswith(".test")
+        or email.endswith("@example.test")
+        or email.startswith(("test-", "synthetic-", "wave-", "wave1-", "wave2-", "wave3-"))
+    )
 
 
 def _pct(numerator: int, denominator: int) -> float | None:
     if denominator <= 0:
         return None
     return round(numerator / denominator, 4)
+
+
+def _dynamic_issue(
+    *,
+    issue_id: str,
+    severity: str,
+    message: str,
+    suggested_action: str,
+    related_section: str,
+    blocks_cohort_expansion: bool,
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": issue_id,
+        "severity": severity,
+        "message": message,
+        "suggested_action": suggested_action,
+        "related_section": related_section,
+        "readiness_impact": "blocker" if blocks_cohort_expansion else "warning",
+        "blocks_cohort_expansion": blocks_cohort_expansion,
+        "tags": tags or [],
+    }
+
+
+def _watchlist_status_from_issues(
+    issues: list[dict[str, Any]],
+    tag: str,
+    *,
+    default: str = "pass",
+) -> str:
+    tagged = [issue for issue in issues if tag in issue.get("tags", [])]
+    if any(issue.get("blocks_cohort_expansion") for issue in tagged):
+        return "fail"
+    if tagged:
+        return "unknown"
+    return default
 
 
 def _last_non_null(values: Iterable[datetime | None]) -> datetime | None:
@@ -281,7 +331,15 @@ def operator_dashboard_v12(
         stale_pause_cutoff = generated_at - timedelta(hours=STALE_PAUSE_HOURS)
 
         users = db.query(User).order_by(User.user_id.asc()).all()
-        non_operator_users = [u for u in users if not u.is_operator]
+        operator_users = [u for u in users if u.is_operator]
+        test_or_synthetic_users = [
+            u for u in users if not u.is_operator and _is_test_or_synthetic_user(u)
+        ]
+        non_operator_users = [
+            u
+            for u in users
+            if not u.is_operator and not _is_test_or_synthetic_user(u)
+        ]
         non_op_ids = [int(u.user_id) for u in non_operator_users]
 
         last_activity = _user_last_activity_maps(db)
@@ -307,14 +365,67 @@ def operator_dashboard_v12(
             or 0
         )
 
-        closed_sessions_14d = (
-            db.query(StopwatchSession, Task)
-            .join(Task, Task.task_id == StopwatchSession.task_id)
-            .filter(StopwatchSession.end_time_utc.isnot(None))
-            .filter(StopwatchSession.end_time_utc >= two_weeks_ago)
-            .filter(StopwatchSession.user_id.in_(non_op_ids) if non_op_ids else False)
+        provider_only = (
+            db.query(func.count(Deadline.deadline_id))
+            .filter(Deadline.user_id.in_(non_op_ids) if non_op_ids else False)
+            .filter(Deadline.external_source.isnot(None), Deadline.voided_at.is_(None))
+            .scalar()
+            or 0
+        )
+        all_session_task_ids = {
+            row[0]
+            for row in (
+                db.query(StopwatchSession.task_id)
+                .join(Task, Task.task_id == StopwatchSession.task_id)
+                .filter(Task.user_id.in_(non_op_ids) if non_op_ids else False)
+                .all()
+            )
+        }
+        non_session_tasks = (
+            db.query(Task)
+            .filter(Task.user_id.in_(non_op_ids) if non_op_ids else False)
+            .filter(Task.voided_at.is_(None))
+            .filter(Task.state != TaskState.DELETED)
+            .filter(or_(Task.created_at >= two_weeks_ago, Task.last_modified_at >= two_weeks_ago))
             .all()
         )
+        non_session_task_count = sum(
+            1 for task in non_session_tasks if task.task_id not in all_session_task_ids
+        )
+
+        closed_sessions_14d_all = (
+            db.query(StopwatchSession, Task, User)
+            .join(Task, Task.task_id == StopwatchSession.task_id)
+            .join(User, User.user_id == StopwatchSession.user_id)
+            .filter(StopwatchSession.end_time_utc.isnot(None))
+            .filter(StopwatchSession.end_time_utc >= two_weeks_ago)
+            .all()
+        )
+        denominator_exclusions = Counter(
+            {
+                "operator_user_sessions": 0,
+                "test_or_synthetic_user_sessions": 0,
+                "voided_or_deleted_task_sessions": 0,
+                "deleted_retained_sessions": 0,
+                "provider_only_rows": int(provider_only),
+                "non_session_tasks": int(non_session_task_count),
+            }
+        )
+        closed_sessions_14d: list[tuple[StopwatchSession, Task]] = []
+        for session, task, user in closed_sessions_14d_all:
+            if user.is_operator:
+                denominator_exclusions["operator_user_sessions"] += 1
+                continue
+            if _is_test_or_synthetic_user(user):
+                denominator_exclusions["test_or_synthetic_user_sessions"] += 1
+                continue
+            if session.post_deletion_retained_at or task.post_deletion_retained_at:
+                denominator_exclusions["deleted_retained_sessions"] += 1
+                continue
+            if task.voided_at is not None or task.state == TaskState.DELETED:
+                denominator_exclusions["voided_or_deleted_task_sessions"] += 1
+                continue
+            closed_sessions_14d.append((session, task))
         closed_count = len(closed_sessions_14d)
         corrected_task_ids = {
             row[0]
@@ -340,6 +451,8 @@ def operator_dashboard_v12(
             }
         )
         clean_closed = 0
+        clean_session_ids: set[str] = set()
+        dirty_session_reason_map: dict[str, list[str]] = {}
         for session, task in closed_sessions_14d:
             reasons: set[str] = set()
             if session.auto_closed:
@@ -360,33 +473,25 @@ def operator_dashboard_v12(
                 and session.end_time_utc < session.start_time_utc
             ):
                 reasons.add("impossible_duration")
+            exposure_results = exposure_results_for_task(
+                db,
+                task=task,
+                signal_targets=["planning_estimate", "duration_behavior"],
+            )
+            if any(result.state == "UNKNOWN" for result in exposure_results):
+                reasons.add("unknown_exposure")
+            if any(
+                result.state in {"EXPOSED", "INTERVENTION"}
+                for result in exposure_results
+            ):
+                reasons.add("exposure_contaminated")
             if reasons:
                 dirty_reasons.update(reasons)
+                dirty_session_reason_map[session.session_id] = sorted(reasons)
             else:
                 clean_closed += 1
-
-        unknown_exposures = (
-            db.query(func.count(ExposureDecisionEvent.exposure_id))
-            .filter(ExposureDecisionEvent.created_at >= two_weeks_ago)
-            .filter(ExposureDecisionEvent.decision_status == "unknown")
-            .scalar()
-            or 0
-        )
-        provider_only = (
-            db.query(func.count(Deadline.deadline_id))
-            .filter(Deadline.external_source.isnot(None), Deadline.voided_at.is_(None))
-            .scalar()
-            or 0
-        )
-        exposure_contaminated = (
-            db.query(func.count(ExposureRenderEvent.render_id))
-            .filter(ExposureRenderEvent.rendered_at >= two_weeks_ago)
-            .scalar()
-            or 0
-        )
-        dirty_reasons["unknown_exposure"] = int(unknown_exposures)
+                clean_session_ids.add(session.session_id)
         dirty_reasons["provider_only"] = int(provider_only)
-        dirty_reasons["exposure_contaminated"] = int(exposure_contaminated)
 
         clean_trace_ratio = _pct(clean_closed, closed_count) if closed_count else None
         dirty_trace_count = closed_count - clean_closed
@@ -476,16 +581,7 @@ def operator_dashboard_v12(
         closed_sessions_by_user = Counter()
         for session, task in closed_sessions_14d:
             closed_sessions_by_user[int(session.user_id)] += 1
-            if (
-                not session.auto_closed
-                and not session.data_quality_flag
-                and task.voided_at is None
-                and task.task_id not in corrected_task_ids
-                and task.initiation_status != "retroactive"
-                and session.start_time_utc
-                and session.end_time_utc
-                and session.end_time_utc >= session.start_time_utc
-            ):
+            if session.session_id in clean_session_ids:
                 clean_sessions_by_user[int(session.user_id)] += 1
 
         stale_open_by_user = Counter()
@@ -657,12 +753,14 @@ def operator_dashboard_v12(
 
         provider_rows_total = int(provider_only) + (
             db.query(func.count(DeadlineCompletionEvent.event_id))
+            .filter(DeadlineCompletionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
             .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
             .scalar()
             or 0
         )
         provider_rows_missing_provenance = (
             db.query(func.count(Deadline.deadline_id))
+            .filter(Deadline.user_id.in_(non_op_ids) if non_op_ids else False)
             .filter(Deadline.external_source.isnot(None))
             .filter(
                 or_(
@@ -675,6 +773,7 @@ def operator_dashboard_v12(
         )
         provider_completion_candidates = (
             db.query(func.count(DeadlineCompletionEvent.event_id))
+            .filter(DeadlineCompletionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
             .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
             .scalar()
             or 0
@@ -690,6 +789,7 @@ def operator_dashboard_v12(
             .filter(Deadline.external_source.isnot(None))
             .filter(Deadline.external_id.isnot(None))
             .filter(Deadline.voided_at.is_(None))
+            .filter(Deadline.user_id.in_(non_op_ids) if non_op_ids else False)
             .group_by(Deadline.user_id, Deadline.external_source, Deadline.external_id)
             .all()
         )
@@ -724,6 +824,20 @@ def operator_dashboard_v12(
             "clean_trace_ratio": clean_trace_ratio,
             "dirty_trace_count": dirty_trace_count,
             "dirty_reasons": {k: int(v) for k, v in dirty_reasons.items()},
+            "dirty_reason_distribution": {k: int(v) for k, v in dirty_reasons.items()},
+            "clean_trace_ratio_basis": {
+                "definition": "clean eligible explicit stopwatch sessions / all eligible explicit stopwatch sessions",
+                "window_days": 14,
+                "numerator": clean_closed,
+                "denominator": closed_count,
+                "excluded_from_denominator": {
+                    k: int(v) for k, v in denominator_exclusions.items()
+                },
+            },
+            "dirty_session_reason_sample": dict(
+                (_short_hash(session_id), reasons)
+                for session_id, reasons in list(dirty_session_reason_map.items())[:5]
+            ),
             "analytic_blockers": [],
             "calibration_safe": bool(clean_trace_ratio is not None and clean_trace_ratio >= READINESS_GREEN_TRACE_RATIO),
             "insights_safe": bool(clean_trace_ratio is not None and clean_trace_ratio >= READINESS_RED_TRACE_RATIO),
@@ -745,23 +859,6 @@ def operator_dashboard_v12(
             "not_instrumented_fields": ["invalid_recovery_actions_seen"],
         }
 
-        bug_watchlist = {
-            **_metric_meta(basis="derived", confidence="medium", readiness_impact="blocker"),
-            "k01_calendar_warning_leak": "fail"
-            if notification_counts["internal_copy_leak_count"] > 0
-            else "pass",
-            "k02_timer_overflow_duplicate": "fail"
-            if notification_counts["duplicate_prompt_count"] > 0
-            else "pass",
-            "k03_invalid_mark_done_executed": "fail"
-            if state_invariants["invalid_recovery_actions_seen"]
-            else "unknown",
-            "k04_parked_25h_stale": "fail"
-            if stale_reentry_candidates > 0
-            else "pass",
-            "k05_pulse_quick_capture_anchor": "unknown",
-        }
-
         privacy_boundary = {
             **_metric_meta(basis="direct", confidence="high", readiness_impact="blocker"),
             "raw_task_titles_exposed": False,
@@ -776,7 +873,8 @@ def operator_dashboard_v12(
 
         cohort_segments = {
             **_metric_meta(basis="derived", confidence="high", readiness_impact="informational"),
-            "operator_users_excluded": sum(1 for u in users if u.is_operator),
+            "operator_users_excluded": len(operator_users),
+            "test_or_synthetic_users_excluded": len(test_or_synthetic_users),
             "trusted_users": len(non_operator_users),
             "new_users_7d": sum(1 for u in non_operator_users if u.created_at >= week_ago),
             "activated_users": len(activated_users),
@@ -928,8 +1026,7 @@ def operator_dashboard_v12(
             "state_invariants": "high",
         }
 
-        readiness_blockers: list[str] = []
-        warnings: list[str] = []
+        dynamic_issues: list[dict[str, Any]] = []
 
         if any(
             bool(privacy_boundary[key])
@@ -941,39 +1038,195 @@ def operator_dashboard_v12(
                 "user_debug_mode_enabled",
             )
         ):
-            readiness_blockers.append("privacy_boundary_violation")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="privacy_boundary_violation",
+                severity="critical",
+                message="Privacy boundary violation detected.",
+                suggested_action="Remove the leaking field before cohort expansion.",
+                related_section="privacy_boundary",
+                blocks_cohort_expansion=True,
+            ))
         if notification_counts["internal_copy_leak_count"] > 0:
-            readiness_blockers.append("operator_or_internal_copy_visible_to_users")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="operator_or_internal_copy_visible_to_users",
+                severity="critical",
+                message="Operator or internal diagnostic copy is visible in the web queue.",
+                suggested_action="Split or filter notification channels before inviting users.",
+                related_section="notification_lifecycle",
+                blocks_cohort_expansion=True,
+                tags=["K01"],
+            ))
+        if notification_lifecycle["duplicate_prompt_count"] > 0:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="duplicate_notification_prompt",
+                severity="critical",
+                message="Duplicate queued notification prompts were detected.",
+                suggested_action="Fix notification dedupe and lifecycle accounting.",
+                related_section="notification_lifecycle",
+                blocks_cohort_expansion=True,
+                tags=["K02"],
+            ))
+        if notification_lifecycle["exposure_without_render_count"] > 0:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="exposure_records_without_render_evidence",
+                severity="critical",
+                message=(
+                    f"Exposure ledger contains {notification_lifecycle['exposure_without_render_count']} exposure records without render evidence."
+                ),
+                suggested_action=(
+                    "Do not treat exposure-influenced metrics as valid until render linkage is reconciled."
+                ),
+                related_section="notification_lifecycle",
+                blocks_cohort_expansion=True,
+            ))
         if duplicate_open_sessions > 0:
-            readiness_blockers.append("duplicate_open_sessions")
-        if executed_missing > 0 or open_for_executed > 0:
-            readiness_blockers.append("impossible_execution_state")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="duplicate_open_sessions",
+                severity="critical",
+                message="A task has more than one open stopwatch session.",
+                suggested_action="Repair the state transition path that created duplicate sessions.",
+                related_section="state_invariants",
+                blocks_cohort_expansion=True,
+            ))
+        if executing_without_open > 0:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="executing_tasks_without_open_session",
+                severity="critical",
+                message="Executing tasks exist without an open stopwatch session.",
+                suggested_action="Repair task/session state coherence before cohort expansion.",
+                related_section="state_invariants",
+                blocks_cohort_expansion=True,
+            ))
+        if paused_without_open > 0:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="paused_tasks_without_open_session",
+                severity="critical",
+                message="Paused tasks exist without an open stopwatch session.",
+                suggested_action="Repair task/session state coherence before cohort expansion.",
+                related_section="state_invariants",
+                blocks_cohort_expansion=True,
+            ))
+        if executed_missing > 0:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="executed_tasks_missing_execution_interval",
+                severity="critical",
+                message="Executed tasks are missing start, end, or duration fields.",
+                suggested_action="Backfill or repair execution intervals before using the data.",
+                related_section="state_invariants",
+                blocks_cohort_expansion=True,
+            ))
+        if open_for_executed > 0:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="open_sessions_for_executed_tasks",
+                severity="critical",
+                message="Executed tasks still have open stopwatch sessions.",
+                suggested_action="Close or repair the orphaned sessions before cohort expansion.",
+                related_section="state_invariants",
+                blocks_cohort_expansion=True,
+            ))
         if stale_reentry_candidates > 0:
-            readiness_blockers.append("stale_paused_sessions_need_resolution")
-        if clean_trace_ratio is not None and clean_trace_ratio < READINESS_RED_TRACE_RATIO:
-            readiness_blockers.append("clean_trace_ratio_below_60_percent")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="stale_paused_sessions_need_resolution",
+                severity="critical",
+                message="Stale paused sessions need an explicit user resolution path.",
+                suggested_action="Route stale pauses through reflection resolution.",
+                related_section="state_invariants",
+                blocks_cohort_expansion=True,
+                tags=["K04"],
+            ))
         if clean_trace_ratio is None:
-            warnings.append("no_closed_sessions_for_trace_ratio")
-
-        for key in (
-            "k01_calendar_warning_leak",
-            "k02_timer_overflow_duplicate",
-            "k03_invalid_mark_done_executed",
-            "k04_parked_25h_stale",
-        ):
-            if bug_watchlist[key] == "fail":
-                readiness_blockers.append(key)
-            elif bug_watchlist[key] == "unknown":
-                warnings.append(key)
-
-        if clean_trace_ratio is not None and READINESS_RED_TRACE_RATIO <= clean_trace_ratio < READINESS_GREEN_TRACE_RATIO:
-            warnings.append("clean_trace_ratio_between_60_and_80_percent")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="no_closed_sessions_for_trace_ratio",
+                severity="warning",
+                message="Clean trace ratio is not available because there are no eligible closed sessions.",
+                suggested_action="Treat cohort readiness as dogfood-only until closed-session evidence exists.",
+                related_section="measurement_integrity",
+                blocks_cohort_expansion=False,
+            ))
+        elif clean_trace_ratio < READINESS_RED_TRACE_RATIO:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="clean_trace_ratio_below_60_percent",
+                severity="critical",
+                message="Clean trace ratio is below 60 percent.",
+                suggested_action="Fix the largest dirty reason bucket before cohort expansion.",
+                related_section="measurement_integrity",
+                blocks_cohort_expansion=True,
+            ))
+        elif clean_trace_ratio < READINESS_GREEN_TRACE_RATIO:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="clean_trace_ratio_between_60_and_80_percent",
+                severity="warning",
+                message="Clean trace ratio is between 60 and 80 percent.",
+                suggested_action="Dogfood only until clean trace ratio reaches the green threshold.",
+                related_section="measurement_integrity",
+                blocks_cohort_expansion=False,
+            ))
         if notification_lifecycle["not_instrumented_fields"]:
-            warnings.append("notification_lifecycle_partially_not_instrumented")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="notification_lifecycle_partially_not_instrumented",
+                severity="warning",
+                message="Notification lifecycle has fields that are not instrumented.",
+                suggested_action="Do not infer safety from missing lifecycle fields.",
+                related_section="notification_lifecycle",
+                blocks_cohort_expansion=False,
+            ))
+        if "notifications_last_seen_at" in data_freshness["stale_sources"]:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="notification_source_freshness_not_instrumented",
+                severity="warning",
+                message="Notification lifecycle freshness is not instrumented.",
+                suggested_action=(
+                    "Treat notification lifecycle counts as incomplete until notification source freshness is recorded."
+                ),
+                related_section="data_freshness",
+                blocks_cohort_expansion=False,
+            ))
+        if state_invariants["invalid_recovery_actions_seen"] is None:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="invalid_recovery_actions_not_instrumented",
+                severity="warning",
+                message="Invalid recovery actions are not instrumented.",
+                suggested_action="Keep K03 as unknown until invalid recovery attempts are counted.",
+                related_section="state_invariants",
+                blocks_cohort_expansion=False,
+                tags=["K03"],
+            ))
         if product_loop_funnel["dropoff_points"]:
-            warnings.append("product_loop_dropoff_detected")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="product_loop_dropoff_detected",
+                severity="warning",
+                message="Product loop has a major funnel dropoff.",
+                suggested_action="Inspect the dropoff before reading loop metrics as healthy.",
+                related_section="product_loop_funnel",
+                blocks_cohort_expansion=False,
+            ))
         if provider_integrity["provider_rows_missing_provenance"] > 0:
-            warnings.append("provider_rows_missing_provenance")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="provider_rows_missing_provenance",
+                severity="warning",
+                message="Provider rows are missing provenance.",
+                suggested_action="Fix provider provenance before relying on provider-derived metrics.",
+                related_section="provider_integrity",
+                blocks_cohort_expansion=False,
+            ))
+
+        bug_watchlist = {
+            **_metric_meta(basis="derived", confidence="medium", readiness_impact="blocker"),
+            "k01_calendar_warning_leak": _watchlist_status_from_issues(dynamic_issues, "K01"),
+            "k02_timer_overflow_duplicate": _watchlist_status_from_issues(dynamic_issues, "K02"),
+            "k03_invalid_mark_done_executed": _watchlist_status_from_issues(
+                dynamic_issues, "K03", default="unknown"
+            ),
+            "k04_parked_25h_stale": _watchlist_status_from_issues(dynamic_issues, "K04"),
+            "k05_pulse_quick_capture_anchor": "unknown",
+        }
+
+        readiness_blockers = [
+            issue["id"] for issue in dynamic_issues if issue["blocks_cohort_expansion"]
+        ]
+        warnings = [
+            issue["id"] for issue in dynamic_issues if not issue["blocks_cohort_expansion"]
+        ]
 
         green_loop_condition = (
             full_loop_users >= 3
@@ -1026,35 +1279,16 @@ def operator_dashboard_v12(
             ),
         }
 
-        operator_recommendations: list[dict[str, Any]] = []
-        for blocker in cohort_readiness["blockers"]:
-            operator_recommendations.append({
-                "severity": "critical",
-                "message": blocker.replace("_", " "),
-                "suggested_action": "Fix this before cohort expansion.",
-                "related_section": (
-                    "state_invariants"
-                    if "session" in blocker or "execution" in blocker
-                    else "notification_lifecycle"
-                    if "copy" in blocker or blocker.startswith("k0")
-                    else "measurement_integrity"
-                ),
-                "blocks_cohort_expansion": True,
-            })
-        for warning in cohort_readiness["warnings"][:5]:
-            operator_recommendations.append({
-                "severity": "warning",
-                "message": warning.replace("_", " "),
-                "suggested_action": "Inspect and either fix or mark as accepted risk.",
-                "related_section": "product_loop_funnel"
-                if "dropoff" in warning
-                else "notification_lifecycle"
-                if "notification" in warning
-                else "provider_integrity"
-                if "provider" in warning
-                else "cohort_readiness",
-                "blocks_cohort_expansion": False,
-            })
+        operator_recommendations = [
+            {
+                "severity": issue["severity"],
+                "message": issue["message"],
+                "suggested_action": issue["suggested_action"],
+                "related_section": issue["related_section"],
+                "blocks_cohort_expansion": issue["blocks_cohort_expansion"],
+            }
+            for issue in dynamic_issues
+        ]
 
         users_payload = []
         for user in non_operator_users:
@@ -1109,6 +1343,7 @@ def operator_dashboard_v12(
             "reliability": reliability,
             "privacy_boundary": privacy_boundary,
             "bug_watchlist": bug_watchlist,
+            "dynamic_issues": dynamic_issues,
             "users": users_payload,
             "operator_recommendations": operator_recommendations,
             "derived_metrics": {
