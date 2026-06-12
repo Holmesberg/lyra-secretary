@@ -21,11 +21,12 @@ TaskManager + DeadlineManager refuse to write without it.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -41,6 +42,7 @@ from app.schemas.brain_dump import (
 from app.services.brain_dump_parser import parse_brain_dump
 from app.services.deadline_manager import DeadlineManager
 from app.services.task_manager import TaskManager
+from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, to_utc
 
 router = APIRouter()
@@ -81,6 +83,7 @@ def brain_dump_parse(
 @router.post("/brain-dump/commit", response_model=BrainDumpCommitResponse)
 def brain_dump_commit(
     request: BrainDumpCommitRequest,
+    x_idempotency_key: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ) -> BrainDumpCommitResponse:
     """Persist user-confirmed items + bindings in a single transaction.
@@ -103,6 +106,27 @@ def brain_dump_commit(
     uid = get_current_user_id()
     if uid is None:
         raise HTTPException(status_code=401, detail="not authenticated")
+
+    idempotency_cache: Optional[RedisClient] = None
+    idempotency_key = (
+        f"brain_dump:commit:{x_idempotency_key.strip()}"
+        if x_idempotency_key and x_idempotency_key.strip()
+        else None
+    )
+    if idempotency_key is not None:
+        try:
+            idempotency_cache = RedisClient()
+            cached = idempotency_cache.check_idempotency(
+                idempotency_key,
+                user_id=uid,
+            )
+            if cached:
+                return BrainDumpCommitResponse(**json.loads(cached))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "brain_dump commit: idempotency lookup unavailable: %s",
+                exc,
+            )
 
     task_manager = TaskManager(db)
     deadline_manager = DeadlineManager(db)
@@ -294,7 +318,7 @@ def brain_dump_commit(
         user.onboarding_completed_at = now_utc()
         db.commit()
 
-    return BrainDumpCommitResponse(
+    response = BrainDumpCommitResponse(
         tasks_created=len(task_ids),
         deadlines_created=len(deadline_ids),
         bindings_applied=bindings_applied,
@@ -302,3 +326,18 @@ def brain_dump_commit(
         deadline_ids=deadline_ids,
         failed_items=failed_items,
     )
+    if idempotency_cache is not None and idempotency_key is not None:
+        try:
+            idempotency_cache.set_idempotency(
+                idempotency_key,
+                response.model_dump_json(),
+                ttl_seconds=60,
+                user_id=uid,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "brain_dump commit: idempotency store unavailable: %s",
+                exc,
+            )
+
+    return response

@@ -52,6 +52,22 @@ The core system accumulates evidence, detects patterns probabilistically, and
 progressively earns stronger inference rights. It must explicitly resist fake
 intelligence, opaque personalization, and black-box confidence theater.
 
+Current methods-paper direction:
+
+```text
+Measurement Integrity Before Agency Claims
+```
+
+This means Cortex and product-research surfaces must not jump from events or
+computed metrics directly to claims about focus, motivation, avoidance,
+discipline, recovery, agency, or improvement. The allowed chain is:
+
+```text
+events -> metrics -> construct defense -> bounded claim
+```
+
+See `docs/measurement_integrity_before_agency_claims.md`.
+
 See `docs/behavioral_instrumentation_doctrine.md` for the doctrine note that
 expands this principle.
 

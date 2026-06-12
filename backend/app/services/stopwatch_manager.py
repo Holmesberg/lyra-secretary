@@ -482,9 +482,19 @@ class StopwatchManager:
 
         if active:
             if task_id and active["task_id"] == task_id:
-                raise StopwatchAlreadyRunningError(
-                    f"Stopwatch already running for task {active['task_id']}"
-                )
+                session = self._get_session(active["session_id"])
+                task = target_task or self.db.query(Task).filter(
+                    Task.task_id == active["task_id"]
+                ).first()
+                if task is None or task.voided_at is not None or session.end_time_utc is not None:
+                    self.redis.clear_stopwatch_state(user_id)
+                    raise StopwatchAlreadyRunningError(
+                        f"Stopwatch state for task {active['task_id']} is stale"
+                    )
+                is_future_task = False
+                if task.planned_start_utc and task.planned_start_utc > now_utc() + timedelta(minutes=5):
+                    is_future_task = True
+                return session, task, is_future_task
             pause_state = self.redis.get_pause_state(user_id)
             if pause_state:
                 # Current timer is paused — allow starting a new task
@@ -645,8 +655,22 @@ class StopwatchManager:
         if not active:
             raise NoActiveStopwatchError("No active stopwatch")
 
-        if self.redis.get_pause_state(user_id):
-            raise StopwatchAlreadyPausedError("Stopwatch is already paused")
+        existing_pause_state = self.redis.get_pause_state(user_id)
+        if existing_pause_state:
+            session = self._get_session(existing_pause_state.get("session_id") or active["session_id"])
+            paused_at_raw = existing_pause_state.get("paused_at")
+            paused_at = (
+                strip_tz(datetime.fromisoformat(paused_at_raw))
+                if paused_at_raw
+                else strip_tz(session.paused_at_utc)
+            )
+            return {
+                "paused": True,
+                "elapsed_minutes": self._active_elapsed(session, existing_pause_state),
+                "paused_at": paused_at or now_utc(),
+                "pause_reason": session.pause_reason or pause_reason,
+                "pause_initiator": session.pause_initiator or pause_initiator,
+            }
 
         session = self._get_session(active["session_id"])
         now = now_utc()
@@ -724,7 +748,12 @@ class StopwatchManager:
 
         pause_state = self.redis.get_pause_state(user_id)
         if not pause_state:
-            raise StopwatchNotPausedError("Stopwatch is not paused")
+            session = self._get_session(active["session_id"])
+            return {
+                "resumed": True,
+                "paused_minutes": 0.0,
+                "total_paused_minutes": session.total_paused_minutes or 0.0,
+            }
 
         now = now_utc()
         # strip_tz: Redis-stored ISO may parse to aware (see time_utils).

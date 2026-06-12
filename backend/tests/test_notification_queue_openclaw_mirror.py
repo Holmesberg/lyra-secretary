@@ -1,6 +1,8 @@
 """OpenClaw operator mirror for user notification queue events."""
 import json
+from uuid import uuid4
 
+from app.db.models import NotificationLifecycleEvent, User
 from app.services import notification_queue
 
 
@@ -228,3 +230,107 @@ def test_web_channel_preserves_operator_alerts_for_openclaw(monkeypatch):
         "internal triage",
         "second alert",
     ]
+
+
+class _LifecycleRedis:
+    def __init__(self):
+        self.items = []
+
+    def rpush(self, _key, value):
+        self.items.append(value)
+
+    def lrange(self, _key, _start, _end):
+        return list(self.items)
+
+    def delete(self, _key):
+        self.items = []
+
+
+class _LifecycleRedisClient:
+    def __init__(self, redis):
+        self.client = redis
+
+
+def test_web_pending_reserves_and_render_ack_marks_only_rendered(db, monkeypatch):
+    redis = _LifecycleRedis()
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+    user = User(email=f"notification-lifecycle-{uuid4()}@example.test")
+    db.add(user)
+    db.commit()
+
+    payload = {"type": "timer_overflow", "message": "Open the task."}
+    notification_queue.enqueue_user_notification(user.user_id, payload, db=db)
+    db.commit()
+
+    pending = notification_queue.peek_user_notifications(user.user_id, db=db)
+    db.commit()
+    notification_id = pending[0]["notification_id"]
+
+    lifecycle = (
+        db.query(NotificationLifecycleEvent)
+        .filter(NotificationLifecycleEvent.notification_id == notification_id)
+        .one()
+    )
+    assert lifecycle.status == "reserved"
+    assert lifecycle.reserved_at is not None
+    assert lifecycle.rendered_at is None
+
+    removed = notification_queue.ack_user_notifications(
+        user.user_id,
+        [notification_id],
+        db=db,
+        event_type="rendered",
+    )
+    db.commit()
+
+    db.refresh(lifecycle)
+    assert removed == 1
+    assert lifecycle.status == "rendered"
+    assert lifecycle.rendered_at is not None
+    assert lifecycle.lost_unrendered_at is None
+    assert redis.items == []
+
+
+def test_lost_unrendered_ack_does_not_mark_rendered(db, monkeypatch):
+    redis = _LifecycleRedis()
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+    user = User(email=f"notification-lifecycle-{uuid4()}@example.test")
+    db.add(user)
+    db.commit()
+
+    notification_queue.enqueue_user_notification(
+        user.user_id,
+        {"type": "unknown_new_type", "message": "Unsupported payload"},
+        db=db,
+    )
+    db.commit()
+
+    pending = notification_queue.peek_user_notifications(user.user_id, db=db)
+    db.commit()
+    notification_id = pending[0]["notification_id"]
+
+    removed = notification_queue.ack_user_notifications(
+        user.user_id,
+        [notification_id],
+        db=db,
+        event_type="lost_unrendered",
+    )
+    db.commit()
+
+    lifecycle = (
+        db.query(NotificationLifecycleEvent)
+        .filter(NotificationLifecycleEvent.notification_id == notification_id)
+        .one()
+    )
+    assert removed == 1
+    assert lifecycle.status == "lost_unrendered"
+    assert lifecycle.lost_unrendered_at is not None
+    assert lifecycle.rendered_at is None

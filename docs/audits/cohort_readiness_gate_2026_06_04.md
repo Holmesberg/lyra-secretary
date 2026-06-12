@@ -13,6 +13,23 @@ Do not expand beyond current dogfood/trusted users until Gate 0 and Gate 1 pass.
 Lyra can continue operator dogfooding, but it is not ready for a fresh 15-20
 user push if the goal is trustworthy product behavior and clean execution data.
 
+Research-method note:
+
+```text
+Measurement Integrity Before Agency Claims
+```
+
+This gate exists because cohort expansion is not only a product decision. More
+users increase intervention effects, provider mess, stale-state paths, dirty
+rows, and dashboard interpretation risk. LyraOS should not use retention,
+completion, timer, pressure, or provider metrics to claim anything about focus,
+motivation, avoidance, discipline, recovery, agency, or improvement until the
+measurement substrate can explain what those metrics mean and why they are
+clean enough in the relevant slice.
+
+Canonical note:
+`docs/measurement_integrity_before_agency_claims.md`.
+
 ## 2026-06-05 Wave A Status
 
 Gate 0 and Gate 1 now have a Wave A browser pass for the current K01-K04/K05

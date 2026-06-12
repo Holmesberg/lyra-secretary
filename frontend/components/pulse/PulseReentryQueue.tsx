@@ -91,6 +91,16 @@ function missedDetail(task: TaskRow): string {
   return `${planned}${bound} passed without an active session.`;
 }
 
+function looksLikeStaleRecoveryRejection(message: string): boolean {
+  return [
+    "current state:",
+    "already has execution data",
+    "Only overdue tasks",
+    "Cannot mark a voided task done",
+    "Task not found",
+  ].some((needle) => message.includes(needle));
+}
+
 function buildCandidates(
   tasks: TaskRow[],
   status: StopwatchStatus | undefined,
@@ -261,7 +271,7 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
     },
     onError: (e: Error, taskId) => {
       const message = e.message ?? "Failed to mark done";
-      if (message.includes("current state: EXECUTED")) {
+      if (looksLikeStaleRecoveryRejection(message)) {
         setDismissed((prev) => {
           const next = new Set(prev);
           next.add(`missed:${taskId}`);

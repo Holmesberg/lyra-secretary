@@ -1,7 +1,9 @@
 """Stopwatch endpoints."""
+import json
 from datetime import datetime
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 import logging
 
@@ -51,21 +53,58 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _current_user_id_or_401() -> int:
+    user_id = get_current_user_id()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user_id
+
+
+def _cached_response(*, redis, key: str, user_id: int, response_model):
+    cached = redis.check_idempotency(key, user_id=user_id)
+    if not cached:
+        return None
+    return response_model(**json.loads(cached))
+
+
+def _cache_response(*, redis, key: str, user_id: int, response) -> None:
+    redis.set_idempotency(
+        key,
+        response.model_dump_json(),
+        ttl_seconds=30,
+        user_id=user_id,
+    )
+
+
 @router.post("/start", response_model=StopwatchStartResponse)
 def start_stopwatch(
     request: StopwatchStartRequest,
     db: Session = Depends(get_db),
+    x_idempotency_key: Optional[str] = Header(None),
 ) -> StopwatchStartResponse:
     """Start stopwatch. Optionally pass pre_task_readiness (1–5) in body."""
+    current_user_id = _current_user_id_or_401()
     try:
         manager = StopwatchManager(db)
+        cache_key = None
+        if x_idempotency_key:
+            cache_key = f"stopwatch:start:{request.task_id or request.title}:{x_idempotency_key}"
+            cached = _cached_response(
+                redis=manager.redis,
+                key=cache_key,
+                user_id=current_user_id,
+                response_model=StopwatchStartResponse,
+            )
+            if cached:
+                return cached
+
         session, task, is_future_task = manager.start(
             task_id=request.task_id,
             title=request.title,
             pre_task_readiness=request.pre_task_readiness,
             interruption_type=request.interruption_type,
         )
-        return StopwatchStartResponse(
+        response = StopwatchStartResponse(
             session_id=session.session_id,
             task_id=task.task_id,
             start_time=to_local(session.start_time_utc),
@@ -76,6 +115,14 @@ def start_stopwatch(
             parent_task_id=task.parent_task_id,
             interruption_type=task.interruption_type,
         )
+        if cache_key:
+            _cache_response(
+                redis=manager.redis,
+                key=cache_key,
+                user_id=current_user_id,
+                response=response,
+            )
+        return response
     except StopwatchAlreadyRunningError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except InvalidStateTransitionError as e:
@@ -101,6 +148,7 @@ def start_stopwatch(
 def pause_stopwatch(
     request: StopwatchPauseRequest,
     db: Session = Depends(get_db),
+    x_idempotency_key: Optional[str] = Header(None),
 ) -> StopwatchPauseResponse:
     """
     Pause the active stopwatch. Use during prayer, breaks, or interruptions.
@@ -117,14 +165,35 @@ def pause_stopwatch(
     if request.pause_initiator not in PAUSE_INITIATORS:
         raise HTTPException(status_code=400, detail=f"Invalid pause_initiator. Must be one of: {', '.join(sorted(PAUSE_INITIATORS))}")
 
+    current_user_id = _current_user_id_or_401()
     try:
         manager = StopwatchManager(db)
+        cache_key = None
+        if x_idempotency_key:
+            cache_key = f"stopwatch:pause:{x_idempotency_key}"
+            cached = _cached_response(
+                redis=manager.redis,
+                key=cache_key,
+                user_id=current_user_id,
+                response_model=StopwatchPauseResponse,
+            )
+            if cached:
+                return cached
+
         result = manager.pause(
             pause_reason=request.pause_reason,
             pause_initiator=request.pause_initiator,
         )
         result["paused_at"] = to_local(result["paused_at"])
-        return StopwatchPauseResponse(**result)
+        response = StopwatchPauseResponse(**result)
+        if cache_key:
+            _cache_response(
+                redis=manager.redis,
+                key=cache_key,
+                user_id=current_user_id,
+                response=response,
+            )
+        return response
     except NoActiveStopwatchError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except StopwatchAlreadyPausedError as e:
@@ -135,14 +204,38 @@ def pause_stopwatch(
 
 
 @router.post("/resume", response_model=StopwatchResumeResponse)
-def resume_stopwatch(db: Session = Depends(get_db)) -> StopwatchResumeResponse:
+def resume_stopwatch(
+    db: Session = Depends(get_db),
+    x_idempotency_key: Optional[str] = Header(None),
+) -> StopwatchResumeResponse:
     """
     Resume a paused stopwatch. Reports how many minutes were paused.
     """
+    current_user_id = _current_user_id_or_401()
     try:
         manager = StopwatchManager(db)
+        cache_key = None
+        if x_idempotency_key:
+            cache_key = f"stopwatch:resume:{x_idempotency_key}"
+            cached = _cached_response(
+                redis=manager.redis,
+                key=cache_key,
+                user_id=current_user_id,
+                response_model=StopwatchResumeResponse,
+            )
+            if cached:
+                return cached
+
         result = manager.resume()
-        return StopwatchResumeResponse(**result)
+        response = StopwatchResumeResponse(**result)
+        if cache_key:
+            _cache_response(
+                redis=manager.redis,
+                key=cache_key,
+                user_id=current_user_id,
+                response=response,
+            )
+        return response
     except NoActiveStopwatchError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except StopwatchNotPausedError as e:
@@ -157,6 +250,7 @@ def stop_stopwatch(
     request: StopwatchStopRequest = None,
     confirmed: bool = Query(False, description="Set to true to confirm early stop"),
     db: Session = Depends(get_db),
+    x_idempotency_key: Optional[str] = Header(None),
 ) -> StopwatchStopResponse:
     """
     Stop active stopwatch. Requires ?confirmed=true if stopping before 50% of planned duration.
@@ -165,12 +259,24 @@ def stop_stopwatch(
     if request is None:
         request = StopwatchStopRequest()
 
+    current_user_id = _current_user_id_or_401()
     try:
         manager = StopwatchManager(db)
+        cache_key = None
+        if x_idempotency_key:
+            cache_key = f"stopwatch:stop:{confirmed}:{x_idempotency_key}"
+            cached = _cached_response(
+                redis=manager.redis,
+                key=cache_key,
+                user_id=current_user_id,
+                response_model=StopwatchStopResponse,
+            )
+            if cached:
+                return cached
 
         is_early, elapsed, planned = manager.check_early_stop()
         if is_early and not confirmed:
-            return StopwatchStopResponse(
+            response = StopwatchStopResponse(
                 task_id="",
                 session_id="",
                 duration_minutes=elapsed,
@@ -184,6 +290,14 @@ def stop_stopwatch(
                     f"Call stop again with ?confirmed=true to confirm completion."
                 ),
             )
+            if cache_key:
+                _cache_response(
+                    redis=manager.redis,
+                    key=cache_key,
+                    user_id=current_user_id,
+                    response=response,
+                )
+            return response
 
         session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct = manager.stop(
             post_task_reflection=request.post_task_reflection,
@@ -295,7 +409,7 @@ def stop_stopwatch(
         if surface_decision_recorded:
             db.commit()
 
-        return StopwatchStopResponse(
+        response = StopwatchStopResponse(
             task_id=task.task_id,
             session_id=session.session_id,
             duration_minutes=task.executed_duration_minutes or 0,
@@ -318,6 +432,14 @@ def stop_stopwatch(
             task_completion_percentage=session.task_completion_percentage,
             mid_task_completion_pct=pre_existing_pct if pre_existing_pct is not None else None,
         )
+        if cache_key:
+            _cache_response(
+                redis=manager.redis,
+                key=cache_key,
+                user_id=current_user_id,
+                response=response,
+            )
+        return response
 
     except NoActiveStopwatchError as e:
         raise HTTPException(status_code=400, detail=str(e))

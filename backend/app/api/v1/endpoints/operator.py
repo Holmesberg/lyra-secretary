@@ -24,6 +24,7 @@ from app.db.models import (
     ExposureDecisionEvent,
     ExposureRenderEvent,
     Feedback,
+    NotificationLifecycleEvent,
     StopwatchSession,
     Task,
     TaskExecutionCorrection,
@@ -592,6 +593,23 @@ def operator_dashboard_v12(
 
         redis_snapshot = _redis_notification_snapshot(non_op_ids)
         notification_counts = redis_snapshot["counts"]
+        lifecycle_rows = (
+            db.query(NotificationLifecycleEvent)
+            .filter(NotificationLifecycleEvent.created_at >= two_weeks_ago)
+            .filter(NotificationLifecycleEvent.channel == "web")
+            .filter(NotificationLifecycleEvent.user_id.in_(non_op_ids) if non_op_ids else False)
+            .all()
+        )
+        lifecycle_status_counts = Counter(row.status for row in lifecycle_rows)
+        lifecycle_dedupe_counts = Counter(
+            (row.user_id, row.dedupe_key)
+            for row in lifecycle_rows
+            if row.dedupe_key
+            and row.status in {"queued", "reserved"}
+        )
+        lifecycle_duplicate_count = sum(
+            max(0, count - 1) for count in lifecycle_dedupe_counts.values()
+        )
         exposure_render_count = (
             db.query(func.count(ExposureRenderEvent.render_id))
             .filter(ExposureRenderEvent.rendered_at >= two_weeks_ago)
@@ -614,28 +632,26 @@ def operator_dashboard_v12(
         render_without_exposure = 0  # FK-enforced by schema when tables are migrated.
 
         notification_lifecycle = {
-            **_metric_meta(basis="mixed", confidence="low", readiness_impact="warning"),
-            "web_created": notification_counts["web_queued"],
-            "web_queued": notification_counts["web_queued"],
-            "web_reserved": None,
-            "web_rendered": None,
-            "web_acted": None,
-            "web_dismissed": None,
-            "web_expired": None,
-            "web_lost_unrendered": None,
-            "duplicate_prompt_count": notification_counts["duplicate_prompt_count"],
+            **_metric_meta(basis="mixed", confidence="medium", readiness_impact="warning"),
+            "web_created": len(lifecycle_rows),
+            "web_queued": lifecycle_status_counts.get("queued", 0),
+            "web_reserved": lifecycle_status_counts.get("reserved", 0),
+            "web_rendered": sum(1 for row in lifecycle_rows if row.rendered_at is not None),
+            "web_acted": sum(1 for row in lifecycle_rows if row.acted_at is not None),
+            "web_dismissed": sum(1 for row in lifecycle_rows if row.dismissed_at is not None),
+            "web_expired": sum(1 for row in lifecycle_rows if row.expired_at is not None),
+            "web_lost_unrendered": sum(
+                1 for row in lifecycle_rows if row.lost_unrendered_at is not None
+            ),
+            "duplicate_prompt_count": max(
+                notification_counts["duplicate_prompt_count"],
+                lifecycle_duplicate_count,
+            ),
             "render_without_exposure_count": render_without_exposure,
             "exposure_without_render_count": exposure_without_render,
             "operator_created": notification_counts["operator_pending"],
             "operator_pending": notification_counts["operator_pending"],
-            "not_instrumented_fields": [
-                "web_reserved",
-                "web_rendered",
-                "web_acted",
-                "web_dismissed",
-                "web_expired",
-                "web_lost_unrendered",
-            ],
+            "not_instrumented_fields": [],
             "redis_errors": redis_snapshot["errors"],
         }
 
@@ -906,7 +922,7 @@ def operator_dashboard_v12(
             "retention": "medium",
             "login_frequency": "not_instrumented",
             "clean_trace_ratio": "high",
-            "notification_lifecycle": "low",
+            "notification_lifecycle": "medium",
             "provider_integrity": "medium",
             "product_loop_funnel": "medium",
             "state_invariants": "high",

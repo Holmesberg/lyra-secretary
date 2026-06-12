@@ -23,6 +23,7 @@
 *Revised: May 20, 2026. Day 47 - alignment-through-honesty, conscious influence, middleware execution substrate, dirty-pipe provider doctrine, and earned adaptation authority clarified.*
 *Revised: May 25, 2026. Day 52 - trajectory-integrity invariant added: LyraOS operationalizes reality contact under pressure, not hidden proxy optimization.*
 *Revised: June 3, 2026. Day 61 - H8 context-switching footprint hypothesis added: switching is documented as observable consequence topology and recovery-footprint evidence, not causal proof of failure, focus loss, avoidance, or motivation.*
+*Revised: June 12, 2026. Day 70 - Measurement Integrity Before Agency Claims added as a methods-paper direction: computable events and metrics do not authorize claims about focus, motivation, avoidance, discipline, recovery, agency, or improvement without construct defense, clean-data admission, exposure accounting, and slice-invariance checks.*
 
 ---
 
@@ -42,6 +43,7 @@ governance sections first:
 - Rule-Based Instrumentation, Not AI Theater
 - Substrate Kill Criterion
 - H8 Context-Switching Footprint
+- Measurement Integrity Before Agency Claims
 - Academic Execution Substrate Governance
 - Operational Alert Classification
 - Trusted-Alpha Security Governance
@@ -100,6 +102,10 @@ The current research optionality is:
 
 - Paper 1: metacognitive discrepancy and execution failure, gated by H1 and
   validity-threat analyses.
+- Paper 0 candidate: measurement integrity before agency claims, framed as a
+  methods/construct-validity paper about why behavioral systems must defend
+  variables before making productivity, focus, motivation, avoidance,
+  discipline, recovery, or agency claims.
 - Paper 2: sequential task abandonment / cascade failure, gated by multi-user
   sequence data and structural-dependency controls.
 - Paper 3: unplanned execution rate as a missing measurement variable, likely
@@ -118,7 +124,8 @@ LyraOS can make them useful only if longitudinal behavioral traces first earn
 validity as semantic grounding for those noisy signals.
 
 Companion doctrine:
-`docs/research_optionality_and_friction_methodology.md`.
+`docs/research_optionality_and_friction_methodology.md` and
+`docs/measurement_integrity_before_agency_claims.md`.
 
 ---
 

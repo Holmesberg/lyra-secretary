@@ -30,6 +30,17 @@ rule-governed, probabilistic, longitudinal, and inspectable.
 observe -> canonicalize -> gate by provenance/exposure -> synthesize cautiously
 ```
 
+Current methods-paper direction:
+
+```text
+Measurement Integrity Before Agency Claims
+```
+
+LyraOS should not jump from events or metrics directly to claims about focus,
+motivation, avoidance, discipline, recovery, agency, or improvement. The
+research direction is documented in
+[`docs/measurement_integrity_before_agency_claims.md`](docs/measurement_integrity_before_agency_claims.md).
+
 ## Why This Exists
 
 People often plan sincerely and still fail themselves. LyraOS asks whether that

@@ -437,6 +437,39 @@ def emit_surface_suppression(
     }
 
 
+def create_output_surface_decision(
+    db: Session,
+    *,
+    surface_id: str,
+    user_id: int,
+    decision_status: str,
+    task_id: Optional[str] = None,
+    eligible_at=None,
+    content_template_id: Optional[str] = None,
+    initiative: str = "system",
+    trigger_source: Optional[str] = None,
+    delivered_at=None,
+    data_snapshot_hash: Optional[str] = None,
+) -> ExposureDecisionEvent:
+    """Create a registered output-surface decision without claiming render."""
+    spec = get_output_surface_spec(surface_id)
+    _assert_surface_allowed_for_user(db, spec=spec, user_id=user_id)
+    eligible_at = strip_tz(eligible_at or now_utc())
+    return record_decision(
+        db,
+        user_id=user_id,
+        task_id=task_id,
+        eligible_at=eligible_at,
+        decision_status=decision_status,
+        initiative=initiative,
+        exposure_category=spec.exposure_category,
+        content_template_id=content_template_id,
+        trigger_source=trigger_source or surface_id,
+        data_snapshot_hash=data_snapshot_hash,
+        delivered_at=strip_tz(delivered_at) if delivered_at is not None else None,
+    )
+
+
 def acknowledge_surface_render(
     db: Session,
     *,
@@ -484,6 +517,60 @@ def acknowledge_surface_render(
     db.add(row)
     db.flush()
     return row, True
+
+
+def render_existing_surface_decision(
+    db: Session,
+    *,
+    exposure_id: str,
+    user_id: int,
+    surface_id: str,
+    content_snapshot: Any,
+    rendered_at=None,
+    client_event_id: Optional[str] = None,
+) -> bool:
+    """Complete a queued/delayed surface decision at browser-render time."""
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == exposure_id)
+        .first()
+    )
+    if decision is None or int(decision.user_id) != int(user_id):
+        return False
+
+    spec = get_output_surface_spec(surface_id)
+    rendered_at = strip_tz(rendered_at or now_utc())
+    existing_render = (
+        db.query(ExposureRenderEvent)
+        .filter(
+            ExposureRenderEvent.exposure_id == exposure_id,
+            ExposureRenderEvent.surface == surface_id,
+        )
+        .first()
+    )
+    if existing_render is None:
+        record_render(
+            db,
+            exposure_id=exposure_id,
+            rendered_at=rendered_at,
+            surface=surface_id,
+            channel=spec.channel,
+            content_snapshot=_snapshot_to_text(content_snapshot),
+            render_policy_version=spec.render_policy_version,
+            interruptiveness=spec.interruptiveness,
+            salience_level=spec.salience_level,
+        )
+
+    decision.decision_status = "rendered"
+    decision.delivered_at = rendered_at
+    acknowledge_surface_render(
+        db,
+        exposure_id=exposure_id,
+        user_id=user_id,
+        acked_at=rendered_at,
+        client_event_id=client_event_id,
+    )
+    return True
 
 
 def _candidate_tasks_for_profile(

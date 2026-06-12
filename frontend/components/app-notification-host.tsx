@@ -105,6 +105,7 @@ function toUserToast(notification: Record<string, unknown>): Omit<ToastEntry, "i
 export function AppNotificationHost() {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const surfaced = useRef<Set<string>>(new Set());
+  const acknowledged = useRef<Set<string>>(new Set());
 
   const notificationsQ = useQuery({
     queryKey: ["notifications-web-pending"],
@@ -121,19 +122,35 @@ export function AppNotificationHost() {
 
   useEffect(() => {
     if (notifications.length === 0) return;
-    const ackIds: string[] = [];
+    const renderedIds: string[] = [];
+    const lostUnrenderedIds: string[] = [];
     const nextToasts: ToastEntry[] = [];
     for (const notification of notifications) {
       const id = notificationId(notification);
-      ackIds.push(id);
-      if (surfaced.current.has(id) || surfacedNotificationIds.has(id)) continue;
+      if (acknowledged.current.has(id)) {
+        continue;
+      }
+      if (surfaced.current.has(id) || surfacedNotificationIds.has(id)) {
+        renderedIds.push(id);
+        continue;
+      }
+      const toast = toUserToast(notification);
+      if (!toast) {
+        lostUnrenderedIds.push(id);
+        continue;
+      }
+      if (surfacedToastKeys.has(toast.dedupeKey)) {
+        lostUnrenderedIds.push(id);
+        continue;
+      }
+      if (toasts.length + nextToasts.length >= MAX_VISIBLE_TOASTS) {
+        continue;
+      }
       surfaced.current.add(id);
       surfacedNotificationIds.add(id);
-      const toast = toUserToast(notification);
-      if (!toast) continue;
-      if (surfacedToastKeys.has(toast.dedupeKey)) continue;
       surfacedToastKeys.add(toast.dedupeKey);
       nextToasts.push({ id, ...toast });
+      renderedIds.push(id);
     }
     if (nextToasts.length > 0) {
       setToasts((prev) =>
@@ -142,10 +159,19 @@ export function AppNotificationHost() {
           .slice(0, MAX_VISIBLE_TOASTS)
       );
     }
-    ackPendingNotifications(ackIds).catch(() => {
-      /* Non-blocking: if ack fails, the next poll may retry. */
-    });
-  }, [notifications]);
+    if (renderedIds.length > 0) {
+      renderedIds.forEach((id) => acknowledged.current.add(id));
+      ackPendingNotifications(renderedIds, "rendered").catch(() => {
+        renderedIds.forEach((id) => acknowledged.current.delete(id));
+      });
+    }
+    if (lostUnrenderedIds.length > 0) {
+      lostUnrenderedIds.forEach((id) => acknowledged.current.add(id));
+      ackPendingNotifications(lostUnrenderedIds, "lost_unrendered").catch(() => {
+        lostUnrenderedIds.forEach((id) => acknowledged.current.delete(id));
+      });
+    }
+  }, [notifications, toasts.length]);
 
   if (toasts.length === 0) return null;
 
@@ -158,9 +184,12 @@ export function AppNotificationHost() {
           message={toast.message}
           lifespan={toast.lifespan}
           detailHref={toast.detailHref}
-          onDismiss={(id) =>
-            setToasts((prev) => prev.filter((item) => item.id !== id))
-          }
+          onDismiss={(id, reason = "dismissed") => {
+            setToasts((prev) => prev.filter((item) => item.id !== id));
+            ackPendingNotifications([id], reason).catch(() => {
+              /* Non-blocking lifecycle refinement. */
+            });
+          }}
         />
       ))}
     </div>

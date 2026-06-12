@@ -21,6 +21,8 @@ from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector, ConflictResult
 from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
+from app.utils.me_cache import invalidate_me
+from app.utils.tasks_range_cache import invalidate_user_ranges
 from app.utils.time_utils import to_utc, now_utc, strip_tz
 from app.core.exceptions import ImmutableTaskError
 
@@ -57,6 +59,18 @@ def _require_current_user(op: str) -> int:
             "Set it via middleware (HTTP) or _per_user.py (worker)."
         )
     return uid
+
+
+def _invalidate_user_runtime_caches(user_id: Optional[int], op: str) -> None:
+    """Best-effort bust for user-facing task/state projections."""
+    if user_id is None:
+        return
+    try:
+        uid = int(user_id)
+        invalidate_me(uid)
+        invalidate_user_ranges(uid)
+    except Exception as e:
+        logger.warning("%s: cache invalidate failed (non-blocking): %s", op, e)
 
 
 def _is_anchor_task(title: str, category: Optional[str]) -> bool:
@@ -690,6 +704,7 @@ class TaskManager:
             raise ValueError("Task not found")
         
         task = self.state_machine.transition(task, TaskState.EXECUTING)
+        _invalidate_user_runtime_caches(task.user_id, "start_task")
 
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
@@ -743,6 +758,7 @@ class TaskManager:
         self.reconcile_calibration_nudge_outcome(task.task_id, executed_duration)
 
         task = self.state_machine.transition(task, TaskState.EXECUTED)
+        _invalidate_user_runtime_caches(task.user_id, "complete_task")
 
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         notion_synced = False
@@ -795,6 +811,7 @@ class TaskManager:
             raise ValueError("Cannot skip a voided task")
 
         task = self.state_machine.transition(task, TaskState.SKIPPED, notes=reason)
+        _invalidate_user_runtime_caches(task.user_id, "skip_task")
 
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
@@ -1081,6 +1098,7 @@ class TaskManager:
             raise ImmutableTaskError("Cannot delete immutable task")
         
         task = self.state_machine.transition(task, TaskState.DELETED)
+        _invalidate_user_runtime_caches(task.user_id, "delete_task")
         
         # Sync delete state to Notion (archive the page)
         try:
@@ -1161,6 +1179,8 @@ class TaskManager:
         self.db.commit()
         self.db.refresh(skipped)
         self.db.refresh(planned)
+        for uid in {skipped.user_id, planned.user_id}:
+            _invalidate_user_runtime_caches(uid, "swap_tasks")
 
         for t in (skipped, planned):
             try:
@@ -1289,6 +1309,7 @@ class TaskManager:
         task.last_modified_at = now_utc()
         self.db.commit()
         self.db.refresh(task)
+        _invalidate_user_runtime_caches(task.user_id, "reschedule_task")
         
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:

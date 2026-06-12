@@ -82,6 +82,18 @@ Are humans wrong about their own execution capacity in structured,
 modelable ways?
 ```
 
+The current methods-paper direction is:
+
+```text
+Measurement Integrity Before Agency Claims
+```
+
+That direction reframes LyraOS as a case study in delaying productivity,
+focus, motivation, avoidance, discipline, recovery, or agency claims until the
+underlying variable survives clean-data, provenance, exposure, and
+slice-invariance checks. It is documented in
+`docs/measurement_integrity_before_agency_claims.md`.
+
 Current doctrine:
 
 - observed product traces remain distinct from derived metrics and inferred
@@ -95,6 +107,7 @@ Current doctrine:
 - archetypes are cold-start priors, not identity labels
 - user attention is scarce scientific capital
 - missingness can be signal, but it is not observed truth
+- event traces and computed metrics do not directly authorize agency claims
 
 ---
 
@@ -136,6 +149,9 @@ Important limitations before interpreting the system as research evidence:
   psychological types
 - historical documents may contain older absolute novelty language that should
   be read as lab-note framing unless restated in active governance docs
+- the "Measurement Integrity Before Agency Claims" direction is a methods
+  framing and does not mean LyraOS has validated productivity, focus,
+  motivation, avoidance, discipline, recovery, or agency constructs
 
 ---
 
@@ -147,10 +163,11 @@ Recommended order for review:
 2. `docs/behavioral_instrumentation_doctrine.md`
 3. `docs/cortex_product_research_contract_v0.md`
 4. `docs/cortex_contract_v0.md`
-5. `archive/appstore/summary_of_app.md`
-6. `docs/adaptive_scheduling_progressive_inference.md`
-7. `docs/deployment_architecture.md`
-8. `docs/openclaw_orchestration_contract_v0.md`
+5. `docs/measurement_integrity_before_agency_claims.md`
+6. `archive/appstore/summary_of_app.md`
+7. `docs/adaptive_scheduling_progressive_inference.md`
+8. `docs/deployment_architecture.md`
+9. `docs/openclaw_orchestration_contract_v0.md`
 
 Historical/design-only docs are useful for provenance, but they should not be
 treated as current authority when they conflict with the list above.

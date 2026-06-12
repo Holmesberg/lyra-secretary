@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from app.db.models import StopwatchSession, Task, TaskState, User
+from app.db.models import NotificationLifecycleEvent, StopwatchSession, Task, TaskState, User
 from app.db.scoping import get_current_user_id, set_current_user_id
 from tests.conftest import auth_headers
 
@@ -12,6 +12,16 @@ def _clear_ids(db, ids: list[int]) -> None:
         db.query(StopwatchSession).filter(StopwatchSession.user_id.in_(ids)).delete()
         db.query(Task).filter(Task.user_id.in_(ids)).delete()
         db.query(User).filter(User.user_id.in_(ids)).delete()
+        db.commit()
+    finally:
+        set_current_user_id(original_uid)
+
+
+def _clear_notification_lifecycle(db) -> None:
+    original_uid = get_current_user_id()
+    set_current_user_id(None)
+    try:
+        db.query(NotificationLifecycleEvent).delete()
         db.commit()
     finally:
         set_current_user_id(original_uid)
@@ -147,6 +157,7 @@ def test_operator_dashboard_reports_state_and_privacy_boundaries(client, db):
 def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
     ids = [9121, 9122]
     _clear_ids(db, ids)
+    _clear_notification_lifecycle(db)
     db.add(_user(9121, operator=True))
     db.add(_user(9122, operator=False))
     db.commit()
@@ -156,6 +167,7 @@ def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
     body = res.json()
 
     assert body["activity_frequency"]["login_frequency_status"] == "not_instrumented"
-    assert body["notification_lifecycle"]["web_rendered"] is None
+    assert body["notification_lifecycle"]["web_rendered"] == 0
+    assert "web_rendered" not in body["notification_lifecycle"]["not_instrumented_fields"]
     assert "login_only" in body["meaningful_activity_definition"]["excluded_events"]
     assert "task_created" in body["meaningful_activity_definition"]["included_events"]

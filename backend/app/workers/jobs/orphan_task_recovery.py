@@ -17,6 +17,7 @@ Lecs"). The PAUSED-with-no-session class needed the same SKIPPED transition.
 import logging
 
 from app.db.models import StopwatchSession, Task, TaskState, User
+from app.utils.tasks_range_cache import invalidate_user_ranges
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
 
@@ -65,6 +66,15 @@ def _run_for_one_user(db, user: User):
     if recovered:
         try:
             db.commit()
+            try:
+                invalidate_user_ranges(int(user.user_id))
+            except Exception as e:
+                logger.warning(
+                    "orphan_task_recovery: range cache invalidate failed "
+                    "for user_id=%s: %s",
+                    user.user_id,
+                    e,
+                )
             logger.info(
                 f"orphan_task_recovery: recovered {recovered} orphan tasks "
                 f"for user_id={user.user_id}"

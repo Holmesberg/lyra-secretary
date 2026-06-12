@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Deadline, DeadlineCompletionEvent
 from app.db.scoping import get_current_user_id
+from app.utils.tasks_range_cache import invalidate_user_ranges
 from app.utils.time_utils import now_utc, strip_tz
 
 
@@ -88,6 +89,13 @@ def _require_current_user(op: str) -> int:
 def _normalize_deadline_title(title: str) -> str:
     """Canonical title key for same-day duplicate detection."""
     return " ".join(title.casefold().split())
+
+
+def _invalidate_deadline_user_ranges(user_id: int) -> None:
+    try:
+        invalidate_user_ranges(int(user_id))
+    except Exception:
+        pass
 
 
 class DeadlineDuplicateError(ValueError):
@@ -217,6 +225,7 @@ class DeadlineManager:
         self.db.add(deadline)
         self.db.commit()
         self.db.refresh(deadline)
+        _invalidate_deadline_user_ranges(uid)
         return deadline
 
     def find_duplicate_deadline(
@@ -310,6 +319,7 @@ class DeadlineManager:
             )
             self.db.add(deadline)
             self.db.commit()
+            _invalidate_deadline_user_ranges(uid)
             return "created"
 
         if existing.voided_at is not None:
@@ -334,6 +344,7 @@ class DeadlineManager:
         existing.category_hint = category_hint
         # imported_at is the FIRST-import timestamp; don't overwrite.
         self.db.commit()
+        _invalidate_deadline_user_ranges(uid)
         return "updated"
 
     def update_deadline(
@@ -407,6 +418,7 @@ class DeadlineManager:
 
         self.db.commit()
         self.db.refresh(deadline)
+        _invalidate_deadline_user_ranges(deadline.user_id)
         return deadline
 
     def void_deadline(self, deadline_id: str) -> Deadline:
@@ -431,4 +443,5 @@ class DeadlineManager:
                 event.voided_at = now
         self.db.commit()
         self.db.refresh(deadline)
+        _invalidate_deadline_user_ranges(deadline.user_id)
         return deadline

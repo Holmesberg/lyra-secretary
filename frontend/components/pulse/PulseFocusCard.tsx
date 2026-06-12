@@ -132,6 +132,15 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
+  const refreshTimerSurfaces = () => {
+    qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    qc.invalidateQueries({ queryKey: ["tasks"] });
+    qc.invalidateQueries({ queryKey: ["tasks-range"] });
+    qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
+    qc.invalidateQueries({ queryKey: ["pressure-map"] });
+    qc.invalidateQueries({ queryKey: ["me"] });
+  };
+
   function beginReflection() {
     setCompletionPct("");
     setScopeOutcome(null);
@@ -189,21 +198,20 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       } else {
         setInfoMsg(null);
       }
-      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
-      qc.invalidateQueries({ queryKey: ["tasks"] });
+      refreshTimerSurfaces();
     },
     onError: (e) => setErrorMsg(e.message ?? "Failed to start"),
   });
 
   const pauseM = useMutation<unknown, Error, void>({
     mutationFn: () => pauseStopwatch("intentional_break"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["stopwatch-status"] }),
+    onSuccess: () => refreshTimerSurfaces(),
     onError: (e) => setErrorMsg(e.message ?? "Failed to pause"),
   });
 
   const resumeM = useMutation<unknown, Error, void>({
     mutationFn: () => resumeStopwatch(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["stopwatch-status"] }),
+    onSuccess: () => refreshTimerSurfaces(),
     onError: (e) => setErrorMsg(e.message ?? "Failed to resume"),
   });
 
@@ -242,10 +250,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       setReflection(null);
       setCompletionPct("");
       setScopeOutcome(null);
-      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      qc.invalidateQueries({ queryKey: ["tasks-range"] });
-      qc.invalidateQueries({ queryKey: ["me"] });
+      refreshTimerSurfaces();
     },
     onError: (e) => setErrorMsg(e.message ?? "Failed to stop"),
   });

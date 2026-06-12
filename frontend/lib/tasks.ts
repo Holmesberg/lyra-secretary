@@ -5,6 +5,20 @@
 import { api } from "./api";
 import type { Category } from "./categories";
 
+function newIdempotencyKey(scope: string): string {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${scope}:${random}`;
+}
+
+function idempotencyHeaders(scope: string, idempotencyKey?: string) {
+  return {
+    "X-Idempotency-Key": idempotencyKey ?? newIdempotencyKey(scope),
+  };
+}
+
 export type TaskState =
   | "PLANNED"
   | "EXECUTING"
@@ -325,12 +339,14 @@ export interface StartStopwatchResponse {
 export function startStopwatch(
   task_id: string,
   pre_task_readiness: number,
-  interruption_type?: string | null
+  interruption_type?: string | null,
+  idempotencyKey?: string
 ): Promise<StartStopwatchResponse> {
   return api<StartStopwatchResponse>(
     "/v1/stopwatch/start",
     {
       method: "POST",
+      headers: idempotencyHeaders(`stopwatch-start:${task_id}`, idempotencyKey),
       body: JSON.stringify({
         task_id,
         pre_task_readiness,
@@ -370,11 +386,20 @@ export interface StopResponse {
 
 export function stopStopwatch(
   post_task_reflection: number,
-  opts: { confirmed?: boolean; task_completion_percentage?: number; scope_outcome?: string } = {}
+  opts: {
+    confirmed?: boolean;
+    task_completion_percentage?: number;
+    scope_outcome?: string;
+    idempotencyKey?: string;
+  } = {}
 ) {
   const qs = opts.confirmed ? "?confirmed=true" : "";
   return api<StopResponse>(`/v1/stopwatch/stop${qs}`, {
     method: "POST",
+    headers: idempotencyHeaders(
+      `stopwatch-stop:${opts.confirmed ? "confirmed" : "initial"}`,
+      opts.idempotencyKey
+    ),
     body: JSON.stringify({
       post_task_reflection,
       task_completion_percentage: opts.task_completion_percentage,
@@ -383,15 +408,19 @@ export function stopStopwatch(
   });
 }
 
-export function pauseStopwatch(reason?: string) {
+export function pauseStopwatch(reason?: string, idempotencyKey?: string) {
   return api<unknown>("/v1/stopwatch/pause", {
     method: "POST",
+    headers: idempotencyHeaders("stopwatch-pause", idempotencyKey),
     body: JSON.stringify({ pause_reason: reason, pause_initiator: "self" }),
   });
 }
 
-export function resumeStopwatch() {
-  return api<unknown>("/v1/stopwatch/resume", { method: "POST" });
+export function resumeStopwatch(idempotencyKey?: string) {
+  return api<unknown>("/v1/stopwatch/resume", {
+    method: "POST",
+    headers: idempotencyHeaders("stopwatch-resume", idempotencyKey),
+  });
 }
 
 export function markAbandoned(task_id: string, reason?: string) {
@@ -410,9 +439,10 @@ export interface MarkDoneResponse {
   initiation_status: string;
 }
 
-export function markDone(task_id: string) {
+export function markDone(task_id: string, idempotencyKey?: string) {
   return api<MarkDoneResponse>(`/v1/tasks/${task_id}/mark-done`, {
     method: "POST",
+    headers: idempotencyHeaders(`mark-done:${task_id}`, idempotencyKey),
   });
 }
 
@@ -564,10 +594,20 @@ export function getPendingNotifications() {
   return api<PendingNotificationsResponse>("/v1/notifications/web/pending");
 }
 
-export function ackPendingNotifications(notificationIds: string[]) {
+export type NotificationAckEventType =
+  | "rendered"
+  | "acted"
+  | "dismissed"
+  | "expired"
+  | "lost_unrendered";
+
+export function ackPendingNotifications(
+  notificationIds: string[],
+  eventType: NotificationAckEventType = "rendered"
+) {
   return api<{ acknowledged: number }>("/v1/notifications/web/ack", {
     method: "POST",
-    body: JSON.stringify({ notification_ids: notificationIds }),
+    body: JSON.stringify({ notification_ids: notificationIds, event_type: eventType }),
   });
 }
 

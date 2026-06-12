@@ -14,6 +14,11 @@ from uuid import uuid4
 from typing import Any
 
 from app.core.config import settings
+from app.services.notification_lifecycle import (
+    ensure_notification_queued,
+    reserve_notifications,
+    transition_notifications,
+)
 from app.services.operator_notifier import notify_operator, redacted_user_ref
 from app.utils.redis_client import RedisClient
 
@@ -134,9 +139,34 @@ def mirror_user_notification_to_operator(
         return False
 
 
-def enqueue_user_notification(user_id: int, payload: dict[str, Any]) -> None:
+def enqueue_user_notification(
+    user_id: int,
+    payload: dict[str, Any],
+    *,
+    db=None,
+    channel: str = "web",
+    surface_id: str | None = None,
+    exposure_id: str | None = None,
+    dedupe_key: str | None = None,
+    content_snapshot: str | None = None,
+) -> None:
     payload = dict(payload)
     payload.setdefault("notification_id", str(uuid4()))
+    if surface_id:
+        payload.setdefault("surface_id", surface_id)
+    if exposure_id:
+        payload.setdefault("exposure_id", exposure_id)
+    if db is not None:
+        ensure_notification_queued(
+            db,
+            user_id=int(user_id),
+            payload=payload,
+            channel=channel,
+            surface_id=surface_id,
+            exposure_id=exposure_id,
+            dedupe_key=dedupe_key,
+            content_snapshot=content_snapshot,
+        )
     redis = RedisClient()
     redis.client.rpush(
         f"notifications:pending:{int(user_id)}",
@@ -165,6 +195,7 @@ def peek_user_notifications(
     user_id: int,
     *,
     channel: str = "web",
+    db=None,
 ) -> list[dict[str, Any]]:
     """Return pending notifications without removing them from Redis.
 
@@ -181,14 +212,42 @@ def peek_user_notifications(
         payload = dict(payload)
         payload.setdefault("notification_id", _payload_id(payload))
         items.append(payload)
+    if db is not None and items:
+        reserve_notifications(
+            db,
+            user_id=int(user_id),
+            payloads=items,
+            channel=channel,
+        )
     return items
 
 
-def ack_user_notifications(user_id: int, notification_ids: list[str]) -> int:
-    """Remove rendered web notifications by ID while preserving operator alerts."""
+def ack_user_notifications(
+    user_id: int,
+    notification_ids: list[str],
+    *,
+    db=None,
+    event_type: str = "rendered",
+) -> int:
+    """Mark web notification lifecycle and remove terminal queue items.
+
+    ``event_type=rendered`` means the item mounted visibly in the browser.
+    ``lost_unrendered`` removes unsupported/duplicate items without claiming
+    exposure. Later ``dismissed`` / ``acted`` / ``expired`` calls update the
+    lifecycle row even when the Redis item was already removed at render time.
+    """
     wanted = {str(nid) for nid in notification_ids if nid}
     if not wanted:
         return 0
+    terminal_remove = event_type in {"rendered", "lost_unrendered", "expired"}
+    if db is not None:
+        transition_notifications(
+            db,
+            user_id=int(user_id),
+            notification_ids=list(wanted),
+            status=event_type,
+            channel="web",
+        )
     redis = RedisClient()
     key = _queue_key(int(user_id))
     raw_items = list(redis.client.lrange(key, 0, -1))
@@ -197,7 +256,7 @@ def ack_user_notifications(user_id: int, notification_ids: list[str]) -> int:
     for raw in raw_items:
         payload = json.loads(raw)
         payload_id = _payload_id(payload)
-        if payload_id in wanted and _web_visible(payload):
+        if terminal_remove and payload_id in wanted and _web_visible(payload):
             removed += 1
             continue
         preserved.append(

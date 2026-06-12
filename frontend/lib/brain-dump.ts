@@ -125,9 +125,18 @@ export async function parseBrainDump(
 export async function commitBrainDump(
   items: BrainDumpCommitItem[],
   bindings: BrainDumpCommitBinding[],
+  idempotencyKey?: string,
 ): Promise<BrainDumpCommitResponse> {
+  const key =
+    idempotencyKey ??
+    (typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? `brain-dump-${crypto.randomUUID()}`
+      : `brain-dump-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   return api<BrainDumpCommitResponse>("/v1/brain-dump/commit", {
     method: "POST",
+    headers: {
+      "X-Idempotency-Key": key,
+    },
     body: JSON.stringify({ items, bindings }),
   });
 }

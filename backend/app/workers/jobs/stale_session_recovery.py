@@ -1,12 +1,11 @@
 """Stale session recovery background job.
 
-Sweeps unclosed StopwatchSession rows and resolves them based on whether
-the user actually walked away vs. is mid-deep-work. Two distinct branches:
+Sweeps unclosed StopwatchSession rows and separates user-resolution cases from
+scheduler-recovered unattended timer cases. Two distinct branches:
 
-  * Paused-and-abandoned (session.paused_at_utc < now - 48h):
-      - executed_so_far ≥ 0.5 * planned → EXECUTED  (honest work, forgot to stop)
-      - executed_so_far <  0.5 * planned → SKIPPED  (early-stop gate)
-      Session ends at paused_at_utc; pause_event closed with duration=0.
+  * Paused-and-stale (session.paused_at_utc < now - 72h):
+      Leave the session open for explicit user reflection resolution. The
+      scheduler must not auto-mark paused stale work EXECUTED or SKIPPED.
 
   * Active-and-abandoned (no pause, session.start_time_utc < now - 48h):
       Always → SKIPPED. An unattended always-running timer cannot honestly
@@ -40,6 +39,7 @@ from app.db.models import PauseEvent, StopwatchSession, Task, TaskState, User
 from app.db.scoping import set_current_user_id
 from app.db.session import SessionLocal
 from app.utils.redis_client import RedisClient
+from app.utils.tasks_range_cache import invalidate_user_ranges
 from app.utils.time_utils import now_utc
 from app.workers.jobs._per_user import for_each_user
 from app.workers.jobs._scheduler_contract import (
@@ -186,14 +186,7 @@ def _run_for_one_user(db, user: User):
 
     for session in open_sessions:
         try:
-            # Skip currently-active session — operator deliberately on it.
-            if active_session_id and session.session_id == active_session_id:
-                logger.info(
-                    f"stale_session_recovery: skipping currently-active "
-                    f"session_id={session.session_id} user_id={user.user_id}"
-                )
-                continue
-
+            # Decide threshold eligibility before applying Redis-active skip.
             task = db.query(Task).filter(Task.task_id == session.task_id).first()
             if task and task.voided_at is not None:
                 continue
@@ -208,6 +201,17 @@ def _run_for_one_user(db, user: User):
             )
             if not (is_paused_branch or is_active_branch):
                 continue  # threshold not tripped
+
+            if (
+                active_session_id
+                and session.session_id == active_session_id
+                and not is_paused_branch
+            ):
+                logger.info(
+                    f"stale_session_recovery: skipping currently-active "
+                    f"session_id={session.session_id} user_id={user.user_id}"
+                )
+                continue
 
             planned = max((task.planned_duration_minutes if task else None) or 60, 1)
 
@@ -310,6 +314,16 @@ def _run_for_one_user(db, user: User):
 
     try:
         db.commit()
+        if closed:
+            try:
+                invalidate_user_ranges(int(user.user_id))
+            except Exception as e:
+                logger.warning(
+                    "stale_session_recovery: range cache invalidate failed "
+                    "for user_id=%s: %s",
+                    user.user_id,
+                    e,
+                )
         logger.info(
             f"stale_session_recovery: closed {closed}/{len(open_sessions)} stale sessions "
             f"({executed_count} EXECUTED, {skipped_count} SKIPPED) "

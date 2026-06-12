@@ -10,6 +10,17 @@ rule-governed behavioral measurement system: users plan and work normally, the
 system preserves the trace, and later insights must pass provenance,
 clean-data, exposure, and uncertainty gates.
 
+Current paper-direction shorthand:
+
+```text
+Measurement Integrity Before Agency Claims
+```
+
+LyraOS should be read as a case study in delaying claims about productivity,
+focus, motivation, avoidance, discipline, recovery, or agency until the
+underlying variables survive clean-data, provenance, exposure, and
+slice-invariance checks.
+
 ## Evolution Of The App
 
 LyraOS started from a broader question about whether planning failure could be
@@ -66,7 +77,9 @@ The current architecture treats those earlier directions as bounded layers:
    and clean-data profiles.
 5. [docs/cortex_product_research_contract_v0.md](cortex_product_research_contract_v0.md)
    for the product/research and exposure-ledger boundary.
-6. [archive/appstore/summary_of_app.md](../archive/appstore/summary_of_app.md)
+6. [docs/measurement_integrity_before_agency_claims.md](measurement_integrity_before_agency_claims.md)
+   for the current methods-paper direction.
+7. [archive/appstore/summary_of_app.md](../archive/appstore/summary_of_app.md)
    for the comprehensive current-state summary.
 
 ## How To Verify The Repo Shape
@@ -112,3 +125,6 @@ node scripts/verify_runtime_topology.mjs --topology public
   debts.
 - Frontend automated tests are still thin; CI now proves the production
   frontend build, but Playwright coverage should be added next.
+- The current paper direction is methodological; it does not claim LyraOS has
+  already validated focus, motivation, avoidance, discipline, recovery, or
+  agency constructs.

@@ -288,6 +288,10 @@ def void_task(
             f"void_cleanup failed for {task.task_id}: {e}. The _get_active "
             f"self-heal will recover on the next status poll."
         )
+    try:
+        invalidate_user_ranges(int(task.user_id))
+    except Exception as e:
+        logger.warning("void_task: task range cache invalidate failed: %s", e)
 
     return TaskVoidResponse(
         task_id=task.task_id,
@@ -353,6 +357,10 @@ def mark_abandoned(
                 f"stopwatch cleanup failed for mark-abandoned {task.task_id}: {e}. "
                 f"_get_active self-heal will recover on next status poll."
             )
+    try:
+        invalidate_user_ranges(int(task.user_id))
+    except Exception as e:
+        logger.warning("mark_abandoned: task range cache invalidate failed: %s", e)
 
     return MarkAbandonedResponse(
         task_id=task.task_id,
@@ -366,6 +374,7 @@ def mark_abandoned(
 def mark_done(
     task_id: str,
     db: Session = Depends(get_db),
+    x_idempotency_key: Optional[str] = Header(None),
 ) -> MarkDoneResponse:
     """
     Mark an overdue PLANNED/SKIPPED task as done without reopening it.
@@ -375,16 +384,49 @@ def mark_done(
     initiation_status='retroactive' so Cortex learning profiles exclude the
     fabricated duration.
     """
+    current_user_id = get_current_user_id()
+    redis = RedisClient()
+    cache_key = None
+    if x_idempotency_key:
+        if current_user_id is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        cache_key = f"mark_done:{task_id}:{x_idempotency_key}"
+        cached = redis.check_idempotency(cache_key, user_id=current_user_id)
+        if cached:
+            return MarkDoneResponse(**json.loads(cached))
+
     task = db.query(Task).filter(Task.task_id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     previous = task.state
+    if (
+        task.state == TaskState.EXECUTED
+        and task.initiation_status == "retroactive"
+        and task.executed_start_utc == task.planned_start_utc
+        and task.executed_end_utc == task.planned_end_utc
+        and task.executed_duration_minutes == task.planned_duration_minutes
+    ):
+        response = MarkDoneResponse(
+            task_id=task.task_id,
+            done=True,
+            retrospective=True,
+            previous_state=previous,
+            new_state=task.state,
+            initiation_status=task.initiation_status,
+        )
+        if cache_key:
+            redis.set_idempotency(
+                cache_key,
+                response.model_dump_json(),
+                user_id=current_user_id,
+            )
+        return response
     try:
         task = TaskManager(db).mark_overdue_task_done_retroactively(task_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return MarkDoneResponse(
+    response = MarkDoneResponse(
         task_id=task.task_id,
         done=True,
         retrospective=True,
@@ -392,6 +434,13 @@ def mark_done(
         new_state=task.state,
         initiation_status=task.initiation_status,
     )
+    if cache_key:
+        redis.set_idempotency(
+            cache_key,
+            response.model_dump_json(),
+            user_id=current_user_id,
+        )
+    return response
 
 
 @router.post(
@@ -662,6 +711,10 @@ def confirm_llm_binding(
         priority_set = True
 
     db.commit()
+    try:
+        invalidate_user_ranges(int(task.user_id))
+    except Exception as e:
+        logger.warning("llm-confirm: task range cache invalidate failed: %s", e)
     response = LlmConfirmResponse(
         task_id=task.task_id,
         deadline_id_after=deadline_id_after,
@@ -747,6 +800,10 @@ def reject_llm_binding(
         task.llm_alternative_suggestion = None
 
     db.commit()
+    try:
+        invalidate_user_ranges(int(task.user_id))
+    except Exception as e:
+        logger.warning("reject-llm-binding: task range cache invalidate failed: %s", e)
     return LlmRejectResponse(task_id=task.task_id, rejected_at=task.llm_binding_rejected_at)
 
 

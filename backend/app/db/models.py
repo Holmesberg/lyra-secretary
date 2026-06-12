@@ -1380,6 +1380,65 @@ class ExposureAckEvent(Base):
     )
 
 
+class NotificationLifecycleEvent(Base):
+    """Durable lifecycle row for user-facing notification delivery.
+
+    Redis remains the short-lived delivery queue. This table is the audit
+    boundary that distinguishes queued/reserved notifications from stimuli that
+    actually reached the browser UI.
+    """
+
+    __tablename__ = "notification_lifecycle_event"
+
+    event_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("user.user_id"),
+        nullable=False,
+    )
+    notification_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    channel: Mapped[str] = mapped_column(String(30), nullable=False, default="web")
+    notification_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued")
+    dedupe_key: Mapped[Optional[str]] = mapped_column(String(200))
+    payload_hash: Mapped[Optional[str]] = mapped_column(String(128))
+    content_snapshot: Mapped[Optional[str]] = mapped_column(Text)
+    surface_id: Mapped[Optional[str]] = mapped_column(String(120))
+    exposure_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("exposure_decision_event.exposure_id", ondelete="SET NULL"),
+    )
+    task_id: Mapped[Optional[str]] = mapped_column(String(36))
+    session_id: Mapped[Optional[str]] = mapped_column(String(36))
+    firing_id: Mapped[Optional[str]] = mapped_column(String(36))
+    queued_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    reserved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    rendered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    acted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    expired_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    lost_unrendered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_transition_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "notification_id",
+            "channel",
+            name="uq_notification_lifecycle_user_notification_channel",
+        ),
+        Index("idx_notification_lifecycle_user_created", "user_id", "created_at"),
+        Index("idx_notification_lifecycle_status", "status"),
+        Index("idx_notification_lifecycle_dedupe", "user_id", "dedupe_key"),
+        Index("idx_notification_lifecycle_exposure", "exposure_id"),
+    )
+
+
 class SuppressionEvent(Base):
     """Exposure Ledger v0 suppression atom.
 

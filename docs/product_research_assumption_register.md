@@ -32,6 +32,11 @@ assumption
 No assumption becomes a product claim until its validation path survives the
 relevant data-quality, exposure, cohort, and security gates.
 
+Related methods-paper direction:
+`docs/measurement_integrity_before_agency_claims.md` describes the governing
+research stance: computable variables do not justify agency claims until they
+survive clean-data, provenance, exposure, and slice-invariance checks.
+
 ---
 
 ## 1. Why This Exists
@@ -80,6 +85,7 @@ assumptions are observable and falsifiable.
 | M8 | System-suggested durations require provenance. | If Lyra proposes a duration and the user accepts it unchanged, that row is epistemically different from an independent user estimate. | duration source, suggested range, accepted/edited flag, plan edits, execution delta, clean-profile eligibility. | Add `duration_source` or equivalent before cohort-level duration priors affect planning; exclude unedited system suggestions from pure user-estimate calibration. | System-suggested durations are mixed into planning calibration without provenance, making estimate-drift claims uninterpretable. | doctrine-locked / future-gated |
 | M9 | Passive activity can reduce friction only if it avoids surveillance hallucination. | Passive/contextual traces may improve continuity and repair prompts, but only when treated as bounded evidence with provenance, confidence, consent scope, and contradiction handling. | resource match, foreground time, idle gaps, consent scope, passive confidence, contradiction score, user correction. | Introduce passive rows only behind evidence tiers; compare passive-assisted interpretation against explicit-only baselines and user review. | Passive traces are treated as semantic truth, users reject inferences as creepy/wrong, or passive-only rows enter clean calibration. | doctrine-locked / future-gated |
 | M10 | Alignment improves through honesty, not obedience. | Users trust and benefit from Lyra when it preserves inspectable contact between intention, constraint, action, and consequence rather than optimizing compliance or engagement. | copy comprehension, correction acceptance, opt-out/override use, trust feedback, exposure rows, accepted/rejected suggestions. | Compare low-authority, provenance-visible guidance against authoritative or hidden-steering copy in qualitative review before any scaled experiment. | Users comply more but report reduced agency, cannot explain why Lyra suggested something, or behavior changes without exposure visibility. | doctrine-locked / testable |
+| M11 | Computable metrics do not authorize agency claims. | Task/session/provider events can support agency-relevant constructs only after the metric meaning survives clean-data checks, exposure checks, provenance review, and slice-invariance tests. | events, derived metrics, dirty reasons, exposure state, provider provenance, operator/test/synthetic flags, planned vs unplanned execution slices. | For every promoted construct, document the event->metric->construct->bounded-claim chain and test it across pressure windows, cohorts, task classes, and provider contexts. | Lyra or an analysis jumps from duration, delay, completion, pause, or retention metrics directly to focus, motivation, avoidance, discipline, agency, or improvement claims. | doctrine-locked / methods-paper candidate |
 
 ## 5. Product And UX Assumptions
 
@@ -144,6 +150,7 @@ assumptions are observable and falsifiable.
 | E5 | Systems shape trajectory through repeated interaction. | Lyra can help only if its prompts, claims, sequencing, and adaptive surfaces increase reality contact rather than hidden proxy optimization. | exposure logs, prompt acceptance/rejection, correction rates, user trust feedback, survey language around agency, overclaim suppressions. | Review behavior-shaping surfaces for whether they preserve inspectability, reversibility, and user correction. | Retention, productivity, status, or institutional convenience becomes a target that overrides agency or evidence boundaries. | doctrine-locked |
 | E6 | Reality-contact bandwidth is a real constraint. | Network, credibility, budget, cohort access, trust, and operational stability determine whether the system can learn from reality before claims become story-driven. | active cohort size, interview cadence, recovered data quality, pilot access, uptime, incident rate, usable feedback volume. | Treat contact with real users and real traces as methodological capacity, not vanity. | Architecture keeps expanding without enough user, provider, or operational evidence to pressure-test assumptions. | doctrine-locked |
 | E7 | Sequencing is part of alignment. | Capability becomes safer and more useful when explanations, prompts, and authority are revealed in an order humans can metabolize. | comprehension surveys, prompt fatigue, support questions, presentation feedback, feature misuse, correction flow completion. | Apply sequential revelation doctrine to onboarding, insights, recovery prompts, decks, and future adaptive flows. | True details are dumped too early, hidden too long, or arranged to persuade beyond evidence. | doctrine-locked |
+| E8 | Measurement integrity precedes optimization. | Lyra becomes safer and more scientifically useful by restricting its own right to interpret behavior before trying to optimize behavior. | claim suppressions, dirty-reason distributions, exposure contamination, slice failures, operator dashboard blockers, demoted hypotheses. | Treat every behavior-shaping surface as an intervention candidate; require construct defense before using a metric as a target or guidance basis. | Retention, completion, productivity, or institutional convenience becomes a target before the underlying construct is valid in the relevant slice. | doctrine-locked / publishable candidate |
 
 ## 10. Future Neuroadaptive Assumptions
 
@@ -211,10 +218,12 @@ Current mitigation strategy:
 8. Dirty provider rows are demoted, repaired, or contextualized without
    corrupting calibration or recreating heavy manual cleanup.
 9. Unplanned execution rate explains instability beyond estimation error.
-10. Read-time drift computation remains fast until a real rollup trigger fires.
-11. Small-cohort qualitative feedback confirms that transparency increases
+10. Computed metrics can be traced through event, metric, construct, and
+   bounded-claim layers without unauthorized agency leaps.
+11. Read-time drift computation remains fast until a real rollup trigger fires.
+12. Small-cohort qualitative feedback confirms that transparency increases
    trust rather than confusion.
-12. Longitudinal mirrors remain supportive enough that users keep participating
+13. Longitudinal mirrors remain supportive enough that users keep participating
    after uncomfortable patterns become visible.
 
 Until these survive contact with users and runtime, LyraOS should stay in

@@ -5,6 +5,27 @@ param(
 $ErrorActionPreference = "Stop"
 $forceValue = if ($ForceRestart) { "1" } else { "0" }
 
+$dnsRepairScript = @'
+set -euo pipefail
+
+# WSL can regenerate /etc/resolv.conf after laptop restarts with the Windows
+# DNS proxy. That proxy has failed SRV lookups for Cloudflare tunnel edges, so
+# repair it before cloudflared starts.
+cat > /etc/resolv.conf <<'EOF'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+
+getent hosts region1.v2.argotunnel.com >/dev/null
+'@
+
+$dnsEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($dnsRepairScript))
+& wsl.exe -u root -e bash -lc "echo $dnsEncoded | base64 -d | bash"
+
+if ($LASTEXITCODE -ne 0) {
+    throw "WSL DNS repair failed with exit code $LASTEXITCODE."
+}
+
 $bashScript = @'
 set -euo pipefail
 
@@ -36,10 +57,9 @@ fi
 echo "Starting cloudflared tunnel for $TUNNEL_NAME..."
 echo "Log: $LOG_FILE"
 nohup "$CLOUDFLARED" tunnel \
+  --protocol http2 \
   --edge-ip-version 4 \
   run \
-  --dns-resolver-addrs 1.1.1.1:53 \
-  --dns-resolver-addrs 8.8.8.8:53 \
   "$TUNNEL_NAME" > "$LOG_FILE" 2>&1 &
 disown
 

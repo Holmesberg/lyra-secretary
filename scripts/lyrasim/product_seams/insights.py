@@ -19,7 +19,7 @@ def seed_execution_tasks_from_scenario(
     This is a test-only product seam. Hidden state is deliberately ignored.
     The product receives observable execution rows and repair provenance only.
     """
-    from app.db.models import Task, TaskExecutionCorrection, TaskState
+    from app.db.models import StopwatchSession, Task, TaskExecutionCorrection, TaskState
 
     base_time = base_time or datetime.utcnow() - timedelta(days=30)
     tasks: list[Any] = []
@@ -61,6 +61,18 @@ def seed_execution_tasks_from_scenario(
         )
         db.add(task)
         db.flush()
+        db.add(
+            StopwatchSession(
+                session_id=f"lyrasim-{task.task_id}",
+                task_id=task.task_id,
+                user_id=user_id,
+                start_time_utc=executed_start,
+                end_time_utc=executed_end,
+                total_paused_minutes=0.0,
+                auto_closed=False,
+                data_quality_flag=None,
+            )
+        )
         tasks.append(task)
 
         if payload.get("clean_data_eligible") is False:

@@ -33,16 +33,22 @@ def _require_explicit_identity(request: Request) -> int:
 
 
 @router.post("/push")
-def push_notification(payload: dict, request: Request):
+def push_notification(
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Legacy HTTP bridge for per-user notification enqueue."""
     uid = _require_explicit_identity(request)
-    enqueue_user_notification(uid, payload)
+    enqueue_user_notification(uid, payload, db=db)
+    db.commit()
     return {"queued": True}
 
 
 @router.get("/pending")
 def get_pending(
     request: Request,
+    db: Session = Depends(get_db),
     channel: Literal["openclaw", "web"] | None = None,
 ):
     """Legacy route; new callers must use explicit web/openclaw endpoints."""
@@ -53,29 +59,51 @@ def get_pending(
             detail="notification channel required; use /web/pending or /openclaw/pending",
         )
     if channel == "web":
-        items = peek_user_notifications(uid, channel="web")
+        items = peek_user_notifications(uid, channel="web", db=db)
+        db.commit()
     else:
         items = drain_user_notifications(uid, channel="openclaw")
     return {"notifications": items, "count": len(items)}
 
 
 @router.get("/web/pending")
-def get_web_pending(request: Request):
+def get_web_pending(
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Peek web-safe notifications without draining operator payloads."""
     uid = _require_explicit_identity(request)
-    items = peek_user_notifications(uid, channel="web")
+    items = peek_user_notifications(uid, channel="web", db=db)
+    db.commit()
     return {"notifications": items, "count": len(items)}
 
 
 class WebNotificationAckRequest(BaseModel):
     notification_ids: list[str] = Field(default_factory=list)
+    event_type: Literal[
+        "rendered",
+        "acted",
+        "dismissed",
+        "expired",
+        "lost_unrendered",
+    ] = "rendered"
 
 
 @router.post("/web/ack")
-def ack_web_pending(payload: WebNotificationAckRequest, request: Request):
+def ack_web_pending(
+    payload: WebNotificationAckRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Acknowledge web notifications after render/dismiss/action."""
     uid = _require_explicit_identity(request)
-    removed = ack_user_notifications(uid, payload.notification_ids)
+    removed = ack_user_notifications(
+        uid,
+        payload.notification_ids,
+        db=db,
+        event_type=payload.event_type,
+    )
+    db.commit()
     return {"acknowledged": removed}
 
 

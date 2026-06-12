@@ -13,8 +13,20 @@ import pytest
 
 from app.db.models import Task, TaskState, Deadline, User
 from app.db.scoping import set_current_user_id
+from app.utils.redis_client import RedisClient
 from app.utils.time_utils import to_utc
 from tests.conftest import auth_headers
+
+
+def _redis_available() -> bool:
+    try:
+        RedisClient().client.ping()
+        return True
+    except Exception:
+        return False
+
+
+needs_redis = pytest.mark.skipif(not _redis_available(), reason="redis not reachable")
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +66,14 @@ def _commit_payload(items, bindings=None):
     return {"items": items, "bindings": bindings or []}
 
 
+def _clear_brain_dump_idempotency(user_id: int) -> None:
+    redis = RedisClient()
+    pattern = f"idempotency:user:{user_id}:brain_dump:commit:*"
+    keys = list(redis.client.scan_iter(pattern))
+    if keys:
+        redis.client.delete(*keys)
+
+
 def test_commit_clean_batch_returns_empty_failed_items(client, db):
     """Happy path: all items valid → failed_items empty."""
     user = _make_user(db)
@@ -75,6 +95,77 @@ def test_commit_clean_batch_returns_empty_failed_items(client, db):
     body = r.json()
     assert body["tasks_created"] == 1
     assert body["failed_items"] == []
+
+
+@needs_redis
+def test_commit_idempotency_replays_without_duplicate_tasks(client, db):
+    user = _make_user(db)
+    _clear_brain_dump_idempotency(user.user_id)
+    future = (datetime.utcnow() + timedelta(hours=6)).isoformat()
+    payload = _commit_payload([
+        {
+            "item_id": str(uuid4()),
+            "kind": "task",
+            "title": "idempotent brain dump task",
+            "when_local": future,
+            "duration_minutes": 30,
+        },
+    ])
+    headers = {
+        **auth_headers(user.user_id),
+        "X-Idempotency-Key": "wave3-brain-dump-replay",
+    }
+
+    first = client.post("/v1/brain-dump/commit", json=payload, headers=headers)
+    second = client.post("/v1/brain-dump/commit", json=payload, headers=headers)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json() == second.json()
+    assert (
+        db.query(Task)
+        .filter(Task.user_id == user.user_id)
+        .filter(Task.title == "idempotent brain dump task")
+        .count()
+        == 1
+    )
+
+
+@needs_redis
+def test_commit_idempotency_is_user_scoped(client, db):
+    user_a = _make_user(db)
+    user_b = _make_user(db)
+    _clear_brain_dump_idempotency(user_a.user_id)
+    _clear_brain_dump_idempotency(user_b.user_id)
+    future = (datetime.utcnow() + timedelta(hours=6)).isoformat()
+    shared_key = "wave3-shared-client-key"
+
+    def post_for(user: User, title: str):
+        return client.post(
+            "/v1/brain-dump/commit",
+            json=_commit_payload([
+                {
+                    "item_id": str(uuid4()),
+                    "kind": "task",
+                    "title": title,
+                    "when_local": future,
+                    "duration_minutes": 30,
+                },
+            ]),
+            headers={
+                **auth_headers(user.user_id),
+                "X-Idempotency-Key": shared_key,
+            },
+        )
+
+    first = post_for(user_a, "user scoped idempotency A")
+    second = post_for(user_b, "user scoped idempotency B")
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["task_ids"] != second.json()["task_ids"]
+    assert db.query(Task).filter(Task.user_id == user_a.user_id).count() == 1
+    assert db.query(Task).filter(Task.user_id == user_b.user_id).count() == 1
 
 
 def test_commit_preserves_parse_inferred_category(client, db):

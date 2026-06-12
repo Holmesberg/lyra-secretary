@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "ackBodies": [
+    {
+      "notification_ids": [
+        "wave1-timer"
+      ],
+      "event_type": "rendered"
+    },
+    {
+      "notification_ids": [
+        "wave1-operator"
+      ],
+      "event_type": "lost_unrendered"
+    },
+    {
+      "notification_ids": [
+        "wave1-timer"
+      ],
+      "event_type": "dismissed"
+    }
+  ]
+}

@@ -28,7 +28,7 @@ export interface ToastProps {
    * engagement affordance = glance-and-dismiss is the only option.
    */
   detailHref?: string;
-  onDismiss: (id: string) => void;
+  onDismiss: (id: string, reason?: "acted" | "dismissed" | "expired") => void;
 }
 
 const AUTO_DISMISS_MS = 8000;
@@ -49,15 +49,15 @@ export function Toast({
   // Keep a ref to the freshest dismiss handler so the auto-dismiss
   // setTimeout doesn't capture a stale closure if parent re-renders
   // with a new onDismiss reference.
-  const latestDismiss = useRef<() => void>(() => {});
-  latestDismiss.current = () => {
+  const latestDismiss = useRef<(reason?: "acted" | "dismissed" | "expired") => void>(() => {});
+  latestDismiss.current = (reason = "dismissed") => {
     if (viewId) {
       markDismissed(viewId).catch(() => {
         /* fire-and-forget: dwell tracking degrades gracefully on
            network failure; the toast UX still works. */
       });
     }
-    onDismiss(id);
+    onDismiss(id, reason);
   };
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export function Toast({
 
   useEffect(() => {
     if (lifespan !== "auto") return;
-    const t = setTimeout(() => latestDismiss.current(), AUTO_DISMISS_MS);
+    const t = setTimeout(() => latestDismiss.current("expired"), AUTO_DISMISS_MS);
     return () => clearTimeout(t);
   }, [lifespan]);
 
@@ -84,7 +84,7 @@ export function Toast({
         <div className="flex-1 leading-relaxed">{message}</div>
         <button
           type="button"
-          onClick={() => latestDismiss.current()}
+          onClick={() => latestDismiss.current("dismissed")}
           aria-label="Dismiss"
           className="-mt-0.5 shrink-0 text-dust-deep transition-colors hover:text-parchment"
         >
@@ -94,7 +94,7 @@ export function Toast({
       {detailHref && (
         <Link
           href={detailHref}
-          onClick={() => latestDismiss.current()}
+          onClick={() => latestDismiss.current("acted")}
           className="inline-flex items-center gap-1 self-start font-mono text-[10px] uppercase tracking-widest text-dust-deep transition-colors hover:text-signal"
         >
           View details

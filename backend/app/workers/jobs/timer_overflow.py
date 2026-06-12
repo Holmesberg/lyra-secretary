@@ -1,9 +1,10 @@
 """Timer overflow background job (per-user)."""
 import logging
 
-from app.db.models import StopwatchSession, Task, User
+from app.db.models import NotificationLifecycleEvent, StopwatchSession, Task, User
 from app.services.notification_queue import enqueue_user_notification
 from app.services.operator_notifier import notify_operator
+from app.services.output_surfaces import create_output_surface_decision
 from app.utils.time_utils import now_utc
 from app.utils.redis_client import RedisClient
 from app.workers.jobs._per_user import for_each_user
@@ -39,7 +40,17 @@ def _run_for_one_user(db, user: User):
 
         if elapsed_minutes > (planned + 5):
             notified_key = f"overflow_sent:{user.user_id}:{session.session_id}"
-            if redis.client.exists(notified_key):
+            durable_sent = (
+                db.query(NotificationLifecycleEvent)
+                .filter(
+                    NotificationLifecycleEvent.user_id == user.user_id,
+                    NotificationLifecycleEvent.notification_type == "timer_overflow",
+                    NotificationLifecycleEvent.session_id == session.session_id,
+                )
+                .first()
+                is not None
+            )
+            if durable_sent or redis.client.exists(notified_key):
                 continue
 
             message = (
@@ -57,6 +68,17 @@ def _run_for_one_user(db, user: User):
 
             delivered = False
             try:
+                decision = create_output_surface_decision(
+                    db,
+                    surface_id="worker.timer_overflow",
+                    user_id=user.user_id,
+                    task_id=task.task_id,
+                    decision_status="queued",
+                    eligible_at=now,
+                    content_template_id="timer_overflow",
+                    trigger_source="worker.timer_overflow",
+                    delivered_at=None,
+                )
                 enqueue_user_notification(
                     user.user_id,
                     {
@@ -66,10 +88,19 @@ def _run_for_one_user(db, user: User):
                         "session_id": session.session_id,
                         "elapsed_minutes": elapsed_minutes,
                         "planned_minutes": planned,
+                        "surface_id": "worker.timer_overflow",
+                        "exposure_id": decision.exposure_id,
                     },
+                    db=db,
+                    surface_id="worker.timer_overflow",
+                    exposure_id=decision.exposure_id,
+                    dedupe_key=f"timer_overflow:{session.session_id}",
+                    content_snapshot=web_message,
                 )
+                db.commit()
                 delivered = True
             except Exception as e:
+                db.rollback()
                 logger.warning(f"Redis queue fallback failed for session {session.session_id}: {e}")
 
             # OpenClaw owns Telegram delivery. Operator-owned timer events may

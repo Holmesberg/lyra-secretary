@@ -56,6 +56,8 @@ interface PlanRow {
   status: "pending" | "created" | "failed";
   error: string | null;
   enabled: boolean;
+  canForce: boolean;
+  conflictTitles: string[];
 }
 
 interface EvidenceEstimate {
@@ -356,15 +358,18 @@ function planItemsForOption(
   pressure: AcademicPressureMapResponse,
   option: AcademicRecoveryOption | null
 ): AcademicPressureItem[] {
+  if (
+    !option ||
+    (option.action !== "create_plan" && option.action !== "split_into_blocks")
+  ) {
+    return [];
+  }
   const ids = new Set(option?.obligation_ids ?? []);
   const eligible = pressure.items.filter((item) => item.source_class !== "lyra_task");
   const selected = ids.size
     ? eligible.filter((item) => ids.has(item.obligation_id))
     : [];
-  const fallback = eligible.filter((item) =>
-    item.pressure_level === "high" || item.pressure_level === "overdue"
-  );
-  return (selected.length ? selected : fallback.length ? fallback : eligible).slice(0, 4);
+  return selected.slice(0, 4);
 }
 
 function buildRows(
@@ -394,6 +399,8 @@ function buildRows(
       status: "pending",
       error: null,
       enabled: true,
+      canForce: false,
+      conflictTitles: [],
     };
   });
 }
@@ -403,6 +410,7 @@ function PlanPreviewDialog({
   rows,
   committing,
   option,
+  forceCandidateId,
   onRowsChange,
   onClose,
   onCommit,
@@ -411,9 +419,10 @@ function PlanPreviewDialog({
   rows: PlanRow[];
   committing: boolean;
   option: AcademicRecoveryOption | null;
+  forceCandidateId: string | null;
   onRowsChange: (rows: PlanRow[]) => void;
   onClose: () => void;
-  onCommit: () => void;
+  onCommit: (forceRowId?: string) => void;
 }) {
   const enabledCount = rows.filter((row) => row.enabled).length;
   const updateRow = (id: string, patch: Partial<PlanRow>) => {
@@ -525,10 +534,25 @@ function PlanPreviewDialog({
                   {row.estimateSource}. This is planning footprint, not execution truth.
                 </div>
 
-                {row.status !== "pending" && (
-                  <p className={`mt-2 text-[11px] ${row.status === "created" ? "text-signal" : "text-ember"}`}>
-                    {row.status === "created" ? "Created." : row.error ?? "Failed to create."}
-                  </p>
+                {(row.status !== "pending" || forceCandidateId === row.id) && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <p className={`text-[11px] ${row.status === "created" ? "text-signal" : "text-ember"}`}>
+                      {row.status === "created"
+                        ? "Created."
+                        : row.error ?? "Conflict detected. Create anyway if this window is intentional."}
+                    </p>
+                    {(row.canForce || forceCandidateId === row.id) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onCommit(row.id)}
+                        disabled={committing}
+                      >
+                        Create anyway
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -540,7 +564,7 @@ function PlanPreviewDialog({
             Dismiss
           </Button>
           <Button
-            onClick={onCommit}
+            onClick={() => onCommit()}
             disabled={committing || enabledCount === 0}
           >
             {committing ? "Creating..." : `Lock in ${enabledCount} block${enabledCount === 1 ? "" : "s"}`}
@@ -563,6 +587,7 @@ export function PulseAcademicPressureMap({
   const [previewOption, setPreviewOption] = useState<AcademicRecoveryOption | null>(null);
   const [rows, setRows] = useState<PlanRow[]>([]);
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [forceCandidateId, setForceCandidateId] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const items = pressure?.items.slice(0, 4) ?? [];
   const hasItems = items.length > 0;
@@ -575,9 +600,14 @@ export function PulseAcademicPressureMap({
     );
   }, [pressure]);
   const canPreviewPlan = useMemo(() => {
-    if (!pressure) return false;
+    if (!pressure || !planOption) return false;
     return planItemsForOption(pressure, planOption).length > 0;
   }, [pressure, planOption]);
+  const primaryRecoveryOption = pressure?.recovery_options[0] ?? null;
+  const primaryIsPlanOption =
+    primaryRecoveryOption !== null &&
+    planOption !== null &&
+    primaryRecoveryOption.action === planOption.action;
 
   async function enrichColdStartRows(baseRows: PlanRow[]) {
     const updatedRows = await Promise.all(
@@ -618,20 +648,33 @@ export function PulseAcademicPressureMap({
   }
 
   function openPlanPreview(option: AcademicRecoveryOption | null) {
-    if (!pressure) return;
+    if (
+      !pressure ||
+      !option ||
+      (option.action !== "create_plan" && option.action !== "split_into_blocks")
+    ) {
+      return;
+    }
     setCommitError(null);
+    setForceCandidateId(null);
     setPreviewOption(option);
     const baseRows = buildRows(pressure, option, taskEvidence);
+    if (baseRows.length === 0) return;
     setRows(baseRows);
     setPreviewOpen(true);
     void enrichColdStartRows(baseRows);
   }
 
-  async function commitPlan() {
-    const enabledRows = rows.filter((row) => row.enabled);
+  async function commitPlan(forceRowId?: string) {
+    const enabledRows = forceRowId
+      ? rows.filter((row) => row.id === forceRowId)
+      : rows.filter((row) => row.enabled);
     if (!enabledRows.length) return;
     setCommitting(true);
     setCommitError(null);
+    if (forceRowId) {
+      setForceCandidateId(null);
+    }
     let created = 0;
     let firstError: string | null = null;
     const nextRows = [...rows];
@@ -648,7 +691,13 @@ export function PulseAcademicPressureMap({
           duration < 15
         ) {
           const message = "Set an end time at least 15 minutes after the start.";
-          nextRows[index] = { ...nextRows[index], status: "failed", error: message };
+          nextRows[index] = {
+            ...nextRows[index],
+            status: "failed",
+            error: message,
+            canForce: false,
+            conflictTitles: [],
+          };
           firstError = firstError ?? message;
           continue;
         }
@@ -664,22 +713,53 @@ export function PulseAcademicPressureMap({
             `Estimate source: ${row.estimateSource}`,
             "Planning footprint only; execution truth comes from the timer.",
           ].join("\n"),
+          force: forceRowId === row.id,
         });
         if (!response.created) {
-          const conflictTitles = response.conflicts.map((conflict) => conflict.title).join(", ");
-          const message = conflictTitles
-            ? `Conflict with ${conflictTitles}. Edit the window and try again.`
-            : "Conflict detected. Edit the window and try again.";
-          nextRows[index] = { ...nextRows[index], status: "failed", error: message };
+          const conflictTitles = response.conflicts.map((conflict) => conflict.title);
+          const canForce = response.can_proceed === true && response.severity !== "hard";
+          const message = conflictTitles.length
+            ? `Conflict with ${conflictTitles.join(", ")}. ${
+                canForce
+                  ? "Create anyway if this window is intentional."
+                  : "Edit the window and try again."
+              }`
+            : canForce
+              ? "Soft conflict detected. Create anyway if this window is intentional."
+              : "Conflict detected. Edit the window and try again.";
+          nextRows[index] = {
+            ...nextRows[index],
+            status: "failed",
+            error: message,
+            canForce,
+            conflictTitles,
+          };
+          if (canForce) {
+            setForceCandidateId(row.id);
+          }
           firstError = firstError ?? message;
           continue;
         }
         created += 1;
-        nextRows[index] = { ...nextRows[index], status: "created", error: null, enabled: false };
+        setForceCandidateId(null);
+        nextRows[index] = {
+          ...nextRows[index],
+          status: "created",
+          error: null,
+          enabled: false,
+          canForce: false,
+          conflictTitles: [],
+        };
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to create task";
         if (index >= 0) {
-          nextRows[index] = { ...nextRows[index], status: "failed", error: message };
+          nextRows[index] = {
+            ...nextRows[index],
+            status: "failed",
+            error: message,
+            canForce: false,
+            conflictTitles: [],
+          };
         }
         firstError = firstError ?? message;
       }
@@ -814,7 +894,7 @@ export function PulseAcademicPressureMap({
                   <ClipboardCheck size={12} />
                   Next recovery option
                 </div>
-                {planOption && canPreviewPlan && (
+                {primaryIsPlanOption && planOption && canPreviewPlan && (
                   <button
                     type="button"
                     onClick={() => openPlanPreview(planOption)}
@@ -834,15 +914,29 @@ export function PulseAcademicPressureMap({
             </div>
           )}
 
-          {!pressure.recovery_options.some((option) => option.action === "create_plan" || option.action === "split_into_blocks") && canPreviewPlan && (
-            <button
-              type="button"
-              onClick={() => openPlanPreview(null)}
-              className="mt-3 inline-flex items-center justify-center gap-2 rounded-sm border border-hairline-signal/40 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/5"
-            >
-              <ListPlus size={13} />
-              Preview focus blocks
-            </button>
+          {!primaryIsPlanOption && planOption && canPreviewPlan && (
+            <div className="mt-3 rounded-sm border border-signal/20 bg-signal/5 px-3 py-2">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-signal">
+                  <ListPlus size={12} />
+                  Planning option
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openPlanPreview(planOption)}
+                  className="inline-flex items-center gap-1 rounded-sm border border-signal/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/10"
+                >
+                  <ListPlus size={11} />
+                  Preview
+                </button>
+              </div>
+              <p className="text-[12px] font-medium text-parchment">
+                {planOption.label}
+              </p>
+              <p className="mt-1 text-[11px] leading-snug text-dust">
+                {genericPressureCopy(planOption.detail)}
+              </p>
+            </div>
           )}
 
           {commitError && (
@@ -867,6 +961,7 @@ export function PulseAcademicPressureMap({
             rows={rows}
             committing={committing}
             option={previewOption}
+            forceCandidateId={forceCandidateId}
             onRowsChange={setRows}
             onClose={() => {
               if (!committing) {

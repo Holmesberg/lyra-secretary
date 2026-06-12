@@ -1,0 +1,26 @@
+How was your focus?
+
+Resolve parked session for Parked 73h.
+
+Active work: 1h 31m.
+Planned: 1h 30m.
+Paused: 73h.
+Lyra will close the session at the time you paused it.
+1
+Very poor - barely focused the whole time
+2
+Weak - distracted more than working
+3
+Average - some flow, some drift
+4
+Focused - solid deep work
+5
+Excellent - sharpest I've been all day
+Completion % (required)
+Scope (required)
+Stuck to plan
+Expanded scope
+Reduced scope
+Cancel
+Resolve session
+Close

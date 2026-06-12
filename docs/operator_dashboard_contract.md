@@ -20,6 +20,17 @@ If not, what must be fixed first?
 It is a product-health and measurement-integrity console, not a user analytics
 or productivity evaluation surface.
 
+Research framing:
+
+```text
+Measurement Integrity Before Agency Claims
+```
+
+The dashboard may show whether Lyra has enough clean, fresh, provenance-aware
+evidence to reason responsibly. It must not turn operational diagnostics into
+claims about a user's focus, motivation, discipline, avoidance, recovery
+quality, agency, or productivity.
+
 ## Allowed Use
 
 - Cohort readiness: red/yellow/green expansion status.
@@ -42,6 +53,8 @@ or productivity evaluation surface.
 - Professor, employer, institutional, or admin reporting.
 - Silent task/session/provider mutation.
 - Automatic user nudges from dashboard output.
+- Agency or improvement claims inferred directly from clean trace ratio,
+  retention, completion, pause, notification, or provider metrics.
 - Raw task title, raw email, provider token, or raw provider URL exposure by
   default.
 
@@ -67,6 +80,18 @@ Every section should include:
 Unavailable instrumentation must be explicit. Do not report fake zeroes for
 login frequency, app opens, quick-capture usage, notification render, or
 notification action until those events are persisted.
+
+Every readiness metric should preserve the chain:
+
+```text
+event -> metric -> diagnostic meaning -> readiness impact
+```
+
+The dashboard stops there. It does not continue to:
+
+```text
+diagnostic meaning -> user agency claim
+```
 
 ## Meaningful Activity
 

@@ -81,6 +81,15 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   const [showReasonPicker, setShowReasonPicker] = useState(false);
   const pickerRef = useRef<HTMLDivElement | null>(null);
 
+  const refreshTimerSurfaces = () => {
+    qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    qc.invalidateQueries({ queryKey: ["tasks"] });
+    qc.invalidateQueries({ queryKey: ["tasks-range"] });
+    qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
+    qc.invalidateQueries({ queryKey: ["pressure-map"] });
+    qc.invalidateQueries({ queryKey: ["me"] });
+  };
+
   // Local pause state, decoupled from React Query poll cycle. Changed
   // ONLY by applyPause/doResume (immediate, no network wait) and on
   // mount (from status prop). This prevents the stale-poll race where
@@ -324,8 +333,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     );
     try {
       await pauseStopwatch(reason);
-      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
-      qc.invalidateQueries({ queryKey: ["tasks"] });
+      refreshTimerSurfaces();
     } catch (e) {
       setLocalPaused(false);
       if (snapshot !== undefined) {
@@ -363,8 +371,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     );
     try {
       await resumeStopwatch();
-      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
-      qc.invalidateQueries({ queryKey: ["tasks"] });
+      refreshTimerSurfaces();
     } catch (e) {
       setLocalPaused(true);
       pauseStartRef.current = Date.now();
@@ -509,6 +516,15 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const refreshTimerSurfaces = () => {
+    qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    qc.invalidateQueries({ queryKey: ["tasks"] });
+    qc.invalidateQueries({ queryKey: ["tasks-range"] });
+    qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
+    qc.invalidateQueries({ queryKey: ["pressure-map"] });
+    qc.invalidateQueries({ queryKey: ["me"] });
+  };
+
   // Optimistic swap: mirrors the pause/resume optimistic pattern. The
   // network call to /v1/stopwatch/switch typically takes 300-1000ms (DB
   // pause source + resume target + Redis swap); without optimistic
@@ -587,8 +603,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
       await switchStopwatch(target.task_id);
       // Reconcile with truth — fast path because we already cancelled
       // pending queries above; this fires a fresh fetch.
-      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
-      qc.invalidateQueries({ queryKey: ["tasks"] });
+      refreshTimerSurfaces();
     } catch (e) {
       // Rollback the optimistic mutations.
       if (statusSnapshot !== undefined) {

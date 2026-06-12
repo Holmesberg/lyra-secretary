@@ -3,8 +3,8 @@
  * BrainDumpQuickModal — modal-shaped brain-dump composer for /pulse.
  *
  * Operator request 2026-04-29 night: clicking Capture on /pulse should
- * open the brain-dump modal so the magic fires more often without a
- * full nav to /today. Reuses the existing parse + commit API helpers
+ * open the brain-dump modal so the capture path stays inside Pulse.
+ * Reuses the existing parse + commit API helpers
  * (lib/brain-dump.ts) so the heuristic + binding tiers behave
  * identically to the onboarding fullscreen flow — same parser, same
  * tier1_auto / tier2_ask logic, just packaged as a Dialog.
@@ -68,7 +68,7 @@ function retryCopy(hint: string | null): string {
     case "schedule_tomorrow_same_time":
       return "Try scheduling tomorrow at the same time.";
     case "edit_when_local":
-      return "Open in /today or the calendar to set a new time.";
+      return "Edit the time here, or adjust it later from the calendar.";
     case "remove_deadline_binding":
       return "Unbind from the deadline and retry.";
     case "use_existing_deadline":
@@ -87,6 +87,33 @@ function localIsoNow(): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
     d.getDate()
   )}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+function newCommitKey(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `brain-dump-${crypto.randomUUID()}`;
+  }
+  return `brain-dump-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function toDateTimeInput(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 16);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate()
+  )}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function moveLocalInputByDays(value: string | null, days: number): string | null {
+  const base = value ? new Date(value) : new Date();
+  if (Number.isNaN(base.getTime())) return value;
+  base.setDate(base.getDate() + days);
+  return `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(
+    base.getDate()
+  )}T${pad2(base.getHours())}:${pad2(base.getMinutes())}:${pad2(
+    base.getSeconds()
+  )}`;
 }
 
 function fmtWhen(iso: string | null): string {
@@ -183,6 +210,7 @@ export function BrainDumpQuickModal({
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const commitKeyRef = useRef<string | null>(null);
 
   // Sync the textarea + step when the modal opens / seed changes.
   useEffect(() => {
@@ -192,7 +220,10 @@ export function BrainDumpQuickModal({
       setItems([]);
       setBindings([]);
       setBindingChoices({});
+      setFailures([]);
+      setCommittedSummary(null);
       setError(null);
+      commitKeyRef.current = null;
       // Focus the textarea on next tick so the autofocus lands after
       // the dialog's mount animation.
       setTimeout(() => textareaRef.current?.focus(), 50);
@@ -211,6 +242,9 @@ export function BrainDumpQuickModal({
       const res = await parseBrainDump(rawText, localIsoNow());
       setItems(res.items);
       setBindings(res.bindings);
+      setFailures([]);
+      setCommittedSummary(null);
+      commitKeyRef.current = newCommitKey();
       // Tier 1 auto-bindings start pre-checked yes.
       setBindingChoices(initialBindingChoices(res.bindings));
       if (res.items.length === 0) {
@@ -256,7 +290,14 @@ export function BrainDumpQuickModal({
             b.target_kind === "existing_deadline" ? b.deadline_id : null,
           target_kind: b.target_kind,
         }));
-      const res = await commitBrainDump(commitItems, commitBindings);
+      if (!commitKeyRef.current) {
+        commitKeyRef.current = newCommitKey();
+      }
+      const res = await commitBrainDump(
+        commitItems,
+        commitBindings,
+        commitKeyRef.current,
+      );
       // Invalidate every cache key the dashboard depends on so the
       // moment the modal closes (or the review_failures step lands)
       // the new rows are visible behind the modal.
@@ -313,6 +354,66 @@ export function BrainDumpQuickModal({
     });
   }
 
+  function updateItem(
+    itemId: string,
+    patch: Partial<Pick<BrainDumpParsedItem, "title" | "when_local" | "duration_minutes">>,
+  ) {
+    setItems((current) =>
+      current.map((item) =>
+        item.item_id === itemId ? { ...item, ...patch } : item,
+      ),
+    );
+    commitKeyRef.current = newCommitKey();
+  }
+
+  function removeItem(itemId: string) {
+    const nextBindings = bindings.filter(
+      (binding) =>
+        binding.task_item_id !== itemId && binding.deadline_item_id !== itemId,
+    );
+    setItems((current) => current.filter((item) => item.item_id !== itemId));
+    setBindings(nextBindings);
+    setBindingChoices(initialBindingChoices(nextBindings));
+    commitKeyRef.current = newCommitKey();
+  }
+
+  function retryFailedItems(options?: { movePastToTomorrow?: boolean }) {
+    const failedIds = new Set(failures.map((failure) => failure.item_id));
+    const failedById = new Map(
+      failures.map((failure) => [failure.item_id, failure]),
+    );
+    const nextItems = items
+      .filter((item) => failedIds.has(item.item_id))
+      .map((item) => {
+        const failure = failedById.get(item.item_id);
+        if (
+          options?.movePastToTomorrow &&
+          failure?.retry_hint === "schedule_tomorrow_same_time"
+        ) {
+          return {
+            ...item,
+            when_local: moveLocalInputByDays(item.when_local, 1),
+          };
+        }
+        return item;
+      });
+    const nextBindings = bindings.filter(
+      (binding) =>
+        failedIds.has(binding.task_item_id) ||
+        (binding.deadline_item_id !== null &&
+          failedIds.has(binding.deadline_item_id)),
+    );
+
+    setItems(nextItems);
+    setBindings(nextBindings);
+    setBindingChoices(initialBindingChoices(nextBindings));
+    setFailures([]);
+    setCommittedSummary(null);
+    setError(null);
+    commitKeyRef.current = newCommitKey();
+    setStep("confirm");
+  }
+
   const tasksParsed = items.filter((i) => i.kind === "task");
   const deadlinesParsed = items.filter((i) => i.kind === "deadline");
   const bindingsForTask: Record<string, BrainDumpBindingSuggestion[]> = {};
@@ -321,6 +422,9 @@ export function BrainDumpQuickModal({
   }
   const tier2Unanswered = bindings.some(
     (b) => b.tier === "tier2_ask" && !bindingChoices[bindingKey(b)]
+  );
+  const canMoveFailedToTomorrow = failures.some(
+    (failure) => failure.retry_hint === "schedule_tomorrow_same_time",
   );
 
   return (
@@ -405,7 +509,7 @@ gym sat morning"
                     key={it.item_id}
                     className="rounded-sm border border-hairline bg-void-2/40 px-3 py-2"
                   >
-                    <div className="flex items-baseline gap-2">
+                    <div className="mb-2 flex items-center justify-between gap-2">
                       <span
                         className={`font-display text-[9px] uppercase tracking-macro ${
                           it.kind === "deadline" ? "text-ember" : "text-signal"
@@ -415,7 +519,69 @@ gym sat morning"
                         {it.kind}
                         <span className="opacity-50">]</span>
                       </span>
-                      <span className="text-sm text-parchment">{it.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(it.item_id)}
+                        className="rounded-sm border border-hairline px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest text-dust hover:border-ember/40 hover:text-ember"
+                      >
+                        Discard
+                      </button>
+                    </div>
+                    <label className="flex flex-col gap-1">
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                        Title
+                      </span>
+                      <input
+                        value={it.title}
+                        onChange={(event) =>
+                          updateItem(it.item_id, { title: event.target.value })
+                        }
+                        className="rounded-sm border border-hairline bg-void/50 px-2 py-1 text-sm text-parchment outline-none focus:border-signal/50"
+                      />
+                    </label>
+                    <div
+                      className={`mt-2 grid gap-2 ${
+                        it.kind === "task"
+                          ? "sm:grid-cols-[1fr_120px]"
+                          : "sm:grid-cols-1"
+                      }`}
+                    >
+                      <label className="flex flex-col gap-1">
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                          {it.kind === "deadline" ? "Due" : "Start"}
+                        </span>
+                        <input
+                          type="datetime-local"
+                          value={toDateTimeInput(it.when_local)}
+                          onChange={(event) =>
+                            updateItem(it.item_id, {
+                              when_local: event.target.value || null,
+                            })
+                          }
+                          className="rounded-sm border border-hairline bg-void/50 px-2 py-1 font-mono text-[12px] text-parchment outline-none focus:border-signal/50"
+                        />
+                      </label>
+                      {it.kind === "task" && (
+                        <label className="flex flex-col gap-1">
+                          <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                            Minutes
+                          </span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={720}
+                            value={it.duration_minutes ?? ""}
+                            onChange={(event) =>
+                              updateItem(it.item_id, {
+                                duration_minutes: event.target.value
+                                  ? Number(event.target.value)
+                                  : null,
+                              })
+                            }
+                            className="rounded-sm border border-hairline bg-void/50 px-2 py-1 font-mono text-[12px] text-parchment outline-none focus:border-signal/50"
+                          />
+                        </label>
+                      )}
                     </div>
                     <div className="mt-0.5 font-mono text-[10px] text-dust">
                       {fmtWhen(it.when_local)}
@@ -552,13 +718,31 @@ gym sat morning"
                 </li>
               ))}
             </ul>
-            <div className="flex justify-end pt-1">
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
+              {canMoveFailedToTomorrow && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    retryFailedItems({ movePastToTomorrow: true })
+                  }
+                  className="rounded-sm border border-signal/40 bg-signal/10 px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20"
+                >
+                  Move to tomorrow
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => retryFailedItems()}
+                className="rounded-sm border border-hairline bg-void-2/40 px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-parchment"
+              >
+                Edit failed items
+              </button>
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}
                 className="rounded-sm border border-signal/40 bg-signal/10 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20"
               >
-                Got it
+                Done
               </button>
             </div>
           </div>
