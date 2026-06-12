@@ -219,6 +219,32 @@ def test_operator_dashboard_blocks_on_exposure_without_render(client, db):
     _clear_ids(db, ids)
     db.add(_user(9131, operator=True))
     db.add(_user(9132, operator=False))
+    old_exposure_stamp = datetime.utcnow() - timedelta(days=30)
+    recent_render_stamp = datetime.utcnow() - timedelta(minutes=2)
+    rendered_decision = record_decision(
+        db,
+        user_id=9132,
+        eligible_at=old_exposure_stamp,
+        delivered_at=old_exposure_stamp,
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="analytics_insights",
+        initiative="system",
+        trigger_source="test",
+    )
+    rendered_decision.created_at = old_exposure_stamp
+    record_render(
+        db,
+        exposure_id=rendered_decision.exposure_id,
+        rendered_at=recent_render_stamp,
+        surface="operator_test",
+        channel="web",
+        content_snapshot="rendered older exposure",
+        render_policy_version="test",
+        interruptiveness="low",
+        salience_level="low",
+    )
+
     exposure_stamp = datetime.utcnow() - timedelta(minutes=5)
     decision = record_decision(
         db,

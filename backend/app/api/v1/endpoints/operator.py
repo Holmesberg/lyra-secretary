@@ -718,8 +718,12 @@ def operator_dashboard_v12(
             .scalar()
             or 0
         )
-        exposure_decision_count = (
+        exposure_without_render = (
             db.query(func.count(ExposureDecisionEvent.exposure_id))
+            .outerjoin(
+                ExposureRenderEvent,
+                ExposureRenderEvent.exposure_id == ExposureDecisionEvent.exposure_id,
+            )
             .filter(
                 or_(
                     ExposureDecisionEvent.created_at >= two_weeks_ago,
@@ -727,10 +731,10 @@ def operator_dashboard_v12(
                     ExposureDecisionEvent.delivered_at >= two_weeks_ago,
                 )
             )
+            .filter(ExposureRenderEvent.render_id.is_(None))
             .scalar()
             or 0
         )
-        exposure_without_render = max(0, int(exposure_decision_count) - int(exposure_render_count))
         render_without_exposure = 0  # FK-enforced by schema when tables are migrated.
 
         notification_lifecycle = {
