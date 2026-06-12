@@ -95,6 +95,64 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
 - Respect the calibration contract: comparative context before input, confidence tiers, low-confidence retreat, warm tone, and no unnecessary latency.
 - Respect the structural investigation rule before touching measurement, data flow, or research-relevant fields.
 
+## Git Hygiene Enforcement
+
+These rules are mandatory for every implementation iteration. Do not rely on
+chat context or memory.
+
+Before coding:
+
+- Run `git status --short --branch`.
+- Identify the branch and whether the worktree is clean.
+- Name the intended task scope and the files/directories likely to change.
+- If unrelated dirty files exist, leave them alone and report them separately.
+
+Before any commit or push:
+
+- Run `./scripts/git_hygiene_summary.ps1 -ForPush -Paths <task-scoped paths>`.
+- Stage explicit paths only.
+- Do not stage or commit `tmp/`, screenshots, logs, local databases, `.env`
+  files, build output, dependency folders, or generated cache artifacts unless
+  the operator explicitly asks for those artifacts to be versioned.
+- Run targeted tests for every touched area.
+- Run broader CI-equivalent tests when the touched surface is shared,
+  measurement-related, topology-related, or user-facing.
+- For product-facing changes, run browser verification and save screenshots
+  under repo-local `tmp/` only. Keep those screenshots local unless explicitly
+  asked to version them.
+
+After any push:
+
+- Check the PR checks in GitHub.
+- Report actual CI status; do not infer success from local tests.
+- If CI fails, inspect the failing job log and fix the contract failure before
+  proceeding.
+
+Before merge:
+
+- Run `./scripts/git_hygiene_summary.ps1 -ForMerge -BaseRef origin/main`.
+- Confirm the PR is mergeable, CI is green, and browser/user verification is
+  complete where required.
+- Confirm no accidental local artifacts are present in the PR diff.
+- Confirm Alembic revision ordering if migrations changed.
+- Do not merge a large wave branch while starting the next wave on the same
+  branch; merge the coherent checkpoint first, then branch the next wave.
+
+Every final implementation report must include:
+
+```text
+Git hygiene:
+- branch:
+- worktree:
+- committed files:
+- tests:
+- browser verification:
+- CI:
+- artifacts intentionally kept:
+- artifacts left local only:
+- merge risk:
+```
+
 ## Backend Rules
 
 - Follow `services/task_manager.py` and `services/state_machine.py` for task lifecycle changes.

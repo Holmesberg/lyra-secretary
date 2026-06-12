@@ -67,6 +67,7 @@ desktop.ini
 *.orig
 
 # Local operator artefacts — never belong in the public repo
+tmp/
 backups/
 docs/Screenshots/
 docs/presentations/*.zip
