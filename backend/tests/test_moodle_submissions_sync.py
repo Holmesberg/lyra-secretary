@@ -489,14 +489,15 @@ def test_sync_user_backfills_submitted_assignment_as_completed(db, monkeypatch):
     user = _make_user(db)
     set_current_user_id(user.user_id)
 
-    submitted_at_utc = datetime(2026, 4, 20, 14, 30, 0, tzinfo=timezone.utc)
+    due_at = (datetime.utcnow() - timedelta(days=10)).replace(microsecond=0)
+    submitted_at_utc = (due_at + timedelta(hours=2)).replace(tzinfo=timezone.utc)
     submitted_at = submitted_at_utc.replace(tzinfo=None)
     courses = [{"id": 100, "shortname": "CSE281 (UG2023)"}]
     assignments_by_course = {
         100: [{
             "id": 44612,
             "name": "HandsOn1 Lab2",
-            "duedate": int(datetime(2026, 2, 23, 21, 59).timestamp()),
+            "duedate": int(due_at.timestamp()),
         }],
     }
     submission_status_by_assign = {

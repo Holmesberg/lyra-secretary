@@ -38,7 +38,20 @@ async function fetchJson(url, init = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    let response;
+    try {
+      response = await fetch(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      error.detail = {
+        url,
+        method: init.method ?? "GET",
+        cause_message: error.cause?.message,
+        cause_code: error.cause?.code,
+        cause_host: error.cause?.hostname ?? error.cause?.host,
+        cause_port: error.cause?.port,
+      };
+      throw error;
+    }
     const text = await response.text();
     let body = null;
     try {
@@ -192,7 +205,16 @@ try {
       {
         ok: false,
         error: error.message,
-        detail: error.detail ?? null,
+        detail:
+          error.detail ??
+          (error.cause
+            ? {
+                cause_message: error.cause.message,
+                cause_code: error.cause.code,
+                cause_host: error.cause.hostname ?? error.cause.host,
+                cause_port: error.cause.port,
+              }
+            : null),
       },
       null,
       2

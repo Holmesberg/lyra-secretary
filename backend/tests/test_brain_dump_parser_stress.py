@@ -66,11 +66,12 @@ def test_verb_beats_deadline_keyword():
     assert "study" in res.items[0].title.lower()
 
 
-def test_demoted_deadline_without_date_becomes_task():
-    """Stress case B5: 'deadline X' has no parseable date → demote to task."""
+def test_deadline_without_date_stays_deadline_candidate():
+    """Stress case B5: 'deadline X' has no date — ask for one, don't hide it."""
     res = parse_brain_dump("deadline X", NOW_ISO)
     assert len(res.items) == 1
-    assert res.items[0].kind == "task"
+    assert res.items[0].kind == "deadline"
+    assert res.items[0].when_local is None
     # Title strips the leading "deadline" keyword
     assert res.items[0].title == "X"
 

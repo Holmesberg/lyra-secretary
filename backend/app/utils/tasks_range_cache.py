@@ -9,12 +9,8 @@ on /pulse first-paint pushes the dashboard ~200ms slower than /today.
 Strategy mirrors me_cache.py:
   * Cache the full /tasks/query response JSON for 60s, keyed by
     (user_id, date_from, date_to).
-  * Bust on TaskManager.create_task so a freshly-created task appears
-    in the range immediately on next render.
-  * Don't bust on state transitions (PLANNED→EXECUTING→EXECUTED).
-    Those don't add or remove rows from the count, only mutate fields
-    the chart aggregations don't read directly. 60s of stale state
-    flags is invisible at the chart level.
+  * Bust on task/deadline mutations and stopwatch transitions so Pulse
+    never offers actions against stale task state.
   * Redis-down is graceful: get/set silently fall through; the
     endpoint runs the queries directly.
 

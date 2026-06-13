@@ -10,6 +10,8 @@ import { AppShell } from "@/components/app-shell";
 import { ArchetypeSurvey } from "@/components/archetype-survey";
 import { ConsentModal } from "@/components/consent-modal";
 import { TutorialOverlay } from "@/components/tutorial-overlay";
+import { AppNotificationHost } from "@/components/app-notification-host";
+import { UndoToastHost } from "@/components/undo-toast-host";
 // Brain-dump onboarding kept — operator: "catches the user from the get
 // go." Implementation pivoted 2026-04-28 evening to multi-parse + auto-
 // bind + one-tap confirmation block: user types free text, LLM splits
@@ -59,6 +61,7 @@ type Me = {
   // data on /calendar. The /api/calendar/setup handshake below flips
   // this from false to true once the refresh_token reaches the backend.
   google_calendar_connected: boolean;
+  is_operator: boolean;
 };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -258,9 +261,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AppShell>
+    <AppShell isOperator={!!me.is_operator}>
       {needsConsent && <ConsentModal onAccepted={refetchMe} />}
       {!needsConsent && children}
+      {!needsConsent && <AppNotificationHost />}
+      {!needsConsent && <UndoToastHost />}
       {needsArchetypeSurvey && <ArchetypeSurvey onFinished={refetchMe} />}
       {/* Tutorial overlay removed 2026-04-28 — operator: "we'll make a
           better more advanced one." Component file kept in tree for

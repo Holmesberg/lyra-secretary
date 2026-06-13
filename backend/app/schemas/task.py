@@ -338,11 +338,13 @@ EXECUTION_CORRECTION_REASONS = {
 
 
 class ExecutionCorrectionRequest(BaseModel):
-    """Retroactively correct an EXECUTED task whose timer was left running.
+    """Retroactively correct an EXECUTED task's effective execution window.
 
     Exactly one of corrected_end_time or corrected_duration_minutes must be
     supplied. The backend records an append-only correction row and does not
-    mutate the observed task/session timestamps.
+    mutate the original task/session timestamps. Stopwatch-backed tasks are
+    constrained to forgotten-stop corrections; retroactive self-reported tasks
+    can correct the reported end/duration without stopwatch evidence.
     """
 
     corrected_end_time: Optional[datetime] = None
@@ -442,3 +444,31 @@ class LlmRejectRequest(BaseModel):
 class LlmRejectResponse(BaseModel):
     task_id: str
     rejected_at: datetime
+
+
+class TaskDeadlineBindingRequest(BaseModel):
+    """Narrow metadata correction for task ↔ deadline context.
+
+    This intentionally does not use the full reschedule/edit path: live
+    and executed tasks may need semantic deadline correction after the
+    user discovers the right context, but title/time/execution metrics
+    must stay untouched.
+    """
+    deadline_id: Optional[str] = Field(
+        None,
+        min_length=36,
+        max_length=36,
+        description="Deadline UUID to bind. Omit/null only when clear_deadline=true.",
+    )
+    clear_deadline: bool = Field(
+        False,
+        description="Clear the current binding. Cannot be combined with deadline_id.",
+    )
+
+
+class TaskDeadlineBindingResponse(BaseModel):
+    task_id: str
+    deadline_id_after: Optional[str] = None
+    deadline_title_after: Optional[str] = None
+    deadline_match_source_after: Optional[str] = None
+    metadata_correction: bool = True

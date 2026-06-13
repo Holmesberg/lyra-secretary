@@ -142,6 +142,17 @@ def test_mm_priority_zero_pauses_long_session_beats_many_pauses_branch():
     assert _compute_micro_mirror(_mm(pauses=0, duration=60)) == "0 pauses this session."
 
 
+def test_mm_pause_overhead_dominates_day_footprint():
+    metrics = MagicMock()
+    metrics.execution_time_minutes = 62
+    metrics.session_span_minutes = 190
+    metrics.pause_overhead_minutes = 128
+
+    assert _compute_micro_mirror(_mm(delta=-5, duration=62, pauses=2), metrics) == (
+        "Active work: 62 min. Session span: 3h 10m. Pause overhead: 2h 08m."
+    )
+
+
 # ---------------------------------------------------------------------------
 # calibration_nudge — reads same-category history from DB
 # ---------------------------------------------------------------------------

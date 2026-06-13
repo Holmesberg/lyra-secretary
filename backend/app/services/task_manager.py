@@ -21,6 +21,8 @@ from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector, ConflictResult
 from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
+from app.utils.me_cache import invalidate_me
+from app.utils.tasks_range_cache import invalidate_user_ranges
 from app.utils.time_utils import to_utc, now_utc, strip_tz
 from app.core.exceptions import ImmutableTaskError
 
@@ -57,6 +59,18 @@ def _require_current_user(op: str) -> int:
             "Set it via middleware (HTTP) or _per_user.py (worker)."
         )
     return uid
+
+
+def _invalidate_user_runtime_caches(user_id: Optional[int], op: str) -> None:
+    """Best-effort bust for user-facing task/state projections."""
+    if user_id is None:
+        return
+    try:
+        uid = int(user_id)
+        invalidate_me(uid)
+        invalidate_user_ranges(uid)
+    except Exception as e:
+        logger.warning("%s: cache invalidate failed (non-blocking): %s", op, e)
 
 
 def _is_anchor_task(title: str, category: Optional[str]) -> bool:
@@ -690,6 +704,7 @@ class TaskManager:
             raise ValueError("Task not found")
         
         task = self.state_machine.transition(task, TaskState.EXECUTING)
+        _invalidate_user_runtime_caches(task.user_id, "start_task")
 
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
@@ -737,26 +752,13 @@ class TaskManager:
         # in MANIFESTO Rule 12's exploratory secondary analysis.
         task.scope_bullet_count_at_execute = extract_scope_bullets(task.description)
 
-        # Loop 1 (alembic 034) — stamp calibration_nudge_event outcome if
-        # one exists for this task. Inline UPDATE in the same transaction
-        # as the task transition (cheaper than an APScheduler reconciliation
-        # job; sub-millisecond per stop). voided_at filter respects the
-        # voided_at_guard discipline — if the nudge event was invalidated
-        # post-creation we don't resurrect it.
-        nudge_event = (
-            self.db.query(CalibrationNudgeEvent)
-            .filter(
-                CalibrationNudgeEvent.task_id == task.task_id,
-                CalibrationNudgeEvent.executed_duration_minutes.is_(None),
-                CalibrationNudgeEvent.voided_at.is_(None),
-            )
-            .first()
-        )
-        if nudge_event is not None:
-            nudge_event.executed_duration_minutes = executed_duration
-            nudge_event.resolved_at = now_utc()
+        # Loop 1 (alembic 034) - stamp calibration_nudge_event outcome.
+        # StopwatchManager may call the same helper again after pause
+        # subtraction so the event records active execution, not wall clock.
+        self.reconcile_calibration_nudge_outcome(task.task_id, executed_duration)
 
         task = self.state_machine.transition(task, TaskState.EXECUTED)
+        _invalidate_user_runtime_caches(task.user_id, "complete_task")
 
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         notion_synced = False
@@ -770,6 +772,26 @@ class TaskManager:
         except Exception as e:
             logger.warning("complete_task: last_task cache write failed (non-blocking): %s", e)
         return task, notion_synced
+
+    def reconcile_calibration_nudge_outcome(
+        self,
+        task_id: str,
+        executed_duration_minutes: int,
+    ) -> None:
+        """Stamp or correct calibration-nudge outcome with active execution."""
+        nudge_event = (
+            self.db.query(CalibrationNudgeEvent)
+            .filter(
+                CalibrationNudgeEvent.task_id == task_id,
+                CalibrationNudgeEvent.voided_at.is_(None),
+            )
+            .first()
+        )
+        if nudge_event is None:
+            return
+        nudge_event.executed_duration_minutes = executed_duration_minutes
+        if nudge_event.resolved_at is None:
+            nudge_event.resolved_at = now_utc()
 
     def skip_task(self, task_id: str, reason: Optional[str] = None) -> Task:
         """
@@ -789,6 +811,7 @@ class TaskManager:
             raise ValueError("Cannot skip a voided task")
 
         task = self.state_machine.transition(task, TaskState.SKIPPED, notes=reason)
+        _invalidate_user_runtime_caches(task.user_id, "skip_task")
 
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:
@@ -918,12 +941,17 @@ class TaskManager:
         reason: str = "forgot_to_stop_timer",
         note: Optional[str] = None,
     ) -> TaskExecutionCorrection:
-        """Append a retroactive timer-stop correction for an EXECUTED task.
+        """Append a retroactive execution correction for an EXECUTED task.
 
         The observed Task.executed_* values and StopwatchSession rows remain
         unchanged. Clean research baselines should exclude any task with at
         least one TaskExecutionCorrection row; user-facing views may use the
         task.effective_* properties.
+
+        Stopwatch-backed rows are strict forgotten-stop corrections: the user
+        can only move the observed stop earlier. Retroactive self-reported rows
+        have no stopwatch evidence to preserve, so correction means editing the
+        reported end/duration while keeping the original report append-only.
         """
         has_end = corrected_end_time is not None
         has_duration = corrected_duration_minutes is not None
@@ -951,23 +979,20 @@ class TaskManager:
             or task.executed_duration_minutes is None
         ):
             raise ValueError("Task has no observed execution timestamps to correct")
-        if task.initiation_status == "retroactive":
-            raise ValueError(
-                "Retroactive execution logs are already user-reported; "
-                "timer-stop corrections are only for observed stopwatch sessions"
+        is_retroactive_report = task.initiation_status == "retroactive"
+        if not is_retroactive_report:
+            observed_session = (
+                self.db.query(StopwatchSession.session_id)
+                .filter(
+                    StopwatchSession.task_id == task.task_id,
+                    StopwatchSession.end_time_utc.isnot(None),
+                )
+                .first()
             )
-        observed_session = (
-            self.db.query(StopwatchSession.session_id)
-            .filter(
-                StopwatchSession.task_id == task.task_id,
-                StopwatchSession.end_time_utc.isnot(None),
-            )
-            .first()
-        )
-        if observed_session is None:
-            raise ValueError(
-                "Timer-stop corrections require a closed stopwatch session"
-            )
+            if observed_session is None:
+                raise ValueError(
+                    "Timer-stop corrections require a closed stopwatch session"
+                )
 
         original_start = strip_tz(task.executed_start_utc)
         original_end = strip_tz(task.executed_end_utc)
@@ -976,7 +1001,11 @@ class TaskManager:
 
         original_duration = int(task.executed_duration_minutes)
         observed_wall = max(0.0, (original_end - original_start).total_seconds() / 60.0)
-        observed_paused = max(0.0, observed_wall - float(original_duration))
+        observed_paused = (
+            0.0
+            if is_retroactive_report
+            else max(0.0, observed_wall - float(original_duration))
+        )
 
         if corrected_end_time is not None:
             corrected_end = strip_tz(to_utc(corrected_end_time))
@@ -984,7 +1013,7 @@ class TaskManager:
                 raise ValueError("corrected_end_time is invalid")
             if corrected_end <= original_start:
                 raise ValueError("corrected_end_time must be after execution start")
-            if corrected_end >= original_end:
+            if not is_retroactive_report and corrected_end >= original_end:
                 raise ValueError(
                     "Forgot-to-stop corrections must move the stop time earlier"
                 )
@@ -993,7 +1022,7 @@ class TaskManager:
         else:
             assert corrected_duration_minutes is not None
             corrected_duration = int(corrected_duration_minutes)
-            if corrected_duration >= original_duration:
+            if not is_retroactive_report and corrected_duration >= original_duration:
                 raise ValueError(
                     "Forgot-to-stop corrections must reduce executed duration"
                 )
@@ -1003,14 +1032,18 @@ class TaskManager:
 
         if corrected_duration < 1:
             raise ValueError("Corrected duration must be at least 1 minute")
-        if corrected_duration >= original_duration:
-            raise ValueError(
-                "Forgot-to-stop corrections must reduce executed duration"
-            )
-        if corrected_end >= original_end:
-            raise ValueError(
-                "Forgot-to-stop corrections must move the stop time earlier"
-            )
+        if is_retroactive_report:
+            if corrected_duration == original_duration and corrected_end == original_end:
+                raise ValueError("Correction must change the reported execution")
+        else:
+            if corrected_duration >= original_duration:
+                raise ValueError(
+                    "Forgot-to-stop corrections must reduce executed duration"
+                )
+            if corrected_end >= original_end:
+                raise ValueError(
+                    "Forgot-to-stop corrections must move the stop time earlier"
+                )
 
         uid = _require_current_user("correct_execution_duration")
         correction = TaskExecutionCorrection(
@@ -1065,6 +1098,7 @@ class TaskManager:
             raise ImmutableTaskError("Cannot delete immutable task")
         
         task = self.state_machine.transition(task, TaskState.DELETED)
+        _invalidate_user_runtime_caches(task.user_id, "delete_task")
         
         # Sync delete state to Notion (archive the page)
         try:
@@ -1145,6 +1179,8 @@ class TaskManager:
         self.db.commit()
         self.db.refresh(skipped)
         self.db.refresh(planned)
+        for uid in {skipped.user_id, planned.user_id}:
+            _invalidate_user_runtime_caches(uid, "swap_tasks")
 
         for t in (skipped, planned):
             try:
@@ -1273,6 +1309,7 @@ class TaskManager:
         task.last_modified_at = now_utc()
         self.db.commit()
         self.db.refresh(task)
+        _invalidate_user_runtime_caches(task.user_id, "reschedule_task")
         
         # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
         try:

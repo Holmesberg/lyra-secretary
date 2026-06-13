@@ -52,6 +52,22 @@ The core system accumulates evidence, detects patterns probabilistically, and
 progressively earns stronger inference rights. It must explicitly resist fake
 intelligence, opaque personalization, and black-box confidence theater.
 
+Current methods-paper direction:
+
+```text
+Measurement Integrity Before Agency Claims
+```
+
+This means Cortex and product-research surfaces must not jump from events or
+computed metrics directly to claims about focus, motivation, avoidance,
+discipline, recovery, agency, or improvement. The allowed chain is:
+
+```text
+events -> metrics -> construct defense -> bounded claim
+```
+
+See `docs/measurement_integrity_before_agency_claims.md`.
+
 See `docs/behavioral_instrumentation_doctrine.md` for the doctrine note that
 expands this principle.
 
@@ -239,6 +255,8 @@ The research layer must not:
 - mix minute, ratio, and log spaces in one equation
 - convert unknowns into neutral defaults
 - require product friction for speculative model gain
+- convert self-reported readiness by time of day into ability, capacity,
+  cognition, focus, mastery, or identity claims
 
 ### 5.4 Identity Rule
 
@@ -246,6 +264,11 @@ No inference output may be treated as a stable user identity.
 
 All research outputs are time-local, context-bound hypotheses unless validated
 by a later contract.
+
+Readiness-by-time-window outputs are allowed only as planning-context
+hypotheses, for example: "In rated sessions, afternoon starts landed closer to
+plan." They must not be rendered as "your best brain time", "when you are most
+functional", or any equivalent stable trait.
 
 Archetype outputs are especially constrained. They may function as cold-start
 priors or similarity hypotheses, but they must not be rendered or consumed as
@@ -314,6 +337,25 @@ Allowed passive/internal expansion:
 - read-time derived metrics
 - clean-data profile labels
 - evaluation-version stamps
+
+### 7.1 Interruption Metrics
+
+Execution measurement must stay clean:
+
+- `Execution Time` is active work time.
+- `Session Span` is the observed stopwatch span, including pauses.
+- `Pause Overhead` is bounded interruption/recovery gap evidence from clean
+  closed sessions, including zero-pause sessions.
+- `Occupancy Time` is the product-facing planning footprint:
+  `Execution Time + bounded Pause Overhead`.
+- `Execution Efficiency` is `Execution Time / Session Span`.
+- `Recovery Friction` is the typical pause-to-resume duration from clean
+  pause events.
+
+`Task.executed_duration_minutes`, `bias_factor_final`, and calibration outcome
+rows remain active execution measurements. Pause overhead may inform planning
+windows, insights, micro-mirrors, nudges, and resume continuity prompts, but it
+must not be folded into clean execution calibration.
 
 Not allowed without successor contract:
 
@@ -649,6 +691,8 @@ Cortex Product-Research work must not:
 - introduce hidden user-burden variables
 - create a productivity, quality, worth, or performance score
 - present latent states as facts
+- present context-switch topology as causal proof of failure, avoidance,
+  focus loss, motivation, or cognitive state
 - use research needs to justify friction creep
 - learn from its own interventions without exposure modeling
 - describe self-report as measured cognition
@@ -670,6 +714,8 @@ Before any product or research change touching Cortex-adjacent behavior:
   on `UNKNOWN`, `EXPOSED`, or `INTERVENTION`?
 - Does this preserve unknown propagation?
 - Does this preserve clean-data profile declarations?
+- If this uses context-switch, interruption, or parked-work topology, does it
+  preserve the distinction between correlation and cause?
 - Does every user-facing output surface declare `truth_class`, `usage_class`,
   fallback mode, threshold, and exposure targets?
 - Does mixed-row consumption use an explicit projection class?

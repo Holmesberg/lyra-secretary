@@ -1,6 +1,7 @@
 """Stopwatch lifecycle management with Redis."""
 from datetime import datetime, timedelta
 from typing import Optional
+import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 import logging
@@ -8,7 +9,10 @@ import logging
 import uuid
 
 from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
+from app.core.exceptions import InvalidStateTransitionError
+from app.services.interruption_metrics import task_interruption_metrics
 from app.services.task_manager import TaskManager
+from app.utils.tasks_range_cache import invalidate_user_ranges
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, to_local, strip_tz
 
@@ -27,7 +31,21 @@ class StopwatchNotPausedError(Exception):
     pass
 
 
-def _compute_micro_mirror(task: Task) -> Optional[str]:
+STALE_PAUSE_RESOLUTION_HOURS = 72
+STALE_PAUSE_RESOLUTION_FLAG = "user_resolved_stale_pause"
+STALE_PAUSE_TASK_STATUS = "stale_resolved"
+
+
+def _format_micro_duration(minutes: Optional[int]) -> str:
+    if minutes is None:
+        return "unknown"
+    if minutes >= 60:
+        hours, mins = divmod(int(minutes), 60)
+        return f"{hours}h {mins:02d}m"
+    return f"{int(minutes)} min"
+
+
+def _compute_micro_mirror(task: Task, interruption_metrics=None) -> Optional[str]:
     """One-line behavioral observation on stop. Priority: initiation > delta > pauses.
 
     Text is deliberately neutral — no evaluative framing ("strong focus",
@@ -39,6 +57,17 @@ def _compute_micro_mirror(task: Task) -> Optional[str]:
     delta = task.duration_delta_minutes
     duration = task.executed_duration_minutes or 0
     pauses = task.pause_count or 0
+
+    if interruption_metrics is not None:
+        pause_overhead = interruption_metrics.pause_overhead_minutes or 0
+        execution = interruption_metrics.execution_time_minutes or duration
+        span = interruption_metrics.session_span_minutes
+        if pause_overhead >= 30 and execution > 0 and pause_overhead >= execution:
+            return (
+                f"Active work: {int(execution)} min. "
+                f"Session span: {_format_micro_duration(span)}. "
+                f"Pause overhead: {_format_micro_duration(pause_overhead)}."
+            )
 
     if delay is not None and delay > 10:
         return f"Started {delay} min late."
@@ -144,6 +173,17 @@ class StopwatchManager:
             )
         return str(uid)
 
+    @staticmethod
+    def _invalidate_task_ranges(user_id: str | int) -> None:
+        try:
+            invalidate_user_ranges(int(user_id))
+        except Exception as exc:  # noqa: BLE001 - cache invalidation is best effort
+            logger.warning(
+                "stopwatch_manager: task range cache invalidation failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -194,6 +234,7 @@ class StopwatchManager:
             session.paused_at_utc = None
             self._close_open_pause_events(session_id, end)
             self.db.commit()
+            self._invalidate_task_ranges(session.user_id)
 
     def _close_open_pause_events(self, session_id: str, closed_at: datetime) -> None:
         """Close any PauseEvent rows for this session that are still open.
@@ -416,14 +457,44 @@ class StopwatchManager:
         """Start stopwatch. Returns (session, task, is_future_task).
 
         If the current stopwatch is PAUSED, the new task is linked as an
-        interruption via parent_task_id. The paused session stays in DB
-        (unclosed) and can be resumed later.
+        interruption via parent_task_id. If the current stopwatch is running,
+        callers must pass interruption_type; the running task is paused with
+        pause_reason='task_switch' before the child starts. The parent session
+        stays in DB (unclosed) and can be resumed later.
         """
         user_id = self._user_key()
         active = self._get_active(user_id)
+        active_before_start = dict(active) if active else None
+        pause_state_before_start = self.redis.get_pause_state(user_id) if active else None
+        parent_pause_state_after_switch = None
         paused_task_id = None
+        target_task = None
+        undo_task_snapshot = None
+
+        if task_id:
+            target_task = self.db.query(Task).filter(Task.task_id == task_id).first()
+            if not target_task:
+                raise ValueError("Task not found")
+            if target_task.voided_at is not None:
+                raise ValueError("Cannot start a timer on a voided task")
+        elif not title:
+            raise ValueError("Title required for unplanned task")
 
         if active:
+            if task_id and active["task_id"] == task_id:
+                session = self._get_session(active["session_id"])
+                task = target_task or self.db.query(Task).filter(
+                    Task.task_id == active["task_id"]
+                ).first()
+                if task is None or task.voided_at is not None or session.end_time_utc is not None:
+                    self.redis.clear_stopwatch_state(user_id)
+                    raise StopwatchAlreadyRunningError(
+                        f"Stopwatch state for task {active['task_id']} is stale"
+                    )
+                is_future_task = False
+                if task.planned_start_utc and task.planned_start_utc > now_utc() + timedelta(minutes=5):
+                    is_future_task = True
+                return session, task, is_future_task
             pause_state = self.redis.get_pause_state(user_id)
             if pause_state:
                 # Current timer is paused — allow starting a new task
@@ -431,20 +502,42 @@ class StopwatchManager:
                 # Clear active stopwatch from Redis (DB session stays unclosed)
                 self.redis.clear_stopwatch_state(user_id)
             else:
-                raise StopwatchAlreadyRunningError(
-                    f"Stopwatch already running for task {active['task_id']}"
-                )
+                if not interruption_type:
+                    raise StopwatchAlreadyRunningError(
+                        f"Stopwatch already running for task {active['task_id']}"
+                    )
+                if target_task is not None and not self.task_manager.state_machine.can_transition(
+                    target_task, TaskState.EXECUTING
+                ):
+                    state = (
+                        target_task.state.value
+                        if hasattr(target_task.state, "value")
+                        else str(target_task.state)
+                    )
+                    raise InvalidStateTransitionError(
+                        f"Cannot transition from {state} to {TaskState.EXECUTING.value}"
+                    )
+                self.pause(pause_reason="task_switch", pause_initiator="self")
+                paused_task_id = active["task_id"]
+                parent_pause_state_after_switch = self.redis.get_pause_state(user_id)
+                self.redis.clear_stopwatch_state(user_id)
 
         if task_id:
-            task = self.db.query(Task).filter(Task.task_id == task_id).first()
-            if not task:
-                raise ValueError("Task not found")
-            if task.voided_at is not None:
-                raise ValueError("Cannot start a timer on a voided task")
+            undo_task_snapshot = {
+                "state": (
+                    target_task.state.value
+                    if hasattr(target_task.state, "value")
+                    else str(target_task.state)
+                ),
+                "pre_task_readiness": target_task.pre_task_readiness,
+                "initiation_status": target_task.initiation_status,
+                "initiation_delay_minutes": target_task.initiation_delay_minutes,
+                "parent_task_id": target_task.parent_task_id,
+                "interruption_type": target_task.interruption_type,
+            }
             task = self.task_manager.start_task(task_id)
+            created_task_for_start = False
         else:
-            if not title:
-                raise ValueError("Title required for unplanned task")
             # create_task() expects Cairo local time (calls to_utc internally)
             local_now = to_local(now_utc())
             task, _, _ = self.task_manager.create_task(
@@ -453,6 +546,7 @@ class StopwatchManager:
                 end=local_now + timedelta(hours=1),
                 state=TaskState.EXECUTING
             )
+            created_task_for_start = True
 
         is_future_task = False
         if hasattr(task, "planned_start_utc") and task.planned_start_utc:
@@ -498,6 +592,7 @@ class StopwatchManager:
             logger.warning(f"first_timer_started_at stamp failed (non-blocking): {e}")
 
         self.db.commit()
+        self._invalidate_task_ranges(user_id)
         self.db.refresh(session)
         self.db.refresh(task)
 
@@ -508,6 +603,28 @@ class StopwatchManager:
             title=task.title,
             start_time=session.start_time_utc.isoformat()
         )
+        try:
+            self.redis.cache_undo_action(
+                "start_stopwatch",
+                session.session_id,
+                {
+                    "task_id": task.task_id,
+                    "title": task.title,
+                    "session_id": session.session_id,
+                    "created_task": created_task_for_start,
+                    "task_snapshot": undo_task_snapshot,
+                    "active_before_start": active_before_start,
+                    "pause_state_before_start": pause_state_before_start,
+                    "parent_pause_state_after_switch": parent_pause_state_after_switch,
+                },
+                user_id=user_id,
+            )
+            # A task may have been created moments before it was started.
+            # The visible undo surface is now "undo timer start"; do not leave
+            # an older hidden task-creation undo key competing with it.
+            self.redis.clear_undo_data(task.task_id, user_id=user_id)
+        except Exception as e:
+            logger.warning("stopwatch.start: undo cache write failed: %s", e)
 
         return session, task, is_future_task
 
@@ -538,8 +655,22 @@ class StopwatchManager:
         if not active:
             raise NoActiveStopwatchError("No active stopwatch")
 
-        if self.redis.get_pause_state(user_id):
-            raise StopwatchAlreadyPausedError("Stopwatch is already paused")
+        existing_pause_state = self.redis.get_pause_state(user_id)
+        if existing_pause_state:
+            session = self._get_session(existing_pause_state.get("session_id") or active["session_id"])
+            paused_at_raw = existing_pause_state.get("paused_at")
+            paused_at = (
+                strip_tz(datetime.fromisoformat(paused_at_raw))
+                if paused_at_raw
+                else strip_tz(session.paused_at_utc)
+            )
+            return {
+                "paused": True,
+                "elapsed_minutes": self._active_elapsed(session, existing_pause_state),
+                "paused_at": paused_at or now_utc(),
+                "pause_reason": session.pause_reason or pause_reason,
+                "pause_initiator": session.pause_initiator or pause_initiator,
+            }
 
         session = self._get_session(active["session_id"])
         now = now_utc()
@@ -581,6 +712,7 @@ class StopwatchManager:
         # state transition. One fsync instead of two — halves the SQLite
         # write latency on the pause path.
         self.db.commit()
+        self._invalidate_task_ranges(user_id)
 
         # Notion sync queued for the background notion_retry_job (every
         # 5 min) instead of blocking the request thread — the inline
@@ -616,7 +748,12 @@ class StopwatchManager:
 
         pause_state = self.redis.get_pause_state(user_id)
         if not pause_state:
-            raise StopwatchNotPausedError("Stopwatch is not paused")
+            session = self._get_session(active["session_id"])
+            return {
+                "resumed": True,
+                "paused_minutes": 0.0,
+                "total_paused_minutes": session.total_paused_minutes or 0.0,
+            }
 
         now = now_utc()
         # strip_tz: Redis-stored ISO may parse to aware (see time_utils).
@@ -677,6 +814,7 @@ class StopwatchManager:
 
         # Single commit for session + task + pause_event close.
         self.db.commit()
+        self._invalidate_task_ranges(user_id)
 
         # Notion sync queued to background (same reasoning as pause()).
         if task.state == TaskState.EXECUTING:
@@ -888,6 +1026,7 @@ class StopwatchManager:
 
         # ---- Single atomic commit for source-pause + target-resume ----
         self.db.commit()
+        self._invalidate_task_ranges(user_id)
 
         # ---- Update Redis: clear old, set new ----
         self.redis.activate_stopwatch(
@@ -1001,6 +1140,7 @@ class StopwatchManager:
                 "elapsed_seconds": elapsed_sec,
                 "start_time": session.start_time_utc.isoformat() if session.start_time_utc else None,
                 "total_paused_minutes": session.total_paused_minutes or 0.0,
+                "planned_duration_minutes": task.planned_duration_minutes,
             })
             seen_task_ids.add(session.task_id)
 
@@ -1048,6 +1188,7 @@ class StopwatchManager:
                     if scope_outcome is not None:
                         task.scope_outcome = scope_outcome
                     self.db.commit()
+                    self._invalidate_task_ranges(task.user_id)
                     self.db.refresh(task)
                     session = (
                         self.db.query(StopwatchSession)
@@ -1058,6 +1199,7 @@ class StopwatchManager:
                     if session and task_completion_percentage is not None:
                         session.task_completion_percentage = task_completion_percentage
                         self.db.commit()
+                        self._invalidate_task_ranges(task.user_id)
                         self.db.refresh(session)
                     return session, task, False, True, None, None, None, None
                 raise NoActiveStopwatchError(
@@ -1076,6 +1218,7 @@ class StopwatchManager:
             session.end_time_utc = now_utc()
             session.auto_closed = True
             self.db.commit()
+            self._invalidate_task_ranges(user_id)
             raise ValueError("Task was voided — session auto-closed without completion")
 
         stop_time = now_utc()
@@ -1132,6 +1275,7 @@ class StopwatchManager:
             task.initiation_status = "abandoned"
             task.last_modified_at = now_utc()
             self.db.commit()
+            self._invalidate_task_ranges(user_id)
             self.db.refresh(session)
             self.db.refresh(task)
             self.redis.clear_active_stopwatch(user_id)
@@ -1162,7 +1306,12 @@ class StopwatchManager:
             task.executed_duration_minutes = max(
                 0, (task.executed_duration_minutes or 0) - int(round(total_paused))
             )
+            self.task_manager.reconcile_calibration_nudge_outcome(
+                task.task_id,
+                int(task.executed_duration_minutes or 0),
+            )
             self.db.commit()
+            self._invalidate_task_ranges(user_id)
             self.db.refresh(task)
 
         if post_task_reflection is not None:
@@ -1171,15 +1320,18 @@ class StopwatchManager:
             task.scope_outcome = scope_outcome
         if post_task_reflection is not None or scope_outcome is not None:
             self.db.commit()
+            self._invalidate_task_ranges(user_id)
             self.db.refresh(task)
 
         pre_existing_pct = session.task_completion_percentage
         if task_completion_percentage is not None:
             session.task_completion_percentage = task_completion_percentage
             self.db.commit()
+            self._invalidate_task_ranges(user_id)
             self.db.refresh(session)
 
-        micro_mirror = _compute_micro_mirror(task)
+        interruption = task_interruption_metrics(self.db, task)
+        micro_mirror = _compute_micro_mirror(task, interruption)
         calibration_nudge = _compute_calibration_nudge(task, self.db)
 
         self.redis.clear_active_stopwatch(user_id)
@@ -1208,6 +1360,172 @@ class StopwatchManager:
 
         return session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct
 
+    def resolve_stale_pause(
+        self,
+        session_id: str,
+        *,
+        post_task_reflection: int,
+        task_completion_percentage: int,
+        scope_outcome: str,
+        threshold_hours: int = STALE_PAUSE_RESOLUTION_HOURS,
+    ) -> dict:
+        """Close a long-paused session using explicit user reflection.
+
+        This is intentionally not the normal stop path: the user is resolving a
+        stale parked session after the fact. The session closes at the original
+        pause timestamp, active duration excludes pauses, and the session is
+        marked dirty so it stays out of clean calibration baselines.
+        """
+        if not 1 <= int(post_task_reflection) <= 5:
+            raise ValueError("post_task_reflection must be between 1 and 5")
+        if not 0 <= int(task_completion_percentage) <= 100:
+            raise ValueError("task_completion_percentage must be between 0 and 100")
+        if scope_outcome not in {"stuck_to_plan", "expanded", "reduced"}:
+            raise ValueError("Invalid scope_outcome")
+
+        user_id = self._user_key()
+        user_id_int = int(user_id)
+        now = now_utc()
+        cutoff = now - timedelta(hours=threshold_hours)
+
+        session = (
+            self.db.query(StopwatchSession)
+            .filter(
+                StopwatchSession.session_id == session_id,
+                StopwatchSession.user_id == user_id_int,
+            )
+            .first()
+        )
+        if session is None:
+            raise ValueError("Stale pause session not found")
+        if session.end_time_utc is not None:
+            raise ValueError("Stale pause session is already closed")
+        if session.paused_at_utc is None:
+            raise ValueError("Only paused sessions can be resolved this way")
+
+        paused_at = strip_tz(session.paused_at_utc)
+        if paused_at > cutoff:
+            raise ValueError(
+                f"Pause must be at least {threshold_hours}h old before stale resolution"
+            )
+
+        task = (
+            self.db.query(Task)
+            .filter(Task.task_id == session.task_id, Task.user_id == user_id_int)
+            .first()
+        )
+        if task is None or task.voided_at is not None:
+            raise ValueError("Task not found")
+        if task.state not in (
+            TaskState.PAUSED,
+            TaskState.EXECUTING,
+            TaskState.SKIPPED,
+        ):
+            raise ValueError(
+                "Only PAUSED, EXECUTING, or stale-recovered SKIPPED tasks can "
+                f"be resolved this way (current state: {task.state})"
+            )
+        if task.state == TaskState.SKIPPED and task.initiation_status not in (
+            "abandoned",
+            "orphaned_recovery",
+            "auto_abandoned",
+            STALE_PAUSE_TASK_STATUS,
+        ):
+            raise ValueError("Only stale/abandoned skipped tasks can be resolved this way")
+
+        end_time = paused_at
+
+        open_events = (
+            self.db.query(PauseEvent)
+            .filter(
+                PauseEvent.session_id == session.session_id,
+                PauseEvent.resumed_at_utc.is_(None),
+            )
+            .all()
+        )
+        for evt in open_events:
+            evt.resumed_at_utc = max(strip_tz(evt.paused_at_utc), end_time)
+            evt.duration_minutes = max(
+                0.0,
+                (evt.resumed_at_utc - strip_tz(evt.paused_at_utc)).total_seconds()
+                / 60.0,
+            )
+        self.db.flush()
+
+        event_pause_total = float(
+            self.db.query(sa.func.coalesce(sa.func.sum(PauseEvent.duration_minutes), 0))
+            .filter(PauseEvent.session_id == session.session_id)
+            .scalar()
+            or 0
+        )
+        total_pause_minutes = max(float(session.total_paused_minutes or 0), event_pause_total)
+        active_minutes = max(
+            0,
+            int(round((end_time - strip_tz(session.start_time_utc)).total_seconds() / 60.0 - total_pause_minutes)),
+        )
+
+        session.end_time_utc = end_time
+        session.paused_at_utc = None
+        session.total_paused_minutes = total_pause_minutes
+        session.task_completion_percentage = int(task_completion_percentage)
+        session.data_quality_flag = STALE_PAUSE_RESOLUTION_FLAG
+        session.auto_closed = False
+
+        task.post_task_reflection = int(post_task_reflection)
+        task.scope_outcome = scope_outcome
+        task.last_modified_at = now
+
+        if task_completion_percentage >= 80:
+            task.state = TaskState.EXECUTED
+            task.executed_start_utc = strip_tz(session.start_time_utc)
+            task.executed_end_utc = end_time
+            task.executed_duration_minutes = active_minutes
+            task.initiation_status = STALE_PAUSE_TASK_STATUS
+        else:
+            task.state = TaskState.SKIPPED
+            task.executed_start_utc = strip_tz(session.start_time_utc)
+            task.executed_end_utc = end_time
+            task.executed_duration_minutes = active_minutes
+            task.initiation_status = "abandoned"
+
+        note = (
+            "stale_pause_resolution: "
+            f"session={session.session_id} "
+            f"active_minutes={active_minutes} "
+            f"completion={task_completion_percentage}% "
+            f"focus={post_task_reflection} "
+            f"scope={scope_outcome} "
+            f"closed_at={end_time.isoformat()}"
+        )
+        task.notes = f"{task.notes or ''}\n{note}".strip()
+
+        active = self.redis.get_active_stopwatch(user_id)
+        if active and active.get("session_id") == session.session_id:
+            self.redis.clear_stopwatch_state(user_id)
+        pause_state = self.redis.get_pause_state(user_id)
+        if pause_state and pause_state.get("session_id") == session.session_id:
+            self.redis.clear_pause_state(user_id)
+
+        self.db.commit()
+        self.db.refresh(session)
+        self.db.refresh(task)
+        self._invalidate_task_ranges(user_id_int)
+
+        return {
+            "resolved": True,
+            "task_id": task.task_id,
+            "session_id": session.session_id,
+            "new_state": task.state.value if hasattr(task.state, "value") else str(task.state),
+            "active_minutes": active_minutes,
+            "planned_duration_minutes": task.planned_duration_minutes,
+            "paused_minutes": max(0, int(round((now - paused_at).total_seconds() / 60.0))),
+            "task_completion_percentage": int(task_completion_percentage),
+            "post_task_reflection": int(post_task_reflection),
+            "scope_outcome": scope_outcome,
+            "data_quality_flag": STALE_PAUSE_RESOLUTION_FLAG,
+            "closed_at": to_local(session.end_time_utc),
+        }
+
     def correct_readiness(
         self,
         pre_task_readiness: int,
@@ -1229,6 +1547,7 @@ class StopwatchManager:
             session.original_pre_task_readiness = original
         task.pre_task_readiness = pre_task_readiness
         self.db.commit()
+        self._invalidate_task_ranges(user_id)
         self.db.refresh(task)
 
         return {"corrected": True, "original": original, "new": pre_task_readiness}
@@ -1251,6 +1570,7 @@ class StopwatchManager:
             raise ValueError("Cannot update completion on a voided task")
         session.task_completion_percentage = task_completion_percentage
         self.db.commit()
+        self._invalidate_task_ranges(user_id)
         self.db.refresh(session)
 
         pause_state = self.redis.get_pause_state(user_id)
@@ -1331,6 +1651,12 @@ class StopwatchManager:
                 # Defensive — malformed paused_at falls back to 0 / null.
                 pass
 
+        task = (
+            self.db.query(Task)
+            .filter(Task.task_id == active["task_id"])
+            .first()
+        )
+
         return {
             "active": True,
             "session_id": active["session_id"],
@@ -1339,6 +1665,9 @@ class StopwatchManager:
             "start_time": start_time,
             "elapsed_minutes": elapsed_minutes,
             "elapsed_seconds": elapsed_seconds,
+            "planned_duration_minutes": (
+                task.planned_duration_minutes if task is not None else None
+            ),
             "paused": is_paused,
             "total_paused_minutes": total_paused,
             "current_pause_seconds": current_pause_seconds,

@@ -24,7 +24,7 @@ State transition graph (user-actionable subset):
 Reconciliation-driven (NOT user-actionable here):
     active → missed       (Phase H sweeper, deadline.due_at_utc passed)
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 
@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Deadline, DeadlineCompletionEvent
 from app.db.scoping import get_current_user_id
+from app.utils.tasks_range_cache import invalidate_user_ranges
 from app.utils.time_utils import now_utc, strip_tz
 
 
@@ -83,6 +84,29 @@ def _require_current_user(op: str) -> int:
             f"{op}: no current_user_id in ContextVar — refusing to write."
         )
     return uid
+
+
+def _normalize_deadline_title(title: str) -> str:
+    """Canonical title key for same-day duplicate detection."""
+    return " ".join(title.casefold().split())
+
+
+def _invalidate_deadline_user_ranges(user_id: int) -> None:
+    try:
+        invalidate_user_ranges(int(user_id))
+    except Exception:
+        pass
+
+
+class DeadlineDuplicateError(ValueError):
+    """Raised when a same-title, same-day, non-voided deadline exists."""
+
+    def __init__(self, existing: Deadline):
+        self.existing = existing
+        super().__init__(
+            "deadline_duplicate_title_same_day: "
+            f"existing_deadline_id={existing.deadline_id}"
+        )
 
 
 def record_deadline_completion_event(
@@ -175,6 +199,7 @@ class DeadlineManager:
         due_at_utc: datetime,
         description: Optional[str] = None,
         category_hint: Optional[str] = None,
+        force_duplicate: bool = False,
     ) -> Deadline:
         """Create a new deadline in 'planned' state.
 
@@ -182,12 +207,17 @@ class DeadlineManager:
         TaskManager.create_task — NOT here).
         """
         uid = _require_current_user("create_deadline")
+        due_at = strip_tz(due_at_utc) or due_at_utc
+        if not force_duplicate:
+            duplicate = self.find_duplicate_deadline(title, due_at)
+            if duplicate is not None:
+                raise DeadlineDuplicateError(duplicate)
         deadline = Deadline(
             deadline_id=str(uuid4()),
             user_id=uid,
             title=title,
             description=description,
-            due_at_utc=due_at_utc,
+            due_at_utc=due_at,
             category_hint=category_hint,
             state="planned",
             created_at=datetime.utcnow(),
@@ -195,7 +225,45 @@ class DeadlineManager:
         self.db.add(deadline)
         self.db.commit()
         self.db.refresh(deadline)
+        _invalidate_deadline_user_ranges(uid)
         return deadline
+
+    def find_duplicate_deadline(
+        self,
+        title: str,
+        due_at_utc: datetime,
+        exclude_deadline_id: Optional[str] = None,
+    ) -> Optional[Deadline]:
+        """Find a same-title, same-UTC-day deadline for the current user.
+
+        This is the deadline sibling of task duplicate-title detection. Any
+        non-voided state counts because the row still represents the same
+        real-world obligation and should not be duplicated into pressure.
+        """
+        uid = _require_current_user("find_duplicate_deadline")
+        due_at = strip_tz(due_at_utc) or due_at_utc
+        day_start = datetime(due_at.year, due_at.month, due_at.day)
+        day_end = day_start + timedelta(days=1)
+        target = _normalize_deadline_title(title)
+
+        q = self.db.query(Deadline).filter(
+            Deadline.user_id == uid,
+            Deadline.voided_at.is_(None),
+            Deadline.due_at_utc >= day_start,
+            Deadline.due_at_utc < day_end,
+        )
+        if exclude_deadline_id:
+            q = q.filter(Deadline.deadline_id != exclude_deadline_id)
+
+        candidates = q.order_by(Deadline.due_at_utc.asc()).all()
+        return next(
+            (
+                deadline
+                for deadline in candidates
+                if _normalize_deadline_title(deadline.title) == target
+            ),
+            None,
+        )
 
     def upsert_external_deadline(
         self,
@@ -251,6 +319,7 @@ class DeadlineManager:
             )
             self.db.add(deadline)
             self.db.commit()
+            _invalidate_deadline_user_ranges(uid)
             return "created"
 
         if existing.voided_at is not None:
@@ -275,6 +344,7 @@ class DeadlineManager:
         existing.category_hint = category_hint
         # imported_at is the FIRST-import timestamp; don't overwrite.
         self.db.commit()
+        _invalidate_deadline_user_ranges(uid)
         return "updated"
 
     def update_deadline(
@@ -348,6 +418,7 @@ class DeadlineManager:
 
         self.db.commit()
         self.db.refresh(deadline)
+        _invalidate_deadline_user_ranges(deadline.user_id)
         return deadline
 
     def void_deadline(self, deadline_id: str) -> Deadline:
@@ -372,4 +443,5 @@ class DeadlineManager:
                 event.voided_at = now
         self.db.commit()
         self.db.refresh(deadline)
+        _invalidate_deadline_user_ranges(deadline.user_id)
         return deadline

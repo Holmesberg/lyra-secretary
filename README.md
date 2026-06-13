@@ -1,5 +1,11 @@
 # LyraOS
 
+People do not see how obligations, time, and actual execution are interacting
+until pressure has already compounded into failure or recovery mode.
+
+Lyra helps humans build more accurate internal models of their own execution
+dynamics without collapsing into shame, dependence, or optimization theater.
+
 [![CI](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml/badge.svg)](https://github.com/Holmesberg/lyra-secretary/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Repository](https://img.shields.io/badge/GitHub-lyra--secretary-181717?logo=github)](https://github.com/Holmesberg/lyra-secretary)
@@ -24,6 +30,17 @@ rule-governed, probabilistic, longitudinal, and inspectable.
 observe -> canonicalize -> gate by provenance/exposure -> synthesize cautiously
 ```
 
+Current methods-paper direction:
+
+```text
+Measurement Integrity Before Agency Claims
+```
+
+LyraOS should not jump from events or metrics directly to claims about focus,
+motivation, avoidance, discipline, recovery, agency, or improvement. The
+research direction is documented in
+[`docs/measurement_integrity_before_agency_claims.md`](docs/measurement_integrity_before_agency_claims.md).
+
 ## Why This Exists
 
 People often plan sincerely and still fail themselves. LyraOS asks whether that
@@ -38,6 +55,11 @@ only bounded, time-local hypotheses.
 The alignment claim is honesty, not obedience. LyraOS should help users
 preserve contact between intention, constraint, action, and consequence without
 optimizing them into hidden compliance, dependence, or engagement loops.
+
+The broader invariant is trajectory integrity: repeated human-system
+interactions shape what people do next. LyraOS treats technology as an
+amplifier, not an enemy, and constrains that amplification so reality contact
+does not collapse into hidden proxy optimization.
 
 ## Current Status
 

@@ -27,6 +27,9 @@ from app.db.models import (
     TaskState,
     User,
 )
+from app.core.config import settings
+from app.core.authority import authority_for_surface
+from app.services.operator_notifier import notify_operator, redacted_user_ref
 from app.services.exposure_ledger import (
     baseline_clean_task_ids,
     exposure_results_for_task,
@@ -56,6 +59,7 @@ RULE11_SURFACE_IDS = {
     "stopwatch.micro_mirror",
     "task.creation_nudge",
 }
+OPERATOR_MIRRORED_OUTPUT_CHANNELS = {"in_app_toast", "in_app_modal"}
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,7 @@ class OutputSurfaceSpec:
     salience_level: str
 
     def as_dict(self) -> dict[str, Any]:
+        authority = authority_for_surface(self).as_dict()
         return {
             "surface_id": self.surface_id,
             "truth_class": self.truth_class,
@@ -93,6 +98,7 @@ class OutputSurfaceSpec:
             "render_policy_version": self.render_policy_version,
             "interruptiveness": self.interruptiveness,
             "salience_level": self.salience_level,
+            **authority,
         }
 
 
@@ -199,6 +205,57 @@ def _snapshot_to_text(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=str)
 
 
+def _short_ref(value: Any) -> str:
+    return sha256(str(value).encode("utf-8")).hexdigest()[:10]
+
+
+def mirror_output_surface_render_to_operator(
+    *,
+    spec: OutputSurfaceSpec,
+    user_id: int,
+    task_id: Optional[str],
+    exposure_id: str,
+    render_id: str,
+    content_template_id: Optional[str],
+    trigger_source: Optional[str],
+) -> bool:
+    """Mirror toast/modal render metadata to the OpenClaw operator channel.
+
+    The rendered content can contain behavioral feedback, user task titles, or
+    other private state. The operator channel gets metadata only. Dashboard
+    pages/cards are deliberately excluded to avoid noisy surveillance-flavored
+    mirroring.
+    """
+    if not getattr(settings, "OPENCLAW_MIRROR_USER_NOTIFICATIONS", True):
+        return False
+    if spec.channel not in OPERATOR_MIRRORED_OUTPUT_CHANNELS:
+        return False
+
+    lines = [
+        "Output surface rendered.",
+        f"User: {redacted_user_ref(user_id)}",
+        f"Surface: `{spec.surface_id}`",
+        f"Channel: `{spec.channel}`",
+        f"Exposure: #{_short_ref(exposure_id)}",
+        f"Render: #{_short_ref(render_id)}",
+    ]
+    if task_id:
+        lines.append(f"Task: #{_short_ref(task_id)}")
+    if content_template_id:
+        lines.append(f"Template: `{content_template_id}`")
+    if trigger_source:
+        lines.append(f"Trigger: `{trigger_source}`")
+
+    try:
+        return notify_operator(
+            "\n".join(lines),
+            source="output.surface",
+            severity="info",
+        )
+    except Exception:
+        return False
+
+
 def _assert_surface_allowed_for_user(
     db: Session,
     *,
@@ -277,6 +334,15 @@ def emit_surface_render(
         interruptiveness=spec.interruptiveness,
         salience_level=spec.salience_level,
     )
+    mirror_output_surface_render_to_operator(
+        spec=spec,
+        user_id=user_id,
+        task_id=task_id,
+        exposure_id=decision.exposure_id,
+        render_id=render.render_id,
+        content_template_id=content_template_id,
+        trigger_source=trigger_source or surface_id,
+    )
 
     legacy_view_id: Optional[str] = None
     if create_legacy_view and spec.legacy_adapter:
@@ -297,6 +363,7 @@ def emit_surface_render(
         db.flush()
         legacy_view_id = row.view_id
 
+    authority = authority_for_surface(spec).as_dict()
     return {
         "surface_id": surface_id,
         "truth_class": spec.truth_class,
@@ -308,6 +375,7 @@ def emit_surface_render(
         "exposure_id": decision.exposure_id,
         "render_id": render.render_id,
         "legacy_view_id": legacy_view_id,
+        **authority,
     }
 
 
@@ -353,6 +421,7 @@ def emit_surface_suppression(
         would_have_rendered_template_id=content_template_id,
         generating_confidence=generating_confidence,
     )
+    authority = authority_for_surface(spec).as_dict()
     return {
         "surface_id": surface_id,
         "truth_class": spec.truth_class,
@@ -364,7 +433,41 @@ def emit_surface_suppression(
         "exposure_id": decision.exposure_id,
         "suppression_id": suppression.suppression_id,
         "suppressed_reason": suppression_reason,
+        **authority,
     }
+
+
+def create_output_surface_decision(
+    db: Session,
+    *,
+    surface_id: str,
+    user_id: int,
+    decision_status: str,
+    task_id: Optional[str] = None,
+    eligible_at=None,
+    content_template_id: Optional[str] = None,
+    initiative: str = "system",
+    trigger_source: Optional[str] = None,
+    delivered_at=None,
+    data_snapshot_hash: Optional[str] = None,
+) -> ExposureDecisionEvent:
+    """Create a registered output-surface decision without claiming render."""
+    spec = get_output_surface_spec(surface_id)
+    _assert_surface_allowed_for_user(db, spec=spec, user_id=user_id)
+    eligible_at = strip_tz(eligible_at or now_utc())
+    return record_decision(
+        db,
+        user_id=user_id,
+        task_id=task_id,
+        eligible_at=eligible_at,
+        decision_status=decision_status,
+        initiative=initiative,
+        exposure_category=spec.exposure_category,
+        content_template_id=content_template_id,
+        trigger_source=trigger_source or surface_id,
+        data_snapshot_hash=data_snapshot_hash,
+        delivered_at=strip_tz(delivered_at) if delivered_at is not None else None,
+    )
 
 
 def acknowledge_surface_render(
@@ -414,6 +517,60 @@ def acknowledge_surface_render(
     db.add(row)
     db.flush()
     return row, True
+
+
+def render_existing_surface_decision(
+    db: Session,
+    *,
+    exposure_id: str,
+    user_id: int,
+    surface_id: str,
+    content_snapshot: Any,
+    rendered_at=None,
+    client_event_id: Optional[str] = None,
+) -> bool:
+    """Complete a queued/delayed surface decision at browser-render time."""
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == exposure_id)
+        .first()
+    )
+    if decision is None or int(decision.user_id) != int(user_id):
+        return False
+
+    spec = get_output_surface_spec(surface_id)
+    rendered_at = strip_tz(rendered_at or now_utc())
+    existing_render = (
+        db.query(ExposureRenderEvent)
+        .filter(
+            ExposureRenderEvent.exposure_id == exposure_id,
+            ExposureRenderEvent.surface == surface_id,
+        )
+        .first()
+    )
+    if existing_render is None:
+        record_render(
+            db,
+            exposure_id=exposure_id,
+            rendered_at=rendered_at,
+            surface=surface_id,
+            channel=spec.channel,
+            content_snapshot=_snapshot_to_text(content_snapshot),
+            render_policy_version=spec.render_policy_version,
+            interruptiveness=spec.interruptiveness,
+            salience_level=spec.salience_level,
+        )
+
+    decision.decision_status = "rendered"
+    decision.delivered_at = rendered_at
+    acknowledge_surface_render(
+        db,
+        exposure_id=exposure_id,
+        user_id=user_id,
+        acked_at=rendered_at,
+        client_event_id=client_event_id,
+    )
+    return True
 
 
 def _candidate_tasks_for_profile(

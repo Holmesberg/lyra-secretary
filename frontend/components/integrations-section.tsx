@@ -450,7 +450,7 @@ function MoodleDataFeeds({
           description={
             wsDisconnectReason
               ? "Token rejected — reconnect to resume auto-marking."
-              : "Auto-marks complete on submission · backfills past assignments"
+              : "Auto-marks complete on submission · backfills past items"
           }
           dotState={
             wsDisconnectReason
@@ -486,7 +486,7 @@ function MoodleDataFeeds({
       ) : (
         <FeedRow
           label="Submissions"
-          description="Auto-mark complete when you submit · imports past assignments Lyra missed"
+          description="Auto-mark complete when you submit · imports past items Lyra missed"
           dotState="idle"
           statusLine={<span>not enabled</span>}
           primaryAction={

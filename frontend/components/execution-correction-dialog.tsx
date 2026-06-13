@@ -47,6 +47,7 @@ export function ExecutionCorrectionDialog({ task, onClose, onSaved }: Props) {
   const observedDuration = task?.executed_duration_minutes ?? null;
   const effectiveDuration =
     task?.effective_executed_duration_minutes ?? observedDuration;
+  const isRetroactiveReport = task?.initiation_status === "retroactive";
   const [endTime, setEndTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,8 +80,19 @@ export function ExecutionCorrectionDialog({ task, onClose, onSaved }: Props) {
       setError("The actual end must be after the start time.");
       return;
     }
-    if (correctedEnd >= observedEnd) {
+    if (!isRetroactiveReport && correctedEnd >= observedEnd) {
       setError("The actual end must be earlier than the timer stop.");
+      return;
+    }
+    const currentDisplayedEnd = new Date(
+      task.effective_executed_end ?? task.executed_end
+    );
+    if (
+      isRetroactiveReport &&
+      !Number.isNaN(currentDisplayedEnd.getTime()) &&
+      correctedEnd.getTime() === currentDisplayedEnd.getTime()
+    ) {
+      setError("Choose a different reported end time.");
       return;
     }
     setSubmitting(true);
@@ -120,7 +132,9 @@ export function ExecutionCorrectionDialog({ task, onClose, onSaved }: Props) {
         <DialogHeader>
           <DialogTitle>{task.title}</DialogTitle>
           <DialogDescription>
-            executed - timer correction
+            {isRetroactiveReport
+              ? "executed - reported time correction"
+              : "executed - timer correction"}
           </DialogDescription>
         </DialogHeader>
 

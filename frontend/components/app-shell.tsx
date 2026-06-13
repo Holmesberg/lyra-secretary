@@ -23,17 +23,17 @@ import { useSession } from "next-auth/react";
 import { FeedbackLink } from "@/components/feedback-link";
 import { signOutAndClear } from "@/lib/sign-out-and-clear";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   CalendarDays,
   CalendarRange,
   Flag,
-  LayoutGrid,
   LogOut,
   Menu,
   Settings,
+  ShieldCheck,
   Table2,
   TrendingUp,
   X,
@@ -44,15 +44,11 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  /** Marker for experimental routes; renders a small (preview) tag. */
-  preview?: boolean;
 }
 
 const NAV: NavItem[] = [
+  { href: "/pulse", label: "Pulse", icon: Activity },
   { href: "/today", label: "Today", icon: CalendarDays },
-  // Pulse is the Neural Noir dashboard. Listed second per its
-  // dashboard-iness (operator's preferred-but-not-yet-promoted surface).
-  { href: "/pulse", label: "Pulse", icon: Activity, preview: true },
   { href: "/calendar", label: "Calendar", icon: CalendarRange },
   { href: "/deadlines", label: "Deadlines", icon: Flag },
   { href: "/table", label: "Table", icon: Table2 },
@@ -60,7 +56,19 @@ const NAV: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+const OPERATOR_NAV: NavItem = {
+  href: "/operator",
+  label: "Operator",
+  icon: ShieldCheck,
+};
+
+export function AppShell({
+  children,
+  isOperator = false,
+}: {
+  children: React.ReactNode;
+  isOperator?: boolean;
+}) {
   const { data: session } = useSession();
   const pathname = usePathname();
   const router = useRouter();
@@ -68,6 +76,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const prefetchedRoutesRef = useRef<Set<string>>(new Set());
+  const navItems = useMemo(
+    () => (isOperator ? [...NAV, OPERATOR_NAV] : NAV),
+    [isOperator]
+  );
 
   const prefetchRoute = useCallback(
     (href: string) => {
@@ -85,7 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    const queue = NAV.filter((item) => item.href !== pathname);
+    const queue = navItems.filter((item) => item.href !== pathname);
     let index = 0;
     const timers: number[] = [];
 
@@ -105,7 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       cancelled = true;
       timers.forEach((id) => window.clearTimeout(id));
     };
-  }, [pathname, prefetchRoute]);
+  }, [navItems, pathname, prefetchRoute]);
 
   function handleNavClick(
     event: React.MouseEvent<HTMLAnchorElement>,
@@ -126,6 +138,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const userEmail = session?.user?.email ?? null;
   const userInitial = userEmail ? userEmail.charAt(0).toUpperCase() : "·";
+  const isOperatorDashboard = pathname?.startsWith("/operator") ?? false;
+  const identityLabel = isOperatorDashboard
+    ? "operator account"
+    : userEmail?.split("@")[0];
+  const identityDetail = isOperatorDashboard
+    ? "diagnostic view"
+    : userEmail
+      ? `@${userEmail.split("@")[1] ?? ""}`
+      : "";
 
   return (
     <div className="min-h-screen bg-void text-parchment lg:flex">
@@ -136,10 +157,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {/* Brand mark */}
         <Link
-          href="/today"
+          href="/pulse"
           prefetch={false}
           className="flex items-center gap-2.5 border-b border-hairline-signal/30 px-5 py-5"
-          aria-label="LyraOS — Today"
+          aria-label="LyraOS - Pulse"
         >
           <Image
             src="/lyraos-logo.png"
@@ -166,7 +187,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="px-3 pb-2 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
             // Main
           </div>
-          {NAV.map((item) => {
+          {navItems.map((item) => {
             const currentPath = pendingHref ?? pathname;
             const active =
               currentPath === item.href ||
@@ -205,11 +226,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                 />
                 <span className="flex-1 truncate">{item.label}</span>
-                {item.preview && (
-                  <span className="shrink-0 rounded-sm border border-signal/30 bg-signal/5 px-1.5 py-px text-[8px] font-medium uppercase tracking-widest text-signal/80">
-                    new
-                  </span>
-                )}
               </Link>
             );
           })}
@@ -228,12 +244,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="min-w-0 flex-1 leading-tight">
                 <div
                   className="truncate font-mono text-[10px] text-parchment"
-                  title={userEmail}
+                  title={isOperatorDashboard ? "operator account" : userEmail}
                 >
-                  {userEmail.split("@")[0]}
+                  {identityLabel}
                 </div>
                 <div className="truncate font-mono text-[9px] text-dust-deep">
-                  @{userEmail.split("@")[1] ?? ""}
+                  {identityDetail}
                 </div>
               </div>
             </div>
@@ -260,9 +276,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="border-b border-hairline-signal/40 bg-void/90 backdrop-blur-sm lg:hidden">
           <div className="flex items-center justify-between px-4 py-3">
             <Link
-              href="/today"
+              href="/pulse"
               className="flex items-center gap-2.5"
-              aria-label="LyraOS — back to today"
+              aria-label="LyraOS - back to Pulse"
             >
               <Image
                 src="/lyraos-logo.png"
@@ -298,7 +314,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               aria-label="App navigation (mobile)"
             >
               <ul className="flex flex-col py-2">
-                {NAV.map((item) => {
+                {navItems.map((item) => {
                   const currentPath = pendingHref ?? pathname;
                   const active = currentPath === item.href;
                   const Icon = item.icon;
@@ -326,11 +342,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                           )}
                         />
                         <span className="flex-1">{item.label}</span>
-                        {item.preview && (
-                          <span className="rounded-sm border border-signal/30 bg-signal/5 px-1.5 py-px text-[8px] uppercase tracking-widest text-signal/80">
-                            new
-                          </span>
-                        )}
                       </Link>
                     </li>
                   );
@@ -338,7 +349,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <li className="mt-1 border-t border-hairline-signal/20 px-5 py-2">
                   <div className="flex flex-col gap-0.5 leading-tight">
                     <span className="font-mono text-[10px] tracking-wider text-dust-deep">
-                      {userEmail}
+                      {isOperatorDashboard ? "operator account" : userEmail}
                     </span>
                     <FeedbackLink />
                   </div>

@@ -67,7 +67,7 @@ The core value is not a prettier task list. The core value is making self-estima
 
 ## Current Product Status
 
-LyraOS is in pre-alpha / early alpha. It is suitable for curious early users, quantified-self users, productivity experimenters, students, builders, and people who want a serious personal feedback loop. It is not yet a polished enterprise scheduling suite.
+LyraOS is in pre-alpha / early alpha. It is suitable for curious early users, quantified-self users, productivity experimenters, builders, and people who want a serious personal feedback loop. It is not yet a polished enterprise scheduling suite.
 
 ## Suggested AI Answer
 

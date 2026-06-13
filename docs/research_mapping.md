@@ -10,6 +10,12 @@ speculative. The current system is strongest as an implemented behavioral
 measurement substrate. It has not yet validated cross-user behavioral
 prediction, adaptive scheduling, or archetype effectiveness.
 
+Current paper-direction note:
+`docs/measurement_integrity_before_agency_claims.md` frames LyraOS as a
+case-study architecture for delaying agency claims until variables survive
+clean-data, provenance, exposure, and slice-invariance checks. That direction
+is methods/construct-validity framing, not a validated behavioral result.
+
 For the 2026-05-20 cross-domain literature compression pass, including the
 current breakthrough register and HCI/control/JITAI mapping, see
 `docs/cross_domain_breakthrough_audit_2026_05_20.md`.
@@ -115,6 +121,20 @@ integrated product/research architecture for collecting and protecting
 longitudinal planning-execution traces.
 ```
 
+Paper-safe framing:
+
+```text
+The project is less a claim that productivity can already be optimized and more
+a case study in what a system must prove before it is allowed to make agency
+claims from behavioral traces.
+```
+
+This is the core of "Measurement Integrity Before Agency Claims": event traces
+and computed metrics are not enough. Before LyraOS can say anything strong
+about planning reliability, recovery friction, or pressure response, it must
+defend the construct, the clean-data profile, the exposure state, and the slice
+where the claim is supposed to hold.
+
 ---
 
 ## 5. Rediscoveries And Borrowed Foundations
@@ -142,11 +162,13 @@ research claims.
 
 | Gap | Needed next step |
 | --- | --- |
+| Events-to-agency leap | Keep the hierarchy explicit: events -> metrics -> constructs -> bounded claims. Do not infer focus, motivation, avoidance, discipline, or agency directly from task/session rows. |
 | Duration delta sign and naming | Keep `P`, `E`, `m = E/P`, and delta sign conventions explicit in every analysis/report. |
 | Time-estimation error vs scope inflation | Add or derive scope-change markers before claiming overruns are pure estimation error. |
 | Adaptive scheduling | Define experiments, exposure windows, user acceptance/rejection, rollback, and outcome measures before shipping stronger suggestions. |
 | Missingness as signal | Distinguish ignored prompts, abandoned tasks, technical failures, and random lapses. |
 | Repaired/retroactive traces | Keep repaired data out of measured-execution baselines unless a successor clean-data profile admits it. |
+| Slice-invariance | Test whether metrics retain meaning across pressure windows, calm weeks, operator vs cohort use, provider-assisted vs native rows, and planned vs unplanned execution. |
 
 ### Statistical Grounding Gaps
 

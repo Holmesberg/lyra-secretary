@@ -177,13 +177,13 @@ must use `__Secure-next-auth.session-token`.
 
 ## Laptop sleep / wake behavior
 
-- The tunnel is a foreground process launched via `cloudflared tunnel run lyra-prod` (currently `nohup … &`). **Does NOT auto-recover** on laptop sleep or reboot.
+- The tunnel is a foreground process launched through `scripts/restart_cloudflared_wsl.ps1`. It still **does NOT auto-recover** on laptop sleep or reboot, but the restart script also pins Cloudflare Tunnel DNS resolvers so WSL DNS failures do not strand the connector.
 - Same for the backend container (docker-compose state may survive sleep but needs operator to `docker compose up -d` after a reboot).
 - Same for the `next start` frontend process.
 
 **Fallback today:** if a trusted user hits "site down" while operator's laptop is asleep, operator wakes the laptop and restarts the stack. Acceptable for April 18 pre-alpha (<10 users, operator available).
 
-**Robustness path (post-Spring-School):** systemd unit or Windows Task Scheduler entry that runs `docker compose up -d && cloudflared tunnel run lyra-prod` on boot. Not blocking the April 18 milestone.
+**Robustness path (post-Spring-School):** systemd unit or Windows Task Scheduler entry that runs `docker compose up -d` and `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` on boot. Not blocking the April 18 milestone.
 
 ## Database separation rationale
 
@@ -196,7 +196,8 @@ Supabase holds the data *off* the laptop so:
 
 | Failure mode | Symptom | Fix |
 |---|---|---|
-| Tunnel down (cloudflared killed) | `https://lyraos.org` → 1033 / no response | `cloudflared tunnel run lyra-prod` on laptop |
+| Tunnel down (cloudflared killed) | `https://lyraos.org` -> 1033 / no response | `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` |
+| WSL DNS blocks tunnel startup | Tunnel log contains `Couldn't resolve SRV record` against `10.255.255.254:53` | Use `scripts/restart_cloudflared_wsl.ps1`; it runs cloudflared with explicit `1.1.1.1` and `8.8.8.8` DNS resolvers |
 | Backend container down | `https://api.lyraos.org/v1/health` → 502 | `docker compose up -d backend` |
 | CORS split-brain | Browser shows `Failed to fetch` from `/v1/users/me`, while `curl localhost:8000/` returns 200 | Verify `CORS_ALLOWED_ORIGINS` includes the browser origin and rerun preflight; see `archive/docs_history/runtime_incident_cors_split_brain_2026_05_12.md` |
 | Mixed runtime topology | `/api/topology` returns `verified_topology=false`, e.g. `.org` serving localhost auth/API or localhost serving public auth/API | Stop browser verification. Restart the intended frontend env and rerun `node scripts/verify_runtime_topology.mjs --topology public` or `--topology local`. For `.org`, use `scripts/restart_frontend_wsl.ps1`; see `docs/incidents/2026-05-17-public-frontend-mixed-topology.md`. |
@@ -207,7 +208,7 @@ Supabase holds the data *off* the laptop so:
 
 ## Monitoring basics
 
-- **Tunnel health:** `cloudflared tunnel info lyra-prod` lists active connectors. A healthy deployment shows 4 edge connections.
+- **Tunnel health:** `wsl -e bash -lc "~/.local/bin/cloudflared tunnel info lyra-prod"` lists active connectors. A healthy deployment shows 4 edge connections.
 - **Backend health:** `curl https://api.lyraos.org/v1/health` → `{"status":"ok"}`.
 - **Supabase connection:** `docker exec lyrasecretaryv01-backend-1 python -c "from app.core.config import settings; import psycopg2; psycopg2.connect(settings.DATABASE_URL).close(); print('ok')"`.
 - **Laptop uptime during trusted-user week:** operator keeps laptop awake + on charger during peak hours.
@@ -236,7 +237,7 @@ survive sleep vs require manual restart:
 | Service | Survives sleep? | Recovery |
 |---------|----------------|----------|
 | Docker (backend + Redis) | Usually yes (containers stay up) | `docker-compose ps` → restart if "Exited" |
-| Cloudflared tunnel | **No** (foreground process dies) | `pgrep cloudflared \|\| cloudflared tunnel run lyra-prod &` |
+| Cloudflared tunnel | **No** (foreground process dies) | `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` |
 | Next.js (frontend) | **No** (nohup process may die; `.next` can be left incomplete if a build is interrupted) | `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | APScheduler | Yes (restarts with backend) | Automatic — fires missed jobs on wake |
 | Supabase connection pool | Yes (pool_pre_ping reconnects stale conns) | Automatic |
@@ -249,7 +250,7 @@ docker-compose ps
 docker-compose restart  # if anything shows Exited
 
 # 2. Tunnel
-pgrep cloudflared || (cloudflared tunnel run lyra-prod &)
+powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1
 sleep 2 && curl -sf https://api.lyraos.org/v1/health || echo "TUNNEL DOWN"
 
 # 3. Frontend

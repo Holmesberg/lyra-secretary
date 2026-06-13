@@ -344,7 +344,7 @@ export default function SettingsPage() {
                     Without data from people who stop using Lyra, we can&apos;t
                     understand what makes the system fail for them. Retained data
                     has no identifying information and cannot be linked back to
-                    you. It is used only to improve Lyra, not for academic
+                    you. It is used only to improve Lyra, not for external
                     publication. Uncheck this box if you want all data
                     permanently purged.
                   </p>

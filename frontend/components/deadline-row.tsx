@@ -15,7 +15,7 @@
  *
  * 2026-05-01 addition: inline "Mark done" button on non-terminal
  * deadlines. Operator pain point with Moodle-imported overdue
- * assignments — they submit in Moodle but Lyra has no way to know
+ * items — they complete in Moodle but Lyra has no way to know
  * (iCal feeds carry due dates, not submission status). Inline
  * one-click finish replaces the previous 4-click path through the
  * edit modal. Click bubbling stopped so it doesn't open the modal.

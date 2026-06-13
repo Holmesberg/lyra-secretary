@@ -92,6 +92,31 @@ The pressure snapshot may expose:
 - `capacity_context`: visible calendar/task load only. It must not pretend to
   know true free time unless the source coverage supports that claim.
 
+## Authority Classification
+
+The pressure map is a `diagnostic_planning_surface`.
+
+It may compute and display:
+
+- pressure clusters,
+- visible academic load,
+- recovery options,
+- trust states,
+- coverage questions,
+- and uncertainty-aware ranges.
+
+It must not perform or imply:
+
+- automatic task creation,
+- automatic calendar mutation,
+- student-risk scoring,
+- learning/mastery inference,
+- or clean behavioral calibration from provider-derived data.
+
+Recovery options such as `create_plan`, `split_into_blocks`, and
+`confirm_coverage` are suggestions. They require explicit user action before
+any task, calendar, or provider state changes.
+
 ## Trust-State Copy
 
 Use the same meaning everywhere: pressure snapshot, plan-preview warnings,

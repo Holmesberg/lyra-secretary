@@ -1,18 +1,25 @@
 "use client";
 /**
- * PulseQuickCaptureV2 — inline quick-capture footer for /pulse v2.
+ * PulseQuickCaptureV2 - inline quick-capture command bar for /pulse v2.
  *
- * Reference image vocabulary: text input on the left + action chips
- * + a Capture button. Operator request 2026-04-29 night: clicking
- * Capture opens the brain-dump modal (not a route nav) so the magic
- * fires more often without a page change. Seed text from the input
- * pre-populates the modal.
+ * One instance only. It lives near the top of Pulse so capture is reachable
+ * before planning/recovery review, and it shrinks while a timer is active so
+ * the current session remains the visual center.
  */
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { FileText, Flag, Link as LinkIcon, Mic } from "lucide-react";
 import { BrainDumpQuickModal } from "@/components/pulse/BrainDumpQuickModal";
+import { getStopwatchStatus, type StopwatchStatus } from "@/lib/tasks";
 
 export function PulseQuickCaptureV2() {
+  const statusQ = useQuery<StopwatchStatus>({
+    queryKey: ["stopwatch-status"],
+    queryFn: getStopwatchStatus,
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true,
+  });
+
   const [text, setText] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [seedText, setSeedText] = useState("");
@@ -20,6 +27,8 @@ export function PulseQuickCaptureV2() {
     tasks: number;
     deadlines: number;
   } | null>(null);
+
+  const compact = !!statusQ.data?.active;
 
   function openModal(e?: React.FormEvent) {
     e?.preventDefault();
@@ -34,29 +43,41 @@ export function PulseQuickCaptureV2() {
   }) {
     setBannerCount({ tasks: counts.tasks, deadlines: counts.deadlines });
     setText("");
-    // Auto-clear the success banner after 4s.
     setTimeout(() => setBannerCount(null), 4000);
   }
 
   return (
     <>
       <form
+        id="quick-capture"
         onSubmit={openModal}
-        className="terminal-panel flex flex-wrap items-center gap-3 px-5 py-3"
+        className={`terminal-panel flex scroll-mt-6 flex-wrap items-center gap-3 ${
+          compact ? "px-4 py-2" : "px-5 py-3"
+        }`}
       >
         <span className="font-display text-[10px] font-medium uppercase tracking-macro text-signal/80">
           <span className="opacity-50">[ </span>
-          Quick capture
+          {compact ? "Capture" : "Quick capture"}
           <span className="opacity-50"> ]</span>
         </span>
         <input
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Brain dump anything — Lyra parses, sorts, and binds it."
-          className="min-w-[200px] flex-1 border-0 bg-transparent px-2 py-1 text-sm text-parchment placeholder:text-dust-deep focus:outline-none focus:ring-0"
+          placeholder={
+            compact
+              ? "Capture a thought without breaking the session."
+              : "Brain dump anything - Lyra parses, sorts, and binds it."
+          }
+          className={`min-w-[200px] flex-1 border-0 bg-transparent px-2 text-parchment placeholder:text-dust-deep focus:outline-none focus:ring-0 ${
+            compact ? "py-0.5 text-xs" : "py-1 text-sm"
+          }`}
         />
-        <div className="flex items-center gap-1.5 text-dust-deep">
+        <div
+          className={`items-center gap-1.5 text-dust-deep ${
+            compact ? "hidden xl:flex" : "flex"
+          }`}
+        >
           <ChipButton icon={FileText} label="Tasks" onClick={openModal} />
           <ChipButton icon={Flag} label="Deadlines" onClick={openModal} />
           <ChipButton icon={LinkIcon} label="Link" disabled />
@@ -64,9 +85,11 @@ export function PulseQuickCaptureV2() {
         </div>
         <button
           type="submit"
-          className="rounded-sm border border-signal/40 bg-signal/15 px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon"
+          className={`rounded-sm border border-signal/40 bg-signal/15 font-mono text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon ${
+            compact ? "px-3 py-1" : "px-3.5 py-1.5"
+          }`}
         >
-          Capture →
+          Capture -&gt;
         </button>
       </form>
 

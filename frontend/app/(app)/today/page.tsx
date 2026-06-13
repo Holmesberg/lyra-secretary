@@ -13,13 +13,9 @@ import {
   markDone,
   deleteTask,
   voidTask,
-  getPendingNotifications,
   type TaskRow as TaskRowType,
   type StopResponse,
   type StopwatchStatus,
-  type PausePredictionNotification,
-  type ResumePredictionNotification,
-  resumeStopwatch,
 } from "@/lib/tasks";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import { TaskRow } from "@/components/task-row";
@@ -32,10 +28,9 @@ import { ExecutionCorrectionDialog } from "@/components/execution-correction-dia
 import { SelectionActionBar } from "@/components/selection-action-bar";
 import { VoidModal } from "@/components/void-modal";
 import { Toast } from "@/components/toast";
-import { PausePredictionBanner } from "@/components/pause-prediction-banner";
-import { ResumePredictionBanner } from "@/components/resume-prediction-banner";
 import { DeadlineRow } from "@/components/deadline-row";
 import { DeadlineModal } from "@/components/deadline-modal";
+import { DeadlineBindingDialog } from "@/components/deadline-binding-dialog";
 import { listDeadlines, type DeadlineResponse } from "@/lib/deadlines";
 import { PauseConfirmChip } from "@/components/pause-confirm-chip";
 import { listPendingConfirmations } from "@/lib/pause-predictions";
@@ -45,6 +40,16 @@ import {
   type ExternalCalendarEvent,
 } from "@/lib/calendar";
 import { ackExposureRender } from "@/lib/api";
+import { announceUndoAvailable } from "@/lib/undo";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ToastEntry {
   id: string;
@@ -62,6 +67,43 @@ function localDateKey(d: Date) {
 function parseDate(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+function InterruptionStartDialog({
+  open,
+  taskTitle,
+  activeTaskTitle,
+  onCancel,
+  onContinue,
+}: {
+  open: boolean;
+  taskTitle: string;
+  activeTaskTitle: string;
+  onCancel: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Start as interruption?</DialogTitle>
+          <DialogDescription>
+            This will pause <span className="text-parchment">{activeTaskTitle}</span> and
+            start <span className="text-parchment">{taskTitle}</span>. You can resume the
+            paused task later.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button onClick={onContinue}>
+            Start as interruption
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /** Inner component that reads search params (requires Suspense boundary). */
@@ -167,13 +209,6 @@ function TodayInner() {
 
   const [editingDeadline, setEditingDeadline] = useState<DeadlineResponse | null>(null);
 
-  const notifQ = useQuery({
-    queryKey: ["notifications-pending"],
-    queryFn: getPendingNotifications,
-    staleTime: 10_000,
-    refetchInterval: 30_000,
-  });
-
   // Retroactive pause-confirmation chips. Backend applies all three
   // gates: user_response='no_response', fired_at within 24h, no
   // pause_event within ±10 min of predicted_at. We just render what
@@ -219,30 +254,11 @@ function TodayInner() {
       queryKey: ["pause-predictions-pending-confirmation"],
     });
   }
-  const [dismissedFirings, setDismissedFirings] = useState<Set<string>>(new Set());
-  const pausePrediction: PausePredictionNotification | null = (() => {
-    for (const n of notifQ.data?.notifications ?? []) {
-      if (n.type === "pause_prediction" && typeof n.firing_id === "string" && !dismissedFirings.has(n.firing_id)) {
-        return n as unknown as PausePredictionNotification;
-      }
-    }
-    return null;
-  })();
-  // W2 magic-for-alpha (alembic 038, 2026-04-28). Mirrors pause-prediction
-  // selection above. Banner mounts when status?.paused === true and a
-  // matching firing hasn't been dismissed.
-  const resumePrediction: ResumePredictionNotification | null = (() => {
-    for (const n of notifQ.data?.notifications ?? []) {
-      if (n.type === "resume_prediction" && typeof n.firing_id === "string" && !dismissedFirings.has(n.firing_id)) {
-        return n as unknown as ResumePredictionNotification;
-      }
-    }
-    return null;
-  })();
-
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [retroOpen, setRetroOpen] = useState(false);
   const [readinessFor, setReadinessFor] = useState<TaskRowType | null>(null);
+  const [interruptionStartFor, setInterruptionStartFor] = useState<TaskRowType | null>(null);
+  const [readinessInterruptionType, setReadinessInterruptionType] = useState<string | null>(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [earlyStop, setEarlyStop] = useState<{
     elapsed: number;
@@ -253,6 +269,7 @@ function TodayInner() {
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
   const [correctionTask, setCorrectionTask] = useState<TaskRowType | null>(null);
+  const [bindingTask, setBindingTask] = useState<TaskRowType | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
@@ -280,18 +297,18 @@ function TodayInner() {
     setOrphanWarnShown(false);
   }, []);
 
-  function pushToast(
+  const pushToast = useCallback((
     message: string,
     viewId: string | null,
     lifespan: "auto" | "pin",
     detailHref?: string,
-  ) {
+  ) => {
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setToasts((prev) => [...prev, { id, message, viewId, lifespan, detailHref }]);
-  }
+  }, []);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });
@@ -317,6 +334,28 @@ function TodayInner() {
       setOrphanWarnShown(true);
     }
   }, [status?.paused, orphanWarnDismissed]);
+
+  function requestTaskStart(task: TaskRowType) {
+    setErrorMsg(null);
+    if (timerBusy && activeTaskId && task.task_id !== activeTaskId) {
+      setInterruptionStartFor(task);
+      return;
+    }
+    setReadinessInterruptionType(null);
+    setReadinessFor(task);
+  }
+
+  function continueInterruptionStart() {
+    if (!interruptionStartFor) return;
+    setReadinessInterruptionType("scheduled_override");
+    setReadinessFor(interruptionStartFor);
+    setInterruptionStartFor(null);
+  }
+
+  function cancelReadiness() {
+    setReadinessFor(null);
+    setReadinessInterruptionType(null);
+  }
 
   function sortKey(t: TaskRowType): number {
     const parse = (s: string | null) => (s ? new Date(s).getTime() : null);
@@ -378,7 +417,7 @@ function TodayInner() {
       //       passed — the sweep just hasn't run yet (up to ~1h window).
       // Both paths render the loud OVERDUE pill + pin to /today until
       // the user explicitly handles them. Operator-flagged 2026-04-29:
-      // missed academic deadlines are the highest-signal procrastination
+      // missed imported deadlines are high-signal recovery candidates
       // data point and must be impossible to miss in the UI.
       const isOverdue =
         d.state === "missed" ||
@@ -405,8 +444,8 @@ function TodayInner() {
 
   // Overdue aggregate for the top banner. Only surfaces on /today (don't
   // pollute past/future-day views with action prompts about today). LMS
-  // breakout shows the "from your school" sub-count when imported rows
-  // are present — academic stakes get explicit emphasis per operator
+  // breakout shows the connected-source sub-count when imported rows
+  // are present, without implying one fixed obligation source.
   // call 2026-04-29 evening.
   const overdueDeadlines = isViewingToday
     ? dueDeadlines.filter((x) => x.overdue)
@@ -480,7 +519,11 @@ function TodayInner() {
     return { top: topItems, bottom: bottomItems };
   })();
 
-  async function handleStart(task: TaskRowType, readiness: number) {
+  async function handleStart(
+    task: TaskRowType,
+    readiness: number,
+    interruptionType?: string | null
+  ) {
     setErrorMsg(null);
     // Optimistic flip — the API call is ~1.5s over the Supabase pooler,
     // so close the readiness modal and flip status immediately. Snapshot
@@ -489,6 +532,8 @@ function TodayInner() {
     // active-timer-banner.tsx §applyPause.
     await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
     const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    const interruptedTaskId =
+      interruptionType && snapshot?.active ? snapshot.task_id : undefined;
     qc.setQueryData<StopwatchStatus>(["stopwatch-status"], {
       active: true,
       task_id: task.task_id,
@@ -502,13 +547,23 @@ function TodayInner() {
     // Optimistic task-state flip — the task card flips from "PLANNED" to
     // "EXECUTING" immediately instead of waiting 1.4 s for refresh().
     qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
-      old?.map((t) =>
-        t.task_id === task.task_id ? { ...t, state: "EXECUTING" } : t
-      )
+      old?.map((t) => {
+        if (t.task_id === task.task_id) return { ...t, state: "EXECUTING" };
+        if (interruptedTaskId && t.task_id === interruptedTaskId) {
+          return { ...t, state: "PAUSED" };
+        }
+        return t;
+      })
     );
     setReadinessFor(null);
+    setReadinessInterruptionType(null);
     try {
-      const startResp = await startStopwatch(task.task_id, readiness);
+      const startResp = await startStopwatch(
+        task.task_id,
+        readiness,
+        interruptionType
+      );
+      announceUndoAvailable("Timer started.");
       // LYR-097 (2026-04-28): surface "started early" hint when backend
       // flags the task as future. Inline 4s toast — non-blocking,
       // visible-once acknowledgment so the user knows the session
@@ -540,9 +595,13 @@ function TodayInner() {
         qc.setQueryData(["stopwatch-status"], snapshot);
       }
       qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
-        old?.map((t) =>
-          t.task_id === task.task_id ? { ...t, state: "PLANNED" } : t
-        )
+        old?.map((t) => {
+          if (t.task_id === task.task_id) return { ...t, state: "PLANNED" };
+          if (interruptedTaskId && t.task_id === interruptedTaskId) {
+            return { ...t, state: "EXECUTING" };
+          }
+          return t;
+        })
       );
       setErrorMsg(e?.message ?? "Failed to start timer");
     }
@@ -756,6 +815,7 @@ function TodayInner() {
     );
     try {
       await deleteTask(task.task_id);
+      announceUndoAvailable("Task deleted.");
       refresh();
     } catch (e: any) {
       setErrorMsg(e?.message ?? "Failed to delete task");
@@ -866,43 +926,6 @@ function TodayInner() {
         </div>
       </div>
 
-      {/* VT-17 pause prediction banner (above active timer) */}
-      {pausePrediction && status?.active && !status?.paused && (
-        <PausePredictionBanner
-          prediction={pausePrediction}
-          onPauseNow={(quick) => {
-            setDismissedFirings((s) => new Set(s).add(pausePrediction!.firing_id));
-            setQuickPauseReason(quick ? "intentional_break" : undefined);
-            setRequestPause(true);
-          }}
-          onDismissed={() =>
-            setDismissedFirings((s) => new Set(s).add(pausePrediction!.firing_id))
-          }
-        />
-      )}
-
-      {/* W2 resume prediction banner (only when paused). Operator-locked
-          2026-04-28: surfaces "you usually resume by now" or cold-start
-          "Lyra hasn't seen enough yet" copy. Resume button hits
-          /v1/stopwatch/resume; dismiss is local-state. */}
-      {resumePrediction && status?.active && status?.paused && (
-        <ResumePredictionBanner
-          prediction={resumePrediction}
-          onResume={async () => {
-            setDismissedFirings((s) => new Set(s).add(resumePrediction!.firing_id));
-            try {
-              await resumeStopwatch();
-              refresh();
-            } catch (e: any) {
-              setErrorMsg(e?.message ?? "Failed to resume");
-            }
-          }}
-          onDismissed={() =>
-            setDismissedFirings((s) => new Set(s).add(resumePrediction!.firing_id))
-          }
-        />
-      )}
-
       {/* Active timer banner: always visible regardless of viewed date */}
       {status && (
         <ActiveTimerBanner
@@ -948,12 +971,12 @@ function TodayInner() {
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
             <p className="font-display text-[11px] font-medium uppercase tracking-macro text-ember">
               <span className="opacity-50">[ </span>
-              {overdueCount === 1 ? "Overdue assignment" : "Overdue assignments"}
+              {overdueCount === 1 ? "Overdue obligation" : "Overdue obligations"}
               <span className="opacity-50"> ]</span>
             </p>
             <p className="text-xs text-ember/85">
               {overdueFromLms > 0
-                ? `${overdueFromLms} from your school${
+                ? `${overdueFromLms} from connected sources${
                     overdueFromLms < overdueCount
                       ? `, ${overdueCount - overdueFromLms} other`
                       : ""
@@ -1010,11 +1033,9 @@ function TodayInner() {
               <div key={item.task.task_id} className="flex flex-col gap-1.5">
                 <TaskRow
                   task={item.task}
-                  disableStart={
-                    isPast ||
-                    (timerBusy && item.task.task_id !== activeTaskId)
-                  }
-                  onStart={(task) => setReadinessFor(task)}
+                  disableStart={isPast}
+                  startAsInterruption={timerBusy && item.task.task_id !== activeTaskId}
+                  onStart={requestTaskStart}
                   onStartHover={
                     item.task.task_id !== activeTaskId
                       ? notifyPotentialStart
@@ -1041,6 +1062,7 @@ function TodayInner() {
                       setEditingTask(task);
                     }
                   }}
+                  onEditBinding={(task) => setBindingTask(task)}
                   selected={selectedIds.has(item.task.task_id)}
                   showCheckbox={selectedIds.size > 0}
                   onToggleSelect={toggleSelect}
@@ -1081,12 +1103,22 @@ function TodayInner() {
         </div>
       )}
 
+      {interruptionStartFor && (
+        <InterruptionStartDialog
+          open={!!interruptionStartFor}
+          taskTitle={interruptionStartFor.title}
+          activeTaskTitle={status?.task_title ?? "the current task"}
+          onCancel={() => setInterruptionStartFor(null)}
+          onContinue={continueInterruptionStart}
+        />
+      )}
+
       {readinessFor && (
         <ReadinessModal
           open={!!readinessFor}
           taskTitle={readinessFor.title}
-          onCancel={() => setReadinessFor(null)}
-          onConfirm={(r) => handleStart(readinessFor, r)}
+          onCancel={cancelReadiness}
+          onConfirm={(r) => handleStart(readinessFor, r, readinessInterruptionType)}
         />
       )}
 
@@ -1121,6 +1153,16 @@ function TodayInner() {
         task={correctionTask}
         onClose={() => setCorrectionTask(null)}
         onSaved={refresh}
+      />
+
+      <DeadlineBindingDialog
+        task={bindingTask}
+        open={!!bindingTask}
+        onClose={() => setBindingTask(null)}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["deadlines"] });
+          refresh();
+        }}
       />
 
       <VoidModal

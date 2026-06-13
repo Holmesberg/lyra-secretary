@@ -760,6 +760,8 @@ class User(Base):
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     google_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True)
+    google_display_name: Mapped[Optional[str]] = mapped_column(String(120))
+    google_first_name: Mapped[Optional[str]] = mapped_column(String(80))
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Africa/Cairo")
     is_operator: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     notion_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -851,6 +853,44 @@ class User(Base):
     activation_email_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     activation_email_failed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     activation_email_last_error: Mapped[Optional[str]] = mapped_column(String(80))
+
+
+class EmailEngagementEvent(Base):
+    """Operational email engagement telemetry.
+
+    These rows measure campaign delivery outcomes such as opens and clicks.
+    They are not clean execution evidence and must not feed behavioral
+    inference, Cortex, calibration, adaptive scheduling, or user-facing claims.
+    Open events are best-effort because email clients often block tracking
+    pixels; click events are the stronger re-entry signal.
+    """
+
+    __tablename__ = "email_engagement_event"
+
+    event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("user.user_id", ondelete="SET NULL"), nullable=True
+    )
+    campaign_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient_key: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_url: Mapped[Optional[str]] = mapped_column(String(1024))
+    provider_message_id: Mapped[Optional[str]] = mapped_column(String(128))
+    request_metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_email_engagement_campaign_event",
+            "campaign_version",
+            "event_type",
+            "occurred_at",
+        ),
+        Index("idx_email_engagement_user", "user_id", "occurred_at"),
+        Index("idx_email_engagement_recipient", "campaign_version", "recipient_key"),
+    )
 
 
 class Archetype(Base):
@@ -1337,6 +1377,65 @@ class ExposureAckEvent(Base):
         ),
         Index("idx_exposure_ack_user_acked", "user_id", "acked_at"),
         Index("idx_exposure_ack_exposure", "exposure_id"),
+    )
+
+
+class NotificationLifecycleEvent(Base):
+    """Durable lifecycle row for user-facing notification delivery.
+
+    Redis remains the short-lived delivery queue. This table is the audit
+    boundary that distinguishes queued/reserved notifications from stimuli that
+    actually reached the browser UI.
+    """
+
+    __tablename__ = "notification_lifecycle_event"
+
+    event_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("user.user_id"),
+        nullable=False,
+    )
+    notification_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    channel: Mapped[str] = mapped_column(String(30), nullable=False, default="web")
+    notification_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued")
+    dedupe_key: Mapped[Optional[str]] = mapped_column(String(200))
+    payload_hash: Mapped[Optional[str]] = mapped_column(String(128))
+    content_snapshot: Mapped[Optional[str]] = mapped_column(Text)
+    surface_id: Mapped[Optional[str]] = mapped_column(String(120))
+    exposure_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("exposure_decision_event.exposure_id", ondelete="SET NULL"),
+    )
+    task_id: Mapped[Optional[str]] = mapped_column(String(36))
+    session_id: Mapped[Optional[str]] = mapped_column(String(36))
+    firing_id: Mapped[Optional[str]] = mapped_column(String(36))
+    queued_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    reserved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    rendered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    acted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    expired_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    lost_unrendered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_transition_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "notification_id",
+            "channel",
+            name="uq_notification_lifecycle_user_notification_channel",
+        ),
+        Index("idx_notification_lifecycle_user_created", "user_id", "created_at"),
+        Index("idx_notification_lifecycle_status", "status"),
+        Index("idx_notification_lifecycle_dedupe", "user_id", "dedupe_key"),
+        Index("idx_notification_lifecycle_exposure", "exposure_id"),
     )
 
 

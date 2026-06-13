@@ -190,6 +190,8 @@ def get_me(db: Session = Depends(get_db)):
         "user_id": user.user_id,
         "email": user.email,
         "google_id": user.google_id,
+        "google_first_name": user.google_first_name,
+        "google_display_name": user.google_display_name,
         "timezone": user.timezone,
         "is_operator": user.is_operator,
         "notion_enabled": user.notion_enabled,

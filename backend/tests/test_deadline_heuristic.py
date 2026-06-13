@@ -162,3 +162,19 @@ def test_deadline_code_in_title_also_constrains():
     deadlines = [_d("CSE281 Sheet 5")]
     m = score_deadlines("PHM112 Sheet 5 review", "", deadlines)
     assert m.candidates == []
+
+
+def test_subject_plus_distinctive_token_beats_subject_only():
+    """A broad subject token like AI should not beat a more specific title.
+
+    Regression: "read notes for AI discussion" tied "AI final" and
+    "AI project discussion" at the acronym-only score, so brain dump could
+    precheck the wrong same-dump deadline after the user added "AI final" in
+    the same message.
+    """
+    deadlines = [_d("AI final"), _d("AI project discussion")]
+
+    m = score_deadlines("read notes for AI discussion", "", deadlines)
+
+    assert m.candidates[0].title == "AI project discussion"
+    assert m.candidates[0].score > m.candidates[1].score

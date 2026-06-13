@@ -28,8 +28,10 @@ from app.schemas.task import (
     LlmConfirmResponse,
     LlmRejectRequest,
     LlmRejectResponse,
+    TaskDeadlineBindingRequest,
+    TaskDeadlineBindingResponse,
 )
-from app.db.models import TaskState
+from app.db.models import Deadline, TaskState
 from app.utils.time_utils import now_utc as _now_utc
 from app.services.task_manager import TaskManager
 from app.services.stopwatch_manager import StopwatchManager, NoActiveStopwatchError
@@ -39,6 +41,7 @@ from app.core.exceptions import ImmutableTaskError
 from app.db.models import Task
 from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_local
+from app.utils.tasks_range_cache import invalidate_user_ranges
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -285,6 +288,10 @@ def void_task(
             f"void_cleanup failed for {task.task_id}: {e}. The _get_active "
             f"self-heal will recover on the next status poll."
         )
+    try:
+        invalidate_user_ranges(int(task.user_id))
+    except Exception as e:
+        logger.warning("void_task: task range cache invalidate failed: %s", e)
 
     return TaskVoidResponse(
         task_id=task.task_id,
@@ -350,6 +357,10 @@ def mark_abandoned(
                 f"stopwatch cleanup failed for mark-abandoned {task.task_id}: {e}. "
                 f"_get_active self-heal will recover on next status poll."
             )
+    try:
+        invalidate_user_ranges(int(task.user_id))
+    except Exception as e:
+        logger.warning("mark_abandoned: task range cache invalidate failed: %s", e)
 
     return MarkAbandonedResponse(
         task_id=task.task_id,
@@ -363,6 +374,7 @@ def mark_abandoned(
 def mark_done(
     task_id: str,
     db: Session = Depends(get_db),
+    x_idempotency_key: Optional[str] = Header(None),
 ) -> MarkDoneResponse:
     """
     Mark an overdue PLANNED/SKIPPED task as done without reopening it.
@@ -372,16 +384,49 @@ def mark_done(
     initiation_status='retroactive' so Cortex learning profiles exclude the
     fabricated duration.
     """
+    current_user_id = get_current_user_id()
+    redis = RedisClient()
+    cache_key = None
+    if x_idempotency_key:
+        if current_user_id is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        cache_key = f"mark_done:{task_id}:{x_idempotency_key}"
+        cached = redis.check_idempotency(cache_key, user_id=current_user_id)
+        if cached:
+            return MarkDoneResponse(**json.loads(cached))
+
     task = db.query(Task).filter(Task.task_id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     previous = task.state
+    if (
+        task.state == TaskState.EXECUTED
+        and task.initiation_status == "retroactive"
+        and task.executed_start_utc == task.planned_start_utc
+        and task.executed_end_utc == task.planned_end_utc
+        and task.executed_duration_minutes == task.planned_duration_minutes
+    ):
+        response = MarkDoneResponse(
+            task_id=task.task_id,
+            done=True,
+            retrospective=True,
+            previous_state=previous,
+            new_state=task.state,
+            initiation_status=task.initiation_status,
+        )
+        if cache_key:
+            redis.set_idempotency(
+                cache_key,
+                response.model_dump_json(),
+                user_id=current_user_id,
+            )
+        return response
     try:
         task = TaskManager(db).mark_overdue_task_done_retroactively(task_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return MarkDoneResponse(
+    response = MarkDoneResponse(
         task_id=task.task_id,
         done=True,
         retrospective=True,
@@ -389,6 +434,13 @@ def mark_done(
         new_state=task.state,
         initiation_status=task.initiation_status,
     )
+    if cache_key:
+        redis.set_idempotency(
+            cache_key,
+            response.model_dump_json(),
+            user_id=current_user_id,
+        )
+    return response
 
 
 @router.post(
@@ -401,12 +453,14 @@ def correct_execution_duration(
     db: Session = Depends(get_db),
 ) -> ExecutionCorrectionResponse:
     """
-    Append a retroactive timer-stop correction for an EXECUTED task.
+    Append an effective execution-window correction for an EXECUTED task.
 
-    This repairs the common "forgot to stop the timer" case without
-    overwriting observed state-machine history. Clean research baselines
-    exclude corrected sessions; user-facing history can display effective
-    duration via the query endpoint.
+    Stopwatch-backed tasks remain constrained to the common "forgot to stop
+    the timer" case. Retroactive self-reported tasks can correct their
+    reported end/duration. In both cases, the original state-machine history is
+    preserved append-only; clean research baselines exclude corrected sessions,
+    while user-facing history can display effective duration through the query
+    endpoint.
     """
     try:
         correction = TaskManager(db).correct_execution_duration(
@@ -657,6 +711,10 @@ def confirm_llm_binding(
         priority_set = True
 
     db.commit()
+    try:
+        invalidate_user_ranges(int(task.user_id))
+    except Exception as e:
+        logger.warning("llm-confirm: task range cache invalidate failed: %s", e)
     response = LlmConfirmResponse(
         task_id=task.task_id,
         deadline_id_after=deadline_id_after,
@@ -683,10 +741,14 @@ def reject_llm_binding(
     Records the rejection (`llm_binding_rejected_at = now()`) so the chip
     stops rendering. Then, source-aware unbind:
 
-      - If `deadline_match_source` is system-auto — `heuristic_*`,
-        `llm_auto_confirmed`, or legacy `parser_auto` — also clear
-        `task.deadline_id` and reset `task.deadline_match_source` to
-        NULL. The user is rejecting a binding the SYSTEM made, so
+      - If this is a trust-not-rewrite alternative suggestion
+        ("Possible better match") and the user clicks "Keep current",
+        clear only the alternative suggestion. The current canonical
+        binding is exactly what the user chose to keep.
+      - Otherwise, if `deadline_match_source` is system-auto —
+        `heuristic_*`, `llm_auto_confirmed`, or legacy `parser_auto` —
+        also clear `task.deadline_id` and reset `task.deadline_match_source`
+        to NULL. The user is rejecting a binding the SYSTEM made, so
         "Not relevant" must actually unbind.
       - If source is `user_explicit` or `manual_user`, leave the
         binding alone — user owns it; the chip rejection only stops
@@ -704,9 +766,16 @@ def reject_llm_binding(
     task = db.query(Task).filter(Task.task_id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    task.llm_binding_rejected_at = _now_utc()
+    rejected_at = _now_utc()
+    task.llm_binding_rejected_at = rejected_at
 
     src = task.deadline_match_source
+    alt = task.llm_alternative_suggestion or {}
+    rejecting_alternative_only = (
+        task.deadline_id is not None
+        and alt.get("deadline_id") is not None
+        and alt.get("deadline_id") != task.deadline_id
+    )
     SYSTEM_AUTO_SOURCES = {
         "heuristic_exact_title",
         "heuristic_startswith",
@@ -715,12 +784,134 @@ def reject_llm_binding(
         "llm_auto_confirmed",
         "parser_auto",
     }
-    if src in SYSTEM_AUTO_SOURCES:
+    if rejecting_alternative_only:
+        task.llm_alternative_suggestion = None
+    elif src in SYSTEM_AUTO_SOURCES:
         task.deadline_id = None
         task.deadline_match_source = None
+        task.deadline_match_confidence = None
+
+    # The user resolved the current chip, so stale suggestion payloads
+    # should not keep rendering or look like live intelligence.
+    task.llm_inferred_deadline_id = None
+    task.llm_deadline_match_confidence = None
+    task.llm_deadline_candidates = None
+    if not rejecting_alternative_only:
+        task.llm_alternative_suggestion = None
 
     db.commit()
+    try:
+        invalidate_user_ranges(int(task.user_id))
+    except Exception as e:
+        logger.warning("reject-llm-binding: task range cache invalidate failed: %s", e)
     return LlmRejectResponse(task_id=task.task_id, rejected_at=task.llm_binding_rejected_at)
+
+
+@router.post(
+    "/tasks/{task_id}/deadline-binding",
+    response_model=TaskDeadlineBindingResponse,
+)
+def update_task_deadline_binding(
+    task_id: str,
+    request: TaskDeadlineBindingRequest,
+    db: Session = Depends(get_db),
+) -> TaskDeadlineBindingResponse:
+    """Correct task ↔ deadline context without editing execution truth.
+
+    This endpoint deliberately bypasses full task mutability: users can
+    discover or correct the relevant obligation while a task is running or
+    after it has been executed. Only binding metadata changes here; planned
+    times, executed times, duration calibration, and correction rows are not
+    touched.
+    """
+    current_user_id = get_current_user_id()
+    if current_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if request.clear_deadline and request.deadline_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="clear_deadline_conflicts_with_deadline_id",
+        )
+    if not request.clear_deadline and request.deadline_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="deadline_id_required_unless_clear_deadline",
+        )
+
+    task = (
+        db.query(Task)
+        .filter(Task.task_id == task_id, Task.user_id == current_user_id)
+        .first()
+    )
+    if not task or task.voided_at is not None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.state == TaskState.DELETED:
+        raise HTTPException(status_code=400, detail="Cannot bind a deleted task")
+
+    previous_deadline_id = task.deadline_id
+    correction_at = _now_utc()
+    deadline: Optional[Deadline] = None
+
+    if request.clear_deadline:
+        task.deadline_id = None
+        task.deadline_match_source = None
+        task.deadline_match_confidence = None
+    else:
+        deadline = (
+            db.query(Deadline)
+            .filter(
+                Deadline.deadline_id == request.deadline_id,
+                Deadline.user_id == current_user_id,
+                Deadline.voided_at.is_(None),
+            )
+            .first()
+        )
+        if deadline is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Deadline not bindable (not found or voided)",
+            )
+        task.deadline_id = deadline.deadline_id
+        task.deadline_match_source = "user_corrected"
+        task.deadline_match_confidence = 1.0
+        if deadline.state == "planned" and task.state in (
+            TaskState.PLANNED,
+            TaskState.EXECUTING,
+            TaskState.PAUSED,
+        ):
+            deadline.state = "active"
+
+    task.llm_inferred_deadline_id = None
+    task.llm_deadline_match_confidence = None
+    task.llm_deadline_candidates = None
+    task.llm_alternative_suggestion = None
+    task.llm_binding_rejected_at = None
+    task.last_modified_at = correction_at
+
+    if task.state == TaskState.EXECUTED:
+        note = (
+            "deadline_binding_correction: "
+            f"previous={previous_deadline_id or 'none'} "
+            f"new={task.deadline_id or 'none'} "
+            f"at={correction_at.isoformat()}"
+        )
+        task.notes = f"{task.notes or ''}\n{note}".strip()
+
+    db.commit()
+    try:
+        invalidate_user_ranges(current_user_id)
+    except Exception as e:
+        logger.warning(
+            "deadline-binding: cache invalidate failed for user %s: %s",
+            current_user_id,
+            e,
+        )
+    return TaskDeadlineBindingResponse(
+        task_id=task.task_id,
+        deadline_id_after=task.deadline_id,
+        deadline_title_after=deadline.title if deadline is not None else None,
+        deadline_match_source_after=task.deadline_match_source,
+    )
 
 
 @router.get("/tasks/{task_id}", response_model=TaskDetail)

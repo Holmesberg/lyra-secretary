@@ -18,6 +18,7 @@ import {
   createDeadline,
   updateDeadline,
 } from "@/lib/deadlines";
+import { ApiError } from "@/lib/api";
 
 type Mode = "create" | "edit";
 // State actions surfaced inside the modal. Includes "planned" as a
@@ -69,6 +70,7 @@ export function DeadlineModal({
   const [categoryMode, setCategoryMode] = useState<"picker" | "custom">("picker");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   // Staged state change. Apr 27 footgun: the prior version called the
   // API the moment the user clicked Skip/Complete, so a misclick was
   // unrecoverable through the UI. Now state buttons set this local
@@ -98,15 +100,17 @@ export function DeadlineModal({
     }
     setPendingState(null);
     setError(null);
+    setDuplicateWarning(null);
   }, [open, mode, deadline]);
 
   const canSubmit =
     !submitting && title.trim().length > 0 && dueAt.trim().length > 0;
 
-  async function handleSave() {
+  async function handleSave(forceDuplicate = false) {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
+    if (!forceDuplicate) setDuplicateWarning(null);
     try {
       let saved: DeadlineResponse;
       if (mode === "edit" && deadline) {
@@ -125,11 +129,25 @@ export function DeadlineModal({
           description: description.trim() || undefined,
           due_at_utc: _localInputToIso(dueAt),
           category_hint: categoryHint.trim() || undefined,
+          force_duplicate: forceDuplicate,
         });
       }
       onSaved(saved);
       onClose();
     } catch (e: any) {
+      if (
+        mode === "create" &&
+        e instanceof ApiError &&
+        e.status === 409 &&
+        !forceDuplicate
+      ) {
+        setDuplicateWarning(
+          e.message ||
+            "A deadline with this title already exists on that due date."
+        );
+        setSubmitting(false);
+        return;
+      }
       setError(e?.message ?? "Failed to save deadline");
     } finally {
       setSubmitting(false);
@@ -268,6 +286,30 @@ export function DeadlineModal({
             </div>
           )}
 
+          {duplicateWarning && (
+            <div className="flex flex-col gap-2 rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
+              <p>{duplicateWarning}</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleSave(true)}
+                  disabled={submitting}
+                  className="rounded-sm border border-ember/50 bg-ember/10 px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-ember transition-colors hover:bg-ember/20 disabled:opacity-50"
+                >
+                  Create anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDuplicateWarning(null)}
+                  disabled={submitting}
+                  className="rounded-sm border border-hairline bg-void-2 px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-dust transition-colors hover:border-signal/40 hover:text-parchment disabled:opacity-50"
+                >
+                  Edit details
+                </button>
+              </div>
+            </div>
+          )}
+
           {stateButtonOptions.length > 0 && (
             <div className="flex flex-col gap-2 rounded-sm border border-hairline p-3">
               <span className="text-[11px] uppercase tracking-widest text-dust-deep">
@@ -333,7 +375,7 @@ export function DeadlineModal({
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!canSubmit}>
+          <Button onClick={() => void handleSave()} disabled={!canSubmit}>
             {submitting ? "Saving…" : mode === "edit" ? "Save" : "Create"}
           </Button>
         </DialogFooter>

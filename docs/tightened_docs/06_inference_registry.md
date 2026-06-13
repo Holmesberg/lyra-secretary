@@ -22,12 +22,14 @@ and validity risks.
 | Deadline shape | deadline-bound tasks/outcomes | met/delay aggregates | reconciliation aggregates | deadline outcome rows | active analytics | external imports must be separated |
 | Cortex diagnostics | task/session/pause rows | counts/exclusions/topology | read-time projection | Cortex profiles | active governance | not inference; diagnostic only |
 | JARVIS pattern proposal | operator aggregate tools | hypothesis proposal | LLM synthesis | tool schema requires falsifier/general tag | operator-only | AI-generated entropy risk |
+| Context-switching footprint | explicit task switches, interruption chains, parked work, pause overhead, active delta, resolution outcomes, exposure state | open threads / re-entry load / recovery-footprint summary | planned derived heuristic | clean explicit state only; no causal wording; no fragmentation score | documented / not implemented | reverse causality and confounding likely |
 
 ## Registered But Not Implemented
 
 | Candidate | Inputs | Intended output | Status | Risk |
 | --- | --- | --- | --- | --- |
 | `description_incomplete_at_deadline` | task/deadline binding, `Deadline.due_at_utc`, task description/scope snapshot, task edit timestamps | implicit planning-depth signal | Phase 6 candidate; registered in `archive/docs_history/data_utilization_inventory_2026_05_02.md` Revision 2 | description completeness is not scope truth; requires boundary snapshot and provenance |
+| `context_switching_footprint` | `pause_reason='task_switch'`, `parent_task_id`, `interruption_type`, paused duration, reentry latency, `reentry_resolution_type`, `time_to_resolution_minutes`, `open_thread_end_of_day_count`, missed downstream plans, active delta, metacognitive discrepancy | low-authority re-entry evidence first; insights only later | Wave 3.5 candidate; see `docs/context_switching_footprint_hypothesis.md` | same switch signature can come from hard tasks, unclear tasks, emergencies, overload, avoidance, or forgotten timers |
 
 ## Inference Pretension Warnings
 

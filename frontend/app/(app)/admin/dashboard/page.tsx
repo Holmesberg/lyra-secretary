@@ -75,6 +75,19 @@ interface DashboardData {
   vt_progress: Record<string, VtProgressEntry>;
 }
 
+interface EmailEngagementCampaign {
+  campaign_version: string;
+  opens: { events: number; distinct_recipients: number };
+  clicks: { events: number; distinct_recipients: number };
+}
+
+interface EmailEngagementData {
+  schema_version: string;
+  since_days: number;
+  read_note: string;
+  campaigns: EmailEngagementCampaign[];
+}
+
 export default function AdminDashboardPage() {
   const q = useQuery<DashboardData>({
     queryKey: ["admin-dashboard"],
@@ -83,6 +96,21 @@ export default function AdminDashboardPage() {
     refetchInterval: 5 * 60_000,
     retry: (count, error) => {
       // Don't retry 401 or 403 — those are terminal, not transient.
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        return false;
+      }
+      return count < 2;
+    },
+  });
+  const emailQ = useQuery<EmailEngagementData>({
+    queryKey: ["admin-email-engagement", "landing-html-v7"],
+    queryFn: () =>
+      api<EmailEngagementData>(
+        "/v1/admin/email-engagement?campaign_version=landing-html-v7&since_days=30"
+      ),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    retry: (count, error) => {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
         return false;
       }
@@ -164,6 +192,47 @@ export default function AdminDashboardPage() {
           <Stat label="Users (non-operator)" value={totals.users_non_operator} />
           <Stat label="Returning (today)" value={totals.returning_today} />
           <Stat label="Returning (7d)" value={totals.returning_7d} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Email Reactivation</CardTitle>
+          <p className="text-xs text-dust">
+            Opens are best-effort image loads. Clicks are the stronger signal.
+          </p>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {emailQ.data?.campaigns[0] ? (
+            <>
+              <Stat
+                label="Opened"
+                value={emailQ.data.campaigns[0].opens.distinct_recipients}
+                suffix="users"
+              />
+              <Stat
+                label="Open events"
+                value={emailQ.data.campaigns[0].opens.events}
+              />
+              <Stat
+                label="Clicked"
+                value={emailQ.data.campaigns[0].clicks.distinct_recipients}
+                suffix="users"
+              />
+              <Stat
+                label="Click events"
+                value={emailQ.data.campaigns[0].clicks.events}
+              />
+            </>
+          ) : (
+            <div className="col-span-full text-sm text-dust">
+              {emailQ.isLoading
+                ? "Loading campaign telemetry..."
+                : emailQ.error
+                  ? "Email telemetry unavailable."
+                  : "No engagement events recorded yet."}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -331,13 +400,26 @@ export default function AdminDashboardPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({
+  label,
+  value,
+  suffix,
+}: {
+  label: string;
+  value: number;
+  suffix?: string;
+}) {
   return (
     <div>
       <div className="text-[11px] uppercase tracking-wide text-dust-deep">
         {label}
       </div>
-      <div className="mt-1 text-2xl font-semibold text-parchment">{value}</div>
+      <div className="mt-1 text-2xl font-semibold text-parchment">
+        {value}
+        {suffix ? (
+          <span className="ml-1 text-xs font-normal text-dust">{suffix}</span>
+        ) : null}
+      </div>
     </div>
   );
 }

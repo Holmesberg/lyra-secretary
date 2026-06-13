@@ -170,20 +170,19 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
         # so this fire is number (fire_count_for_session + 1).
         fire_n = fire_count_for_session + 1
         paused_min = int(round(row.paused_for_minutes))
-        usual_min = int(round(row.p75_pause_minutes))
         if fire_n == 1:
             msg = (
-                f"*{task.title}* paused {paused_min} min · usual is "
-                f"~{usual_min} min for this kind of session. No rush."
+                f"You left *{task.title}* paused {paused_min} min ago. "
+                "Pick it back up?"
             )
         elif fire_n == 2:
             msg = (
-                f"*{task.title}* still paused at {paused_min} min · "
-                f"whenever you're ready."
+                f"*{task.title}* is still paused at {paused_min} min. "
+                "Resume where you left off?"
             )
         else:  # fire_n == 3 (final per MAX_FIRES_PER_SESSION cap)
             msg = (
-                f"Last check on *{task.title}* — {paused_min} min paused. "
+                f"Last check on *{task.title}* - {paused_min} min paused. "
                 f"I'll stay quiet on this one now."
             )
         notify_operator(

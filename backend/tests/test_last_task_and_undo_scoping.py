@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from sqlalchemy import text
 
-from app.db.models import Task, User
+from app.db.models import StopwatchSession, Task, TaskState, User
 from app.db.scoping import set_current_user_id
 from tests.conftest import TestingSession
 
@@ -169,3 +169,56 @@ def test_undo_does_not_cross_users(client):
     r = client.post("/v1/undo", headers=_HA)
     assert r.status_code == 200
     assert "A-owns" in r.json()["message"]
+
+
+@needs_redis
+def test_undo_timer_start_reverts_task_and_session(client, db):
+    """Undo after timer start is an accidental-start rollback, not task creation."""
+    start, end = _future(10, duration=30)
+    r = client.post(
+        "/v1/create",
+        json={"title": "timer-start-undo", "start": start, "end": end},
+        headers=_HA,
+    )
+    assert r.status_code == 200
+    task_id = r.json()["task_id"]
+
+    r = client.post(
+        "/v1/stopwatch/start",
+        json={"task_id": task_id, "pre_task_readiness": 4},
+        headers=_HA,
+    )
+    assert r.status_code == 200, r.text
+    session_id = r.json()["session_id"]
+
+    db.expire_all()
+    task = db.query(Task).filter(Task.task_id == task_id).one()
+    assert task.state == TaskState.EXECUTING
+    assert task.pre_task_readiness == 4
+    assert (
+        db.query(StopwatchSession)
+        .filter(StopwatchSession.session_id == session_id)
+        .count()
+        == 1
+    )
+
+    r = client.post("/v1/undo", headers=_HA)
+    assert r.status_code == 200, r.text
+    assert r.json()["action_undone"] == "start_stopwatch"
+
+    db.expire_all()
+    task = db.query(Task).filter(Task.task_id == task_id).one()
+    assert task.state == TaskState.PLANNED
+    assert task.pre_task_readiness is None
+    assert task.initiation_status == "not_started"
+    assert task.initiation_delay_minutes is None
+    assert (
+        db.query(StopwatchSession)
+        .filter(StopwatchSession.session_id == session_id)
+        .count()
+        == 0
+    )
+
+    r = client.get("/v1/stopwatch/status", headers=_HA)
+    assert r.status_code == 200
+    assert r.json()["active"] is False

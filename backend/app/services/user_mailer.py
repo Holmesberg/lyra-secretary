@@ -11,17 +11,12 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-import requests
-
 from app.core.config import settings
 from app.db.models import User
 from app.db.session import SessionLocal
+from app.services.email_delivery import EmailSendResult, send_resend_email
 
 logger = logging.getLogger(__name__)
-
-RESEND_API_URL = "https://api.resend.com/emails"
-RESEND_SUCCESS_STATUSES = {200, 201, 202}
-
 
 @dataclass(frozen=True)
 class ActivationEmailResult:
@@ -47,12 +42,6 @@ def activation_email_text(*, frontend_url: str) -> str:
     )
 
 
-def _redacted_request_error(exc: BaseException) -> str:
-    if isinstance(exc, requests.Timeout):
-        return "timeout"
-    return "request_failed"
-
-
 def send_activation_email(user: User) -> ActivationEmailResult:
     """Send the one-time activation email through Resend.
 
@@ -62,40 +51,17 @@ def send_activation_email(user: User) -> ActivationEmailResult:
     if not getattr(settings, "USER_EMAIL_ENABLED", False):
         return ActivationEmailResult(status="skipped_disabled", sent=False)
 
-    api_key = getattr(settings, "RESEND_API_KEY", "") or ""
-    if not api_key:
-        return ActivationEmailResult(status="skipped_unconfigured", sent=False)
-
-    sender_email = getattr(settings, "USER_EMAIL_FROM", "") or "hello@lyraos.org"
     frontend_url = getattr(settings, "FRONTEND_URL", "") or "https://lyraos.org"
-    payload = {
-        "from": f"LyraOS <{sender_email}>",
-        "to": [user.email],
-        "subject": "Welcome to LyraOS",
-        "text": activation_email_text(frontend_url=frontend_url),
-    }
-
-    try:
-        response = requests.post(
-            RESEND_API_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=8,
-        )
-    except Exception as exc:  # noqa: BLE001 - mail must never block auth
-        error = _redacted_request_error(exc)
-        logger.warning("activation email send failed: %s", error)
-        return ActivationEmailResult(status="failed", sent=False, error=error)
-
-    if response.status_code in RESEND_SUCCESS_STATUSES:
-        return ActivationEmailResult(status="sent", sent=True)
-
-    error = f"http_{response.status_code}"
-    logger.warning("activation email provider returned %s", error)
-    return ActivationEmailResult(status="failed", sent=False, error=error)
+    result: EmailSendResult = send_resend_email(
+        to=user.email,
+        subject="Welcome to LyraOS",
+        text=activation_email_text(frontend_url=frontend_url),
+    )
+    return ActivationEmailResult(
+        status=result.status,
+        sent=result.sent,
+        error=result.error,
+    )
 
 
 def record_activation_email_result(user_id: int, result: ActivationEmailResult) -> None:

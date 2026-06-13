@@ -128,6 +128,7 @@ class PausedOtherInfo(BaseModel):
     elapsed_seconds: int = 0
     start_time: Optional[datetime] = None
     total_paused_minutes: float = 0.0
+    planned_duration_minutes: Optional[int] = None
 
 
 class StopwatchStatusResponse(BaseModel):
@@ -137,6 +138,7 @@ class StopwatchStatusResponse(BaseModel):
     task_title: Optional[str] = None
     start_time: Optional[datetime] = None
     elapsed_minutes: Optional[int] = None
+    planned_duration_minutes: Optional[int] = None
     # LYR-111: second-precision elapsed for banner tick basis. Same logic
     # as elapsed_minutes (excludes current pause) — divides into minutes
     # at frontend display boundary instead of at backend response boundary.
@@ -197,6 +199,27 @@ class UpdateCompletionResponse(BaseModel):
     task_title: str
     task_completion_percentage: int
     elapsed_minutes: int
+
+
+class StalePauseResolveRequest(BaseModel):
+    post_task_reflection: int = Field(..., ge=1, le=5)
+    task_completion_percentage: int = Field(..., ge=0, le=100)
+    scope_outcome: str = Field(..., pattern="^(stuck_to_plan|expanded|reduced)$")
+
+
+class StalePauseResolveResponse(BaseModel):
+    resolved: bool
+    task_id: str
+    session_id: str
+    new_state: str
+    active_minutes: int
+    planned_duration_minutes: Optional[int] = None
+    paused_minutes: int
+    task_completion_percentage: int
+    post_task_reflection: int
+    scope_outcome: str
+    data_quality_flag: str
+    closed_at: datetime
 
 
 class RetroactiveRequest(BaseModel):

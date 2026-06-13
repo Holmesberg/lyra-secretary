@@ -12,6 +12,11 @@ export type AcademicTrustState =
 export type AcademicPressureLevel = "low" | "medium" | "high" | "overdue";
 export type AcademicComplexityTier = "low" | "medium" | "high" | "unknown";
 export type AcademicConfidence = "low" | "medium" | "high";
+export type AcademicSourceClass = "external" | "native" | "lyra_task";
+export type AcademicEvidenceClass =
+  | "external_obligation"
+  | "native_obligation"
+  | "scheduled_intention";
 export type AcademicCompressionKind =
   | "due_soon"
   | "overdue"
@@ -37,6 +42,11 @@ export interface AcademicPressureItem {
   title: string;
   due_at_utc: string;
   source: string;
+  source_class: AcademicSourceClass;
+  evidence_class: AcademicEvidenceClass;
+  provider_kind?: string | null;
+  raw_authority_level: string;
+  redaction_status: string;
   obligation_type: string;
   trust_state: AcademicTrustState;
   complexity_tier: AcademicComplexityTier;
@@ -49,8 +59,8 @@ export interface AcademicPressureItem {
 
 export interface AcademicSourceSummary {
   deadlines_total: number;
-  moodle_deadlines: number;
-  native_deadlines: number;
+  external_obligation_count: number;
+  native_obligation_count: number;
   academic_task_count: number;
   study_task_count: number;
   academic_task_minutes: number;
@@ -110,6 +120,12 @@ export interface AcademicPressureMapResponse {
   signal_targets?: string[] | null;
   clean_profile?: string | null;
   fallback_mode?: string | null;
+  authority_rung?: string | null;
+  mutation_permission?: string | null;
+  public_translator?: string | null;
+  surface_role?: string | null;
+  allowed_authority?: string[];
+  denied_authority?: string[];
   exposure_id?: string | null;
   render_id?: string | null;
 }

@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app.db.models import Archetype, Task, TaskState, User
+from app.db.models import Archetype, StopwatchSession, Task, TaskState, User
 from app.services.bias_factor_service import (
     RESEARCH_PRIOR_DEFAULT,
     RESEARCH_PRIORS,
@@ -106,6 +106,32 @@ def _make_tasks(
         created.append(t)
     db.commit()
     return created
+
+
+def _add_session(
+    db,
+    task: Task,
+    *,
+    pause_overhead: float,
+    auto_closed: bool = False,
+    data_quality_flag: str | None = None,
+    span_minutes: int | None = None,
+) -> StopwatchSession:
+    start = task.executed_start_utc or task.planned_start_utc
+    active = task.executed_duration_minutes or 0
+    span = span_minutes if span_minutes is not None else int(active + pause_overhead)
+    session = StopwatchSession(
+        task_id=task.task_id,
+        user_id=task.user_id,
+        start_time_utc=start,
+        end_time_utc=start + timedelta(minutes=span),
+        total_paused_minutes=pause_overhead,
+        auto_closed=auto_closed,
+        data_quality_flag=data_quality_flag,
+    )
+    db.add(session)
+    db.commit()
+    return session
 
 
 # ---------------------------------------------------------------------------
@@ -305,10 +331,72 @@ class TestBlendMetadataShape:
                 "archetype_prior_for_cell",
                 "archetype_scaling",
                 "archetype_prior_citation",
+                "execution_suggested_minutes",
+                "pause_overhead_minutes",
+                "pause_overhead_sample_size",
+                "occupancy_suggested_minutes",
+                "occupancy_strategy",
             ):
                 assert key in result, f"missing Rule-13 field: {key}"
             # Cascade metadata (from _adaptive_calibration) preserved:
             for key in ("cell", "sessions", "signal_level", "signals", "source"):
                 assert key in result, f"missing cascade field: {key}"
+        finally:
+            db.close()
+
+    def test_research_prior_does_not_invent_pause_overhead(self):
+        db = TestingSession()
+        try:
+            _seed_archetypes(db)
+            u = _make_user(db, "blend-research-overhead@test.com")
+            result = blend(db, u.user_id, [], "development", "morning", 60)
+
+            assert result["source"] == "research"
+            assert result["pause_overhead_minutes"] == 0
+            assert result["pause_overhead_sample_size"] == 0
+            assert result["occupancy_suggested_minutes"] == result["execution_suggested_minutes"]
+            assert result["occupancy_strategy"] == "execution_only_research_prior"
+        finally:
+            db.close()
+
+    def test_pause_overhead_median_includes_zero_pause_sessions(self):
+        db = TestingSession()
+        try:
+            _seed_archetypes(db)
+            u = _make_user(db, "blend-pause-median@test.com")
+            tasks = _make_tasks(db, u.user_id, 3, planned=60, executed=60)
+            before = blend(db, u.user_id, tasks, "development", "morning", 60)
+            for task, overhead in zip(tasks, [0, 10, 30]):
+                _add_session(db, task, pause_overhead=overhead)
+
+            result = blend(db, u.user_id, tasks, "development", "morning", 60)
+
+            assert result["bias_factor_final"] == before["bias_factor_final"]
+            assert result["pause_overhead_sample_size"] == 3
+            assert result["pause_overhead_minutes"] == 10
+            assert result["occupancy_suggested_minutes"] == (
+                result["execution_suggested_minutes"] + 10
+            )
+            assert result["occupancy_strategy"] == "execution_plus_median_pause_overhead"
+        finally:
+            db.close()
+
+    def test_pause_overhead_ignores_dirty_auto_closed_and_stale_sessions(self):
+        db = TestingSession()
+        try:
+            _seed_archetypes(db)
+            u = _make_user(db, "blend-pause-clean@test.com")
+            tasks = _make_tasks(db, u.user_id, 6, planned=60, executed=60)
+            _add_session(db, tasks[0], pause_overhead=0)
+            _add_session(db, tasks[1], pause_overhead=20)
+            _add_session(db, tasks[2], pause_overhead=40)
+            _add_session(db, tasks[3], pause_overhead=10, data_quality_flag="possibly_default_pause_metadata")
+            _add_session(db, tasks[4], pause_overhead=10, auto_closed=True)
+            _add_session(db, tasks[5], pause_overhead=300, span_minutes=420)
+
+            result = blend(db, u.user_id, tasks, "development", "morning", 60)
+
+            assert result["pause_overhead_sample_size"] == 3
+            assert result["pause_overhead_minutes"] == 20
         finally:
             db.close()

@@ -28,6 +28,8 @@ If these cannot be answered, the concept is not admitted.
 - JARVIS proposals require falsifier, evidence fields, and generality tag.
 - Promoted hypotheses need rejected hypotheses nearby; all-green logs are
   suspicious.
+- Context-switching hypotheses must separate consequence topology from causal
+  explanation before entering any product surface.
 - External imports and retroactive data must stay out of native calibration
   unless the profile allows them.
 - Research value alone cannot justify new required user inputs. Any
@@ -78,6 +80,13 @@ Before merge:
 - Does it change sign convention?
 - Does it change a clean-data filter?
 - Does it expose a user to a claim that future learning will consume?
+- If this mentions switching, interruption, or fragmentation, does it avoid
+  claiming why it happened?
+- If this adds a switching/re-entry surface, does it support open-thread
+  recovery actions instead of insight-first copy or a fragmentation score?
+- If this interprets task switches, does it include resolution outcome
+  (`resumed`, `completed_later`, `rescheduled`, `dropped`,
+  `marked_irrelevant`, `stale_open_end_of_day`, or `auto_closed`)?
 - Does it rely on docs that code does not verify?
 - Does it add a user-burden variable for research value rather than product
   completion, accessibility, latency, clarity, or bug repair?

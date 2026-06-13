@@ -18,8 +18,11 @@ const accounts = [
     cookieHeader: process.env.LYRA_COOKIE_ASABRYHAFEZ || "",
   },
   {
-    label: "moriarty",
-    cookieHeader: process.env.LYRA_COOKIE_MORIARTY || "",
+    label: "holmesberg",
+    cookieHeader:
+      process.env.LYRA_COOKIE_HOLMESBERG
+      || process.env.LYRA_COOKIE_MORIARTY
+      || "",
   },
 ];
 
@@ -38,7 +41,8 @@ function userRef(userId) {
 
 function parseCookieHeader(header) {
   const pairs = [];
-  for (const rawPart of header.split(";")) {
+  const normalized = header.trim().replace(/^cookie:\s*/i, "");
+  for (const rawPart of normalized.split(";")) {
     const part = rawPart.trim();
     if (!part || !part.includes("=")) continue;
     const index = part.indexOf("=");
@@ -47,10 +51,12 @@ function parseCookieHeader(header) {
     if (!name || !value) continue;
     pairs.push({ name, value });
   }
-  if (!pairs.length && header.trim()) {
+  if (!pairs.length && normalized) {
     pairs.push({
-      name: "next-auth.session-token",
-      value: header.trim(),
+      name: frontendOrigin.startsWith("https://")
+        ? "__Secure-next-auth.session-token"
+        : "next-auth.session-token",
+      value: normalized,
     });
   }
   return pairs;
@@ -68,6 +74,12 @@ function expandNextAuthCookieAliases(cookies) {
   }
 
   for (const cookie of cookies) {
+    if (
+      frontendOrigin.startsWith("https://")
+      && cookie.name === "next-auth.session-token"
+    ) {
+      add("__Secure-next-auth.session-token", cookie.value);
+    }
     if (
       !frontendOrigin.startsWith("http://")
       || (
@@ -180,12 +192,27 @@ async function smokeAccount(browser, account) {
 
   const session = await page.evaluate(async () => {
     const response = await fetch("/api/auth/session");
-    return response.json();
+    const text = await response.text();
+    let body = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = { parse_error: text.slice(0, 120) };
+    }
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      body,
+    };
   });
-  const token = session?.backendToken;
+  const token = session?.body?.backendToken;
   if (!token) {
     fail(`no backend token resolved for ${account.label}`, {
-      sessionKeys: Object.keys(session || {}),
+      frontendOrigin,
+      sessionStatus: session?.status,
+      sessionContentType: session?.contentType,
+      sessionKeys: Object.keys(session?.body || {}),
+      parsedCookieNames: cookies.map((cookie) => cookie.name),
     });
   }
 

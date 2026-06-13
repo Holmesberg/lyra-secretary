@@ -9,7 +9,7 @@
  * the highest-signal at-a-glance numbers; the right-side icon strip
  * is intentionally restrained to avoid the SaaS-cliché icon parade.
  */
-import { Bell, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { format } from "date-fns";
 
 export interface PulseGreetingProps {
@@ -76,23 +76,16 @@ export function PulseGreeting({
           value={overdueCount.toString().padStart(2, "0")}
           tone={overdueCount > 0 ? "ember" : "dust"}
         />
-        <div className="ml-1 flex items-center gap-1">
+        {onSearchClick && (
           <button
             type="button"
             onClick={onSearchClick}
             aria-label="Search"
-            className="rounded-sm border border-hairline bg-void-2/40 p-2 text-dust-deep transition-colors hover:border-signal/40 hover:text-signal"
+            className="ml-1 rounded-sm border border-hairline bg-void-2/40 p-2 text-dust-deep transition-colors hover:border-signal/40 hover:text-signal"
           >
             <Search className="h-3.5 w-3.5" />
           </button>
-          <button
-            type="button"
-            aria-label="Notifications (coming soon)"
-            className="rounded-sm border border-hairline bg-void-2/40 p-2 text-dust-deep transition-colors hover:border-signal/40 hover:text-signal"
-          >
-            <Bell className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );

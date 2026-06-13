@@ -89,6 +89,27 @@ This is a strength. The architecture is coherent because the model is forced
 to be causal, structural, operational, and epistemically bounded instead of
 outsourcing ambiguity to "the model will figure it out."
 
+## 2.1 Trajectory Integrity
+
+The deeper invariant is not productivity optimization. LyraOS treats repeated
+human-system interactions as trajectory-shaping. A plan suggestion, pressure
+map, insight, reminder, or future adaptive action can change what the user
+does next and how they interpret themselves.
+
+Therefore the instrument must optimize for reality contact before it optimizes
+for retention, status, throughput, or any other proxy. The system should make
+the relationship between intention, constraint, action, and consequence more
+legible without turning that legibility into hidden pressure.
+
+Operational consequences:
+
+- measurement must preserve provenance and exposure context;
+- stronger claims must be earned from clean repeated evidence;
+- guidance must remain challengeable and reversible;
+- sequencing matters because the order of revelation changes interpretation;
+- proxy wins that reduce user agency are product failures even when short-term
+  metrics improve.
+
 ## 3. AI Role Boundary
 
 AI may be used as:
@@ -182,6 +203,47 @@ LyraOS should infer cautiously through:
 
 It should not depend on the user being a perfectly reliable introspective
 narrator of why a task succeeded or failed.
+
+### 5.1 Context Switching As Footprint, Not Cause
+
+Explicit task switches, parent-child interruptions, parked work, and re-entry
+latency are valuable execution-topology signals. They can show that a plan
+became fragmented.
+
+They do not, by themselves, explain why fragmentation happened.
+
+The first product use is re-entry recovery:
+
+```text
+open threads -> recovery options
+```
+
+not insight or scoring:
+
+```text
+switches -> fragmentation score
+```
+
+User-facing copy should say "parked work," "open threads," "re-entry load,"
+or "resume load." Do not expose `context_switching_footprint` in product UI.
+Do not create a `fragmentation_score` or equivalent scalar judgment.
+
+Hard tasks, unclear scope, genuine emergencies, excessive commitments,
+deadline pressure, emotional avoidance, provider noise, and forgotten timers
+can all produce similar switch signatures. Lyra may therefore treat
+context-switching footprint as low-authority recovery intelligence, but it
+must not turn it into a causal or psychological claim without controls,
+falsification, and exposure accounting.
+
+Metacognitive discrepancy can modify this signal: switched work that also
+resembles prior over-plan work is stronger evidence of recovery friction than
+switch topology alone. Even then, the safe claim is correlation until stronger
+evidence accumulates.
+
+Any future implementation must derive resolution outcomes before interpreting
+switching: resumed, completed later, rescheduled, dropped, marked irrelevant,
+stale/open at day end, or auto-closed. Without resolution outcome, the system
+only knows that switching happened, not whether it mattered.
 
 ## 6. Missingness Is Signal
 

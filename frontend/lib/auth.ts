@@ -39,14 +39,35 @@ function getBackendJwtSecret(): string {
   return secret;
 }
 
-async function mintBackendToken(payload: { sub: string; email: string }) {
+type BackendIdentityPayload = {
+  sub?: string | null;
+  email: string;
+  name?: string | null;
+  given_name?: string | null;
+};
+
+function cleanString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const cleaned = value.trim();
+  return cleaned || undefined;
+}
+
+async function mintBackendToken(payload: BackendIdentityPayload) {
   const key = new TextEncoder().encode(getBackendJwtSecret());
-  return await new SignJWT({ email: payload.email, sub: payload.sub })
+  const claims: Record<string, string> = { email: payload.email };
+  const sub = cleanString(payload.sub);
+  const name = cleanString(payload.name);
+  const givenName = cleanString(payload.given_name);
+  if (sub) claims.sub = sub;
+  if (name) claims.name = name;
+  if (givenName) claims.given_name = givenName;
+
+  let jwt = new SignJWT(claims)
     .setProtectedHeader({ alg: "HS256" })
-    .setSubject(payload.sub)
     .setIssuedAt()
-    .setExpirationTime("12h")
-    .sign(key);
+    .setExpirationTime("12h");
+  if (sub) jwt = jwt.setSubject(sub);
+  return await jwt.sign(key);
 }
 
 function backendTokenNeedsRefresh(token: unknown): boolean {
@@ -58,6 +79,21 @@ function backendTokenNeedsRefresh(token: unknown): boolean {
     const exp = typeof decoded.exp === "number" ? decoded.exp : 0;
     const now = Math.floor(Date.now() / 1000);
     return exp - now <= BACKEND_TOKEN_REFRESH_WINDOW_SECONDS;
+  } catch {
+    return true;
+  }
+}
+
+function backendTokenNeedsProfileRefresh(token: unknown, nextAuthToken: unknown): boolean {
+  if (typeof token !== "string" || !token) return true;
+  try {
+    const decoded = decodeJwt(token);
+    const source = nextAuthToken as Record<string, unknown>;
+    const desiredName = cleanString(source.name);
+    const desiredGivenName = cleanString(source.given_name);
+    if (desiredName && decoded.name !== desiredName) return true;
+    if (desiredGivenName && decoded.given_name !== desiredGivenName) return true;
+    return false;
   } catch {
     return true;
   }
@@ -85,15 +121,19 @@ export const authOptions: NextAuthOptions = {
       if (account && profile) {
         token.email = profile.email;
         token.sub = (profile as any).sub || token.sub;
+        token.name = (profile as any).name || token.name;
+        (token as any).given_name = (profile as any).given_name || (token as any).given_name;
       }
       if (
-        token.sub &&
         token.email &&
-        backendTokenNeedsRefresh(token.backendToken)
+        (backendTokenNeedsRefresh(token.backendToken) ||
+          backendTokenNeedsProfileRefresh(token.backendToken, token))
       ) {
         token.backendToken = await mintBackendToken({
-          sub: token.sub as string,
+          sub: token.sub as string | undefined,
           email: token.email as string,
+          name: token.name as string | undefined,
+          given_name: (token as any).given_name as string | undefined,
         });
       }
       return token;

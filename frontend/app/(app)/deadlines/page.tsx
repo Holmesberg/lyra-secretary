@@ -5,6 +5,7 @@ import {
   type DeadlineResponse,
   type DeadlineState,
   listDeadlines,
+  sortDeadlinesActiveFirst,
   updateDeadline,
   voidDeadline,
 } from "@/lib/deadlines";
@@ -124,7 +125,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
       </div>
       <div className="flex shrink-0 flex-col gap-1">
         {/* One-click mark-done — operator pain point 2026-05-01 with
-            Moodle-imported overdue assignments they submitted out-of-
+            Moodle-imported overdue items they completed out-of-
             band but Lyra had no way to know about (iCal carries due
             dates, NOT submission status). Surfaced on planned/active
             plus missed deadlines, because missed only means the sweeper
@@ -307,10 +308,12 @@ export default function DeadlinesPage() {
 
   // Active = planned/active but NOT yet overdue. Prevents double-render
   // (overdue planned rows would otherwise appear in both buckets).
-  const active = sorted.filter(
-    (d) =>
-      (d.state === "planned" || d.state === "active") &&
-      !overdueIds.has(d.deadline_id)
+  const active = sortDeadlinesActiveFirst(
+    sorted.filter(
+      (d) =>
+        (d.state === "planned" || d.state === "active") &&
+        !overdueIds.has(d.deadline_id)
+    )
   );
   const completed = sorted
     .filter((d) => d.state === "completed")

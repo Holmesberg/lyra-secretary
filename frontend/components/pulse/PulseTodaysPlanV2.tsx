@@ -64,7 +64,7 @@ export function PulseTodaysPlanV2({ tasks }: PulseTodaysPlanV2Props) {
           Nothing on the day yet.
           <br />
           <Link
-            href="/today"
+            href="/pulse#quick-capture"
             className="text-signal underline-offset-2 hover:underline"
           >
             Brain dump

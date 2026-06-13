@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,6 +14,10 @@ from app.db.models import (
     ExposureRenderEvent,
     ReflectionViewLog,
     SuppressionEvent,
+    StopwatchSession,
+    Task,
+    TaskSource,
+    TaskState,
     User,
 )
 from app.main import app
@@ -126,6 +130,78 @@ def test_emit_surface_render_serializes_structured_payloads_and_legacy_adapter(d
     assert render.content_snapshot == expected_payload
     assert legacy.reflection_type == "creation_nudge"
     assert legacy.payload == expected_payload
+
+
+def test_emit_surface_render_mirrors_to_operator_without_content(db, monkeypatch):
+    user = User(email=f"surface-mirror-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(
+        output_surface_module.settings,
+        "OPENCLAW_MIRROR_USER_NOTIFICATIONS",
+        True,
+    )
+    monkeypatch.setattr(
+        output_surface_module,
+        "notify_operator",
+        lambda message, **kwargs: calls.append((message, kwargs)) or True,
+    )
+
+    emitted = emit_surface_render(
+        db,
+        surface_id="stopwatch.micro_mirror",
+        user_id=user.user_id,
+        content_snapshot="Secret behavioral mirror copy",
+        task_id="task-private-123",
+        content_template_id="micro_mirror",
+        trigger_source="stopwatch.stop",
+    )
+
+    assert emitted["surface_id"] == "stopwatch.micro_mirror"
+    assert len(calls) == 1
+    message, kwargs = calls[0]
+    assert kwargs == {"source": "output.surface", "severity": "info"}
+    assert "Output surface rendered." in message
+    assert "User: user#" in message
+    assert "Surface: `stopwatch.micro_mirror`" in message
+    assert "Channel: `in_app_toast`" in message
+    assert "Template: `micro_mirror`" in message
+    assert "Trigger: `stopwatch.stop`" in message
+    assert "Exposure: #" in message
+    assert "Render: #" in message
+    assert "Task: #" in message
+    assert "Secret behavioral mirror copy" not in message
+    assert "task-private-123" not in message
+
+
+def test_dashboard_output_surfaces_do_not_mirror_to_operator(db, monkeypatch):
+    user = User(email=f"surface-dashboard-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(
+        output_surface_module.settings,
+        "OPENCLAW_MIRROR_USER_NOTIFICATIONS",
+        True,
+    )
+    monkeypatch.setattr(
+        output_surface_module,
+        "notify_operator",
+        lambda message, **kwargs: calls.append((message, kwargs)) or True,
+    )
+
+    emit_surface_render(
+        db,
+        surface_id="analytics.insights",
+        user_id=user.user_id,
+        content_snapshot={"private": "dashboard insight copy"},
+        content_template_id="insights",
+    )
+
+    assert calls == []
 
 
 def test_rule11_no_nudge_control_is_deterministic_after_baseline(db):
@@ -516,11 +592,14 @@ def test_task_creation_nudge_lookup_emits_exposure_when_it_will_render(db):
     assert body["cell"] is not None
     assert body["surface_id"] == "task.creation_nudge"
     assert body["truth_class"] == "intervention"
-    assert body["signal_targets"] == ["planning_estimate"]
+    assert body["signal_targets"] == ["planning_estimate", "pause_behavior"]
     assert body["clean_profile"] == "planning_calibration"
     assert body["fallback_mode"] == "suppress"
     assert body["exposure_id"]
     assert body["render_id"]
+    assert body["execution_suggested_minutes"] >= 5
+    assert body["pause_overhead_minutes"] == 0
+    assert body["occupancy_suggested_minutes"] == body["execution_suggested_minutes"]
 
     decision = (
         db.query(ExposureDecisionEvent)
@@ -537,8 +616,74 @@ def test_task_creation_nudge_lookup_emits_exposure_when_it_will_render(db):
     assert decision.trigger_source == "analytics.bias_factor.lookup"
     assert render.surface == "task.creation_nudge"
     assert "Suggested window is" in render.content_snapshot
+    assert "execution_suggested_minutes" in render.content_snapshot
+    assert "pause_overhead_minutes" in render.content_snapshot
+    assert "occupancy_suggested_minutes" in render.content_snapshot
     assert "personal_weight" in render.content_snapshot
     assert "prior_weight" in render.content_snapshot
+
+
+def test_task_creation_nudge_lookup_excludes_dirty_personal_rows(db):
+    user = User(
+        email=f"creation-nudge-dirty-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=False,
+    )
+    db.add(user)
+    if db.query(Archetype).filter_by(archetype_id="diffuse_average").first() is None:
+        db.add(
+            Archetype(
+                archetype_id="diffuse_average",
+                name="Diffuse Average",
+                prior_bias_factor=1.30,
+                prior_sigma=0.30,
+            )
+        )
+    db.flush()
+
+    base = datetime.utcnow() - timedelta(days=2)
+    for idx in range(5):
+        task = Task(
+            task_id=str(uuid4()),
+            title=f"dirty-study-{idx}",
+            planned_start_utc=base + timedelta(hours=idx),
+            planned_end_utc=base + timedelta(hours=idx, minutes=30),
+            planned_duration_minutes=30,
+            executed_start_utc=base + timedelta(hours=idx),
+            executed_end_utc=base + timedelta(hours=idx, minutes=180),
+            executed_duration_minutes=180,
+            state=TaskState.EXECUTED,
+            source=TaskSource.MANUAL,
+            user_id=user.user_id,
+            category="study",
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            StopwatchSession(
+                session_id=str(uuid4()),
+                task_id=task.task_id,
+                user_id=user.user_id,
+                start_time_utc=task.executed_start_utc,
+                end_time_utc=task.executed_end_utc,
+                total_paused_minutes=0.0,
+                auto_closed=False,
+                data_quality_flag="user_resolved_stale_pause",
+            )
+        )
+    db.commit()
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/v1/analytics/bias_factor/lookup?category=study&tod=morning&planned_minutes=30",
+            headers=auth_headers(user.user_id),
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["source"] == "research"
+    assert body["cell"]["sessions"] == 0
+    assert body["personal_weight"] == 0.0
 
 
 def test_task_creation_nudge_lookup_suppresses_if_exposure_logging_fails(db, monkeypatch):

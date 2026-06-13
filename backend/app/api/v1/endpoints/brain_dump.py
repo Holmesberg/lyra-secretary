@@ -21,15 +21,16 @@ TaskManager + DeadlineManager refuse to write without it.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.db.models import User
+from app.db.models import Deadline, User
 from app.db.scoping import get_current_user_id
 from app.schemas.brain_dump import (
     BrainDumpCommitRequest,
@@ -41,6 +42,7 @@ from app.schemas.brain_dump import (
 from app.services.brain_dump_parser import parse_brain_dump
 from app.services.deadline_manager import DeadlineManager
 from app.services.task_manager import TaskManager
+from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, to_utc
 
 router = APIRouter()
@@ -61,18 +63,27 @@ def brain_dump_parse(
     """
     # Authentication still required even though we don't write — keeps
     # the surface behind the same gate as /v1/users/me.
-    if get_current_user_id() is None:
+    uid = get_current_user_id()
+    if uid is None:
         raise HTTPException(status_code=401, detail="not authenticated")
+
+    existing_deadlines = db.query(Deadline).filter(
+        Deadline.user_id == uid,
+        Deadline.voided_at.is_(None),
+        Deadline.state.in_(("planned", "active")),
+    ).order_by(Deadline.due_at_utc.asc()).limit(100).all()
 
     return parse_brain_dump(
         raw_text=request.raw_text,
         now_local_iso=request.current_local_iso,
+        existing_deadlines=existing_deadlines,
     )
 
 
 @router.post("/brain-dump/commit", response_model=BrainDumpCommitResponse)
 def brain_dump_commit(
     request: BrainDumpCommitRequest,
+    x_idempotency_key: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ) -> BrainDumpCommitResponse:
     """Persist user-confirmed items + bindings in a single transaction.
@@ -95,6 +106,27 @@ def brain_dump_commit(
     uid = get_current_user_id()
     if uid is None:
         raise HTTPException(status_code=401, detail="not authenticated")
+
+    idempotency_cache: Optional[RedisClient] = None
+    idempotency_key = (
+        f"brain_dump:commit:{x_idempotency_key.strip()}"
+        if x_idempotency_key and x_idempotency_key.strip()
+        else None
+    )
+    if idempotency_key is not None:
+        try:
+            idempotency_cache = RedisClient()
+            cached = idempotency_cache.check_idempotency(
+                idempotency_key,
+                user_id=uid,
+            )
+            if cached:
+                return BrainDumpCommitResponse(**json.loads(cached))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "brain_dump commit: idempotency lookup unavailable: %s",
+                exc,
+            )
 
     task_manager = TaskManager(db)
     deadline_manager = DeadlineManager(db)
@@ -126,6 +158,8 @@ def brain_dump_commit(
             return ("deadline_terminal_state", msg, "remove_deadline_binding")
         if "deadline_not_found" in msg or "deadline_user_mismatch" in msg:
             return ("deadline_not_found", msg, "remove_deadline_binding")
+        if "deadline_duplicate_title_same_day" in msg:
+            return ("duplicate_deadline", msg, "use_existing_deadline")
         if isinstance(exc, ValueError):
             return ("validation", msg, "edit_when_local")
         return ("internal", repr(exc)[:200], None)
@@ -150,6 +184,26 @@ def brain_dump_commit(
             continue
         try:
             due_at_utc = to_utc(item.when_local)
+            duplicate = deadline_manager.find_duplicate_deadline(
+                title=item.title,
+                due_at_utc=due_at_utc,
+            )
+            if duplicate is not None:
+                # Reuse the existing deadline for confirmed bindings instead
+                # of inflating the pressure map with a second same-day anchor.
+                deadline_id_map[item.item_id] = duplicate.deadline_id
+                failed_items.append(BrainDumpFailedItem(
+                    item_id=item.item_id,
+                    kind=item.kind,
+                    title=item.title,
+                    reason="duplicate_deadline",
+                    detail=(
+                        "A deadline with this title already exists on the "
+                        "same due date; tasks will bind to the existing row."
+                    ),
+                    retry_hint="use_existing_deadline",
+                ))
+                continue
             deadline = deadline_manager.create_deadline(
                 title=item.title,
                 description=item.description,
@@ -179,9 +233,16 @@ def brain_dump_commit(
     # avoids a second update_task round-trip.
     binding_for_task: dict[str, str] = {}
     for b in request.bindings:
-        resolved = deadline_id_map.get(b.deadline_item_id)
+        resolved: Optional[str] = None
+        if b.target_kind == "existing_deadline" or b.deadline_id:
+            resolved = b.deadline_id
+        elif b.deadline_item_id:
+            resolved = deadline_id_map.get(b.deadline_item_id)
         if resolved is not None:
-            binding_for_task[b.task_item_id] = resolved
+            # One canonical deadline binding per task. The preview UI enforces
+            # this too, but keep the backend deterministic if an old or custom
+            # client submits multiple "yes" bindings for the same task.
+            binding_for_task.setdefault(b.task_item_id, resolved)
 
     bindings_applied = 0
     for item in request.items:
@@ -257,7 +318,7 @@ def brain_dump_commit(
         user.onboarding_completed_at = now_utc()
         db.commit()
 
-    return BrainDumpCommitResponse(
+    response = BrainDumpCommitResponse(
         tasks_created=len(task_ids),
         deadlines_created=len(deadline_ids),
         bindings_applied=bindings_applied,
@@ -265,3 +326,18 @@ def brain_dump_commit(
         deadline_ids=deadline_ids,
         failed_items=failed_items,
     )
+    if idempotency_cache is not None and idempotency_key is not None:
+        try:
+            idempotency_cache.set_idempotency(
+                idempotency_key,
+                response.model_dump_json(),
+                ttl_seconds=60,
+                user_id=uid,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "brain_dump commit: idempotency store unavailable: %s",
+                exc,
+            )
+
+    return response

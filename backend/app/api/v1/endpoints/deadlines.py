@@ -27,7 +27,7 @@ from app.schemas.deadline import (
     DeadlineResponse,
     DeadlineUpdateRequest,
 )
-from app.services.deadline_manager import DeadlineManager
+from app.services.deadline_manager import DeadlineDuplicateError, DeadlineManager
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,23 @@ router = APIRouter()
 
 def _value_error_to_http(e: ValueError) -> HTTPException:
     """Map DeadlineManager ValueError variants to appropriate HTTP codes."""
+    if isinstance(e, DeadlineDuplicateError):
+        existing = e.existing
+        return HTTPException(
+            status_code=409,
+            detail={
+                "error": "deadline_duplicate_title_same_day",
+                "message": (
+                    f"A deadline named '{existing.title}' already exists on "
+                    "that due date. Review it or create anyway."
+                ),
+                "existing_deadline_id": existing.deadline_id,
+                "existing_title": existing.title,
+                "existing_due_at_utc": existing.due_at_utc.isoformat()
+                if existing.due_at_utc
+                else None,
+            },
+        )
     msg = str(e)
     if "deadline_not_found" in msg:
         return HTTPException(status_code=404, detail={"error": "deadline_not_found", "message": msg})
@@ -55,6 +72,7 @@ def create_deadline(
             description=request.description,
             due_at_utc=request.due_at_utc,
             category_hint=request.category_hint,
+            force_duplicate=request.force_duplicate,
         )
         return DeadlineResponse.from_orm(deadline)
     except ValueError as e:

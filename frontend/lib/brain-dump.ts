@@ -18,6 +18,9 @@ export type BrainDumpBindingTier =
   | "tier1_auto"
   | "tier2_ask"
   | "tier3_skip";
+export type BrainDumpBindingTargetKind =
+  | "parsed_deadline"
+  | "existing_deadline";
 
 export interface BrainDumpParsedItem {
   item_id: string;
@@ -37,12 +40,18 @@ export interface BrainDumpParsedItem {
 }
 
 export interface BrainDumpBindingSuggestion {
+  binding_id: string;
   task_item_id: string;
   deadline_item_id: string;
   deadline_title: string;
   confidence: number;
   tier: BrainDumpBindingTier;
   source: string;
+  target_kind: BrainDumpBindingTargetKind;
+  deadline_id: string | null;
+  target_due_at: string | null;
+  target_state: string | null;
+  target_origin: string | null;
 }
 
 export interface BrainDumpParseResponse {
@@ -67,7 +76,9 @@ export interface BrainDumpCommitItem {
 
 export interface BrainDumpCommitBinding {
   task_item_id: string;
-  deadline_item_id: string;
+  deadline_item_id?: string | null;
+  deadline_id?: string | null;
+  target_kind?: BrainDumpBindingTargetKind;
 }
 
 /** LYR-114 surface (2026-04-30): per-item failure shape so the
@@ -114,9 +125,18 @@ export async function parseBrainDump(
 export async function commitBrainDump(
   items: BrainDumpCommitItem[],
   bindings: BrainDumpCommitBinding[],
+  idempotencyKey?: string,
 ): Promise<BrainDumpCommitResponse> {
+  const key =
+    idempotencyKey ??
+    (typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? `brain-dump-${crypto.randomUUID()}`
+      : `brain-dump-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   return api<BrainDumpCommitResponse>("/v1/brain-dump/commit", {
     method: "POST",
+    headers: {
+      "X-Idempotency-Key": key,
+    },
     body: JSON.stringify({ items, bindings }),
   });
 }

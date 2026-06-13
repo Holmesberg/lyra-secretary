@@ -199,7 +199,7 @@ export function Hero() {
       {/* Build-publicly band */}
       <div className="mt-20 border-y border-hairline bg-void/60 py-5">
         <p className="mx-auto max-w-3xl px-6 text-center font-mono text-[11px] uppercase tracking-widest text-dust">
-          Pre-alpha dogfood by an AI Engineering student :: planning product,
+          Pre-alpha dogfood :: planning product,
           behavioral instrument, future-gated adaptive systems :: Cairo, 2026
         </p>
       </div>

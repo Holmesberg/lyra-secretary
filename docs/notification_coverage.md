@@ -9,24 +9,33 @@ trusted-alpha access-control, audit, redaction, and provider-failure boundary.
 
 - **Per-user queue:** authenticated in-app/user-facing delivery through
   `notifications:pending:{user_id}` and `/v1/notifications/pending`.
-- **Operator channel:** shared Telegram bot for system state and
-  operator-owned events only. Non-operator behavioral content must not be sent
-  to this channel.
+- **OpenClaw operator channel:** shared OpenClaw-polled queue for system state,
+  operator-owned events, and redacted observability metadata only. OpenClaw
+  relays this through its existing Telegram bot. Non-operator behavioral
+  content must not be sent to this channel.
 
 ## Boundary Rules
 
 1. User-owned behavioral events go to the per-user queue.
-2. Operator Telegram can mirror operator-owned events.
-3. System-health alerts may go to operator Telegram, but should avoid task
+2. The OpenClaw operator channel can mirror operator-owned events.
+3. The OpenClaw operator channel may mirror non-operator notification *metadata* only when
+   the payload body, task title, raw ids, URLs, emails, user agent, notes, and
+   error context are redacted or hashed. This is operator observability, not
+   delivery to the user.
+4. The OpenClaw operator channel may mirror in-app toast/modal output-surface *metadata*
+   only. Rendered copy stays in the product and exposure ledger; the operator channel sees
+   surface id, channel, hashed user/task/exposure/render ids, template, and
+   trigger source.
+5. System-health alerts may go to the OpenClaw operator channel, but should avoid task
    titles, emails, tokens, iCal URLs, OAuth tokens, or raw payload bodies.
-4. Repeated failures must use dedupe/cooldown through
+6. Repeated failures must use dedupe/cooldown through
    `app.services.operator_notifier.notify_operator`.
-5. Missing Telegram credentials or Telegram delivery failure must never break a
+7. Missing OpenClaw operator delivery must never break a
    product mutation or research write.
-6. Provider outage/auth failures are provider-scoped degradations unless they
+8. Provider outage/auth failures are provider-scoped degradations unless they
    are widespread or persistent. They should say what provider failed, whether
    reconnect is needed, and whether Lyra kept existing data.
-7. Scheduler/bootstrap/database failures are Lyra platform failures. If they
+9. Scheduler/bootstrap/database failures are Lyra platform failures. If they
    repeat, triage immediately.
 
 ## Operational Alert Contract
@@ -117,12 +126,13 @@ enrichment, not authentication, user scoping, or core scheduling truth. See
 
 ## Current Coverage Matrix
 
-| Subsystem | User queue | Operator Telegram | Cooldown | Notes |
+| Subsystem | User queue | OpenClaw operator channel | Cooldown | Notes |
 | --- | --- | --- | --- | --- |
-| Pre-task reminders | yes | operator-owned only | per task, 2h | Candidate scan is upcoming-task scoped; non-operator reminders stay in the authenticated queue. |
-| Timer overflow | yes | operator-owned only | per session, 24h | Non-operator timer state is not mirrored to the shared bot. |
-| Pause prediction | yes | operator-owned only | per firing, 10m | Candidate scan is active-session scoped; fixes the cross-user leak risk. |
-| Resume prediction | yes | operator-owned only | job-level firing caps | Existing `user.is_operator` gate remains required. |
+| Pre-task reminders | yes | operator-owned full text; non-operator redacted metadata only | per task, 2h | Candidate scan is upcoming-task scoped; user-facing content stays in the authenticated queue. |
+| Timer overflow | yes | operator-owned full text; non-operator redacted metadata only | per session, 24h | User-facing content stays in the authenticated queue. |
+| Pause prediction | yes | operator-owned full text; non-operator redacted metadata only | per firing, 10m | Candidate scan is active-session scoped; raw task ids/titles stay out of the shared bot. |
+| Resume prediction | yes | operator-owned full text; non-operator redacted metadata only | job-level firing caps | Raw task title and ids stay in the per-user queue; OpenClaw mirror sees redacted metadata only. |
+| In-app toasts/modals | n/a | redacted metadata only | no content mirror | `stopwatch.micro_mirror`, `stopwatch.calibration_nudge`, `task.creation_nudge`, and similar modal/toast surfaces mirror render metadata only. Dashboard pages/cards do not mirror. |
 | Scheduler health | no | yes | 30m | Job error, missed run, and max-instance events. |
 | Per-user job exceptions | no | yes | 30m | Reports job/user id and exception class only. |
 | Moodle iCal | no | operator-owned/system | 15m-6h | Errors, summaries, and unparseable-event drift. |
@@ -139,5 +149,15 @@ enrichment, not authentication, user scoping, or core scheduling truth. See
   failure affects user-facing state.
 - Feedback has a separate operator feedback fanout because it intentionally
   includes user-submitted text and optional user email.
-- Non-operator task titles, pause predictions, reminders, and timer events must
-  not enter the shared operator Telegram channel.
+- Non-operator task titles, raw pause/resume/reminder/timer message bodies,
+  URLs, emails, user agents, notes, error context, and raw ids must not enter
+  the shared OpenClaw operator channel.
+- Redacted notification metadata may enter the OpenClaw operator channel only
+  through `app.services.notification_queue.mirror_user_notification_to_operator`
+  and only as an observability mirror after the authenticated per-user queue
+  write is attempted.
+- Redacted toast/modal output-surface metadata may enter the OpenClaw operator
+  channel only through
+  `app.services.output_surfaces.mirror_output_surface_render_to_operator`.
+  Dashboard page/card renders are excluded to avoid high-volume behavioral
+  surveillance.

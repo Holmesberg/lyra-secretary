@@ -479,6 +479,11 @@ def test_cross_user_interruption_blocked(adv_users, client):
 @needs_redis
 def test_notifications_per_user_isolated(adv_users, client):
     """Push a notification as user 98 → user 99 must NOT receive it."""
+    # Web delivery is peek/ack now. Clear prior Redis residue for this
+    # isolation test through the operator drain endpoint before asserting counts.
+    client.get("/v1/notifications/openclaw/pending", headers=_h(98))
+    client.get("/v1/notifications/openclaw/pending", headers=_h(99))
+
     # Push as user 98
     client.post(
         "/v1/notifications/push",
@@ -486,13 +491,13 @@ def test_notifications_per_user_isolated(adv_users, client):
         headers=_h(98),
     )
     # Poll as user 99 — must get nothing
-    r99 = client.get("/v1/notifications/pending", headers=_h(99))
+    r99 = client.get("/v1/notifications/web/pending", headers=_h(99))
     assert r99.status_code == 200
     assert r99.json()["count"] == 0, (
         f"user 99 received user 98's notification: {r99.json()}"
     )
     # Poll as user 98 — must get the notification
-    r98 = client.get("/v1/notifications/pending", headers=_h(98))
+    r98 = client.get("/v1/notifications/web/pending", headers=_h(98))
     assert r98.status_code == 200
     assert r98.json()["count"] == 1
     assert r98.json()["notifications"][0]["message"] == "eve's reminder"

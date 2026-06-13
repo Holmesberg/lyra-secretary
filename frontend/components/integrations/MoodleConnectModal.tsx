@@ -12,7 +12,7 @@
  * unconnected get inputs, whichever are connected get skipped.
  *
  * Trust-first copy: no research vocabulary. Show the value
- * proposition concretely ("found N assignments"; "+ auto-mark
+ * proposition concretely ("found N items"; "+ auto-mark
  * complete when you submit") before asking for credentials.
  */
 import { useState } from "react";
@@ -217,7 +217,7 @@ export function MoodleConnectModal({
           <div className="flex flex-col gap-4">
             <p className="text-sm text-dust">
               Lyra reads from Moodle in two ways. We never write back, never
-              modify your courses.
+              modify your Moodle data.
             </p>
 
             {showUrlInput && (
@@ -255,7 +255,7 @@ export function MoodleConnectModal({
                   )}
                   Web Services token{" "}
                   <span className="font-normal normal-case tracking-normal text-dust">
-                    — auto-marks complete + backfills past assignments
+                    — auto-marks complete + backfills past items
                   </span>
                 </p>
                 <ol className="ml-4 list-decimal space-y-1 text-xs text-dust">
@@ -294,7 +294,7 @@ export function MoodleConnectModal({
                 <Input
                   id="moodle-url"
                   type="url"
-                  placeholder="https://lms.your-school.edu/calendar/export_execute.php?..."
+                  placeholder="https://lms.example.edu/calendar/export_execute.php?..."
                   value={url}
                   onChange={(e) => {
                     setUrl(e.target.value);
@@ -335,7 +335,7 @@ export function MoodleConnectModal({
                   <p className="text-xs text-ember">{copyForError(wsErrorCode)}</p>
                 )}
                 <p className="text-[11px] text-dust">
-                  Lets Lyra check Moodle every 6h to auto-mark deadlines complete when you submit, and import past assignments Lyra missed.
+                  Lets Lyra check Moodle every 6h to auto-mark deadlines complete when you submit, and import past items Lyra missed.
                 </p>
                 {/* Encryption claim — operator request 2026-05-01 to surface
                     this prominently so users feel safe. Bright-white here is

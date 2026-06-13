@@ -203,6 +203,38 @@ def test_outcome_stamped_on_complete_task(db):
     assert event.resolved_at is not None
 
 
+def test_outcome_can_be_corrected_to_active_execution_after_pause_subtraction(db):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    start, end = _future_window()
+
+    tm = TaskManager(db)
+    task, _, _ = tm.create_task(
+        title="paused task",
+        start=start,
+        end=end,
+        nudge_decision="accepted",
+        nudge_suggested_duration_minutes=90,
+        nudge_bias_factor=1.4,
+        nudge_sample_size=12,
+    )
+
+    task.state = TaskState.EXECUTING
+    task.executed_start_utc = datetime.utcnow() - timedelta(minutes=90)
+    db.commit()
+
+    tm.complete_task(
+        task_id=task.task_id,
+        executed_start=task.executed_start_utc,
+        executed_end=datetime.utcnow(),
+    )
+    tm.reconcile_calibration_nudge_outcome(task.task_id, 60)
+    db.commit()
+
+    event = db.query(CalibrationNudgeEvent).filter_by(task_id=task.task_id).first()
+    assert event.executed_duration_minutes == 60
+
+
 def test_voided_event_not_re_stamped(db):
     """If event was voided post-creation, complete_task does not resurrect it."""
     user = _make_user(db)

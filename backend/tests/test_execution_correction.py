@@ -38,6 +38,31 @@ def _seed_executed(db, *, task_id: str = "exec-correction-1") -> Task:
     return task
 
 
+def _seed_retroactive_executed(
+    db,
+    *,
+    task_id: str = "exec-correction-retroactive",
+) -> Task:
+    start = datetime(2026, 6, 2, 13, 15, 0)
+    task = Task(
+        task_id=task_id,
+        title="Reported meeting",
+        category="work",
+        planned_start_utc=start,
+        planned_end_utc=start + timedelta(minutes=105),
+        planned_duration_minutes=105,
+        executed_start_utc=start,
+        executed_end_utc=start + timedelta(minutes=105),
+        executed_duration_minutes=105,
+        state=TaskState.EXECUTED,
+        initiation_status="retroactive",
+        user_id=USER_ID,
+    )
+    db.add(task)
+    db.commit()
+    return task
+
+
 def test_execution_correction_is_append_only_and_query_exposes_effective_fields(client, db):
     task = _seed_executed(db, task_id="exec-correction-append")
 
@@ -119,18 +144,33 @@ def test_execution_correction_rejects_non_executed_tasks(client, db):
     assert "Only EXECUTED tasks" in r.json()["detail"]
 
 
-def test_execution_correction_rejects_retroactive_logs(client, db):
-    task = _seed_executed(db, task_id="exec-correction-retroactive")
-    task.initiation_status = "retroactive"
-    db.commit()
+def test_execution_correction_accepts_retroactive_reported_end_without_stopwatch(client, db):
+    task = _seed_retroactive_executed(
+        db,
+        task_id="exec-correction-retroactive-end",
+    )
 
     r = client.post(
         f"/v1/tasks/{task.task_id}/execution-correction",
-        json={"corrected_duration_minutes": 75},
+        json={"corrected_end_time": "2026-06-02T14:30:00Z"},
         headers=auth_headers(USER_ID),
     )
-    assert r.status_code == 400
-    assert "only for observed stopwatch sessions" in r.json()["detail"]
+    assert r.status_code == 200
+    body = r.json()
+    assert body["corrected"] is True
+    assert body["provenance"] == "retroactive"
+    assert body["vt17_eligible"] is False
+    assert body["original_executed_duration_minutes"] == 105
+    assert body["corrected_executed_duration_minutes"] == 75
+
+    db.refresh(task)
+    assert task.executed_duration_minutes == 105
+    assert task.executed_end_utc == datetime(2026, 6, 2, 15, 0, 0)
+
+    row = db.query(TaskExecutionCorrection).filter_by(task_id=task.task_id).one()
+    assert row.corrected_executed_end_utc == datetime(2026, 6, 2, 14, 30, 0)
+    assert row.corrected_executed_duration_minutes == 75
+    assert row.observed_paused_minutes == 0
 
 
 def test_execution_correction_excluded_from_measured_execution_query(client, db):

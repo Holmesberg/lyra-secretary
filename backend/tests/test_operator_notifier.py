@@ -1,13 +1,27 @@
-from unittest.mock import patch
+import json
 
 import pytest
 
+from app.services import operator_notifier
 from app.services.operator_notifier import (
     clear_operator_notification_dedupe,
     format_alert_context,
     notify_operator,
     redacted_user_ref,
 )
+
+
+class _FakeRedisClient:
+    def __init__(self, pushes):
+        self.client = _FakeRedis(pushes)
+
+
+class _FakeRedis:
+    def __init__(self, pushes):
+        self._pushes = pushes
+
+    def rpush(self, key, value):
+        self._pushes.append((key, value))
 
 
 @pytest.fixture(autouse=True)
@@ -17,50 +31,95 @@ def _clear_dedupe():
     clear_operator_notification_dedupe()
 
 
-def test_notify_operator_formats_source_and_severity():
-    with patch(
-        "app.services.operator_notifier.send_telegram_message_sync"
-    ) as mock_send:
-        mock_send.return_value = True
+def test_notify_operator_queues_openclaw_operator_alert(monkeypatch):
+    pushes = []
+    monkeypatch.setattr(
+        operator_notifier,
+        "RedisClient",
+        lambda: _FakeRedisClient(pushes),
+    )
+    monkeypatch.setattr(
+        operator_notifier.settings,
+        "OPENCLAW_OPERATOR_USER_ID",
+        1,
+    )
+    monkeypatch.setattr(
+        operator_notifier.settings,
+        "OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED",
+        True,
+    )
 
-        assert notify_operator("hello", source="unit.test", severity="warn")
+    assert notify_operator("hello", source="unit.test", severity="warn")
 
-    text = mock_send.call_args.args[0]
-    assert "`[unit.test]`" in text
-    assert "hello" in text
-
-
-def test_notify_operator_dedupes_with_cooldown():
-    with patch(
-        "app.services.operator_notifier.send_telegram_message_sync"
-    ) as mock_send:
-        mock_send.return_value = True
-
-        assert notify_operator(
-            "first",
-            source="unit.test",
-            severity="error",
-            dedupe_key="same",
-            cooldown_seconds=60,
-        )
-        assert not notify_operator(
-            "second",
-            source="unit.test",
-            severity="error",
-            dedupe_key="same",
-            cooldown_seconds=60,
-        )
-
-    assert mock_send.call_count == 1
+    assert len(pushes) == 1
+    key, raw = pushes[0]
+    payload = json.loads(raw)
+    assert key == "notifications:pending:1"
+    assert payload["type"] == "operator_alert"
+    assert payload["source"] == "unit.test"
+    assert payload["severity"] == "warn"
+    assert "[warn] [unit.test]" in payload["message"]
+    assert "hello" in payload["message"]
+    assert payload["created_at"]
 
 
-def test_notify_operator_never_raises_on_sender_failure():
-    with patch(
-        "app.services.operator_notifier.send_telegram_message_sync"
-    ) as mock_send:
-        mock_send.side_effect = RuntimeError("telegram down")
+def test_notify_operator_dedupes_with_cooldown(monkeypatch):
+    pushes = []
+    monkeypatch.setattr(
+        operator_notifier,
+        "RedisClient",
+        lambda: _FakeRedisClient(pushes),
+    )
+    monkeypatch.setattr(
+        operator_notifier.settings,
+        "OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED",
+        True,
+    )
 
-        assert not notify_operator("hello", source="unit.test", severity="error")
+    assert notify_operator(
+        "first",
+        source="unit.test",
+        severity="error",
+        dedupe_key="same",
+        cooldown_seconds=60,
+    )
+    assert not notify_operator(
+        "second",
+        source="unit.test",
+        severity="error",
+        dedupe_key="same",
+        cooldown_seconds=60,
+    )
+
+    assert len(pushes) == 1
+
+
+def test_notify_operator_never_raises_on_queue_failure(monkeypatch):
+    class BrokenRedisClient:
+        @property
+        def client(self):
+            raise RuntimeError("redis down")
+
+    monkeypatch.setattr(operator_notifier, "RedisClient", BrokenRedisClient)
+
+    assert not notify_operator("hello", source="unit.test", severity="error")
+
+
+def test_notify_operator_can_be_disabled(monkeypatch):
+    pushes = []
+    monkeypatch.setattr(
+        operator_notifier,
+        "RedisClient",
+        lambda: _FakeRedisClient(pushes),
+    )
+    monkeypatch.setattr(
+        operator_notifier.settings,
+        "OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED",
+        False,
+    )
+
+    assert not notify_operator("hello", source="unit.test", severity="info")
+    assert pushes == []
 
 
 def test_redacted_user_ref_is_stable_and_non_raw():

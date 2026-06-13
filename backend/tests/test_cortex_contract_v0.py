@@ -25,6 +25,15 @@ from app.services.cortex import (
 from tests.conftest import auth_headers
 
 
+def _recent_start() -> datetime:
+    return (datetime.utcnow() - timedelta(days=2)).replace(
+        hour=9,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+
 @pytest.fixture(autouse=True)
 def _clean(db):
     db.rollback()
@@ -64,7 +73,7 @@ def _task(
     deadline_id: str | None = None,
     start: datetime | None = None,
 ) -> Task:
-    start = start or datetime(2026, 5, 1, 9, 0, 0)
+    start = start or _recent_start()
     end = start + timedelta(minutes=planned)
     executed_start = start if executed is not None else None
     executed_end = start + timedelta(minutes=executed) if executed is not None else None

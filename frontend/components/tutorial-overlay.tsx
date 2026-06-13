@@ -30,9 +30,9 @@ const STEPS: Array<{ title: string; body: string }> = [
       "Lyra measures how long your tasks actually take vs how long you thought they would. Over time you see the shape of your own planning — where you overrun, where you scope-inflate, where you're spot-on.",
   },
   {
-    title: "Your first task is waiting",
+    title: "Start from capture",
     body:
-      '"Plan your week — brain dump and triage" has been seeded on your /today feed. Click Start to fire a timer; we\'ll ask how ready you feel before you begin. Edit the time or delete it if you want to build your own setup.',
+      "Use the Pulse capture bar to brain-dump tasks or obligations. Lyra shows a preview first, so you can edit dates, keep or remove items, and confirm only what should become real.",
   },
   {
     title: "A 1–5 readiness rating",

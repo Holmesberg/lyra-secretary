@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, operator_user_from_scope
 from app.db.scoping import get_current_user_id
 from app.services.notification_queue import (
+    ack_user_notifications,
     drain_user_notifications,
     enqueue_user_notification,
+    peek_user_notifications,
 )
 from app.services.operator_notifier import notify_operator
 
@@ -31,28 +33,95 @@ def _require_explicit_identity(request: Request) -> int:
 
 
 @router.post("/push")
-def push_notification(payload: dict, request: Request):
+def push_notification(
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Legacy HTTP bridge for per-user notification enqueue."""
     uid = _require_explicit_identity(request)
-    enqueue_user_notification(uid, payload)
+    enqueue_user_notification(uid, payload, db=db)
+    db.commit()
     return {"queued": True}
 
 
 @router.get("/pending")
-def get_pending(request: Request):
-    """OpenClaw polls this to get pending notifications for the current user."""
+def get_pending(
+    request: Request,
+    db: Session = Depends(get_db),
+    channel: Literal["openclaw", "web"] | None = None,
+):
+    """Legacy route; new callers must use explicit web/openclaw endpoints."""
     uid = _require_explicit_identity(request)
-    items = drain_user_notifications(uid)
+    if channel is None:
+        raise HTTPException(
+            status_code=400,
+            detail="notification channel required; use /web/pending or /openclaw/pending",
+        )
+    if channel == "web":
+        items = peek_user_notifications(uid, channel="web", db=db)
+        db.commit()
+    else:
+        items = drain_user_notifications(uid, channel="openclaw")
+    return {"notifications": items, "count": len(items)}
+
+
+@router.get("/web/pending")
+def get_web_pending(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Peek web-safe notifications without draining operator payloads."""
+    uid = _require_explicit_identity(request)
+    items = peek_user_notifications(uid, channel="web", db=db)
+    db.commit()
+    return {"notifications": items, "count": len(items)}
+
+
+class WebNotificationAckRequest(BaseModel):
+    notification_ids: list[str] = Field(default_factory=list)
+    event_type: Literal[
+        "rendered",
+        "acted",
+        "dismissed",
+        "expired",
+        "lost_unrendered",
+    ] = "rendered"
+
+
+@router.post("/web/ack")
+def ack_web_pending(
+    payload: WebNotificationAckRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Acknowledge web notifications after render/dismiss/action."""
+    uid = _require_explicit_identity(request)
+    removed = ack_user_notifications(
+        uid,
+        payload.notification_ids,
+        db=db,
+        event_type=payload.event_type,
+    )
+    db.commit()
+    return {"acknowledged": removed}
+
+
+@router.get("/openclaw/pending")
+def get_openclaw_pending(request: Request):
+    """Drain notifications for the OpenClaw/operator delivery channel."""
+    uid = _require_explicit_identity(request)
+    items = drain_user_notifications(uid, channel="openclaw")
     return {"notifications": items, "count": len(items)}
 
 
 # ---------------------------------------------------------------------------
-# Operator-only Telegram mirror (2026-04-30)
+# Operator-only OpenClaw channel mirror (2026-04-30)
 # ---------------------------------------------------------------------------
 
 
 class OperatorNotifyRequest(BaseModel):
-    """Frontend-driven Telegram mirror payload."""
+    """Frontend-driven OpenClaw operator-channel payload."""
 
     message: str = Field(..., min_length=1, max_length=2000)
     severity: Literal["info", "warn", "error", "alert"] = "info"
@@ -65,7 +134,7 @@ def post_operator_notification(
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    """Mirror a frontend signal into the operator's Telegram."""
+    """Mirror a frontend signal into the OpenClaw operator channel."""
     operator_user_from_scope(db, request=request)
     sent = notify_operator(
         payload.message,

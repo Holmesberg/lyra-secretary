@@ -21,6 +21,7 @@ architecture is reviewed and the relevant validity gates are satisfied.
 
 | Path | Working title | Dependency | Near-term value |
 | --- | --- | --- | --- |
+| Paper 0 | Measurement Integrity Before Agency Claims | Clean-data, exposure, provenance, and slice-invariance examples from LyraOS bug hunts and cohort-readiness work | Methods / construct-validity contribution |
 | Paper 1 | Metacognitive discrepancy as predictor of execution failure in knowledge workers | H1 eligible paired sessions, VT analyses, exposure stratification | Core hypothesis test |
 | Paper 2 | Sequential task abandonment in knowledge workers: evidence for a cascade failure model of daily execution | Enough daily sequences across users, VT-20 structural controls | Fast behavioral trace paper |
 | Paper 3 | Unplanned execution rate: a missing variable in personal productivity research | Construct definition plus operator/alpha demonstration | Instrument/measurement contribution |
@@ -37,6 +38,29 @@ stabilize instrument
 ```
 
 Publication is quality-control infrastructure, not the product's primary goal.
+
+### Paper 0 - Measurement Integrity Before Agency Claims
+
+The newest paper direction is methodological:
+
+```text
+Systems that optimize human behavior too early make invalid agency claims.
+LyraOS is a case study in trying not to do that.
+```
+
+The argument is that productivity and AI-assistant systems often jump from
+events and metrics directly to claims about agency, focus, motivation,
+avoidance, discipline, recovery, or improvement. LyraOS's more publishable
+contribution may be the architecture that refuses that jump until variables
+survive clean-data checks, provenance checks, exposure contamination checks,
+and slice-invariance tests.
+
+Paper 0 can be written before the strongest predictive papers if it stays
+honest: it is a methods and construct-validity paper, not proof that LyraOS has
+already optimized behavior.
+
+Canonical note:
+`docs/measurement_integrity_before_agency_claims.md`.
 
 ## 2. Friction-Tested Instrument Design
 

@@ -7,6 +7,9 @@ heuristic-auto bindings persisted after explicit user rejection.
 Behavior under fix:
   - System-auto sources (heuristic_*, llm_auto_confirmed, parser_auto)
     → clear deadline_id + reset deadline_match_source on reject
+  - Alternative-suggestion "Keep current" rejects only the alternative,
+    preserving the current canonical deadline even when its source is
+    system-auto
   - User-owned sources (user_explicit, manual_user) → preserve
     deadline_id; rejection only stops the chip from re-rendering
 """
@@ -57,6 +60,20 @@ def _make_deadline(db, user_id: int) -> Deadline:
         deadline_id=str(uuid4()),
         user_id=user_id,
         title="CSE221 Major Task Phase II",
+        due_at_utc=datetime.utcnow() + timedelta(days=7),
+        state="planned",
+    )
+    db.add(d)
+    db.commit()
+    db.refresh(d)
+    return d
+
+
+def _make_named_deadline(db, user_id: int, title: str) -> Deadline:
+    d = Deadline(
+        deadline_id=str(uuid4()),
+        user_id=user_id,
+        title=title,
         due_at_utc=datetime.utcnow() + timedelta(days=7),
         state="planned",
     )
@@ -130,6 +147,45 @@ def test_reject_clears_deadline_for_llm_auto_confirmed_source(db, client):
     refreshed = db.query(Task).filter(Task.task_id == task.task_id).first()
     assert refreshed.deadline_id is None
     assert refreshed.deadline_match_source is None
+    assert refreshed.deadline_match_confidence is None
+
+
+def test_reject_alternative_keeps_current_system_auto_binding(db, client):
+    """The "Possible better match" chip's Keep Current action must not
+    undo the current binding. This protects tasks like AI Bdaya that are
+    bound to one deadline while the LLM suggests a different one."""
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    current = _make_named_deadline(db, user.user_id, "AI project discussion")
+    alternative = _make_named_deadline(db, user.user_id, "AI final")
+    task = _make_task(
+        db,
+        user.user_id,
+        deadline_id=current.deadline_id,
+        source="llm_auto_confirmed",
+    )
+    task.deadline_match_confidence = 0.7
+    task.llm_alternative_suggestion = {
+        "deadline_id": alternative.deadline_id,
+        "title": alternative.title,
+        "confidence": 0.85,
+        "from_source": "llm_auto",
+    }
+    db.commit()
+
+    r = client.post(
+        f"/v1/tasks/{task.task_id}/reject-llm-binding",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert r.status_code == 200
+    db.expire_all()
+    refreshed = db.query(Task).filter(Task.task_id == task.task_id).first()
+    assert refreshed.deadline_id == current.deadline_id
+    assert refreshed.deadline_match_source == "llm_auto_confirmed"
+    assert refreshed.deadline_match_confidence == 0.7
+    assert refreshed.llm_alternative_suggestion is None
+    assert refreshed.llm_binding_rejected_at is not None
 
 
 def test_reject_preserves_deadline_for_user_explicit_source(db, client):

@@ -26,7 +26,7 @@
  * Zero new backend endpoints. Zero schema changes. All data sourced
  * from endpoints that existed before this commit.
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 import { ackExposureRender, api } from "@/lib/api";
@@ -62,6 +62,7 @@ import { PulseAcademicPressureMap } from "@/components/pulse/PulseAcademicPressu
 import { PulseRecovery } from "@/components/pulse/PulseRecovery";
 import { PulseIntegrationsV2 } from "@/components/pulse/PulseIntegrationsV2";
 import { PulseQuickCaptureV2 } from "@/components/pulse/PulseQuickCaptureV2";
+import { PulseReentryQueue } from "@/components/pulse/PulseReentryQueue";
 import { JarvisFloatingButton } from "@/components/jarvis/JarvisFloatingButton";
 
 interface MeLite {
@@ -80,16 +81,25 @@ function todayKey(): string {
 }
 
 function fourteenDaysAgoKey(): string {
+  return dateKeyOffset(-13); // inclusive of today = 14 days total
+}
+
+function dateKeyOffset(offsetDays: number): string {
   const d = new Date();
-  d.setDate(d.getDate() - 13); // inclusive of today = 14 days total
+  d.setDate(d.getDate() + offsetDays);
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+const TASK_EVIDENCE_HISTORY_DAYS = 62;
 
 export default function PulsePage() {
   const today = todayKey();
   const fortnightStart = fourteenDaysAgoKey();
   const { data: session } = useSession();
+  const [pressureHorizonDays, setPressureHorizonDays] = useState(14);
+  const taskEvidenceStart = dateKeyOffset(-TASK_EVIDENCE_HISTORY_DAYS);
+  const taskEvidenceEnd = dateKeyOffset(pressureHorizonDays);
 
   const meQ = useQuery<MeLite>({
     queryKey: ["me"],
@@ -110,6 +120,11 @@ export default function PulsePage() {
     queryFn: () => queryTasksRange(fortnightStart, today),
     staleTime: 60_000,
   });
+  const taskEvidenceQ = useQuery<QueryResponse>({
+    queryKey: ["tasks-evidence", taskEvidenceStart, taskEvidenceEnd],
+    queryFn: () => queryTasksRange(taskEvidenceStart, taskEvidenceEnd),
+    staleTime: 60_000,
+  });
   const deadlinesQ = useQuery<DeadlineListResponse>({
     queryKey: ["deadlines"],
     queryFn: () => listDeadlines(),
@@ -121,8 +136,8 @@ export default function PulsePage() {
     staleTime: 60_000,
   });
   const pressureQ = useQuery<AcademicPressureMapResponse>({
-    queryKey: ["academic-pressure-map", 14],
-    queryFn: () => getAcademicPressureMap(14),
+    queryKey: ["pressure-map", pressureHorizonDays],
+    queryFn: () => getAcademicPressureMap(pressureHorizonDays),
     staleTime: 60_000,
   });
 
@@ -132,6 +147,7 @@ export default function PulsePage() {
 
   const tasksToday = tasksTodayQ.data ?? [];
   const recentTasks = tasksRangeQ.data?.tasks ?? [];
+  const taskEvidence = taskEvidenceQ.data?.tasks ?? recentTasks;
   const deadlines = deadlinesQ.data?.deadlines ?? [];
   const integrations = integrationsQ.data?.integrations ?? [];
 
@@ -174,6 +190,10 @@ export default function PulsePage() {
         overdueCount={overdueCount}
       />
 
+      <PulseQuickCaptureV2 />
+
+      <PulseReentryQueue tasks={taskEvidence} />
+
       {/* HERO ROW — Today's Plan | Focus Card | Deadlines */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="lg:col-span-3">
@@ -199,6 +219,9 @@ export default function PulsePage() {
           <PulseAcademicPressureMap
             pressure={pressureQ.data ?? null}
             loading={pressureQ.isLoading}
+            horizonDays={pressureHorizonDays}
+            onHorizonChange={setPressureHorizonDays}
+            taskEvidence={taskEvidence}
           />
         </div>
         <div className="lg:col-span-2">
@@ -208,8 +231,6 @@ export default function PulsePage() {
           <PulseIntegrationsV2 integrations={integrations} />
         </div>
       </div>
-
-      <PulseQuickCaptureV2 />
 
       <div className="text-center font-mono text-[10px] uppercase tracking-widest text-dust-deep">
         // /pulse v2 · Neural Noir command surface · {recentTasks.length}{" "}

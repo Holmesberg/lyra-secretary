@@ -9,6 +9,7 @@
 | self-reference loop | insights/nudges change the behavior they measure | critical | partial `ReflectionViewLog`, nudge/prediction logs | full exposure ledger |
 | intervention contamination | calibration nudges affect planned durations | critical | `CalibrationNudgeEvent` logs some decisions | unified intervention profile |
 | exposure contamination | user sees pattern, adapts future self-report/behavior | critical | reflection impressions partially logged | acknowledgement/engagement/acted-upon states |
+| agency-claim leap | computable events or metrics are treated as focus, motivation, avoidance, discipline, recovery, or agency constructs without construct defense | critical | `docs/measurement_integrity_before_agency_claims.md` documents the paper-direction guardrail | event->metric->construct->bounded-claim trace for every promoted construct |
 | non-identifiability | same observable has multiple hidden causes | critical | Cortex topology marked hypothesis | stronger scope/interruption evidence |
 | missing ground truth | no external truth for focus/flow/calibration | high | Cortex forbids latent truth | explicit validation studies |
 | survivorship bias | retained users may be instrumentation-tolerant | high | funnel instrumentation exists | cohort stratification by exposure and dropout reason |
@@ -21,6 +22,8 @@
 | external-source contamination | imported deadlines constrain user planning | medium/high | Cortex planning profile excludes external deadline-bound tasks | enforce in all H1 queries |
 | timer artifacts | forgotten timers, stale sessions, auto-close | medium/high | recovery jobs and flags | artifact flags in all learning profiles |
 | LLM suggestion contamination | LLM changes task/deadline interpretation | medium | trust-not-rewrite fields | exposure ledger for chips |
+| context-switch causal overclaim | switch/interruption topology is treated as the cause of recovery friction rather than a correlated consequence | high | `docs/context_switching_footprint_hypothesis.md` documents observational framing | matched no-switch baselines, confound controls, exposure-aware analysis |
+| fragmentation scoring drift | open-thread recovery support turns into a scalar score that makes users feel judged | high | Manifesto H8 and Wave 3.5 ban user-facing fragmentation/switching scores | keep surface action-oriented: pick back up, reschedule, drop, mark done, keep parked |
 
 ## Most Dangerous Current Failure Mode
 
@@ -33,6 +36,21 @@ The system can become unable to distinguish:
 
 This is identifiability collapse. Cortex v0 prevents some metric drift but does
 not solve exposure contamination.
+
+A related publication-level failure mode is the agency-claim leap:
+
+```text
+events -> metrics -> agency claim
+```
+
+The safer chain is:
+
+```text
+events -> metrics -> construct defense -> bounded claim
+```
+
+That direction is documented in
+`docs/measurement_integrity_before_agency_claims.md`.
 
 ## Data Validity Strengths
 
@@ -54,6 +72,9 @@ not solve exposure contamination.
 - `personal_weight` is count-based, not variance/stationarity based.
 - Pause predictor confidence uses absolute minute dispersion.
 - Scope bullet growth is an ambiguous proxy.
+- Context-switch topology is consequence evidence first; causal attribution
+  requires controls for task difficulty, ambiguity, emergencies, overload,
+  deadline pressure, exposure state, and metacognitive discrepancy.
 
 ## Falsifiability Preservation Rules
 
@@ -64,3 +85,6 @@ not solve exposure contamination.
    validated.
 5. Cohort-level claims must separate operator, trusted users, alpha users, and
    imported/external-source contexts.
+6. No analysis may infer focus, motivation, avoidance, discipline, recovery, or
+   agency directly from raw events or computed metrics without documenting the
+   construct chain and slice where the claim is valid.

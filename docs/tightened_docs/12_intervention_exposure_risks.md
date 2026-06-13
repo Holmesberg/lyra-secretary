@@ -16,6 +16,8 @@
 | tutorial/onboarding | explains measurement concepts | some reflection logging | primes reporting behavior |
 | JARVIS | operator interpretation | `JarvisInvocation` | can reshape operator behavior and theory |
 | LLM deadline chip | candidate binding | task `llm_*` state, accept/reject | alters task-deadline semantics |
+| open-thread recovery surface | parked work / re-entry options after switches or interruptions | future output surface / exposure ledger | changes future switching, pausing, and self-interpretation |
+| context-switching footprint insight | switch/re-entry pattern summary | future output surface / exposure ledger | higher risk than open-thread recovery; defer until sample support |
 
 ## Exposure State Gaps
 
@@ -46,6 +48,12 @@ for causal analysis. Missing states:
 
 Once a user sees "you usually underestimate development tasks," future
 development-task planning is no longer naturalistic. It is exposed behavior.
+
+Once a user sees "task switches correlate with longer re-entry," future
+pause/switch behavior is no longer naturalistic. It is exposed behavior and
+must be separated from pre-exposure baseline windows. Prefer the safer
+near-term surface: "open threads" with explicit recovery actions. Do not
+publish a fragmentation score or "you switch a lot" insight.
 
 Learning metrics must condition on exposure or freeze the pre-exposure window.
 

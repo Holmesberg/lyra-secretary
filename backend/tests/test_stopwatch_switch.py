@@ -281,6 +281,58 @@ def test_switch_from_executing_source_to_paused_target(db):
 
 
 @needs_redis
+def test_start_planned_task_as_interruption_pauses_running_parent(db):
+    """Starting a PLANNED task with interruption_type pauses the running parent."""
+    source = _make_task(db, title="source", state=TaskState.EXECUTING)
+    source_session = _make_open_session(db, source, start_offset_min=25)
+    target = _make_task(db, title="target", state=TaskState.PLANNED)
+
+    _set_redis_active(
+        source_session.session_id,
+        source.task_id,
+        source.title,
+        source_session.start_time_utc.isoformat(),
+        paused=False,
+    )
+
+    mgr = StopwatchManager(db)
+    session, child, is_future = mgr.start(
+        task_id=target.task_id,
+        pre_task_readiness=4,
+        interruption_type="scheduled_override",
+    )
+
+    assert is_future is False
+    assert session.task_id == target.task_id
+    assert child.parent_task_id == source.task_id
+    assert child.interruption_type == "scheduled_override"
+    assert child.pre_task_readiness == 4
+
+    db.refresh(source)
+    db.refresh(target)
+    assert source.state == TaskState.PAUSED
+    assert target.state == TaskState.EXECUTING
+
+    source_pause_events = (
+        db.query(PauseEvent)
+        .filter(PauseEvent.session_id == source_session.session_id)
+        .all()
+    )
+    assert len(source_pause_events) == 1
+    assert source_pause_events[0].pause_reason == "task_switch"
+    assert source_pause_events[0].pause_initiator == "self"
+    assert source_pause_events[0].resumed_at_utc is None
+
+    from app.utils.redis_client import RedisClient
+    rc = RedisClient()
+    active = rc.get_active_stopwatch(str(USER_ID))
+    assert active is not None
+    assert active["task_id"] == target.task_id
+    assert active["session_id"] == session.session_id
+    assert rc.get_pause_state(str(USER_ID)) is None
+
+
+@needs_redis
 def test_switch_from_paused_source_to_paused_target_no_duplicate_event(db):
     """Source PAUSED (interruption-flow source) + target PAUSED → swap with NO new pause_event for source.
 

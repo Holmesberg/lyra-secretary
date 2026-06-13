@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 
 from app.api.deps import get_db, operator_user_from_scope
+from app.core.authority import authority_for_surface
 from app.db.models import (
     Archetype,
     ArchetypeAssignment,
@@ -21,7 +22,19 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import get_current_user_id
+from app.schemas.insights import (
+    InsightAuditEnvelope,
+    PublicEvidenceRow,
+    UserFacingInsightCard,
+)
 from app.services.exposure_ledger import baseline_clean_task_ids
+from app.services.interruption_metrics import task_interruption_metrics_from_sessions
+from app.services.cortex import planning_calibration_baseline_tasks
+from app.services.claim_compiler import (
+    PRIMARY_SYNTHESIS_ID,
+    PRIMARY_SYNTHESIS_SURFACE_ID,
+    compile_primary_synthesis,
+)
 from app.services.output_surfaces import (
     RULE11_SUPPRESSION_REASON,
     emit_surface_render,
@@ -34,6 +47,42 @@ from app.utils.time_utils import to_local, now_utc, strip_tz
 from app.utils.redis_client import RedisClient
 
 router = APIRouter()
+
+INSIGHT_TITLES = {
+    "primary_synthesis": "Primary pattern",
+    "time_of_day_bias": "Time of day",
+    "readiness_predicts_outcome": "Readiness signal",
+    "readiness_time_of_day": "Readiness timing",
+    "abandonment_pattern": "Not started",
+    "estimation_accuracy_trend": "Estimation trend",
+    "best_category": "Best category",
+    "worst_category": "Worst category",
+    "discrepancy_signal": "Discrepancy",
+    "pause_pattern": "Pause pattern",
+    "occupancy_footprint": "Planning footprint",
+    "morning_anchor_cascade": "Morning plan",
+    "retroactive_rate": "Retroactive rate",
+    "initiation_delay": "Start delay",
+    "archetype_divergence": "Starting profile drift",
+    "calibration_maturation": "Personal calibration",
+}
+
+CONFIDENCE_LABELS = {
+    "high": "High confidence",
+    "medium": "Medium confidence",
+    "low": "Watching this pattern",
+}
+
+AUTHORITY_LABELS = {
+    "observed_trace": "Observed trace",
+    "derived_metric": "Derived metric",
+    "interpretation": "Interpretation",
+    "suggestion": "Suggestion",
+    "intervention": "Intervention",
+    "adaptation": "Future-gated adaptation",
+    "mutation": "Mutation",
+    "operator_only_action": "Operator-only action",
+}
 
 
 def _time_of_day(local_dt) -> str:
@@ -288,10 +337,112 @@ def _insight(
 
 
 def _public_insight(result: dict) -> dict:
+    """Translate an internal insight candidate into an explicit public card."""
+    insight_id = str(result["id"])
+    confidence = result.get("confidence") or "low"
+    if confidence not in CONFIDENCE_LABELS:
+        confidence = "low"
+    data_points = int(result.get("data_points") or 0)
+    evidence_rows = [
+        PublicEvidenceRow(
+            label=str(row.get("label", "")),
+            value=str(row.get("value", "")),
+            source_insight_id=str(row.get("source_insight_id", "")),
+        )
+        for row in (result.get("evidence") or [])
+    ]
+    authority_rung = result.get("authority_rung") or "interpretation"
+    card = UserFacingInsightCard(
+        id=insight_id,
+        surface_id=result.get("surface_id"),
+        title=INSIGHT_TITLES.get(insight_id, insight_id.replace("_", " ").title()),
+        body=str(result.get("observation") or ""),
+        confidence_label=CONFIDENCE_LABELS[confidence],
+        authority_label=AUTHORITY_LABELS.get(authority_rung, "Interpretation"),
+        sample_label=f"{data_points} history event{'s' if data_points != 1 else ''}",
+        observation=str(result.get("observation") or ""),
+        data_points=data_points,
+        confidence=confidence,
+        strength=round(float(result.get("strength") or 0.0), 3),
+        seen=bool(result.get("seen")),
+        evidence=evidence_rows or None,
+        evidence_rows=evidence_rows,
+        truth_class=result.get("truth_class"),
+        usage_class=result.get("usage_class"),
+        clean_profile=result.get("clean_profile"),
+        eligible_sample_count=result.get("eligible_sample_count"),
+        min_n_required=result.get("min_n_required"),
+        suppressed_reason=result.get("suppressed_reason"),
+        fallback_mode=result.get("fallback_mode"),
+        legacy_adapter=result.get("legacy_adapter"),
+        exposure_id=result.get("exposure_id"),
+        render_id=result.get("render_id"),
+        authority_rung=result.get("authority_rung"),
+        mutation_permission=result.get("mutation_permission"),
+        public_translator=result.get("public_translator"),
+    )
+    return card.public_dict()
+
+
+def _insights_exposure_snapshot(
+    response_payload: dict,
+    candidates: list[dict],
+) -> dict:
+    """Build the non-public, redacted exposure render snapshot.
+
+    Public cards keep the legacy response shape. The render ledger only needs
+    enough structure to prove what was shown and which safe audit handles backed
+    it, without storing observation copy or packet internals.
+    """
+    public_insights = response_payload.get("insights") or []
+    rendered_ids = [
+        str(insight.get("id"))
+        for insight in public_insights
+        if insight.get("id") is not None
+    ]
+    rendered_id_set = set(rendered_ids)
+    suppressed_generators = response_payload.get("suppressed_generators") or []
+
+    audit_envelopes = []
+    for candidate in candidates:
+        insight_id = str(candidate.get("id") or "")
+        if insight_id not in rendered_id_set:
+            continue
+        audit = candidate.get("_audit")
+        if not isinstance(audit, dict):
+            continue
+        try:
+            envelope = InsightAuditEnvelope(**audit)
+        except Exception:
+            continue
+        audit_envelopes.append(
+            {
+                "insight_id": insight_id,
+                "surface_id": candidate.get("surface_id"),
+                **envelope.model_dump(exclude_none=True),
+            }
+        )
+
     return {
-        key: value
-        for key, value in result.items()
-        if not key.startswith("_")
+        "schema_version": "analytics_insights_exposure_snapshot_v1",
+        "surface_id": response_payload.get("surface_id"),
+        "truth_class": response_payload.get("truth_class"),
+        "usage_class": response_payload.get("usage_class"),
+        "clean_profile": response_payload.get("clean_profile"),
+        "ready": bool(response_payload.get("ready")),
+        "insight_count": len(public_insights),
+        "insight_ids": rendered_ids,
+        "suppressed_generator_count": len(suppressed_generators),
+        "suppressed_generator_ids": [
+            str(row.get("id"))
+            for row in suppressed_generators
+            if row.get("id") is not None
+        ],
+        "eligible_sample_count": response_payload.get("eligible_sample_count"),
+        "min_n_required": response_payload.get("min_n_required"),
+        "sessions_analyzed": response_payload.get("sessions_analyzed"),
+        "history_events_analyzed": response_payload.get("history_events_analyzed"),
+        "audit_envelopes": audit_envelopes,
     }
 
 
@@ -302,6 +453,7 @@ def _surface_metadata(
     suppressed_reason: Optional[str] = None,
 ) -> dict:
     spec = get_output_surface_spec(surface_id)
+    authority = authority_for_surface(spec).as_dict()
     return {
         "surface_id": surface_id,
         "truth_class": spec.truth_class,
@@ -312,6 +464,7 @@ def _surface_metadata(
         "suppressed_reason": suppressed_reason,
         "fallback_mode": spec.fallback_mode,
         "legacy_adapter": spec.legacy_adapter,
+        **authority,
     }
 
 
@@ -319,6 +472,21 @@ def _eligible_tasks_for_surface(db: Session, tasks: list, surface_id: str) -> li
     spec = get_output_surface_spec(surface_id)
     if spec.clean_profile == "descriptive_history":
         return tasks
+    if spec.clean_profile == "planning_calibration":
+        if not tasks:
+            return []
+        user_id = getattr(tasks[0], "user_id", None)
+        if user_id is None:
+            return []
+        clean_ids = {
+            task.task_id
+            for task in planning_calibration_baseline_tasks(db, user_id=int(user_id))
+        }
+        return [
+            task
+            for task in tasks
+            if task.task_id in clean_ids and not getattr(task, "is_anchor", False)
+        ]
     clean_ids = baseline_clean_task_ids(
         db,
         tasks=tasks,
@@ -475,6 +643,67 @@ def _insight_readiness(tasks: list) -> Optional[dict]:
         ),
         n,
         strength=abs(diff),
+    )
+
+
+def _insight_readiness_time_of_day(tasks: list) -> Optional[dict]:
+    """Self-reported readiness as context for time-window planning fit.
+
+    This deliberately avoids "best brain time" or cognitive-capacity copy.
+    The user reported readiness; Lyra observed planning error by time window.
+    The output is a low-authority placement/recovery hypothesis only.
+    """
+    buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    for t in tasks:
+        if t.state != TaskState.EXECUTED:
+            continue
+        if t.pre_task_readiness is None or t.duration_delta_minutes is None:
+            continue
+        tod = _time_of_day(to_local(t.planned_start_utc))
+        buckets[tod].append((int(t.pre_task_readiness), abs(int(t.duration_delta_minutes))))
+
+    summaries = []
+    for tod, pairs in buckets.items():
+        if len(pairs) < 3:
+            continue
+        readiness_vals = [readiness for readiness, _error in pairs]
+        error_vals = [error for _readiness, error in pairs]
+        summaries.append(
+            {
+                "time_of_day": tod,
+                "sessions": len(pairs),
+                "avg_readiness": _avg(readiness_vals),
+                "avg_abs_error": _avg(error_vals),
+            }
+        )
+
+    if len(summaries) < 2:
+        return None
+
+    best = min(summaries, key=lambda row: row["avg_abs_error"])
+    comparison = max(summaries, key=lambda row: row["avg_abs_error"])
+    diff = comparison["avg_abs_error"] - best["avg_abs_error"]
+    if diff < 8:
+        return None
+
+    obs = (
+        f"In rated sessions, {best['time_of_day']} starts landed "
+        f"{_abs_minutes(diff)} min closer to plan than {comparison['time_of_day']}. "
+        f"Self-reported readiness averaged {best['avg_readiness']:.1f}/5 in that window. "
+        "This is a planning-context signal, not an ability or identity claim."
+    )
+    return _insight(
+        "readiness_time_of_day",
+        obs,
+        sum(row["sessions"] for row in summaries),
+        strength=diff,
+        facts={
+            "best_time_of_day": best["time_of_day"],
+            "comparison_time_of_day": comparison["time_of_day"],
+            "best_average_readiness": best["avg_readiness"],
+            "best_average_absolute_error_minutes": best["avg_abs_error"],
+            "comparison_average_absolute_error_minutes": comparison["avg_abs_error"],
+        },
     )
 
 
@@ -724,6 +953,56 @@ def _insight_pause_pattern(tasks: list) -> Optional[dict]:
     )
 
 
+def _insight_occupancy_footprint(tasks: list) -> Optional[dict]:
+    """Planning-window footprint from active work plus bounded pause overhead."""
+    rows = []
+    for task in tasks:
+        if task.state != TaskState.EXECUTED:
+            continue
+        if getattr(task, "is_anchor", False):
+            continue
+        sessions = list(getattr(task, "stopwatch_sessions", []) or [])
+        metrics = task_interruption_metrics_from_sessions(task, sessions)
+        if (
+            metrics.execution_time_minutes is None
+            or metrics.session_span_minutes is None
+            or metrics.execution_efficiency is None
+        ):
+            continue
+        rows.append(metrics)
+
+    if len(rows) < 5:
+        return None
+
+    pause_values = [row.pause_overhead_minutes for row in rows]
+    execution_values = [row.execution_time_minutes for row in rows if row.execution_time_minutes is not None]
+    span_values = [row.session_span_minutes for row in rows if row.session_span_minutes is not None]
+    median_pause = _median(pause_values)
+    if median_pause < 15:
+        return None
+
+    median_execution = _median(execution_values)
+    median_span = _median(span_values)
+    obs = (
+        f"Across {len(rows)} completed sessions with clean timer data, "
+        f"median active work was {_abs_minutes(median_execution)} min, "
+        f"median session span was {_abs_minutes(median_span)} min, "
+        f"and median pause overhead was {_abs_minutes(median_pause)} min. "
+        "Treat occupancy as planning-window guidance, not execution time."
+    )
+    return _insight(
+        "occupancy_footprint",
+        obs,
+        len(rows),
+        strength=median_pause,
+        facts={
+            "median_execution_minutes": median_execution,
+            "median_session_span_minutes": median_span,
+            "median_pause_overhead_minutes": median_pause,
+        },
+    )
+
+
 def _insight_morning_anchor(tasks: list) -> Optional[dict]:
     """Cascade signal: does skipping the morning anchor predict the rest of the day?"""
     days_map: dict = defaultdict(list)
@@ -817,167 +1096,6 @@ def _insight_initiation_delay(tasks: list) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 # Primary synthesis composer
 # ---------------------------------------------------------------------------
-
-PRIMARY_SYNTHESIS_ID = "primary_synthesis"
-PRIMARY_SYNTHESIS_SURFACE_ID = "analytics.insights.primary_synthesis"
-PRIMARY_SYNTHESIS_MIN_HISTORY_EVENTS = 30
-
-
-def _evidence_item(label: str, value: str, source_insight_id: str) -> dict:
-    return {
-        "label": label,
-        "value": value,
-        "source_insight_id": source_insight_id,
-    }
-
-
-def _abandonment_evidence_value(insight: dict) -> Optional[str]:
-    facts = insight.get("_facts") or {}
-    label = facts.get("label")
-    not_started = facts.get("not_started")
-    total = facts.get("total")
-    percent = facts.get("percent")
-    if label is None or not_started is None or total is None or percent is None:
-        return None
-    if facts.get("kind") == "tod":
-        return f"{not_started}/{total} planned {label} tasks not started ({percent}%)"
-    return f"{not_started}/{total} {label} tasks not started ({percent}%)"
-
-
-def _time_of_day_evidence_value(insight: dict) -> Optional[str]:
-    facts = insight.get("_facts") or {}
-    tod = facts.get("time_of_day")
-    avg = facts.get("average_delta_minutes")
-    if tod is None or avg is None:
-        return None
-    direction = "under plan" if avg > 0 else "over plan"
-    return f"{tod} tasks {round(abs(avg))} min {direction} on average"
-
-
-def _estimation_trend_evidence_value(insight: dict) -> Optional[str]:
-    facts = insight.get("_facts") or {}
-    change = facts.get("change_minutes")
-    if change is None:
-        return None
-    if change > 0:
-        return f"estimate error down {abs(change):g} min over the last 10 sessions"
-    return f"estimate error up {abs(change):g} min over the last 10 sessions"
-
-
-def _initiation_delay_evidence_value(insight: dict) -> Optional[str]:
-    facts = insight.get("_facts") or {}
-    avg = facts.get("average_delay_minutes")
-    if avg is None:
-        return None
-    direction = "after schedule" if avg > 0 else "before schedule"
-    return f"starts averaged {round(abs(avg))} min {direction}"
-
-
-def _primary_synthesis_observation(abandonment: dict, supports: list[dict]) -> str:
-    abandonment_facts = abandonment.get("_facts") or {}
-    category = (
-        abandonment_facts.get("label")
-        if abandonment_facts.get("kind") == "cat"
-        else None
-    )
-    time_support = next(
-        (
-            support
-            for support in supports
-            if support.get("id") == "time_of_day_bias"
-        ),
-        None,
-    )
-    time_facts = (time_support or {}).get("_facts") or {}
-    tod = time_facts.get("time_of_day")
-    late_day = tod in {"evening", "night"}
-
-    if category and late_day:
-        return (
-            f"Planning drift is currently clustering around {category} tasks "
-            "and late-day execution."
-        )
-    if category:
-        return (
-            f"Planning drift is currently clustering around {category} tasks, "
-            "with supporting execution signals in the same window."
-        )
-    if tod:
-        return (
-            f"Planning drift is currently clustering around {tod} task placement, "
-            "with supporting execution signals in the same window."
-        )
-    return (
-        "Several current signals point to one planning-reliability cluster "
-        "rather than a single isolated metric."
-    )
-
-
-def _compose_primary_synthesis(
-    candidates: list[dict],
-    *,
-    history_events_analyzed: int,
-) -> Optional[dict]:
-    """Create a bounded synthesis from already registered source insights."""
-    by_id = {candidate.get("id"): candidate for candidate in candidates}
-    abandonment = by_id.get("abandonment_pattern")
-    if abandonment is None or history_events_analyzed < PRIMARY_SYNTHESIS_MIN_HISTORY_EVENTS:
-        return None
-
-    support_order = [
-        "time_of_day_bias",
-        "estimation_accuracy_trend",
-        "initiation_delay",
-    ]
-    supports = [
-        by_id[insight_id]
-        for insight_id in support_order
-        if insight_id in by_id
-    ]
-    if not supports:
-        return None
-
-    evidence = []
-    abandonment_value = _abandonment_evidence_value(abandonment)
-    if abandonment_value:
-        evidence.append(
-            _evidence_item(
-                "Not-started pattern",
-                abandonment_value,
-                "abandonment_pattern",
-            )
-        )
-
-    evidence_builders = {
-        "time_of_day_bias": ("Time placement", _time_of_day_evidence_value),
-        "estimation_accuracy_trend": ("Estimate drift", _estimation_trend_evidence_value),
-        "initiation_delay": ("Start timing", _initiation_delay_evidence_value),
-    }
-    for support in supports:
-        insight_id = support.get("id")
-        label_and_builder = evidence_builders.get(insight_id)
-        if label_and_builder is None:
-            continue
-        label, builder = label_and_builder
-        value = builder(support)
-        if value:
-            evidence.append(_evidence_item(label, value, insight_id))
-
-    if len(evidence) < 2:
-        return None
-
-    sources = [abandonment, *supports]
-    data_points = max(source.get("data_points", 0) for source in sources)
-    strength = max(source.get("strength", 0.0) for source in sources) + 50.0
-    synthesis = _insight(
-        PRIMARY_SYNTHESIS_ID,
-        _primary_synthesis_observation(abandonment, supports),
-        data_points,
-        strength=strength,
-        evidence=evidence[:4],
-    )
-    return synthesis
-
 
 # ---------------------------------------------------------------------------
 # Archetype-aware insight generators (2026-04-22 clustering ship, Rule 13)
@@ -1145,11 +1263,13 @@ CONTRACT_SAFE_INSIGHT_GENERATORS = [
     ("analytics.insights.retroactive_rate", _insight_retroactive_rate),
     ("analytics.insights.time_of_day_bias", _insight_time_of_day),
     ("analytics.insights.readiness_predicts_outcome", _insight_readiness),
+    ("analytics.insights.readiness_time_of_day", _insight_readiness_time_of_day),
     ("analytics.insights.abandonment_pattern", _insight_abandonment),
     ("analytics.insights.best_category", _insight_best_category),
     ("analytics.insights.worst_category", _insight_worst_category),
     ("analytics.insights.discrepancy_signal", _insight_discrepancy_signal),
     ("analytics.insights.pause_pattern", _insight_pause_pattern),
+    ("analytics.insights.occupancy_footprint", _insight_occupancy_footprint),
     ("analytics.insights.morning_anchor_cascade", _insight_morning_anchor),
 ]
 
@@ -1260,7 +1380,7 @@ def get_insights(
             )
             candidates.append(result)
 
-    primary_synthesis = _compose_primary_synthesis(
+    primary_synthesis = compile_primary_synthesis(
         candidates,
         history_events_analyzed=history_events_analyzed,
     )
@@ -1369,7 +1489,10 @@ def get_insights(
                     db,
                     surface_id=surface_id,
                     user_id=uid,
-                    content_snapshot=json.dumps(response_payload, sort_keys=True, default=str),
+                    content_snapshot=_insights_exposure_snapshot(
+                        response_payload,
+                        candidates,
+                    ),
                     eligible_at=eligible_at,
                     rendered_at=eligible_at,
                     content_template_id="analytics_insights",
@@ -1884,6 +2007,8 @@ def bias_factor_lookup(
     user still benefits from a research-backed prior at cold start.
     """
     uid = get_current_user_id()
+    if uid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
     # Rule 13 operational definition of n_sessions_in_cell (MANIFESTO
     # v1.10 §13): planned_duration_minutes >= 5. The 5-minute floor
     # matches the H1 exclusion threshold (Rule 4) — sub-5-minute tasks
@@ -1891,30 +2016,7 @@ def bias_factor_lookup(
     #
     # VT-29 filter (added 2026-04-30): exclude tasks bound to externally-
     # imported deadlines. Same rationale as the bias_factor surface above.
-    tasks = (
-        db.query(Task)
-        .outerjoin(Deadline, Task.deadline_id == Deadline.deadline_id)
-        .filter(
-            Task.state == TaskState.EXECUTED,
-            Task.initiation_status != "system_error",
-            Task.voided_at.is_(None),
-            Task.initiation_status != "retroactive",
-            Task.is_anchor.is_(False),
-            Task.executed_duration_minutes != None,
-            Task.planned_duration_minutes >= 5,
-            ~db.query(TaskExecutionCorrection.correction_id)
-            .filter(TaskExecutionCorrection.task_id == Task.task_id)
-            .exists(),
-            # VT-29: exclude tasks bound to imported deadlines.
-            (Task.deadline_id.is_(None)) | (Deadline.external_source.is_(None)),
-        )
-        .all()
-    )
-    # If scoping is absent (admin or test path), fall through to the
-    # legacy personal-only cascade — blend() requires a user_id to look
-    # up the archetype. This should not happen under normal auth flow.
-    if uid is None:
-        return _adaptive_calibration(tasks, category, tod, planned_minutes)
+    tasks = planning_calibration_baseline_tasks(db, user_id=uid)
     from app.services.bias_factor_service import blend
     result = blend(db, uid, tasks, category, tod, planned_minutes)
     cell = result.get("cell")
@@ -1922,8 +2024,20 @@ def bias_factor_lookup(
     if magnitude is None and cell is not None:
         magnitude = cell.get("bias_factor")
     threshold = 1.20 if result.get("source") == "research" else 1.25
-    if cell is not None and magnitude is not None and magnitude >= threshold:
-        suggested_minutes = max(5, round((planned_minutes * magnitude) / 5) * 5)
+    occupancy_factor = result.get("occupancy_factor")
+    pause_sample_size = result.get("pause_overhead_sample_size") or 0
+    execution_triggered = magnitude is not None and magnitude >= threshold
+    occupancy_triggered = (
+        occupancy_factor is not None
+        and occupancy_factor >= threshold
+        and pause_sample_size >= 3
+    )
+    if cell is not None and (execution_triggered or occupancy_triggered):
+        suggested_minutes = (
+            result.get("occupancy_suggested_minutes")
+            or result.get("execution_suggested_minutes")
+            or max(5, round((planned_minutes * (magnitude or 1.0)) / 5) * 5)
+        )
         surface_id = "task.creation_nudge"
         eligible_at = now_utc()
         arm, policy = rule11_randomization_fields(
@@ -1952,6 +2066,12 @@ def bias_factor_lookup(
                     "sessions": result.get("sessions", 0),
                     "min_sessions": result.get("min_sessions", 3),
                     "source": result.get("source"),
+                    "execution_suggested_minutes": result.get("execution_suggested_minutes"),
+                    "pause_overhead_minutes": result.get("pause_overhead_minutes"),
+                    "pause_overhead_sample_size": result.get("pause_overhead_sample_size"),
+                    "occupancy_suggested_minutes": result.get("occupancy_suggested_minutes"),
+                    "occupancy_strategy": result.get("occupancy_strategy"),
+                    "occupancy_factor": result.get("occupancy_factor"),
                     "suppressed_reason": emitted["suppressed_reason"],
                     "surface_id": emitted["surface_id"],
                     "truth_class": emitted["truth_class"],
@@ -1968,13 +2088,20 @@ def bias_factor_lookup(
                 content_snapshot={
                     "copy": (
                         f"Suggested window is {suggested_minutes} min "
-                        f"for {category} / {tod} from a {round(magnitude, 3)}x "
-                        f"Rule-13 factor."
+                        f"for {category} / {tod}: execution "
+                        f"{result.get('execution_suggested_minutes')} min + "
+                        f"pause overhead {result.get('pause_overhead_minutes')} min."
                     ),
                     "category": category,
                     "time_of_day": tod,
                     "planned_minutes": planned_minutes,
                     "suggested_minutes": suggested_minutes,
+                    "execution_suggested_minutes": result.get("execution_suggested_minutes"),
+                    "pause_overhead_minutes": result.get("pause_overhead_minutes"),
+                    "pause_overhead_sample_size": result.get("pause_overhead_sample_size"),
+                    "occupancy_suggested_minutes": result.get("occupancy_suggested_minutes"),
+                    "occupancy_strategy": result.get("occupancy_strategy"),
+                    "occupancy_factor": result.get("occupancy_factor"),
                     "bias_factor": round(magnitude, 3),
                     "personal_bias_factor": cell.get("bias_factor"),
                     "personal_weight": result.get("personal_weight"),
@@ -2011,10 +2138,16 @@ def bias_factor_lookup(
                 "sessions": result.get("sessions", 0),
                 "min_sessions": result.get("min_sessions", 3),
                 "source": result.get("source"),
+                "execution_suggested_minutes": result.get("execution_suggested_minutes"),
+                "pause_overhead_minutes": result.get("pause_overhead_minutes"),
+                "pause_overhead_sample_size": result.get("pause_overhead_sample_size"),
+                "occupancy_suggested_minutes": result.get("occupancy_suggested_minutes"),
+                "occupancy_strategy": result.get("occupancy_strategy"),
+                "occupancy_factor": result.get("occupancy_factor"),
                 "suppressed_reason": "exposure_emit_failed",
                 "surface_id": "task.creation_nudge",
                 "truth_class": "intervention",
-                "signal_targets": ["planning_estimate"],
+                "signal_targets": ["planning_estimate", "pause_behavior"],
                 "clean_profile": "planning_calibration",
                 "fallback_mode": "suppress",
             }
@@ -2163,6 +2296,35 @@ def get_deadline_shape(
     """
     uid = get_current_user_id()
 
+    clean_stopwatch_exists = (
+        db.query(StopwatchSession.session_id)
+        .filter(
+            StopwatchSession.task_id == Task.task_id,
+            StopwatchSession.user_id == TaskDeadlineOutcome.user_id,
+            StopwatchSession.end_time_utc.isnot(None),
+            StopwatchSession.auto_closed.is_(False),
+            StopwatchSession.data_quality_flag.is_(None),
+        )
+        .exists()
+    )
+    dirty_stopwatch_exists = (
+        db.query(StopwatchSession.session_id)
+        .filter(
+            StopwatchSession.task_id == Task.task_id,
+            StopwatchSession.user_id == TaskDeadlineOutcome.user_id,
+            (
+                StopwatchSession.auto_closed.is_(True)
+                | StopwatchSession.data_quality_flag.isnot(None)
+            ),
+        )
+        .exists()
+    )
+    corrected_task_exists = (
+        db.query(TaskExecutionCorrection.correction_id)
+        .filter(TaskExecutionCorrection.task_id == Task.task_id)
+        .exists()
+    )
+
     # Per-task outcome rows + joined task fields. voided_at filtered
     # on all three tables (outcome, task, deadline) per the discipline.
     rows = (
@@ -2177,6 +2339,16 @@ def get_deadline_shape(
             TaskDeadlineOutcome.voided_at.is_(None),
             Task.voided_at.is_(None),
             Deadline.voided_at.is_(None),
+            Task.state == TaskState.EXECUTED,
+            Task.initiation_status != "system_error",
+            Task.initiation_status != "retroactive",
+            Task.executed_start_utc.isnot(None),
+            Task.executed_end_utc.isnot(None),
+            Task.executed_duration_minutes.isnot(None),
+            Task.planned_duration_minutes >= 5,
+            clean_stopwatch_exists,
+            ~dirty_stopwatch_exists,
+            ~corrected_task_exists,
         )
     )
     if uid is not None:

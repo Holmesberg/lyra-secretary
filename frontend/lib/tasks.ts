@@ -5,6 +5,20 @@
 import { api } from "./api";
 import type { Category } from "./categories";
 
+function newIdempotencyKey(scope: string): string {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${scope}:${random}`;
+}
+
+function idempotencyHeaders(scope: string, idempotencyKey?: string) {
+  return {
+    "X-Idempotency-Key": idempotencyKey ?? newIdempotencyKey(scope),
+  };
+}
+
 export type TaskState =
   | "PLANNED"
   | "EXECUTING"
@@ -219,6 +233,7 @@ export interface PausedOther {
   elapsed_seconds?: number;
   start_time: string | null;
   total_paused_minutes: number;
+  planned_duration_minutes?: number | null;
 }
 
 export interface StopwatchStatus {
@@ -248,6 +263,42 @@ export interface StopwatchStatus {
 
 export function getStopwatchStatus() {
   return api<StopwatchStatus>("/v1/stopwatch/status");
+}
+
+export type ScopeOutcome = "stuck_to_plan" | "expanded" | "reduced";
+
+export interface StalePauseResolutionInput {
+  post_task_reflection: number;
+  task_completion_percentage: number;
+  scope_outcome: ScopeOutcome;
+}
+
+export interface StalePauseResolutionResponse {
+  resolved: boolean;
+  task_id: string;
+  session_id: string;
+  new_state: string;
+  active_minutes: number;
+  planned_duration_minutes: number | null;
+  paused_minutes: number;
+  task_completion_percentage: number;
+  post_task_reflection: number;
+  scope_outcome: ScopeOutcome;
+  data_quality_flag: string;
+  closed_at: string;
+}
+
+export function resolveStalePause(
+  sessionId: string,
+  input: StalePauseResolutionInput
+) {
+  return api<StalePauseResolutionResponse>(
+    `/v1/stopwatch/stale-pauses/${encodeURIComponent(sessionId)}/resolve`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    }
+  );
 }
 
 export interface SwitchResponse {
@@ -285,12 +336,22 @@ export interface StartStopwatchResponse {
   interruption_type?: string | null;
 }
 
-export function startStopwatch(task_id: string, pre_task_readiness: number): Promise<StartStopwatchResponse> {
+export function startStopwatch(
+  task_id: string,
+  pre_task_readiness: number,
+  interruption_type?: string | null,
+  idempotencyKey?: string
+): Promise<StartStopwatchResponse> {
   return api<StartStopwatchResponse>(
     "/v1/stopwatch/start",
     {
       method: "POST",
-      body: JSON.stringify({ task_id, pre_task_readiness }),
+      headers: idempotencyHeaders(`stopwatch-start:${task_id}`, idempotencyKey),
+      body: JSON.stringify({
+        task_id,
+        pre_task_readiness,
+        interruption_type: interruption_type || undefined,
+      }),
     }
   );
 }
@@ -325,11 +386,20 @@ export interface StopResponse {
 
 export function stopStopwatch(
   post_task_reflection: number,
-  opts: { confirmed?: boolean; task_completion_percentage?: number; scope_outcome?: string } = {}
+  opts: {
+    confirmed?: boolean;
+    task_completion_percentage?: number;
+    scope_outcome?: string;
+    idempotencyKey?: string;
+  } = {}
 ) {
   const qs = opts.confirmed ? "?confirmed=true" : "";
   return api<StopResponse>(`/v1/stopwatch/stop${qs}`, {
     method: "POST",
+    headers: idempotencyHeaders(
+      `stopwatch-stop:${opts.confirmed ? "confirmed" : "initial"}`,
+      opts.idempotencyKey
+    ),
     body: JSON.stringify({
       post_task_reflection,
       task_completion_percentage: opts.task_completion_percentage,
@@ -338,15 +408,19 @@ export function stopStopwatch(
   });
 }
 
-export function pauseStopwatch(reason?: string) {
+export function pauseStopwatch(reason?: string, idempotencyKey?: string) {
   return api<unknown>("/v1/stopwatch/pause", {
     method: "POST",
+    headers: idempotencyHeaders("stopwatch-pause", idempotencyKey),
     body: JSON.stringify({ pause_reason: reason, pause_initiator: "self" }),
   });
 }
 
-export function resumeStopwatch() {
-  return api<unknown>("/v1/stopwatch/resume", { method: "POST" });
+export function resumeStopwatch(idempotencyKey?: string) {
+  return api<unknown>("/v1/stopwatch/resume", {
+    method: "POST",
+    headers: idempotencyHeaders("stopwatch-resume", idempotencyKey),
+  });
 }
 
 export function markAbandoned(task_id: string, reason?: string) {
@@ -365,9 +439,10 @@ export interface MarkDoneResponse {
   initiation_status: string;
 }
 
-export function markDone(task_id: string) {
+export function markDone(task_id: string, idempotencyKey?: string) {
   return api<MarkDoneResponse>(`/v1/tasks/${task_id}/mark-done`, {
     method: "POST",
+    headers: idempotencyHeaders(`mark-done:${task_id}`, idempotencyKey),
   });
 }
 
@@ -432,6 +507,35 @@ export function rescheduleTask(input: RescheduleInput) {
   });
 }
 
+export interface DeadlineBindingInput {
+  deadline_id?: string | null;
+  clear_deadline?: boolean;
+}
+
+export interface DeadlineBindingResult {
+  task_id: string;
+  deadline_id_after: string | null;
+  deadline_title_after: string | null;
+  deadline_match_source_after: string | null;
+  metadata_correction: boolean;
+}
+
+export function updateTaskDeadlineBinding(
+  taskId: string,
+  input: DeadlineBindingInput
+) {
+  return api<DeadlineBindingResult>(
+    `/v1/tasks/${encodeURIComponent(taskId)}/deadline-binding`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        deadline_id: input.deadline_id ?? undefined,
+        clear_deadline: input.clear_deadline ?? false,
+      }),
+    }
+  );
+}
+
 export function deleteTask(task_id: string) {
   return api<{ task_id: string; deleted: boolean }>("/v1/delete", {
     method: "POST",
@@ -487,7 +591,24 @@ export interface PendingNotificationsResponse {
 }
 
 export function getPendingNotifications() {
-  return api<PendingNotificationsResponse>("/v1/notifications/pending");
+  return api<PendingNotificationsResponse>("/v1/notifications/web/pending");
+}
+
+export type NotificationAckEventType =
+  | "rendered"
+  | "acted"
+  | "dismissed"
+  | "expired"
+  | "lost_unrendered";
+
+export function ackPendingNotifications(
+  notificationIds: string[],
+  eventType: NotificationAckEventType = "rendered"
+) {
+  return api<{ acknowledged: number }>("/v1/notifications/web/ack", {
+    method: "POST",
+    body: JSON.stringify({ notification_ids: notificationIds, event_type: eventType }),
+  });
 }
 
 export function respondToPausePrediction(
@@ -533,6 +654,12 @@ export interface BiasLookupResponse {
   archetype_prior_for_cell?: number;
   archetype_scaling?: number;
   archetype_prior_citation?: string;
+  execution_suggested_minutes?: number;
+  pause_overhead_minutes?: number;
+  pause_overhead_sample_size?: number;
+  occupancy_suggested_minutes?: number;
+  occupancy_strategy?: string;
+  occupancy_factor?: number | null;
   surface_id?: string | null;
   truth_class?: string | null;
   signal_targets?: string[] | null;
@@ -545,12 +672,22 @@ export interface BiasLookupResponse {
 
 export interface Insight {
   id: string;
+  title?: string;
+  body?: string;
+  confidence_label?: string;
+  authority_label?: string;
+  sample_label?: string;
   observation: string;
   data_points: number;
   confidence: "low" | "medium" | "high";
   strength: number;
   seen: boolean;
   evidence?: {
+    label: string;
+    value: string;
+    source_insight_id: string;
+  }[];
+  evidence_rows?: {
     label: string;
     value: string;
     source_insight_id: string;
@@ -566,6 +703,9 @@ export interface Insight {
   legacy_adapter?: string | null;
   exposure_id?: string | null;
   render_id?: string | null;
+  authority_rung?: string | null;
+  mutation_permission?: string | null;
+  public_translator?: string | null;
 }
 
 export interface SuppressedInsightGenerator {
@@ -720,10 +860,9 @@ export function confirmLlmBinding(
 
 /**
  * User clicked "Not relevant" on the chip — teaches the model that the
- * inferred binding was wrong. The user's existing deadline_id (if any)
- * stays unchanged; only `llm_binding_rejected_at` is stamped, which
- * tells the chip to stop rendering and feeds future precision/recall
- * analysis.
+ * inferred binding was wrong. For "Possible better match" this keeps the
+ * current binding and drops only the alternative; for system-auto bindings
+ * with no current alternative, the backend may clear the binding.
  */
 export function rejectLlmBinding(
   taskId: string

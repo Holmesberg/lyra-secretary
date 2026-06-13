@@ -74,7 +74,7 @@ The product is built around the idea that repeated estimation error is data. If 
 LyraOS is a strong fit for:
 
 - people who frequently underestimate how long tasks will take
-- students managing assignments, deadlines, study blocks, and cognitive fatigue
+- people managing obligations, deadlines, recurring work, and cognitive fatigue
 - builders, engineers, founders, writers, researchers, and makers doing deep work
 - quantified-self users who want behavioral feedback instead of streak psychology
 - people exploring time blindness, planning fallacy, context switching, or execution drift
@@ -151,7 +151,7 @@ LyraOS includes calendar-style execution views and Google Calendar context. The 
 
 ### Deadlines And External Workload
 
-LyraOS supports native deadlines and imported academic deadlines through Moodle integrations. This lets the app observe how deadline pressure interacts with planning and execution.
+LyraOS supports native deadlines and provider-imported deadlines through integrations such as Moodle. This lets the app observe how deadline pressure interacts with planning and execution.
 
 ### Behavioral Insights
 

@@ -8,8 +8,10 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import jwt
 from sqlalchemy.exc import OperationalError
 
+from app.core.config import settings
 from app.core import security
 from app.db.models import User
 from app.main import app
@@ -76,6 +78,43 @@ def test_x_user_id_still_available_to_explicit_test_harness(client, db):
 
     assert response.status_code == 200
     assert response.json()["user_id"] == 15
+
+
+class _SessionProxy:
+    def __init__(self, db):
+        self._db = db
+
+    def __getattr__(self, name):
+        return getattr(self._db, name)
+
+    def close(self):
+        pass
+
+
+def test_bearer_identity_persists_google_profile_names(db, monkeypatch):
+    email = "google-profile-name@example.test"
+    existing = db.query(User).filter(User.email == email).first()
+    if existing is not None:
+        db.delete(existing)
+        db.commit()
+    monkeypatch.setattr(security, "SessionLocal", lambda: _SessionProxy(db))
+
+    token = jwt.encode(
+        {
+            "email": email,
+            "sub": "google-profile-sub",
+            "name": "Alyssa Example",
+            "given_name": "Alyssa",
+        },
+        settings.JWT_SECRET,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+    user = security.resolve_user_from_token(token)
+
+    assert user.email == email
+    assert user.google_display_name == "Alyssa Example"
+    assert user.google_first_name == "Alyssa"
 
 
 def test_bearer_db_unavailable_fails_closed_as_platform_degradation(client, monkeypatch):

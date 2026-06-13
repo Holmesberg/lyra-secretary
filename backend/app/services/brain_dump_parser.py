@@ -136,6 +136,19 @@ DATE_HINTS = re.compile(
 # in practice for brain-dump format). " then " is a sequence marker.
 SEGMENT_SPLIT = re.compile(r"[,\n;]+|\s+then\s+|\s+\+\s+", re.IGNORECASE)
 
+# Stemmed-list expansion: "CO lec 1, 2, 3" should become
+# "CO lec 1", "CO lec 2", "CO lec 3" rather than "2" / "3".
+# This is intentionally generic and not lecture-specific: it works for
+# "chapter 1, 2", "phase A, B", "ticket #12, #13", etc.
+SERIES_SUFFIX_RE = re.compile(
+    r"^(?:#?\d+[a-z]?|[A-Z]|[ivxlcdm]+)$",
+    re.IGNORECASE,
+)
+SERIES_STEM_RE = re.compile(
+    r"^(?P<stem>.+?)\s+(?P<suffix>#?\d+[a-z]?|[A-Z]|[ivxlcdm]+)$",
+    re.IGNORECASE,
+)
+
 
 # LYR-115 fix (2026-04-30): explicit user-provided durations.
 # Surfaced by stress test cases D2/D3/D5/D7/D8/E1/E3/E5/E7/E8 — the
@@ -271,6 +284,20 @@ def _has_deadline_kw(segment_lower: str) -> bool:
     )
 
 
+def _has_explicit_deadline_framing(segment_lower: str) -> bool:
+    """True when the text explicitly frames the item as an obligation.
+
+    Study-context words like "revision" and "review" can make phrases
+    such as "AI final revision tomorrow" task-like. But explicit due/deadline
+    language should still win: "Paper review due Friday" is an obligation,
+    not a task to review paper.
+    """
+    return any(
+        re.search(rf"\b{re.escape(kw)}\b", segment_lower)
+        for kw in ("deadline", "due", "submission")
+    )
+
+
 def _now_local(now_iso: Optional[str]) -> datetime:
     """Resolve the user's "current local time" anchor. Falls back to
     server local time. Strips tz to match Lyra's naive-internal
@@ -298,6 +325,7 @@ def _classify_kind(segment: str) -> tuple[str, float]:
     """
     lower = segment.lower()
     has_deadline_kw = _has_deadline_kw(lower)
+    has_explicit_deadline_framing = _has_explicit_deadline_framing(lower)
     # First alpha word after any leading punctuation / bullet / digits.
     # "1. study chapter" → "study"; "- read chapter" → "read"
     first_word = re.match(r"^[\W_\d]*([a-z]+)", lower)
@@ -312,7 +340,7 @@ def _classify_kind(segment: str) -> tuple[str, float]:
         return "task", 0.88
     if has_action:
         return "task", 0.70
-    if has_task_context and has_deadline_kw:
+    if has_task_context and has_deadline_kw and not has_explicit_deadline_framing:
         return "task", 0.82 if has_date else 0.68
     # 2. Deadline keyword without a leading verb.
     if has_deadline_kw and has_date:
@@ -506,6 +534,35 @@ def _default_when_for_task(now_local: datetime, task_index: int) -> datetime:
     return now_local + timedelta(minutes=30 + 30 * task_index)
 
 
+def _first_non_overlapping_start(
+    start: datetime,
+    duration_minutes: int,
+    occupied_slots: list[tuple[datetime, datetime]],
+) -> datetime:
+    """Move a proposed task start after already-parsed task slots.
+
+    Brain dump previews are planning candidates, not a proof that the user
+    intends multitasking. If one parsed task is 90 minutes long, the next
+    default slot should begin after that 90-minute block, not 30 minutes
+    later. Explicit anchors are also nudged only when they collide with
+    earlier parsed tasks in the same batch; the user can still edit before
+    locking in.
+    """
+    candidate = start
+    duration = timedelta(minutes=max(1, duration_minutes))
+    sorted_slots = sorted(occupied_slots, key=lambda slot: slot[0])
+    while True:
+        moved = False
+        candidate_end = candidate + duration
+        for slot_start, slot_end in sorted_slots:
+            if candidate < slot_end and candidate_end > slot_start:
+                candidate = slot_end
+                moved = True
+                break
+        if not moved:
+            return candidate
+
+
 def _binding_tier(score: float) -> str:
     """Map heuristic score to chip-style tier label."""
     if score >= 0.85:
@@ -515,9 +572,40 @@ def _binding_tier(score: float) -> str:
     return "tier3_skip"
 
 
+def _split_segments(raw: str) -> list[str]:
+    """Split raw dump text, then expand bare continuation suffixes.
+
+    Commas are useful because people write compact lists, but a plain
+    split loses the inherited stem in forms like "read chapter 1, 2, 3".
+    This pass carries the most recent explicit stem only across bare
+    numeric/letter/roman suffix fragments. Non-bare fragments reset the
+    stem unless they themselves establish a new one.
+    """
+    base_segments = [s.strip() for s in SEGMENT_SPLIT.split(raw) if s.strip()]
+    expanded: list[str] = []
+    series_stem: str | None = None
+
+    for segment in base_segments:
+        current = segment
+        is_bare_suffix = SERIES_SUFFIX_RE.fullmatch(segment) is not None
+        if is_bare_suffix and series_stem:
+            current = f"{series_stem} {segment}"
+
+        expanded.append(current)
+
+        stem_match = SERIES_STEM_RE.fullmatch(current)
+        if stem_match:
+            series_stem = stem_match.group("stem").strip()
+        elif not is_bare_suffix:
+            series_stem = None
+
+    return expanded
+
+
 def parse_brain_dump(
     raw_text: str,
     now_local_iso: Optional[str] = None,
+    existing_deadlines: Optional[list[Deadline]] = None,
 ) -> BrainDumpParseResponse:
     """Heuristic fan-out of a free-text brain-dump into tasks + deadlines.
 
@@ -532,13 +620,15 @@ def parse_brain_dump(
     if not raw:
         return BrainDumpParseResponse(items=[], bindings=[], parser_status="empty")
 
-    # Split on commas/newlines/semicolons/" then "
-    segments = [s.strip() for s in SEGMENT_SPLIT.split(raw) if s.strip()]
+    # Split on commas/newlines/semicolons/" then ", then restore
+    # inherited stems for compact enumerated lists.
+    segments = _split_segments(raw)
     if not segments:
         return BrainDumpParseResponse(items=[], bindings=[], parser_status="empty")
 
     items: list[BrainDumpParsedItem] = []
-    task_default_index = 0
+    next_default_task_start = _default_when_for_task(now_local, 0)
+    scheduled_task_slots: list[tuple[datetime, datetime]] = []
 
     for seg in segments:
         # Two-stage extraction (LYR-115 + time-range fix 2026-04-30):
@@ -585,12 +675,14 @@ def parse_brain_dump(
         if when is not None:
             conf = min(1.0, conf + 0.05)
 
-        if kind == "deadline":
-            # Deadlines REQUIRE a when. If we couldn't parse one, demote
-            # to a task — better to schedule it than reject it.
-            if when is None:
-                kind = "task"
-                conf = max(0.40, conf - 0.20)
+        if kind == "deadline" and when is None:
+            # Keep deadline-shaped items as deadline candidates even when
+            # the due date is missing. Earlier builds demoted them to tasks
+            # to avoid an unschedulable row, but that hides load-bearing
+            # obligations like "AI final" from the pressure map. Commit still
+            # refuses to create a deadline without when_local and surfaces a
+            # missing_when recovery prompt.
+            conf = max(0.45, conf - 0.15)
 
         if kind == "task":
             # Duration precedence: extracted (explicit user value) >
@@ -609,10 +701,19 @@ def parse_brain_dump(
                     duration_confidence = 0.35
                     duration_basis = "no explicit duration or category prior matched"
             duration = max(1, min(720, duration))
+            used_default_when = when is None
             if when is None:
-                when = _default_when_for_task(now_local, task_default_index)
-                task_default_index += 1
+                when = next_default_task_start
                 conf = max(0.35, conf - 0.10)
+            when = _first_non_overlapping_start(
+                when,
+                duration,
+                scheduled_task_slots,
+            )
+            task_end = when + timedelta(minutes=duration)
+            scheduled_task_slots.append((when, task_end))
+            if used_default_when and task_end > next_default_task_start:
+                next_default_task_start = task_end
             items.append(BrainDumpParsedItem(
                 item_id=str(uuid4()),
                 kind="task",
@@ -648,6 +749,10 @@ def parse_brain_dump(
     parsed_tasks = [i for i in items if i.kind == "task"]
 
     bindings: list[BrainDumpBindingSuggestion] = []
+    task_order = {
+        item.item_id: index
+        for index, item in enumerate(parsed_tasks)
+    }
     if parsed_deadlines:
         # Build mock Deadline objects compatible with score_deadlines.
         # Only fields the heuristic reads: deadline_id + title.
@@ -677,13 +782,68 @@ def parse_brain_dump(
             if tier == "tier3_skip":
                 continue  # don't surface low-confidence bindings
             bindings.append(BrainDumpBindingSuggestion(
+                binding_id=f"{t.item_id}:parsed:{top.deadline_id}",
                 task_item_id=t.item_id,
                 deadline_item_id=top.deadline_id,
                 deadline_title=top.title,
                 confidence=top.score,
                 tier=tier,
                 source=top.source,
+                target_kind="parsed_deadline",
             ))
+
+    # Wave 1: bind to already-existing obligations/deadlines when the user
+    # dumps work that belongs to something already in the account. This stays
+    # read-only until the user confirms a binding in the preview UI.
+    bindable_existing = [
+        d for d in (existing_deadlines or [])
+        if getattr(d, "is_bindable", False)
+    ]
+    if bindable_existing:
+        for t in parsed_tasks:
+            match = score_deadlines(
+                title=t.title,
+                description=None,
+                deadlines=bindable_existing,
+            )
+            if not match.candidates:
+                continue
+            top = match.candidates[0]
+            tier = _binding_tier(top.score)
+            if tier == "tier3_skip":
+                continue
+            deadline = next(
+                (
+                    d for d in bindable_existing
+                    if d.deadline_id == top.deadline_id
+                ),
+                None,
+            )
+            if deadline is None:
+                continue
+            bindings.append(BrainDumpBindingSuggestion(
+                binding_id=f"{t.item_id}:existing:{deadline.deadline_id}",
+                task_item_id=t.item_id,
+                deadline_item_id=f"existing:{deadline.deadline_id}",
+                deadline_title=deadline.title,
+                confidence=top.score,
+                tier=tier,
+                source=top.source,
+                target_kind="existing_deadline",
+                deadline_id=deadline.deadline_id,
+                target_due_at=deadline.due_at_utc,
+                target_state=deadline.state,
+                target_origin=deadline.external_source or "manual",
+            ))
+
+    bindings.sort(
+        key=lambda b: (
+            task_order.get(b.task_item_id, 10_000),
+            -b.confidence,
+            0 if b.target_kind == "existing_deadline" else 1,
+            b.deadline_title.lower(),
+        )
+    )
 
     return BrainDumpParseResponse(
         items=items,

@@ -17,6 +17,7 @@ import pytest
 
 from app.db.models import Feedback, User
 from app.db.scoping import set_current_user_id
+from app.services import email_delivery, feedback_notifier
 from tests.conftest import auth_headers
 
 
@@ -30,7 +31,7 @@ def _clean_slate(db, monkeypatch):
     # Mock the notifier so tests don't hit Resend/Telegram
     monkeypatch.setattr(
         "app.api.v1.endpoints.feedback.notify_operator",
-        lambda **kw: {"email": True, "telegram": True},
+        lambda **kw: {"email": True, "operator_channel": True},
     )
     yield
     set_current_user_id(None)
@@ -145,3 +146,45 @@ def test_admin_feedback_resolve_flips_status(client, db):
     assert row.status == "acted_on"
     assert row.operator_note == "fixed in commit X"
     assert row.resolved_at is not None
+
+
+def test_feedback_email_sender_defaults_to_hello(monkeypatch):
+    calls: list[dict] = []
+    monkeypatch.setattr(feedback_notifier.settings, "RESEND_API_KEY", "resend-key")
+    monkeypatch.setattr(feedback_notifier.settings, "FEEDBACK_FROM_EMAIL", "")
+
+    def fake_post(*_args, **kwargs):
+        calls.append(kwargs["json"])
+        class Response:
+            status_code = 202
+            text = "accepted"
+        return Response()
+
+    monkeypatch.setattr(email_delivery.requests, "post", fake_post)
+
+    ok = feedback_notifier._send_email_resend(
+        subject="Feedback test",
+        text="body",
+        to="operator@example.test",
+    )
+
+    assert ok is True
+    assert calls[0]["from"] == "LyraOS <hello@lyraos.org>"
+
+
+def test_feedback_openclaw_channel_routes_through_operator_notifier(monkeypatch):
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(
+        feedback_notifier,
+        "notify_operator_channel",
+        lambda text, **kwargs: calls.append((text, kwargs)) or True,
+    )
+
+    assert feedback_notifier._send_operator_channel("feedback body") is True
+    assert calls == [
+        (
+            "feedback body",
+            {"source": "feedback.alpha", "severity": "alert"},
+        )
+    ]

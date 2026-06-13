@@ -97,6 +97,10 @@ Observed operator signals:
 - Start delay averaged about `11` minutes across eligible executed tasks.
 - Readiness comparison exists, but is not yet enough to make readiness the main
   explanatory variable.
+- Readiness-by-time-window may become useful as planning context, but only as
+  self-reported evidence. It may suggest when a placement or recovery
+  experiment is worth testing; it must not become a claim about cognitive
+  ability, capacity, focus, or identity.
 
 Feasible now:
 
@@ -145,6 +149,14 @@ Good adaptive scheduling copy:
 > Study tasks scheduled after 7 PM currently show higher non-start rates and
 > larger drift. Want to test one earlier study block tomorrow?
 
+> In rated sessions, afternoon starts have landed closer to plan. Want to test
+> one afternoon study block and compare?
+
+> Execution estimate 60 min + typical pause overhead 15 min = 75 min planning
+> window.
+
+> You left Signals & Systems paused 1h 34m ago. Pick it back up?
+
 Better when measuring an actual experiment:
 
 > Earlier study placement reduced initiation delay in the last two matched
@@ -157,6 +169,10 @@ Bad copy:
 > Optimal schedule generated.
 
 > Lyra knows your best work time.
+
+> You are most cognitively functional in the afternoon.
+
+> You lost focus, so Lyra added two hours to execution time.
 
 ## Intervention Boundary
 
@@ -200,7 +216,7 @@ Each candidate intervention must specify:
 | JITAI element | Lyra requirement |
 | --- | --- |
 | Decision point | The exact observable moment when the system may intervene, such as first skip, overdue transition, task start, pause duration threshold, or pressure-map view. |
-| Tailoring variables | The local facts used to decide whether and how to intervene: category, time window, pressure load, exposure state, recent skips, deadline distance, sleep if available. |
+| Tailoring variables | The local facts used to decide whether and how to intervene: category, time window, pressure load, exposure state, recent skips, deadline distance, self-reported readiness where already collected, sleep if available. |
 | Intervention options | The reversible choices shown to the user: proceed as planned, reduce scope, insert buffer, clear a window, reschedule one block, or dismiss. |
 | Proximal outcome | The near-term result being tested: next-task start, next 2-6h skip rate, initiation delay, completion state, accepted edit, or user-rated plausibility. |
 | Decision rule | The explicit threshold or policy that triggers the surface and can be killed or suppressed. |
