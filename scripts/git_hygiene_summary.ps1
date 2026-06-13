@@ -104,6 +104,16 @@ Write-Host ""
 
 $statusLines = @(git status --short)
 $statusPaths = @($statusLines | ForEach-Object { Get-PathFromStatusLine $_ } | Where-Object { $_ })
+$statusNonDeletionPaths = @(
+    $statusLines | ForEach-Object {
+        if ($_.Length -ge 4) {
+            $statusCode = $_.Substring(0, 2)
+            if ($statusCode -notmatch "D") {
+                Get-PathFromStatusLine $_
+            }
+        }
+    } | Where-Object { $_ }
+)
 
 Write-Host "### Dirty Worktree"
 if ($statusLines.Count -gt 0) {
@@ -116,8 +126,8 @@ if ($Paths.Count -eq 0 -and $ForPush) {
     Add-Warning "No task-scoped paths were provided. Pass -Paths for push gates."
 }
 
-$dirtyArtifacts = @($statusPaths | Where-Object { Path-IsArtifact $_ })
-$dirtyGeneratedMedia = @($statusPaths | Where-Object { Path-IsGeneratedMedia $_ })
+$dirtyArtifacts = @($statusNonDeletionPaths | Where-Object { Path-IsArtifact $_ })
+$dirtyGeneratedMedia = @($statusNonDeletionPaths | Where-Object { Path-IsGeneratedMedia $_ })
 
 if ($dirtyArtifacts.Count -gt 0) {
     $message = "Dirty artifact paths detected: $($dirtyArtifacts -join ', ')"
@@ -160,12 +170,21 @@ if ($Paths.Count -gt 0) {
 
 Write-Host ""
 Write-Host "### Staged Files"
+$stagedStatusLines = @(git diff --cached --name-status)
 $stagedFiles = @(git diff --cached --name-only | ForEach-Object { Normalize-PathForGit $_ })
+$stagedNonDeletionFiles = @(
+    $stagedStatusLines | ForEach-Object {
+        $parts = $_ -split "`t"
+        if ($parts.Count -ge 2 -and $parts[0] -notmatch "^D") {
+            Normalize-PathForGit $parts[$parts.Count - 1]
+        }
+    } | Where-Object { $_ }
+)
 Write-List "none" $stagedFiles
 
 if ($stagedFiles.Count -gt 0) {
-    $stagedArtifacts = @($stagedFiles | Where-Object { Path-IsArtifact $_ })
-    $stagedGeneratedMedia = @($stagedFiles | Where-Object { Path-IsGeneratedMedia $_ })
+    $stagedArtifacts = @($stagedNonDeletionFiles | Where-Object { Path-IsArtifact $_ })
+    $stagedGeneratedMedia = @($stagedNonDeletionFiles | Where-Object { Path-IsGeneratedMedia $_ })
     if ($stagedArtifacts.Count -gt 0) {
         Add-Blocker "Staged artifact paths detected: $($stagedArtifacts -join ', ')"
     }
