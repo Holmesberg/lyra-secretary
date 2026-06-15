@@ -281,7 +281,8 @@ class DeadlineManager:
         (user_id, external_source, external_id) — the partial unique
         index `uq_deadline_external` is the DB-level guarantee.
 
-        Returns one of: 'created', 'updated', 'unchanged', 'skipped_voided'.
+        Returns one of: 'created', 'updated', 'unchanged', 'skipped_voided',
+        'duplicate_existing'.
 
         Voided rows are NOT resurrected — if a user explicitly voided an
         imported deadline, a subsequent sync sees it and skips. The user
@@ -303,6 +304,9 @@ class DeadlineManager:
         )
 
         if existing is None:
+            duplicate = self.find_duplicate_deadline(title, due_at_utc)
+            if duplicate is not None:
+                return "duplicate_existing"
             now = datetime.utcnow()
             deadline = Deadline(
                 deadline_id=str(uuid4()),

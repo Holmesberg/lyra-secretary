@@ -788,6 +788,30 @@ def operator_dashboard_v12(
             .scalar()
             or 0
         )
+        user_confirmed_deadline_ids = (
+            db.query(DeadlineCompletionEvent.deadline_id)
+            .filter(DeadlineCompletionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
+            .filter(
+                DeadlineCompletionEvent.completion_source.in_(
+                    ("user_deadline_done", "task_retroactive_done")
+                )
+            )
+            .subquery()
+        )
+        provider_truth_violations = (
+            db.query(func.count(func.distinct(Deadline.deadline_id)))
+            .join(
+                DeadlineCompletionEvent,
+                DeadlineCompletionEvent.deadline_id == Deadline.deadline_id,
+            )
+            .filter(Deadline.user_id.in_(non_op_ids) if non_op_ids else False)
+            .filter(Deadline.external_source.ilike("moodle%"))
+            .filter(Deadline.state == "completed")
+            .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
+            .filter(Deadline.deadline_id.notin_(user_confirmed_deadline_ids))
+            .scalar()
+            or 0
+        )
         duplicate_import_candidates = 0
         import_groups = (
             db.query(
@@ -815,7 +839,7 @@ def operator_dashboard_v12(
             "provider_rows_total": provider_rows_total,
             "provider_rows_missing_provenance": int(provider_rows_missing_provenance),
             "provider_completion_candidates": int(provider_completion_candidates),
-            "provider_truth_violations": 0,
+            "provider_truth_violations": int(provider_truth_violations),
             "duplicate_import_candidates": duplicate_import_candidates,
             "sync_failures_24h": sync_failures,
             "user_visible_provider_errors_24h": notification_counts["internal_copy_leak_count"],
@@ -1218,6 +1242,15 @@ def operator_dashboard_v12(
                 suggested_action="Fix provider provenance before relying on provider-derived metrics.",
                 related_section="provider_integrity",
                 blocks_cohort_expansion=False,
+            ))
+        if provider_integrity["provider_truth_violations"] > 0:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="provider_truth_violation",
+                severity="critical",
+                message="Provider evidence appears to have completed canonical deadlines.",
+                suggested_action="Reconcile provider completion rows as candidates or add explicit user confirmation evidence.",
+                related_section="provider_integrity",
+                blocks_cohort_expansion=True,
             ))
 
         bug_watchlist = {

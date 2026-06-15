@@ -807,10 +807,10 @@ class User(Base):
     # silently failing. Cleared when user reconnects.
     moodle_disconnect_reason: Mapped[Optional[str]] = mapped_column(String(64))
     # Moodle Web Services token (alembic 043, 2026-05-01). Powers
-    # automatic submission detection — when set, the
+    # automatic submission detection - when set, the
     # moodle_submissions_sync job queries WS for each task-bound
-    # imported deadline and auto-marks completed when Moodle confirms
-    # submission/grading. Encrypted-at-rest via Fernet from alembic 044
+    # imported deadline and records completion candidate evidence when
+    # Moodle confirms submission/grading. Encrypted-at-rest via Fernet from alembic 044
     # — see utils/encryption.py. Stored format: `"fernet:" + base64`
     # for new connections; legacy operator row may be raw plaintext
     # (the prefix-sniffing decryptor handles both transparently).

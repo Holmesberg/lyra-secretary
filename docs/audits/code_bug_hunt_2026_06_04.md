@@ -570,8 +570,7 @@ cohort proof.
 
 ## Wave 5A Closure - Data Sovereignty - 2026-06-15
 
-Status: implemented and targeted-tested locally. Codex browser verification and
-user-side browser verification are still required before Wave 5B begins.
+Status: implemented, targeted-tested locally, and user browser-verified.
 
 Scope closed:
 
@@ -654,6 +653,76 @@ Wave 5A closes export/delete registry coverage and Redis runtime purge. It does
 not close provider SSRF protection, credential encryption, provider provenance,
 duplicate provider imports, or terminal-deadline binding correction; those are
 Wave 5B.
+```
+
+## Wave 5B Closure - Provider Security And Integrity - 2026-06-15
+
+Status: implemented and targeted-tested locally. Browser verification is still
+required before Wave 6 final cohort-readiness proof.
+
+Scope closed:
+
+- added provider URL network-safety guard:
+  `backend/app/utils/provider_url_safety.py`;
+- Moodle iCal and Moodle WS fetches now validate every resolved target and
+  redirect hop before request;
+- loopback, private, link-local, multicast, reserved, unspecified, metadata IP,
+  and redirect-to-private targets are rejected;
+- Google refresh tokens are now Fernet-encrypted at rest;
+- Moodle iCal URLs are now Fernet-encrypted at rest;
+- legacy plaintext Google/Moodle credentials still read and rewrite encrypted;
+- Moodle WS plaintext legacy tokens still read and rewrite encrypted;
+- Moodle WS submission sync now records provider completion candidates instead
+  of silently completing canonical deadlines;
+- Moodle WS backfilled submitted assignments create visible external deadlines
+  plus completion-candidate evidence, not completed canonical rows;
+- Settings/Moodle copy now says submission evidence instead of auto-marking;
+- `moodle_ws_backfill` deadlines render with Moodle provenance in Today,
+  Deadlines, and Pulse;
+- external imports now skip native same-title/same-day duplicate deadlines
+  instead of creating duplicate obligations;
+- deadline-binding correction now rejects terminal deadlines
+  (`completed`, `missed`, `skipped`);
+- operator provider integrity now counts provider-truth violations and raises a
+  critical dynamic issue if provider evidence has completed canonical
+  deadlines without user confirmation.
+
+Automated verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_provider_url_safety.py tests/test_provider_credentials_security.py
+  tests/test_moodle_ics_sync.py tests/test_moodle_submissions_sync.py
+  tests/test_deadline_binding_correction.py tests/test_operator_route_security.py
+  -q`
+  - result: `75 passed`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_provider_url_safety.py tests/test_provider_credentials_security.py
+  tests/test_moodle_ics_sync.py tests/test_moodle_submissions_sync.py
+  tests/test_deadline_binding_correction.py tests/test_operator_route_security.py
+  tests/test_delete_account_modern_auxiliary_rows.py tests/test_security_audit.py
+  tests/test_raw_sql_user_scope_scan.py tests/test_multiuser_isolation_adversarial.py
+  -q`
+  - result: `108 passed`;
+- `cd frontend && npm run build`
+  - result: production build passed.
+
+Browser verification still needed:
+
+- Settings / Moodle copy says submission evidence, not auto-mark complete;
+- a `moodle_ws_backfill` deadline shows a Moodle badge in Today, Deadlines, and
+  Pulse;
+- a terminal deadline cannot be selected/bound through correction UI;
+- unsafe Moodle URL attempts show a connection failure without leaking raw URL
+  or token;
+- operator dashboard provider integrity shows completion candidates, duplicate
+  import candidates, and provider-truth violations without exposing secrets.
+
+Important nuance:
+
+```text
+Wave 5B closes the provider security/integrity bug class in code and targeted
+tests. It does not prove final cohort readiness; Wave 6 must still verify the
+full green gate, browser behavior, and cleanup state.
 ```
 
 ## Wave B Implementation And Verification - 2026-06-05
@@ -860,13 +929,13 @@ Agent test note:
 | Bug class | Status | Evidence | Required verification |
 |---|---|---|---|
 | Provider provenance marking | Neutralized | Deadlines carry `external_source`/`imported_at`; completion events carry provenance; pressure map separates external load. | Browser check that `moodle_ws_backfill` displays as external Moodle source. |
-| Moodle iCal/WS SSRF/private URL/redirect guard | Still occurring | URL shape checks exist, but loopback/private/link-local/metadata and redirect-to-private are not fully blocked. | Add backend SSRF tests for localhost, RFC1918, link-local, metadata, redirects. |
-| Google refresh token + Moodle iCal encryption | Still occurring | Model comments and storage paths still store Google refresh token and Moodle iCal URL plaintext; Moodle WS token is encrypted. | DB assertions after connect: stored values encrypted/prefixed and decryptable. |
-| Provider facts becoming canonical truth | Still occurring | Moodle WS can directly set `Deadline.state=completed` and backfill terminal rows. | Test requiring confirmation or explicit provider-truth policy. |
-| Native/imported duplicate deadlines | Still occurring | Manual duplicate warning exists; imported duplicates key mostly by external ID, not normalized title/date against native rows. | Native same-title/date plus import should surface/link duplicate. |
-| Terminal deadline binding correction | Still occurring | Normal create guard rejects terminal deadlines; deadline-binding correction endpoint checks not-found/voided but not terminal states. | Regression for completed/missed/skipped deadline binding correction. |
-| Export completeness | Still occurring | Export returns user/tasks/stopwatch/archetype only; omits deadlines, pauses, feedback, exposure, external outcomes, email engagement, integration state. | Export registry/completeness test. |
-| Delete completeness + Redis purge | Still occurring | DB auxiliary purge improved; delete does not clearly purge Redis runtime keys. | Delete test with Redis keys: notifications, stopwatch, gcal, me, task ranges. |
+| Moodle iCal/WS SSRF/private URL/redirect guard | Backend neutralized; browser pending | Shared provider URL guard validates resolved targets and redirect hops before Moodle iCal/WS requests. | Browser: unsafe Moodle URL fails safely without leaking raw URL/token. |
+| Google refresh token + Moodle iCal encryption | Backend neutralized | Google refresh tokens and Moodle iCal URLs store Fernet-prefixed; legacy plaintext rewrites encrypted on read. | DB assertions passed for encrypted storage and legacy fallback. |
+| Provider facts becoming canonical truth | Backend neutralized; browser pending | Moodle WS now records completion candidates instead of setting canonical completed state. | Browser: submitted Moodle evidence does not auto-complete user deadline. |
+| Native/imported duplicate deadlines | Backend neutralized; browser pending | External import upsert/backfill skips native same-title/same-day duplicates. | Browser/API: native/imported duplicate is prevented or surfaced. |
+| Terminal deadline binding correction | Backend neutralized; browser pending | Correction endpoint now rejects non-bindable terminal deadlines. | Regression passed for completed/missed/skipped deadline binding correction. |
+| Export completeness | Neutralized; browser passed | Registry-backed export includes user-owned data sections and integration-state summary without raw secrets. | Export registry/completeness test. |
+| Delete completeness + Redis purge | Neutralized; browser passed | Delete uses registry helpers and purges user-scoped Redis runtime state. | Delete test with Redis keys: notifications, stopwatch, gcal, me, task ranges. |
 | Provider sync backpressure | Still occurring | Per-request timeouts exist, but per-user sync loops lack wall-clock cap/circuit breaker. | Stress test blackholed URLs plus many users. |
 
 Agent test note:
@@ -936,10 +1005,9 @@ Still occurring and cohort-relevant:
 - dashboard denominator/operator/test/synthetic contamination risks remain;
 - `exposure_contaminated` dashboard counts render rows rather than joined
   contaminated task/session rows;
-- provider URL SSRF guards, credential encryption, export/delete registry, and
-  Redis purge remain open;
-- Moodle WS can still mutate canonical deadline terminal state;
-- imported/native duplicate deadlines remain insufficiently surfaced;
+- provider URL SSRF guards, credential encryption, export/delete registry,
+  Redis purge, provider truth, and duplicate imports are backend-fixed but
+  still need browser verification and Wave 6 readiness proof;
 - local/UTC/naive-aware time boundaries and rollover sessions remain unsafe;
 - persisted frontend cache is not user-scoped by key.
 
@@ -1005,6 +1073,10 @@ Fix:
 - Pulse stop flow captures focus, completion percent, and scope.
 
 ### Wave C - Provider And Data Sovereignty
+
+Status: split and implemented as Wave 5A (data sovereignty) and Wave 5B
+(provider security/integrity). Browser verification remains pending for Wave
+5B provider UI/error surfaces.
 
 Fix:
 

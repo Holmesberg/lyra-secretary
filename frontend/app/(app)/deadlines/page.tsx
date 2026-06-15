@@ -99,7 +99,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
           >
             {STATE_LABEL[deadline.state]}
           </span>
-          {deadline.external_source === "moodle_ics" && (
+          {deadline.external_source?.startsWith("moodle") && (
             <span
               title="Imported from Moodle"
               className="rounded border border-ember/30 bg-ember/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ember"

@@ -452,7 +452,7 @@ function TodayInner() {
     : [];
   const overdueCount = overdueDeadlines.length;
   const overdueFromLms = overdueDeadlines.filter(
-    (x) => x.deadline.external_source === "moodle_ics"
+    (x) => x.deadline.external_source?.startsWith("moodle")
   ).length;
 
   const feed = ((): { top: FeedItem[]; bottom: FeedItem[] } => {

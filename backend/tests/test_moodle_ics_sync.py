@@ -290,6 +290,36 @@ def test_upsert_external_deadline_creates_new_row(db):
     assert row.state == "planned"
 
 
+def test_upsert_external_deadline_skips_native_duplicate_same_day(db):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    due = datetime(2026, 5, 10, 23, 59, 0)
+    native = Deadline(
+        user_id=user.user_id,
+        title="Lab 1 is due",
+        due_at_utc=due,
+        state="planned",
+        external_source=None,
+        external_id=None,
+    )
+    db.add(native)
+    db.commit()
+
+    op = DeadlineManager(db).upsert_external_deadline(
+        external_source="moodle_ics",
+        external_id="evt-native-duplicate@lms.example.test",
+        title="Lab 1 is due",
+        due_at_utc=due,
+        description="Provider duplicate.",
+        category_hint="CSE101",
+    )
+
+    assert op == "duplicate_existing"
+    rows = db.query(Deadline).filter(Deadline.user_id == user.user_id).all()
+    assert len(rows) == 1
+    assert rows[0].external_source is None
+
+
 def test_upsert_external_deadline_unchanged_on_no_diff(db):
     user = _make_user(db)
     set_current_user_id(user.user_id)

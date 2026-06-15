@@ -262,18 +262,19 @@ export function IntegrationsSection() {
                       qc.invalidateQueries({ queryKey: ["deadlines"] });
                       const backfilled =
                         res.backfilled_completed +
+                        (res.backfilled_completion_candidates ?? 0) +
                         res.backfilled_planned +
                         res.backfilled_missed;
                       const parts: string[] = [];
-                      if (res.marked_complete > 0) {
+                      if ((res.completion_candidates ?? 0) > 0) {
                         parts.push(
-                          `marked ${res.marked_complete} complete`
+                          `${res.completion_candidates ?? 0} completion evidence`
                         );
                       }
                       if (backfilled > 0) {
                         const segs: string[] = [];
-                        if (res.backfilled_completed > 0)
-                          segs.push(`${res.backfilled_completed} done`);
+                        if ((res.backfilled_completion_candidates ?? 0) > 0)
+                          segs.push(`${res.backfilled_completion_candidates ?? 0} with evidence`);
                         if (res.backfilled_missed > 0)
                           segs.push(`${res.backfilled_missed} missed`);
                         if (res.backfilled_planned > 0)
@@ -347,7 +348,7 @@ export function IntegrationsSection() {
                   : "no new deadlines yet"
               );
             }
-            if (wsOn) parts.push("auto-mark on submission enabled");
+            if (wsOn) parts.push("submission evidence enabled");
             setBanner({
               kind: "success",
               title: `Moodle connected.`,
@@ -449,8 +450,8 @@ function MoodleDataFeeds({
           label="Submissions"
           description={
             wsDisconnectReason
-              ? "Token rejected — reconnect to resume auto-marking."
-              : "Auto-marks complete on submission · backfills past items"
+              ? "Token rejected - reconnect to resume submission checks."
+              : "Shows submission evidence from Moodle - backfills past items"
           }
           dotState={
             wsDisconnectReason
@@ -486,7 +487,7 @@ function MoodleDataFeeds({
       ) : (
         <FeedRow
           label="Submissions"
-          description="Auto-mark complete when you submit · imports past items Lyra missed"
+          description="Show submission evidence from Moodle - imports past items Lyra missed"
           dotState="idle"
           statusLine={<span>not enabled</span>}
           primaryAction={

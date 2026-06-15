@@ -4,7 +4,7 @@
  *
  * One modal, one flow, two capabilities:
  *   - iCal subscription URL → import deadlines (alembic 041, 2026-04-29)
- *   - Web Services token    → auto-mark complete on submission (alembic 043, 2026-05-01)
+ *   - Web Services token    -> show submission evidence (alembic 043, 2026-05-01)
  *
  * Why bundled (operator 2026-05-01 — "could u bundle both in a single
  * button?"): the standalone WS sub-row was easy to miss. One Connect
@@ -12,8 +12,8 @@
  * unconnected get inputs, whichever are connected get skipped.
  *
  * Trust-first copy: no research vocabulary. Show the value
- * proposition concretely ("found N items"; "+ auto-mark
- * complete when you submit") before asking for credentials.
+ * proposition concretely ("found N items"; "+ submission evidence")
+ * before asking for credentials.
  */
 import { useState } from "react";
 import { Loader2, Lock } from "lucide-react";
@@ -255,7 +255,7 @@ export function MoodleConnectModal({
                   )}
                   Web Services token{" "}
                   <span className="font-normal normal-case tracking-normal text-dust">
-                    — auto-marks complete + backfills past items
+                    - submission evidence + backfills past items
                   </span>
                 </p>
                 <ol className="ml-4 list-decimal space-y-1 text-xs text-dust">
@@ -335,7 +335,7 @@ export function MoodleConnectModal({
                   <p className="text-xs text-ember">{copyForError(wsErrorCode)}</p>
                 )}
                 <p className="text-[11px] text-dust">
-                  Lets Lyra check Moodle every 6h to auto-mark deadlines complete when you submit, and import past items Lyra missed.
+                  Lets Lyra check Moodle every 6h for submission evidence, and import past items Lyra missed.
                 </p>
                 {/* Encryption claim — operator request 2026-05-01 to surface
                     this prominently so users feel safe. Bright-white here is
@@ -411,7 +411,7 @@ export function MoodleConnectModal({
                   <li>Add these as deadlines on /deadlines</li>
                   <li>Re-sync every 6 hours</li>
                   {showWsInput && wsToken.trim() && (
-                    <li className="text-signal/90">Auto-mark complete when Moodle confirms submission</li>
+                    <li className="text-signal/90">Show submission evidence from Moodle</li>
                   )}
                   <li>Never write back to Moodle</li>
                 </ul>
@@ -453,12 +453,12 @@ export function MoodleConnectModal({
               )}
               {wsConnected && (
                 <li>
-                  Auto-mark on submission: <span className="text-signal">on</span>
+                  Submission evidence: <span className="text-signal">on</span>
                 </li>
               )}
               {wsErrorCode && !wsConnected && (
                 <li className="text-ember">
-                  Auto-mark on submission: {copyForError(wsErrorCode)}
+                  Submission evidence: {copyForError(wsErrorCode)}
                 </li>
               )}
             </ul>

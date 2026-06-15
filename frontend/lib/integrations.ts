@@ -145,7 +145,8 @@ export interface IntegrationState {
   disconnect_reason?: string | null;
   /** Moodle Web Services token state (alembic 043, 2026-05-01).
    *  Optional sub-capability: when true, the submission-detection
-   *  sync auto-marks deadlines complete when Moodle confirms.
+   *  sync records Moodle submission evidence without silently completing
+   *  deadlines.
    *  Boolean (never the token itself) so the API never echoes
    *  the credential. */
   ws_connected?: boolean;
@@ -207,6 +208,7 @@ export interface MoodleConnectResponse {
     unchanged: number;
     skipped_voided: number;
     skipped_unparseable: number;
+    duplicate_existing?: number;
     error: string | null;
   };
 }
@@ -255,12 +257,15 @@ export interface MoodleWSSyncResponse {
   ok: boolean;
   matched: number;
   marked_complete: number;
+  completion_candidates?: number;
   skipped_no_match: number;
   skipped_not_submitted: number;
   backfilled_completed: number;
+  backfilled_completion_candidates?: number;
   backfilled_planned: number;
   backfilled_missed: number;
   marked_titles: string[];
+  completion_candidate_titles?: string[];
   backfilled_titles: string[];
   error: string | null;
 }

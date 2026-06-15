@@ -1,10 +1,10 @@
 """Moodle Web Services submission detection (Phase B 2026-05-01).
 
-Auto-marks Lyra deadlines complete when Moodle confirms the user
-submitted the corresponding assignment. Solves operator's complaint:
-"the overdue task from moodle still hasn't synced up, still shows
-overdue even though I submitted it on moodle." iCal feeds carry due
-dates ONLY — Web Services is the only path to submission status.
+Records provider completion candidates when Moodle confirms the user submitted
+or was graded on the corresponding assignment. Moodle evidence does not
+silently complete Lyra deadlines; the user remains author of canonical
+deadline truth. iCal feeds carry due dates ONLY - Web Services is the only
+path to submission status.
 
 ARCHITECTURE — course-code matching (operator decision 2026-05-01):
   Lyra deadline matches a Moodle assignment ONLY when they share the
@@ -66,6 +66,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Deadline, User
 from app.services.deadline_manager import record_deadline_completion_event
+from app.utils.encryption import decrypt_secret, encrypt_secret, is_encrypted_secret
+from app.utils.provider_url_safety import ProviderUrlSafetyError, safe_provider_get
 from app.utils.time_utils import now_utc
 
 logger = logging.getLogger(__name__)
@@ -91,13 +93,16 @@ class SubmissionSyncResult:
     """Returned per-user from sync_user(). Counts + list for telegram."""
     matched: int = 0
     marked_complete: int = 0
+    completion_candidates: int = 0
     skipped_unbound: int = 0
     skipped_no_match: int = 0
     skipped_not_submitted: int = 0
     backfilled_completed: int = 0
+    backfilled_completion_candidates: int = 0
     backfilled_planned: int = 0
     backfilled_missed: int = 0
     marked_titles: list[str] = field(default_factory=list)
+    completion_candidate_titles: list[str] = field(default_factory=list)
     backfilled_titles: list[str] = field(default_factory=list)
     error: Optional[str] = None
 
@@ -279,9 +284,8 @@ class _MoodleWS:
             **{str(k): v for k, v in params.items()},
         }
         try:
-            with httpx.Client(timeout=WS_HTTP_TIMEOUT, follow_redirects=True) as client:
-                r = client.get(self.endpoint, params=q)
-                r.raise_for_status()
+            r = safe_provider_get(self.endpoint, params=q, timeout=WS_HTTP_TIMEOUT)
+            r.raise_for_status()
         except httpx.HTTPStatusError as e:
             status_code = e.response.status_code if e.response is not None else None
             if status_code is not None and 400 <= status_code < 500:
@@ -289,6 +293,8 @@ class _MoodleWS:
             raise _WSRequestError(fn, status_code, type(e).__name__) from None
         except httpx.RequestError as e:
             raise _WSRequestError(fn, None, type(e).__name__) from None
+        except ProviderUrlSafetyError as e:
+            raise _WSRequestError(fn, None, e.code) from None
         body = r.json()
         if isinstance(body, dict) and body.get("exception"):
             err = body.get("errorcode", "")
@@ -329,7 +335,8 @@ def resolve_base_url(user: User, fallback: str = "") -> str:
     if user.moodle_base_url:
         return user.moodle_base_url.strip()
     if user.moodle_ics_url:
-        parsed = urlparse(user.moodle_ics_url)
+        ics_url = decrypt_secret(user.moodle_ics_url)
+        parsed = urlparse(ics_url or "")
         if parsed.scheme and parsed.netloc:
             return f"{parsed.scheme}://{parsed.netloc}"
     return fallback.strip()
@@ -432,12 +439,13 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
     # Decrypt token (returns raw if legacy plaintext, decrypts if
     # `fernet:`-prefixed). None on decrypt failure → treat as needs
     # reconnect.
-    from app.utils.encryption import decrypt_secret
     token_plain = decrypt_secret(user.moodle_ws_token)
     if not token_plain:
         user.moodle_ws_disconnect_reason = "token_decrypt_failed"
         result.error = "token_decrypt_failed"
         return result
+    if not is_encrypted_secret(user.moodle_ws_token):
+        user.moodle_ws_token = encrypt_secret(token_plain)
     base_url = base_url.rstrip("/")
     if base_url and not user.moodle_base_url:
         user.moodle_base_url = base_url
@@ -573,8 +581,6 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
             if completed_at is None:
                 completed_at = now
                 time_provenance = "external_import_sync_time"
-            d.state = "completed"
-            d.completed_at = completed_at
             record_deadline_completion_event(
                 db,
                 d,
@@ -583,10 +589,10 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
                 recorded_at_utc=now,
                 time_provenance=time_provenance,
             )
-            result.marked_complete += 1
-            result.marked_titles.append(d.title)
+            result.completion_candidates += 1
+            result.completion_candidate_titles.append(d.title)
             logger.info(
-                "moodle_ws: marked deadline=%s ('%s') complete — %s",
+                "moodle_ws: recorded completion candidate for deadline=%s ('%s') - %s",
                 d.deadline_id, d.title, reason,
             )
         else:
@@ -609,15 +615,13 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
     # filtering `WHERE external_source IS NULL` still exclude them.
     # ---------------------------------------------------------------
     cutoff = now - timedelta(days=BACKFILL_PAST_DAYS)
-    # Pull EVERY Moodle deadline including voided ones — the unique
-    # constraint `uq_deadline_external` covers voided rows too, AND we
-    # want to honor an explicit user void as "don't resurrect" (mirrors
-    # DeadlineManager.upsert_external_deadline's 'skipped_voided' rule).
+    # Pull every non-voided deadline, native or imported. Native/imported
+    # duplicates inflate pressure even when external IDs differ.
     all_moodle_deadlines = (
         db.query(Deadline)
         .filter(
             Deadline.user_id == user.user_id,
-            Deadline.external_source.in_(("moodle_ics", "moodle_ws_backfill")),
+            Deadline.voided_at.is_(None),
         )
         .all()
     )
@@ -664,8 +668,8 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
                 time_provenance = "external_import_sync_time"
             else:
                 time_provenance = "external_import"
-            state = "completed"
-            result.backfilled_completed += 1
+            state = "missed" if ma_due < now else "planned"
+            result.backfilled_completion_candidates += 1
         elif ma_due < now:
             state = "missed"
             result.backfilled_missed += 1
@@ -683,7 +687,7 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
             external_id=str(ma["assign_id"]),
             created_at=now,
             imported_at=now,
-            completed_at=completed_at,
+            completed_at=None,
         )
         db.add(new_deadline)
         if submitted and completed_at is not None and time_provenance is not None:

@@ -28,6 +28,8 @@ from app.db.models import Deadline, User
 from app.db.scoping import get_current_user_id
 from app.services import moodle_ics_sync, moodle_submissions_sync
 from app.services.security_audit import write_security_audit_event
+from app.utils.encryption import encrypt_secret
+from app.utils.provider_url_safety import ProviderUrlSafetyError, safe_provider_get
 from app.utils.time_utils import now_utc
 
 router = APIRouter()
@@ -119,7 +121,7 @@ def post_moodle_connect(
             status_code=400, detail=f"connect_failed: {fetch_error}"
         )
 
-    user.moodle_ics_url = body.ics_url.strip()
+    user.moodle_ics_url = encrypt_secret(body.ics_url.strip())
     user.moodle_disconnect_reason = None
     db.commit()
     write_security_audit_event(
@@ -147,6 +149,7 @@ def post_moodle_connect(
             "unchanged": result.unchanged,
             "skipped_voided": result.skipped_voided,
             "skipped_unparseable": result.skipped_unparseable,
+            "duplicate_existing": result.duplicate_existing,
             "error": result.error,
         },
     }
@@ -169,6 +172,7 @@ def post_moodle_sync_now(db: Session = Depends(get_db)) -> dict[str, Any]:
         "unchanged": result.unchanged,
         "skipped_voided": result.skipped_voided,
         "skipped_unparseable": result.skipped_unparseable,
+        "duplicate_existing": result.duplicate_existing,
         "error": result.error,
     }
 
@@ -277,16 +281,15 @@ def post_moodle_ws_connect(
         )
 
     # Validate the token live + capture the userid in one round-trip.
-    import httpx
     try:
-        r = httpx.get(
+        r = safe_provider_get(
             f"{base_url.rstrip('/')}/webservice/rest/server.php",
             params={
                 "wstoken": token,
                 "wsfunction": "core_webservice_get_site_info",
                 "moodlewsrestformat": "json",
             },
-            timeout=10.0, follow_redirects=True,
+            timeout=10.0,
         )
         r.raise_for_status()
         body_json = r.json()
@@ -303,6 +306,11 @@ def post_moodle_ws_connect(
             )
     except HTTPException:
         raise
+    except ProviderUrlSafetyError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ws_validation_failed: {e.code}",
+        )
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -361,25 +369,28 @@ def post_moodle_ws_sync_now(db: Session = Depends(get_db)) -> dict[str, Any]:
     # noise post-multi-user expansion).
     backfilled_total = (
         result.backfilled_completed
+        + result.backfilled_completion_candidates
         + result.backfilled_planned
         + result.backfilled_missed
     )
-    if user.is_operator and (result.marked_complete or backfilled_total):
+    if user.is_operator and (result.completion_candidates or backfilled_total):
         from app.services.operator_notifier import notify_operator
         lines = []
-        if result.marked_complete:
-            lines.append(f"Auto-marked *{result.marked_complete}* deadline(s) complete:")
-            lines.extend(f"• {t}" for t in result.marked_titles)
+        if result.completion_candidates:
+            lines.append(
+                f"Recorded *{result.completion_candidates}* Moodle completion candidate(s):"
+            )
+            lines.extend(f"- {t}" for t in result.completion_candidate_titles)
         if backfilled_total:
             lines.append(
                 f"Backfilled *{backfilled_total}* assignment(s) "
-                f"({result.backfilled_completed} done, "
+                f"({result.backfilled_completion_candidates} completion candidate, "
                 f"{result.backfilled_missed} missed, "
                 f"{result.backfilled_planned} planned):"
             )
-            lines.extend(f"• {t}" for t in result.backfilled_titles)
+            lines.extend(f"- {t}" for t in result.backfilled_titles)
         notify_operator(
-            "Moodle WS sync —\n" + "\n".join(lines),
+            "Moodle WS sync -\n" + "\n".join(lines),
             source="moodle.ws-sync",
             severity="info",
         )
@@ -388,12 +399,15 @@ def post_moodle_ws_sync_now(db: Session = Depends(get_db)) -> dict[str, Any]:
         "ok": result.error is None,
         "matched": result.matched,
         "marked_complete": result.marked_complete,
+        "completion_candidates": result.completion_candidates,
         "skipped_no_match": result.skipped_no_match,
         "skipped_not_submitted": result.skipped_not_submitted,
         "backfilled_completed": result.backfilled_completed,
+        "backfilled_completion_candidates": result.backfilled_completion_candidates,
         "backfilled_planned": result.backfilled_planned,
         "backfilled_missed": result.backfilled_missed,
         "marked_titles": result.marked_titles,
+        "completion_candidate_titles": result.completion_candidate_titles,
         "backfilled_titles": result.backfilled_titles,
         "error": result.error,
     }

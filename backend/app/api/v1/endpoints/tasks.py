@@ -871,6 +871,11 @@ def update_task_deadline_binding(
                 status_code=400,
                 detail="Deadline not bindable (not found or voided)",
             )
+        if not deadline.is_bindable:
+            raise HTTPException(
+                status_code=400,
+                detail="Deadline not bindable (terminal state)",
+            )
         task.deadline_id = deadline.deadline_id
         task.deadline_match_source = "user_corrected"
         task.deadline_match_confidence = 1.0

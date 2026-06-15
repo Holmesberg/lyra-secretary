@@ -162,3 +162,23 @@ def test_clear_deadline_binding_on_executed_task(db, client):
     assert refreshed.deadline_match_source is None
     assert refreshed.deadline_match_confidence is None
     assert refreshed.executed_duration_minutes == 75
+
+
+@pytest.mark.parametrize("state", ["completed", "missed", "skipped"])
+def test_deadline_binding_correction_rejects_terminal_deadlines(db, client, state):
+    user = _user(db)
+    set_current_user_id(user.user_id)
+    deadline = _deadline(db, user.user_id, "Terminal obligation", state=state)
+    task = _task(db, user.user_id, TaskState.EXECUTING)
+
+    response = client.post(
+        f"/v1/tasks/{task.task_id}/deadline-binding",
+        headers=auth_headers(user.user_id),
+        json={"deadline_id": deadline.deadline_id},
+    )
+
+    assert response.status_code == 400
+    assert "terminal" in response.json()["detail"]
+    db.expire_all()
+    refreshed = db.query(Task).filter(Task.task_id == task.task_id).first()
+    assert refreshed.deadline_id is None
