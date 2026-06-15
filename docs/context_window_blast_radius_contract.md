@@ -145,6 +145,19 @@ For implementation waves:
 8. Watch CI until pass or diagnose failure immediately.
 9. Record meaningful incidents in the wave execution log.
 
+Branch cadence:
+
+- A new wave cycle gets a new branch. A cycle may contain many numbered waves
+  when they share one closure objective, one verification ledger, and one
+  release checkpoint.
+- Do not create a new branch for every wave or subwave inside the same cycle.
+  CI fixes, browser verification repairs, cleanup commits, and documentation
+  corrections remain on the cycle branch.
+- Create a separate branch only for a new wave cycle, a separate release train,
+  or an urgent unrelated ops fix that must not wait for the active cycle.
+- Before starting the next cycle, merge the completed cycle checkpoint into
+  `main`, sync local `main`, then branch from fresh `main`.
+
 The default alt-account smoke accounts are:
 
 - `asabryhafez@gmail.com`

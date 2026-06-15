@@ -227,7 +227,7 @@ if ($ForMerge) {
             Add-Warning "Alembic migrations changed; confirm revision ordering and upgrade path: $($migrationFiles -join ', ')"
         }
         if ($prFileCount -gt 150) {
-            Add-Warning "Large PR diff ($prFileCount files). Prefer merging this checkpoint before starting the next wave."
+            Add-Warning "Large PR diff ($prFileCount files). Prefer merging this wave-cycle checkpoint before starting the next cycle."
         }
     } else {
         Add-Blocker "Base ref '$BaseRef' is not available locally. Fetch it before merge hygiene."

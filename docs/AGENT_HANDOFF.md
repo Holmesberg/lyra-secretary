@@ -111,6 +111,10 @@ Docker and frontend workflows: **`agent bootstrap doc`** Commands section.
   `merge`, `rebase`, `stash`, or branch switch, state the current branch,
   name the exact change bucket, list the exact command, and wait for operator
   confirmation.
+- **Branch cadence:** create a new branch for a new wave cycle, not for every
+  wave/subwave. Same-cycle CI fixes, browser-verification repairs, docs, and
+  cleanup remain on the cycle branch. Branch separately only for a different
+  release train or urgent unrelated ops fix.
 - **Pre-final git hygiene:** before the final response, run
   `.\scripts\git_hygiene_summary.ps1` and report dirty worktree status,
   intentionally changed files, unrelated dirty files, verification, and

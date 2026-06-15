@@ -107,6 +107,19 @@ Before coding:
 - Name the intended task scope and the files/directories likely to change.
 - If unrelated dirty files exist, leave them alone and report them separately.
 
+Branch cadence:
+
+- A new wave cycle gets a new branch. Example: a bug-closure cycle covering
+  Waves 1-9 should use one coherent cycle branch.
+- Do not create a new branch for every wave, subwave, browser-verification
+  pass, CI fix, documentation update, or review correction inside the same
+  cycle.
+- Create a separate branch only when starting a new wave cycle or a truly
+  separate failure domain/release train, such as urgent ops recovery while a
+  product wave is in progress.
+- Same-cycle contract failures, CI fixes, verification notes, and cleanup stay
+  on the same branch until that cycle checkpoint is merged.
+
 Before any commit or push:
 
 - Run `./scripts/git_hygiene_summary.ps1 -ForPush -Paths <task-scoped paths>`.
@@ -135,8 +148,8 @@ Before merge:
   complete where required.
 - Confirm no accidental local artifacts are present in the PR diff.
 - Confirm Alembic revision ordering if migrations changed.
-- Do not merge a large wave branch while starting the next wave on the same
-  branch; merge the coherent checkpoint first, then branch the next wave.
+- Do not merge a large wave-cycle branch while starting the next cycle on the
+  same branch; merge the coherent checkpoint first, then branch the next cycle.
 
 Every final implementation report must include:
 
