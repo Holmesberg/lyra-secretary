@@ -568,6 +568,94 @@ sovereignty, Wave 5B provider security/integrity, or the Wave 6 final green
 cohort proof.
 ```
 
+## Wave 5A Closure - Data Sovereignty - 2026-06-15
+
+Status: implemented and targeted-tested locally. Codex browser verification and
+user-side browser verification are still required before Wave 5B begins.
+
+Scope closed:
+
+- added a central user-owned data registry:
+  `backend/app/services/user_data_registry.py`;
+- `/v1/users/me/export` now uses the registry instead of a hand-curated
+  `user/tasks/stopwatch/archetype` list;
+- export now includes registered user-owned sections for:
+  - tasks;
+  - deadlines;
+  - deadline completion and task-deadline outcome rows;
+  - stopwatch sessions;
+  - task execution corrections;
+  - pause events;
+  - pause/resume prediction logs;
+  - calibration nudge events;
+  - reflection view logs;
+  - exposure decisions, renders, acknowledgements, suppressions, and policy
+    diagnostics;
+  - feedback;
+  - external event outcomes;
+  - notification lifecycle rows;
+  - email engagement rows;
+  - archetype assignments;
+  - JARVIS invocation rows.
+- export includes an `integration_state` summary without exporting raw Google
+  refresh tokens, Moodle iCal URLs, Moodle WS tokens, or raw provider URLs;
+- export redacts token-like values in operational URL fields;
+- security audit rows remain outside the behavioral/user-data registry because
+  `SecurityAuditEvent` is append-only governance infrastructure and is blocked
+  from behavioral paths by `tests/test_security_audit.py`;
+- export now names that exception in `governance_audit_policy` instead of
+  silently omitting it;
+- account delete now uses the registry purge/anonymization helpers instead of
+  endpoint-local SQL table lists;
+- retain-for-research mode still anonymizes task/session rows and purges
+  auxiliary user-owned rows;
+- hard-delete mode purges task/session rows as well;
+- `RedisClient.purge_user_runtime_state()` now clears known user-scoped Redis
+  runtime keys:
+  - active/paused stopwatch;
+  - pending notifications;
+  - undo and idempotency keys;
+  - `/me` and task-range caches;
+  - Google Calendar access-token/event caches;
+  - reminder/timer-overflow/insight seen keys;
+  - Notion sync queue;
+  - last-operated task.
+
+Automated verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_delete_account_modern_auxiliary_rows.py
+  tests/test_redis_state_contract.py -q`
+  - result: `8 passed`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_delete_account_modern_auxiliary_rows.py
+  tests/test_redis_state_contract.py
+  tests/test_delete_account_with_external_outcomes.py
+  tests/test_multiuser_isolation_adversarial.py::test_export_and_delete_account_do_not_cross_user_boundaries
+  tests/test_security_audit.py -q`
+  - result: `15 passed`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_notification_queue_openclaw_mirror.py tests/test_me_cache.py -q`
+  - result: `16 passed`.
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_delete_account_modern_auxiliary_rows.py
+  tests/test_redis_state_contract.py
+  tests/test_delete_account_with_external_outcomes.py
+  tests/test_multiuser_isolation_adversarial.py tests/test_security_audit.py
+  tests/test_raw_sql_user_scope_scan.py -q`
+  - result: `39 passed`;
+- `cd frontend && npm run build`
+  - result: production build passed.
+
+Important nuance:
+
+```text
+Wave 5A closes export/delete registry coverage and Redis runtime purge. It does
+not close provider SSRF protection, credential encryption, provider provenance,
+duplicate provider imports, or terminal-deadline binding correction; those are
+Wave 5B.
+```
+
 ## Wave B Implementation And Verification - 2026-06-05
 
 Status: implemented and verified on the deployed public web app.

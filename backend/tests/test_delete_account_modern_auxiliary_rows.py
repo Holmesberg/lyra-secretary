@@ -5,6 +5,7 @@ feedback, corrections, and other append-only ledgers. Those rows must not block
 the final user DELETE, and they must not leave raw user-owned residue after a
 hard delete.
 """
+import json
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ from app.db.models import (
     CalibrationNudgeEvent,
     Deadline,
     DeadlineCompletionEvent,
+    EmailEngagementEvent,
     ExposureAckEvent,
     ExposureDecisionEvent,
     ExposurePolicyEffectLog,
@@ -19,10 +21,12 @@ from app.db.models import (
     ExternalEventOutcome,
     Feedback,
     JarvisInvocation,
+    NotificationLifecycleEvent,
     PauseEvent,
     PausePredictionLog,
     ReflectionViewLog,
     ResumePredictionLog,
+    SecurityAuditEvent,
     StopwatchSession,
     SuppressionEvent,
     Task,
@@ -47,6 +51,18 @@ def _seed_user_with_modern_auxiliary_rows(email: str) -> dict[str, str | int]:
             is_operator=False,
             notion_enabled=False,
             terms_accepted_at=now,
+            google_refresh_token="raw-google-refresh-secret",
+            moodle_ics_url=(
+                "https://lms.example.edu/calendar/export_execute.php?"
+                "authtoken=raw-moodle-secret"
+            ),
+            moodle_ws_token="raw-moodle-ws-secret",
+            moodle_last_synced_at=now,
+            moodle_ws_last_synced_at=now,
+            moodle_disconnect_reason="manual_test",
+            moodle_ws_disconnect_reason="manual_test",
+            moodle_userid=123,
+            moodle_base_url="https://lms.example.edu",
         )
         db.add(user)
         db.commit()
@@ -211,6 +227,36 @@ def _seed_user_with_modern_auxiliary_rows(email: str) -> dict[str, str | int]:
                     window_start=now,
                     window_end=now + timedelta(minutes=1),
                 ),
+                NotificationLifecycleEvent(
+                    user_id=uid,
+                    notification_id="notif-private-1",
+                    channel="web",
+                    notification_type="timer_overflow",
+                    status="queued",
+                    dedupe_key="timer_overflow:private-session",
+                    payload_hash="notif-hash",
+                    content_snapshot="private notification content",
+                    surface_id="worker.timer_overflow",
+                    exposure_id=exposure_id,
+                    task_id=task_id,
+                    session_id=session_id,
+                    queued_at=now,
+                    last_transition_at=now,
+                    created_at=now,
+                ),
+                EmailEngagementEvent(
+                    user_id=uid,
+                    campaign_version="activation_v1",
+                    event_type="click",
+                    recipient_key="recipient-key",
+                    target_url="https://lyraos.org/welcome?token=raw-click-secret",
+                    provider_message_id="provider-message-id",
+                    request_metadata={
+                        "user_agent": "private ua",
+                        "ip_prefix": "127.0.0.1",
+                    },
+                    occurred_at=now,
+                ),
                 Feedback(
                     user_id=uid,
                     submitted_at=now,
@@ -230,6 +276,19 @@ def _seed_user_with_modern_auxiliary_rows(email: str) -> dict[str, str | int]:
                     outcome="attended",
                     event_title="Private event",
                     marked_at=now,
+                ),
+                SecurityAuditEvent(
+                    actor_user_id=uid,
+                    user_id=uid,
+                    event_type="provider_connected",
+                    surface="/v1/test",
+                    target_type="provider",
+                    target_id="moodle",
+                    status="success",
+                    ip_hash="ip-hash",
+                    user_agent_hash="ua-hash",
+                    redacted_metadata={"provider_url": "[redacted]"},
+                    created_at=now,
                 ),
             ]
         )
@@ -344,13 +403,75 @@ def test_delete_retention_mode_purges_modern_auxiliary_rows(client):
         ExposureDecisionEvent,
         ExposureAckEvent,
         ExposurePolicyEffectLog,
+        NotificationLifecycleEvent,
         Feedback,
         JarvisInvocation,
         ExternalEventOutcome,
+        EmailEngagementEvent,
     ):
         assert _count_user_rows(model, user_id) == 0, model.__tablename__
     assert _count_exposure_rows(ExposureRenderEvent, str(ids["exposure_id"])) == 0
     assert _count_exposure_rows(SuppressionEvent, str(ids["exposure_id"])) == 0
+
+
+def test_export_registry_includes_user_owned_sections_and_redacts_secrets(client):
+    email = "export-registry-modern-aux@example.com"
+    ids = _seed_user_with_modern_auxiliary_rows(email)
+    user_id = int(ids["user_id"])
+
+    resp = client.get("/v1/users/me/export", headers=auth_headers(user_id))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["schema_version"] == "user_data_export_v2"
+
+    expected_sections = {
+        "tasks",
+        "deadlines",
+        "deadline_completion_events",
+        "task_deadline_outcomes",
+        "stopwatch_sessions",
+        "task_execution_corrections",
+        "pause_events",
+        "pause_prediction_logs",
+        "resume_prediction_logs",
+        "calibration_nudge_events",
+        "reflection_view_logs",
+        "exposure_decision_events",
+        "exposure_render_events",
+        "exposure_ack_events",
+        "suppression_events",
+        "exposure_policy_effect_logs",
+        "feedback",
+        "external_event_outcomes",
+        "notification_lifecycle_events",
+        "email_engagement_events",
+        "archetype_assignments",
+        "jarvis_invocations",
+    }
+    assert expected_sections.issubset(set(data.keys()))
+    assert {entry["section"] for entry in data["registry"]} >= expected_sections
+
+    for section in expected_sections - {"archetype_assignments"}:
+        assert len(data[section]) >= 1, section
+
+    assert data["integration_state"]["google_calendar"]["connected"] is True
+    assert data["integration_state"]["moodle_ics"]["connected"] is True
+    assert data["integration_state"]["moodle_ws"]["connected"] is True
+    assert data["integration_state"]["moodle_ics"]["credential_exported"] is False
+    assert data["integration_state"]["moodle_ws"]["credential_exported"] is False
+    assert data["governance_audit_policy"]["exported_in_this_file"] is False
+    assert (
+        data["governance_audit_policy"]["delete_policy"]
+        == "append_only_redacted_security_governance_log"
+    )
+
+    encoded = json.dumps(data, sort_keys=True)
+    assert "raw-google-refresh-secret" not in encoded
+    assert "raw-moodle-secret" not in encoded
+    assert "raw-moodle-ws-secret" not in encoded
+    assert "raw-click-secret" not in encoded
+    assert "authtoken=" not in encoded
 
 
 def test_delete_hard_mode_purges_modern_auxiliary_rows(client):
@@ -382,10 +503,40 @@ def test_delete_hard_mode_purges_modern_auxiliary_rows(client):
         ExposureDecisionEvent,
         ExposureAckEvent,
         ExposurePolicyEffectLog,
+        NotificationLifecycleEvent,
         Feedback,
         JarvisInvocation,
         ExternalEventOutcome,
+        EmailEngagementEvent,
     ):
         assert _count_user_rows(model, user_id) == 0, model.__tablename__
     assert _count_exposure_rows(ExposureRenderEvent, str(ids["exposure_id"])) == 0
     assert _count_exposure_rows(SuppressionEvent, str(ids["exposure_id"])) == 0
+
+
+def test_delete_account_invokes_runtime_state_purge(client, monkeypatch):
+    email = "delete-runtime-purge@example.com"
+    ids = _seed_user_with_modern_auxiliary_rows(email)
+    user_id = int(ids["user_id"])
+    calls: list[int] = []
+
+    class FakeRedisClient:
+        def purge_user_runtime_state(self, uid):
+            calls.append(int(uid))
+            return 12
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.users.RedisClient",
+        lambda: FakeRedisClient(),
+    )
+
+    resp = client.request(
+        "DELETE",
+        "/v1/users/me",
+        json={"confirm_email": email, "retain_for_research": False},
+        headers=auth_headers(user_id),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["runtime_state_purged"] is True
+    assert calls == [user_id]
