@@ -160,30 +160,39 @@ Do not use a Windows port-3000 frontend to prove public health while the tunnel
 is served from WSL. If both Windows and WSL have frontend processes, stop and
 verify which process Cloudflare is actually reaching.
 
-Public browser smoke requires secure cookie names:
+Public operator browser stress requires the operator account cookie:
 
 ```powershell
-$rawA = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_ASABRYHAFEZ", "User")
-$rawM = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_MORIARTY", "User")
-$env:LYRA_COOKIE_ASABRYHAFEZ = "__Secure-next-auth.session-token=$rawA"
-$env:LYRA_COOKIE_MORIARTY = "__Secure-next-auth.session-token=$rawM"
-$env:LYRA_FRONTEND_ORIGIN = "https://lyraos.org"
-$env:LYRA_API_ORIGIN = "https://api.lyraos.org"
-node scripts/browser_smoke_two_users.mjs
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_operator_readonly_browser_stress.ps1 -Topology public
 ```
 
-The raw token-only cookie env can work on localhost, but HTTPS public smoke
-must use `__Secure-next-auth.session-token`.
+The runner reads `LYRA_COOKIE_ALINASSERSABRY` from the current user
+environment, runs public topology verification first, then verifies the main
+operator account through the normal browser/session path. The route walk is
+read-only: it captures desktop/mobile screenshots, latency budgets,
+console/network failures, operator-route checks, forbidden-copy checks, and
+before/after export counts so task, deadline, and session creation cannot pass
+unnoticed.
 
 ## Laptop sleep / wake behavior
 
-- The tunnel is a foreground process launched through `scripts/restart_cloudflared_wsl.ps1`. It still **does NOT auto-recover** on laptop sleep or reboot, but the restart script also pins Cloudflare Tunnel DNS resolvers so WSL DNS failures do not strand the connector.
-- Same for the backend container (docker-compose state may survive sleep but needs operator to `docker compose up -d` after a reboot).
-- Same for the `next start` frontend process.
+- The public runtime is guarded by `scripts/watch_public_runtime.ps1`.
+- Windows Task Scheduler runs `LyraOS Public Runtime Watchdog` every 12 hours.
+- The current-user Startup folder also runs `LyraOS Public Runtime Watchdog.lnk`
+  at Windows logon, installed by
+  `scripts/install_public_runtime_startup_shortcut.ps1`.
+- The watchdog checks local frontend/API health, public frontend/API health,
+  public topology, the public static asset graph referenced by served HTML, and
+  repairs Cloudflare/local runtime when needed.
+- `scripts/restart_cloudflared_wsl.ps1` pins Cloudflare Tunnel DNS resolvers so
+  WSL DNS failures do not strand the connector.
 
-**Fallback today:** if a trusted user hits "site down" while operator's laptop is asleep, operator wakes the laptop and restarts the stack. Acceptable for April 18 pre-alpha (<10 users, operator available).
+**Fallback today:** if a trusted user hits "site down" while the operator's
+laptop is asleep, wake/login should run the startup watchdog. If not, run:
 
-**Robustness path (post-Spring-School):** systemd unit or Windows Task Scheduler entry that runs `docker compose up -d` and `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` on boot. Not blocking the April 18 milestone.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\watch_public_runtime.ps1
+```
 
 ## Database separation rationale
 
@@ -231,14 +240,20 @@ Supabase data is unchanged across the swap — same `DATABASE_URL`. Zero data mi
 
 ## Morning Recovery Checklist (laptop-sleep wake)
 
-Run after every overnight sleep or extended laptop suspend. Services that
-survive sleep vs require manual restart:
+The watchdog should run every 12 hours and at Windows logon. If public health is
+unclear, run this first:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\watch_public_runtime.ps1
+```
+
+Services that survive sleep vs require repair:
 
 | Service | Survives sleep? | Recovery |
 |---------|----------------|----------|
 | Docker (backend + Redis) | Usually yes (containers stay up) | `docker-compose ps` → restart if "Exited" |
-| Cloudflared tunnel | **No** (foreground process dies) | `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` |
-| Next.js (frontend) | **No** (nohup process may die; `.next` can be left incomplete if a build is interrupted) | `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
+| Cloudflared tunnel | Often no (foreground process can die) | Watchdog, or `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` |
+| Next.js (frontend) | Sometimes no (nohup process may die; `.next` can be left incomplete if a build is interrupted) | Watchdog, or `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | APScheduler | Yes (restarts with backend) | Automatic — fires missed jobs on wake |
 | Supabase connection pool | Yes (pool_pre_ping reconnects stale conns) | Automatic |
 | Redis data | Yes (persistent volume) | Automatic |

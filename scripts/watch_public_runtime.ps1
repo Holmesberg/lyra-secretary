@@ -50,6 +50,46 @@ function Write-CheckResult($Result) {
     }
 }
 
+function Test-StaticAssetGraph([string]$Name, [string]$BaseUri, [int]$Timeout) {
+    $failures = @()
+    try {
+        $response = Invoke-WebRequest -Uri $BaseUri -UseBasicParsing -TimeoutSec $Timeout
+        $matches = [regex]::Matches(
+            $response.Content,
+            "/_next/static/(?:chunks|css)/[^`"'\s<>\\]+"
+        )
+        $assets = @($matches | ForEach-Object { $_.Value } | Sort-Object -Unique)
+        foreach ($asset in $assets) {
+            $assetUri = [Uri]::new([Uri]$BaseUri, $asset).AbsoluteUri
+            try {
+                $assetResponse = Invoke-WebRequest -Uri $assetUri -Method Head -UseBasicParsing -TimeoutSec $Timeout
+                if ([int]$assetResponse.StatusCode -ne 200) {
+                    $failures += "$($assetResponse.StatusCode) $asset"
+                }
+            } catch {
+                $failures += "ERR $asset $($_.Exception.Message)"
+            }
+        }
+        return [pscustomobject]@{
+            Name = $Name
+            Uri = $BaseUri
+            Ok = ($failures.Count -eq 0 -and $assets.Count -gt 0)
+            StatusCode = [int]$response.StatusCode
+            Error = if ($failures.Count -gt 0) { ($failures -join "; ") } elseif ($assets.Count -eq 0) { "no Next static assets found" } else { $null }
+            AssetCount = $assets.Count
+        }
+    } catch {
+        return [pscustomobject]@{
+            Name = $Name
+            Uri = $BaseUri
+            Ok = $false
+            StatusCode = $null
+            Error = $_.Exception.Message
+            AssetCount = 0
+        }
+    }
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 if (-not $LogDir) {
     $LogDir = Join-Path $repoRoot "tmp\runtime-watchdog"
@@ -81,6 +121,7 @@ try {
 
     $localOk = $localFrontend.Ok -and $localApi.Ok
     $publicOk = $publicFrontend.Ok -and $publicApi.Ok
+    $needsFrontendRepair = $false
 
     if ($publicOk) {
         Write-Step "Verifying public topology"
@@ -88,15 +129,34 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "public topology verification failed."
         }
-        Write-Host "Runtime is clean."
-        exit 0
+
+        Write-Step "Verifying public static asset graph"
+        $publicAssets = Test-StaticAssetGraph "public_static_assets" "https://lyraos.org/" $TimeoutSeconds
+        Write-CheckResult $publicAssets
+        if ($publicAssets.Ok) {
+            Write-Host "Static assets referenced by public HTML: $($publicAssets.AssetCount)"
+            Write-Host "Runtime is clean."
+            exit 0
+        }
+
+        $needsFrontendRepair = $true
+        Write-Host "Static asset graph failed: $($publicAssets.Error)"
+        if ($NoRepair) {
+            throw "public runtime has broken static assets and repair is disabled."
+        }
     }
 
     if ($NoRepair) {
         throw "public runtime is unhealthy and repair is disabled."
     }
 
-    if ($localOk) {
+    if ($needsFrontendRepair) {
+        Write-Step "Repairing public frontend static asset graph"
+        powershell -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\restart_frontend_wsl.ps1")
+        if ($LASTEXITCODE -ne 0) {
+            throw "public frontend restart failed."
+        }
+    } elseif ($localOk) {
         Write-Step "Repairing Cloudflare tunnel only"
         powershell -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\restart_cloudflared_wsl.ps1") -ForceRestart
         if ($LASTEXITCODE -ne 0) {
@@ -132,6 +192,14 @@ try {
     if (-not ($publicFrontendAfter.Ok -and $publicApiAfter.Ok)) {
         throw "public runtime remains unhealthy after repair."
     }
+
+    Write-Step "Rechecking public static asset graph after repair"
+    $publicAssetsAfter = Test-StaticAssetGraph "public_static_assets_after" "https://lyraos.org/" $TimeoutSeconds
+    Write-CheckResult $publicAssetsAfter
+    if (-not $publicAssetsAfter.Ok) {
+        throw "public static asset graph remains unhealthy after repair: $($publicAssetsAfter.Error)"
+    }
+    Write-Host "Static assets referenced by public HTML: $($publicAssetsAfter.AssetCount)"
 
     Write-Host "Runtime repaired and clean."
     exit 0
