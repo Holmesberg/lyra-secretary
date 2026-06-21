@@ -28,7 +28,7 @@ import { createEventsServicePlugin } from "@schedule-x/events-service";
 import { createDragAndDropPlugin } from "@schedule-x/drag-and-drop";
 import { createResizePlugin } from "@schedule-x/resize";
 import {
-  queryTasks,
+  queryTasksRange,
   rescheduleTask,
   getStopwatchStatus,
   type TaskRow as TaskRowType,
@@ -246,6 +246,32 @@ function scrollCalendarViewportToNow(viewport: HTMLDivElement) {
   });
 }
 
+type CalendarQueryRange = {
+  from: string;
+  to: string;
+};
+
+type ScheduleRange = {
+  start: Temporal.ZonedDateTime;
+  end: Temporal.ZonedDateTime;
+};
+
+function initialCalendarQueryRange(): CalendarQueryRange {
+  const today = Temporal.Now.plainDateISO(TIMEZONE);
+  const weekStart = today.subtract({ days: today.dayOfWeek - 1 });
+  return {
+    from: weekStart.toString(),
+    to: weekStart.add({ days: 6 }).toString(),
+  };
+}
+
+function calendarRangeToQueryRange(range: ScheduleRange): CalendarQueryRange {
+  return {
+    from: range.start.toPlainDate().toString(),
+    to: range.end.toPlainDate().toString(),
+  };
+}
+
 function taskToEvent(
   task: TaskRowType,
   liveStart?: Temporal.ZonedDateTime | null,
@@ -341,44 +367,34 @@ function zdtToIso(zdt: Temporal.ZonedDateTime | Temporal.PlainDate): string {
 
 export default function CalendarPage() {
   const qc = useQueryClient();
-  // Pull a wide window so the calendar has something to render across
-  // day/week/month navigation. Pivot 14 days before today and pull 62
-  // days forward: covers two weeks of history + ~6 weeks ahead, which
-  // is enough for month-view scrolling without yet another round trip.
-  // Cached under a distinct key so this bulk fetch doesn't collide
-  // with Today view's single-day query.
-  const pivot = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 14);
-    return d;
-  }, []);
-  const pivotKey = format(pivot, "yyyy-MM-dd");
-  const RANGE_DAYS = 62;
-
+  const [visibleRange, setVisibleRange] = useState<CalendarQueryRange>(() =>
+    initialCalendarQueryRange(),
+  );
+  // Fetch the range Schedule-X is actually showing. A fixed "near today"
+  // window made old weeks look task-empty while all-range deadlines still
+  // appeared, which was both confusing and false.
   const tasksQ = useQuery({
-    queryKey: ["tasks-range", pivotKey, RANGE_DAYS],
-    queryFn: () => queryTasks(pivotKey, RANGE_DAYS),
+    queryKey: ["tasks-range", visibleRange.from, visibleRange.to],
+    queryFn: async () => {
+      const res = await queryTasksRange(visibleRange.from, visibleRange.to);
+      return res.tasks.filter((t) => t.state !== "DELETED");
+    },
     staleTime: 60_000,
   });
 
-  // Google Calendar read-only events. Same window as the task query so
+  // Google Calendar read-only events. Same visible range as the task query so
   // external events render alongside Lyra tasks across the operator's
   // scrollable view. 60s staleTime matches the backend Redis TTL, so
   // switching views feels instant but Lyra picks up newly-added GCal
   // events within ~1 minute. Connected=false (no refresh_token yet)
   // returns empty events gracefully — no error toast, UI simply shows
   // Lyra tasks alone.
-  const calEnd = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + (RANGE_DAYS - 14));
-    return d;
-  }, []);
   const calendarEventsQ = useQuery({
-    queryKey: ["calendar-events", pivotKey, calEnd.toISOString().slice(0, 10)],
+    queryKey: ["calendar-events", visibleRange.from, visibleRange.to],
     queryFn: () =>
       getCalendarEvents({
-        dateFrom: pivotKey,
-        dateTo: calEnd.toISOString().slice(0, 10),
+        dateFrom: visibleRange.from,
+        dateTo: visibleRange.to,
       }),
     staleTime: 60_000,
     refetchInterval: 60_000,
@@ -662,6 +678,15 @@ export default function CalendarPage() {
       // same Temporal class.
       selectedDate: Temporal.Now.plainDateISO(TIMEZONE),
       callbacks: {
+        onRangeUpdate(range) {
+          const nextRange = calendarRangeToQueryRange(range);
+          autoScrolledKeyRef.current = null;
+          setVisibleRange((prev) =>
+            prev.from === nextRange.from && prev.to === nextRange.to
+              ? prev
+              : nextRange,
+          );
+        },
         onEventClick(evt) {
           const idStr = String(evt.id);
           // Branch on prefix: deadlines open the DeadlineModal in
@@ -728,7 +753,8 @@ export default function CalendarPage() {
   // With 06:00-23:00 cropped into a fixed-height internal scroll viewport,
   // afternoon/evening work can be correctly rendered but below the fold,
   // making the calendar look empty. After events mount, land the viewport on
-  // the active task first, then the first Lyra task today, then current time.
+  // the active task first when it is visible, then the first Lyra task in the
+  // viewed range, then current time.
   useEffect(() => {
     if (!calendar || currentView === "month-grid") return;
     const viewport = calendarViewportRef.current;
@@ -738,12 +764,25 @@ export default function CalendarPage() {
       statusQ.data?.active && statusQ.data.task_id
         ? String(statusQ.data.task_id)
         : null;
+    const activeEvent = activeId
+      ? events.find((event) => String(event.id) === activeId)
+      : undefined;
     const today = Temporal.Now.plainDateISO(TIMEZONE).toString();
     const firstTodayTask = events.find(
       (event) => isLyraTaskEvent(event) && eventDateString(event) === today,
     );
-    const targetId = activeId ?? (firstTodayTask ? String(firstTodayTask.id) : null);
-    const scrollKey = `${currentView}:${targetId ?? "now"}:${events.length}:${today}`;
+    const firstVisibleTask = events.find(isLyraTaskEvent);
+    const firstVisibleEvent = events[0];
+    const targetId = activeEvent
+      ? String(activeEvent.id)
+      : firstTodayTask
+        ? String(firstTodayTask.id)
+        : firstVisibleTask
+          ? String(firstVisibleTask.id)
+          : firstVisibleEvent
+            ? String(firstVisibleEvent.id)
+            : null;
+    const scrollKey = `${currentView}:${visibleRange.from}:${visibleRange.to}:${targetId ?? "now"}:${events.length}`;
     if (autoScrolledKeyRef.current === scrollKey) return;
 
     const timeoutId = window.setTimeout(() => {
@@ -771,6 +810,8 @@ export default function CalendarPage() {
     statusQ.data?.active,
     statusQ.data?.task_id,
     tasksQ.isLoading,
+    visibleRange.from,
+    visibleRange.to,
   ]);
 
   return (
