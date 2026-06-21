@@ -188,6 +188,64 @@ function deadlineToZdt(iso: string): Temporal.ZonedDateTime {
   return Temporal.Instant.from(iso).toZonedDateTimeISO(TIMEZONE);
 }
 
+function eventDateString(event: CalendarEventExternal): string | null {
+  const start = event.start as unknown as {
+    toPlainDate?: () => { toString: () => string };
+    toString?: () => string;
+  };
+  if (typeof start?.toPlainDate === "function") {
+    return start.toPlainDate().toString();
+  }
+  if (typeof start?.toString === "function") {
+    return start.toString().slice(0, 10);
+  }
+  return null;
+}
+
+function isLyraTaskEvent(event: CalendarEventExternal): boolean {
+  const id = String(event.id);
+  return !id.startsWith("gcal-") && !id.startsWith("deadline-");
+}
+
+function eventIdSelector(eventId: string): string {
+  const escaped = eventId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `[data-event-id="${escaped}"]`;
+}
+
+function scrollElementIntoCalendarViewport(
+  viewport: HTMLDivElement,
+  element: HTMLElement,
+) {
+  const viewportRect = viewport.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  const targetTop =
+    viewport.scrollTop +
+    (elementRect.top - viewportRect.top) -
+    Math.max(96, viewport.clientHeight * 0.24);
+
+  viewport.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: "auto",
+  });
+}
+
+function scrollCalendarViewportToNow(viewport: HTMLDivElement) {
+  const now = Temporal.Now.zonedDateTimeISO(TIMEZONE);
+  const startHour = 6;
+  const endHour = 23;
+  const minutesFromStart = Math.max(
+    0,
+    Math.min((endHour - startHour) * 60, (now.hour - startHour) * 60 + now.minute),
+  );
+  const ratio = minutesFromStart / ((endHour - startHour) * 60);
+  const targetTop = viewport.scrollHeight * ratio - viewport.clientHeight * 0.35;
+
+  viewport.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: "auto",
+  });
+}
+
 function taskToEvent(
   task: TaskRowType,
   liveStart?: Temporal.ZonedDateTime | null,
@@ -351,6 +409,8 @@ export default function CalendarPage() {
   // (the prior CSS-flatten attempt was dead because the items list
   // wasn't in the DOM to style). 2026-04-30 mobile-fix recovery.
   const [currentView, setCurrentView] = useState<"day" | "week" | "month-grid">("week");
+  const calendarViewportRef = useRef<HTMLDivElement | null>(null);
+  const autoScrolledKeyRef = useRef<string | null>(null);
 
   // Deadlines render as Schedule-X events on their actual due day.
   // No state filter — completed/missed/skipped deadlines also surface
@@ -664,6 +724,55 @@ export default function CalendarPage() {
     eventsService.set(events);
   }, [calendar, events, eventsService]);
 
+  // Schedule-X starts the time-grid at the top of the day-boundary window.
+  // With 06:00-23:00 cropped into a fixed-height internal scroll viewport,
+  // afternoon/evening work can be correctly rendered but below the fold,
+  // making the calendar look empty. After events mount, land the viewport on
+  // the active task first, then the first Lyra task today, then current time.
+  useEffect(() => {
+    if (!calendar || currentView === "month-grid") return;
+    const viewport = calendarViewportRef.current;
+    if (!viewport || tasksQ.isLoading) return;
+
+    const activeId =
+      statusQ.data?.active && statusQ.data.task_id
+        ? String(statusQ.data.task_id)
+        : null;
+    const today = Temporal.Now.plainDateISO(TIMEZONE).toString();
+    const firstTodayTask = events.find(
+      (event) => isLyraTaskEvent(event) && eventDateString(event) === today,
+    );
+    const targetId = activeId ?? (firstTodayTask ? String(firstTodayTask.id) : null);
+    const scrollKey = `${currentView}:${targetId ?? "now"}:${events.length}:${today}`;
+    if (autoScrolledKeyRef.current === scrollKey) return;
+
+    const timeoutId = window.setTimeout(() => {
+      let didScrollToEvent = false;
+      if (targetId) {
+        const element = viewport.querySelector(
+          eventIdSelector(targetId),
+        ) as HTMLElement | null;
+        if (element) {
+          scrollElementIntoCalendarViewport(viewport, element);
+          didScrollToEvent = true;
+        }
+      }
+      if (!didScrollToEvent) {
+        scrollCalendarViewportToNow(viewport);
+      }
+      autoScrolledKeyRef.current = scrollKey;
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    calendar,
+    currentView,
+    events,
+    statusQ.data?.active,
+    statusQ.data?.task_id,
+    tasksQ.isLoading,
+  ]);
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -738,6 +847,7 @@ export default function CalendarPage() {
                 key={opt.id}
                 type="button"
                 onClick={() => {
+                  autoScrolledKeyRef.current = null;
                   setCurrentView(opt.id);
                   // Schedule-X internal API — public surface in v5 per
                   // their roadmap; until then we reach into $app.
@@ -764,7 +874,10 @@ export default function CalendarPage() {
           })}
         </div>
       )}
-      <div className="sx-react-calendar-wrapper h-[calc(100vh-220px)] overflow-y-auto rounded-sm border border-hairline-signal/30">
+      <div
+        ref={calendarViewportRef}
+        className="sx-react-calendar-wrapper h-[calc(100vh-220px)] overflow-y-auto rounded-sm border border-hairline-signal/30"
+      >
         {calendar && <ScheduleXCalendar calendarApp={calendar} />}
       </div>
 
