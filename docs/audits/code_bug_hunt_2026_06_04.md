@@ -46,6 +46,28 @@ operator-only, or stale.
 Canonical research note:
 `docs/measurement_integrity_before_agency_claims.md`.
 
+Senior-grade UI/UX verification rule:
+
+```text
+For every feature, bug, or product path changed by this closure cycle, browser
+verification must exercise the actual changed workflow, not just page load.
+Prefer read-only passes; if testing creates tasks, deadlines, sessions,
+notifications, or provider rows, void/delete them in the same turn and report
+cleanup evidence.
+```
+
+Current read-only operator stress proof:
+
+- account: `alinassersabry` operator cookie;
+- command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_operator_readonly_browser_stress.ps1 -Topology public`;
+- result:
+  `tmp/operator-readonly-stress-2026-06-21T10-07-16-324Z/result.json`;
+- coverage: Pulse, Today, Calendar, Deadlines, Table, Insights, Settings, and
+  Operator on desktop and mobile;
+- cleanup proof: before/after export counts matched for tasks, deadlines,
+  stopwatch sessions, pause events, feedback, exposure logs, and notifications.
+
 ## Implementation Checkpoint - 2026-06-04 Evening
 
 Status: partial implementation pass completed for K01-K04.
