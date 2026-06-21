@@ -3,6 +3,7 @@ import json
 from datetime import date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from collections import defaultdict
 
@@ -13,6 +14,7 @@ from app.db.models import (
     ArchetypeAssignment,
     Deadline,
     DeadlineCompletionEvent,
+    ExposureDecisionEvent,
     PausePredictionLog,
     StopwatchSession,
     Task,
@@ -39,6 +41,9 @@ from app.services.claim_compiler import (
     compile_primary_synthesis,
 )
 from app.services.output_surfaces import (
+    RULE11_ACTIVE_ARM,
+    RULE11_CONTROL_ARM,
+    RULE11_POLICY_VERSION,
     RULE11_SUPPRESSION_REASON,
     emit_surface_render,
     emit_surface_suppression,
@@ -50,6 +55,10 @@ from app.utils.time_utils import to_local, now_utc, strip_tz
 from app.utils.redis_client import RedisClient
 
 router = APIRouter()
+
+ANALYTICS_INSIGHTS_SURFACE_ID = "analytics.insights"
+ANALYTICS_INSIGHTS_TEMPLATE_ID = "analytics_insights"
+INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS = 3
 
 INSIGHT_TITLES = {
     "primary_synthesis": "Primary pattern",
@@ -469,6 +478,85 @@ def _surface_metadata(
         "legacy_adapter": spec.legacy_adapter,
         **authority,
     }
+
+
+def _insights_rule11_reopen_gate(
+    db: Session,
+    *,
+    user_id: int,
+    delta_sessions: list[Task],
+    eligible_at,
+) -> dict:
+    """Return the concrete evidence gate for an active Rule 11 insights hold.
+
+    Rule 11 can decide that an eligible insights card should be withheld. For
+    `/insights`, that hold must not become a purely calendar-periodic surface.
+    Once the user sees a hold, reopening is based on new clean stopped sessions
+    completed after the first unresolved hold since the last rendered Insights
+    card. Repeated refreshes append suppression rows, but must not reset this
+    threshold.
+    """
+    latest_rendered_at = (
+        db.query(func.max(ExposureDecisionEvent.eligible_at))
+        .filter(
+            ExposureDecisionEvent.user_id == user_id,
+            ExposureDecisionEvent.trigger_source == ANALYTICS_INSIGHTS_SURFACE_ID,
+            ExposureDecisionEvent.content_template_id == ANALYTICS_INSIGHTS_TEMPLATE_ID,
+            ExposureDecisionEvent.decision_status == "rendered",
+        )
+        .scalar()
+    )
+
+    hold_query = (
+        db.query(func.min(ExposureDecisionEvent.eligible_at))
+        .filter(
+            ExposureDecisionEvent.user_id == user_id,
+            ExposureDecisionEvent.trigger_source == ANALYTICS_INSIGHTS_SURFACE_ID,
+            ExposureDecisionEvent.content_template_id == ANALYTICS_INSIGHTS_TEMPLATE_ID,
+            ExposureDecisionEvent.decision_status == "suppressed",
+            ExposureDecisionEvent.randomization_arm == RULE11_CONTROL_ARM,
+            ExposureDecisionEvent.randomization_policy_version == RULE11_POLICY_VERSION,
+        )
+    )
+    if latest_rendered_at is not None:
+        hold_query = hold_query.filter(
+            ExposureDecisionEvent.eligible_at > latest_rendered_at
+        )
+    hold_started_at = hold_query.scalar()
+    threshold_start = strip_tz(hold_started_at or eligible_at)
+
+    new_clean_sessions = 0
+    for task in delta_sessions:
+        completed_at = getattr(task, "effective_executed_end_utc", None) or getattr(
+            task,
+            "executed_end_utc",
+            None,
+        )
+        if completed_at is None:
+            continue
+        if strip_tz(completed_at) > threshold_start:
+            new_clean_sessions += 1
+
+    remaining = max(
+        0,
+        INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS - new_clean_sessions,
+    )
+    return {
+        "hold_started_at": threshold_start,
+        "reopen_after_clean_sessions": INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS,
+        "new_clean_sessions_since_hold": new_clean_sessions,
+        "clean_sessions_until_reopen": remaining,
+        "should_hold": remaining > 0,
+    }
+
+
+def _insights_rule11_hold_message(remaining: int) -> str:
+    noun = "session" if remaining == 1 else "sessions"
+    return (
+        "Insights are unlocked. Lyra is holding these cards until there is "
+        "new clean evidence after this hold. Complete "
+        f"{remaining} more cleanly stopped {noun} to reopen this surface."
+    )
 
 
 def _eligible_tasks_for_surface(
@@ -1340,7 +1428,7 @@ def get_insights(
     sessions; planning-history insights may render from descriptive history.
     Pass ?auto_mark=true to suppress already-shown insights (24h cooldown per insight_id).
     """
-    surface_id = "analytics.insights"
+    surface_id = ANALYTICS_INSIGHTS_SURFACE_ID
     parent_spec = get_output_surface_spec(surface_id)
     MIN_SESSIONS = parent_spec.min_n
     uid = get_current_user_id()
@@ -1371,6 +1459,7 @@ def get_insights(
         if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None
     ]
     sessions_analyzed = len(delta_sessions)
+    unlocked = sessions_analyzed >= MIN_SESSIONS
     history_events_analyzed = len(
         [
             t for t in all_tasks
@@ -1475,6 +1564,7 @@ def get_insights(
             "sessions_analyzed": sessions_analyzed,
             "history_events_analyzed": history_events_analyzed,
             "min_sessions_required": MIN_SESSIONS,
+            "unlocked": False,
             "ready": False,
             "message": f"Log {remaining} more executed session{'s' if remaining != 1 else ''} to unlock execution insights.",
             "suppressed_generators": suppressed_generators,
@@ -1507,6 +1597,7 @@ def get_insights(
         "sessions_analyzed": sessions_analyzed,
         "history_events_analyzed": history_events_analyzed,
         "min_sessions_required": MIN_SESSIONS,
+        "unlocked": unlocked or bool(candidates),
         "ready": True,
         "suppressed_generators": suppressed_generators,
     }
@@ -1516,9 +1607,20 @@ def get_insights(
             arm, policy = rule11_randomization_fields(
                 db, user_id=uid, surface_id=surface_id, eligible_at=eligible_at
             )
-            if rule11_no_nudge_control_active(
+            rule11_control_active = rule11_no_nudge_control_active(
                 db, user_id=uid, surface_id=surface_id, eligible_at=eligible_at
-            ):
+            )
+            reopen_gate = (
+                _insights_rule11_reopen_gate(
+                    db,
+                    user_id=uid,
+                    delta_sessions=delta_sessions,
+                    eligible_at=eligible_at,
+                )
+                if rule11_control_active
+                else None
+            )
+            if rule11_control_active and reopen_gate and reopen_gate["should_hold"]:
                 emit_surface_suppression(
                     db,
                     surface_id=surface_id,
@@ -1526,8 +1628,8 @@ def get_insights(
                     suppression_reason=RULE11_SUPPRESSION_REASON,
                     eligible_at=eligible_at,
                     suppressed_at=eligible_at,
-                    content_template_id="analytics_insights",
-                    trigger_source="analytics.insights",
+                    content_template_id=ANALYTICS_INSIGHTS_TEMPLATE_ID,
+                    trigger_source=ANALYTICS_INSIGHTS_SURFACE_ID,
                     randomization_arm=arm,
                     randomization_policy_version=policy,
                 )
@@ -1540,7 +1642,26 @@ def get_insights(
                 )
                 response_payload["insights"] = []
                 response_payload["ready"] = False
+                response_payload["unlocked"] = True
+                response_payload.update(
+                    {
+                        "reopen_after_clean_sessions": reopen_gate[
+                            "reopen_after_clean_sessions"
+                        ],
+                        "new_clean_sessions_since_hold": reopen_gate[
+                            "new_clean_sessions_since_hold"
+                        ],
+                        "clean_sessions_until_reopen": reopen_gate[
+                            "clean_sessions_until_reopen"
+                        ],
+                        "message": _insights_rule11_hold_message(
+                            int(reopen_gate["clean_sessions_until_reopen"])
+                        ),
+                    }
+                )
             else:
+                if rule11_control_active and reopen_gate:
+                    arm = RULE11_ACTIVE_ARM
                 emitted = emit_surface_render(
                     db,
                     surface_id=surface_id,
@@ -1551,8 +1672,8 @@ def get_insights(
                     ),
                     eligible_at=eligible_at,
                     rendered_at=eligible_at,
-                    content_template_id="analytics_insights",
-                    trigger_source="analytics.insights",
+                    content_template_id=ANALYTICS_INSIGHTS_TEMPLATE_ID,
+                    trigger_source=ANALYTICS_INSIGHTS_SURFACE_ID,
                     randomization_arm=arm,
                     randomization_policy_version=policy,
                 )
@@ -1564,8 +1685,8 @@ def get_insights(
                 surface_id=surface_id,
                 user_id=uid,
                 suppression_reason="no_contract_safe_insights",
-                content_template_id="analytics_insights",
-                trigger_source="analytics.insights",
+                content_template_id=ANALYTICS_INSIGHTS_TEMPLATE_ID,
+                trigger_source=ANALYTICS_INSIGHTS_SURFACE_ID,
             )
         db.commit()
     except Exception:
@@ -1582,6 +1703,7 @@ def get_insights(
                 "sessions_analyzed": sessions_analyzed,
                 "history_events_analyzed": history_events_analyzed,
                 "min_sessions_required": MIN_SESSIONS,
+                "unlocked": unlocked,
                 "ready": False,
                 "message": "Insights are temporarily unavailable while exposure logging catches up.",
                 "suppressed_generators": suppressed_generators,

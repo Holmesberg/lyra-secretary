@@ -236,16 +236,21 @@ export default function InsightsPage() {
     );
   }
 
-  if (!data?.ready) {
+  const sessionsAnalyzed = data?.sessions_analyzed ?? 0;
+  const minSessionsRequired = data?.min_sessions_required ?? 3;
+  const unlocked =
+    data?.unlocked ?? data?.ready ?? sessionsAnalyzed >= minSessionsRequired;
+
+  if (!unlocked) {
     const remaining =
-      (data?.min_sessions_required ?? 3) - (data?.sessions_analyzed ?? 0);
+      minSessionsRequired - sessionsAnalyzed;
     return (
       <div className="space-y-8">
         <h1 className="text-2xl font-semibold tracking-tight text-parchment">
           Insights
         </h1>
 
-        <ArchetypeInsightsCard />
+        <ArchetypeInsightsCard insightsUnlocked={unlocked} />
 
         <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-center">
           <p className="max-w-md text-sm text-dust">
@@ -269,10 +274,49 @@ export default function InsightsPage() {
             />
           </div>
           <p className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-            {data?.sessions_analyzed ?? 0} / {data?.min_sessions_required ?? 3}{" "}
+            {sessionsAnalyzed} / {minSessionsRequired}{" "}
             sessions analyzed
           </p>
         </div>
+      </div>
+    );
+  }
+
+  if (!data?.ready) {
+    const cleanStopsUntilReopen =
+      typeof data?.clean_sessions_until_reopen === "number"
+        ? Math.max(0, data.clean_sessions_until_reopen)
+        : null;
+    const reopenLabel =
+      cleanStopsUntilReopen === null
+        ? "Complete new clean stops to reopen"
+        : cleanStopsUntilReopen === 1
+          ? "1 clean stop to reopen"
+          : `${cleanStopsUntilReopen} clean stops to reopen`;
+    return (
+      <div className="space-y-8">
+        <div className="flex items-baseline justify-between">
+          <h1 className="text-2xl font-semibold tracking-tight text-parchment">
+            Insights
+          </h1>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-dust">
+            {sessionsAnalyzed} sessions analyzed
+          </span>
+        </div>
+
+        <ArchetypeInsightsCard insightsUnlocked={unlocked} />
+
+        <div className="rounded-sm border border-hairline bg-void-2/60 p-5">
+          <p className="text-sm leading-relaxed text-dust">
+            {data?.message ??
+              "Insights are unlocked. Lyra is holding these cards until there is new clean evidence after this hold. Complete new cleanly stopped sessions to reopen this surface."}
+          </p>
+          <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
+            {reopenLabel}
+          </p>
+        </div>
+
+        <SuppressedInsightsPanel generators={data?.suppressed_generators ?? []} />
       </div>
     );
   }
@@ -306,7 +350,7 @@ export default function InsightsPage() {
 
       {/* Archetype profile card — self-updates when the survey is taken
           via React Query invalidation. See ArchetypeInsightsCard. */}
-      <ArchetypeInsightsCard />
+      <ArchetypeInsightsCard insightsUnlocked={unlocked} />
 
       {primary && <FeaturedCard insight={primary} />}
 
@@ -351,7 +395,7 @@ export default function InsightsPage() {
 
       {insights.length === 0 && (
         <p className="text-sm text-dust">
-          Not enough data in any category yet. Keep logging sessions.
+          No stable insight cards right now. Your analytics remain unlocked.
         </p>
       )}
 

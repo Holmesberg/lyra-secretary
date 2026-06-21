@@ -728,6 +728,7 @@ export interface InsightsResponse {
   sessions_analyzed: number;
   history_events_analyzed?: number;
   min_sessions_required: number;
+  unlocked?: boolean;
   ready: boolean;
   surface_id?: string;
   truth_class?: "trace" | "metric" | "interpretation" | "intervention" | "diagnostic_only";
@@ -742,6 +743,9 @@ export interface InsightsResponse {
   render_id?: string | null;
   suppressed_generators?: SuppressedInsightGenerator[];
   message?: string;
+  reopen_after_clean_sessions?: number;
+  new_clean_sessions_since_hold?: number;
+  clean_sessions_until_reopen?: number;
 }
 
 export function getInsights() {

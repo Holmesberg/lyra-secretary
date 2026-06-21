@@ -129,6 +129,30 @@ def test_explicit_relative_task_is_nudged_after_batch_overlap():
         assert current.when_local >= previous_end
 
 
+def test_starting_now_until_end_time_sets_start_and_duration():
+    res = parse_brain_dump("BUG FIXING starting now till 3pm", NOW_ISO)
+
+    assert len(res.items) == 1
+    item = res.items[0]
+    assert item.kind == "task"
+    assert item.title == "BUG FIXING"
+    assert item.when_local == NOW_LOCAL
+    assert item.duration_minutes == 300
+    assert item.duration_source == "now_until_range"
+
+
+def test_starting_now_until_strips_also_filler_and_preserves_explicit_start():
+    raw = "BUG FIXING starting now till 3pm\nAI Bdaya also starting now till 8pm"
+    res = parse_brain_dump(raw, NOW_ISO)
+
+    tasks = [item for item in res.items if item.kind == "task"]
+    assert [task.title for task in tasks] == ["BUG FIXING", "AI Bdaya"]
+    assert tasks[0].when_local == NOW_LOCAL
+    assert tasks[0].duration_minutes == 300
+    assert tasks[1].when_local == NOW_LOCAL
+    assert tasks[1].duration_minutes == 600
+
+
 def test_deadline_without_date_stays_deadline_candidate():
     # "deadline X" with no parseable date stays deadline-shaped so the
     # UI can ask for the missing due date instead of hiding the obligation

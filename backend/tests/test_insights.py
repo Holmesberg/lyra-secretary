@@ -553,6 +553,7 @@ def test_insights_endpoint_scopes_before_sample_gate_and_reports_suppression(
     payload = response.json()
 
     assert payload["ready"] is False
+    assert payload["unlocked"] is False
     assert payload["sessions_analyzed"] == 1
     assert payload["eligible_sample_count"] == 1
     assert payload["suppressed_reason"] == "insufficient_clean_samples"
@@ -613,6 +614,7 @@ def test_insights_endpoint_can_render_planning_history_without_executed_sessions
 
     ids = {insight["id"] for insight in payload["insights"]}
     assert payload["ready"] is True
+    assert payload["unlocked"] is True
     assert payload["sessions_analyzed"] == 0
     assert payload["history_events_analyzed"] == 6
     assert PRIMARY_SYNTHESIS_ID not in ids
@@ -623,3 +625,232 @@ def test_insights_endpoint_can_render_planning_history_without_executed_sessions
     )
     assert abandonment["truth_class"] == "interpretation"
     assert "were not started" in abandonment["observation"]
+
+
+def test_insights_endpoint_control_hold_keeps_unlock_state(db, client, monkeypatch):
+    user = User(email=f"insights-control-unlocked-{uuid4()}@example.com")
+    db.add(user)
+    db.flush()
+
+    base = now_utc() - timedelta(days=20)
+    db.add_all(
+        [
+            _db_task(
+                user_id=user.user_id,
+                planned_start=base + timedelta(days=i),
+                executed_duration=90 if i < 5 else 65,
+            )
+            for i in range(10)
+        ]
+    )
+    db.commit()
+
+    monkeypatch.setattr(
+        analytics_module,
+        "_eligible_tasks_for_surface",
+        lambda _db, tasks, _surface_id: tasks,
+    )
+    monkeypatch.setattr(analytics_module, "RedisClient", lambda: _FakeRedis())
+    monkeypatch.setattr(
+        analytics_module,
+        "rule11_no_nudge_control_active",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        analytics_module,
+        "rule11_randomization_fields",
+        lambda *_args, **_kwargs: ("rule11_no_nudge", "rule11_no_nudge_v1"),
+    )
+
+    response = client.get(
+        "/v1/analytics/insights",
+        headers=auth_headers(user.user_id),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["ready"] is False
+    assert payload["unlocked"] is True
+    assert payload["sessions_analyzed"] == 10
+    assert payload["min_sessions_required"] == 3
+    assert payload["insights"] == []
+    assert payload["suppressed_reason"] == analytics_module.RULE11_SUPPRESSION_REASON
+    assert payload["reopen_after_clean_sessions"] == 3
+    assert payload["new_clean_sessions_since_hold"] == 0
+    assert payload["clean_sessions_until_reopen"] == 3
+    assert "3 more cleanly stopped sessions" in payload["message"].lower()
+    assert "cleanly stopped sessions" in payload["message"].lower()
+    assert "log" not in payload["message"].lower()
+    assert "more executed" not in payload["message"].lower()
+
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(
+            ExposureDecisionEvent.user_id == user.user_id,
+            ExposureDecisionEvent.trigger_source == "analytics.insights",
+        )
+        .order_by(ExposureDecisionEvent.eligible_at.desc())
+        .first()
+    )
+    assert decision is not None
+    assert decision.decision_status == "suppressed"
+
+
+def test_insights_endpoint_rule11_hold_counts_new_clean_sessions_without_reset(
+    db,
+    client,
+    monkeypatch,
+):
+    user = User(email=f"insights-control-threshold-{uuid4()}@example.com")
+    db.add(user)
+    db.flush()
+
+    hold_at = now_utc() - timedelta(days=2)
+    before_hold = [
+        _db_task(
+            user_id=user.user_id,
+            planned_start=hold_at - timedelta(days=10 - i),
+            executed_duration=90 if i < 3 else 65,
+        )
+        for i in range(8)
+    ]
+    after_hold = [
+        _db_task(
+            user_id=user.user_id,
+            planned_start=hold_at + timedelta(hours=i + 1),
+            executed_duration=80,
+        )
+        for i in range(2)
+    ]
+    db.add_all(before_hold + after_hold)
+    analytics_module.emit_surface_suppression(
+        db,
+        surface_id=analytics_module.ANALYTICS_INSIGHTS_SURFACE_ID,
+        user_id=user.user_id,
+        suppression_reason=analytics_module.RULE11_SUPPRESSION_REASON,
+        eligible_at=hold_at,
+        suppressed_at=hold_at,
+        content_template_id=analytics_module.ANALYTICS_INSIGHTS_TEMPLATE_ID,
+        trigger_source=analytics_module.ANALYTICS_INSIGHTS_SURFACE_ID,
+        randomization_arm="rule11_no_nudge",
+        randomization_policy_version="rule11_no_nudge_v1",
+    )
+    db.commit()
+
+    monkeypatch.setattr(
+        analytics_module,
+        "_eligible_tasks_for_surface",
+        lambda _db, tasks, _surface_id: tasks,
+    )
+    monkeypatch.setattr(analytics_module, "RedisClient", lambda: _FakeRedis())
+    monkeypatch.setattr(
+        analytics_module,
+        "rule11_no_nudge_control_active",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        analytics_module,
+        "rule11_randomization_fields",
+        lambda *_args, **_kwargs: ("rule11_no_nudge", "rule11_no_nudge_v1"),
+    )
+
+    first = client.get(
+        "/v1/analytics/insights",
+        headers=auth_headers(user.user_id),
+    )
+    second = client.get(
+        "/v1/analytics/insights",
+        headers=auth_headers(user.user_id),
+    )
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    for payload in (first.json(), second.json()):
+        assert payload["ready"] is False
+        assert payload["unlocked"] is True
+        assert payload["new_clean_sessions_since_hold"] == 2
+        assert payload["clean_sessions_until_reopen"] == 1
+        assert "1 more cleanly stopped session" in payload["message"].lower()
+
+
+def test_insights_endpoint_rule11_hold_reopens_after_threshold(
+    db,
+    client,
+    monkeypatch,
+):
+    user = User(email=f"insights-control-reopen-{uuid4()}@example.com")
+    db.add(user)
+    db.flush()
+
+    hold_at = now_utc() - timedelta(days=2)
+    before_hold = [
+        _db_task(
+            user_id=user.user_id,
+            planned_start=hold_at - timedelta(days=10 - i),
+            executed_duration=90 if i < 3 else 65,
+        )
+        for i in range(8)
+    ]
+    after_hold = [
+        _db_task(
+            user_id=user.user_id,
+            planned_start=hold_at + timedelta(hours=i + 1),
+            executed_duration=80,
+        )
+        for i in range(3)
+    ]
+    db.add_all(before_hold + after_hold)
+    analytics_module.emit_surface_suppression(
+        db,
+        surface_id=analytics_module.ANALYTICS_INSIGHTS_SURFACE_ID,
+        user_id=user.user_id,
+        suppression_reason=analytics_module.RULE11_SUPPRESSION_REASON,
+        eligible_at=hold_at,
+        suppressed_at=hold_at,
+        content_template_id=analytics_module.ANALYTICS_INSIGHTS_TEMPLATE_ID,
+        trigger_source=analytics_module.ANALYTICS_INSIGHTS_SURFACE_ID,
+        randomization_arm="rule11_no_nudge",
+        randomization_policy_version="rule11_no_nudge_v1",
+    )
+    db.commit()
+
+    monkeypatch.setattr(
+        analytics_module,
+        "_eligible_tasks_for_surface",
+        lambda _db, tasks, _surface_id: tasks,
+    )
+    monkeypatch.setattr(analytics_module, "RedisClient", lambda: _FakeRedis())
+    monkeypatch.setattr(
+        analytics_module,
+        "rule11_no_nudge_control_active",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        analytics_module,
+        "rule11_randomization_fields",
+        lambda *_args, **_kwargs: ("rule11_no_nudge", "rule11_no_nudge_v1"),
+    )
+
+    response = client.get(
+        "/v1/analytics/insights",
+        headers=auth_headers(user.user_id),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["ready"] is True
+    assert payload["unlocked"] is True
+    assert payload["insights"]
+
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(
+            ExposureDecisionEvent.user_id == user.user_id,
+            ExposureDecisionEvent.trigger_source == "analytics.insights",
+        )
+        .order_by(ExposureDecisionEvent.eligible_at.desc())
+        .first()
+    )
+    assert decision is not None
+    assert decision.decision_status == "rendered"
+    assert decision.randomization_arm == "rule11_active"
