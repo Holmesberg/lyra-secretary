@@ -29,7 +29,10 @@ from app.schemas.insights import (
 )
 from app.services.exposure_ledger import baseline_clean_task_ids
 from app.services.interruption_metrics import task_interruption_metrics_from_sessions
-from app.services.cortex import planning_calibration_baseline_tasks
+from app.services.cortex import (
+    planning_calibration_baseline_tasks,
+    planning_calibration_query,
+)
 from app.services.claim_compiler import (
     PRIMARY_SYNTHESIS_ID,
     PRIMARY_SYNTHESIS_SURFACE_ID,
@@ -468,34 +471,71 @@ def _surface_metadata(
     }
 
 
-def _eligible_tasks_for_surface(db: Session, tasks: list, surface_id: str) -> list:
+def _eligible_tasks_for_surface(
+    db: Session,
+    tasks: list,
+    surface_id: str,
+    eligibility_cache: Optional[dict[tuple, set[str]]] = None,
+) -> list:
     spec = get_output_surface_spec(surface_id)
     if spec.clean_profile == "descriptive_history":
         return tasks
+    eligibility_cache = eligibility_cache if eligibility_cache is not None else {}
     if spec.clean_profile == "planning_calibration":
         if not tasks:
             return []
         user_id = getattr(tasks[0], "user_id", None)
         if user_id is None:
             return []
-        clean_ids = {
-            task.task_id
-            for task in planning_calibration_baseline_tasks(db, user_id=int(user_id))
-        }
+        cache_key = ("planning_calibration", int(user_id))
+        if cache_key not in eligibility_cache:
+            candidates = planning_calibration_query(db, user_id=int(user_id)).all()
+            eligibility_cache[cache_key] = baseline_clean_task_ids(
+                db,
+                tasks=candidates,
+                signal_targets=["planning_estimate", "duration_behavior"],
+            )
+        clean_ids = eligibility_cache[cache_key]
         return [
             task
             for task in tasks
             if task.task_id in clean_ids and not getattr(task, "is_anchor", False)
         ]
-    clean_ids = baseline_clean_task_ids(
-        db,
-        tasks=tasks,
-        signal_targets=list(spec.signal_targets),
+    cache_key = (
+        "surface",
+        spec.clean_profile,
+        tuple(sorted(spec.signal_targets)),
+        tuple(task.task_id for task in tasks if task.task_id),
     )
+    if cache_key not in eligibility_cache:
+        eligibility_cache[cache_key] = baseline_clean_task_ids(
+            db,
+            tasks=tasks,
+            signal_targets=list(spec.signal_targets),
+        )
+    clean_ids = eligibility_cache[cache_key]
     return [
         task for task in tasks
         if task.task_id in clean_ids and not getattr(task, "is_anchor", False)
     ]
+
+
+def _eligible_tasks_for_surface_cached(
+    db: Session,
+    tasks: list,
+    surface_id: str,
+    eligibility_cache: dict[tuple, set[str]],
+) -> list:
+    """Call the eligibility filter with a shared request cache.
+
+    Some endpoint tests monkeypatch ``_eligible_tasks_for_surface`` with the
+    historical 3-argument shape. Keep that seam intact while letting production
+    calls pass the cache.
+    """
+    code = getattr(_eligible_tasks_for_surface, "__code__", None)
+    if code is not None and code.co_argcount < 4:
+        return _eligible_tasks_for_surface(db, tasks, surface_id)
+    return _eligible_tasks_for_surface(db, tasks, surface_id, eligibility_cache)
 
 
 def _median(vals: list[float]) -> float:
@@ -1317,7 +1357,13 @@ def get_insights(
         .order_by(Task.planned_start_utc)
         .all()
     )
-    clean_tasks = _eligible_tasks_for_surface(db, all_tasks, surface_id)
+    eligibility_cache: dict[tuple, set[str]] = {}
+    clean_tasks = _eligible_tasks_for_surface_cached(
+        db,
+        all_tasks,
+        surface_id,
+        eligibility_cache,
+    )
 
     # Gate check: need at least MIN_SESSIONS executed tasks with delta data
     delta_sessions = [
@@ -1347,7 +1393,12 @@ def get_insights(
 
     candidates = []
     for insight_surface_id, gen in CONTRACT_SAFE_INSIGHT_GENERATORS:
-        generator_tasks = _eligible_tasks_for_surface(db, all_tasks, insight_surface_id)
+        generator_tasks = _eligible_tasks_for_surface_cached(
+            db,
+            all_tasks,
+            insight_surface_id,
+            eligibility_cache,
+        )
         result = gen(generator_tasks)
         if result is not None:
             result.update(
@@ -1368,7 +1419,12 @@ def get_insights(
             .first()
         )
     for insight_surface_id, gen in PROFILE_AWARE_INSIGHT_GENERATORS:
-        generator_tasks = _eligible_tasks_for_surface(db, all_tasks, insight_surface_id)
+        generator_tasks = _eligible_tasks_for_surface_cached(
+            db,
+            all_tasks,
+            insight_surface_id,
+            eligibility_cache,
+        )
         result = gen(generator_tasks, archetype)
         if result is not None:
             result.update(
