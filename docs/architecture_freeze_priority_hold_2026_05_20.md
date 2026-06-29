@@ -59,6 +59,16 @@ downstream of evidence packets and translate competing hypotheses into
 inspectable language. It must not create confidence, causality, identity, or
 hidden evidence.
 
+The preferred future reasoning host for that layer is OpenClaw running a
+GPT-class synthesis model, because LyraOS should have one AI reasoning boundary
+rather than multiple embedded assistant minds. OpenClaw remains a drafting and
+operator-reasoning host only; ClaimCompiler, Cortex, canonical services, and
+the exposure lifecycle keep their existing authority.
+
+This identifies preferred future ownership only. It does not authorize runtime
+AI synthesis, model integration, prompt execution, user-facing draft
+generation, or OpenClaw-to-product wiring.
+
 This is promising, but not ready for implementation.
 
 ---
@@ -124,6 +134,7 @@ Read this note with:
 
 - `docs/current_transition_state.md`
 - `docs/cross_domain_breakthrough_audit_2026_05_20.md`
+- `docs/single_authority_contract.md`
 - `docs/cortex_contract_v0.md`
 - `docs/cortex_product_research_contract_v0.md`
 - `docs/tightened_docs/15_long_term_repo_strategy.md`

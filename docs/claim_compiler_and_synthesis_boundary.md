@@ -35,6 +35,27 @@ into fluent certainty.
 
 ## AI Synthesis Rules If Reopened Later
 
+If AI synthesis is reopened, the preferred reasoning host is OpenClaw running a
+GPT-class synthesis model. This keeps future AI synthesis behind one operator
+reasoning boundary instead of scattering synthesis across Jarvis, frontend
+components, workers, or ad hoc endpoint code.
+
+This identifies preferred future ownership only. It does not authorize runtime
+AI synthesis, model integration, prompt execution, user-facing draft
+generation, or OpenClaw-to-product wiring.
+
+The allowed future path is:
+
+```text
+Cortex clean profile
+-> Admission / Coverage Gate
+-> EvidencePacket
+-> ClaimCompiler admissibility check
+-> OpenClaw/GPT draft synthesis
+-> ClaimCompiler / output-surface policy check
+-> registered surface with exposure lifecycle
+```
+
 AI synthesis must:
 
 - cite evidence packet IDs or safe source refs;
@@ -42,6 +63,7 @@ AI synthesis must:
 - state sample sizes, exclusions, and dirty reasons;
 - stay downstream of deterministic claim gates;
 - use registered output surfaces and exposure logging.
+- remain a draft until ClaimCompiler and the target output surface accept it.
 
 AI synthesis must not:
 
@@ -51,6 +73,23 @@ AI synthesis must not:
 - infer motivation, discipline, avoidance, focus, agency, productivity, or
   competence;
 - hide evidence or turn operator hypotheses into user-facing truth.
+- mutate task, deadline, timer, provider, notification, exposure, or insight
+  state directly.
+
+Admission/Coverage Gate, EvidencePacket, and ClaimCompiler have separate
+authority:
+
+- Admission/Coverage Gate decides whether rows are eligible for a claim
+  computation.
+- EvidencePacket packages eligible evidence for one bounded claim.
+- ClaimCompiler decides whether that bounded claim may emit.
+
+EvidencePacket must not become a hidden second admission gate, and
+ClaimCompiler must not accept packets whose row eligibility is undeclared.
+
+If ClaimCompiler or surface policy rejects an AI draft, OpenClaw may propose a
+new draft from the same evidence packet. That loop must remain an operator or
+system drafting loop, not reinforcement learning over private user behavior.
 
 ## Behavior-Transition Math Boundary
 
@@ -64,3 +103,14 @@ and falsification criteria before ClaimCompiler may consider it.
 Do not begin new synthesis or behavior-transition runtime work until the
 operator cockpit is clear, Wave 5B browser verification passes, and Wave 6
 final cohort-readiness proof passes.
+
+## Related Authority Docs
+
+Read this note with:
+
+- `docs/architecture_freeze_priority_hold_2026_05_20.md`;
+- `docs/single_authority_contract.md`;
+- `docs/openclaw_orchestration_contract_v0.md`;
+- `docs/parked/behavior_transition_equation_stack.md`;
+- `docs/parked/uncertainty_reduction_computation_council_2026_06_29.md`;
+- `docs/operator_dashboard_contract.md`.

@@ -70,6 +70,7 @@ schema, UI, background jobs, notifications, claims, or provider adapters.
 | `provider_middleware_and_recurring_obligations_plan.md` | Park provider-blind schedule/obligation middleware, recurrence, ICS, sheets, meetings. | Existing manual capture cannot represent repeated/external obligations without clutter. |
 | `passive_capture_extension_gate.md` | Park browser-extension/passive capture until complexity and governance can handle it. | Explicit timers remain a retention blocker and confirmation-gated passive evidence can be implemented without surveillance drift. |
 | `future_research_design_and_validity_plan.md` | Park research-design methods, falsification gates, exposure handling, and sample thresholds. | Lyra moves from trusted-user product iteration toward publishable research. |
+| `uncertainty_reduction_computation_council_2026_06_29.md` | Park the six-agent computation council synthesis: admission/coverage, execution drift, re-entry survival, exposure-response, and ClaimCompiler packet implications. | Operator cockpit is stable, freeze is explicitly lifted, and a new computation plan declares clean denominator, exposure policy, claim authority, tests, and kill criteria. |
 
 ## Promotion Template
 
