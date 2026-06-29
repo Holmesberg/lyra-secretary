@@ -24,6 +24,7 @@ from app.services.bias_factor_service import (
     RESEARCH_PRIORS,
     _archetype_prior_for_cell,
     blend,
+    research_prior_projection,
 )
 from tests.conftest import TestingSession
 
@@ -51,9 +52,6 @@ def _seed_archetypes(db) -> None:
     In prod DB these are created by alembic 015; in the SQLite test
     DB (rebuilt per session) we need to insert them.
     """
-    existing = db.query(Archetype).count()
-    if existing >= 5:
-        return
     rows = [
         ("disciplined_lark", "Disciplined Lark", 0.95, 0.15),
         ("disciplined_owl", "Disciplined Owl", 1.05, 0.20),
@@ -61,7 +59,13 @@ def _seed_archetypes(db) -> None:
         ("procrastinator", "Procrastinator", 1.80, 0.40),
         ("lark_low_discipline", "Lark, Low Discipline", 1.50, 0.35),
     ]
+    existing = {
+        row[0]
+        for row in db.query(Archetype.archetype_id).all()
+    }
     for aid, name, prior, sigma in rows:
+        if aid in existing:
+            continue
         db.add(
             Archetype(
                 archetype_id=aid,
@@ -355,6 +359,45 @@ class TestBlendMetadataShape:
             assert result["pause_overhead_minutes"] == 0
             assert result["pause_overhead_sample_size"] == 0
             assert result["occupancy_suggested_minutes"] == result["execution_suggested_minutes"]
+            assert result["occupancy_strategy"] == "execution_only_research_prior"
+        finally:
+            db.close()
+
+    def test_research_prior_projection_is_db_free_modal_shape(self):
+        result = research_prior_projection("study", "night", 360)
+
+        assert result["source"] == "research"
+        assert result["sessions"] == 0
+        assert result["cell"]["category"] == "study"
+        assert result["cell"]["time_of_day"] == "night"
+        assert result["bias_factor_final"] == 1.4
+        assert result["personal_weight"] == 0.0
+        assert result["prior_weight"] == 1.0
+        assert result["execution_suggested_minutes"] == 505
+        assert result["occupancy_suggested_minutes"] == 505
+        assert result["pause_overhead_minutes"] == 0
+        assert result["occupancy_strategy"] == "execution_only_research_prior"
+
+    def test_subthreshold_candidates_skip_clean_scan(self, monkeypatch):
+        db = TestingSession()
+        try:
+            _seed_archetypes(db)
+            u = _make_user(db, "blend-subthreshold-fastpath@test.com")
+            tasks = _make_tasks(db, u.user_id, 2, planned=60, executed=80)
+
+            def fail_clean_scan(*_args, **_kwargs):
+                raise AssertionError("subthreshold lookup should not scan exposure cleanliness")
+
+            monkeypatch.setattr(
+                "app.services.bias_factor_service.baseline_clean_task_ids",
+                fail_clean_scan,
+            )
+
+            result = blend(db, u.user_id, tasks, "development", "morning", 60)
+
+            assert result["source"] == "research"
+            assert result["sessions"] == 0
+            assert result["pause_overhead_minutes"] == 0
             assert result["occupancy_strategy"] == "execution_only_research_prior"
         finally:
             db.close()

@@ -752,10 +752,38 @@ export function getInsights() {
   return api<InsightsResponse>("/v1/analytics/insights");
 }
 
-export function lookupBiasFactor(category: string, tod: string, plannedMinutes: number = 30) {
-  return api<BiasLookupResponse>(
-    `/v1/analytics/bias_factor/lookup?category=${encodeURIComponent(category)}&tod=${encodeURIComponent(tod)}&planned_minutes=${plannedMinutes}`
+const BIAS_LOOKUP_CACHE_TTL_MS = 30_000;
+const biasLookupCache = new Map<
+  string,
+  { storedAt: number; promise: Promise<BiasLookupResponse> }
+>();
+
+export function lookupBiasFactor(
+  category: string,
+  tod: string,
+  plannedMinutes: number = 30,
+  options?: { fast?: boolean; exposureId?: string | null }
+) {
+  const fast = Boolean(options?.fast);
+  const exposureId = options?.exposureId ?? "";
+  const key = `${category}\u0000${tod}\u0000${plannedMinutes}\u0000${fast ? "fast" : "full"}\u0000${exposureId}`;
+  const cached = biasLookupCache.get(key);
+  if (cached && Date.now() - cached.storedAt < BIAS_LOOKUP_CACHE_TTL_MS) {
+    return cached.promise;
+  }
+  const exposureParam = exposureId
+    ? `&exposure_id=${encodeURIComponent(exposureId)}`
+    : "";
+  const promise = api<BiasLookupResponse>(
+    `/v1/analytics/bias_factor/lookup?category=${encodeURIComponent(category)}&tod=${encodeURIComponent(tod)}&planned_minutes=${plannedMinutes}${fast ? "&fast=true" : ""}${exposureParam}`
   );
+  biasLookupCache.set(key, { storedAt: Date.now(), promise });
+  promise.catch(() => {
+    if (biasLookupCache.get(key)?.promise === promise) {
+      biasLookupCache.delete(key);
+    }
+  });
+  return promise;
 }
 
 // ─── User categories ──────────────────────────────────────────────────

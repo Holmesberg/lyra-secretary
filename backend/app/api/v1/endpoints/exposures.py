@@ -7,8 +7,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.db.models import ExposureAckEvent
 from app.db.scoping import get_current_user_id
-from app.services.output_surfaces import acknowledge_surface_render
+from app.services.output_surfaces import (
+    acknowledge_surface_render,
+    render_existing_surface_decision,
+)
 from app.services.security_audit import write_security_audit_event
 
 router = APIRouter()
@@ -17,6 +21,8 @@ router = APIRouter()
 class RenderAckRequest(BaseModel):
     acked_at: Optional[datetime] = None
     client_event_id: Optional[str] = Field(default=None, max_length=120)
+    surface_id: Optional[str] = Field(default=None, max_length=80)
+    content_snapshot: Optional[dict] = None
 
 
 class RenderAckResponse(BaseModel):
@@ -44,13 +50,44 @@ def acknowledge_render(
 
     body = body or RenderAckRequest()
     try:
-        ack, created = acknowledge_surface_render(
-            db,
-            exposure_id=exposure_id,
-            user_id=uid,
-            acked_at=body.acked_at,
-            client_event_id=body.client_event_id,
-        )
+        if body.surface_id:
+            existing_ack = (
+                db.query(ExposureAckEvent)
+                .filter(
+                    ExposureAckEvent.exposure_id == exposure_id,
+                    ExposureAckEvent.event_type == "render",
+                )
+                .first()
+            )
+            rendered = render_existing_surface_decision(
+                db,
+                exposure_id=exposure_id,
+                user_id=uid,
+                surface_id=body.surface_id,
+                content_snapshot=body.content_snapshot
+                or {"surface_id": body.surface_id},
+                rendered_at=body.acked_at,
+                client_event_id=body.client_event_id,
+            )
+            if not rendered:
+                raise LookupError("exposure_decision_not_found")
+            ack = (
+                db.query(ExposureAckEvent)
+                .filter(
+                    ExposureAckEvent.exposure_id == exposure_id,
+                    ExposureAckEvent.event_type == "render",
+                )
+                .one()
+            )
+            created = existing_ack is None
+        else:
+            ack, created = acknowledge_surface_render(
+                db,
+                exposure_id=exposure_id,
+                user_id=uid,
+                acked_at=body.acked_at,
+                client_event_id=body.client_event_id,
+            )
         db.commit()
     except LookupError:
         db.rollback()

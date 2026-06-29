@@ -20,6 +20,7 @@ import {
   lookupBiasFactor,
   type TaskRow,
   type BiasFactorCell,
+  type BiasLookupResponse,
 } from "@/lib/tasks";
 import { ackExposureRender } from "@/lib/api";
 import {
@@ -30,6 +31,64 @@ import {
   type DeadlinePreviewResponse,
 } from "@/lib/deadlines";
 import { CategorySelect } from "@/components/category-select";
+
+const BIAS_LOOKUP_DEBOUNCE_MS = 120;
+const RESEARCH_PRIOR_DEFAULT = {
+  biasFactor: 1.35,
+  citation: "Kahneman & Tversky 1979 (planning fallacy mean)",
+};
+const RESEARCH_PRIORS: Record<string, { biasFactor: number; citation: string }> = {
+  development: { biasFactor: 1.5, citation: "Buehler et al. 1994; Connolly & Dean 1997" },
+  work: { biasFactor: 1.45, citation: "Buehler et al. 1994" },
+  study: { biasFactor: 1.4, citation: "Newby-Clark et al. 2000" },
+  academic: { biasFactor: 1.4, citation: "Newby-Clark et al. 2000" },
+  exercise: { biasFactor: 1.15, citation: "Roy et al. 2005" },
+  fitness: { biasFactor: 1.15, citation: "Roy et al. 2005" },
+};
+const pendingCreationNudgeRenderAcks = new Set<string>();
+const ackedCreationNudgeRenders = new Set<string>();
+const CREATION_NUDGE_EXPOSURE_TTL_MS = 30_000;
+const creationNudgeExposureIds = new Map<string, { exposureId: string; expiresAt: number }>();
+
+function newExposureId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function exposureIdForCreationNudge(category: string, tod: string, planned: number): string {
+  const key = `${category}\u0000${tod}\u0000${planned}`;
+  const now = Date.now();
+  const cached = creationNudgeExposureIds.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.exposureId;
+  }
+  const exposureId = newExposureId();
+  creationNudgeExposureIds.set(key, {
+    exposureId,
+    expiresAt: now + CREATION_NUDGE_EXPOSURE_TTL_MS,
+  });
+  return exposureId;
+}
+
+function ackCreationNudgeRender(exposureId: string, contentSnapshot: Record<string, unknown>) {
+  if (
+    pendingCreationNudgeRenderAcks.has(exposureId) ||
+    ackedCreationNudgeRenders.has(exposureId)
+  ) {
+    return;
+  }
+  pendingCreationNudgeRenderAcks.add(exposureId);
+  void ackExposureRender(exposureId, {
+    surfaceId: "task.creation_nudge",
+    clientEventId: `task.creation_nudge:${exposureId}`,
+    contentSnapshot,
+  })
+    .then((ok) => {
+      if (ok) ackedCreationNudgeRenders.add(exposureId);
+    })
+    .finally(() => {
+      pendingCreationNudgeRenderAcks.delete(exposureId);
+    });
+}
 
 function formatLocal(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -100,6 +159,45 @@ function formatPlanDeltaFromFactor(factor: number | null | undefined): string {
   const pct = Math.round((factor - 1) * 100);
   if (pct === 0) return "on plan";
   return `${Math.abs(pct)}% ${pct > 0 ? "over" : "under"} plan`;
+}
+
+function localResearchNudge(
+  category: string,
+  tod: string,
+  planned: number,
+  firedAt: string,
+  exposureId: string
+) {
+  const prior = RESEARCH_PRIORS[category] ?? RESEARCH_PRIOR_DEFAULT;
+  const suggestedMin = roundTo5(planned * prior.biasFactor);
+  return {
+    cell: {
+      bias_factor: prior.biasFactor,
+      bias_factor_mean: prior.biasFactor,
+      sessions: 0,
+      confidence: "research",
+      interpretation: "underestimates",
+      category,
+      time_of_day: tod,
+      citation: prior.citation,
+    } satisfies BiasFactorCell,
+    factor: prior.biasFactor,
+    personalFactor: null,
+    blendFactor: prior.biasFactor,
+    personalWeight: 0,
+    priorWeight: 1,
+    priorFactor: prior.biasFactor,
+    priorCitation: prior.citation,
+    suggestedMin,
+    executionSuggestedMin: suggestedMin,
+    pauseOverheadMin: 0,
+    pauseOverheadSampleSize: 0,
+    occupancySuggestedMin: suggestedMin,
+    occupancyStrategy: "execution_only_research_prior",
+    firedAt,
+    exposureId,
+    backendReady: false,
+  };
 }
 
 interface PausedConflict {
@@ -177,6 +275,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     // row (Phase 6 prerequisite per phase_6_architecture_backlog.md:227).
     firedAt: string;
     exposureId?: string | null;
+    backendReady?: boolean;
   } | null>(null);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
@@ -239,61 +338,120 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       return;
     }
     const tod = timeOfDay(start);
+    const firedAt = new Date().toISOString();
+    const exposureId = exposureIdForCreationNudge(category, tod, planned);
+    const provisional = localResearchNudge(category, tod, planned, firedAt, exposureId);
+    if (provisional.factor >= 1.2) {
+      setCalibrationNudge(provisional);
+      setNudgeSource("research");
+    } else {
+      setCalibrationNudge(null);
+      setNudgeSource(null);
+    }
     const abortCtl = new AbortController();
+    const applyLookupResponse = (res: BiasLookupResponse) => {
+      const isResearch = res.source === "research";
+      const threshold = isResearch ? 1.20 : 1.25;
+      // Rule-13 canonical magnitude (MANIFESTO v1.10): prefer the
+      // shrinkage-blended `bias_factor_final` when present. Keep the
+      // raw cell.bias_factor separate so the UI does not relabel a
+      // prior-blended estimate as pure "early data".
+      const magnitude = res.bias_factor_final ?? res.cell?.bias_factor ?? null;
+      const executionSuggestedMin =
+        res.execution_suggested_minutes ?? (magnitude !== null ? roundTo5(planned * magnitude) : planned);
+      const pauseOverheadMin = res.pause_overhead_minutes ?? 0;
+      const pauseOverheadSampleSize = res.pause_overhead_sample_size ?? 0;
+      const occupancySuggestedMin = res.occupancy_suggested_minutes ?? executionSuggestedMin;
+      const occupancyFactor = res.occupancy_factor ?? (planned > 0 ? occupancySuggestedMin / planned : null);
+      const executionTriggered = magnitude !== null && magnitude >= threshold;
+      const occupancyTriggered =
+        occupancyFactor !== null && occupancyFactor >= threshold && pauseOverheadSampleSize >= 3;
+      if (!res.cell || magnitude === null || (!executionTriggered && !occupancyTriggered)) {
+        if (!abortCtl.signal.aborted) {
+          setCalibrationNudge(null);
+          setNudgeSource(null);
+        }
+        return false;
+      }
+
+      const backendExposureId = res.exposure_id ?? exposureId;
+      const contentSnapshot = {
+        template: "task_creation_nudge_lookup",
+        category: res.cell.category,
+        time_of_day: res.cell.time_of_day,
+        source: isResearch ? "research" : "personal",
+        suggested_minutes: occupancySuggestedMin,
+        execution_suggested_minutes: executionSuggestedMin,
+        pause_overhead_minutes: pauseOverheadMin,
+        pause_overhead_sample_size: pauseOverheadSampleSize,
+        occupancy_suggested_minutes: occupancySuggestedMin,
+        occupancy_strategy: res.occupancy_strategy ?? null,
+        planned_minutes: planned,
+      };
+      if (abortCtl.signal.aborted) {
+        ackCreationNudgeRender(backendExposureId, contentSnapshot);
+        return true;
+      }
+      setCalibrationNudge({
+        cell: res.cell,
+        factor: magnitude,
+        personalFactor: isResearch ? null : res.cell.bias_factor,
+        blendFactor: res.bias_factor_final ?? null,
+        personalWeight: res.personal_weight ?? null,
+        priorWeight: res.prior_weight ?? null,
+        priorFactor: res.archetype_prior_for_cell ?? null,
+        priorCitation: res.archetype_prior_citation ?? res.cell.citation ?? null,
+        suggestedMin: occupancySuggestedMin,
+        executionSuggestedMin,
+        pauseOverheadMin,
+        pauseOverheadSampleSize,
+        occupancySuggestedMin,
+        occupancyStrategy: res.occupancy_strategy ?? null,
+        firedAt,
+        exposureId: backendExposureId,
+        backendReady: true,
+      });
+      setNudgeSource(isResearch ? "research" : "personal");
+      return true;
+    };
     const timer = setTimeout(() => {
-      lookupBiasFactor(category, tod, planned)
+      lookupBiasFactor(category, tod, planned, { fast: true, exposureId })
         .then((res) => {
-          if (abortCtl.signal.aborted) return;
-          const isResearch = res.source === "research";
-          const threshold = isResearch ? 1.20 : 1.25;
-          // Rule-13 canonical magnitude (MANIFESTO v1.10): prefer the
-          // shrinkage-blended `bias_factor_final` when present. Keep the
-          // raw cell.bias_factor separate so the UI does not relabel a
-          // prior-blended estimate as pure "early data".
-          const magnitude = res.bias_factor_final ?? res.cell?.bias_factor ?? null;
-          const executionSuggestedMin =
-            res.execution_suggested_minutes ?? (magnitude !== null ? roundTo5(planned * magnitude) : planned);
-          const pauseOverheadMin = res.pause_overhead_minutes ?? 0;
-          const pauseOverheadSampleSize = res.pause_overhead_sample_size ?? 0;
-          const occupancySuggestedMin = res.occupancy_suggested_minutes ?? executionSuggestedMin;
-          const occupancyFactor = res.occupancy_factor ?? (planned > 0 ? occupancySuggestedMin / planned : null);
-          const executionTriggered = magnitude !== null && magnitude >= threshold;
-          const occupancyTriggered =
-            occupancyFactor !== null && occupancyFactor >= threshold && pauseOverheadSampleSize >= 3;
-          if (res.cell && magnitude !== null && (executionTriggered || occupancyTriggered)) {
-            setCalibrationNudge({
-              cell: res.cell,
-              factor: magnitude,
-              personalFactor: isResearch ? null : res.cell.bias_factor,
-              blendFactor: res.bias_factor_final ?? null,
-              personalWeight: res.personal_weight ?? null,
-              priorWeight: res.prior_weight ?? null,
-              priorFactor: res.archetype_prior_for_cell ?? null,
-              priorCitation: res.archetype_prior_citation ?? res.cell.citation ?? null,
-              suggestedMin: occupancySuggestedMin,
-              executionSuggestedMin,
-              pauseOverheadMin,
-              pauseOverheadSampleSize,
-              occupancySuggestedMin,
-              occupancyStrategy: res.occupancy_strategy ?? null,
-              firedAt: new Date().toISOString(),
-              exposureId: res.exposure_id,
+          const shouldHydrate = applyLookupResponse(res);
+          if (!shouldHydrate) return;
+          void lookupBiasFactor(category, tod, planned, { exposureId: res.exposure_id ?? exposureId })
+            .then(applyLookupResponse)
+            .catch(() => {
+              // Keep the instant research-backed card if the personal
+              // hydration path misses; the fast path already registered
+              // the visible surface for exposure accounting.
             });
-            setNudgeSource(isResearch ? "research" : "personal");
-          } else {
-            setCalibrationNudge(null);
-            setNudgeSource(null);
-          }
         })
         .catch(() => { if (!abortCtl.signal.aborted) { setCalibrationNudge(null); setNudgeSource(null); } });
-    }, 400);
+    }, BIAS_LOOKUP_DEBOUNCE_MS);
     return () => { clearTimeout(timer); abortCtl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, category, start, end, durHours, durMinutes, isEdit, editScheduleTouched, nudgeDecisionMade]);
 
   useEffect(() => {
-    void ackExposureRender(calibrationNudge?.exposureId);
-  }, [calibrationNudge?.exposureId]);
+    const exposureId = calibrationNudge?.exposureId;
+    if (!exposureId || !calibrationNudge.backendReady) {
+      return;
+    }
+    ackCreationNudgeRender(exposureId, {
+      template: "task_creation_nudge_lookup",
+      category: calibrationNudge.cell.category,
+      time_of_day: calibrationNudge.cell.time_of_day,
+      source: nudgeSource,
+      suggested_minutes: calibrationNudge.suggestedMin,
+      execution_suggested_minutes: calibrationNudge.executionSuggestedMin,
+      pause_overhead_minutes: calibrationNudge.pauseOverheadMin,
+      pause_overhead_sample_size: calibrationNudge.pauseOverheadSampleSize,
+      occupancy_suggested_minutes: calibrationNudge.occupancySuggestedMin,
+      occupancy_strategy: calibrationNudge.occupancyStrategy,
+      planned_minutes: durHours * 60 + durMinutes,
+    });
+  }, [calibrationNudge, durHours, durMinutes, nudgeSource]);
 
   // Loop 11 Phase K — Pass 2 deadline-binding preview.
   //
@@ -1108,7 +1266,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span>Pause Overhead</span>
-                  <span className="font-medium text-parchment">+{calibrationNudge.pauseOverheadMin} min</span>
+                  <span className="text-right font-medium text-parchment">
+                    {calibrationNudge.pauseOverheadSampleSize >= 3
+                      ? `+${calibrationNudge.pauseOverheadMin} min`
+                      : calibrationNudge.backendReady
+                        ? "not enough clean pause data"
+                        : "checking..."}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between gap-3 border-t border-signal/10 pt-1 text-signal">
                   <span>Occupancy Time</span>
@@ -1118,7 +1282,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30"
+                  disabled={!calibrationNudge.exposureId}
+                  className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => {
                     const newMin = calibrationNudge.suggestedMin;
                     setNudgeDecisionData({
@@ -1139,7 +1304,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 </button>
                 <button
                   type="button"
-                  className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment"
+                  disabled={!calibrationNudge.exposureId}
+                  className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => {
                     setNudgeDecisionData({
                       decision: "dismissed",

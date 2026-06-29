@@ -450,11 +450,24 @@ def create_output_surface_decision(
     trigger_source: Optional[str] = None,
     delivered_at=None,
     data_snapshot_hash: Optional[str] = None,
+    randomization_arm: str = "none",
+    randomization_policy_version: Optional[str] = None,
+    exposure_id: Optional[str] = None,
 ) -> ExposureDecisionEvent:
     """Create a registered output-surface decision without claiming render."""
     spec = get_output_surface_spec(surface_id)
     _assert_surface_allowed_for_user(db, spec=spec, user_id=user_id)
     eligible_at = strip_tz(eligible_at or now_utc())
+    if exposure_id:
+        existing = (
+            db.query(ExposureDecisionEvent)
+            .filter(ExposureDecisionEvent.exposure_id == exposure_id)
+            .first()
+        )
+        if existing is not None:
+            if int(existing.user_id) != int(user_id):
+                raise PermissionError("output_surface_exposure_wrong_user")
+            return existing
     return record_decision(
         db,
         user_id=user_id,
@@ -466,7 +479,10 @@ def create_output_surface_decision(
         content_template_id=content_template_id,
         trigger_source=trigger_source or surface_id,
         data_snapshot_hash=data_snapshot_hash,
+        randomization_arm=randomization_arm,
+        randomization_policy_version=randomization_policy_version,
         delivered_at=strip_tz(delivered_at) if delivered_at is not None else None,
+        exposure_id=exposure_id,
     )
 
 

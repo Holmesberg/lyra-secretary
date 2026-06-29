@@ -1,9 +1,12 @@
 """Analytics endpoints — discrepancy experiment measurement layer."""
 import json
+import copy
+import logging
+from time import monotonic
 from datetime import date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from collections import defaultdict
 
@@ -32,7 +35,6 @@ from app.schemas.insights import (
 from app.services.exposure_ledger import baseline_clean_task_ids
 from app.services.interruption_metrics import task_interruption_metrics_from_sessions
 from app.services.cortex import (
-    planning_calibration_baseline_tasks,
     planning_calibration_query,
 )
 from app.services.claim_compiler import (
@@ -45,6 +47,7 @@ from app.services.output_surfaces import (
     RULE11_CONTROL_ARM,
     RULE11_POLICY_VERSION,
     RULE11_SUPPRESSION_REASON,
+    create_output_surface_decision,
     emit_surface_render,
     emit_surface_suppression,
     get_output_surface_spec,
@@ -58,6 +61,63 @@ router = APIRouter()
 
 ANALYTICS_INSIGHTS_SURFACE_ID = "analytics.insights"
 ANALYTICS_INSIGHTS_TEMPLATE_ID = "analytics_insights"
+_BIAS_LOOKUP_CACHE_TTL_SECONDS = 30.0
+_bias_lookup_cache: dict[tuple[int, str, str, int, int, str], tuple[float, dict]] = {}
+_bias_lookup_perf_logger = logging.getLogger("lyra.perf.bias_lookup")
+
+
+def _cached_bias_lookup_response(
+    key: tuple[int, str, str, int, int, str],
+) -> Optional[dict]:
+    cached = _bias_lookup_cache.get(key)
+    if cached is None:
+        return None
+    stored_at, payload = cached
+    if monotonic() - stored_at > _BIAS_LOOKUP_CACHE_TTL_SECONDS:
+        _bias_lookup_cache.pop(key, None)
+        return None
+    return copy.deepcopy(payload)
+
+
+def _store_bias_lookup_response(
+    key: tuple[int, str, str, int, int, str],
+    payload: dict,
+) -> dict:
+    _bias_lookup_cache[key] = (monotonic(), copy.deepcopy(payload))
+    return payload
+
+
+def _log_slow_bias_lookup(
+    *,
+    user_id: int,
+    category: str,
+    tod: str,
+    planned_minutes: int,
+    tasks_ms: float,
+    blend_ms: float,
+    exposure_ms: float,
+    total_ms: float,
+    source: Optional[str],
+    sessions: Optional[int],
+) -> None:
+    if total_ms < 250:
+        return
+    _bias_lookup_perf_logger.info(
+        (
+            "user=%s category=%s tod=%s planned=%s tasks_ms=%.0f "
+            "blend_ms=%.0f exposure_ms=%.0f total_ms=%.0f source=%s sessions=%s"
+        ),
+        user_id,
+        category,
+        tod,
+        planned_minutes,
+        tasks_ms,
+        blend_ms,
+        exposure_ms,
+        total_ms,
+        source,
+        sessions,
+    )
 INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS = 3
 
 INSIGHT_TITLES = {
@@ -2163,6 +2223,12 @@ def bias_factor_lookup(
     category: str = Query(..., description="Task category"),
     tod: str = Query(..., description="Time-of-day bucket (morning/afternoon/evening/night)"),
     planned_minutes: int = Query(30, ge=1, description="Planned duration for duration-bucket signal"),
+    fast: bool = Query(False, description="Use research-prior fast path for latency-sensitive UI"),
+    exposure_id: Optional[str] = Query(
+        None,
+        max_length=64,
+        description="Optional client-minted exposure ID for optimistic render reconciliation",
+    ),
     db: Session = Depends(get_db),
 ) -> dict:
     """Canonical calibration lookup per MANIFESTO Rule 13.
@@ -2187,6 +2253,14 @@ def bias_factor_lookup(
     uid = get_current_user_id()
     if uid is None:
         raise HTTPException(status_code=401, detail="not authenticated")
+    cache_key = (uid, category, tod, planned_minutes, int(fast), exposure_id or "")
+    cached = _cached_bias_lookup_response(cache_key)
+    if cached is not None:
+        return cached
+    lookup_started = monotonic()
+    tasks_ms = 0.0
+    blend_ms = 0.0
+    exposure_ms = 0.0
     # Rule 13 operational definition of n_sessions_in_cell (MANIFESTO
     # v1.10 §13): planned_duration_minutes >= 5. The 5-minute floor
     # matches the H1 exclusion threshold (Rule 4) — sub-5-minute tasks
@@ -2194,9 +2268,27 @@ def bias_factor_lookup(
     #
     # VT-29 filter (added 2026-04-30): exclude tasks bound to externally-
     # imported deadlines. Same rationale as the bias_factor surface above.
-    tasks = planning_calibration_baseline_tasks(db, user_id=uid)
-    from app.services.bias_factor_service import blend
-    result = blend(db, uid, tasks, category, tod, planned_minutes)
+    from app.services.bias_factor_service import blend, research_prior_projection
+    if fast:
+        tasks = []
+    else:
+        candidate_query = planning_calibration_query(db, user_id=uid)
+        if category == "uncategorized":
+            candidate_query = candidate_query.filter(
+                or_(Task.category.is_(None), Task.category == category)
+            )
+        else:
+            candidate_query = candidate_query.filter(Task.category == category)
+        phase_started = monotonic()
+        tasks = candidate_query.all()
+        tasks_ms = (monotonic() - phase_started) * 1000
+    phase_started = monotonic()
+    result = (
+        research_prior_projection(category, tod, planned_minutes)
+        if fast
+        else blend(db, uid, tasks, category, tod, planned_minutes)
+    )
+    blend_ms = (monotonic() - phase_started) * 1000
     cell = result.get("cell")
     magnitude = result.get("bias_factor_final")
     if magnitude is None and cell is not None:
@@ -2211,6 +2303,7 @@ def bias_factor_lookup(
         and pause_sample_size >= 3
     )
     if cell is not None and (execution_triggered or occupancy_triggered):
+        exposure_started = monotonic()
         suggested_minutes = (
             result.get("occupancy_suggested_minutes")
             or result.get("execution_suggested_minutes")
@@ -2239,7 +2332,21 @@ def bias_factor_lookup(
                     randomization_policy_version=policy,
                 )
                 db.commit()
-                return {
+                exposure_ms = (monotonic() - exposure_started) * 1000
+                total_ms = (monotonic() - lookup_started) * 1000
+                _log_slow_bias_lookup(
+                    user_id=uid,
+                    category=category,
+                    tod=tod,
+                    planned_minutes=planned_minutes,
+                    tasks_ms=tasks_ms,
+                    blend_ms=blend_ms,
+                    exposure_ms=exposure_ms,
+                    total_ms=total_ms,
+                    source=result.get("source"),
+                    sessions=result.get("sessions"),
+                )
+                return _store_bias_lookup_response(cache_key, {
                     "cell": None,
                     "sessions": result.get("sessions", 0),
                     "min_sessions": result.get("min_sessions", 3),
@@ -2258,60 +2365,54 @@ def bias_factor_lookup(
                     "fallback_mode": emitted["fallback_mode"],
                     "exposure_id": emitted["exposure_id"],
                     "suppression_id": emitted["suppression_id"],
-                }
-            emitted = emit_surface_render(
+                })
+            spec = get_output_surface_spec(surface_id)
+            authority = authority_for_surface(spec).as_dict()
+            decision = create_output_surface_decision(
                 db,
                 surface_id=surface_id,
                 user_id=uid,
-                content_snapshot={
-                    "copy": (
-                        f"Suggested window is {suggested_minutes} min "
-                        f"for {category} / {tod}: execution "
-                        f"{result.get('execution_suggested_minutes')} min + "
-                        f"pause overhead {result.get('pause_overhead_minutes')} min."
-                    ),
-                    "category": category,
-                    "time_of_day": tod,
-                    "planned_minutes": planned_minutes,
-                    "suggested_minutes": suggested_minutes,
-                    "execution_suggested_minutes": result.get("execution_suggested_minutes"),
-                    "pause_overhead_minutes": result.get("pause_overhead_minutes"),
-                    "pause_overhead_sample_size": result.get("pause_overhead_sample_size"),
-                    "occupancy_suggested_minutes": result.get("occupancy_suggested_minutes"),
-                    "occupancy_strategy": result.get("occupancy_strategy"),
-                    "occupancy_factor": result.get("occupancy_factor"),
-                    "bias_factor": round(magnitude, 3),
-                    "personal_bias_factor": cell.get("bias_factor"),
-                    "personal_weight": result.get("personal_weight"),
-                    "prior_weight": result.get("prior_weight"),
-                    "archetype_prior_for_cell": result.get("archetype_prior_for_cell"),
-                    "archetype_prior_citation": result.get("archetype_prior_citation"),
-                    "sample_size": cell.get("sessions"),
-                    "source": result.get("source"),
-                },
+                decision_status="delivered",
                 eligible_at=eligible_at,
-                rendered_at=eligible_at,
                 content_template_id="task_creation_nudge_lookup",
                 initiative="system",
                 trigger_source="analytics.bias_factor.lookup",
+                delivered_at=eligible_at,
                 randomization_arm=arm,
                 randomization_policy_version=policy,
+                exposure_id=exposure_id,
             )
             db.commit()
+            exposure_ms = (monotonic() - exposure_started) * 1000
             result.update(
                 {
-                    "surface_id": emitted["surface_id"],
-                    "truth_class": emitted["truth_class"],
-                    "signal_targets": emitted["signal_targets"],
-                    "clean_profile": emitted["clean_profile"],
-                    "fallback_mode": emitted["fallback_mode"],
-                    "exposure_id": emitted["exposure_id"],
-                    "render_id": emitted["render_id"],
+                    "surface_id": surface_id,
+                    "truth_class": spec.truth_class,
+                    "signal_targets": list(spec.signal_targets),
+                    "clean_profile": spec.clean_profile,
+                    "fallback_mode": spec.fallback_mode,
+                    "exposure_id": decision.exposure_id,
+                    "render_id": None,
+                    **authority,
                 }
             )
         except Exception:
             db.rollback()
-            return {
+            exposure_ms = (monotonic() - exposure_started) * 1000
+            total_ms = (monotonic() - lookup_started) * 1000
+            _log_slow_bias_lookup(
+                user_id=uid,
+                category=category,
+                tod=tod,
+                planned_minutes=planned_minutes,
+                tasks_ms=tasks_ms,
+                blend_ms=blend_ms,
+                exposure_ms=exposure_ms,
+                total_ms=total_ms,
+                source=result.get("source"),
+                sessions=result.get("sessions"),
+            )
+            return _store_bias_lookup_response(cache_key, {
                 "cell": None,
                 "sessions": result.get("sessions", 0),
                 "min_sessions": result.get("min_sessions", 3),
@@ -2328,8 +2429,21 @@ def bias_factor_lookup(
                 "signal_targets": ["planning_estimate", "pause_behavior"],
                 "clean_profile": "planning_calibration",
                 "fallback_mode": "suppress",
-            }
-    return result
+            })
+    total_ms = (monotonic() - lookup_started) * 1000
+    _log_slow_bias_lookup(
+        user_id=uid,
+        category=category,
+        tod=tod,
+        planned_minutes=planned_minutes,
+        tasks_ms=tasks_ms,
+        blend_ms=blend_ms,
+        exposure_ms=exposure_ms,
+        total_ms=total_ms,
+        source=result.get("source"),
+        sessions=result.get("sessions"),
+    )
+    return _store_bias_lookup_response(cache_key, result)
 
 
 @router.get("/analytics/pause_prediction")
