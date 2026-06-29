@@ -265,16 +265,16 @@
       "id": "jarvis_compatibility_surface",
       "truth_classes": ["operator_tool_invocation", "assistant_suggestion"],
       "authority_level": "operator_shell",
-      "owner": "Parked/read-only Jarvis compatibility until explicitly reauthorized",
+      "owner": "Disabled/Parked Jarvis compatibility endpoint; historical data retained for export/delete",
       "paths": [
         "backend/app/api/v1/endpoints/jarvis.py",
         "backend/app/services/jarvis_tools.py",
         "openclaw/skills/lyra-secretary"
       ],
       "allowed_writes": [
-        "audit rows only unless routed through canonical commands"
+        "none from /v1/jarvis/* while parked; historical audit rows only via preserved data model"
       ],
-      "notes": "Jarvis is not a second product mind. OpenClaw is the preferred future reasoning host, but no runtime AI synthesis is authorized."
+      "notes": "Jarvis is not a second product mind. The active UI/client/model/tool execution path is disabled. backend/app/services/jarvis_tools.py remains only as a legacy internal aggregation dependency until R4 extraction. OpenClaw is the preferred future reasoning host, but no runtime AI synthesis is authorized."
     },
     {
       "id": "background_worker_orchestration",

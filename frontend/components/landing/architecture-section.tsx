@@ -36,7 +36,7 @@ const STACK = [
 const BOUNDARIES = [
   {
     title: "AI is bounded support",
-    body: "LLM enrichment, JARVIS, and OpenClaw support parsing, operator work, and implementation. They are not the behavioral truth substrate.",
+    body: "LLM enrichment and OpenClaw support parsing, operator work, and implementation. They are not the behavioral truth substrate.",
   },
   {
     title: "Adaptive scheduling is future-gated",

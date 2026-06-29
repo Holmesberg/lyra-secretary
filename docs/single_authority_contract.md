@@ -55,7 +55,7 @@ Every surface must be classified before it is expanded or refactored.
 | Truth owner | Mutate canonical state through tested invariants | Compete with another owner for the same truth class | `TaskManager`, `DeadlineManager`, stopwatch/session authority, exposure ledger, Cortex read-time projection, ClaimCompiler |
 | Suggestion producer | Propose candidates or annotations | Commit canonical truth directly | brain dump parser, deadline preview, LLM enrichment, provider completion candidates, future AI synthesis drafts |
 | View | Render or request explicit canonical actions | Own hidden truth, rewrite metrics, or mutate by reading | Pulse, Today, Calendar, Table, Insights, Operator dashboard |
-| Operator shell | Inspect, reason, orchestrate, and request canonical actions | Become silent doctrine or hidden runtime mutation owner | OpenClaw, parked/read-only Jarvis, admin utilities |
+| Operator shell | Inspect, reason, orchestrate, and request canonical actions | Become silent doctrine or hidden runtime mutation owner | OpenClaw, parked Jarvis compatibility endpoints, admin utilities |
 | Transport | Deliver or acknowledge messages | Decide behavioral meaning or exposure truth by itself | notification queue, web notification host, OpenClaw relay, browser acknowledgement |
 
 Most double-minded surfaces come from suggestion producers or operator shells
@@ -65,7 +65,7 @@ quietly acting like truth owners.
 
 | Fracture | Current risk | Direction |
 |---|---|---|
-| Jarvis vs OpenClaw | Two assistant/control planes can create divergent task, deadline, timer, or hypothesis histories. | OpenClaw is the operator reasoning shell. Jarvis must be parked, read-only, or a thin compatibility layer unless explicitly reauthorized. |
+| Jarvis vs OpenClaw | Two assistant/control planes can create divergent task, deadline, timer, or hypothesis histories. | OpenClaw is the operator reasoning shell. Jarvis active runtime is parked; `/v1/jarvis/*` may exist only as disabled compatibility endpoints unless explicitly reauthorized. |
 | Parser vs brain dump vs LLM enrichment | Multiple systems parse, bind, and enrich user text with different confidence semantics. | Deterministic extraction and `deadline_heuristic.score_deadlines()` own candidate scoring; LLM enrichment may annotate only. |
 | Notifications vs exposure vs relay | Queue insertion can be mistaken for user-visible exposure, and acknowledgement can be confused with render. | Queue insertion is not exposure. Delivery is not exposure. Browser render may create exposure-render truth. Acknowledgement, dismissal, or action may create interaction-outcome truth. |
 | Analytics vs Cortex vs ClaimCompiler | Multiple modules compute behavior meaning with different clean filters, signs, buckets, and confidence terms. | Cortex owns clean read-time projection; ClaimCompiler owns bounded claim emission. |
@@ -98,7 +98,7 @@ OpenClaw/GPT must not:
 - create confidence, causality, identity, motivation, or hidden evidence;
 - bypass Cortex clean profiles or ClaimCompiler;
 - treat operator discussion as user-facing truth;
-- become a second runtime assistant alongside Jarvis.
+- recreate Jarvis as a second runtime assistant.
 
 If a draft is rejected by ClaimCompiler or surface policy, OpenClaw may propose a
 new draft from the same evidence packet, but this is not reinforcement learning
@@ -163,7 +163,7 @@ Do not start by deleting code. Start by making authority illegal in the wrong
 places.
 
 ```text
-Jarvis may suggest.
+Jarvis is parked and may not suggest, execute tools, call models, or mutate.
 OpenClaw may reason and orchestrate.
 LLMs may enrich.
 Providers may report.
@@ -182,8 +182,8 @@ checks before broad extraction work:
 
 - Non-owner modules must not call `db.commit()` for task, deadline, timer,
   exposure, notification, provider, or insight state.
-- Jarvis/OpenClaw tools must not call mutation methods except through canonical
-  commands.
+- OpenClaw tools and any parked Jarvis compatibility code must not call
+  mutation methods except through canonical commands.
 - Frontend views must not derive behavioral claims locally.
 - Provider adapters must emit provider facts/candidates, not native truth.
 - Notification workers must not mark exposure at enqueue time.
@@ -202,7 +202,8 @@ current implementation plan:
    notification, provider, or insight state.
 2. Mark each surface as truth owner, suggestion producer, view, operator shell,
    or transport.
-3. Freeze Jarvis direct writes before deleting Jarvis.
+3. Keep Jarvis active runtime parked while historical rows remain exportable and
+   deletable.
 4. Choose one OpenClaw delivery path for operator alerts; retire the other.
 5. Make notification lifecycle explicit:
    `queued -> delivered -> rendered -> dismissed/acknowledged/acted -> outcome`.
@@ -210,7 +211,7 @@ current implementation plan:
    deadline-binding scorer.
 7. Route Moodle WS deadline creation/backfill through canonical deadline
    mutation authority.
-8. Make analytics, Jarvis, and frontend surfaces consume Cortex/ClaimCompiler
+8. Make analytics and frontend surfaces consume Cortex/ClaimCompiler
    outputs instead of recomputing behavior truth.
 9. Add tests later that fail when non-owner modules mutate canonical state
    directly.

@@ -63,15 +63,11 @@ import { PulseRecovery } from "@/components/pulse/PulseRecovery";
 import { PulseIntegrationsV2 } from "@/components/pulse/PulseIntegrationsV2";
 import { PulseQuickCaptureV2 } from "@/components/pulse/PulseQuickCaptureV2";
 import { PulseReentryQueue } from "@/components/pulse/PulseReentryQueue";
-import { JarvisFloatingButton } from "@/components/jarvis/JarvisFloatingButton";
 
 interface MeLite {
   user_id: number;
   email: string;
   executed_session_count: number;
-  // Drives JARVIS visibility (operator-only v1, 2026-04-30). Backend
-  // also enforces via 403 — this gate just keeps the UI tidy.
-  is_operator: boolean;
 }
 
 function todayKey(): string {
@@ -236,8 +232,6 @@ export default function PulsePage() {
         // /pulse v2 · Neural Noir command surface · {recentTasks.length}{" "}
         sessions analyzed across last 14 days
       </div>
-
-      <JarvisFloatingButton enabled={!!meQ.data?.is_operator} />
     </div>
   );
 }

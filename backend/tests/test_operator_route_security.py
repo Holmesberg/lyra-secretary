@@ -54,11 +54,19 @@ def test_operator_can_reach_core_operator_get_surfaces(client, db, monkeypatch):
 
     for path in (
         "/v1/admin/alpha_funnel",
-        "/v1/jarvis/health",
         "/v1/analytics/output_surfaces/diagnostics",
     ):
         response = client.get(path, headers=auth_headers(operator.user_id))
         assert response.status_code == 200, f"{path}: {response.status_code} {response.text}"
+
+
+def test_operator_jarvis_health_is_parked(client, db):
+    operator = _make_user(db, is_operator=True)
+
+    response = client.get("/v1/jarvis/health", headers=auth_headers(operator.user_id))
+
+    assert response.status_code == 410, response.text
+    assert response.json()["detail"]["error"] == "jarvis_disabled"
 
 
 def test_admin_dashboard_is_subordinate_and_content_minimized(client, db):

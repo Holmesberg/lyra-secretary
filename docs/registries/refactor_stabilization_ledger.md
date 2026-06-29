@@ -79,8 +79,8 @@ Parked paths:
 
 - Provider connection model split into future `integration_connection` and
   `credential_state` remains parked until schema authority exists.
-- Jarvis deletion remains parked; current registry marks Jarvis as parked or
-  compatibility-only until S1b chooses the code path.
+- Full Jarvis data-model deletion remains parked; active runtime parking was
+  later handled by the S1b Jarvis seam.
 - OpenClaw/GPT runtime product wiring remains parked and unauthorized.
 
 Moved authority:
@@ -121,9 +121,11 @@ Removed paths:
 
 Parked paths:
 
-- OpenClaw relay reliability remains in S1b follow-up.
-- Jarvis compatibility vs hard-disable remains in S1b follow-up.
-- Admin/dashboard consolidation remains in S1b/R2.
+- OpenClaw relay reliability was later handled by the S1b relay seam.
+- Jarvis compatibility vs hard-disable was later resolved by Jarvis runtime
+  parking.
+- Admin/dashboard consolidation was later handled by admin dashboard
+  subordination.
 
 Moved authority:
 
@@ -159,9 +161,12 @@ Removed paths:
 
 Parked paths:
 
-- Durable backend-side operator-alert dedupe remains a later S1b seam.
-- Jarvis compatibility vs hard-disable remains in S1b follow-up.
-- Admin/dashboard consolidation remains in S1b/R2.
+- Durable backend-side operator-alert dedupe was later handled by the durable
+  dedupe seam.
+- Jarvis compatibility vs hard-disable was later resolved by Jarvis runtime
+  parking.
+- Admin/dashboard consolidation was later handled by admin dashboard
+  subordination.
 
 Moved authority:
 
@@ -201,8 +206,10 @@ Removed paths:
 Parked paths:
 
 - Alert delivery success remains owned by the OpenClaw relay processing queue.
-- Jarvis compatibility vs hard-disable remains in S1b follow-up.
-- Admin/dashboard consolidation remains in S1b/R2.
+- Jarvis compatibility vs hard-disable was later resolved by Jarvis runtime
+  parking.
+- Admin/dashboard consolidation was later handled by admin dashboard
+  subordination.
 
 Moved authority:
 
@@ -256,3 +263,55 @@ Rollback note:
 
 - Revert the admin dashboard subordination seam commit only. This restores the
   previous legacy admin response/page shape without touching `/operator`.
+
+## S1b - Jarvis Runtime Parking
+
+Commit: Jarvis runtime parking seam commit.
+
+Changed authority:
+
+- `/v1/jarvis/*` is now a disabled compatibility surface. Operator auth still
+  applies first; authorized operators receive `410 jarvis_disabled`.
+- Pulse no longer renders a Jarvis floating button, chat modal, or Jarvis API
+  client.
+- OpenClaw remains the operator reasoning shell. Jarvis is not a second product
+  mind and may not call models, execute tools, suggest actions, or mutate.
+
+Removed paths:
+
+- Removed active frontend Jarvis client/components.
+- Removed active Jarvis endpoint imports of NIM, tool execution, and
+  `JarvisInvocation` writes.
+
+Parked paths:
+
+- Historical `JarvisInvocation` rows remain part of export/delete/data
+  sovereignty until a schema-backed deletion plan exists.
+- `backend/app/services/jarvis_tools.py` remains as a legacy internal
+  aggregation dependency for behavioral-signature diagnostics until R4
+  extraction.
+- Full Jarvis model/table deletion remains parked.
+
+Moved authority:
+
+- Operator reasoning remains with OpenClaw.
+- Canonical task/deadline/timer/provider mutations remain with canonical
+  services only.
+
+Tests and verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_jarvis_endpoints.py tests/test_operator_route_security.py tests/test_security_audit.py tests/test_delete_account_modern_auxiliary_rows.py tests/test_analytics_behavioral_signature.py -q`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_jarvis_phase2_discovery_tools.py tests/test_nvidia_nim_client.py -q`;
+- `cd frontend && npm run build`;
+- `python scripts\scan_authority_surfaces.py --fail-on-missing`;
+- `python -m py_compile scripts\scan_authority_surfaces.py`;
+- `node scripts\verify_runtime_topology.mjs --topology public`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_operator_readonly_browser_stress.ps1 -Topology public`;
+- Jarvis-specific operator-cookie browser probe saved screenshots and JSON under
+  `tmp/jarvis-parking-*`.
+
+Rollback note:
+
+- Revert the Jarvis runtime parking seam commit only. Historical rows and data
+  registry entries are untouched by this seam, so rollback does not require
+  data repair.

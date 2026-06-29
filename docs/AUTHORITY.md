@@ -85,7 +85,7 @@ ask not only "can this compute?" but "what human trajectory does this steer?"
 | Output surface translator | What may this user-facing surface publish? | Evidence eligibility. |
 | Pressure Map | Where should repair attention go? | Automatic task/calendar mutation or student-risk scoring. |
 | Exposure Ledger | What behavior-shaping output was shown or suppressed? | Universal behavioral memory. |
-| Agent council / JARVIS / OpenClaw | What should a human consider? | Silent doctrine, code, or runtime mutation. |
+| Agent council / parked JARVIS / OpenClaw | What should a human consider? | Silent doctrine, code, or runtime mutation. |
 
 `docs/single_authority_contract.md` adds the stricter cross-surface rule:
 one owner per truth class, many producers, many views, one mutation path, and

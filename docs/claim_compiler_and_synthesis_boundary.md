@@ -37,8 +37,8 @@ into fluent certainty.
 
 If AI synthesis is reopened, the preferred reasoning host is OpenClaw running a
 GPT-class synthesis model. This keeps future AI synthesis behind one operator
-reasoning boundary instead of scattering synthesis across Jarvis, frontend
-components, workers, or ad hoc endpoint code.
+reasoning boundary instead of scattering synthesis across parked Jarvis
+compatibility code, frontend components, workers, or ad hoc endpoint code.
 
 This identifies preferred future ownership only. It does not authorize runtime
 AI synthesis, model integration, prompt execution, user-facing draft

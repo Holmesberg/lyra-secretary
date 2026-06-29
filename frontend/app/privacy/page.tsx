@@ -35,7 +35,7 @@ const sections = [
   {
     title: "AI, Insights, And Future Features",
     body: [
-      "Current user-facing insights are intended to be deterministic and evidence-bounded. Optional hosted model paths or JARVIS-style tools may be used for operator-only debugging or enrichment workflows when configured.",
+      "Current user-facing insights are intended to be deterministic and evidence-bounded. The former in-app JARVIS assistant is parked; operator reasoning and notifications may use OpenClaw or Telegram when configured.",
       "AI synthesis, behavior-transition equations, adaptive scheduling authority, new provider adapters, and new insight types are not automatically authorized by this policy. If Lyra ships those features later, the policy and consent surface must be updated before they become user-facing runtime behavior.",
       "Future AI or equation-based features must remain downstream of explicit evidence, uncertainty, privacy boundaries, and user-facing explanation. They must not create hidden identity labels or stronger claims than the underlying data supports.",
     ],

@@ -25,7 +25,6 @@ const SURFACES = [
     title: "Internal runtime",
     items: [
       "admin dashboard",
-      "JARVIS",
       "OpenClaw workflows",
       "operator notifications",
       "topology verification",
