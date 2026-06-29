@@ -182,3 +182,39 @@ Rollback note:
 - Revert the OpenClaw relay reliability seam commit and rerun
   `scripts/start_openclaw_operator_relay.ps1`. Pending alerts stay in Redis;
   processing/dead-letter queues can be inspected before any manual repair.
+
+## S1b - Durable Operator Alert Dedupe
+
+Commit: durable operator-alert dedupe seam commit.
+
+Changed authority:
+
+- Operator-alert cooldown dedupe is now enforced through Redis
+  `SET ... NX EX`, not only process memory.
+- The in-process cooldown remains a local fast path after successful enqueue.
+
+Removed paths:
+
+- Removed process-restart duplicate risk for alerts that provide a stable
+  `dedupe_key` and `cooldown_seconds`.
+
+Parked paths:
+
+- Alert delivery success remains owned by the OpenClaw relay processing queue.
+- Jarvis compatibility vs hard-disable remains in S1b follow-up.
+- Admin/dashboard consolidation remains in S1b/R2.
+
+Moved authority:
+
+- Redis now owns cross-process/cross-restart operator-alert cooldown state for
+  deduped alerts.
+
+Tests and verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_operator_notifier.py tests/test_scheduler_degradation_contract.py tests/test_per_user_worker_helper.py -q`
+
+Rollback note:
+
+- Revert the durable operator-alert dedupe seam commit only. This restores
+  process-local cooldown behavior; any existing Redis dedupe keys expire by
+  their configured cooldown TTL.
