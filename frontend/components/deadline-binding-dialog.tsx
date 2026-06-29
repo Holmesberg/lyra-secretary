@@ -51,7 +51,9 @@ export function DeadlineBindingDialog({ task, open, onClose, onSaved }: Props) {
     () =>
       sortDeadlinesActiveFirst(
         (deadlinesQ.data?.deadlines ?? []).filter(
-          (deadline) => !deadline.voided_at
+          (deadline) =>
+            !deadline.voided_at &&
+            (deadline.state === "planned" || deadline.state === "active")
         )
       ),
     [deadlinesQ.data?.deadlines]

@@ -31,6 +31,38 @@ evidence to reason responsibly. It must not turn operational diagnostics into
 claims about a user's focus, motivation, discipline, avoidance, recovery
 quality, agency, or productivity.
 
+## API Shape
+
+`GET /v1/operator/dashboard` returns one read-only cockpit payload. The
+canonical top-level sections are:
+
+```text
+generated_at
+data_freshness
+metric_confidence
+meaningful_activity_definition
+cohort_readiness
+cohort_segments
+cohort
+retention
+activity_frequency
+activation_quality
+product_loop_funnel
+measurement_integrity
+state_invariants
+notification_lifecycle
+provider_integrity
+reliability
+privacy_boundary
+bug_watchlist
+dynamic_issues
+users
+operator_recommendations
+derived_metrics
+```
+
+The response is content-minimized by default. It is not a drilldown API.
+
 ## Allowed Use
 
 - Cohort readiness: red/yellow/green expansion status.
@@ -93,6 +125,39 @@ The dashboard stops there. It does not continue to:
 diagnostic meaning -> user agency claim
 ```
 
+## Dynamic Issues
+
+`dynamic_issues` are the primary readiness mechanism. They must derive from
+live invariants and diagnostic rules, not from static bug labels. K01-K05 may
+appear only as tags or watchlist statuses.
+
+Critical blockers include:
+
+- privacy-boundary violations;
+- operator/internal web-copy leaks;
+- duplicate notification prompts;
+- exposure records without render evidence;
+- duplicate open sessions;
+- executing or paused tasks without coherent open sessions;
+- executed tasks missing execution interval fields;
+- open sessions for executed tasks;
+- stale paused sessions without resolution;
+- clean trace ratio below the red threshold;
+- provider truth violations.
+
+`exposure_without_render_count > 0` must block cohort expansion because
+exposure-influenced metrics cannot be trusted without render linkage proof.
+This count must include only render-required exposure decisions that lack both
+render evidence and suppression evidence. Suppressed exposure decisions are
+intentional non-renders and must be reported separately as
+`suppressed_without_render_count` with informational impact.
+
+Duplicate prompt issues must name the duplicate type. K02 tags apply only to
+timer-overflow duplicates, not to reminder or other prompt duplicates.
+
+Missing notification source freshness is at least a warning. It means
+notification lifecycle counts are incomplete, not proven safe.
+
 ## Meaningful Activity
 
 Included:
@@ -123,6 +188,53 @@ Green means cautious trusted-user expansion is allowed.
 
 `safe_to_invite_more_users` may be true only when readiness is green.
 
+## Measurement Integrity
+
+`clean_trace_ratio` is defined as:
+
+```text
+clean eligible explicit stopwatch sessions /
+all eligible explicit stopwatch sessions
+```
+
+The denominator excludes and separately reports:
+
+- operator-user sessions;
+- test/synthetic-user sessions;
+- voided or deleted task sessions;
+- deleted-retained sessions;
+- provider-only rows;
+- non-session tasks.
+
+Every low ratio must be explainable through `dirty_reason_distribution`.
+Unknown exposure, exposure contamination, missing timestamps, impossible
+durations, auto-closed rows, stale-recovered rows, retroactive rows, corrected
+rows, voided rows, and provider-only rows must not silently enter clean
+baselines.
+
+Notification lifecycle diagnostics must distinguish:
+
+- actionable missing renders;
+- intentionally suppressed non-renders;
+- pending Redis duplicates;
+- durable lifecycle duplicates;
+- duplicate types and redacted stable identifiers.
+
+## Read-Only Invariant
+
+Reading `/operator` must not mutate:
+
+- last activity;
+- notification lifecycle;
+- exposure state;
+- user metrics;
+- task, session, deadline, or provider state;
+- Redis user runtime state.
+
+Refreshing the dashboard may update `generated_at` and recompute derived
+readiness. It must not participate in the product measurement system it
+observes.
+
 ## Privacy Boundary
 
 The default dashboard response must keep:
@@ -134,3 +246,11 @@ The default dashboard response must keep:
 - `user_debug_mode_enabled = false`
 
 Any future debug drilldown requires a separate explicit contract.
+
+## Freeze Stop Line
+
+The operator cockpit is a freeze-closure surface. It must be clear before any
+new feature work starts. The dashboard does not authorize AI synthesis,
+behavior-transition equations, cascade interventions, new insight types,
+archetype/profile labels, passive tracking, new provider adapters, or adaptive
+scheduling authority.

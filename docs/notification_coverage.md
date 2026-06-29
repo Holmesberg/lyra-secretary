@@ -8,11 +8,18 @@ Security companion: `docs/prodblueprint_security.md` defines the broader
 trusted-alpha access-control, audit, redaction, and provider-failure boundary.
 
 - **Per-user queue:** authenticated in-app/user-facing delivery through
-  `notifications:pending:{user_id}` and `/v1/notifications/pending`.
+  `notifications:pending:{user_id}` and `/v1/notifications/web/pending`.
 - **OpenClaw operator channel:** shared OpenClaw-polled queue for system state,
   operator-owned events, and redacted observability metadata only. OpenClaw
   relays this through its existing Telegram bot. Non-operator behavioral
   content must not be sent to this channel.
+
+The legacy `/v1/notifications/pending` route requires an explicit channel and
+must not be used by new callers. OpenClaw delivery uses either
+`/v1/notifications/openclaw/pending` from an authenticated OpenClaw agent flow
+or the deterministic relay in `scripts/openclaw_operator_relay.mjs`, which
+drains only `notifications:pending:{OPENCLAW_OPERATOR_USER_ID}` and sends
+operator messages through the existing OpenClaw Telegram configuration.
 
 ## Boundary Rules
 
@@ -32,6 +39,8 @@ trusted-alpha access-control, audit, redaction, and provider-failure boundary.
    `app.services.operator_notifier.notify_operator`.
 7. Missing OpenClaw operator delivery must never break a
    product mutation or research write.
+7a. The operator relay is observation-only. It must not mutate task, session,
+    provider, notification-lifecycle, exposure, or user activity state.
 8. Provider outage/auth failures are provider-scoped degradations unless they
    are widespread or persistent. They should say what provider failed, whether
    reconnect is needed, and whether Lyra kept existing data.
@@ -142,6 +151,20 @@ enrichment, not authentication, user scoping, or core scheduling truth. See
 | LLM enrichment | no | system | 30m | Aggregate failed/unavailable/pending counts only. |
 | Stale/orphan recovery | no | operator-owned only | 30m | Recovery summaries; no user content. |
 | Overdue/missed deadline sweep | no | operator-owned only | caller-specific | Existing operator-only summaries. |
+
+## Runtime Relay
+
+`scripts/start_openclaw_operator_relay.ps1` installs and restarts the live
+OpenClaw bridge inside `openclaw-openclaw-gateway-1`. The relay:
+
+- reads the Telegram bot token and allowlisted operator chat from OpenClaw's
+  existing config/environment;
+- drains `notifications:pending:1` by default;
+- relays `payload.message` exactly for `operator_alert` and other known
+  message-bearing payloads;
+- requeues on send failure instead of dropping alerts;
+- is restarted by `scripts/start_public_after_reboot.ps1` and checked by
+  `scripts/watch_public_runtime.ps1`.
 
 ## Explicit Non-Coverage
 

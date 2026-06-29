@@ -91,7 +91,23 @@ chmod +x "`$START_SCRIPT"
 
 echo '== starting next start in tmux =='
 tmux new-session -d -s "`$SESSION" "`$START_SCRIPT"
-sleep 8
+
+echo '== waiting for local frontend readiness =='
+ready=0
+for second in `$(seq 1 45); do
+  if curl -fsS -o /dev/null --max-time 2 http://localhost:3000/; then
+    echo "frontend ready after `${second}s"
+    ready=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "`$ready" != '1' ]; then
+  echo 'ERROR: frontend did not become ready within 45s.' >&2
+  tail -80 "`$FRONTEND_LOG" >&2 || true
+  exit 44
+fi
 
 echo '== frontend log tail =='
 tail -30 "`$FRONTEND_LOG"

@@ -142,3 +142,49 @@ def test_reminder_entrypoint_returns_degraded_handled_on_bootstrap_failure(monke
 
     assert reminders.check_upcoming_tasks() == JobResult.DEGRADED_HANDLED
     assert len(notifications) == 1
+
+
+def test_reminder_notification_payload_carries_task_dedupe_metadata(db, monkeypatch):
+    _clean_tables(db)
+    user = _make_user(db, 7105)
+    task = _make_task(db, user_id=7105, state=TaskState.PLANNED, starts_in_minutes=10)
+    queued = []
+    rendered = []
+
+    class FakeRedis:
+        def exists(self, _key):
+            return False
+
+        def setex(self, *_args):
+            return True
+
+    class FakeRedisClient:
+        client = FakeRedis()
+
+    monkeypatch.setattr(reminders, "RedisClient", lambda: FakeRedisClient())
+    monkeypatch.setattr(
+        reminders,
+        "enqueue_user_notification",
+        lambda *args, **kwargs: queued.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        reminders,
+        "emit_surface_render",
+        lambda *args, **kwargs: rendered.append((args, kwargs)),
+    )
+
+    reminders._run_for_one_user(db, user)
+
+    assert len(queued) == 1
+    args, kwargs = queued[0]
+    assert args[0] == user.user_id
+    payload = args[1]
+    assert payload["type"] == "reminder"
+    assert payload["task_id"] == task.task_id
+    assert payload["dedupe_key"] == f"reminder:{user.user_id}:{task.task_id}"
+    assert payload["surface_id"] == "worker.reminder"
+    assert kwargs["db"] is db
+    assert kwargs["surface_id"] == "worker.reminder"
+    assert kwargs["dedupe_key"] == f"reminder:{user.user_id}:{task.task_id}"
+    assert kwargs["content_snapshot"] == payload["message"]
+    assert rendered

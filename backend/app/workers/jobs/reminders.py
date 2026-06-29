@@ -150,6 +150,7 @@ def _run_for_one_user(db, user: User):
 
     for task in tasks:
         notified_key = f"reminder_sent:{user.user_id}:{task.task_id}"
+        dedupe_key = f"reminder:{user.user_id}:{task.task_id}"
         if redis.client.exists(notified_key):
             continue
 
@@ -168,7 +169,17 @@ def _run_for_one_user(db, user: User):
         try:
             enqueue_user_notification(
                 user.user_id,
-                {"type": "reminder", "message": message},
+                {
+                    "type": "reminder",
+                    "message": message,
+                    "task_id": task.task_id,
+                    "dedupe_key": dedupe_key,
+                    "surface_id": "worker.reminder",
+                },
+                db=db,
+                surface_id="worker.reminder",
+                dedupe_key=dedupe_key,
+                content_snapshot=message,
             )
             queued = True
             emit_surface_render(

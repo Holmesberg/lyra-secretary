@@ -7,7 +7,8 @@ Runtime owner: none.
 ## Verdict
 
 ```text
-Do not expand beyond current dogfood/trusted users until Gate 0 and Gate 1 pass.
+Do not expand beyond current dogfood/trusted users until the operator cockpit
+is green and Wave 6 final cohort proof passes.
 ```
 
 Lyra can continue operator dogfooding, but it is not ready for a fresh 15-20
@@ -29,6 +30,55 @@ clean enough in the relevant slice.
 
 Canonical note:
 `docs/measurement_integrity_before_agency_claims.md`.
+
+## 2026-06-22 Freeze-Closure Update
+
+Later bug-closure waves supersede the original Gate 0/Gate 1 wording where the
+current implementation has already been tested. The active gate is now:
+
+```text
+/operator dynamic issues and final cohort-readiness proof govern expansion.
+K01-K05 are watchlist tags, not the primary decision system.
+```
+
+Current read:
+
+| Area | Current status |
+|---|---|
+| Gate 0 notification/re-entry delivery | Implemented through Wave 1; keep lifecycle and operator-copy regressions. |
+| Gate 1 timer/re-entry state integrity | Implemented through Wave 2; user browser verified. |
+| Gate 2 measurement cleanliness | Implemented for Wave B surfaces; keep clean-profile regressions. |
+| Gate 3 data sovereignty | Wave 5A closed. |
+| Gate 3 provider security/integrity | Wave 5B closed for current tested paths, including fixture browser proof and operator-cookie read-only stress. |
+| Operator cockpit | Implemented as active decision surface; must stay read-only, invariant-derived, content-minimized, and free of fake certainty. |
+| Final cohort expansion | Wave 6 proof ran on 2026-06-22 and failed readiness: `/operator` is red, `safe_to_invite_more_users=no`, and dual-account browser proof is blocked by truncated alt cookies. |
+
+Current cohort blockers:
+
+- duplicate queued notification prompts;
+- exposure records without render evidence;
+- notification/source freshness and other instrumentation gaps;
+- no valid non-operator alt cookie for the required two-account browser proof.
+
+Before new features, the operator cockpit must answer:
+
+- can Lyra invite more trusted users today?
+- what invariant blocks expansion?
+- what is only a warning?
+- what is not instrumented?
+- what data is excluded from clean baselines?
+
+The dashboard must not mutate last activity, notification lifecycle, exposure
+state, user metrics, task/session/deadline/provider state, or Redis runtime
+state.
+
+Parked research direction:
+
+- behavior-transition equations are preserved in
+  `docs/parked/behavior_transition_equation_stack.md`;
+- ClaimCompiler / future AI-synthesis boundaries are preserved in
+  `docs/claim_compiler_and_synthesis_boundary.md`;
+- neither doc authorizes runtime behavior during the freeze.
 
 ## 2026-06-05 Wave A Status
 

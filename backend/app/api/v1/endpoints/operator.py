@@ -26,6 +26,7 @@ from app.db.models import (
     Feedback,
     NotificationLifecycleEvent,
     StopwatchSession,
+    SuppressionEvent,
     Task,
     TaskExecutionCorrection,
     TaskState,
@@ -255,12 +256,15 @@ def _redis_notification_snapshot(user_ids: list[int]) -> dict[str, Any]:
         "duplicate_prompt_count": 0,
         "internal_copy_leak_count": 0,
     }
+    duplicate_breakdown: list[dict[str, Any]] = []
+    duplicate_type_counts: Counter[str] = Counter()
     errors: list[str] = []
     try:
         redis = RedisClient()
-        seen = Counter()
         for user_id in user_ids:
             key = f"notifications:pending:{int(user_id)}"
+            seen = Counter()
+            examples: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
             for raw in redis.client.lrange(key, 0, -1):
                 try:
                     payload = json.loads(raw)
@@ -278,16 +282,46 @@ def _redis_notification_snapshot(user_ids: list[int]) -> dict[str, Any]:
                     str(payload.get("firing_id") or ""),
                 )
                 seen[stable_key] += 1
+                if len(examples[stable_key]) < 3:
+                    examples[stable_key].append({
+                        "notification_id_hash": _short_hash(
+                            str(payload.get("notification_id") or "")
+                        ),
+                        "has_message": bool(payload.get("message")),
+                        "field_count": len(payload.keys()),
+                    })
                 if payload_type == "operator_alert":
                     counts["operator_pending"] += 1
                 else:
                     counts["web_queued"] += 1
                     if any(marker in body for marker in FORBIDDEN_WEB_MARKERS):
                         counts["internal_copy_leak_count"] += 1
-        counts["duplicate_prompt_count"] = sum(max(0, n - 1) for n in seen.values())
+            for stable_key, count in seen.items():
+                if count <= 1:
+                    continue
+                duplicate_count = count - 1
+                payload_type, task_id, session_id, firing_id = stable_key
+                duplicate_type_counts[payload_type] += duplicate_count
+                duplicate_breakdown.append({
+                    "source": "redis_pending",
+                    "type": payload_type,
+                    "user_hash": _short_hash(str(user_id)),
+                    "task_hash": _short_hash(task_id) if task_id else "",
+                    "session_hash": _short_hash(session_id) if session_id else "",
+                    "firing_hash": _short_hash(firing_id) if firing_id else "",
+                    "count": duplicate_count,
+                    "has_stable_target": bool(task_id or session_id or firing_id),
+                    "examples": examples[stable_key],
+                })
+        counts["duplicate_prompt_count"] = sum(duplicate_type_counts.values())
     except Exception as exc:  # noqa: BLE001 - dashboard should degrade.
         errors.append(type(exc).__name__)
-    return {"counts": counts, "errors": errors}
+    return {
+        "counts": counts,
+        "errors": errors,
+        "duplicate_breakdown": duplicate_breakdown,
+        "duplicate_type_counts": dict(sorted(duplicate_type_counts.items())),
+    }
 
 
 def _user_last_activity_maps(db: Session) -> dict[int, datetime]:
@@ -706,6 +740,32 @@ def operator_dashboard_v12(
         lifecycle_duplicate_count = sum(
             max(0, count - 1) for count in lifecycle_dedupe_counts.values()
         )
+        lifecycle_duplicate_breakdown: list[dict[str, Any]] = []
+        lifecycle_duplicate_type_counts: Counter[str] = Counter()
+        for (row_user_id, row_dedupe_key), count in lifecycle_dedupe_counts.items():
+            if count <= 1:
+                continue
+            row = next(
+                (
+                    candidate
+                    for candidate in lifecycle_rows
+                    if candidate.user_id == row_user_id
+                    and candidate.dedupe_key == row_dedupe_key
+                ),
+                None,
+            )
+            if row is None:
+                continue
+            duplicate_count = count - 1
+            lifecycle_duplicate_type_counts[row.notification_type] += duplicate_count
+            lifecycle_duplicate_breakdown.append({
+                "source": "notification_lifecycle",
+                "type": row.notification_type,
+                "user_hash": _short_hash(str(row.user_id)),
+                "dedupe_key_hash": _short_hash(row.dedupe_key or ""),
+                "count": duplicate_count,
+                "has_stable_target": bool(row.task_id or row.session_id or row.firing_id),
+            })
         exposure_render_count = (
             db.query(func.count(ExposureRenderEvent.render_id))
             .filter(ExposureRenderEvent.rendered_at >= two_weeks_ago)
@@ -718,11 +778,21 @@ def operator_dashboard_v12(
             .scalar()
             or 0
         )
-        exposure_without_render = (
-            db.query(func.count(ExposureDecisionEvent.exposure_id))
+        exposure_without_render_rows = (
+            db.query(
+                ExposureDecisionEvent.decision_status,
+                ExposureDecisionEvent.content_template_id,
+                ExposureDecisionEvent.exposure_category,
+                ExposureDecisionEvent.trigger_source,
+                SuppressionEvent.suppression_id,
+            )
             .outerjoin(
                 ExposureRenderEvent,
                 ExposureRenderEvent.exposure_id == ExposureDecisionEvent.exposure_id,
+            )
+            .outerjoin(
+                SuppressionEvent,
+                SuppressionEvent.exposure_id == ExposureDecisionEvent.exposure_id,
             )
             .filter(
                 or_(
@@ -731,10 +801,41 @@ def operator_dashboard_v12(
                     ExposureDecisionEvent.delivered_at >= two_weeks_ago,
                 )
             )
+            .filter(ExposureDecisionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
             .filter(ExposureRenderEvent.render_id.is_(None))
-            .scalar()
-            or 0
+            .all()
         )
+        suppressed_without_render = sum(
+            1
+            for row in exposure_without_render_rows
+            if row.decision_status == "suppressed" or row.suppression_id is not None
+        )
+        actionable_missing_render_rows = [
+            row
+            for row in exposure_without_render_rows
+            if row.decision_status not in {"suppressed", "delayed", "failed"}
+            and row.suppression_id is None
+        ]
+        exposure_without_render = len(actionable_missing_render_rows)
+        exposure_missing_render_breakdown = {
+            "actionable_by_template": dict(sorted(Counter(
+                row.content_template_id or "unknown"
+                for row in actionable_missing_render_rows
+            ).items())),
+            "actionable_by_trigger": dict(sorted(Counter(
+                row.trigger_source or "unknown"
+                for row in actionable_missing_render_rows
+            ).items())),
+            "actionable_by_decision_status": dict(sorted(Counter(
+                row.decision_status or "unknown"
+                for row in actionable_missing_render_rows
+            ).items())),
+            "suppressed_by_template": dict(sorted(Counter(
+                row.content_template_id or "unknown"
+                for row in exposure_without_render_rows
+                if row.decision_status == "suppressed" or row.suppression_id is not None
+            ).items())),
+        }
         render_without_exposure = 0  # FK-enforced by schema when tables are migrated.
 
         notification_lifecycle = {
@@ -755,8 +856,22 @@ def operator_dashboard_v12(
             ),
             "render_without_exposure_count": render_without_exposure,
             "exposure_without_render_count": exposure_without_render,
+            "suppressed_without_render_count": suppressed_without_render,
+            "exposure_missing_render_breakdown": exposure_missing_render_breakdown,
             "operator_created": notification_counts["operator_pending"],
             "operator_pending": notification_counts["operator_pending"],
+            "duplicate_prompt_breakdown": (
+                redis_snapshot["duplicate_breakdown"]
+                + lifecycle_duplicate_breakdown
+            )[:20],
+            "duplicate_prompt_type_counts": dict(sorted((
+                Counter(redis_snapshot["duplicate_type_counts"])
+                + lifecycle_duplicate_type_counts
+            ).items())),
+            "redis_duplicate_prompt_type_counts": redis_snapshot["duplicate_type_counts"],
+            "lifecycle_duplicate_prompt_type_counts": dict(
+                sorted(lifecycle_duplicate_type_counts.items())
+            ),
             "not_instrumented_fields": [],
             "redis_errors": redis_snapshot["errors"],
         }
@@ -1090,22 +1205,49 @@ def operator_dashboard_v12(
                 blocks_cohort_expansion=True,
                 tags=["K01"],
             ))
-        if notification_lifecycle["duplicate_prompt_count"] > 0:
+        duplicate_type_counts = notification_lifecycle["duplicate_prompt_type_counts"]
+        timer_overflow_duplicate_count = int(duplicate_type_counts.get("timer_overflow", 0))
+        non_timer_duplicate_count = (
+            int(notification_lifecycle["duplicate_prompt_count"])
+            - timer_overflow_duplicate_count
+        )
+        if timer_overflow_duplicate_count > 0:
             dynamic_issues.append(_dynamic_issue(
-                issue_id="duplicate_notification_prompt",
+                issue_id="duplicate_timer_overflow_prompt",
                 severity="critical",
-                message="Duplicate queued notification prompts were detected.",
-                suggested_action="Fix notification dedupe and lifecycle accounting.",
+                message=(
+                    f"Duplicate timer overflow prompts were detected ({timer_overflow_duplicate_count})."
+                ),
+                suggested_action="Fix timer overflow dedupe and lifecycle accounting.",
                 related_section="notification_lifecycle",
                 blocks_cohort_expansion=True,
                 tags=["K02"],
+            ))
+        if non_timer_duplicate_count > 0:
+            non_timer_types = {
+                key: value
+                for key, value in duplicate_type_counts.items()
+                if key != "timer_overflow" and value
+            }
+            top_type = next(iter(non_timer_types), "notification")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id=f"duplicate_pending_{top_type}_prompt",
+                severity="critical",
+                message=(
+                    f"Duplicate pending {top_type} prompts were detected ({non_timer_duplicate_count})."
+                ),
+                suggested_action=(
+                    "Fix source dedupe metadata or clear stale pending prompts after verification."
+                ),
+                related_section="notification_lifecycle",
+                blocks_cohort_expansion=True,
             ))
         if notification_lifecycle["exposure_without_render_count"] > 0:
             dynamic_issues.append(_dynamic_issue(
                 issue_id="exposure_records_without_render_evidence",
                 severity="critical",
                 message=(
-                    f"Exposure ledger contains {notification_lifecycle['exposure_without_render_count']} exposure records without render evidence."
+                    f"Exposure ledger contains {notification_lifecycle['exposure_without_render_count']} actionable exposure records without render or suppression evidence."
                 ),
                 suggested_action=(
                     "Do not treat exposure-influenced metrics as valid until render linkage is reconciled."

@@ -11,7 +11,8 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import get_current_user_id, set_current_user_id
-from app.services.exposure_ledger import record_decision, record_render
+from app.services.exposure_ledger import record_decision, record_render, record_suppression
+from app.api.v1.endpoints import operator as operator_endpoint
 from tests.conftest import auth_headers
 
 
@@ -271,8 +272,97 @@ def test_operator_dashboard_blocks_on_exposure_without_render(client, db):
     )
     assert issue["severity"] == "critical"
     assert issue["blocks_cohort_expansion"] is True
+    assert issue["tags"] == []
     assert "exposure_records_without_render_evidence" in body["cohort_readiness"]["blockers"]
     assert "exposure_records_without_render_evidence" in body["cohort_readiness"]["minimum_fix_set"]
+    assert any(
+        rec["message"] == issue["message"]
+        and rec["blocks_cohort_expansion"] is True
+        for rec in body["operator_recommendations"]
+    )
+
+
+def test_operator_dashboard_does_not_block_on_suppressed_exposures(client, db):
+    ids = list(range(9101, 9150))
+    _clear_ids(db, ids)
+    db.add(_user(9131, operator=True))
+    db.add(_user(9132, operator=False))
+    exposure_stamp = datetime.utcnow() - timedelta(minutes=5)
+    suppressed = record_decision(
+        db,
+        user_id=9132,
+        eligible_at=exposure_stamp,
+        delivered_at=None,
+        decision_status="suppressed",
+        exposure_category="behavioral_insight",
+        content_template_id="analytics_insights",
+        initiative="system",
+        trigger_source="test",
+    )
+    suppressed.created_at = exposure_stamp
+    record_suppression(
+        db,
+        exposure_id=suppressed.exposure_id,
+        suppressed_at=exposure_stamp,
+        suppression_reason="measurement_safety",
+        would_have_rendered_template_id="analytics_insights",
+    )
+    db.commit()
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9131))
+    assert res.status_code == 200
+    body = res.json()
+    assert body["notification_lifecycle"]["exposure_without_render_count"] == 0
+    assert body["notification_lifecycle"]["suppressed_without_render_count"] == 1
+    issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
+    assert "exposure_records_without_render_evidence" not in issue_ids
+
+
+class _DashboardRedis:
+    def __init__(self, rows_by_key):
+        self.rows_by_key = rows_by_key
+
+    def lrange(self, key, _start, _end):
+        return self.rows_by_key.get(key, [])
+
+
+class _DashboardRedisClient:
+    def __init__(self, rows_by_key):
+        self.client = _DashboardRedis(rows_by_key)
+
+
+def test_operator_dashboard_reminder_duplicates_do_not_fail_k02(client, db, monkeypatch):
+    ids = list(range(9101, 9150))
+    _clear_ids(db, ids)
+    db.add(_user(9131, operator=True))
+    db.add(_user(9132, operator=False))
+    db.commit()
+    payloads = [
+        '{"notification_id":"r-1","type":"reminder","message":"redacted"}',
+        '{"notification_id":"r-2","type":"reminder","message":"redacted"}',
+        '{"notification_id":"r-3","type":"reminder","message":"redacted"}',
+    ]
+    monkeypatch.setattr(
+        operator_endpoint,
+        "RedisClient",
+        lambda: _DashboardRedisClient({"notifications:pending:9132": payloads}),
+    )
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9131))
+    assert res.status_code == 200
+    body = res.json()
+    assert body["notification_lifecycle"]["duplicate_prompt_count"] == 2
+    assert body["notification_lifecycle"]["duplicate_prompt_type_counts"] == {
+        "reminder": 2
+    }
+    assert body["bug_watchlist"]["k02_timer_overflow_duplicate"] == "pass"
+    issue = next(
+        issue
+        for issue in body["dynamic_issues"]
+        if issue["id"] == "duplicate_pending_reminder_prompt"
+    )
+    assert issue["blocks_cohort_expansion"] is True
+    assert "K02" not in issue["tags"]
 
 
 def test_operator_dashboard_exposure_contamination_is_task_window_scoped(client, db):
@@ -364,6 +454,8 @@ def test_operator_dashboard_exposure_contamination_is_task_window_scoped(client,
     assert body["measurement_integrity"]["dirty_reasons"]["exposure_contaminated"] == 1
     assert body["measurement_integrity"]["dirty_reason_distribution"]["exposure_contaminated"] == 1
     assert body["measurement_integrity"]["clean_trace_ratio_basis"]["denominator"] == 1
+    assert "excluded_from_denominator" in body["measurement_integrity"]["clean_trace_ratio_basis"]
+    assert "operator_user_sessions" in body["measurement_integrity"]["clean_trace_ratio_basis"]["excluded_from_denominator"]
 
 
 def test_operator_dashboard_read_is_side_effect_free(client, db):

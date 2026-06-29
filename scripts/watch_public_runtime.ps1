@@ -50,6 +50,14 @@ function Write-CheckResult($Result) {
     }
 }
 
+function Start-OpenClawOperatorRelay([string]$RepoRoot) {
+    Write-Step "Ensuring OpenClaw operator relay"
+    powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot "scripts\start_openclaw_operator_relay.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        throw "OpenClaw operator relay start failed."
+    }
+}
+
 function Test-StaticAssetGraph([string]$Name, [string]$BaseUri, [int]$Timeout) {
     $failures = @()
     try {
@@ -135,6 +143,7 @@ try {
         Write-CheckResult $publicAssets
         if ($publicAssets.Ok) {
             Write-Host "Static assets referenced by public HTML: $($publicAssets.AssetCount)"
+            Start-OpenClawOperatorRelay $repoRoot
             Write-Host "Runtime is clean."
             exit 0
         }
@@ -200,6 +209,8 @@ try {
         throw "public static asset graph remains unhealthy after repair: $($publicAssetsAfter.Error)"
     }
     Write-Host "Static assets referenced by public HTML: $($publicAssetsAfter.AssetCount)"
+
+    Start-OpenClawOperatorRelay $repoRoot
 
     Write-Host "Runtime repaired and clean."
     exit 0
