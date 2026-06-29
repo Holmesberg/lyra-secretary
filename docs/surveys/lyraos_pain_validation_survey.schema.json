@@ -1,0 +1,504 @@
+{
+  "id": "lyraos_pain_validation_global_v1",
+  "version": "2026-06-23",
+  "title": "Planning Collapse And Recovery Survey",
+  "description": "A short research survey about what happens when plans break under deadline pressure.",
+  "collectEmail": false,
+  "allowResponseEdits": false,
+  "showProgressBar": true,
+  "confirmationMessage": "Thank you. This helps decide whether this problem is urgent enough to build for, or whether the work should stay research-first.",
+  "destination": {
+    "title": "LyraOS Pain Validation Survey - Responses"
+  },
+  "analysis": {
+    "primary_validation_rule": "Pain is provisionally validated if at least one qualified segment shows recurring plan collapse, material cost, current-tool recovery failure, and willingness to try a recovery tool during a real pressure period.",
+    "qualified_respondent_filter": "student, founder/builder, engineer, freelancer, researcher, or knowledge worker who reports at least occasional deadline/exam/work-crunch pressure.",
+    "segment_validation_thresholds": {
+      "collapse_recency_positive": "60%+ report serious plan collapse within the last month",
+      "collapse_frequency_positive": "50%+ report collapse at least a few times per month during pressure periods",
+      "cost_severity_positive": "50%+ rate cost severity 4 or 5",
+      "current_tools_fail_positive": "50%+ rate current-tool recovery failure 1 or 2",
+      "recovery_delay_positive": "40%+ take at least 15 minutes to know what to do next or give up on the plan",
+      "pressure_trial_positive": "40%+ would try immediately or if setup was under 2 minutes"
+    },
+    "secondary_runtime_fit_signals": [
+      "overload_entry_behavior",
+      "post_collapse_action",
+      "metacognitive_warning",
+      "missing_visibility",
+      "day_one_value",
+      "timer_tolerance"
+    ],
+    "scale_direction_notes": {
+      "current_tools_fail": "Reverse-coded for pain: 1 means current tools mostly fail, 5 means current tools help recovery. Treat 1 or 2 as the current-tool-failure pain signal.",
+      "cost_severity": "Higher is more costly: treat 4 or 5 as material pain.",
+      "overrun_cascade": "Higher is more cascading damage: treat 4 or 5 as cascade pain."
+    },
+    "runtime_fit_notes": {
+      "overload_entry_behavior": "Secondary runtime-fit signal, not primary pain validation. Messy-note dumping supports quick-capture fit. Avoid-looking responses are a separate high-value visibility/avoidance signal to inspect by segment.",
+      "post_collapse_action": "Secondary runtime-fit signal for what Lyra would replace, compress, or augment after collapse.",
+      "timer_tolerance": "Secondary instrumentation-friction signal; do not treat timer willingness as proof of pain without the pain cluster."
+    },
+    "pivot_signal": "If no qualified segment shows the pain cluster and runtime-fit signals, pause broad product push and narrow discovery to a more specific pressure context or pure research.",
+    "pain_cluster_question_ids": [
+      "collapse_recency",
+      "collapse_frequency",
+      "cost_severity",
+      "current_tools_fail",
+      "recovery_delay",
+      "pressure_trial_willingness"
+    ]
+  },
+  "sections": [
+    {
+      "id": "screening",
+      "title": "Your Work Context",
+      "description": "Start here. This survey is about deadline pressure and plan-reality drift.",
+      "questions": [
+        {
+          "id": "role",
+          "type": "multiple_choice",
+          "title": "Which best describes you right now?",
+          "required": true,
+          "options": [
+            { "label": "Student" },
+            { "label": "Founder / builder" },
+            { "label": "Engineer / technical worker" },
+            { "label": "Freelancer / independent worker" },
+            { "label": "Researcher / academic" },
+            { "label": "Other knowledge worker" },
+            { "label": "None of these" }
+          ],
+          "metadata": {
+            "analysis_bucket": "segment",
+            "branching_ready": true
+          }
+        },
+        {
+          "id": "pressure_period_frequency",
+          "type": "multiple_choice",
+          "title": "How often do you have periods where deadlines, exams, projects, or obligations pile up?",
+          "required": true,
+          "options": [
+            { "label": "Almost every week" },
+            { "label": "A few times a month" },
+            { "label": "A few times a semester / quarter" },
+            { "label": "Rarely" },
+            { "label": "Almost never" }
+          ],
+          "metadata": {
+            "analysis_bucket": "pressure_frequency"
+          }
+        },
+        {
+          "id": "overload_entry_behavior",
+          "type": "multiple_choice",
+          "title": "When deadlines, tasks, or obligations pile up, what is your most natural first move?",
+          "required": true,
+          "options": [
+            { "label": "Dump everything into a messy note/message" },
+            { "label": "Open my calendar" },
+            { "label": "Open a task app / to-do list" },
+            { "label": "Ask ChatGPT or another AI assistant what to do" },
+            { "label": "Start working on the first urgent thing" },
+            { "label": "Avoid looking at the full situation" },
+            { "label": "I do not usually feel overloaded" }
+          ],
+          "metadata": {
+            "analysis_bucket": "overload_entry_behavior",
+            "runtime_fit_signal": true
+          }
+        },
+        {
+          "id": "collapse_recency",
+          "type": "multiple_choice",
+          "title": "When was the last time your plan for a day or week seriously collapsed?",
+          "required": true,
+          "options": [
+            { "label": "In the last 7 days" },
+            { "label": "In the last month" },
+            { "label": "In the last 3 months" },
+            { "label": "Longer ago" },
+            { "label": "This does not really happen to me" }
+          ],
+          "branches": {
+            "This does not really happen to me": {
+              "goToSectionId": "low_pain_exit",
+              "reason": "No recent or remembered pain."
+            }
+          },
+          "metadata": {
+            "pain_cluster": true,
+            "positive_values": [
+              "In the last 7 days",
+              "In the last month",
+              "In the last 3 months"
+            ],
+            "branching_ready": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_core",
+      "title": "Plan Collapse",
+      "description": "Answer from a real recent example if you can.",
+      "questions": [
+        {
+          "id": "post_collapse_action",
+          "type": "multiple_choice",
+          "title": "After the last time your plan collapsed, what did you actually do next?",
+          "required": true,
+          "options": [
+            { "label": "Replanned manually in a calendar/task app" },
+            { "label": "Asked ChatGPT or another AI assistant for help" },
+            { "label": "Dropped lower-priority tasks" },
+            { "label": "Worked longer / slept less" },
+            { "label": "Ignored the plan and improvised" },
+            { "label": "Froze / avoided deciding what to do next" },
+            { "label": "Asked another person for help" },
+            { "label": "Gave up on the plan for the day" },
+            { "label": "Other", "isOther": true }
+          ],
+          "metadata": {
+            "analysis_bucket": "actual_recovery_behavior",
+            "runtime_fit_signal": true
+          }
+        },
+        {
+          "id": "first_failure_signal",
+          "type": "multiple_choice",
+          "title": "What was the first sign the plan was going off-track?",
+          "required": true,
+          "options": [
+            { "label": "One task took much longer than expected" },
+            { "label": "I started too late" },
+            { "label": "I avoided or delayed the hardest task" },
+            { "label": "An interruption/context switch broke the plan" },
+            { "label": "Too many deadlines became visible at once" },
+            { "label": "I was too tired/stressed to execute the plan" },
+            { "label": "Something external happened" },
+            { "label": "I am not sure" }
+          ],
+          "metadata": {
+            "analysis_bucket": "failure_mode"
+          }
+        },
+        {
+          "id": "metacognitive_warning",
+          "type": "multiple_choice",
+          "title": "When a plan starts going wrong, do you usually see it coming?",
+          "required": true,
+          "options": [
+            { "label": "I usually see it coming but cannot stop it" },
+            { "label": "It usually catches me off guard" },
+            { "label": "I only realize after I am already behind" },
+            { "label": "It depends on the situation" },
+            { "label": "My plans do not usually go wrong" }
+          ],
+          "metadata": {
+            "analysis_bucket": "metacognitive_warning",
+            "runtime_fit_signal": true
+          }
+        },
+        {
+          "id": "overrun_cascade",
+          "type": "linear_scale",
+          "title": "When one task overruns, how often does it damage the rest of your plan?",
+          "required": true,
+          "lowerBound": 1,
+          "upperBound": 5,
+          "lowerLabel": "Almost never",
+          "upperLabel": "Almost always",
+          "metadata": {
+            "analysis_bucket": "cascade_pain",
+            "positive_threshold": 4
+          }
+        },
+        {
+          "id": "cost_severity",
+          "type": "linear_scale",
+          "title": "How costly is a plan collapse when it happens?",
+          "required": true,
+          "lowerBound": 1,
+          "upperBound": 5,
+          "lowerLabel": "Annoying but harmless",
+          "upperLabel": "Material damage",
+          "metadata": {
+            "pain_cluster": true,
+            "positive_threshold": 4
+          }
+        },
+        {
+          "id": "cost_types",
+          "type": "checkbox",
+          "title": "What has plan collapse cost you before? Select all that apply.",
+          "required": true,
+          "options": [
+            { "label": "Missed deadline" },
+            { "label": "Lower grade / worse work quality" },
+            { "label": "Lost money or opportunity" },
+            { "label": "Sleep" },
+            { "label": "Stress/anxiety spike" },
+            { "label": "Guilt/shame spiral" },
+            { "label": "Reputation or trust with others" },
+            { "label": "Nothing serious" }
+          ],
+          "metadata": {
+            "analysis_bucket": "damage_type",
+            "material_options": [
+              "Missed deadline",
+              "Lower grade / worse work quality",
+              "Lost money or opportunity",
+              "Sleep",
+              "Stress/anxiety spike",
+              "Reputation or trust with others"
+            ]
+          }
+        },
+        {
+          "id": "collapse_frequency",
+          "type": "multiple_choice",
+          "title": "During a normal pressure period, how often does this kind of collapse happen?",
+          "required": true,
+          "options": [
+            { "label": "Multiple times a week" },
+            { "label": "About once a week" },
+            { "label": "A few times a month" },
+            { "label": "Rarely" },
+            { "label": "Almost never" }
+          ],
+          "metadata": {
+            "pain_cluster": true,
+            "positive_values": [
+              "Multiple times a week",
+              "About once a week",
+              "A few times a month"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "current_tools",
+      "title": "Current Recovery Tools",
+      "description": "This section tests whether existing tools already solve the pain.",
+      "questions": [
+        {
+          "id": "current_tools_used",
+          "type": "checkbox",
+          "title": "What do you currently use to manage overloaded days or weeks?",
+          "required": true,
+          "options": [
+            { "label": "Calendar / time blocking" },
+            { "label": "Todoist / Things / task app" },
+            { "label": "Notion / spreadsheet / doc" },
+            { "label": "Paper / notebook" },
+            { "label": "ChatGPT or another AI assistant" },
+            { "label": "I keep it in my head" },
+            { "label": "Nothing consistent" }
+          ],
+          "metadata": {
+            "analysis_bucket": "current_tool_stack"
+          }
+        },
+        {
+          "id": "current_tools_fail",
+          "type": "linear_scale",
+          "title": "When the plan breaks, how well do your current tools help you recover?",
+          "required": true,
+          "lowerBound": 1,
+          "upperBound": 5,
+          "lowerLabel": "They mostly fail me",
+          "upperLabel": "They help me recover",
+          "metadata": {
+            "pain_cluster": true,
+            "positive_threshold": 2,
+            "positive_direction": "lte"
+          }
+        },
+        {
+          "id": "missing_visibility",
+          "type": "checkbox",
+          "title": "When your plan breaks, what do your current tools fail to show clearly? Select all that apply.",
+          "required": true,
+          "options": [
+            { "label": "What is still open" },
+            { "label": "What I actually worked on" },
+            { "label": "What to do after I fall behind" },
+            { "label": "How long the work really took" },
+            { "label": "Why I stopped, paused, or switched" },
+            { "label": "Whether something is finished, partly done, or abandoned" },
+            { "label": "Which deadline or obligation is now at risk" },
+            { "label": "They show enough already" }
+          ],
+          "metadata": {
+            "analysis_bucket": "missing_visibility",
+            "runtime_fit_signal": true
+          }
+        },
+        {
+          "id": "recovery_delay",
+          "type": "multiple_choice",
+          "title": "After your plan breaks, how long does it usually take to know what to do next?",
+          "required": true,
+          "options": [
+            { "label": "A few minutes" },
+            { "label": "15-30 minutes" },
+            { "label": "An hour or more" },
+            { "label": "I usually give up on the plan for the day" },
+            { "label": "This does not apply to me" }
+          ],
+          "metadata": {
+            "pain_cluster": true,
+            "positive_values": [
+              "15-30 minutes",
+              "An hour or more",
+              "I usually give up on the plan for the day"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "solution_pull",
+      "title": "Would A Recovery Tool Matter?",
+      "description": "No product pitch: answer based on whether this would be worth friction during a real pressure period.",
+      "questions": [
+        {
+          "id": "day_one_value",
+          "type": "multiple_choice",
+          "title": "Which day-1 output would be most useful before an app knows your personal patterns?",
+          "required": true,
+          "options": [
+            { "label": "A pressure map of visible work vs available time" },
+            { "label": "A recovery inbox for missed/overdue planned work" },
+            { "label": "A warning that today's plan is unrealistic" },
+            { "label": "Help choosing what to resume, drop, or postpone" },
+            { "label": "A summary of open loops from yesterday" },
+            { "label": "One short question to resolve stale or paused work" },
+            { "label": "None of these would matter" }
+          ],
+          "metadata": {
+            "analysis_bucket": "day_one_value"
+          }
+        },
+        {
+          "id": "timer_tolerance",
+          "type": "multiple_choice",
+          "title": "Would you start/stop timers for serious work if the main benefit was better recovery after overruns, pauses, or missed blocks?",
+          "required": true,
+          "options": [
+            { "label": "Yes, for most serious work" },
+            { "label": "Yes, but only during exams/deadlines/crunch weeks" },
+            { "label": "Maybe, if starting/stopping took one tap" },
+            { "label": "Probably not" },
+            { "label": "No" }
+          ],
+          "metadata": {
+            "analysis_bucket": "instrumentation_tolerance"
+          }
+        },
+        {
+          "id": "pressure_trial_willingness",
+          "type": "multiple_choice",
+          "title": "During a real high-pressure week, would you try a tool that helps convert broken plans into next actions?",
+          "required": true,
+          "options": [
+            { "label": "Yes, I would try it immediately" },
+            { "label": "Probably, if setup was under 2 minutes" },
+            { "label": "Maybe, but only if someone I trust recommended it" },
+            { "label": "Probably not" },
+            { "label": "No" }
+          ],
+          "metadata": {
+            "pain_cluster": true,
+            "positive_values": [
+              "Yes, I would try it immediately",
+              "Probably, if setup was under 2 minutes"
+            ]
+          }
+        },
+        {
+          "id": "disappeared_disappointment",
+          "type": "multiple_choice",
+          "title": "If a tool reliably helped during crunch weeks and then disappeared, how disappointed would you be?",
+          "required": true,
+          "options": [
+            { "label": "Very disappointed" },
+            { "label": "Somewhat disappointed" },
+            { "label": "Neutral" },
+            { "label": "Not disappointed" },
+            { "label": "I do not think I would use it" }
+          ],
+          "metadata": {
+            "analysis_bucket": "must_have_signal"
+          }
+        },
+        {
+          "id": "dealbreaker",
+          "type": "short_answer",
+          "title": "What would make you stop using a tool like this after 3 days?",
+          "required": false,
+          "metadata": {
+            "analysis_bucket": "dealbreaker"
+          }
+        },
+        {
+          "id": "optional_contact",
+          "type": "short_answer",
+          "title": "Optional: leave an email/Telegram/Reddit handle if you are open to a 10-minute follow-up.",
+          "required": false,
+          "metadata": {
+            "pii": true,
+            "analysis_use": "follow_up_only"
+          }
+        }
+      ]
+    },
+    {
+      "id": "low_pain_exit",
+      "title": "Quick Exit",
+      "description": "This branch is for people who do not experience the core pain.",
+      "branchOnly": true,
+      "questions": [
+        {
+          "id": "low_pain_reason",
+          "type": "multiple_choice",
+          "title": "Why does this not feel like a problem for you?",
+          "required": true,
+          "options": [
+            { "label": "My plans usually work" },
+            { "label": "I do not plan much" },
+            { "label": "I recover quickly without tools" },
+            { "label": "My current tools are enough" },
+            { "label": "The stakes are low" },
+            { "label": "Other" }
+          ],
+          "metadata": {
+            "analysis_bucket": "falsification_reason"
+          }
+        },
+        {
+          "id": "low_pain_current_system",
+          "type": "short_answer",
+          "title": "What does your current system look like when things get busy?",
+          "required": false,
+          "metadata": {
+            "analysis_bucket": "low_pain_current_system",
+            "negative_control_signal": true
+          }
+        },
+        {
+          "id": "low_pain_any_context",
+          "type": "short_answer",
+          "title": "Is there any context where this would become painful for you?",
+          "required": false,
+          "metadata": {
+            "analysis_bucket": "latent_pain_context"
+          }
+        }
+      ]
+    }
+  ]
+}

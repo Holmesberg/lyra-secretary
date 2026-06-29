@@ -199,8 +199,9 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="flex items-center justify-between gap-4">
           <p className="text-sm text-dust">
-            Download every task, session, and reflection tied to your account as
-            a single JSON file.
+            Download a secret-redacted JSON file with your tasks, deadlines,
+            sessions, reflections, feedback, notification and exposure logs,
+            integration state, and other user-owned records.
           </p>
           <Button
             variant="outline"
@@ -227,8 +228,9 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="flex items-center justify-between gap-4">
           <p className="text-sm text-dust">
-            Permanently delete your account and all associated data. Export your
-            data first if you want to keep a record.
+            Delete your account. You can hard-delete user-owned product rows or
+            allow anonymized task/session timing rows to be retained for product
+            quality research.
           </p>
           <Button variant="destructive" onClick={openDeleteModal}>
             Delete account
@@ -299,7 +301,7 @@ export default function SettingsPage() {
                       </li>
                     )}
                     <li>Account login and preferences</li>
-                    <li>Backup snapshots from the last 30 days will be purged within 24 hours</li>
+                    <li>Runtime cache and queue state will be purged where technically available</li>
                   </ul>
                 ) : (
                   <p className="text-dust-deep italic">Loading data summary...</p>
@@ -343,10 +345,10 @@ export default function SettingsPage() {
                   <p className="text-xs text-dust-deep leading-relaxed">
                     Without data from people who stop using Lyra, we can&apos;t
                     understand what makes the system fail for them. Retained data
-                    has no identifying information and cannot be linked back to
-                    you. It is used only to improve Lyra, not for external
-                    publication. Uncheck this box if you want all data
-                    permanently purged.
+                    removes direct account identity and task text fields, but
+                    behavioral traces can still be sensitive. It is used only to
+                    improve Lyra, not for external publication. Uncheck this box
+                    if you want user-owned product rows hard-deleted instead.
                   </p>
                 </div>
 

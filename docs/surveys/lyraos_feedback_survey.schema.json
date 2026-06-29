@@ -1,0 +1,298 @@
+{
+  "id": "lyraos_feedback_usefulness_v1",
+  "version": "2026-06-23",
+  "title": "LyraOS Feedback Survey",
+  "description": "A short voluntary feedback survey for people who have seen or used LyraOS. Focus: whether Lyra's insights and recovery prompts are useful, accurate, trustworthy, actionable, and valuable. Responses are stored in Google Forms/Sheets, not the LyraOS app database. Do not include sensitive personal information in free-text answers.",
+  "collectEmail": false,
+  "allowResponseEdits": false,
+  "showProgressBar": true,
+  "confirmationMessage": "Thank you. This helps decide which Lyra surfaces should stay, change, or be removed.",
+  "destination": {
+    "title": "LyraOS Feedback Survey - Responses"
+  },
+  "analysis": {
+    "primary_goal": "Separate genuinely useful product surfaces from interesting-but-not-actionable diagnostics.",
+    "do_not_overclaim": "Responses validate perceived usefulness and trust only; they do not validate behavioral change.",
+    "core_dimensions": [
+      "insight_usefulness",
+      "intervention_accuracy",
+      "trust",
+      "actionability",
+      "user_value"
+    ]
+  },
+  "sections": [
+    {
+      "id": "context",
+      "title": "Context",
+      "description": "Answer based on what you have actually seen.",
+      "questions": [
+        {
+          "id": "exposure_level",
+          "type": "multiple_choice",
+          "title": "How much of LyraOS have you seen or used?",
+          "required": true,
+          "options": [
+            { "label": "I used it for real work" },
+            { "label": "I saw a live demo or screen share" },
+            { "label": "I saw screenshots/video only" },
+            { "label": "I have not seen enough to judge" }
+          ],
+          "branches": {
+            "I have not seen enough to judge": {
+              "goToSectionId": "not_enough_context",
+              "reason": "Avoid low-context product judgments."
+            }
+          },
+          "metadata": {
+            "branching_ready": true,
+            "analysis_bucket": "exposure_level"
+          }
+        },
+        {
+          "id": "most_relevant_surface",
+          "type": "multiple_choice",
+          "title": "Which Lyra surface felt most relevant to you?",
+          "required": true,
+          "options": [
+            { "label": "Pressure map / visible workload" },
+            { "label": "Missed-plan or re-entry cards" },
+            { "label": "Timer and post-task reflection" },
+            { "label": "Insights about patterns" },
+            { "label": "Calendar/deadline integration" },
+            { "label": "None stood out" }
+          ],
+          "metadata": {
+            "analysis_bucket": "surface_pull"
+          }
+        }
+      ]
+    },
+    {
+      "id": "insights",
+      "title": "Insights",
+      "description": "This section tests whether Lyra should speak less, speak differently, or keep surfacing insights.",
+      "questions": [
+        {
+          "id": "insight_usefulness",
+          "type": "linear_scale",
+          "title": "How useful were Lyra's insights or pattern summaries?",
+          "required": true,
+          "lowerBound": 1,
+          "upperBound": 5,
+          "lowerLabel": "Not useful",
+          "upperLabel": "Very useful",
+          "metadata": {
+            "dimension": "insight_usefulness",
+            "positive_threshold": 4
+          }
+        },
+        {
+          "id": "insight_truth_feel",
+          "type": "multiple_choice",
+          "title": "How did the insights feel?",
+          "required": true,
+          "options": [
+            { "label": "True and useful" },
+            { "label": "True but obvious" },
+            { "label": "Interesting but not actionable" },
+            { "label": "Too confident / overstated" },
+            { "label": "Wrong" },
+            { "label": "I did not see insights" }
+          ],
+          "metadata": {
+            "dimension": "trust"
+          }
+        },
+        {
+          "id": "trust_evidence_need",
+          "type": "checkbox",
+          "title": "What would make you trust an insight more? Select all that apply.",
+          "required": true,
+          "options": [
+            { "label": "Show the sessions/tasks behind it" },
+            { "label": "Use ranges instead of exact claims" },
+            { "label": "Say when data is too messy to conclude" },
+            { "label": "Let me correct it" },
+            { "label": "Use softer language" },
+            { "label": "I do not want insights" }
+          ],
+          "metadata": {
+            "dimension": "trust"
+          }
+        }
+      ]
+    },
+    {
+      "id": "interventions",
+      "title": "Recovery Prompts And Interventions",
+      "description": "Interventions means reminders, missed-plan cards, pressure warnings, recovery suggestions, and similar behavior-shaping surfaces.",
+      "questions": [
+        {
+          "id": "intervention_accuracy",
+          "type": "linear_scale",
+          "title": "How accurately did Lyra identify moments where help/recovery was actually needed?",
+          "required": true,
+          "lowerBound": 1,
+          "upperBound": 5,
+          "lowerLabel": "Mostly wrong",
+          "upperLabel": "Mostly accurate",
+          "metadata": {
+            "dimension": "intervention_accuracy",
+            "positive_threshold": 4
+          }
+        },
+        {
+          "id": "intervention_timing",
+          "type": "multiple_choice",
+          "title": "How was the timing of Lyra's prompts?",
+          "required": true,
+          "options": [
+            { "label": "Usually timely" },
+            { "label": "Sometimes useful, sometimes noisy" },
+            { "label": "Too early" },
+            { "label": "Too late" },
+            { "label": "Too many prompts" },
+            { "label": "I did not see prompts" }
+          ],
+          "metadata": {
+            "dimension": "intervention_accuracy"
+          }
+        },
+        {
+          "id": "intervention_actionability",
+          "type": "linear_scale",
+          "title": "When Lyra showed a recovery option, how often did it make the next action clearer?",
+          "required": true,
+          "lowerBound": 1,
+          "upperBound": 5,
+          "lowerLabel": "Rarely",
+          "upperLabel": "Often",
+          "metadata": {
+            "dimension": "actionability",
+            "positive_threshold": 4
+          }
+        },
+        {
+          "id": "best_recovery_action",
+          "type": "multiple_choice",
+          "title": "Which recovery action would matter most when a plan breaks?",
+          "required": true,
+          "options": [
+            { "label": "Reschedule" },
+            { "label": "Shrink scope" },
+            { "label": "Split into smaller blocks" },
+            { "label": "Mark done / correct state" },
+            { "label": "Abandon/defer cleanly" },
+            { "label": "Tell me the plan is unrealistic" },
+            { "label": "None of these" }
+          ],
+          "metadata": {
+            "dimension": "actionability"
+          }
+        }
+      ]
+    },
+    {
+      "id": "trust_value",
+      "title": "Trust And Value",
+      "description": "This section decides whether Lyra feels like a useful assistant, a noisy dashboard, or something uncomfortable.",
+      "questions": [
+        {
+          "id": "felt_judged",
+          "type": "multiple_choice",
+          "title": "Did Lyra ever feel judgmental, creepy, or like it was over-reading you?",
+          "required": true,
+          "options": [
+            { "label": "No, it felt neutral/helpful" },
+            { "label": "A little, but manageable" },
+            { "label": "Yes, enough to reduce trust" },
+            { "label": "I am not sure" }
+          ],
+          "metadata": {
+            "dimension": "trust",
+            "negative_values": [
+              "Yes, enough to reduce trust"
+            ]
+          }
+        },
+        {
+          "id": "day_one_value",
+          "type": "linear_scale",
+          "title": "How valuable would Lyra be before it has much personal data about you?",
+          "required": true,
+          "lowerBound": 1,
+          "upperBound": 5,
+          "lowerLabel": "Not valuable",
+          "upperLabel": "Valuable immediately",
+          "metadata": {
+            "dimension": "user_value",
+            "positive_threshold": 4
+          }
+        },
+        {
+          "id": "retention_pull",
+          "type": "multiple_choice",
+          "title": "Would you use Lyra during a real exam/deadline/work-crunch period?",
+          "required": true,
+          "options": [
+            { "label": "Yes, definitely" },
+            { "label": "Probably" },
+            { "label": "Maybe, if setup is very fast" },
+            { "label": "Probably not" },
+            { "label": "No" }
+          ],
+          "metadata": {
+            "dimension": "user_value",
+            "positive_values": [
+              "Yes, definitely",
+              "Probably"
+            ]
+          }
+        },
+        {
+          "id": "missing_if_gone",
+          "type": "paragraph",
+          "title": "If Lyra disappeared during a high-pressure week, what would you miss, if anything?",
+          "required": false,
+          "metadata": {
+            "dimension": "user_value",
+            "analysis_bucket": "sean_ellis_must_have"
+          }
+        },
+        {
+          "id": "one_fix",
+          "type": "paragraph",
+          "title": "What is the one change that would most improve Lyra?",
+          "required": false,
+          "metadata": {
+            "analysis_bucket": "top_fix"
+          }
+        }
+      ]
+    },
+    {
+      "id": "not_enough_context",
+      "title": "Not Enough Context",
+      "description": "Thanks. This branch avoids asking you to judge surfaces you have not seen.",
+      "questions": [
+        {
+          "id": "needs_to_see",
+          "type": "multiple_choice",
+          "title": "What would you need to see before judging Lyra?",
+          "required": true,
+          "options": [
+            { "label": "A 60-second demo" },
+            { "label": "A real example using my own workload" },
+            { "label": "Screenshots of the main screens" },
+            { "label": "A written explanation" },
+            { "label": "I am not interested" }
+          ],
+          "metadata": {
+            "analysis_bucket": "demo_gap"
+          }
+        }
+      ]
+    }
+  ]
+}
