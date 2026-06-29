@@ -27,6 +27,7 @@ if ($LASTEXITCODE -ne 0 -or $running -ne "true") {
 
 if ($StatusOnly) {
     docker exec $ContainerName sh -lc "pgrep -af '[l]yra_openclaw_operator_relay.mjs' || true"
+    docker exec $ContainerName sh -lc "tail -20 '$logTarget' || true"
     exit $LASTEXITCODE
 }
 

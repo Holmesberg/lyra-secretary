@@ -140,3 +140,45 @@ Rollback note:
 - Revert the notification/exposure authority seam commit only. This restores
   the previous worker-side render emission behavior while leaving H0 and S1a
   safety rails intact.
+
+## S1b - OpenClaw Relay Processing Queue
+
+Commit: OpenClaw relay reliability seam commit.
+
+Changed authority:
+
+- OpenClaw operator relay now moves alerts through a processing queue before
+  Telegram delivery.
+- Alerts are acknowledged from processing only after Telegram send succeeds.
+- Malformed payloads move to a dead-letter queue instead of being retried
+  forever.
+
+Removed paths:
+
+- Removed destructive `BLPOP` delivery semantics from the relay.
+
+Parked paths:
+
+- Durable backend-side operator-alert dedupe remains a later S1b seam.
+- Jarvis compatibility vs hard-disable remains in S1b follow-up.
+- Admin/dashboard consolidation remains in S1b/R2.
+
+Moved authority:
+
+- The relay owns delivery acknowledgement for operator alerts:
+  `pending -> processing -> sent/ack` or `pending -> processing -> dead_letter`.
+
+Tests and verification:
+
+- `node --check scripts/openclaw_operator_relay.mjs`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_openclaw_operator_relay.ps1`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_openclaw_operator_relay.ps1 -StatusOnly`;
+- Redis queue length checks for `notifications:pending:1`,
+  `notifications:pending:1:processing`, and
+  `notifications:pending:1:dead_letter`.
+
+Rollback note:
+
+- Revert the OpenClaw relay reliability seam commit and rerun
+  `scripts/start_openclaw_operator_relay.ps1`. Pending alerts stay in Redis;
+  processing/dead-letter queues can be inspected before any manual repair.
