@@ -24,7 +24,10 @@ from app.db.models import (
     User,
 )
 from app.services.notification_queue import enqueue_user_notification
-from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
+from app.services.output_surfaces import (
+    create_output_surface_decision,
+    emit_surface_suppression,
+)
 from app.services.resume_predictor import (
     COOLDOWN_MINUTES,
     MAX_FIRES_PER_SESSION,
@@ -205,20 +208,30 @@ def _enqueue_notification(db, user: User, row: ResumePredictionLog, task: Task) 
         "mechanism": row.mechanism,
         "confidence": row.confidence,
     }
+    content_snapshot = json.dumps(payload, sort_keys=True)
     try:
-        enqueue_user_notification(user.user_id, payload)
-        emit_surface_render(
+        decision = create_output_surface_decision(
             db,
             surface_id="worker.resume_prediction",
             user_id=user.user_id,
             task_id=row.task_id,
-            content_snapshot=json.dumps(payload, sort_keys=True),
+            decision_status="queued",
             content_template_id="resume_prediction",
-            initiative="system",
             trigger_source="worker.resume_prediction",
             eligible_at=row.fired_at,
-            rendered_at=row.fired_at,
+            delivered_at=None,
             data_snapshot_hash=str(row.firing_id),
+        )
+        payload["surface_id"] = "worker.resume_prediction"
+        payload["exposure_id"] = decision.exposure_id
+        enqueue_user_notification(
+            user.user_id,
+            payload,
+            db=db,
+            surface_id="worker.resume_prediction",
+            exposure_id=decision.exposure_id,
+            dedupe_key=f"resume_prediction:{row.firing_id}",
+            content_snapshot=content_snapshot,
         )
         db.commit()
     except Exception as e:

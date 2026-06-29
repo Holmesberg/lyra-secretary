@@ -34,7 +34,10 @@ from app.db.models import PausePredictionLog, Task, TaskState, User
 from app.db.scoping import set_current_user_id
 from app.services.notification_queue import enqueue_user_notification
 from app.services.operator_notifier import notify_operator
-from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
+from app.services.output_surfaces import (
+    create_output_surface_decision,
+    emit_surface_suppression,
+)
 from app.services.pause_predictor import PausePredictor
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
@@ -291,20 +294,30 @@ def _enqueue_notification(db, user: User, row: PausePredictionLog) -> None:
         "confidence": row.confidence,
         "active_task_id": row.active_task_id,
     }
+    content_snapshot = json.dumps(payload, sort_keys=True)
     try:
-        enqueue_user_notification(user.user_id, payload)
-        emit_surface_render(
+        decision = create_output_surface_decision(
             db,
             surface_id="worker.pause_prediction",
             user_id=user.user_id,
             task_id=row.active_task_id,
-            content_snapshot=json.dumps(payload, sort_keys=True),
+            decision_status="queued",
             content_template_id="pause_prediction",
-            initiative="system",
             trigger_source="worker.pause_prediction",
             eligible_at=row.fired_at,
-            rendered_at=row.fired_at,
+            delivered_at=None,
             data_snapshot_hash=str(row.firing_id),
+        )
+        payload["surface_id"] = "worker.pause_prediction"
+        payload["exposure_id"] = decision.exposure_id
+        enqueue_user_notification(
+            user.user_id,
+            payload,
+            db=db,
+            surface_id="worker.pause_prediction",
+            exposure_id=decision.exposure_id,
+            dedupe_key=f"pause_prediction:{row.firing_id}",
+            content_snapshot=content_snapshot,
         )
         db.commit()
     except Exception as e:

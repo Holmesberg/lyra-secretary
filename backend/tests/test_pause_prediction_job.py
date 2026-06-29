@@ -24,6 +24,8 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy import text
 
 from app.db.models import (
+    ExposureDecisionEvent,
+    ExposureRenderEvent,
     PausePredictionLog,
     StopwatchSession,
     Task,
@@ -51,6 +53,10 @@ def _clean_slate(db):
     """Wipe relevant tables and scoping before and after each test."""
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM exposure_ack_event"))
+    db.execute(text("DELETE FROM exposure_render_event"))
+    db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -60,6 +66,10 @@ def _clean_slate(db):
     yield
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM exposure_ack_event"))
+    db.execute(text("DELETE FROM exposure_render_event"))
+    db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -160,6 +170,20 @@ def test_firing_writes_log_row_and_queues_notification(db, user):
     assert call.args[0] == USER_ID
     assert call.args[1]["type"] == "pause_prediction"
     assert call.args[1]["firing_id"] == row.firing_id
+    assert call.args[1]["surface_id"] == "worker.pause_prediction"
+    assert call.args[1]["exposure_id"]
+    assert call.kwargs["db"] is db
+    assert call.kwargs["surface_id"] == "worker.pause_prediction"
+    assert call.kwargs["exposure_id"] == call.args[1]["exposure_id"]
+
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == call.args[1]["exposure_id"])
+        .one()
+    )
+    assert decision.decision_status == "queued"
+    assert decision.delivered_at is None
+    assert db.query(ExposureRenderEvent).count() == 0
 
 
 def test_run_pause_prediction_only_iterates_active_candidates(monkeypatch):

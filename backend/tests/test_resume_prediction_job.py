@@ -134,7 +134,7 @@ def _patch_delivery():
     return patch.multiple(
         "app.workers.jobs.resume_prediction",
         enqueue_user_notification=DEFAULT,
-        emit_surface_render=DEFAULT,
+        create_output_surface_decision=DEFAULT,
         emit_surface_suppression=DEFAULT,
     )
 
@@ -163,6 +163,17 @@ def test_resume_prediction_firing_writes_log_and_queues_notification(db):
     assert payload["type"] == "resume_prediction"
     assert payload["task_id"] == task.task_id
     assert payload["firing_id"] == row.firing_id
+    assert payload["surface_id"] == "worker.resume_prediction"
+    assert payload["exposure_id"]
+    assert patched["enqueue_user_notification"].call_args.kwargs["db"] is db
+    assert (
+        patched["enqueue_user_notification"].call_args.kwargs["surface_id"]
+        == "worker.resume_prediction"
+    )
+    assert patched["create_output_surface_decision"].call_count == 1
+    decision_kwargs = patched["create_output_surface_decision"].call_args.kwargs
+    assert decision_kwargs["decision_status"] == "queued"
+    assert decision_kwargs["delivered_at"] is None
 
 
 def test_fresh_pause_does_not_fire_resume_prediction(db):

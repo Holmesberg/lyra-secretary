@@ -149,7 +149,10 @@ def test_reminder_notification_payload_carries_task_dedupe_metadata(db, monkeypa
     user = _make_user(db, 7105)
     task = _make_task(db, user_id=7105, state=TaskState.PLANNED, starts_in_minutes=10)
     queued = []
-    rendered = []
+    decisions = []
+
+    class Decision:
+        exposure_id = "exp-reminder-1"
 
     class FakeRedis:
         def exists(self, _key):
@@ -169,8 +172,8 @@ def test_reminder_notification_payload_carries_task_dedupe_metadata(db, monkeypa
     )
     monkeypatch.setattr(
         reminders,
-        "emit_surface_render",
-        lambda *args, **kwargs: rendered.append((args, kwargs)),
+        "create_output_surface_decision",
+        lambda *args, **kwargs: decisions.append((args, kwargs)) or Decision(),
     )
 
     reminders._run_for_one_user(db, user)
@@ -183,8 +186,13 @@ def test_reminder_notification_payload_carries_task_dedupe_metadata(db, monkeypa
     assert payload["task_id"] == task.task_id
     assert payload["dedupe_key"] == f"reminder:{user.user_id}:{task.task_id}"
     assert payload["surface_id"] == "worker.reminder"
+    assert payload["exposure_id"] == "exp-reminder-1"
     assert kwargs["db"] is db
     assert kwargs["surface_id"] == "worker.reminder"
+    assert kwargs["exposure_id"] == "exp-reminder-1"
     assert kwargs["dedupe_key"] == f"reminder:{user.user_id}:{task.task_id}"
     assert kwargs["content_snapshot"] == payload["message"]
-    assert rendered
+    assert len(decisions) == 1
+    decision_kwargs = decisions[0][1]
+    assert decision_kwargs["decision_status"] == "queued"
+    assert decision_kwargs["delivered_at"] is None

@@ -59,7 +59,7 @@ Rollback note:
 
 ## S1a - Safety Rails And Authority Registries
 
-Commit: S1a safety-rail commit.
+Commit: `22eb346 docs: add refactor safety rail registries`
 
 Changed authority:
 
@@ -102,3 +102,41 @@ Rollback note:
 
 - Revert the S1a commit only. This removes documentation registries and the
   report-only scanner without touching runtime behavior.
+
+## S1b - Notification Worker Exposure/Render Authority
+
+Commit: notification/exposure authority seam commit.
+
+Changed authority:
+
+- Reminder, pause-prediction, and resume-prediction workers now create queued
+  output-surface decisions only.
+- Browser render remains the authority for render truth.
+- Dismiss/ack/action remain separate interaction outcome truth.
+
+Removed paths:
+
+- Removed worker-side render claims from reminder, pause-prediction, and
+  resume-prediction enqueue paths.
+
+Parked paths:
+
+- OpenClaw relay reliability remains in S1b follow-up.
+- Jarvis compatibility vs hard-disable remains in S1b follow-up.
+- Admin/dashboard consolidation remains in S1b/R2.
+
+Moved authority:
+
+- Worker enqueue paths moved from `emit_surface_render(...)` to
+  `create_output_surface_decision(... decision_status="queued")` plus a linked
+  notification `exposure_id`.
+
+Tests and verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_timer_overflow_notifications.py tests/test_notification_queue_openclaw_mirror.py tests/test_reminders_scheduler_contract.py tests/test_pause_prediction_job.py tests/test_resume_prediction_job.py -q`
+
+Rollback note:
+
+- Revert the notification/exposure authority seam commit only. This restores
+  the previous worker-side render emission behavior while leaving H0 and S1a
+  safety rails intact.
