@@ -1,0 +1,104 @@
+---
+authority: active-contract
+may_authorize_code: false
+runtime_owner: none
+created: 2026-06-29
+---
+
+# Refactor Stabilization Ledger
+
+Status: active S1 ledger. This file records authority moves, removed paths,
+parked paths, tests, and rollback notes for freeze-closure refactor work.
+
+## Entry Format
+
+Each risky refactor PR or wave-sized commit must record:
+
+- changed authority;
+- removed paths;
+- parked paths;
+- moved authority;
+- tests or verification added/run;
+- rollback note.
+
+## H0 - Docker Context Hotfix
+
+Commit: `aa27f89 ops: exclude local secrets from docker contexts`
+
+Changed authority:
+
+- Docker build contexts now have explicit local secret/data exclusion rules.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Root `.dockerignore` remains parked because the active compose build context
+  is `./backend`; root context hardening requires a separate decision if a root
+  Dockerfile/build context is introduced.
+
+Moved authority:
+
+- None.
+
+Tests and verification:
+
+- backend Docker context copy probe excluded `.env`, DBs, cache, coverage, and
+  temp artifacts;
+- OpenClaw Docker context copy probe excluded `.env`, DBs, cache, coverage,
+  temp, `node_modules`, and cookie artifacts;
+- `docker compose config --quiet`;
+- `git diff --check`;
+- public operator-cookie read-only browser stress.
+
+Rollback note:
+
+- Revert `aa27f89` only. No runtime behavior changed.
+
+## S1a - Safety Rails And Authority Registries
+
+Commit: S1a safety-rail commit.
+
+Changed authority:
+
+- Added report-only mutation surface registry.
+- Added runtime topology ownership manifest.
+- Added user-data ownership/export/delete/runtime purge manifest.
+- Added clean-data/provenance vocabulary registry.
+- Added identity/scoping ownership note.
+- Linked S1a registries from `docs/AUTHORITY.md`.
+- Added report-only authority scanner.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Provider connection model split into future `integration_connection` and
+  `credential_state` remains parked until schema authority exists.
+- Jarvis deletion remains parked; current registry marks Jarvis as parked or
+  compatibility-only until S1b chooses the code path.
+- OpenClaw/GPT runtime product wiring remains parked and unauthorized.
+
+Moved authority:
+
+- No runtime authority moved.
+- Documentation now names intended owners for mutation-capable surfaces so S1b
+  and S1c can seal or test them incrementally.
+
+Tests and verification:
+
+- `python scripts/scan_authority_surfaces.py --fail-on-missing`;
+- `python -m py_compile scripts/scan_authority_surfaces.py`;
+- `node scripts/test_runtime_topology_contract.mjs`;
+- `node scripts/verify_runtime_topology.mjs --topology public --skip-browser`;
+- `git diff --check`;
+- public operator-cookie browser verification after commit/push.
+
+Rollback note:
+
+- Revert the S1a commit only. This removes documentation registries and the
+  report-only scanner without touching runtime behavior.

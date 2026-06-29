@@ -1,0 +1,64 @@
+{
+  "schema_version": "runtime_topology_ownership_manifest_v1",
+  "status": "active_s1a_contract",
+  "source_of_truth": "runtime_topology.json",
+  "freeze_boundary": "This manifest documents topology ownership. It does not authorize new public infrastructure, DNS changes, or boot-path changes.",
+  "owns": [
+    "frontend public API origin",
+    "backend CORS expectations",
+    "NextAuth base URL expectation",
+    "topology verifier defaults",
+    "public smoke defaults"
+  ],
+  "runtime_topology_contract": {
+    "required_version": "runtime_topology_v1",
+    "local": {
+      "frontend_origin": "http://localhost:3000",
+      "api_origin": "http://localhost:8000",
+      "nextauth_url": "http://localhost:3000"
+    },
+    "public": {
+      "frontend_origin": "https://lyraos.org",
+      "api_origin": "https://api.lyraos.org",
+      "nextauth_url": "https://lyraos.org"
+    }
+  },
+  "canonical_consumers": [
+    {
+      "path": "scripts/verify_runtime_topology.mjs",
+      "role": "browser/API topology verifier"
+    },
+    {
+      "path": "scripts/test_runtime_topology_contract.mjs",
+      "role": "static topology contract check"
+    },
+    {
+      "path": "backend/app/services/runtime_topology.py",
+      "role": "backend topology report and fallback contract"
+    },
+    {
+      "path": "frontend/app/api/topology/route.ts",
+      "role": "frontend topology report"
+    },
+    {
+      "path": "scripts/run_operator_readonly_browser_stress.ps1",
+      "role": "operator-cookie browser verification defaults"
+    },
+    {
+      "path": "scripts/run_two_account_browser_smoke.ps1",
+      "role": "multi-account browser verification defaults"
+    }
+  ],
+  "rules": [
+    "Runtime topology values must be changed in runtime_topology.json first.",
+    "Public verification must not silently hit localhost.",
+    "Local verification must not silently hit api.lyraos.org.",
+    "CORS declared browser origins must match the topology contract.",
+    "Browser verification artifacts must be written under tmp/."
+  ],
+  "future_s1c_checks": [
+    "grep for hard-coded API origins outside runtime_topology consumers",
+    "fail if verifier defaults disagree with runtime_topology.json",
+    "fail if public boot scripts bypass the topology verifier"
+  ]
+}

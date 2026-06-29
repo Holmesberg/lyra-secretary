@@ -1,0 +1,321 @@
+{
+  "schema_version": "mutation_surface_authority_registry_v1",
+  "status": "s1a_report_only",
+  "freeze_boundary": "This registry documents current and intended authority. It does not authorize new runtime behavior, schema migration, AI synthesis, or feature work.",
+  "source_docs": [
+    "docs/AUTHORITY.md",
+    "docs/single_authority_contract.md",
+    "docs/audits/refactor_spaghetti_audit_2026_06_29.md",
+    "docs/architecture_freeze_priority_hold_2026_05_20.md"
+  ],
+  "rules": [
+    "One owner per truth class.",
+    "Suggestion producers may propose candidates but must not commit canonical truth directly.",
+    "Views may render and request explicit canonical actions but must not mutate by reading.",
+    "Operator shells may inspect and reason, but must not become silent runtime mutation authority.",
+    "Transport layers may deliver or acknowledge messages but must not decide behavioral meaning by themselves."
+  ],
+  "scan_contract": {
+    "script": "scripts/scan_authority_surfaces.py",
+    "mode": "report_only_until_s1c",
+    "hard_fail_condition_later": "S1c may promote selected missing-owner findings to CI failures after owners and exceptions are settled."
+  },
+  "surfaces": [
+    {
+      "id": "task_lifecycle_authority",
+      "truth_classes": ["task", "task_state", "task_schedule", "task_deadline_binding"],
+      "authority_level": "truth_owner",
+      "owner": "TaskManager plus canonical task/deadline binding endpoints",
+      "paths": [
+        "backend/app/services/task_manager.py",
+        "backend/app/services/state_machine.py",
+        "backend/app/api/v1/endpoints/brain_dump.py",
+        "backend/app/api/v1/endpoints/tasks.py",
+        "backend/app/api/v1/endpoints/undo.py"
+      ],
+      "allowed_writes": [
+        "create, update, soft-delete, reschedule, bind/unbind deadline, cache invalidation, explicit undo"
+      ],
+      "notes": "Task route writes that bypass TaskManager are tolerated only as legacy compatibility until R4/R5 extraction."
+    },
+    {
+      "id": "deadline_authority",
+      "truth_classes": ["deadline", "deadline_state", "deadline_completion_candidate"],
+      "authority_level": "truth_owner",
+      "owner": "DeadlineManager and provider-aware deadline normalizers",
+      "paths": [
+        "backend/app/services/deadline_manager.py",
+        "backend/app/api/v1/endpoints/deadlines.py",
+        "backend/app/workers/jobs/sweep_missed_deadlines.py",
+        "backend/app/workers/jobs/reconcile_deadline_outcomes.py"
+      ],
+      "allowed_writes": [
+        "deadline create/update/void",
+        "terminal deadline reconciliation",
+        "provider completion candidate persistence"
+      ],
+      "notes": "Moodle/iCal/WS provider facts must route here or remain candidates until S1b seals the path."
+    },
+    {
+      "id": "stopwatch_session_authority",
+      "truth_classes": ["stopwatch_session", "pause_event", "active_stopwatch_runtime"],
+      "authority_level": "truth_owner",
+      "owner": "StopwatchManager and RedisClient stopwatch state methods",
+      "paths": [
+        "backend/app/services/stopwatch_manager.py",
+        "backend/app/api/v1/endpoints/stopwatch.py",
+        "backend/app/utils/redis_client.py",
+        "backend/app/workers/jobs/stale_session_recovery.py",
+        "backend/app/workers/jobs/orphan_task_recovery.py"
+      ],
+      "allowed_writes": [
+        "start, pause, resume, switch, stop, stale resolution, active stopwatch Redis mutation"
+      ],
+      "notes": "Only one active timer per user is allowed; planned tasks may overlap."
+    },
+    {
+      "id": "output_surface_exposure_authority",
+      "truth_classes": ["output_surface_decision", "exposure_render", "exposure_interaction_outcome", "suppression"],
+      "authority_level": "truth_owner",
+      "owner": "Output surface lifecycle APIs and exposure ledger",
+      "paths": [
+        "backend/app/services/output_surfaces.py",
+        "backend/app/services/exposure_ledger.py",
+        "backend/app/api/v1/endpoints/exposures.py",
+        "backend/app/core/output_surface_registry.json"
+      ],
+      "allowed_writes": [
+        "decision, suppression, browser render, acknowledgement, dismissal/action outcome"
+      ],
+      "notes": "Queue insertion and delivery are not exposure. Browser render creates render truth."
+    },
+    {
+      "id": "notification_lifecycle_authority",
+      "truth_classes": ["notification_lifecycle", "notification_queue", "notification_render_state"],
+      "authority_level": "transport",
+      "owner": "Notification lifecycle service and web notification host",
+      "paths": [
+        "backend/app/services/notification_lifecycle.py",
+        "backend/app/services/notification_queue.py",
+        "backend/app/api/v1/endpoints/notifications.py",
+        "backend/app/api/v1/endpoints/pause_predictions.py",
+        "backend/app/workers/jobs/reminders.py",
+        "backend/app/workers/jobs/pause_prediction.py",
+        "backend/app/workers/jobs/resume_prediction.py",
+        "backend/app/workers/jobs/timer_overflow.py"
+      ],
+      "allowed_writes": [
+        "created, queued, reserved, delivered, rendered, acted, dismissed, expired, lost_unrendered"
+      ],
+      "notes": "Notification lifecycle must stay separate from exposure render and interaction outcome truth."
+    },
+    {
+      "id": "provider_fact_authority",
+      "truth_classes": ["provider_fact", "provider_deadline_candidate", "provider_completion_candidate", "provider_sync_state"],
+      "authority_level": "suggestion_producer",
+      "owner": "Provider adapters plus canonical provider/deadline services",
+      "paths": [
+        "backend/app/services/calendar_sync.py",
+        "backend/app/services/moodle_ics_sync.py",
+        "backend/app/services/notion_client.py",
+        "backend/app/api/v1/endpoints/calendar.py",
+        "backend/app/workers/jobs/moodle_ics_sync.py",
+        "backend/app/workers/jobs/moodle_submissions_sync.py",
+        "backend/app/api/v1/endpoints/moodle.py",
+        "backend/app/api/v1/endpoints/integrations.py",
+        "backend/app/services/moodle_submissions_sync.py",
+        "backend/app/services/provider_url_safety.py"
+      ],
+      "allowed_writes": [
+        "provider sync status",
+        "provider facts/candidates",
+        "credential state through encrypted app path"
+      ],
+      "notes": "Provider completion is evidence/candidate, not clean execution truth unless user-confirmed."
+    },
+    {
+      "id": "user_account_data_authority",
+      "truth_classes": ["user_account", "consent", "export", "delete", "runtime_purge", "credential_disconnect"],
+      "authority_level": "truth_owner",
+      "owner": "Users endpoints plus user_data_registry and Redis runtime purge",
+      "paths": [
+        "backend/app/api/v1/endpoints/users.py",
+        "backend/app/api/v1/endpoints/feedback.py",
+        "backend/app/api/v1/endpoints/email_engagement.py",
+        "backend/app/api/v1/endpoints/reflection_view.py",
+        "backend/app/services/user_data_registry.py",
+        "backend/app/services/user_mailer.py",
+        "backend/app/utils/me_cache.py",
+        "backend/app/utils/tasks_range_cache.py"
+      ],
+      "allowed_writes": [
+        "consent, profile, export audit, delete request, hard/retained delete, Redis runtime purge, provider disconnect"
+      ],
+      "notes": "Export/delete coverage must be registry-driven and secret-redacted."
+    },
+    {
+      "id": "identity_scoping_authority",
+      "truth_classes": ["identity_resolution", "request_scope", "first_login_provisioning", "test_identity_boundary"],
+      "authority_level": "truth_owner",
+      "owner": "IdentityResolver, UserProvisioningService, and RequestUserContext extraction targets",
+      "paths": [
+        "backend/app/core/security.py",
+        "backend/app/main.py",
+        "backend/app/api/deps.py",
+        "backend/app/db/scoping.py"
+      ],
+      "allowed_writes": [
+        "auth audit/profile bootstrap only through current guarded request identity path"
+      ],
+      "notes": "X-User-Id is test-only and must fail closed outside test/operator tooling. See docs/registries/identity_scoping_ownership.md."
+    },
+    {
+      "id": "orm_model_declarations",
+      "truth_classes": ["schema_declaration"],
+      "authority_level": "transport",
+      "owner": "SQLAlchemy model declarations",
+      "paths": [
+        "backend/app/db/models.py"
+      ],
+      "allowed_writes": [
+        "none"
+      ],
+      "notes": "Model constructor names trip write-marker scans, but this file must not own runtime mutation authority."
+    },
+    {
+      "id": "parser_candidate_authority",
+      "truth_classes": ["parse_candidate", "deadline_candidate", "brain_dump_candidate", "llm_annotation"],
+      "authority_level": "suggestion_producer",
+      "owner": "Deterministic parser and candidate endpoints",
+      "paths": [
+        "backend/app/api/v1/endpoints/parse.py",
+        "backend/app/services/llm_parser.py",
+        "backend/app/services/brain_dump_parser.py"
+      ],
+      "allowed_writes": [
+        "candidate/audit persistence only; canonical task/deadline writes route through TaskManager/DeadlineManager"
+      ],
+      "notes": "LLM enrichment may annotate; deterministic deadline scoring owns candidate scoring during freeze."
+    },
+    {
+      "id": "academic_pressure_surface",
+      "truth_classes": ["pressure_map_render", "academic_recovery_candidate", "external_obligation_projection"],
+      "authority_level": "suggestion_producer",
+      "owner": "Academic pressure map and output-surface lifecycle",
+      "paths": [
+        "backend/app/api/v1/endpoints/academic.py",
+        "backend/app/services/academic_pressure.py"
+      ],
+      "allowed_writes": [
+        "redacted pressure-map exposure render through output surface lifecycle only"
+      ],
+      "notes": "Pressure Map may prioritize repair attention but must not own automatic mutation or student-risk scoring."
+    },
+    {
+      "id": "operator_alert_transport",
+      "truth_classes": ["operator_alert_queue", "openclaw_delivery", "telegram_delivery"],
+      "authority_level": "transport",
+      "owner": "OpenClaw operator alert relay",
+      "paths": [
+        "backend/app/services/operator_notifier.py",
+        "scripts/openclaw_operator_relay.mjs",
+        "scripts/start_openclaw_operator_relay.ps1"
+      ],
+      "allowed_writes": [
+        "operator alert queue append, confirmed delivery acknowledgement, dead-letter/retry state"
+      ],
+      "notes": "S1b must ensure no destructive dequeue before confirmed send."
+    },
+    {
+      "id": "analytics_cortex_claim_boundary",
+      "truth_classes": ["derived_metric", "clean_profile", "evidence_packet", "claim"],
+      "authority_level": "derived_metric",
+      "owner": "Cortex, registered computation modules, Admission/Coverage Gate, ClaimCompiler",
+      "paths": [
+        "backend/app/api/v1/endpoints/analytics.py",
+        "backend/app/services/cortex.py",
+        "backend/app/services/claim_compiler.py",
+        "backend/app/services/bias_factor_service.py",
+        "backend/app/services/archetype_proximity_service.py",
+        "backend/app/services/pause_predictor.py",
+        "backend/app/services/resume_predictor.py"
+      ],
+      "allowed_writes": [
+        "legacy exposure compatibility only until sealed",
+        "read-time metric computation",
+        "deterministic claim compilation"
+      ],
+      "notes": "Analytics endpoints may expose compiled products, but do not own clean filters, confidence semantics, exposure writes, or claim authority."
+    },
+    {
+      "id": "operator_dashboard_authority",
+      "truth_classes": ["operator_diagnostic", "readiness_issue", "admin_read_model"],
+      "authority_level": "operator_only_action",
+      "owner": "Operator dashboard service and read-only admin compatibility",
+      "paths": [
+        "backend/app/api/v1/endpoints/operator.py",
+        "backend/app/api/v1/endpoints/admin.py"
+      ],
+      "allowed_writes": [
+        "none during dashboard reads"
+      ],
+      "notes": "Operator/admin reads must not mutate last activity, notification state, exposure state, user metrics, task/session/provider state, or Redis runtime state."
+    },
+    {
+      "id": "jarvis_compatibility_surface",
+      "truth_classes": ["operator_tool_invocation", "assistant_suggestion"],
+      "authority_level": "operator_shell",
+      "owner": "Parked/read-only Jarvis compatibility until explicitly reauthorized",
+      "paths": [
+        "backend/app/api/v1/endpoints/jarvis.py",
+        "backend/app/services/jarvis_tools.py",
+        "openclaw/skills/lyra-secretary"
+      ],
+      "allowed_writes": [
+        "audit rows only unless routed through canonical commands"
+      ],
+      "notes": "Jarvis is not a second product mind. OpenClaw is the preferred future reasoning host, but no runtime AI synthesis is authorized."
+    },
+    {
+      "id": "background_worker_orchestration",
+      "truth_classes": ["scheduled_job_tick", "operational_retry", "worker_audit"],
+      "authority_level": "transport",
+      "owner": "Scheduler jobs routed through canonical services",
+      "paths": [
+        "backend/app/workers/scheduler.py",
+        "backend/app/workers/jobs"
+      ],
+      "allowed_writes": [
+        "only through canonical service calls or explicitly documented worker-owned audit rows"
+      ],
+      "notes": "Worker-owned direct writes are report-only findings until S1b/S1c decides enforcement."
+    },
+    {
+      "id": "seed_and_test_data_authority",
+      "truth_classes": ["seed_data", "test_fixture_data"],
+      "authority_level": "operator_only_action",
+      "owner": "Seed scripts and test factories",
+      "paths": [
+        "backend/app/db/seed.py",
+        "backend/tests",
+        "scripts"
+      ],
+      "allowed_writes": [
+        "local/test/synthetic setup only"
+      ],
+      "notes": "Synthetic/operator/test rows must be excluded or explicitly bucketed in readiness metrics."
+    }
+  ],
+  "parked_data_model_refactors": [
+    {
+      "id": "integration_connection_credential_state",
+      "status": "parked_until_schema_authority",
+      "future_tables": ["integration_connection", "credential_state"],
+      "intent": "Move provider-specific connection and encrypted credential state out of User.",
+      "blocked_by": [
+        "no schema migration authority during freeze",
+        "provider credential read/write paths must first be sealed"
+      ]
+    }
+  ]
+}

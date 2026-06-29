@@ -101,6 +101,18 @@ The current refactor-risk snapshot is recorded in
 documentation-only and should be used to order stabilization work, not to
 authorize a rewrite.
 
+The S1a safety-rail registries are:
+
+- `docs/registries/mutation_surface_authority_registry.json`
+- `docs/registries/runtime_topology_ownership_manifest.json`
+- `docs/registries/user_data_ownership_manifest.json`
+- `docs/registries/clean_data_provenance_registry.json`
+- `docs/registries/identity_scoping_ownership.md`
+- `docs/registries/refactor_stabilization_ledger.md`
+
+`scripts/scan_authority_surfaces.py` is report-only until S1c explicitly
+promotes selected findings into hard gates.
+
 The parked uncertainty-reduction council synthesis is recorded in
 `docs/parked/uncertainty_reduction_computation_council_2026_06_29.md`. It may
 inform operator diagnostics and post-freeze planning only; it does not authorize

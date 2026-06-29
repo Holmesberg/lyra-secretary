@@ -1,0 +1,81 @@
+{
+  "schema_version": "user_data_ownership_manifest_v1",
+  "status": "active_s1a_contract",
+  "runtime_registry": "backend/app/services/user_data_registry.py",
+  "freeze_boundary": "This manifest documents user-owned data coverage. The Python registry remains the executable export/delete authority.",
+  "principle": "Export and delete use the same central registry. Runtime Redis residue must be purged during account deletion. Secrets are never exported raw.",
+  "registered_export_delete_sections": [
+    "tasks",
+    "deadlines",
+    "deadline_completion_events",
+    "task_deadline_outcomes",
+    "stopwatch_sessions",
+    "task_execution_corrections",
+    "pause_events",
+    "pause_prediction_logs",
+    "resume_prediction_logs",
+    "calibration_nudge_events",
+    "reflection_view_logs",
+    "exposure_decision_events",
+    "exposure_render_events",
+    "exposure_ack_events",
+    "suppression_events",
+    "exposure_policy_effect_logs",
+    "feedback",
+    "external_event_outcomes",
+    "notification_lifecycle_events",
+    "email_engagement_events",
+    "archetype_assignments",
+    "jarvis_invocations"
+  ],
+  "secret_redaction_contract": {
+    "never_export_raw_columns": [
+      "google_refresh_token",
+      "moodle_ics_url",
+      "moodle_ws_token"
+    ],
+    "secret_name_parts": [
+      "access_token",
+      "authtoken",
+      "credential",
+      "password",
+      "refresh_token",
+      "secret",
+      "token",
+      "wstoken"
+    ],
+    "runtime_owner": "backend/app/services/user_data_registry.py"
+  },
+  "redis_runtime_purge_owner": {
+    "path": "backend/app/utils/redis_client.py",
+    "method": "RedisClient.purge_user_runtime_state",
+    "exact_key_families": [
+      "stopwatch:active:{user_id}",
+      "stopwatch:paused:{user_id}",
+      "notifications:pending:{user_id}",
+      "notion:sync_queue:{user_id}",
+      "last_operated_task:{user_id}",
+      "gcal:access_token:{user_id}"
+    ],
+    "pattern_key_families": [
+      "undo:{user_id}:*",
+      "idempotency:user:{user_id}:*",
+      "tasks_range:{user_id}:*",
+      "me:{user_id}:*",
+      "gcal:events:{user_id}:*",
+      "reminder_sent:{user_id}:*",
+      "overflow_sent:{user_id}:*",
+      "insight_shown:{user_id}:*"
+    ]
+  },
+  "operator_boundary": [
+    "Operator cockpit rows must be content-minimized.",
+    "Operator dashboard reads must not alter user-owned data, exposure state, notification lifecycle, last activity, or user metrics.",
+    "Research or operator/test/synthetic rows must be explicitly excluded or bucketed in readiness metrics."
+  ],
+  "future_s1c_checks": [
+    "generated registry coverage test for every registered DB model",
+    "delete proof checks DB rows plus Redis runtime keys",
+    "export proof checks raw secrets and raw provider URLs are redacted"
+  ]
+}
