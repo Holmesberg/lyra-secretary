@@ -1,0 +1,51 @@
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Local databases and mounted data
+*.db
+**/*.db
+*.sqlite
+**/*.sqlite
+*.sqlite3
+**/*.sqlite3
+data/
+
+# Runtime logs, caches, and temp output
+*.log
+tmp/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Python build/runtime artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.venv/
+.venv*/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# Local browser/operator artifacts
+cookies/
+*.cookie
+*.cookies
+*.har
+screenshots/
+
+# Editor/OS metadata
+.git/
+.gitignore
+.vscode/
+.idea/
+.history/
+.DS_Store
+Thumbs.db
+desktop.ini
