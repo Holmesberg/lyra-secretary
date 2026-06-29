@@ -218,3 +218,41 @@ Rollback note:
 - Revert the durable operator-alert dedupe seam commit only. This restores
   process-local cooldown behavior; any existing Redis dedupe keys expire by
   their configured cooldown TTL.
+
+## S1b - Admin Dashboard Subordination
+
+Commit: admin dashboard subordination seam commit.
+
+Changed authority:
+
+- `/admin/dashboard` now declares itself `historical_read_only` and
+  subordinate to `/operator`.
+- Legacy admin dashboard user rows no longer expose raw email addresses.
+- The frontend admin table labels the user column as content-minimized user
+  identity rather than email.
+
+Removed paths:
+
+- Removed raw email display from the legacy admin dashboard surface.
+
+Parked paths:
+
+- Full admin-dashboard merge/deletion remains parked until R2 operator cockpit
+  retry decides which remnants still matter.
+- `/admin/feedback` remains a separate feedback triage surface and is not
+  changed by this seam.
+
+Moved authority:
+
+- Cohort-readiness authority remains `/operator`; `/admin/dashboard` is an
+  explicitly subordinate legacy funnel/coverage view.
+
+Tests and verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_operator_route_security.py tests/test_alpha_funnel.py -q`;
+- `cd frontend && npm run build`.
+
+Rollback note:
+
+- Revert the admin dashboard subordination seam commit only. This restores the
+  previous legacy admin response/page shape without touching `/operator`.
