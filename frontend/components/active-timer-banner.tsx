@@ -11,6 +11,7 @@ import {
 } from "@/lib/tasks";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { queryKeys } from "@/lib/query-keys";
 
 // Matches backend PAUSE_REASONS enum in
 // backend/app/schemas/stopwatch.py:65. Keep in sync.
@@ -82,7 +83,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   const pickerRef = useRef<HTMLDivElement | null>(null);
 
   const refreshTimerSurfaces = () => {
-    qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
     qc.invalidateQueries({ queryKey: ["tasks"] });
     qc.invalidateQueries({ queryKey: ["tasks-range"] });
     qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
@@ -316,10 +317,10 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     // it. Without this, the 10 s refetchInterval can fire mid-request
     // and the response wins the race against our setQueryData,
     // producing a visible "snap-back to unpaused for ~1 s" flicker.
-    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
+    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
     // Snapshot for rollback before we optimistically mutate.
-    const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
-    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) =>
+    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
+    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, (old) =>
       old ? { ...old, paused: true } : old
     );
     // Optimistic task-state flip — task card shows PAUSED instantly instead
@@ -337,7 +338,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     } catch (e) {
       setLocalPaused(false);
       if (snapshot !== undefined) {
-        qc.setQueryData(["stopwatch-status"], snapshot);
+        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
       qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
         Array.isArray(old)
@@ -357,9 +358,9 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     setLocalPaused(false);
     pauseStartRef.current = null;
     setBusy(true);
-    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
-    const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
-    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) =>
+    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
+    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
+    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, (old) =>
       old ? { ...old, paused: false } : old
     );
     qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
@@ -376,7 +377,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
       setLocalPaused(true);
       pauseStartRef.current = Date.now();
       if (snapshot !== undefined) {
-        qc.setQueryData(["stopwatch-status"], snapshot);
+        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
       qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
         Array.isArray(old)
@@ -517,7 +518,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
   const [err, setErr] = useState<string | null>(null);
 
   const refreshTimerSurfaces = () => {
-    qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
     qc.invalidateQueries({ queryKey: ["tasks"] });
     qc.invalidateQueries({ queryKey: ["tasks-range"] });
     qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
@@ -536,8 +537,8 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
     setBusy(true);
 
     // Snapshot for rollback BEFORE we mutate anything.
-    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
-    const statusSnapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
+    const statusSnapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
     const sourceTaskId = statusSnapshot?.task_id;
     const sourceTitle = statusSnapshot?.task_title;
     const sourceSessionId = statusSnapshot?.session_id;
@@ -548,7 +549,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
     // value instantly. Pre-fix used elapsed=0 + start=now, which made the
     // timer count up from 0:00 for the entire round-trip duration (the
     // operator saw 16 seconds of wrong-value over the Cloudflare Tunnel).
-    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], (old) => {
+    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, (old) => {
       const remainingOthers = (old?.paused_others ?? []).filter(
         (o) => o.task_id !== target.task_id
       );
@@ -607,7 +608,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
     } catch (e) {
       // Rollback the optimistic mutations.
       if (statusSnapshot !== undefined) {
-        qc.setQueryData(["stopwatch-status"], statusSnapshot);
+        qc.setQueryData(queryKeys.stopwatchStatus, statusSnapshot);
       }
       qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
         Array.isArray(old)

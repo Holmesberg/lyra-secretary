@@ -1149,3 +1149,61 @@ Rollback note:
 - Revert the pressure-map query-key adoption commit only. This restores the raw
   query-key arrays in `PulseAcademicPressureMap` and leaves runtime data
   untouched.
+
+## R3 - Stopwatch Status Query Key Contract Adoption
+
+Commit: Stopwatch status query key contract adoption seam commit.
+
+Changed authority:
+
+- No stopwatch lifecycle, optimistic update, task state, undo, calendar, or
+  Pulse authority changed.
+- Added `queryKeys.stopwatchStatus` and replaced raw stopwatch-status query
+  key arrays in frontend stopwatch consumers.
+
+Removed paths:
+
+- Removed raw `["stopwatch-status"]` query-key arrays from:
+  - `frontend/components/active-timer-banner.tsx`;
+  - `frontend/components/pulse/PulseFocusCard.tsx`;
+  - `frontend/components/pulse/PulseQuickCaptureV2.tsx`;
+  - `frontend/components/pulse/PulseReentryQueue.tsx`;
+  - `frontend/app/(app)/today/page.tsx`;
+  - `frontend/app/(app)/calendar/page.tsx`;
+  - `frontend/components/undo-toast-host.tsx`.
+
+Parked paths:
+
+- Dynamic task-date query keys, calendar-event query keys, pause prediction
+  keys, integrations keys, and task evidence keys remain parked for separate
+  cache-contract seams.
+- Stopwatch controller extraction remains parked; this seam only names the
+  cache key.
+
+Moved authority:
+
+- No mutation authority moved. The query-key module names the stopwatch status
+  cache key only.
+- Optimistic pause/resume/start/stop/switch logic remains in the existing
+  surfaces.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology public`, verified deadline/task creation, one-active-timer rejection, stopwatch start/pause/resume/stop, brain dump commit, and cleanup under
+  `tmp/browser-smoke/holmesberg-2026-06-30T03-18-59-371Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T03-20-05-829Z`.
+
+Behavior parity statement:
+
+- All status queries, cancellations, optimistic reads/writes, rollbacks, and
+  invalidations still target the same stopwatch-status key.
+- One-active-timer enforcement, pause/resume, clean stop, undo invalidation,
+  calendar live status rendering, and operator read-only invariants are
+  unchanged.
+
+Rollback note:
+
+- Revert the stopwatch query-key adoption commit only. This restores raw
+  stopwatch-status query-key arrays and keeps runtime data untouched.

@@ -11,10 +11,11 @@ import { useQuery } from "@tanstack/react-query";
 import { FileText, Flag, Link as LinkIcon, Mic } from "lucide-react";
 import { BrainDumpQuickModal } from "@/components/pulse/BrainDumpQuickModal";
 import { getStopwatchStatus, type StopwatchStatus } from "@/lib/tasks";
+import { queryKeys } from "@/lib/query-keys";
 
 export function PulseQuickCaptureV2() {
   const statusQ = useQuery<StopwatchStatus>({
-    queryKey: ["stopwatch-status"],
+    queryKey: queryKeys.stopwatchStatus,
     queryFn: getStopwatchStatus,
     refetchInterval: 5_000,
     refetchOnWindowFocus: true,

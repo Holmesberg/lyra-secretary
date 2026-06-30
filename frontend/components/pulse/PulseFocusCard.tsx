@@ -53,6 +53,7 @@ import {
 } from "@/lib/tasks";
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
 import { announceUndoAvailable } from "@/lib/undo";
+import { queryKeys } from "@/lib/query-keys";
 
 type Mode = "idle" | "reflection" | "next-prompt";
 
@@ -88,7 +89,7 @@ const SCOPE_OPTIONS: { value: ScopeOutcome; label: string }[] = [
 export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const qc = useQueryClient();
   const statusQ = useQuery<StopwatchStatus>({
-    queryKey: ["stopwatch-status"],
+    queryKey: queryKeys.stopwatchStatus,
     queryFn: getStopwatchStatus,
     refetchInterval: 5_000,
     refetchOnWindowFocus: true,
@@ -133,7 +134,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
   const refreshTimerSurfaces = () => {
-    qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
     qc.invalidateQueries({ queryKey: ["tasks"] });
     qc.invalidateQueries({ queryKey: ["tasks-range"] });
     qc.invalidateQueries({ queryKey: ["tasks-evidence"] });

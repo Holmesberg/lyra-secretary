@@ -8,6 +8,7 @@ export const queryKeys = {
   me: ["me"] as const,
   operatorDashboard: ["operator-dashboard-v12"] as const,
   pressureMap: ["pressure-map"] as const,
+  stopwatchStatus: ["stopwatch-status"] as const,
   tasks: ["tasks"] as const,
   tasksRange: ["tasks-range"] as const,
 } satisfies Record<string, QueryKey | ((...args: never[]) => QueryKey)>;

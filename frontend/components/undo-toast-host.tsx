@@ -9,6 +9,7 @@ import {
   undoLastAction,
   type UndoAvailableDetail,
 } from "@/lib/undo";
+import { queryKeys } from "@/lib/query-keys";
 
 const UNDO_WINDOW_MS = 30_000;
 
@@ -25,7 +26,7 @@ function invalidateAfterUndo(qc: ReturnType<typeof useQueryClient>) {
     ["tasks"],
     ["tasks-range"],
     ["tasks-evidence"],
-    ["stopwatch-status"],
+    queryKeys.stopwatchStatus,
     ["deadlines"],
     ["operator-dashboard"],
     ["me"],

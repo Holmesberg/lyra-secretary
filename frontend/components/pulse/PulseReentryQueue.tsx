@@ -16,6 +16,7 @@ import {
   type StopwatchStatus,
   type TaskRow,
 } from "@/lib/tasks";
+import { queryKeys } from "@/lib/query-keys";
 
 interface PulseReentryQueueProps {
   tasks: TaskRow[];
@@ -197,7 +198,7 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
     useState<Extract<ReentryCandidate, { kind: "paused" }> | null>(null);
 
   const statusQ = useQuery<StopwatchStatus>({
-    queryKey: ["stopwatch-status"],
+    queryKey: queryKeys.stopwatchStatus,
     queryFn: getStopwatchStatus,
     refetchInterval: 10_000,
     refetchOnWindowFocus: true,
@@ -209,7 +210,7 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
   );
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
     qc.invalidateQueries({ queryKey: ["tasks"] });
     qc.invalidateQueries({ queryKey: ["tasks-range"] });
     qc.invalidateQueries({ queryKey: ["tasks-evidence"] });

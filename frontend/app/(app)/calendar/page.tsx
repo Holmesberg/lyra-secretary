@@ -50,6 +50,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/query-keys";
 
 // TIMEZONE CONTRACT (Apr 11 2026, single-timezone alpha):
 // Backend sends and accepts naked Cairo-local ISO strings
@@ -409,7 +410,7 @@ export default function CalendarPage() {
   // crossed yet) — without that dep the block would only grow on
   // minute boundaries, not on every 10 s poll.
   const statusQ = useQuery({
-    queryKey: ["stopwatch-status"],
+    queryKey: queryKeys.stopwatchStatus,
     queryFn: getStopwatchStatus,
     refetchInterval: 10_000,
   });

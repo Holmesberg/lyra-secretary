@@ -41,6 +41,7 @@ import {
 } from "@/lib/calendar";
 import { ackExposureRender } from "@/lib/api";
 import { announceUndoAvailable } from "@/lib/undo";
+import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -168,7 +169,7 @@ function TodayInner() {
     staleTime: 5_000,
   });
   const statusQ = useQuery({
-    queryKey: ["stopwatch-status"],
+    queryKey: queryKeys.stopwatchStatus,
     queryFn: getStopwatchStatus,
   });
 
@@ -313,7 +314,7 @@ function TodayInner() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });
     qc.invalidateQueries({ queryKey: ["tasks", nextDateStr] });
-    qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
   };
 
   const status = statusQ.data;
@@ -530,11 +531,11 @@ function TodayInner() {
     // for rollback if the server rejects (e.g., task already EXECUTING
     // in another tab). Mirrors the cancelQueries pattern in
     // active-timer-banner.tsx §applyPause.
-    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
-    const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
+    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
     const interruptedTaskId =
       interruptionType && snapshot?.active ? snapshot.task_id : undefined;
-    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], {
+    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, {
       active: true,
       task_id: task.task_id,
       task_title: task.title,
@@ -592,7 +593,7 @@ function TodayInner() {
       refresh();
     } catch (e: any) {
       if (snapshot !== undefined) {
-        qc.setQueryData(["stopwatch-status"], snapshot);
+        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
       qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
         old?.map((t) => {
@@ -616,10 +617,10 @@ function TodayInner() {
     // the active banner + unlocks Start buttons on sibling tasks instantly.
     // If the backend responds with requires_confirmation (early-stop gate),
     // we roll back so the banner stays visible for the confirmation modal.
-    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
-    const snapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
+    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
     const stoppedTaskId = snapshot?.task_id;
-    qc.setQueryData<StopwatchStatus>(["stopwatch-status"], { active: false });
+    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, { active: false });
     if (stoppedTaskId) {
       qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
         old?.map((t) =>
@@ -635,7 +636,7 @@ function TodayInner() {
       });
       if (res.requires_confirmation) {
         if (snapshot !== undefined) {
-          qc.setQueryData(["stopwatch-status"], snapshot);
+          qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
         }
         if (stoppedTaskId) {
           qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
@@ -677,7 +678,7 @@ function TodayInner() {
       refresh();
     } catch (e: any) {
       if (snapshot !== undefined) {
-        qc.setQueryData(["stopwatch-status"], snapshot);
+        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
       if (stoppedTaskId) {
         qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
@@ -747,14 +748,14 @@ function TodayInner() {
     if (!window.confirm(msg)) return;
     setErrorMsg(null);
     await qc.cancelQueries({ queryKey: ["tasks", viewedDate] });
-    await qc.cancelQueries({ queryKey: ["stopwatch-status"] });
+    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
     const tasksSnapshot = qc.getQueryData<TaskRowType[]>(["tasks", viewedDate]);
-    const statusSnapshot = qc.getQueryData<StopwatchStatus>(["stopwatch-status"]);
+    const statusSnapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
     qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
       old?.map((t) => t.task_id === task.task_id ? { ...t, state: "SKIPPED" } : t)
     );
     if (isLive) {
-      qc.setQueryData<StopwatchStatus>(["stopwatch-status"], { active: false });
+      qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, { active: false });
     }
     try {
       await markAbandoned(task.task_id, isLive ? "abandoned mid-session from Today view" : "user_skipped from Today view");
@@ -764,7 +765,7 @@ function TodayInner() {
         qc.setQueryData(["tasks", viewedDate], tasksSnapshot);
       }
       if (statusSnapshot !== undefined) {
-        qc.setQueryData(["stopwatch-status"], statusSnapshot);
+        qc.setQueryData(queryKeys.stopwatchStatus, statusSnapshot);
       }
       setErrorMsg(e?.message ?? "Failed to skip task");
     }
@@ -861,7 +862,7 @@ function TodayInner() {
     try {
       await Promise.all(ids.map((id) => voidTask(id, reason, detail)));
       qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });
-      qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
+      qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
     } catch (e) {
       // Rollback the optimistic mutation; surface error.
       if (snapshot !== undefined) {
