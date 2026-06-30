@@ -46,9 +46,17 @@ $raw = Get-Clipboard -Raw
 $cookie = Get-NormalizedCookieValue -Raw $raw
 
 [Environment]::SetEnvironmentVariable($name, $cookie, "User")
+Set-ItemProperty -Path "HKCU:\Environment" -Name $name -Value $cookie
 Set-Item -Path "Env:$name" -Value $cookie
 
 if ($cookie.Length -lt 300) {
   Write-Warning "Saved cookie is shorter than the operator JWT-style cookie. This can still be valid; run the browser smoke to confirm session resolution."
 }
+$userValue = [Environment]::GetEnvironmentVariable($name, "User")
+$registryValue = (Get-ItemProperty -Path "HKCU:\Environment" -Name $name -ErrorAction Stop).$name
+$processValue = (Get-Item -Path "Env:$name" -ErrorAction Stop).Value
+
 "Saved $name length=$($cookie.Length) pairs=$((($cookie -split ';') | Where-Object { $_ -match '=' }).Count)"
+"Verify user-env length=$($userValue.Length)"
+"Verify registry length=$($registryValue.Length)"
+"Verify process-env length=$($processValue.Length)"
