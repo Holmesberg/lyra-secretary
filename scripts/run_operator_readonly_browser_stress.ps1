@@ -27,5 +27,6 @@ Write-Host "API: $env:LYRA_API_ORIGIN"
 Write-Host "Operator cookie length: $($cookie.Length)"
 Write-Host ""
 
+node scripts/test_browser_auth_helpers.mjs
 node scripts/verify_runtime_topology.mjs --topology $Topology
 node scripts/browser_stress_operator_readonly.mjs

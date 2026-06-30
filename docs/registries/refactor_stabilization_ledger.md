@@ -372,3 +372,47 @@ Rollback note:
 - Revert the provider deadline authority seam commit only. No schema migration
   or data repair is required; existing provider candidate/evidence rows remain
   readable by the same models.
+
+## S1c - Browser Auth And Topology Helper Gate
+
+Commit: browser auth helper seam commit.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Operator and multi-account browser verification now share one cookie parsing,
+  cookie aliasing, backend-token resolution, user-ref hashing, and API-fetch
+  helper.
+- The operator read-only browser wrapper runs the helper self-test before
+  topology and Playwright checks.
+
+Removed paths:
+
+- Removed duplicated NextAuth cookie parsing and backend-token resolution from
+  the operator read-only stress script and two-account smoke script.
+
+Parked paths:
+
+- Two-account browser smoke remains unavailable until non-operator cookies are
+  refreshed with full, non-truncated values.
+- Broader Playwright fixture extraction remains parked for later S1c/R3 work.
+
+Moved authority:
+
+- Browser auth/test harness behavior moved into
+  `scripts/browser_auth_helpers.mjs`.
+
+Tests and verification:
+
+- `node scripts\test_browser_auth_helpers.mjs`;
+- `node --check scripts\browser_auth_helpers.mjs`;
+- `node --check scripts\browser_stress_operator_readonly.mjs`;
+- `node --check scripts\browser_smoke_two_users.mjs`;
+- `node --check scripts\test_browser_auth_helpers.mjs`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T00-23-38-309Z`.
+
+Rollback note:
+
+- Revert the browser auth helper seam commit only. This restores duplicated
+  browser-script helper code without touching product runtime state or data.

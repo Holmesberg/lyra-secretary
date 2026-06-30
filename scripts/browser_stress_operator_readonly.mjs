@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 import { mkdir, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "..");
-const frontendRequire = createRequire(path.join(repoRoot, "frontend", "package.json"));
+import {
+  apiFetch,
+  assertCookieHeaderLooksUsable,
+  frontendRequire,
+  parseAndExpandCookies,
+  repoRoot,
+  resolveBackendToken,
+  userRef,
+} from "./browser_auth_helpers.mjs";
+
 const { chromium } = frontendRequire("playwright");
 
 const frontendOrigin = process.env.LYRA_FRONTEND_ORIGIN || "https://lyraos.org";
@@ -41,56 +45,6 @@ const forbiddenTextPatterns = [
   /provider\/subsystem:/i,
   /Retry behavior:/i,
 ];
-
-function parseCookieHeader(header) {
-  const pairs = [];
-  const normalized = header.trim().replace(/^cookie:\s*/i, "");
-  for (const rawPart of normalized.split(";")) {
-    const part = rawPart.trim();
-    if (!part || !part.includes("=")) continue;
-    const index = part.indexOf("=");
-    const name = part.slice(0, index).trim();
-    const value = part.slice(index + 1).trim();
-    if (!name || !value) continue;
-    pairs.push({ name, value });
-  }
-  if (!pairs.length && normalized) {
-    pairs.push({
-      name: frontendOrigin.startsWith("https://")
-        ? "__Secure-next-auth.session-token"
-        : "next-auth.session-token",
-      value: normalized,
-    });
-  }
-  return pairs;
-}
-
-function expandCookieAliases(cookies) {
-  const out = [];
-  const seen = new Set();
-
-  function add(name, value) {
-    const key = `${name}=${value}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push({ name, value, url: frontendOrigin });
-  }
-
-  for (const cookie of cookies) {
-    add(cookie.name, cookie.value);
-    if (frontendOrigin.startsWith("https://") && cookie.name === "next-auth.session-token") {
-      add("__Secure-next-auth.session-token", cookie.value);
-    }
-    if (cookie.name.startsWith("__Secure-")) {
-      add(cookie.name.replace("__Secure-", ""), cookie.value);
-    }
-  }
-  return out;
-}
-
-function userRef(userId) {
-  return createHash("sha256").update(String(userId)).digest("hex").slice(0, 12);
-}
 
 function countExport(body) {
   return {
@@ -127,39 +81,8 @@ function isIgnorableRequestFailure(request) {
 }
 
 async function fetchJson(pathname, token) {
-  const response = await fetch(`${apiOrigin}${pathname}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  });
-  const text = await response.text();
-  let body = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = text.slice(0, 500);
-  }
+  const { response, body } = await apiFetch(apiOrigin, token, pathname);
   return { status: response.status, body };
-}
-
-async function resolveToken(page) {
-  const session = await page.evaluate(async () => {
-    const response = await fetch("/api/auth/session");
-    const text = await response.text();
-    let body = null;
-    try {
-      body = text ? JSON.parse(text) : null;
-    } catch {
-      body = { parse_error: text.slice(0, 120) };
-    }
-    return { status: response.status, body };
-  });
-  const token = session?.body?.backendToken;
-  if (!token) {
-    throw new Error(`no backend token resolved; session keys=${Object.keys(session?.body || {}).join(",")}`);
-  }
-  return token;
 }
 
 async function checkRoute(page, route, viewport) {
@@ -254,9 +177,7 @@ async function checkRoute(page, route, viewport) {
   return result;
 }
 
-if (!cookieHeader || cookieHeader.length < 300) {
-  throw new Error("LYRA_COOKIE_ALINASSERSABRY is missing or looks truncated");
-}
+assertCookieHeaderLooksUsable("LYRA_COOKIE_ALINASSERSABRY", cookieHeader);
 
 await mkdir(outDir, { recursive: true });
 
@@ -278,10 +199,10 @@ const result = {
 
 try {
   const context = await browser.newContext({ viewport: viewports[0] });
-  await context.addCookies(expandCookieAliases(parseCookieHeader(cookieHeader)));
+  await context.addCookies(parseAndExpandCookies(cookieHeader, frontendOrigin));
   const page = await context.newPage();
   await page.goto(`${frontendOrigin}/pulse`, { waitUntil: "domcontentloaded", timeout: 30_000 });
-  const token = await resolveToken(page);
+  const token = await resolveBackendToken(page);
 
   const me = await fetchJson("/v1/users/me", token);
   if (me.status !== 200) throw new Error(`users/me failed with ${me.status}`);
