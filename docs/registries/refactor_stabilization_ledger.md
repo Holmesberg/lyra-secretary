@@ -945,3 +945,55 @@ Rollback note:
 - Revert the brain-dump helper extraction commit only. This restores inline
   helper bodies in the two components and removes `frontend/lib/brain-dump-ui.ts`;
   no data repair is needed.
+
+## R3 - Brain Dump Failure Copy Helper Extraction
+
+Commit: Brain dump failure copy helper extraction seam commit.
+
+Changed authority:
+
+- No brain-dump parser, retry, commit, task, or deadline authority changed.
+- Moved shared machine-reason-to-user-copy mapping into
+  `frontend/lib/brain-dump-ui.ts`.
+- Preserved the prior Pulse-only duplicate-deadline copy via an explicit
+  option so onboarding keeps its old default copy for that reason.
+
+Removed paths:
+
+- Removed duplicate inline `failureCopy()` implementations from:
+  - `frontend/components/pulse/BrainDumpQuickModal.tsx`;
+  - `frontend/components/onboarding-flow.tsx`.
+
+Parked paths:
+
+- Pulse and onboarding `retryCopy()` functions remain local because they
+  intentionally give different retry guidance.
+- Failure review state machines remain local to each surface until a separate
+  reducer extraction seam.
+
+Moved authority:
+
+- No product authority moved. The shared helper owns display copy only and
+  does not decide whether an item may be committed or retried.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology public`, created/voided 3 synthetic tasks and created/deleted 2 synthetic deadlines under
+  `tmp/browser-smoke/holmesberg-2026-06-30T02-55-42-283Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T02-56-54-801Z`.
+
+Behavior parity statement:
+
+- Existing failure reason strings map to the same user-visible strings on both
+  surfaces.
+- Pulse still renders the duplicate-deadline special copy; onboarding still
+  falls back to the prior generic failure copy for that reason.
+- Retry hints, retry actions, parser payloads, commit payloads, cache
+  invalidation, and cleanup behavior are unchanged.
+
+Rollback note:
+
+- Revert the failure-copy extraction commit only. This restores inline
+  `failureCopy()` functions in both components and keeps all data untouched.

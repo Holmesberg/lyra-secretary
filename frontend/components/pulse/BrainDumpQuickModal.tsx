@@ -39,6 +39,7 @@ import {
 } from "@/lib/brain-dump";
 import {
   bindingKey,
+  failureCopy,
   initialBindingChoices,
   localIsoNow,
   pad2,
@@ -47,29 +48,7 @@ import {
 
 type Step = "dump" | "confirm" | "review_failures";
 
-/** Map machine-readable failure reason → warm-tone user-facing copy.
- *  Keep these short; modal real estate is tight. */
-function failureCopy(reason: string): string {
-  switch (reason) {
-    case "past_time":
-      return "the time is already in the past";
-    case "missing_when":
-      return "no due date was parsed";
-    case "deadline_terminal_state":
-      return "the linked deadline is already finished";
-    case "deadline_not_found":
-      return "couldn't find the linked deadline";
-    case "duplicate_deadline":
-      return "already exists; linked tasks use the existing deadline";
-    case "conflict_blocked":
-      return "blocked by a hard conflict with an active session";
-    case "validation":
-      return "didn't pass scheduling rules";
-    default:
-      return "couldn't be saved";
-  }
-}
-
+/** Pulse-specific retry hints; shared failure wording lives in brain-dump-ui. */
 function retryCopy(hint: string | null): string {
   switch (hint) {
     case "schedule_tomorrow_same_time":
@@ -676,7 +655,7 @@ gym sat morning"
                     {f.title}
                   </div>
                   <div className="mt-0.5 text-[11px] text-ember/80">
-                    {failureCopy(f.reason)}
+                    {failureCopy(f.reason, { duplicateDeadlineCopy: true })}
                     {retryCopy(f.retry_hint) && (
                       <span className="text-dust"> · {retryCopy(f.retry_hint)}</span>
                     )}

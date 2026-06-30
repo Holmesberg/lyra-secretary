@@ -42,3 +42,29 @@ export function initialBindingChoices(
 
   return choices;
 }
+
+export function failureCopy(
+  reason: string,
+  options: { duplicateDeadlineCopy?: boolean } = {},
+): string {
+  switch (reason) {
+    case "past_time":
+      return "the time is already in the past";
+    case "missing_when":
+      return "no due date was parsed";
+    case "deadline_terminal_state":
+      return "the linked deadline is already finished";
+    case "deadline_not_found":
+      return "couldn't find the linked deadline";
+    case "duplicate_deadline":
+      return options.duplicateDeadlineCopy
+        ? "already exists; linked tasks use the existing deadline"
+        : "couldn't be saved";
+    case "conflict_blocked":
+      return "blocked by a hard conflict with an active session";
+    case "validation":
+      return "didn't pass scheduling rules";
+    default:
+      return "couldn't be saved";
+  }
+}

@@ -42,6 +42,7 @@ import {
 } from "@/lib/brain-dump";
 import {
   bindingKey,
+  failureCopy,
   initialBindingChoices,
   localIsoNow,
   type BrainDumpBindingChoice,
@@ -57,26 +58,7 @@ interface Props {
 
 type Step = "dump" | "confirm" | "review_failures";
 
-/** Same vocabulary as BrainDumpQuickModal — keep in sync if changed. */
-function failureCopy(reason: string): string {
-  switch (reason) {
-    case "past_time":
-      return "the time is already in the past";
-    case "missing_when":
-      return "no due date was parsed";
-    case "deadline_terminal_state":
-      return "the linked deadline is already finished";
-    case "deadline_not_found":
-      return "couldn't find the linked deadline";
-    case "conflict_blocked":
-      return "blocked by a hard conflict with an active session";
-    case "validation":
-      return "didn't pass scheduling rules";
-    default:
-      return "couldn't be saved";
-  }
-}
-
+/** Onboarding-specific retry hints; shared failure wording lives in brain-dump-ui. */
 function retryCopy(hint: string | null): string {
   switch (hint) {
     case "schedule_tomorrow_same_time":
