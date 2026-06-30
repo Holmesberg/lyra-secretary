@@ -578,3 +578,57 @@ Rollback note:
 
 - Revert the Alembic fresh database smoke seam commit only. Runtime behavior is
   unchanged, and the smoke-owned temporary database is deleted automatically.
+
+## S1c - One-Command Verification Stack
+
+Commit: S1c verification stack seam commit.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Added one repeatable verification command for the S1c refactor gate:
+  `scripts/run_s1c_verification_stack.ps1`.
+- The stack runs diff hygiene, authority scans, static refactor contract scan,
+  fresh Alembic smoke, backend suite, frontend production build, multi-account
+  browser smoke, and operator read-only browser stress.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Holmesberg mutable smoke remains opt-in via `-IncludeMutable` because it
+  intentionally creates and then voids synthetic rows.
+- CI wiring for this stack remains parked until branch/CI runtime cost is
+  decided.
+
+Moved authority:
+
+- No authority moved. The wrapper only orchestrates existing verification
+  commands.
+
+Tests and verification:
+
+- PowerShell parser check for `scripts\run_s1c_verification_stack.ps1`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_s1c_verification_stack.ps1 -Topology public`;
+- stack result:
+  - `git diff --check` passed;
+  - `scan_authority_surfaces.py --fail-on-missing` passed with 0 missing owners;
+  - `scan_refactor_contracts.py --fail-on-errors` passed with 0 errors;
+  - Alembic fresh smoke reported `056 (head)`;
+  - backend suite: 1055 passed, 1 xfailed;
+  - frontend production build passed;
+  - multi-account browser smoke passed;
+  - operator read-only browser stress passed with screenshots and JSON under
+    `tmp/operator-readonly-stress-2026-06-30T02-00-09-112Z`.
+
+Behavior parity statement:
+
+- This seam only adds an orchestration wrapper. It does not change runtime
+  code, app behavior, database schema, public topology, or production data.
+
+Rollback note:
+
+- Revert the S1c verification stack seam commit only. Individual underlying
+  verification scripts remain available from earlier seams.
