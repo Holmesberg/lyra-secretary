@@ -482,3 +482,55 @@ Rollback note:
   removes test harness changes without changing runtime behavior. If rollback
   happens after a failed mutable smoke, inspect that run's `result.json` under
   `tmp/browser-smoke/*` for any cleanup errors before manual data repair.
+
+## S1c - Static Refactor Contract Scan
+
+Commit: static refactor contract scan seam commit.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Added hard static checks for refactor contracts that are precise enough to
+  enforce before larger extraction:
+  - workers must not emit browser render truth;
+  - provider completion event construction stays owned by DeadlineManager;
+  - analytics must not instantiate exposure rows directly;
+  - frontend must not resurrect a Jarvis runtime client.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Frontend behavioral/archetype/insight copy review remains report-only until
+  ClaimCompiler/user-facing claim boundaries are explicitly reworked.
+- Generic `db.commit()` enforcement remains owned by the mutation surface
+  registry scan; this seam does not replace that registry.
+
+Moved authority:
+
+- No authority moved. `scripts/scan_refactor_contracts.py` is an enforcement
+  harness for existing contracts.
+
+Tests and verification:
+
+- `python -m py_compile scripts\scan_refactor_contracts.py`;
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+- `python scripts\scan_refactor_contracts.py --include-review`;
+- `python scripts\scan_authority_surfaces.py --fail-on-missing`;
+- `git diff --check`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_multi_account_browser_smoke.ps1 -Topology public`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T01-48-46-521Z`.
+
+Behavior parity statement:
+
+- This seam only adds static scanning. It does not change runtime imports,
+  routes, mutation paths, frontend behavior, provider sync behavior, exposure
+  lifecycle behavior, or user-visible copy.
+
+Rollback note:
+
+- Revert the static refactor contract scan seam commit only. Runtime behavior
+  is unchanged, so rollback does not require data repair.
