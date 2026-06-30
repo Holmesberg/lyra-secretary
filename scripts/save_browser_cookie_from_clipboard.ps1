@@ -63,3 +63,4 @@ $processValue = (Get-Item -Path "Env:$name" -ErrorAction Stop).Value
 "Verify user-env length=$($userValue.Length)"
 "Verify registry length=$($registryValue.Length)"
 "Verify process-env length=$($processValue.Length)"
+"Verify later with: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_browser_cookie_env.ps1 -Account $Account"
