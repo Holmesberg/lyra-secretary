@@ -1264,3 +1264,59 @@ Rollback note:
 
 - Revert the timer refresh static query-key adoption commit only. This restores
   the raw static query-key arrays and leaves runtime data untouched.
+
+## S1c/R3 - Reusable Post-Wave Dogfood Loop
+
+Commit: Reusable post-wave dogfood loop seam commit.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Added `scripts/run_post_wave_dogfood_loop.ps1` as the reusable verification
+  wrapper for post-wave checks.
+- Added `docs/runbooks/post_wave_dogfood_loop.md` as the canonical post-wave
+  dogfood runbook.
+- Added `docs/audits/post_wave_dogfood_gap_audit_2026_06_30.md` to preserve
+  six-agent synthesis on documented behavior, current proof, and missing UI
+  dogfood coverage.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Targeted Playwright dogfood scripts remain parked for:
+  brain dump modal, `NewTaskModal`, pressure-map preview/commit, timer UI,
+  notification lifecycle, insights states, calendar drag/resize, and table
+  correction/export flows.
+- Legacy direct mutation static hard-fail remains parked until the R4 backend
+  extraction seams have stable owners.
+
+Moved authority:
+
+- Post-wave verification ownership moved from ad hoc chat instructions to the
+  reusable wrapper/runbook pair.
+- Operator account remains read-only; Holmesberg remains the mutable chaos
+  account when `-IncludeMutable` is explicitly passed.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode quick -WaveName reusable-loop-v2-smoke`, passed cookie checks, `git diff --check`, runtime topology verifier, multi-account browser smoke, and operator read-only stress.
+- Output directory:
+  `tmp/post-wave-dogfood/20260630-213059-reusable-loop-v2-smoke-quick-public`.
+- Operator read-only stress result:
+  `tmp/operator-readonly-stress-2026-06-30T18-33-26-728Z`.
+
+Behavior parity statement:
+
+- No application code or runtime behavior changed.
+- The new wrapper defaults to read-only verification unless `-IncludeMutable`
+  is explicitly provided.
+- Cookie checks now hard-fail missing/inconsistent user-env/registry values
+  before browser smoke starts.
+
+Rollback note:
+
+- Revert the reusable loop commit only. Existing underlying verification
+  scripts remain unchanged.
