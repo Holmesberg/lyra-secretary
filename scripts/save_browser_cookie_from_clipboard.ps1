@@ -34,7 +34,7 @@ function Get-NormalizedCookieValue {
     throw "Cookie looks truncated. Open the cookie row and copy the full Value field, not the table preview."
   }
 
-  if ($cookie.Length -lt 300) {
+  if ($cookie.Length -lt 40) {
     throw "Cookie looks too short: length=$($cookie.Length). Copy the full VALUE of __Secure-next-auth.session-token."
   }
 
@@ -48,4 +48,7 @@ $cookie = Get-NormalizedCookieValue -Raw $raw
 [Environment]::SetEnvironmentVariable($name, $cookie, "User")
 Set-Item -Path "Env:$name" -Value $cookie
 
+if ($cookie.Length -lt 300) {
+  Write-Warning "Saved cookie is shorter than the operator JWT-style cookie. This can still be valid; run the browser smoke to confirm session resolution."
+}
 "Saved $name length=$($cookie.Length) pairs=$((($cookie -split ';') | Where-Object { $_ -match '=' }).Count)"
