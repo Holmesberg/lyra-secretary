@@ -23,13 +23,13 @@ interface UndoToastState {
 
 function invalidateAfterUndo(qc: ReturnType<typeof useQueryClient>) {
   const keys = [
-    ["tasks"],
-    ["tasks-range"],
-    ["tasks-evidence"],
+    queryKeys.tasks,
+    queryKeys.tasksRange,
+    queryKeys.tasksEvidence,
     queryKeys.stopwatchStatus,
-    ["deadlines"],
+    queryKeys.deadlines,
     ["operator-dashboard"],
-    ["me"],
+    queryKeys.me,
   ];
   for (const queryKey of keys) {
     qc.invalidateQueries({ queryKey });

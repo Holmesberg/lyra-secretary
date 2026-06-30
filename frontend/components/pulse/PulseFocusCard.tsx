@@ -135,11 +135,11 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
 
   const refreshTimerSurfaces = () => {
     qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
-    qc.invalidateQueries({ queryKey: ["tasks"] });
-    qc.invalidateQueries({ queryKey: ["tasks-range"] });
-    qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
-    qc.invalidateQueries({ queryKey: ["pressure-map"] });
-    qc.invalidateQueries({ queryKey: ["me"] });
+    qc.invalidateQueries({ queryKey: queryKeys.tasks });
+    qc.invalidateQueries({ queryKey: queryKeys.tasksRange });
+    qc.invalidateQueries({ queryKey: queryKeys.tasksEvidence });
+    qc.invalidateQueries({ queryKey: queryKeys.pressureMap });
+    qc.invalidateQueries({ queryKey: queryKeys.me });
   };
 
   function beginReflection() {

@@ -10,6 +10,7 @@ export const queryKeys = {
   pressureMap: ["pressure-map"] as const,
   stopwatchStatus: ["stopwatch-status"] as const,
   tasks: ["tasks"] as const,
+  tasksEvidence: ["tasks-evidence"] as const,
   tasksRange: ["tasks-range"] as const,
 } satisfies Record<string, QueryKey | ((...args: never[]) => QueryKey)>;
 

@@ -84,11 +84,11 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
   const refreshTimerSurfaces = () => {
     qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
-    qc.invalidateQueries({ queryKey: ["tasks"] });
-    qc.invalidateQueries({ queryKey: ["tasks-range"] });
-    qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
-    qc.invalidateQueries({ queryKey: ["pressure-map"] });
-    qc.invalidateQueries({ queryKey: ["me"] });
+    qc.invalidateQueries({ queryKey: queryKeys.tasks });
+    qc.invalidateQueries({ queryKey: queryKeys.tasksRange });
+    qc.invalidateQueries({ queryKey: queryKeys.tasksEvidence });
+    qc.invalidateQueries({ queryKey: queryKeys.pressureMap });
+    qc.invalidateQueries({ queryKey: queryKeys.me });
   };
 
   // Local pause state, decoupled from React Query poll cycle. Changed
@@ -325,7 +325,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     );
     // Optimistic task-state flip — task card shows PAUSED instantly instead
     // of waiting for the 10s tasks poll to return the new state.
-    qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+    qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
       Array.isArray(old)
         ? old.map((t: Record<string, unknown>) =>
             t.task_id === status.task_id ? { ...t, state: "PAUSED" } : t
@@ -340,7 +340,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
       if (snapshot !== undefined) {
         qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
-      qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+      qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
         Array.isArray(old)
           ? old.map((t: Record<string, unknown>) =>
               t.task_id === status.task_id ? { ...t, state: "EXECUTING" } : t
@@ -363,7 +363,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, (old) =>
       old ? { ...old, paused: false } : old
     );
-    qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+    qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
       Array.isArray(old)
         ? old.map((t: Record<string, unknown>) =>
             t.task_id === status.task_id ? { ...t, state: "EXECUTING" } : t
@@ -379,7 +379,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
       if (snapshot !== undefined) {
         qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
-      qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+      qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
         Array.isArray(old)
           ? old.map((t: Record<string, unknown>) =>
               t.task_id === status.task_id ? { ...t, state: "PAUSED" } : t
@@ -519,11 +519,11 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
 
   const refreshTimerSurfaces = () => {
     qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
-    qc.invalidateQueries({ queryKey: ["tasks"] });
-    qc.invalidateQueries({ queryKey: ["tasks-range"] });
-    qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
-    qc.invalidateQueries({ queryKey: ["pressure-map"] });
-    qc.invalidateQueries({ queryKey: ["me"] });
+    qc.invalidateQueries({ queryKey: queryKeys.tasks });
+    qc.invalidateQueries({ queryKey: queryKeys.tasksRange });
+    qc.invalidateQueries({ queryKey: queryKeys.tasksEvidence });
+    qc.invalidateQueries({ queryKey: queryKeys.pressureMap });
+    qc.invalidateQueries({ queryKey: queryKeys.me });
   };
 
   // Optimistic swap: mirrors the pause/resume optimistic pattern. The
@@ -589,7 +589,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
     });
 
     // Optimistic task list: target → EXECUTING, source → PAUSED.
-    qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+    qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
       Array.isArray(old)
         ? old.map((t: Record<string, unknown>) => {
             if (t.task_id === target.task_id) return { ...t, state: "EXECUTING" };
@@ -610,7 +610,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
       if (statusSnapshot !== undefined) {
         qc.setQueryData(queryKeys.stopwatchStatus, statusSnapshot);
       }
-      qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) =>
+      qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
         Array.isArray(old)
           ? old.map((t: Record<string, unknown>) => {
               if (t.task_id === target.task_id) return { ...t, state: "PAUSED" };

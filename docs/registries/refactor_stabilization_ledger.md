@@ -1207,3 +1207,58 @@ Rollback note:
 
 - Revert the stopwatch query-key adoption commit only. This restores raw
   stopwatch-status query-key arrays and keeps runtime data untouched.
+
+## R3 - Timer Refresh Static Query Key Adoption
+
+Commit: Timer refresh static query key adoption seam commit.
+
+Changed authority:
+
+- No timer, task, pressure-map, deadline, undo, or user-state authority
+  changed.
+- Added `queryKeys.tasksEvidence` and replaced static refresh key literals in
+  timer-adjacent frontend surfaces.
+
+Removed paths:
+
+- Removed raw static task/deadline/me/pressure/task-evidence query-key arrays
+  from:
+  - `frontend/components/active-timer-banner.tsx`;
+  - `frontend/components/pulse/PulseFocusCard.tsx`;
+  - `frontend/components/pulse/PulseReentryQueue.tsx`;
+  - `frontend/components/undo-toast-host.tsx`.
+
+Parked paths:
+
+- Dynamic task-date query keys, calendar-event keys, integration keys, pause
+  prediction keys, and insight keys remain parked for separate seams.
+- The legacy `["operator-dashboard"]` undo invalidation remains unchanged until
+  the operator/admin cache contract is reviewed separately.
+
+Moved authority:
+
+- No mutation authority moved. Query keys are names only; optimistic timer and
+  task-state logic remain in their existing surfaces.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology public`, verified timer start, parallel-active rejection, pause/resume, clean stop, brain dump commit, and cleanup under
+  `tmp/browser-smoke/holmesberg-2026-06-30T03-24-57-128Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T03-26-03-011Z`.
+
+Behavior parity statement:
+
+- Timer refresh paths still invalidate the same static cache prefixes:
+  tasks, tasks-range, tasks-evidence, pressure-map, me, deadlines, and
+  stopwatch-status as applicable per surface.
+- Undo invalidation still targets the same set of caches, including the legacy
+  operator-dashboard key.
+- No task payload, stopwatch request, optimistic state update, rollback path,
+  or cleanup behavior changed.
+
+Rollback note:
+
+- Revert the timer refresh static query-key adoption commit only. This restores
+  the raw static query-key arrays and leaves runtime data untouched.
