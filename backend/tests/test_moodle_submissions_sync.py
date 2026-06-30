@@ -301,7 +301,7 @@ def _ws_call_mock(courses, assignments_by_course, submission_status_by_assign):
 
 def test_sync_user_records_submitted_assignment_as_candidate(db, monkeypatch):
     """Happy path: course code matches, title matches, Moodle says
-    submitted → Lyra deadline transitions to completed."""
+    submitted -> Lyra records provider completion evidence only."""
     user = _make_user(db)
     set_current_user_id(user.user_id)
     d = _make_deadline(
@@ -346,6 +346,53 @@ def test_sync_user_records_submitted_assignment_as_candidate(db, monkeypatch):
     assert event.time_provenance == "external_import_sync_time"
     assert event.completed_at_utc is not None
     assert d.completed_at is None
+
+
+def test_sync_user_submission_candidate_is_idempotent(db, monkeypatch):
+    """Repeated WS sync must not duplicate provider completion evidence."""
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    d = _make_deadline(
+        db, user.user_id,
+        title="HandsOn Lab8 is due",
+        due_at=datetime(2026, 4, 24, 20, 59, 0),
+        category_hint="CSE281",
+    )
+
+    courses = [{"id": 100, "shortname": "CSE281 (UG2023) - Software Engineering"}]
+    assignments_by_course = {
+        100: [{
+            "id": 45928,
+            "name": "HandsOn Lab8",
+            "duedate": int(datetime(2026, 4, 24, 20, 59, 0).timestamp()),
+        }],
+    }
+    submission_status_by_assign = {
+        45928: {"lastattempt": {"submission": {"status": "submitted"}}}
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+
+    res1 = sync_user(user, "https://lms.test/", db)
+    db.commit()
+    res2 = sync_user(user, "https://lms.test/", db)
+    db.commit()
+    db.refresh(d)
+
+    assert res1.completion_candidates == 1
+    assert res2.completion_candidates == 0
+    assert d.state == "planned"
+    assert d.completed_at is None
+    events = db.query(DeadlineCompletionEvent).filter(
+        DeadlineCompletionEvent.deadline_id == d.deadline_id,
+        DeadlineCompletionEvent.completion_source == "moodle_submission",
+    ).all()
+    assert len(events) == 1
 
 
 def test_sync_user_uses_moodle_submission_timestamp_for_matched_deadline(db, monkeypatch):
@@ -933,3 +980,8 @@ def test_sync_user_backfill_is_idempotent(db, monkeypatch):
         DeadlineModel.external_source == "moodle_ws_backfill"
     ).all()
     assert len(bf) == 1
+    events = db.query(DeadlineCompletionEvent).filter(
+        DeadlineCompletionEvent.deadline_id == bf[0].deadline_id,
+        DeadlineCompletionEvent.completion_source == "moodle_backfill_submission",
+    ).all()
+    assert len(events) == 1

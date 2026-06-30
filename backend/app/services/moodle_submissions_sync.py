@@ -59,13 +59,16 @@ from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Optional
 from urllib.parse import urlparse
-from uuid import uuid4
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.db.models import Deadline, User
-from app.services.deadline_manager import record_deadline_completion_event
+from app.services.deadline_manager import (
+    DeadlineManager,
+    find_existing_provider_completion_event,
+    record_deadline_completion_event,
+)
 from app.utils.encryption import decrypt_secret, encrypt_secret, is_encrypted_secret
 from app.utils.provider_url_safety import ProviderUrlSafetyError, safe_provider_get
 from app.utils.time_utils import now_utc
@@ -581,6 +584,13 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
             if completed_at is None:
                 completed_at = now
                 time_provenance = "external_import_sync_time"
+            existing_event = find_existing_provider_completion_event(
+                db,
+                d,
+                completion_source="moodle_submission",
+                completed_at_utc=completed_at,
+                time_provenance=time_provenance,
+            )
             record_deadline_completion_event(
                 db,
                 d,
@@ -589,12 +599,18 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
                 recorded_at_utc=now,
                 time_provenance=time_provenance,
             )
-            result.completion_candidates += 1
-            result.completion_candidate_titles.append(d.title)
-            logger.info(
-                "moodle_ws: recorded completion candidate for deadline=%s ('%s') - %s",
-                d.deadline_id, d.title, reason,
-            )
+            if existing_event is None:
+                result.completion_candidates += 1
+                result.completion_candidate_titles.append(d.title)
+                logger.info(
+                    "moodle_ws: recorded completion candidate for deadline=%s ('%s') - %s",
+                    d.deadline_id, d.title, reason,
+                )
+            else:
+                logger.info(
+                    "moodle_ws: completion candidate already recorded for deadline=%s ('%s')",
+                    d.deadline_id, d.title,
+                )
         else:
             result.skipped_not_submitted += 1
 
@@ -625,6 +641,7 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
         )
         .all()
     )
+    deadline_manager = DeadlineManager(db)
     for ma in moodle_assigns:
         if ma["assign_id"] in used_assign_ids:
             continue
@@ -669,27 +686,32 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
             else:
                 time_provenance = "external_import"
             state = "missed" if ma_due < now else "planned"
-            result.backfilled_completion_candidates += 1
         elif ma_due < now:
             state = "missed"
-            result.backfilled_missed += 1
         else:
             state = "planned"
-            result.backfilled_planned += 1
-        new_deadline = Deadline(
-            deadline_id=str(uuid4()),
-            user_id=user.user_id,
-            title=ma["name"] or f"Moodle assignment {ma['assign_id']}",
+        title = ma["name"] or f"Moodle assignment {ma['assign_id']}"
+        op, new_deadline = deadline_manager.stage_provider_backfill_deadline(
+            external_source="moodle_ws_backfill",
+            external_id=str(ma["assign_id"]),
+            title=title,
             due_at_utc=ma_due,
             category_hint=_extract_course_code(ma["course_short"]) or ma["course_short"],
             state=state,
-            external_source="moodle_ws_backfill",
-            external_id=str(ma["assign_id"]),
-            created_at=now,
-            imported_at=now,
-            completed_at=None,
+            imported_at_utc=now,
         )
-        db.add(new_deadline)
+        if op != "created" or new_deadline is None:
+            logger.info(
+                "moodle_ws: backfill skipped for assign=%s op=%s",
+                ma["assign_id"], op,
+            )
+            continue
+        if submitted:
+            result.backfilled_completion_candidates += 1
+        elif ma_due < now:
+            result.backfilled_missed += 1
+        else:
+            result.backfilled_planned += 1
         if submitted and completed_at is not None and time_provenance is not None:
             record_deadline_completion_event(
                 db,
@@ -700,10 +722,10 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
                 time_provenance=time_provenance,
             )
         all_moodle_deadlines.append(new_deadline)  # so subsequent iterations dedup
-        result.backfilled_titles.append(ma["name"] or f"#{ma['assign_id']}")
+        result.backfilled_titles.append(title)
         logger.info(
             "moodle_ws: backfilled deadline ('%s', state=%s, due=%s)",
-            ma["name"], state, ma_due,
+            title, state, ma_due,
         )
 
     # Stamp success — also clears any prior disconnect reason.

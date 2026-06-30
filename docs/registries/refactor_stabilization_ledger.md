@@ -315,3 +315,60 @@ Rollback note:
 - Revert the Jarvis runtime parking seam commit only. Historical rows and data
   registry entries are untouched by this seam, so rollback does not require
   data repair.
+
+## S1b - Provider Deadline Authority And Idempotency
+
+Commit: provider deadline authority seam commit.
+
+Changed authority:
+
+- Moodle WS backfill now stages provider-created deadline rows through
+  `DeadlineManager.stage_provider_backfill_deadline(...)`.
+- Provider completion evidence from Moodle sync is idempotent across repeated
+  sync retries.
+- Moodle provider completion remains candidate/evidence and does not mark the
+  canonical deadline complete.
+
+Removed paths:
+
+- Removed direct `Deadline(...)` construction from the Moodle WS backfill
+  service.
+- Removed repeated provider completion evidence creation for repeated Moodle WS
+  syncs.
+
+Parked paths:
+
+- The broader provider connection model split into `integration_connection` and
+  `credential_state` remains parked until schema authority exists.
+- Provider-confirmed canonical completion remains unauthorized unless the user
+  explicitly confirms it through canonical deadline authority.
+
+Moved authority:
+
+- Provider backfill deadline mutation moved from
+  `backend/app/services/moodle_submissions_sync.py` into
+  `backend/app/services/deadline_manager.py`.
+- Moodle provider completion idempotency now lives beside deadline completion
+  event creation in `deadline_manager.py`.
+
+Tests and verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_moodle_submissions_sync.py tests/test_moodle_ics_sync.py tests/test_deadline_completion_events.py -q`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_provider_credentials_security.py tests/test_reconcile_deadline_outcomes_job.py tests/test_operator_route_security.py -q`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_raw_sql_user_scope_scan.py -q`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest -q`;
+- `cd frontend && npm run build`;
+- `python scripts\scan_authority_surfaces.py --fail-on-missing`;
+- `git diff --check`;
+- `node scripts\verify_runtime_topology.mjs --topology public`;
+- public restart with frontend rebuild after a first `-SkipFrontendBuild`
+  attempt correctly failed the topology verifier on stale localhost-compiled
+  frontend assets;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T00-12-59-257Z`.
+
+Rollback note:
+
+- Revert the provider deadline authority seam commit only. No schema migration
+  or data repair is required; existing provider candidate/evidence rows remain
+  readable by the same models.

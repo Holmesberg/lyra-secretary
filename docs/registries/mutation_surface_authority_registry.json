@@ -54,7 +54,7 @@
         "terminal deadline reconciliation",
         "provider completion candidate persistence"
       ],
-      "notes": "Moodle/iCal/WS provider facts must route here or remain candidates until S1b seals the path."
+      "notes": "Moodle iCal and Moodle WS provider deadline writes route through DeadlineManager. Provider completion remains idempotent candidate/evidence, not clean execution truth."
     },
     {
       "id": "stopwatch_session_authority",
@@ -131,7 +131,7 @@
         "provider facts/candidates",
         "credential state through encrypted app path"
       ],
-      "notes": "Provider completion is evidence/candidate, not clean execution truth unless user-confirmed."
+      "notes": "Provider completion is evidence/candidate, not clean execution truth unless user-confirmed. Repeated Moodle WS/iCal sync must not duplicate deadlines or provider completion evidence."
     },
     {
       "id": "user_account_data_authority",
