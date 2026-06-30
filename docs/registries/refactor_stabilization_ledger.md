@@ -1247,6 +1247,8 @@ Tests and verification:
   `tmp/browser-smoke/holmesberg-2026-06-30T03-24-57-128Z`;
 - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
   `tmp/operator-readonly-stress-2026-06-30T03-26-03-011Z`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_s1c_verification_stack.ps1 -Topology public`, passed authority scan, static refactor contract scan, Alembic fresh DB smoke, full backend pytest suite, frontend production build, multi-account browser smoke, and operator read-only browser stress; S1C operator screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T03-32-21-534Z`.
 
 Behavior parity statement:
 
