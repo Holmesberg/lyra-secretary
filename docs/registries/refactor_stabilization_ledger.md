@@ -789,3 +789,50 @@ Rollback note:
 
 - Revert the browser read-only snapshot gate seam commit only. This weakens
   verification coverage but does not affect runtime code or production data.
+
+## R3 - Frontend Query Key Contract Seed
+
+Commit: Frontend query key contract seed seam commit.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Added `frontend/lib/query-keys.ts` as the central frontend query-key and
+  domain-invalidation contract seed.
+- Adopted the central query keys only on low-risk operator/admin dashboard
+  pages.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Pulse/Today/Calendar/Table task and timer query invalidation remain parked
+  for later R3 extraction seams with characterization coverage.
+- Broad `invalidateDomain()` adoption remains parked until each domain's
+  cache dependencies are named and verified.
+
+Moved authority:
+
+- No authority moved. Frontend pages still fetch the same backend endpoints and
+  do not define behavioral claims or readiness semantics locally.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_multi_account_browser_smoke.ps1 -Topology public`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T02-30-44-750Z`.
+
+Behavior parity statement:
+
+- Query keys retain the same string values and endpoint fetches. Admin email
+  telemetry keeps the same campaign and since-days dimensions.
+- No user-facing flow, cache invalidation behavior, API path, mutation path, or
+  topology behavior changed.
+
+Rollback note:
+
+- Revert the query key contract seed commit only. This restores inline query
+  key arrays on operator/admin pages and removes the unused broader contract.

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { queryKeys } from "@/lib/query-keys";
 
 type ReadinessStatus = "red" | "yellow" | "green";
 
@@ -226,7 +227,7 @@ function safeToIgnoreSummary(readiness: CohortReadiness): string {
 
 export default function OperatorDashboardPage() {
   const q = useQuery<OperatorDashboard>({
-    queryKey: ["operator-dashboard-v12"],
+    queryKey: queryKeys.operatorDashboard,
     queryFn: () => api<OperatorDashboard>("/v1/operator/dashboard"),
     staleTime: 60_000,
     refetchInterval: 2 * 60_000,

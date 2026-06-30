@@ -21,6 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/query-keys";
 
 interface UserRow {
   user_id: number;
@@ -98,7 +99,7 @@ interface EmailEngagementData {
 
 export default function AdminDashboardPage() {
   const q = useQuery<DashboardData>({
-    queryKey: ["admin-dashboard"],
+    queryKey: queryKeys.adminDashboard,
     queryFn: () => api<DashboardData>("/v1/admin/dashboard"),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
@@ -111,7 +112,7 @@ export default function AdminDashboardPage() {
     },
   });
   const emailQ = useQuery<EmailEngagementData>({
-    queryKey: ["admin-email-engagement", "landing-html-v7"],
+    queryKey: queryKeys.adminEmailEngagement("landing-html-v7", 30),
     queryFn: () =>
       api<EmailEngagementData>(
         "/v1/admin/email-engagement?campaign_version=landing-html-v7&since_days=30"
