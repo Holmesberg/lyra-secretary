@@ -365,6 +365,35 @@ def test_operator_dashboard_reminder_duplicates_do_not_fail_k02(client, db, monk
     assert "K02" not in issue["tags"]
 
 
+def test_operator_dashboard_distinct_legacy_reminders_are_not_duplicates(
+    client, db, monkeypatch
+):
+    ids = list(range(9101, 9150))
+    _clear_ids(db, ids)
+    db.add(_user(9131, operator=True))
+    db.add(_user(9132, operator=False))
+    db.commit()
+    payloads = [
+        '{"notification_id":"r-1","type":"reminder","message":"Task A starts soon"}',
+        '{"notification_id":"r-2","type":"reminder","message":"Task B starts soon"}',
+        '{"notification_id":"r-3","type":"reminder","message":"Task C starts soon"}',
+    ]
+    monkeypatch.setattr(
+        operator_endpoint,
+        "RedisClient",
+        lambda: _DashboardRedisClient({"notifications:pending:9132": payloads}),
+    )
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9131))
+    assert res.status_code == 200
+    body = res.json()
+    assert body["notification_lifecycle"]["duplicate_prompt_count"] == 0
+    assert body["notification_lifecycle"]["duplicate_prompt_type_counts"] == {}
+    assert "duplicate_pending_reminder_prompt" not in {
+        issue["id"] for issue in body["dynamic_issues"]
+    }
+
+
 def test_operator_dashboard_exposure_contamination_is_task_window_scoped(client, db):
     ids = list(range(9101, 9150))
     _clear_ids(db, ids)

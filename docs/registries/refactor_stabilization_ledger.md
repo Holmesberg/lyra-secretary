@@ -632,3 +632,63 @@ Rollback note:
 
 - Revert the S1c verification stack seam commit only. Individual underlying
   verification scripts remain available from earlier seams.
+
+## R2 - Operator Legacy Reminder Duplicate Fingerprint
+
+Commit: Operator legacy reminder duplicate fingerprint seam commit.
+
+Changed authority:
+
+- No notification delivery authority changed.
+- Tightened `/operator` Redis-pending duplicate detection so canonical
+  notifications still use explicit `dedupe_key` or stable target ids, while
+  legacy no-target payloads are grouped by privacy-safe content fingerprint
+  instead of by notification `type` alone.
+- Added `identity_source` to duplicate breakdown diagnostics so operators can
+  distinguish dedupe-key, target-id, and legacy-content duplicate buckets.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- No production Redis cleanup was performed. If stale pending user
+  notifications remain after deployment, production data repair/purge remains a
+  user-approved operator action.
+- Notification source freshness instrumentation remains open under R2.
+
+Moved authority:
+
+- No authority moved. The lifecycle ledger remains the durable measurement
+  boundary; Redis remains a best-effort pending queue snapshot.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\api\v1\endpoints\operator.py scripts\scan_refactor_contracts.py`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py -q`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_s1c_verification_stack.ps1 -Topology public`;
+- stack result:
+  - `git diff --check` passed;
+  - `scan_authority_surfaces.py --fail-on-missing` passed with 0 missing owners;
+  - `scan_refactor_contracts.py --fail-on-errors` passed with 0 errors;
+  - Alembic fresh smoke reported `056 (head)`;
+  - backend suite: 1056 passed, 1 xfailed;
+  - frontend production build passed;
+  - multi-account browser smoke passed;
+  - operator read-only browser stress passed with screenshots and JSON under
+    `tmp/operator-readonly-stress-2026-06-30T02-14-03-170Z`.
+
+Behavior parity statement:
+
+- User notification queueing, rendering, acknowledgement, dismissal, action,
+  and OpenClaw mirroring behavior are unchanged.
+- Existing identical legacy reminder payloads still count as duplicate pending
+  prompts and still block cohort expansion.
+- Distinct legacy reminder messages no longer collapse into one false duplicate
+  bucket when they lack task/session/firing ids.
+
+Rollback note:
+
+- Revert the operator fingerprint seam commit only. Rollback restores the prior
+  type-only legacy duplicate grouping and does not require data repair.
