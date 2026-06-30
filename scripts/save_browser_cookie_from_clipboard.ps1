@@ -23,7 +23,7 @@ function Get-NormalizedCookieValue {
 
   $match = [regex]::Match(
     $cookie,
-    "(?:^|;\s*)(?:__Secure-next-auth\.session-token|next-auth\.session-token)=([^;]+)"
+    "(?:^|[\s;'\`"])(?:__Secure-next-auth\.session-token|next-auth\.session-token)=([^;'\`"\s]+)"
   )
   if ($match.Success) {
     $cookie = $match.Groups[1].Value.Trim()
@@ -36,6 +36,9 @@ function Get-NormalizedCookieValue {
 
   if ($cookie.Length -lt 40) {
     throw "Cookie looks too short: length=$($cookie.Length). Copy the full VALUE of __Secure-next-auth.session-token."
+  }
+  if ($cookie.StartsWith("eyJ") -and (($cookie.ToCharArray() | Where-Object { $_ -eq "." }).Count -lt 4)) {
+    throw "Cookie looks like a partial encrypted JWT/JWE: length=$($cookie.Length). Use Network -> any lyraos.org request -> Copy -> Copy as cURL, then rerun this script."
   }
 
   return $cookie
