@@ -68,6 +68,84 @@ function diffCounts(before, after) {
   return diffs;
 }
 
+function pick(source, keys) {
+  const out = {};
+  const record = source || {};
+  for (const key of keys) {
+    out[key] = record[key] ?? null;
+  }
+  return out;
+}
+
+function dashboardReadOnlySnapshot(body) {
+  const cleanBasis = body?.measurement_integrity?.clean_trace_ratio_basis || {};
+  return {
+    cohort_readiness: pick(body?.cohort_readiness, [
+      "status",
+      "safe_to_invite_more_users",
+    ]),
+    notification_lifecycle: pick(body?.notification_lifecycle, [
+      "web_created",
+      "web_queued",
+      "web_reserved",
+      "web_rendered",
+      "web_acted",
+      "web_dismissed",
+      "web_expired",
+      "web_lost_unrendered",
+      "duplicate_prompt_count",
+      "render_without_exposure_count",
+      "exposure_without_render_count",
+      "operator_created",
+      "operator_pending",
+    ]),
+    state_invariants: pick(body?.state_invariants, [
+      "duplicate_open_sessions",
+      "executing_tasks_without_open_session",
+      "paused_tasks_without_open_session",
+      "executed_tasks_missing_start_or_end",
+      "open_sessions_for_executed_tasks",
+      "stale_reentry_candidates",
+      "invalid_recovery_actions_seen",
+    ]),
+    measurement_integrity: {
+      clean_trace_ratio: body?.measurement_integrity?.clean_trace_ratio ?? null,
+      dirty_trace_count: body?.measurement_integrity?.dirty_trace_count ?? null,
+      analytic_blockers: body?.measurement_integrity?.analytic_blockers ?? [],
+      clean_trace_ratio_basis: pick(cleanBasis, ["numerator", "denominator"]),
+    },
+    provider_integrity: pick(body?.provider_integrity, [
+      "provider_rows_total",
+      "provider_rows_missing_provenance",
+      "provider_completion_candidates",
+      "provider_truth_violations",
+      "duplicate_import_candidates",
+      "sync_failures_24h",
+      "user_visible_provider_errors_24h",
+    ]),
+  };
+}
+
+function diffObjects(before, after, prefix = "") {
+  const diffs = [];
+  if (JSON.stringify(before) === JSON.stringify(after)) return diffs;
+  const beforeRecord = before && typeof before === "object" && !Array.isArray(before)
+    ? before
+    : null;
+  const afterRecord = after && typeof after === "object" && !Array.isArray(after)
+    ? after
+    : null;
+  if (!beforeRecord || !afterRecord) {
+    return [{ key: prefix || "value", before, after }];
+  }
+  const keys = new Set([...Object.keys(beforeRecord), ...Object.keys(afterRecord)]);
+  for (const key of keys) {
+    const childPrefix = prefix ? `${prefix}.${key}` : key;
+    diffs.push(...diffObjects(beforeRecord[key], afterRecord[key], childPrefix));
+  }
+  return diffs;
+}
+
 function isIgnorableRequestFailure(request) {
   const url = request.url();
   const failure = request.failure()?.errorText || "";
@@ -193,6 +271,9 @@ const result = {
   before_counts: null,
   after_counts: null,
   count_diffs: [],
+  dashboard_before_snapshot: null,
+  dashboard_after_snapshot: null,
+  dashboard_snapshot_diffs: [],
   routes: [],
   issues: [],
 };
@@ -216,6 +297,12 @@ try {
   if (beforeExport.status !== 200) throw new Error(`pre export failed with ${beforeExport.status}`);
   result.before_counts = countExport(beforeExport.body || {});
 
+  const beforeDashboard = await fetchJson("/v1/operator/dashboard", token);
+  if (beforeDashboard.status !== 200) {
+    throw new Error(`pre operator dashboard failed with ${beforeDashboard.status}`);
+  }
+  result.dashboard_before_snapshot = dashboardReadOnlySnapshot(beforeDashboard.body || {});
+
   for (const viewport of viewports) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     for (const route of routes) {
@@ -229,6 +316,21 @@ try {
   result.count_diffs = diffCounts(result.before_counts, result.after_counts);
   if (result.count_diffs.length > 0) {
     result.issues.push(`read-only stress changed exported data counts: ${JSON.stringify(result.count_diffs)}`);
+  }
+
+  const afterDashboard = await fetchJson("/v1/operator/dashboard", token);
+  if (afterDashboard.status !== 200) {
+    throw new Error(`post operator dashboard failed with ${afterDashboard.status}`);
+  }
+  result.dashboard_after_snapshot = dashboardReadOnlySnapshot(afterDashboard.body || {});
+  result.dashboard_snapshot_diffs = diffObjects(
+    result.dashboard_before_snapshot,
+    result.dashboard_after_snapshot,
+  );
+  if (result.dashboard_snapshot_diffs.length > 0) {
+    result.issues.push(
+      `operator dashboard read changed invariant snapshot: ${JSON.stringify(result.dashboard_snapshot_diffs.slice(0, 12))}`,
+    );
   }
 
   await context.close();

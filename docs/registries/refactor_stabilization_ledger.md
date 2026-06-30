@@ -741,3 +741,51 @@ Rollback note:
 
 - Revert the operator first-viewport clarity seam commit only. Runtime backend
   behavior and production data are unaffected.
+
+## R2 - Operator Browser Read-Only Snapshot Gate
+
+Commit: Operator browser read-only snapshot gate seam commit.
+
+Changed authority:
+
+- No product authority changed.
+- Strengthened `scripts/browser_stress_operator_readonly.mjs` so browser
+  verification snapshots selected `/v1/operator/dashboard` invariants before
+  and after the route pass.
+- The snapshot covers cohort invite status, notification lifecycle counts,
+  state invariants, clean-trace basis, analytic blockers, and provider
+  integrity counts.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Redis key-level inspection remains outside the browser smoke because it
+  requires privileged runtime access. The dashboard-exposed lifecycle snapshot
+  is the public/operator verification boundary for now.
+
+Moved authority:
+
+- No authority moved. The script observes `/operator`; it does not mutate
+  product state or define readiness semantics.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`;
+- result: operator account resolved, all desktop/mobile core routes loaded,
+  exported operator data counts were unchanged, dashboard invariant snapshot had
+  zero diffs, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T02-26-03-913Z`.
+
+Behavior parity statement:
+
+- Verification is stricter, but runtime behavior is unchanged.
+- The script still treats the operator account as read-only and does not create
+  tasks, deadlines, notifications, exposure rows, or Redis entries.
+
+Rollback note:
+
+- Revert the browser read-only snapshot gate seam commit only. This weakens
+  verification coverage but does not affect runtime code or production data.
