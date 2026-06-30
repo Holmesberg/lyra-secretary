@@ -836,3 +836,53 @@ Rollback note:
 
 - Revert the query key contract seed commit only. This restores inline query
   key arrays on operator/admin pages and removes the unused broader contract.
+
+## R3 - New Task Modal Time Helper Extraction
+
+Commit: New task modal time helper extraction seam commit.
+
+Changed authority:
+
+- No task creation authority changed.
+- Extracted pure local date/time/duration formatting helpers from
+  `frontend/components/new-task-modal.tsx` into `frontend/lib/task-time.ts`.
+- `NewTaskModal` now imports those helpers while retaining its existing state
+  machine, nudge exposure handling, deadline preview handling, and submit/edit
+  logic.
+
+Removed paths:
+
+- Removed duplicate inline helper bodies from `NewTaskModal`.
+
+Parked paths:
+
+- Creation nudge state/effects remain in the modal until a separate
+  characterization seam.
+- Deadline preview state/effects remain in the modal until a separate seam.
+
+Moved authority:
+
+- No product authority moved. The extracted module owns only pure local time
+  math and display phrasing.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology public`, created/voided 3 synthetic tasks and created/deleted 2 synthetic deadlines under
+  `tmp/browser-smoke/holmesberg-2026-06-30T02-38-16-562Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T02-39-32-887Z`.
+
+Behavior parity statement:
+
+- Default start rounding, target-date defaulting, duration math,
+  AM/PM-recovery math, time-of-day bucketing, 5-minute rounding, and plan-delta
+  copy are moved without semantic changes.
+- No API endpoint, cache key, mutation path, exposure write, task creation
+  payload, or cleanup behavior changed.
+
+Rollback note:
+
+- Revert the time helper extraction commit only. This restores inline helpers in
+  `NewTaskModal` and removes `frontend/lib/task-time.ts`; no data repair is
+  needed.
