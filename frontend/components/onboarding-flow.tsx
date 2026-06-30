@@ -40,6 +40,12 @@ import {
   commitBrainDump,
   parseBrainDump,
 } from "@/lib/brain-dump";
+import {
+  bindingKey,
+  initialBindingChoices,
+  localIsoNow,
+  type BrainDumpBindingChoice,
+} from "@/lib/brain-dump-ui";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -84,17 +90,6 @@ function retryCopy(hint: string | null): string {
   }
 }
 
-function localIsoNow(): string {
-  // Naive local-time ISO (no offset). The backend reinterprets via
-  // settings.USER_TIMEZONE; matches Lyra's naive-internal convention.
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-  );
-}
-
 function formatWhen(iso: string | null): string {
   if (!iso) return "no date";
   const d = new Date(iso);
@@ -108,40 +103,10 @@ function formatWhen(iso: string | null): string {
   });
 }
 
-function bindingKey(b: BrainDumpBindingSuggestion): string {
-  return (
-    b.binding_id ||
-    `${b.task_item_id}:${b.target_kind}:${b.deadline_id ?? b.deadline_item_id}`
-  );
-}
-
 function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
   return b.target_kind === "existing_deadline"
     ? "existing obligation"
     : "deadline";
-}
-
-function initialBindingChoices(
-  nextBindings: BrainDumpBindingSuggestion[],
-): Record<string, "yes" | "no"> {
-  const choices: Record<string, "yes" | "no"> = {};
-  const acceptedTasks = new Set<string>();
-
-  for (const b of nextBindings) {
-    if (b.tier === "tier1_auto" && !acceptedTasks.has(b.task_item_id)) {
-      choices[bindingKey(b)] = "yes";
-      acceptedTasks.add(b.task_item_id);
-    }
-  }
-
-  for (const b of nextBindings) {
-    const key = bindingKey(b);
-    if (acceptedTasks.has(b.task_item_id) && choices[key] !== "yes") {
-      choices[key] = "no";
-    }
-  }
-
-  return choices;
 }
 
 export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
@@ -155,7 +120,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
   // Pre-populated from parser tier: tier1_auto starts "yes",
   // tier2_ask starts unanswered (block requires resolution).
   const [bindingChoices, setBindingChoices] = useState<
-    Record<string, "yes" | "no">
+    Record<string, BrainDumpBindingChoice>
   >({});
   const [parsing, setParsing] = useState(false);
   const [committing, setCommitting] = useState(false);

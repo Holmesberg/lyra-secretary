@@ -37,6 +37,13 @@ import {
   type BrainDumpFailedItem,
   type BrainDumpParsedItem,
 } from "@/lib/brain-dump";
+import {
+  bindingKey,
+  initialBindingChoices,
+  localIsoNow,
+  pad2,
+  type BrainDumpBindingChoice,
+} from "@/lib/brain-dump-ui";
 
 type Step = "dump" | "confirm" | "review_failures";
 
@@ -76,17 +83,6 @@ function retryCopy(hint: string | null): string {
     default:
       return "";
   }
-}
-
-function pad2(n: number): string {
-  return n.toString().padStart(2, "0");
-}
-
-function localIsoNow(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
-    d.getDate()
-  )}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
 function newCommitKey(): string {
@@ -132,40 +128,10 @@ function fmtWhen(iso: string | null): string {
   }
 }
 
-function bindingKey(b: BrainDumpBindingSuggestion): string {
-  return (
-    b.binding_id ||
-    `${b.task_item_id}:${b.target_kind}:${b.deadline_id ?? b.deadline_item_id}`
-  );
-}
-
 function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
   return b.target_kind === "existing_deadline"
     ? "existing obligation"
     : "same dump";
-}
-
-function initialBindingChoices(
-  nextBindings: BrainDumpBindingSuggestion[],
-): Record<string, "yes" | "no"> {
-  const choices: Record<string, "yes" | "no"> = {};
-  const acceptedTasks = new Set<string>();
-
-  for (const b of nextBindings) {
-    if (b.tier === "tier1_auto" && !acceptedTasks.has(b.task_item_id)) {
-      choices[bindingKey(b)] = "yes";
-      acceptedTasks.add(b.task_item_id);
-    }
-  }
-
-  for (const b of nextBindings) {
-    const key = bindingKey(b);
-    if (acceptedTasks.has(b.task_item_id) && choices[key] !== "yes") {
-      choices[key] = "no";
-    }
-  }
-
-  return choices;
 }
 
 export interface BrainDumpQuickModalProps {
@@ -204,7 +170,7 @@ export function BrainDumpQuickModal({
   const [items, setItems] = useState<BrainDumpParsedItem[]>([]);
   const [bindings, setBindings] = useState<BrainDumpBindingSuggestion[]>([]);
   const [bindingChoices, setBindingChoices] = useState<
-    Record<string, "yes" | "no">
+    Record<string, BrainDumpBindingChoice>
   >({});
   const [parsing, setParsing] = useState(false);
   const [committing, setCommitting] = useState(false);

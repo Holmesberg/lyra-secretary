@@ -886,3 +886,62 @@ Rollback note:
 - Revert the time helper extraction commit only. This restores inline helpers in
   `NewTaskModal` and removes `frontend/lib/task-time.ts`; no data repair is
   needed.
+
+## R3 - Brain Dump Binding Helper Extraction
+
+Commit: Brain dump binding helper extraction seam commit.
+
+Changed authority:
+
+- No brain-dump parser, commit, task, or deadline authority changed.
+- Extracted shared UI-local binding helpers from the Pulse quick modal and
+  onboarding flow into `frontend/lib/brain-dump-ui.ts`.
+- The shared helper owns only binding choice defaults, binding-key fallback, and
+  naive local timestamp formatting for existing brain-dump payloads.
+
+Removed paths:
+
+- Removed duplicate inline `localIsoNow()`, `bindingKey()`, and
+  `initialBindingChoices()` implementations from:
+  - `frontend/components/pulse/BrainDumpQuickModal.tsx`;
+  - `frontend/components/onboarding-flow.tsx`.
+
+Parked paths:
+
+- Failure and retry copy remain local because Pulse and onboarding present
+  slightly different recovery UX.
+- Commit-key generation, retry editing, and route-specific cache invalidation
+  remain parked for later R3 seams.
+- Backend parser/commit behavior remains unchanged and is not moved in this
+  frontend extraction.
+
+Moved authority:
+
+- No product authority moved. Parser and commit API authority remains in
+  `frontend/lib/brain-dump.ts` plus the backend brain-dump endpoints.
+- `frontend/lib/brain-dump-ui.ts` is a shared UI helper, not a behavioral claim
+  or mutation authority.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology public`, created/voided 3 synthetic tasks and created/deleted 2 synthetic deadlines under
+  `tmp/browser-smoke/holmesberg-2026-06-30T02-44-51-216Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T02-49-26-315Z`.
+
+Behavior parity statement:
+
+- Binding keys use the same `binding_id` fallback and task/deadline composite
+  fallback as before.
+- Tier-1 auto bindings still default to `yes` once per task, and competing
+  bindings for the same task still default to `no`.
+- Local timestamp formatting keeps the same naive local-time string shape.
+- No endpoint, mutation payload, cache key, task/deadline cleanup behavior,
+  exposure write, or onboarding completion behavior changed.
+
+Rollback note:
+
+- Revert the brain-dump helper extraction commit only. This restores inline
+  helper bodies in the two components and removes `frontend/lib/brain-dump-ui.ts`;
+  no data repair is needed.
