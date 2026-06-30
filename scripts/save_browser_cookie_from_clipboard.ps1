@@ -1,7 +1,13 @@
 param(
   [Parameter(Mandatory = $true)]
   [ValidateSet("alinassersabry", "asabryhafez", "holmesberg", "moriarty")]
-  [string]$Account
+  [string]$Account,
+
+  [Parameter(Mandatory = $false)]
+  [string]$CookieValue,
+
+  [Parameter(Mandatory = $false)]
+  [string]$CookieFile
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,7 +51,13 @@ function Get-NormalizedCookieValue {
 }
 
 $name = $envNames[$Account]
-$raw = Get-Clipboard -Raw
+if (-not [string]::IsNullOrWhiteSpace($CookieFile)) {
+  $raw = Get-Content -LiteralPath $CookieFile -Raw
+} elseif (-not [string]::IsNullOrWhiteSpace($CookieValue)) {
+  $raw = $CookieValue
+} else {
+  $raw = Get-Clipboard -Raw
+}
 $cookie = Get-NormalizedCookieValue -Raw $raw
 
 [Environment]::SetEnvironmentVariable($name, $cookie, "User")
