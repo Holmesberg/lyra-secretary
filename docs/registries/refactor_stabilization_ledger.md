@@ -534,3 +534,47 @@ Rollback note:
 
 - Revert the static refactor contract scan seam commit only. Runtime behavior
   is unchanged, so rollback does not require data repair.
+
+## S1c - Alembic Fresh Database Smoke
+
+Commit: Alembic fresh database smoke seam commit.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Added a repeatable local migration smoke wrapper that creates a temporary
+  SQLite database, runs `alembic upgrade head`, verifies `alembic current`, and
+  deletes the temporary database when it owns the path.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Postgres/Supabase migration smoke remains a production-ops runbook action,
+  not a local destructive test.
+- Schema migration authority remains unchanged; this seam only tests existing
+  migrations.
+
+Moved authority:
+
+- No authority moved. `scripts/run_alembic_fresh_smoke.ps1` is a regression
+  gate for schema history.
+
+Tests and verification:
+
+- PowerShell parser check for `scripts\run_alembic_fresh_smoke.ps1`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_alembic_fresh_smoke.ps1`, which reported `alembic_current: "056 (head)"`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T01-52-39-668Z`.
+
+Behavior parity statement:
+
+- This seam only adds a local test wrapper. It does not change migrations,
+  models, runtime database URLs, application boot, or production data.
+
+Rollback note:
+
+- Revert the Alembic fresh database smoke seam commit only. Runtime behavior is
+  unchanged, and the smoke-owned temporary database is deleted automatically.
