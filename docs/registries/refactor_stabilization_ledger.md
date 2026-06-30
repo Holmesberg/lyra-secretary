@@ -416,3 +416,69 @@ Rollback note:
 
 - Revert the browser auth helper seam commit only. This restores duplicated
   browser-script helper code without touching product runtime state or data.
+
+## S1c - Multi-Account Mutable Browser Verification
+
+Commit: multi-account mutable browser verification seam commit.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Browser verification now distinguishes:
+  - operator account (`LYRA_COOKIE_ALINASSERSABRY`) as read-only privileged
+    verification identity;
+  - Holmesberg account (`LYRA_COOKIE_HOLMESBERG`) as non-operator mutable chaos
+    verification identity.
+- Multi-account smoke asserts operator/non-operator authorization boundaries
+  before any mutable runtime path is exercised.
+
+Removed paths:
+
+- Removed the old two-account smoke assumption that `asabryhafez` is the
+  required non-operator cookie for runtime access-boundary checks.
+
+Parked paths:
+
+- Full Playwright UI-click regression coverage remains parked for R3; this
+  seam adds API-backed mutation checks plus browser-render checks across core
+  surfaces.
+- Main/alt account broad matrix remains conditional on available full cookies.
+
+Moved authority:
+
+- No product authority moved.
+- Test harness ownership for non-operator mutable smoke now lives in
+  `scripts/browser_mutable_holmesberg_smoke.mjs` and wrapper
+  `scripts/run_holmesberg_mutable_browser_smoke.ps1`.
+
+Tests and verification:
+
+- `node --check scripts\browser_mutable_holmesberg_smoke.mjs`;
+- `node --check scripts\browser_smoke_two_users.mjs`;
+- PowerShell parser checks for:
+  - `scripts\run_multi_account_browser_smoke.ps1`;
+  - `scripts\run_holmesberg_mutable_browser_smoke.ps1`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_multi_account_browser_smoke.ps1 -Topology public`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology public`, screenshots and JSON under
+  `tmp/browser-smoke/holmesberg-2026-06-30T01-37-17-121Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T01-38-39-105Z`;
+- `python scripts\scan_authority_surfaces.py`;
+- `cd frontend && npm run build`;
+- `git diff --check`.
+
+Behavior parity statement:
+
+- Operator browser verification remains read-only and did not mutate task,
+  deadline, stopwatch-session, pause-event, feedback, exposure, or
+  notification counts.
+- Holmesberg mutable smoke created synthetic task/deadline/timer/brain-dump
+  artifacts, proved only one active timer can run, then voided all synthetic
+  tasks with `test_contamination` and soft-deleted all synthetic deadlines.
+
+Rollback note:
+
+- Revert the multi-account mutable browser verification seam commit only. This
+  removes test harness changes without changing runtime behavior. If rollback
+  happens after a failed mutable smoke, inspect that run's `result.json` under
+  `tmp/browser-smoke/*` for any cleanup errors before manual data repair.

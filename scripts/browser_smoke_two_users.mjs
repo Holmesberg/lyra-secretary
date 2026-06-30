@@ -14,8 +14,9 @@ const apiOrigin = process.env.LYRA_API_ORIGIN || "http://localhost:8000";
 
 const accounts = [
   {
-    label: "asabryhafez",
-    cookieHeader: process.env.LYRA_COOKIE_ASABRYHAFEZ || "",
+    label: "operator",
+    cookieHeader: process.env.LYRA_COOKIE_ALINASSERSABRY || "",
+    expectOperator: true,
   },
   {
     label: "holmesberg",
@@ -23,6 +24,7 @@ const accounts = [
       process.env.LYRA_COOKIE_HOLMESBERG
       || process.env.LYRA_COOKIE_MORIARTY
       || "",
+    expectOperator: false,
   },
 ];
 
@@ -122,6 +124,12 @@ async function smokeAccount(browser, account) {
   }
 
   const me = await assertOkApiForAccount(account.label, token, "/v1/users/me");
+  if (Boolean(me.is_operator) !== account.expectOperator) {
+    fail(`unexpected operator flag for ${account.label}`, {
+      expected: account.expectOperator,
+      actual: Boolean(me.is_operator),
+    });
+  }
   const integrations = await assertOkApiForAccount(account.label, token, "/v1/integrations");
   const pressure = await assertOkApiForAccount(
     account.label,
@@ -151,7 +159,11 @@ async function smokeAccount(browser, account) {
     fail(`account data summary malformed for ${account.label}`);
   }
 
-  if (!me.is_operator) {
+  if (me.is_operator) {
+    await assertOkApiForAccount(account.label, token, "/v1/operator/dashboard");
+    await assertOkApiForAccount(account.label, token, "/v1/admin/dashboard");
+  } else {
+    await assertForbidden(token, "/v1/operator/dashboard");
     await assertForbidden(token, "/v1/admin/dashboard");
     await assertForbidden(token, "/v1/admin/feedback");
     await assertForbidden(token, "/v1/jarvis/health");
@@ -181,6 +193,9 @@ try {
   }
   if (!results.some((result) => !result.is_operator)) {
     fail("no non-operator account was available for operator-route smoke");
+  }
+  if (!results.some((result) => result.is_operator)) {
+    fail("no operator account was available for operator-route smoke");
   }
   console.log(JSON.stringify({ ok: true, checked: results }, null, 2));
 } catch (error) {
