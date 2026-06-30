@@ -1099,3 +1099,53 @@ Rollback note:
 - Revert the pressure-map display helper extraction commit only. This restores
   the inline display helpers and removes `frontend/lib/pressure-map-ui.ts`;
   no data repair is needed.
+
+## R3 - Pressure Map Query Key Contract Adoption
+
+Commit: Pressure map query key contract adoption seam commit.
+
+Changed authority:
+
+- No recovery-plan creation, pressure-map computation, or cache invalidation
+  behavior changed.
+- `PulseAcademicPressureMap` now imports central task, deadline, and
+  pressure-map query keys instead of spelling raw arrays inline after recovery
+  block creation.
+
+Removed paths:
+
+- Removed raw `["tasks"]`, `["pressure-map"]`, and `["deadlines"]` query-key
+  arrays from the pressure-map commit success invalidation block.
+
+Parked paths:
+
+- Wider query-key adoption across Today, Calendar, Table, and stopwatch
+  surfaces remains parked for separate seams.
+- Domain-level task/pressure invalidation remains parked until every dependent
+  cache is named and covered.
+
+Moved authority:
+
+- No product authority moved. The query-key module names cache keys only and
+  does not authorize task creation, recovery preview, or evidence estimates.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology public`, created/voided 3 synthetic tasks and created/deleted 2 synthetic deadlines under
+  `tmp/browser-smoke/holmesberg-2026-06-30T03-10-54-620Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T03-12-06-892Z`.
+
+Behavior parity statement:
+
+- Recovery-plan commit still invalidates the same three cache prefixes:
+  tasks, pressure-map, and deadlines.
+- Task creation payloads, conflict behavior, force-create behavior, and
+  dashboard read-only behavior are unchanged.
+
+Rollback note:
+
+- Revert the pressure-map query-key adoption commit only. This restores the raw
+  query-key arrays in `PulseAcademicPressureMap` and leaves runtime data
+  untouched.

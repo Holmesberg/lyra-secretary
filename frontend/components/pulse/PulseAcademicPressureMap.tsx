@@ -29,6 +29,7 @@ import {
   genericPressureCopy,
   pressureClass,
 } from "@/lib/pressure-map-ui";
+import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -724,9 +725,9 @@ export function PulseAcademicPressureMap({
     }
 
     await Promise.all([
-      qc.invalidateQueries({ queryKey: ["tasks"] }),
-      qc.invalidateQueries({ queryKey: ["pressure-map"] }),
-      qc.invalidateQueries({ queryKey: ["deadlines"] }),
+      qc.invalidateQueries({ queryKey: queryKeys.tasks }),
+      qc.invalidateQueries({ queryKey: queryKeys.pressureMap }),
+      qc.invalidateQueries({ queryKey: queryKeys.deadlines }),
     ]);
     setCommitting(false);
     if (firstError) {
