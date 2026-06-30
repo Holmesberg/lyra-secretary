@@ -219,6 +219,11 @@ function CompactStat({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function safeToIgnoreSummary(readiness: CohortReadiness): string {
+  if (readiness.status === "green") return "accepted risks";
+  return "none yet";
+}
+
 export default function OperatorDashboardPage() {
   const q = useQuery<OperatorDashboard>({
     queryKey: ["operator-dashboard-v12"],
@@ -276,6 +281,7 @@ export default function OperatorDashboardPage() {
   const readiness = data.cohort_readiness;
   const blockingIssues = data.dynamic_issues.filter((issue) => issue.blocks_cohort_expansion);
   const instrumentationGaps = collectInstrumentationGaps(data);
+  const fixSetBlocks = new Set(readiness.blockers);
 
   return (
     <div className="flex flex-col gap-6">
@@ -310,13 +316,14 @@ export default function OperatorDashboardPage() {
             <div className="mt-2 text-4xl font-bold uppercase">{readiness.status}</div>
             <div className="mt-2 text-sm">{readiness.rationale}</div>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <CompactStat
               label="safe to invite"
               value={readiness.safe_to_invite_more_users}
             />
             <CompactStat label="blockers" value={readiness.blockers.length} />
             <CompactStat label="warnings" value={readiness.warnings.length} />
+            <CompactStat label="safe to ignore" value={safeToIgnoreSummary(readiness)} />
           </div>
         </CardContent>
       </Card>
@@ -331,7 +338,11 @@ export default function OperatorDashboardPage() {
               readiness.minimum_fix_set.map((item) => (
                 <div
                   key={item}
-                  className="rounded-sm border border-ember/30 bg-ember/5 px-3 py-2 text-sm text-parchment"
+                  className={`rounded-sm border px-3 py-2 text-sm text-parchment ${
+                    fixSetBlocks.has(item)
+                      ? "border-ember/30 bg-ember/5"
+                      : "border-amber-400/20 bg-amber-400/5"
+                  }`}
                 >
                   {titleize(item)}
                 </div>

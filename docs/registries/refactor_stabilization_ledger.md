@@ -692,3 +692,52 @@ Rollback note:
 
 - Revert the operator fingerprint seam commit only. Rollback restores the prior
   type-only legacy duplicate grouping and does not require data repair.
+
+## R2 - Operator First-Viewport Ignore Clarity
+
+Commit: Operator first-viewport ignore clarity seam commit.
+
+Changed authority:
+
+- No backend readiness authority changed.
+- `/operator` now states a conservative first-viewport `safe to ignore` answer:
+  green readiness shows `accepted risks`; red/yellow readiness shows `none yet`.
+- The minimum-fix list now visually distinguishes blocker items from warning
+  items using existing readiness blocker ids.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Full post-deploy screenshot verification of the new frontend copy remains
+  dependent on public deployment.
+- Local `localhost:3002` UI verification was attempted but blocked by local
+  backend reachability; no product state changed.
+
+Moved authority:
+
+- No authority moved. The frontend still renders backend readiness state and
+  does not derive cohort authority locally.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- attempted local production frontend render on `localhost:3002`, blocked by
+  local backend fetch failure before cockpit render;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T02-21-45-637Z`.
+
+Behavior parity statement:
+
+- This is display-only. It does not change readiness thresholds, blocker
+  classification, notification/exposure lifecycle, dashboard polling, or any
+  mutation path.
+- The first viewport is more explicit that non-green warnings are not safe to
+  ignore without acceptance.
+
+Rollback note:
+
+- Revert the operator first-viewport clarity seam commit only. Runtime backend
+  behavior and production data are unaffected.
