@@ -1047,3 +1047,55 @@ Rollback note:
 
 - Revert the query-key adoption commit only. This restores the raw query-key
   arrays in `BrainDumpQuickModal` and removes the new central key constants.
+
+## R3 - Pressure Map Display Helper Extraction
+
+Commit: Pressure map display helper extraction seam commit.
+
+Changed authority:
+
+- No pressure-map computation, evidence estimate, calibration, task creation,
+  or recovery-plan authority changed.
+- Moved pure pressure-map display helpers into
+  `frontend/lib/pressure-map-ui.ts`.
+
+Removed paths:
+
+- Removed inline `fmtHours()`, timing/due/trust label helpers,
+  `pressureClass()`, and `genericPressureCopy()` from
+  `frontend/components/pulse/PulseAcademicPressureMap.tsx`.
+
+Parked paths:
+
+- Evidence estimate math, linked-deadline history, cold-start calibration,
+  recovery-plan row construction, and task creation remain local to the
+  component until separately characterized.
+- Pressure-map cache invalidation remains inline until the task/pressure domain
+  invalidation seam.
+
+Moved authority:
+
+- No product authority moved. The extracted module owns display labels and copy
+  normalization only.
+- Recovery blocks still write through the existing task creation API path.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology public`, created/voided 3 synthetic tasks and created/deleted 2 synthetic deadlines under
+  `tmp/browser-smoke/holmesberg-2026-06-30T03-06-17-456Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T03-07-26-160Z`.
+
+Behavior parity statement:
+
+- Hours, timing labels, trust labels, pressure item classes, and academic-copy
+  normalization are moved without semantic changes.
+- Pressure-map API reads, exposure acknowledgement behavior, recovery preview,
+  task creation payloads, and cleanup behavior are unchanged.
+
+Rollback note:
+
+- Revert the pressure-map display helper extraction commit only. This restores
+  the inline display helpers and removes `frontend/lib/pressure-map-ui.ts`;
+  no data repair is needed.

@@ -22,6 +22,13 @@ import {
   type BiasLookupResponse,
   type TaskRow,
 } from "@/lib/tasks";
+import {
+  fmtHours,
+  fmtTiming,
+  fmtTrust,
+  genericPressureCopy,
+  pressureClass,
+} from "@/lib/pressure-map-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -71,56 +78,6 @@ const MIN_RECOVERY_BLOCK_MINUTES = SLOT_GRANULARITY_MINUTES;
 const DEFAULT_RECOVERY_CATEGORY = "planning";
 // Mirrors backend/app/services/interruption_metrics.py clean pause-overhead gate.
 const MAX_CLEAN_LEARNING_PAUSE_MINUTES = 240;
-
-function fmtHours(lowMinutes: number, highMinutes: number): string {
-  const low = Math.round(lowMinutes / 30) / 2;
-  const high = Math.round(highMinutes / 30) / 2;
-  if (low === high) return `${low}h`;
-  return `${low}-${high}h`;
-}
-
-function fmtDue(days: number): string {
-  if (days < 0) return "overdue";
-  if (days < 1) return "due today";
-  if (days < 2) return "due tomorrow";
-  return `in ${Math.round(days)}d`;
-}
-
-function fmtTiming(item: AcademicPressureItem): string {
-  const isTask = item.source_class === "lyra_task";
-  const days = item.days_until_due;
-  if (!isTask) return fmtDue(days);
-  if (days < 0) return "started";
-  if (days < 1) return "scheduled today";
-  if (days < 2) return "scheduled tomorrow";
-  return `scheduled in ${Math.round(days)}d`;
-}
-
-function pressureClass(item: AcademicPressureItem): string {
-  if (item.pressure_level === "overdue") return "border-ember/50 bg-ember/10";
-  if (item.pressure_level === "high") return "border-ember/30 bg-ember/5";
-  return "border-hairline bg-void-2/40";
-}
-
-function fmtTrust(trust: AcademicPressureItem["trust_state"]): string {
-  if (trust === "verified_reachable") return "source reachable";
-  if (trust === "requires_user_confirmation") return "needs confirmation";
-  if (trust === "verified_exact") return "source verified";
-  return trust.replaceAll("_", " ");
-}
-
-function genericPressureCopy(copy: string): string {
-  return copy
-    .replaceAll("visible academic load", "visible load")
-    .replaceAll("academic load", "visible load")
-    .replaceAll("academic pressure", "visible pressure")
-    .replaceAll("academic ranges", "visible ranges")
-    .replaceAll("academic obligations", "obligations")
-    .replaceAll("academic tasks", "linked tasks")
-    .replaceAll("Academic obligations", "Obligations")
-    .replaceAll("Academic tasks", "Linked tasks")
-    .replaceAll("study blocks", "focus blocks");
-}
 
 function toLocalInput(date: Date): string {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
