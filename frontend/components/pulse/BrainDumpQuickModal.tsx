@@ -45,6 +45,7 @@ import {
   pad2,
   type BrainDumpBindingChoice,
 } from "@/lib/brain-dump-ui";
+import { queryKeys } from "@/lib/query-keys";
 
 type Step = "dump" | "confirm" | "review_failures";
 
@@ -246,11 +247,11 @@ export function BrainDumpQuickModal({
       // Invalidate every cache key the dashboard depends on so the
       // moment the modal closes (or the review_failures step lands)
       // the new rows are visible behind the modal.
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      qc.invalidateQueries({ queryKey: ["deadlines"] });
-      qc.invalidateQueries({ queryKey: ["me"] });
-      qc.invalidateQueries({ queryKey: ["tasks-range"] });
-      qc.invalidateQueries({ queryKey: ["pressure-map"] });
+      qc.invalidateQueries({ queryKey: queryKeys.tasks });
+      qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+      qc.invalidateQueries({ queryKey: queryKeys.me });
+      qc.invalidateQueries({ queryKey: queryKeys.tasksRange });
+      qc.invalidateQueries({ queryKey: queryKeys.pressureMap });
       onCompleted?.({
         tasks: res.tasks_created,
         deadlines: res.deadlines_created,

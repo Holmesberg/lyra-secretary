@@ -997,3 +997,53 @@ Rollback note:
 
 - Revert the failure-copy extraction commit only. This restores inline
   `failureCopy()` functions in both components and keeps all data untouched.
+
+## R3 - Brain Dump Query Key Contract Adoption
+
+Commit: Brain dump query key contract adoption seam commit.
+
+Changed authority:
+
+- No cache invalidation behavior, task authority, deadline authority, or
+  brain-dump commit authority changed.
+- Added central query-key names for task/deadline/me/tasks-range/pressure-map
+  frontend caches in `frontend/lib/query-keys.ts`.
+- `BrainDumpQuickModal` now imports those keys instead of spelling raw query
+  key arrays inline after a successful commit.
+
+Removed paths:
+
+- Removed raw query-key array literals from the Pulse brain-dump commit success
+  invalidation block.
+
+Parked paths:
+
+- Wider adoption across Today, Calendar, stopwatch surfaces, pressure map, and
+  table remains parked for separate seams with their own characterization.
+- Domain-level invalidation groups beyond admin/operator remain parked until
+  each product domain's dependencies are named and tested.
+
+Moved authority:
+
+- No product authority moved. The query-key module names cache keys only; it
+  does not decide when a mutation is valid or what backend state changes.
+
+Tests and verification:
+
+- `cd frontend && npm run build`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology public`, created/voided 3 synthetic tasks and created/deleted 2 synthetic deadlines under
+  `tmp/browser-smoke/holmesberg-2026-06-30T03-00-48-680Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-06-30T03-02-01-296Z`.
+
+Behavior parity statement:
+
+- The modal still invalidates the same five cache prefixes after commit:
+  tasks, deadlines, me, tasks-range, and pressure-map.
+- Brain-dump parse/commit payloads, cleanup behavior, task/deadline writes,
+  and UI review behavior are unchanged.
+
+Rollback note:
+
+- Revert the query-key adoption commit only. This restores the raw query-key
+  arrays in `BrainDumpQuickModal` and removes the new central key constants.
