@@ -48,6 +48,19 @@ def test_google_refresh_token_is_encrypted_at_rest(db, monkeypatch):
     user = _make_user(db)
     monkeypatch.setattr(calendar_sync, "SessionLocal", TestingSession)
 
+    class FakeRedis:
+        def __init__(self):
+            self.deleted_keys = []
+
+        def delete(self, key):
+            self.deleted_keys.append(key)
+            return 1
+
+    class FakeRedisClient:
+        client = FakeRedis()
+
+    monkeypatch.setattr(calendar_sync, "RedisClient", lambda: FakeRedisClient())
+
     calendar_sync.store_refresh_token(user.user_id, "raw-google-refresh-token")
 
     db.expire_all()

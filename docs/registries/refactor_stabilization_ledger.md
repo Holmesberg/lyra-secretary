@@ -3717,3 +3717,60 @@ Rollback note:
 - Revert the R3 Today refresh helper commit only. This restores inline
   invalidations without touching schemas, production data, backend code,
   exposure lifecycle rows, Redis data, deployment workflows, or user content.
+
+## CI/CD - Provider Credential Test Redis Isolation
+
+Changed authority:
+
+- No runtime authority changed.
+- CI/CD is now treated as an explicit post-push proof leg for the refactor loop.
+
+Removed paths:
+
+- No runtime path was removed.
+- No production Redis behavior changed.
+
+Parked paths:
+
+- CI workflow Node action deprecation warnings remain parked as CI maintenance.
+- Frontend lint hard-gating remains parked behind issue #153.
+
+Moved authority:
+
+- The provider credential security test now owns its Redis cache-invalidation
+  side-effect through a local fake client. Production `calendar_sync.RedisClient`
+  ownership is unchanged.
+
+Bug and classification:
+
+- GitHub issue #154 tracks the failing CI backend test.
+- Classification: CI/CD operations bug and verifier-harness bug.
+- Failing run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28549542307`.
+- Root cause:
+  `tests/test_provider_credentials_security.py::test_google_refresh_token_is_encrypted_at_rest`
+  called `calendar_sync.store_refresh_token()`, which invalidated the Google
+  access-token cache through a real Redis client. CI does not provision Redis.
+
+Tests and verification:
+
+- Local exact failing test:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_provider_credentials_security.py::test_google_refresh_token_is_encrypted_at_rest -q`
+  passed.
+- Local provider credential security file:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_provider_credentials_security.py -q`
+  passed, `2 passed`.
+
+Behavior parity statement:
+
+- The test still verifies Google refresh-token encryption at rest and successful
+  decryption back to the raw token.
+- The test no longer depends on a live Redis daemon for the cache-delete
+  side-effect.
+- Production `store_refresh_token()` still invalidates the access-token cache.
+
+Rollback note:
+
+- Revert the CI/CD provider credential Redis isolation commit only. This
+  restores the test's live Redis dependency without touching runtime code,
+  schemas, production data, exposure lifecycle rows, or user content.
