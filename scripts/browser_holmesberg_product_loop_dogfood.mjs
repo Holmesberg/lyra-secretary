@@ -1734,6 +1734,17 @@ async function runAnalyticsAndExposureChecks(page, token, beforeExport) {
 }
 
 async function runNotificationPath(page, token, task) {
+  async function lifecycleRow(notificationId, expectedStatus, description) {
+    return pollFor(token, description, async () => {
+      const exported = await apiFetch(token, "/v1/users/me/export");
+      return rows(exported, "notification_lifecycle_events").find((row) => (
+        row.notification_id === notificationId
+        && row.status === expectedStatus
+        && row.rendered_at
+      )) || null;
+    }, 25_000, 1_000);
+  }
+
   const notificationId = boundedIdentifier(`${runKey}-resume-prediction`);
   cleanup.notifications.add(notificationId);
   await apiFetch(token, "/v1/notifications/push", {
@@ -1801,7 +1812,65 @@ async function runNotificationPath(page, token, task) {
     }),
   });
   addCheck("notification dismiss lifecycle endpoint is idempotent after render", dismissedAck.acknowledged >= 0, dismissedAck);
-  return { notificationId };
+
+  const actionNotificationId = boundedIdentifier(`${runKey}-notification-action`);
+  cleanup.notifications.add(actionNotificationId);
+  await apiFetch(token, "/v1/notifications/push", {
+    method: "POST",
+    body: JSON.stringify({
+      notification_id: actionNotificationId,
+      type: "resume_prediction",
+      task_id: `${task.task_id}:action`,
+      task_title: task.title,
+      paused_for_minutes: 7,
+      planned_minutes: 60,
+    }),
+  });
+  await goto(page, "/pulse", "pulse-notification-action-test");
+  const actionToast = page
+    .locator('[data-testid="notification-toast"], [role="status"]')
+    .filter({ hasText: /Pick it back up/i })
+    .first();
+  await actionToast.waitFor({ state: "visible", timeout: 15_000 });
+  await screenshot(page, "notification-toast-action-rendered");
+  await page.getByRole("link", { name: /view details/i }).first().click({ timeout: 5_000 });
+  const actedRow = await lifecycleRow(
+    actionNotificationId,
+    "acted",
+    "notification action lifecycle row"
+  );
+  addCheck("notification details click records acted lifecycle", Boolean(
+    actedRow?.acted_at && actedRow?.rendered_at
+  ), actedRow);
+
+  const expiryNotificationId = boundedIdentifier(`${runKey}-notification-expiry`);
+  cleanup.notifications.add(expiryNotificationId);
+  await apiFetch(token, "/v1/notifications/push", {
+    method: "POST",
+    body: JSON.stringify({
+      notification_id: expiryNotificationId,
+      type: "pause_prediction",
+      task_id: `${task.task_id}:expiry`,
+    }),
+  });
+  await goto(page, "/pulse", "pulse-notification-expiry-test");
+  const expiryToast = page
+    .locator('[data-testid="notification-toast"], [role="status"]')
+    .filter({ hasText: /open for a while/i })
+    .first();
+  await expiryToast.waitFor({ state: "visible", timeout: 15_000 });
+  await screenshot(page, "notification-toast-expiry-rendered");
+  await expiryToast.waitFor({ state: "hidden", timeout: 12_000 });
+  const expiredRow = await lifecycleRow(
+    expiryNotificationId,
+    "expired",
+    "notification expiry lifecycle row"
+  );
+  addCheck("notification auto-dismiss records expired lifecycle", Boolean(
+    expiredRow?.expired_at && expiredRow?.rendered_at
+  ), expiredRow);
+
+  return { notificationId, actionNotificationId, expiryNotificationId };
 }
 
 function assertDogfoodEvidenceInExport(exported, evidence) {
@@ -1856,15 +1925,22 @@ function assertDogfoodEvidenceInExport(exported, evidence) {
     });
   }
 
-  const notificationRow = rows(exported, "notification_lifecycle_events")
-    .find((row) => row.notification_id === evidence.notification.notificationId);
-  addCheck("export includes dogfood notification lifecycle terminal row", Boolean(
-    notificationRow
-    && ["rendered", "dismissed", "acted", "expired"].includes(notificationRow.status)
-    && notificationRow.rendered_at
-  ), {
-    notification_id: evidence.notification.notificationId,
-    row: notificationRow || null,
+  const notificationIds = [
+    evidence.notification.notificationId,
+    evidence.notification.actionNotificationId,
+    evidence.notification.expiryNotificationId,
+  ].filter(Boolean);
+  const notificationRows = notificationIds.map((notificationId) => (
+    rows(exported, "notification_lifecycle_events")
+      .find((row) => row.notification_id === notificationId) || null
+  ));
+  addCheck("export includes dogfood notification lifecycle terminal rows", notificationRows.every((row) => (
+    row
+    && ["rendered", "dismissed", "acted", "expired"].includes(row.status)
+    && row.rendered_at
+  )), {
+    notification_ids: notificationIds,
+    rows: notificationRows,
   });
 }
 

@@ -375,3 +375,83 @@ def test_lost_unrendered_ack_does_not_mark_rendered(db, monkeypatch):
     assert lifecycle.status == "lost_unrendered"
     assert lifecycle.lost_unrendered_at is not None
     assert lifecycle.rendered_at is None
+
+
+def test_notification_action_and_expiry_update_after_render_removal(db, monkeypatch):
+    redis = _LifecycleRedis()
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+    user = User(email=f"notification-terminal-{uuid4()}@example.test")
+    db.add(user)
+    db.commit()
+
+    acted_id = f"acted-{uuid4()}"
+    expired_id = f"expired-{uuid4()}"
+    notification_queue.enqueue_user_notification(
+        user.user_id,
+        {
+            "notification_id": acted_id,
+            "type": "timer_overflow",
+            "message": "Open the task.",
+            "planned_minutes": 30,
+            "elapsed_minutes": 45,
+        },
+        db=db,
+    )
+    notification_queue.enqueue_user_notification(
+        user.user_id,
+        {
+            "notification_id": expired_id,
+            "type": "reminder",
+            "message": "Check the next block.",
+        },
+        db=db,
+    )
+    db.commit()
+
+    pending = notification_queue.peek_user_notifications(user.user_id, db=db)
+    assert {row["notification_id"] for row in pending} == {acted_id, expired_id}
+    assert notification_queue.ack_user_notifications(
+        user.user_id,
+        [acted_id, expired_id],
+        db=db,
+        event_type="rendered",
+    ) == 2
+    db.commit()
+    assert redis.items == []
+
+    assert notification_queue.ack_user_notifications(
+        user.user_id,
+        [acted_id],
+        db=db,
+        event_type="acted",
+    ) == 0
+    assert notification_queue.ack_user_notifications(
+        user.user_id,
+        [expired_id],
+        db=db,
+        event_type="expired",
+    ) == 0
+    db.commit()
+
+    acted = (
+        db.query(NotificationLifecycleEvent)
+        .filter(NotificationLifecycleEvent.notification_id == acted_id)
+        .one()
+    )
+    expired = (
+        db.query(NotificationLifecycleEvent)
+        .filter(NotificationLifecycleEvent.notification_id == expired_id)
+        .one()
+    )
+    assert acted.status == "acted"
+    assert acted.rendered_at is not None
+    assert acted.acted_at is not None
+    assert acted.dismissed_at is None
+    assert expired.status == "expired"
+    assert expired.rendered_at is not None
+    assert expired.expired_at is not None
+    assert expired.acted_at is None
