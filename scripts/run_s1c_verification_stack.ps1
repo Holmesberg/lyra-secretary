@@ -50,7 +50,7 @@ try {
   }
 
   Invoke-Step "authority surface scan" {
-    & $python scripts\scan_authority_surfaces.py --fail-on-missing
+    & $python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift
   }
 
   Invoke-Step "static refactor contract scan" {

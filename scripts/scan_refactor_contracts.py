@@ -119,6 +119,32 @@ def analytics_direct_exposure_findings() -> list[Finding]:
     )
 
 
+def app_direct_output_surface_helper_findings() -> list[Finding]:
+    return scan_lines(
+        rule_id="app_must_not_bypass_output_surface_emitter",
+        severity="error",
+        files=iter_files(REPO_ROOT / "backend" / "app", {".py"}),
+        pattern=re.compile(r"\b(?:record_decision|record_render|record_suppression)\s*\("),
+        allowed_paths={
+            "backend/app/services/exposure_ledger.py",
+            "backend/app/services/output_surfaces.py",
+        },
+    )
+
+
+def app_direct_legacy_reflection_row_findings() -> list[Finding]:
+    return scan_lines(
+        rule_id="app_must_not_create_legacy_reflection_rows_directly",
+        severity="error",
+        files=iter_files(REPO_ROOT / "backend" / "app", {".py"}),
+        pattern=re.compile(r"\bReflectionViewLog\s*\("),
+        allowed_paths={
+            "backend/app/db/models.py",
+            "backend/app/services/output_surfaces.py",
+        },
+    )
+
+
 def frontend_jarvis_findings() -> list[Finding]:
     return scan_lines(
         rule_id="frontend_must_not_call_jarvis_runtime",
@@ -158,6 +184,8 @@ def main() -> int:
     findings.extend(worker_render_truth_findings())
     findings.extend(provider_completion_authority_findings())
     findings.extend(analytics_direct_exposure_findings())
+    findings.extend(app_direct_output_surface_helper_findings())
+    findings.extend(app_direct_legacy_reflection_row_findings())
     findings.extend(frontend_jarvis_findings())
     if args.include_review:
         findings.extend(frontend_behavioral_claim_review_findings())

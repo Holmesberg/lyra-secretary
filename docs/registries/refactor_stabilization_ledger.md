@@ -2077,3 +2077,66 @@ Rollback note:
 - Revert the R2 operator cockpit seam commit only. This removes the new
   readiness fields, frontend display cells, verifier proxy option, and related
   tests/docs without touching production data or mutation paths.
+
+## S1c - Worker Write Drift And Output-Surface Static Gate
+
+Commit: pending S1c hard-gate seam commit.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- The authority surface scanner now hard-fails worker-job write drift when
+  `--fail-on-worker-write-drift` is passed.
+- The static refactor contract scanner now hard-fails direct app use of
+  output-surface helper functions outside the output-surface/exposure-ledger
+  owner modules, and direct legacy `ReflectionViewLog` construction outside
+  the output-surface/model owner modules.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Frontend behavioral-claim copy review remains report-only. The latest review
+  mode is still too noisy to hard-fail without a narrower allowlist.
+- Deeper generic `db.commit()` ownership enforcement remains parked until R4
+  extraction narrows service ownership.
+
+Moved authority:
+
+- No authority moved. This seam only encodes existing ownership boundaries as
+  static checks.
+
+Tests and verification:
+
+- Worker allowlist/current marker gate:
+  `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`
+  reported `worker_write_drift_count=0`.
+- Static refactor contracts:
+  `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`
+  reported `error_count=0`.
+- Related backend fixture checks:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_output_surfaces.py::test_app_code_does_not_bypass_output_surface_emitter tests/test_output_surfaces.py::test_app_code_does_not_create_legacy_reflection_rows_directly tests/test_reminders_scheduler_contract.py tests/test_pause_prediction_job.py tests/test_resume_prediction_job.py tests/test_timer_overflow_notifications.py -q`
+  passed `28`.
+- S1c shortened verification stack:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_s1c_verification_stack.ps1 -Topology public -SkipBackendFull -SkipFrontendBuild`
+  passed authority scan, static refactor contracts, Alembic fresh smoke,
+  multi-account browser smoke, and operator read-only browser stress.
+- Operator read-only stress artifact:
+  `tmp/operator-readonly-stress-2026-07-01T16-33-11-917Z/result.json`.
+
+Behavior parity statement:
+
+- Runtime code, routes, worker behavior, scheduler behavior, notification
+  behavior, exposure lifecycle behavior, and user/product state are unchanged.
+- The new worker gate only fails when a worker job gains a mutation marker not
+  present in its explicit S1c allowlist.
+- `/operator` remained implementation-green/cohort-yellow and read-only during
+  browser stress.
+
+Rollback note:
+
+- Revert the S1c hard-gate seam commit only. This removes the worker drift flag,
+  extra static contract checks, and wrapper wiring; runtime behavior and data
+  remain untouched.

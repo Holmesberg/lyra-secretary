@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Report mutation-capable files and their documented authority owner.
 
-S1a is report-only. This script gives refactor work a map of likely write
-surfaces before S1c decides which findings become hard failures.
+S1c may hard-fail selected precise findings once allowlists exist. The current
+hard gates cover missing owner documentation and worker-job write drift.
 """
 from __future__ import annotations
 
@@ -45,6 +45,22 @@ MARKERS: dict[str, re.Pattern[str]] = {
     "notification_model_write": re.compile(r"\bNotificationLifecycleEvent\s*\("),
     "provider_completion_model_write": re.compile(r"\bDeadlineCompletionEvent\s*\("),
     "calibration_model_write": re.compile(r"\bCalibrationNudgeEvent\s*\("),
+}
+
+WORKER_JOB_ALLOWED_MARKERS: dict[str, set[str]] = {
+    "backend/app/workers/jobs/llm_enrichment.py": {"db_commit"},
+    "backend/app/workers/jobs/moodle_submissions_sync.py": {"db_commit"},
+    "backend/app/workers/jobs/notion_sync.py": {"db_commit"},
+    "backend/app/workers/jobs/orphan_task_recovery.py": {"db_commit"},
+    "backend/app/workers/jobs/overdue_tasks.py": {"db_commit"},
+    "backend/app/workers/jobs/pause_prediction.py": {"db_commit"},
+    "backend/app/workers/jobs/reconcile_deadline_outcomes.py": {"db_commit"},
+    "backend/app/workers/jobs/reconcile_responses.py": {"db_commit"},
+    "backend/app/workers/jobs/reminders.py": {"db_commit", "redis_write"},
+    "backend/app/workers/jobs/resume_prediction.py": {"db_commit"},
+    "backend/app/workers/jobs/stale_session_recovery.py": {"db_commit"},
+    "backend/app/workers/jobs/sweep_missed_deadlines.py": {"db_commit"},
+    "backend/app/workers/jobs/timer_overflow.py": {"db_commit", "redis_write"},
 }
 
 
@@ -99,9 +115,38 @@ def scan_file(path: Path) -> list[str]:
     return [name for name, pattern in MARKERS.items() if pattern.search(text)]
 
 
+def worker_write_drift(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    drift: list[dict[str, Any]] = []
+    for item in findings:
+        candidate = str(item["path"])
+        if not candidate.startswith("backend/app/workers/jobs/"):
+            continue
+        markers = set(item["markers"])
+        allowed = WORKER_JOB_ALLOWED_MARKERS.get(candidate)
+        if allowed is None:
+            drift.append({
+                "path": candidate,
+                "markers": sorted(markers),
+                "allowed_markers": [],
+                "reason": "worker job has mutation markers but is not in the S1c allowlist",
+            })
+            continue
+        extra = sorted(markers - allowed)
+        if extra:
+            drift.append({
+                "path": candidate,
+                "markers": sorted(markers),
+                "allowed_markers": sorted(allowed),
+                "unexpected_markers": extra,
+                "reason": "worker job gained mutation markers outside its S1c allowlist",
+            })
+    return drift
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fail-on-missing", action="store_true")
+    parser.add_argument("--fail-on-worker-write-drift", action="store_true")
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
 
@@ -129,17 +174,29 @@ def main() -> int:
             )
 
     missing = [item for item in findings if item["missing_owner"]]
+    worker_drift = worker_write_drift(findings)
+    ok = not (
+        (args.fail_on_missing and missing)
+        or (args.fail_on_worker_write_drift and worker_drift)
+    )
+    modes = []
+    if args.fail_on_missing:
+        modes.append("fail_on_missing")
+    if args.fail_on_worker_write_drift:
+        modes.append("fail_on_worker_write_drift")
     output = {
-        "ok": not (args.fail_on_missing and missing),
-        "mode": "report_only" if not args.fail_on_missing else "fail_on_missing",
+        "ok": ok,
+        "mode": "+".join(modes) if modes else "report_only",
         "registry": rel(REGISTRY_PATH),
         "scanned_roots": [rel(root) for root in SCAN_ROOTS if root.exists()],
         "marker_count": len(findings),
         "missing_owner_count": len(missing),
+        "worker_write_drift_count": len(worker_drift),
+        "worker_write_drift": worker_drift,
         "findings": findings,
     }
     print(json.dumps(output, indent=2 if args.pretty else None, sort_keys=True))
-    return 1 if args.fail_on_missing and missing else 0
+    return 1 if not ok else 0
 
 
 if __name__ == "__main__":

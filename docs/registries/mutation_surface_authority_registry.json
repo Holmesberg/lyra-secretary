@@ -288,7 +288,7 @@
       "allowed_writes": [
         "only through canonical service calls or explicitly documented worker-owned audit rows"
       ],
-      "notes": "Worker-owned direct writes are report-only findings until S1b/S1c decides enforcement."
+      "notes": "S1c enforces worker write drift with an explicit current-marker allowlist. New worker mutation markers must be deliberately authorized."
     },
     {
       "id": "seed_and_test_data_authority",
