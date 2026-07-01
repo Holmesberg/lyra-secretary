@@ -62,6 +62,7 @@
       "authority_level": "truth_owner",
       "owner": "StopwatchManager and RedisClient stopwatch state methods",
       "paths": [
+        "backend/app/services/active_stopwatch_store.py",
         "backend/app/services/stopwatch_manager.py",
         "backend/app/api/v1/endpoints/stopwatch.py",
         "backend/app/utils/redis_client.py",
