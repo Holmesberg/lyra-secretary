@@ -1,5 +1,11 @@
 # Deadline Mechanism — Design Note
 
+> Freeze boundary: this document is reference material for existing deadline
+> mechanism intent and invariants. It does not authorize new deadline features,
+> new provider adapters, passive tracking, behavior-transition equations,
+> runtime AI synthesis, new user-facing insights, schema migrations, or
+> automatic interventions during the architecture freeze.
+
 **Status:** APPROVED for Option B build (2026-04-25, post-midterms start). Locked
 by operator decision. See "Operator decision (Apr 25)" section below for the
 justification chain. This doc is the implementation reference; do not depart from

@@ -1999,7 +1999,7 @@ Rollback note:
 
 ## R2 - Operator Implementation/Cohort Readiness Split
 
-Commit: pending R2 operator cockpit seam commit.
+Commit: `ebc4144 operator: split implementation and cohort readiness`.
 
 Changed authority:
 
@@ -2080,7 +2080,7 @@ Rollback note:
 
 ## S1c - Worker Write Drift And Output-Surface Static Gate
 
-Commit: pending S1c hard-gate seam commit.
+Commit: `77bfa02 tools: harden s1c authority drift scans`.
 
 Changed authority:
 
@@ -2140,3 +2140,66 @@ Rollback note:
 - Revert the S1c hard-gate seam commit only. This removes the worker drift flag,
   extra static contract checks, and wrapper wiring; runtime behavior and data
   remain untouched.
+
+## R5a - Stale Docs And Authority Cleanup Before Extraction
+
+Commit: R5a docs-authority seam commit
+(`docs: mark stale authority docs subordinate`).
+
+Changed authority:
+
+- `docs/AGENT_HANDOFF.md` is explicitly marked as historical handoff context,
+  not current implementation authority.
+- `docs/building_phases.md` is explicitly marked as a historical phase map
+  during the architecture freeze, not current roadmap authority.
+- `docs/jarvis_hypothesis_log.md` is explicitly marked as a historical JARVIS
+  research log. It cannot authorize runtime JARVIS work or future synthesis.
+- Deadline, academic, and provider design docs now carry an explicit freeze
+  boundary forbidding new runtime features, passive tracking, runtime AI
+  synthesis, behavior-transition equations, new provider adapters, schema
+  migrations, and automatic interventions during the freeze.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Public-copy/runbook cleanup remains R5b.
+- Any future provider connection model, passive telemetry, AI synthesis,
+  behavior-transition equation, or schema migration remains parked until a
+  separate explicit plan authorizes it.
+
+Moved authority:
+
+- No runtime authority moved.
+- Old handoff/phase/JARVIS docs are subordinate to the current authority,
+  freeze, OpenClaw, and ClaimCompiler boundary docs.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Stale-authority grep over touched docs confirmed the historical/freeze
+  boundary wording appears on the old handoff, phase, JARVIS, deadline,
+  academic, and provider docs.
+- Operator-cookie browser proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`
+  passed with zero count diffs, zero dashboard snapshot diffs, and
+  `exposure_without_render_count=0`.
+- Operator read-only stress artifact:
+  `tmp/operator-readonly-stress-2026-07-01T16-42-24-698Z/result.json`.
+
+Behavior parity statement:
+
+- No runtime files, routes, services, schemas, workers, frontend components, or
+  product behavior are changed by this seam.
+- This seam only prevents stale documents from being interpreted as permission
+  during R3/R4 extraction.
+- `/operator` remained implementation-green/cohort-yellow and read-only during
+  browser stress.
+
+Rollback note:
+
+- Revert the R5a docs-authority seam commit only. This restores the previous
+  wording in the touched docs and ledger without touching product code or data.

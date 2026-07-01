@@ -10,6 +10,9 @@ calendar, Jira/Linear, or future structured environments expand the substrate.
 This document authorizes no new provider feature. It defines the normalization
 contract that must exist before provider-specific data reaches Cortex,
 clean-data profiles, adaptive scheduling, or stronger research claims.
+During the architecture freeze it also does not authorize new provider
+adapters, passive tracking, runtime AI synthesis, new user-facing insights,
+behavior-transition equations, schema migrations, or automatic interventions.
 
 ---
 

@@ -1,5 +1,12 @@
 # Building Phases
 
+> Historical phase map. This document preserves pre-freeze planning context, but
+> it is not current implementation authority during the architecture freeze. Do
+> not use it to authorize runtime features, roadmap scope, cohort expansion,
+> AI synthesis, passive tracking, or new provider adapters. Current authority
+> lives in `docs/AUTHORITY.md`, `docs/current_transition_state.md`, and
+> `docs/architecture_freeze_priority_hold_2026_05_20.md`.
+
 Forward-looking canonical document. What remains to be built, organized by phase. Updated at phase boundaries.
 
 **Last updated:** April 14, 2026 (Phase 4.5 active)

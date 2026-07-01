@@ -8,6 +8,11 @@ fusion, contradiction scoring, and surveillance-hallucination safeguards.
 **Implementation state:** Not implemented. This document records the target
 architecture and the gap against current code.
 
+Freeze boundary: this document identifies parked future ownership only. It does
+not authorize passive telemetry, evidence-tier schema work, runtime AI
+synthesis, new user-facing insights, behavior-transition equations, new
+provider adapters, or automatic interventions during the architecture freeze.
+
 This plan is subordinate to:
 
 - `MANIFESTO.md`
