@@ -2734,3 +2734,101 @@ Rollback note:
   inline fallback expressions and removes `frontend/lib/stopwatch-time.ts`
   without touching backend code, schemas, production data, or browser-verifier
   cleanup logic.
+
+## R3 - Calibration Nudge Card Presentational Extraction
+
+Commit: pending R3 calibration-nudge-card seam commit.
+
+Changed authority:
+
+- No task creation, edit, interruption, conflict override, deadline binding,
+  creation-nudge exposure, calibration lookup, suppression, Cortex,
+  ClaimCompiler, or operator authority changed.
+- `frontend/components/calibration-nudge-card.tsx` now owns only the
+  presentational calibration-nudge card copy, display rows, and button markup.
+- `NewTaskModal` continues to own lookup timing, local research fallback,
+  backend hydration, exposure render/suppression acknowledgement, nudge
+  decision state, duration/end mutations, submit payloads, conflict branching,
+  deadline preview/picker state, and modal reset/edit synchronization.
+
+Removed paths:
+
+- Removed the inline calibration-nudge JSX block from
+  `frontend/components/new-task-modal.tsx`.
+- No runtime route, backend path, data model, exposure path, or mutation path
+  was removed.
+
+Parked paths:
+
+- NewTaskModal draft-state, creation-nudge effect, deadline-preview effect,
+  submit/edit/interruption flow, and conflict reducer extraction remain parked.
+- Payload-helper extraction remains parked; this seam deliberately avoids
+  moving submit payload shape or exposure accounting.
+
+Moved authority:
+
+- Presentational nudge-card rendering moved into `CalibrationNudgeCard`.
+- No runtime authority moved.
+
+Agent-loop findings:
+
+- A mini explorer loop recommended the nudge card as the smallest safe
+  NewTaskModal extraction.
+- The loop explicitly kept form state, reset/edit sync, schedule handlers,
+  AM/PM and past-start suggestions, nudge state, bias lookup, exposure
+  render/suppression effects, deadline preview/picker state, create/reschedule
+  mutations, and conflict state in `NewTaskModal`.
+
+Tests and verification:
+
+- Frontend production build:
+  `cd frontend && npm run build:public` passed. The build includes Next type
+  validity checks; there is no standalone `npm run typecheck` script.
+- Whitespace:
+  `git diff --check` passed with only CRLF conversion warnings.
+- Local-current frontend proof used `http://localhost:3013` with
+  `compiled_api_origin=http://localhost:8000` and build id
+  `dev-local-current`; topology remains mixed only because alternate
+  local-current ports are tracked separately in GitHub #147.
+- Holmesberg product-loop browser proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r3-calibration-nudge-card-local-current --out-dir tmp\browser-product-loop\r3-calibration-nudge-card-local-current`
+  passed.
+- Product-loop artifact:
+  `tmp/browser-product-loop/r3-calibration-nudge-card-local-current/result.json`.
+- Touched path coverage:
+  new-task nudge keep branch preserved the original duration; deadline
+  suggestion/picker/no-deadline branches still passed; custom category persisted;
+  terminal deadline binding remained rejected/hidden; soft conflict override
+  branch still worked; export contained task/deadline/session/pause/exposure and
+  notification evidence; cleanup left no active timer and no unrendered
+  synthetic creation-nudge exposures.
+- Non-blocking finding:
+  the product loop observed one deadline suggestion render at `3916ms` against
+  a `3000ms` senior UX budget. This was classified as a pre-existing
+  user-facing latency issue, not caused by the presentational nudge-card seam.
+  GitHub issue #149 tracks it.
+- Operator read-only proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-calibration-nudge-card-operator-local-current`
+  passed.
+- Operator read-only artifact:
+  `tmp/operator-readonly-stress-r3-calibration-nudge-card-operator-local-current/result.json`.
+- Operator outcome:
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, `cohort_status=yellow`, zero count diffs,
+  zero route count diffs, and zero dashboard snapshot diffs.
+
+Behavior parity statement:
+
+- The card renders the same research/personal/blended copy, estimate rows,
+  disabled states, test ids, and "Use"/"Keep" labels as before.
+- The parent still performs the same exposure acknowledgement and nudge-decision
+  writes before changing duration/end or dismissing the card.
+- No submit payload, conflict branch, deadline binding, duration update,
+  modal reset, or cache invalidation behavior changed.
+
+Rollback note:
+
+- Revert the R3 calibration-nudge-card seam commit only. This restores the
+  inline nudge JSX in `NewTaskModal` and removes
+  `frontend/components/calibration-nudge-card.tsx` without touching backend
+  code, schemas, production data, or browser-verifier cleanup logic.

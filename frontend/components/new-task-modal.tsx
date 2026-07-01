@@ -27,7 +27,6 @@ import {
   defaultStartForDate,
   diffMinutes,
   formatLocal,
-  formatPlanDeltaFromFactor,
   roundTo5,
   timeOfDay,
 } from "@/lib/task-time";
@@ -38,6 +37,10 @@ import {
 } from "@/lib/deadlines";
 import { CategorySelect } from "@/components/category-select";
 import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
+import {
+  CalibrationNudgeCard,
+  type CalibrationNudge,
+} from "@/components/calibration-nudge-card";
 
 const BIAS_LOOKUP_DEBOUNCE_MS = 120;
 const RESEARCH_PRIOR_DEFAULT = {
@@ -236,29 +239,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [description, setDescription] = useState("");
   const [showDescription, setShowDescription] = useState(false);
   const [nudgeSource, setNudgeSource] = useState<"personal" | "research" | null>(null);
-  const [calibrationNudge, setCalibrationNudge] = useState<{
-    cell: BiasFactorCell;
-    factor: number;
-    personalFactor?: number | null;
-    blendFactor?: number | null;
-    personalWeight?: number | null;
-    priorWeight?: number | null;
-    priorFactor?: number | null;
-    priorCitation?: string | null;
-    suggestedMin: number;
-    executionSuggestedMin: number;
-    pauseOverheadMin: number;
-    pauseOverheadSampleSize: number;
-    occupancySuggestedMin: number;
-    occupancyStrategy?: string | null;
-    // ISO timestamp captured at the moment the nudge first appeared in
-    // the UI. Sent as `nudge_viewed_at` with the createTask payload so
-    // backend can compute dwell_seconds for the V3 ReflectionViewLog
-    // row (Phase 6 prerequisite per phase_6_architecture_backlog.md:227).
-    firedAt: string;
-    exposureId?: string | null;
-    backendReady?: boolean;
-  } | null>(null);
+  const [calibrationNudge, setCalibrationNudge] =
+    useState<CalibrationNudge | null>(null);
   const creationNudgeExposureRef = useRef<string | null>(null);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
@@ -1260,114 +1242,39 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           )}
 
           {calibrationNudge && !softConflict && !pausedConflict && !error && (
-            <div className="rounded-sm border border-signal/40 bg-signal/5 p-3 text-xs text-signal">
-              <div>
-                {nudgeSource === "research" ? (
-                  <>
-                    Research prior for <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
-                    sizes this about <span className="font-medium text-parchment">{formatPlanDeltaFromFactor(calibrationNudge.factor)}</span>.
-                    {" "}Your estimate: {durHours * 60 + durMinutes} min.
-                    {calibrationNudge.cell.citation && (
-                      <span className="block mt-0.5 text-[10px] text-signal/60">{calibrationNudge.cell.citation}</span>
-                    )}
-                  </>
-                ) : calibrationNudge.priorWeight !== null &&
-                  calibrationNudge.priorWeight !== undefined &&
-                  calibrationNudge.priorWeight > 0.05 &&
-                  calibrationNudge.personalWeight !== null &&
-                  calibrationNudge.personalWeight !== undefined ? (
-                  <>
-                    {calibrationNudge.cell.sessions < 10 ? "Low-confidence blend" : "Blended estimate"}
-                    {" "}({calibrationNudge.cell.sessions} sessions + prior): <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
-                    {calibrationNudge.cell.time_of_day !== "all" && (
-                      <> in the <span className="font-medium text-parchment">{calibrationNudge.cell.time_of_day}</span></>
-                    )}
-                    {" "}are sized <span className="font-medium text-parchment">{formatPlanDeltaFromFactor(calibrationNudge.factor)}</span>.
-                    <span className="block mt-0.5 text-[10px] text-signal/70">
-                      Raw session average: {formatPlanDeltaFromFactor(calibrationNudge.personalFactor ?? calibrationNudge.factor)};
-                      {" "}personal weight {Math.round(calibrationNudge.personalWeight * 100)}%,
-                      prior weight {Math.round(calibrationNudge.priorWeight * 100)}%.
-                      {calibrationNudge.priorCitation ? ` ${calibrationNudge.priorCitation}` : ""}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    {calibrationNudge.cell.sessions < 10 ? "Early data" : "Your data"}
-                    {" "}({calibrationNudge.cell.sessions} sessions): <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
-                    {calibrationNudge.cell.time_of_day !== "all" && (
-                      <> in the <span className="font-medium text-parchment">{calibrationNudge.cell.time_of_day}</span></>
-                    )}
-                    {" "}run <span className="font-medium text-parchment">{formatPlanDeltaFromFactor(calibrationNudge.factor)}</span>.
-                  </>
-                )}
-              </div>
-              <div className="mt-2 grid gap-1 rounded-sm border border-signal/15 bg-void/30 p-2 text-[11px] text-dust">
-                <div className="flex items-center justify-between gap-3">
-                  <span>Execution Time</span>
-                  <span className="font-medium text-parchment">{calibrationNudge.executionSuggestedMin} min</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Pause Overhead</span>
-                  <span className="text-right font-medium text-parchment">
-                    {calibrationNudge.pauseOverheadSampleSize >= 3
-                      ? `+${calibrationNudge.pauseOverheadMin} min`
-                      : calibrationNudge.backendReady
-                        ? "not enough clean pause data"
-                        : "checking..."}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3 border-t border-signal/10 pt-1 text-signal">
-                  <span>Occupancy Time</span>
-                  <span className="font-medium text-parchment">{calibrationNudge.occupancySuggestedMin} min</span>
-                </div>
-              </div>
-              <div className="mt-2 flex gap-2">
-                <button
-                  data-testid="new-task-nudge-use"
-                  type="button"
-                  disabled={!calibrationNudge.exposureId}
-                  className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30 disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={() => {
-                    const newMin = calibrationNudge.suggestedMin;
-                    ackVisibleCreationNudge();
-                    setNudgeDecisionData({
-                      decision: "accepted",
-                      suggested_minutes: calibrationNudge.suggestedMin,
-                      bias_factor: calibrationNudge.factor,
-                      sample_size: calibrationNudge.cell.sessions,
-                      viewed_at: calibrationNudge.firedAt,
-                    });
-                    setDurHours(Math.floor(newMin / 60));
-                    setDurMinutes(newMin % 60);
-                    setEnd(addMinutes(start, newMin));
-                    setCalibrationNudge(null);
-                    setNudgeDecisionMade(true);
-                  }}
-                >
-                  Use {calibrationNudge.suggestedMin} min
-                </button>
-                <button
-                  data-testid="new-task-nudge-keep"
-                  type="button"
-                  disabled={!calibrationNudge.exposureId}
-                  className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={() => {
-                    ackVisibleCreationNudge();
-                    setNudgeDecisionData({
-                      decision: "dismissed",
-                      suggested_minutes: calibrationNudge.suggestedMin,
-                      bias_factor: calibrationNudge.factor,
-                      sample_size: calibrationNudge.cell.sessions,
-                      viewed_at: calibrationNudge.firedAt,
-                    });
-                    setCalibrationNudge(null);
-                    setNudgeDecisionMade(true);
-                  }}
-                >
-                  Keep {durHours * 60 + durMinutes} min
-                </button>
-              </div>
-            </div>
+            <CalibrationNudgeCard
+              nudge={calibrationNudge}
+              source={nudgeSource}
+              plannedMinutes={durHours * 60 + durMinutes}
+              onUseSuggested={() => {
+                const newMin = calibrationNudge.suggestedMin;
+                ackVisibleCreationNudge();
+                setNudgeDecisionData({
+                  decision: "accepted",
+                  suggested_minutes: calibrationNudge.suggestedMin,
+                  bias_factor: calibrationNudge.factor,
+                  sample_size: calibrationNudge.cell.sessions,
+                  viewed_at: calibrationNudge.firedAt,
+                });
+                setDurHours(Math.floor(newMin / 60));
+                setDurMinutes(newMin % 60);
+                setEnd(addMinutes(start, newMin));
+                setCalibrationNudge(null);
+                setNudgeDecisionMade(true);
+              }}
+              onKeepEstimate={() => {
+                ackVisibleCreationNudge();
+                setNudgeDecisionData({
+                  decision: "dismissed",
+                  suggested_minutes: calibrationNudge.suggestedMin,
+                  bias_factor: calibrationNudge.factor,
+                  sample_size: calibrationNudge.cell.sessions,
+                  viewed_at: calibrationNudge.firedAt,
+                });
+                setCalibrationNudge(null);
+                setNudgeDecisionMade(true);
+              }}
+            />
           )}
 
           {error && (
