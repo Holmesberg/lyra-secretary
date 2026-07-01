@@ -53,7 +53,7 @@ import {
 } from "@/lib/tasks";
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
 import { announceUndoAvailable } from "@/lib/undo";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
 
 type Mode = "idle" | "reflection" | "next-prompt";
 
@@ -134,12 +134,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
   const refreshTimerSurfaces = () => {
-    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
-    qc.invalidateQueries({ queryKey: queryKeys.tasks });
-    qc.invalidateQueries({ queryKey: queryKeys.tasksRange });
-    qc.invalidateQueries({ queryKey: queryKeys.tasksEvidence });
-    qc.invalidateQueries({ queryKey: queryKeys.pressureMap });
-    qc.invalidateQueries({ queryKey: queryKeys.me });
+    void invalidateTimerCommandSurfaces(qc);
   };
 
   function beginReflection() {

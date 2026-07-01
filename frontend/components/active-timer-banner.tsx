@@ -11,7 +11,7 @@ import {
 } from "@/lib/tasks";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
 
 // Matches backend PAUSE_REASONS enum in
 // backend/app/schemas/stopwatch.py:65. Keep in sync.
@@ -83,12 +83,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   const pickerRef = useRef<HTMLDivElement | null>(null);
 
   const refreshTimerSurfaces = () => {
-    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
-    qc.invalidateQueries({ queryKey: queryKeys.tasks });
-    qc.invalidateQueries({ queryKey: queryKeys.tasksRange });
-    qc.invalidateQueries({ queryKey: queryKeys.tasksEvidence });
-    qc.invalidateQueries({ queryKey: queryKeys.pressureMap });
-    qc.invalidateQueries({ queryKey: queryKeys.me });
+    void invalidateTimerCommandSurfaces(qc);
   };
 
   // Local pause state, decoupled from React Query poll cycle. Changed
@@ -518,12 +513,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
   const [err, setErr] = useState<string | null>(null);
 
   const refreshTimerSurfaces = () => {
-    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
-    qc.invalidateQueries({ queryKey: queryKeys.tasks });
-    qc.invalidateQueries({ queryKey: queryKeys.tasksRange });
-    qc.invalidateQueries({ queryKey: queryKeys.tasksEvidence });
-    qc.invalidateQueries({ queryKey: queryKeys.pressureMap });
-    qc.invalidateQueries({ queryKey: queryKeys.me });
+    void invalidateTimerCommandSurfaces(qc);
   };
 
   // Optimistic swap: mirrors the pause/resume optimistic pattern. The

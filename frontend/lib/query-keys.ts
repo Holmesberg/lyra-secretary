@@ -21,13 +21,47 @@ const domainKeys = {
 
 export type QueryDomain = keyof typeof domainKeys;
 
+function invalidateKeys(queryClient: QueryClient, keys: readonly QueryKey[]) {
+  return Promise.all(
+    keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+  );
+}
+
 export function invalidateDomain(
   queryClient: QueryClient,
   domain: QueryDomain,
 ) {
-  return Promise.all(
-    domainKeys[domain].map((queryKey) =>
-      queryClient.invalidateQueries({ queryKey }),
-    ),
-  );
+  return invalidateKeys(queryClient, domainKeys[domain]);
+}
+
+export function invalidateTimerCommandSurfaces(queryClient: QueryClient) {
+  return invalidateKeys(queryClient, [
+    queryKeys.stopwatchStatus,
+    queryKeys.tasks,
+    queryKeys.tasksRange,
+    queryKeys.tasksEvidence,
+    queryKeys.pressureMap,
+    queryKeys.me,
+  ]);
+}
+
+export function invalidateBrainDumpCommitCaches(queryClient: QueryClient) {
+  return invalidateKeys(queryClient, [
+    queryKeys.tasks,
+    queryKeys.deadlines,
+    queryKeys.me,
+    queryKeys.tasksRange,
+    queryKeys.tasksEvidence,
+    queryKeys.pressureMap,
+  ]);
+}
+
+export function invalidatePressureRecoveryCommitCaches(queryClient: QueryClient) {
+  return invalidateKeys(queryClient, [
+    queryKeys.tasks,
+    queryKeys.tasksRange,
+    queryKeys.tasksEvidence,
+    queryKeys.pressureMap,
+    queryKeys.deadlines,
+  ]);
 }

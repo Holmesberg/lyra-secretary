@@ -29,7 +29,7 @@ import {
   genericPressureCopy,
   pressureClass,
 } from "@/lib/pressure-map-ui";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidatePressureRecoveryCommitCaches } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -743,11 +743,7 @@ export function PulseAcademicPressureMap({
         setRows([...nextRows]);
       }
 
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: queryKeys.tasks }),
-        qc.invalidateQueries({ queryKey: queryKeys.pressureMap }),
-        qc.invalidateQueries({ queryKey: queryKeys.deadlines }),
-      ]);
+      await invalidatePressureRecoveryCommitCaches(qc);
       if (firstError) {
         setCommitError(firstError);
       } else if (created > 0) {
