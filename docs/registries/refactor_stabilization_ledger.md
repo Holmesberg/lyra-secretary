@@ -3517,3 +3517,105 @@ Rollback note:
   local helper bodies in Pulse and onboarding without touching schemas,
   production data, backend code, exposure lifecycle rows, Redis data, or user
   content.
+
+## R3 - NewTaskModal Nudge Payload Helper
+
+Changed authority:
+
+- No product authority changed.
+- NewTaskModal still owns task creation/edit/interruption UI flow.
+- `createTask()` payload field names and backend semantics are unchanged.
+
+Removed paths:
+
+- No runtime path was removed.
+- No route, schema, API contract, exposure lifecycle row, timer command, task
+  mutation authority, deadline binding authority, or provider path changed.
+
+Parked paths:
+
+- Full NewTaskModal draft-state extraction remains parked.
+- Deadline preview state extraction remains parked.
+- Submit/edit/interruption flow extraction remains parked beyond this small
+  nudge payload helper.
+
+Moved authority:
+
+- The repeated conversion from modal nudge outcome state into
+  `CreateTaskInput` fields moved into `nudgePayloadFromDecision()`.
+- The repeated conversion from a rendered `CalibrationNudge` plus user choice
+  into modal nudge outcome state moved into `nudgeDecisionFromCalibration()`.
+
+Agent-loop findings:
+
+- Explorer D identified the nudge telemetry payload as the smallest viable
+  NewTaskModal seam. Explorer E was spawned for a focused follow-up; the local
+  implementation matched its recommendation to keep the mapper module-local and
+  defer render-snapshot extraction because that path touches exposure telemetry
+  intent.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Frontend typecheck-equivalent:
+  `npm exec tsc -- --noEmit --pretty false` passed from `frontend/`.
+- Backend contract tests:
+  initial bare `python -m pytest backend/tests/test_calibration_nudge_event.py backend/tests/test_output_surfaces.py`
+  failed with `ModuleNotFoundError: No module named 'fastapi'`; classified as
+  verifier environment selection, not product failure.
+- Backend contract tests rerun with canonical venv:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_calibration_nudge_event.py tests\test_output_surfaces.py -q`
+  passed, `47 passed`.
+- Full frontend production build was not run during this live-dev seam because
+  GitHub issue #144 tracks dev-server corruption risk from concurrent frontend
+  builds. Typecheck plus browser proof were used here; production build remains
+  required for wave closure.
+- Holmesberg mutable product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r3-new-task-nudge-payload-helper-holmesberg-local-current --out-dir tmp\browser-product-loop\r3-new-task-nudge-payload-helper-holmesberg-local-current`
+  passed with `ok=true`.
+- Holmesberg product artifact:
+  `tmp/browser-product-loop/r3-new-task-nudge-payload-helper-holmesberg-local-current/result.json`.
+- Product-loop coverage included route renders, deadline linkage, soft-conflict
+  force-create, nudge keep branch, no-deadline branch, custom category, deadline
+  pick-another, edit mode, terminal-deadline rejection, brain-dump parse/commit,
+  partial failure, retry, double-submit protection, pressure-map commit, timer
+  pause/resume/stop, export evidence, exposure render/ack rows, notification
+  lifecycle terminal rows, operator leak checks, and cleanup proof.
+- Product-loop cleanup proof:
+  no active Holmesberg timer remained and no unrendered synthetic creation-nudge
+  exposure rows remained.
+- Non-fatal product-loop issues were classified as existing gated/verifier
+  conditions: onboarding gate skip for the chaos account, fallback deadline
+  picker use, parser title normalization, pressure safe-mode recovery fixture,
+  provider credential mutation, hard-delete purge, calendar drag/resize, and
+  OpenClaw pending drain. The deadline-suggestion UX budget remains tracked by
+  GitHub issue #149.
+- Operator-cookie browser proof after mutable loop:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-new-task-nudge-payload-helper-post-holmesberg-operator-local-current`
+  passed.
+- Operator artifact after mutable loop:
+  `tmp/operator-readonly-stress-r3-new-task-nudge-payload-helper-post-holmesberg-operator-local-current/result.json`.
+- Operator outcome after mutable loop:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5996ms`, mobile `5092ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and
+  cohort status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Normal create, soft-conflict force-create, and interruption-create still send
+  the same `nudge_decision`, `nudge_suggested_duration_minutes`,
+  `nudge_bias_factor`, `nudge_sample_size`, and `nudge_viewed_at` fields when a
+  nudge decision exists.
+- When no nudge decision exists, those fields remain omitted.
+- Nudge "Use" and "Keep" handlers still record the same suggested minutes, bias
+  factor, sample size, viewed-at timestamp, and accepted/dismissed decision.
+- Edit-mode reschedule behavior remains unchanged and still does not write
+  nudge outcome payload.
+
+Rollback note:
+
+- Revert the R3 NewTaskModal nudge payload helper commit only. This restores
+  inline payload spreads without touching schemas, production data, backend
+  code, exposure lifecycle rows, Redis data, or user content.

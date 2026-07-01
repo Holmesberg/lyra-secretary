@@ -20,6 +20,7 @@ import {
   type TaskRow,
   type BiasFactorCell,
   type BiasLookupResponse,
+  type CreateTaskInput,
 } from "@/lib/tasks";
 import {
   addMinutes,
@@ -64,8 +65,53 @@ const CREATION_NUDGE_SUPPRESSION_RETRY_MS = [500, 1500, 3000];
 const CREATION_NUDGE_EXPOSURE_TTL_MS = 30_000;
 const creationNudgeExposureIds = new Map<string, { exposureId: string; expiresAt: number }>();
 
+type NudgeDecisionData = {
+  decision: "accepted" | "dismissed";
+  suggested_minutes: number;
+  bias_factor: number;
+  sample_size: number;
+  viewed_at: string;
+};
+
+type NudgeDecisionPayload = Pick<
+  CreateTaskInput,
+  | "nudge_decision"
+  | "nudge_suggested_duration_minutes"
+  | "nudge_bias_factor"
+  | "nudge_sample_size"
+  | "nudge_viewed_at"
+>;
+
 function newExposureId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function nudgePayloadFromDecision(
+  nudgeDecisionData: NudgeDecisionData | null,
+): NudgeDecisionPayload {
+  if (!nudgeDecisionData) {
+    return {};
+  }
+  return {
+    nudge_decision: nudgeDecisionData.decision,
+    nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
+    nudge_bias_factor: nudgeDecisionData.bias_factor,
+    nudge_sample_size: nudgeDecisionData.sample_size,
+    nudge_viewed_at: nudgeDecisionData.viewed_at,
+  };
+}
+
+function nudgeDecisionFromCalibration(
+  nudge: CalibrationNudge,
+  decision: NudgeDecisionData["decision"],
+): NudgeDecisionData {
+  return {
+    decision,
+    suggested_minutes: nudge.suggestedMin,
+    bias_factor: nudge.factor,
+    sample_size: nudge.cell.sessions,
+    viewed_at: nudge.firedAt,
+  };
 }
 
 function exposureIdForCreationNudge(category: string, tod: string, planned: number): string {
@@ -255,16 +301,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // the four numeric inputs that produced the suggestion. Travels with
   // the createTask payload so the backend writes a calibration_nudge_event
   // row in the same transaction. Null when no nudge fired this session.
-  const [nudgeDecisionData, setNudgeDecisionData] = useState<{
-    decision: "accepted" | "dismissed";
-    suggested_minutes: number;
-    bias_factor: number;
-    sample_size: number;
-    // Phase 6 V3 — fire-time of the modal nudge. Sent as
-    // nudge_viewed_at; backend computes dwell_seconds = decision_time
-    // − fire_time for the ReflectionViewLog row.
-    viewed_at: string;
-  } | null>(null);
+  const [nudgeDecisionData, setNudgeDecisionData] =
+    useState<NudgeDecisionData | null>(null);
   const [editScheduleTouched, setEditScheduleTouched] = useState(false);
 
   // Loop 11 Phase K — deadline picker. `deadlineId` carries the user's
@@ -771,15 +809,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         category,
         description: description.trim() || undefined,
         deadline_id: deadlineId ?? undefined,
-        ...(nudgeDecisionData
-          ? {
-              nudge_decision: nudgeDecisionData.decision,
-              nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
-              nudge_bias_factor: nudgeDecisionData.bias_factor,
-              nudge_sample_size: nudgeDecisionData.sample_size,
-              nudge_viewed_at: nudgeDecisionData.viewed_at,
-            }
-          : {}),
+        ...nudgePayloadFromDecision(nudgeDecisionData),
       });
       // Debug aid (Apr 16): dogfood diagnostic for severity-render
       // bug. If operator sees the wrong UI (red when expecting yellow
@@ -859,15 +889,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         category,
         force: true,
         deadline_id: deadlineId ?? undefined,
-        ...(nudgeDecisionData
-          ? {
-              nudge_decision: nudgeDecisionData.decision,
-              nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
-              nudge_bias_factor: nudgeDecisionData.bias_factor,
-              nudge_sample_size: nudgeDecisionData.sample_size,
-              nudge_viewed_at: nudgeDecisionData.viewed_at,
-            }
-          : {}),
+        ...nudgePayloadFromDecision(nudgeDecisionData),
       });
       if (!res.created) {
         setError(
@@ -900,15 +922,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         category,
         force: true,
         deadline_id: deadlineId ?? undefined,
-        ...(nudgeDecisionData
-          ? {
-              nudge_decision: nudgeDecisionData.decision,
-              nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
-              nudge_bias_factor: nudgeDecisionData.bias_factor,
-              nudge_sample_size: nudgeDecisionData.sample_size,
-              nudge_viewed_at: nudgeDecisionData.viewed_at,
-            }
-          : {}),
+        ...nudgePayloadFromDecision(nudgeDecisionData),
       });
       if (!res.created || !res.task_id) {
         setError("Failed to create interruption task.");
@@ -1249,13 +1263,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               onUseSuggested={() => {
                 const newMin = calibrationNudge.suggestedMin;
                 ackVisibleCreationNudge();
-                setNudgeDecisionData({
-                  decision: "accepted",
-                  suggested_minutes: calibrationNudge.suggestedMin,
-                  bias_factor: calibrationNudge.factor,
-                  sample_size: calibrationNudge.cell.sessions,
-                  viewed_at: calibrationNudge.firedAt,
-                });
+                setNudgeDecisionData(
+                  nudgeDecisionFromCalibration(calibrationNudge, "accepted"),
+                );
                 setDurHours(Math.floor(newMin / 60));
                 setDurMinutes(newMin % 60);
                 setEnd(addMinutes(start, newMin));
@@ -1264,13 +1274,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               }}
               onKeepEstimate={() => {
                 ackVisibleCreationNudge();
-                setNudgeDecisionData({
-                  decision: "dismissed",
-                  suggested_minutes: calibrationNudge.suggestedMin,
-                  bias_factor: calibrationNudge.factor,
-                  sample_size: calibrationNudge.cell.sessions,
-                  viewed_at: calibrationNudge.firedAt,
-                });
+                setNudgeDecisionData(
+                  nudgeDecisionFromCalibration(calibrationNudge, "dismissed"),
+                );
                 setCalibrationNudge(null);
                 setNudgeDecisionMade(true);
               }}
