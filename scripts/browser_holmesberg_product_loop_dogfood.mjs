@@ -44,6 +44,7 @@ const runKey = boundedIdentifier(runId, 42);
 const prefix = args.get("prefix") || `DOGFOOD ${randomUUID().slice(0, 8)}`;
 const cleanupOnly = args.get("cleanup-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
+const forcePressureRecovery = args.get("force-pressure-recovery") === "true";
 const holmesbergCookie = process.env.LYRA_COOKIE_HOLMESBERG
   || process.env.LYRA_COOKIE_MORIARTY
   || "";
@@ -356,22 +357,29 @@ async function installApiProxy(context) {
     delete headers["sec-fetch-mode"];
     delete headers["sec-fetch-site"];
 
-    const data = request.postDataBuffer();
-    const response = await context.request.fetch(request.url(), {
-      method: request.method(),
-      headers,
-      data: data && data.length > 0 ? data : undefined,
-      timeout: 45_000,
-      failOnStatusCode: false,
-    });
-    await route.fulfill({
-      status: response.status(),
-      headers: {
-        ...response.headers(),
-        ...corsHeaders,
-      },
-      body: await response.body(),
-    });
+    try {
+      const data = request.postDataBuffer();
+      const response = await context.request.fetch(request.url(), {
+        method: request.method(),
+        headers,
+        data: data && data.length > 0 ? data : undefined,
+        timeout: 45_000,
+        failOnStatusCode: false,
+      });
+      await route.fulfill({
+        status: response.status(),
+        headers: {
+          ...response.headers(),
+          ...corsHeaders,
+        },
+        body: await response.body(),
+      });
+    } catch (error) {
+      if (/Target page, context or browser has been closed/i.test(String(error?.message || error))) {
+        return;
+      }
+      await route.abort("failed").catch(() => {});
+    }
   });
 }
 
@@ -596,6 +604,18 @@ async function keepNudgeIfVisible(page, label = "new-task-nudge-keep") {
   return visible;
 }
 
+async function clickCreateAnywayIfVisible(page, label) {
+  const createAnyway = await firstVisible(page, [
+    (p) => p.getByTestId("new-task-create-anyway"),
+    (p) => p.getByRole("button", { name: /Create anyway/i }),
+    (p) => p.locator('button:has-text("Create anyway")'),
+  ], 2_000, label).catch(() => null);
+  if (!createAnyway) return false;
+  await screenshot(page, label);
+  await createAnyway.click();
+  return true;
+}
+
 async function chooseCustomCategory(page, category) {
   const select = await firstVisible(page, [
     (p) => p.getByTestId("category-select"),
@@ -734,15 +754,20 @@ async function createTaskThroughUi(page, token, deadline) {
     (p) => p.locator('button:has-text("Create")'),
   ], 5_000);
 
-  const createAnyway = page.getByTestId("new-task-create-anyway").first();
-  if (await createAnyway.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await screenshot(page, "new-task-soft-conflict");
-    await createAnyway.click();
-  }
+  await clickCreateAnywayIfVisible(page, "new-task-soft-conflict");
 
-  await page.getByText(title, { exact: false }).first().waitFor({ timeout: 20_000 });
+  const task = await pollFor(token, "task created through UI backend visibility", async () => {
+    return await findTaskByTitle(token, title);
+  }, 20_000, 1_000);
+  const visibleAfterCreate = await page
+    .getByText(title, { exact: false })
+    .first()
+    .isVisible({ timeout: 3_000 })
+    .catch(() => false);
+  if (!visibleAfterCreate) {
+    addIssue("task created through UI was not visible in Today before screenshot", { title });
+  }
   await screenshot(page, "today-after-task-create");
-  const task = await findTaskByTitle(token, title);
   addCheck("task UI create reached backend", Boolean(task), { title });
   cleanup.tasks.add(task.task_id);
   addCheck("task bound to created deadline", task.deadline_id === deadline.deadline_id, {
@@ -817,8 +842,9 @@ async function createSoftConflictTaskThroughUi(page, token) {
     addIssue("overlap branch did not show soft conflict create-anyway UI");
   }
 
-  await page.getByText(title, { exact: false }).first().waitFor({ timeout: 20_000 });
-  const task = await findTaskByTitle(token, title);
+  const task = await pollFor(token, "overlap branch backend visibility", async () => {
+    return await findTaskByTitle(token, title);
+  }, 20_000, 1_000);
   addCheck("overlap conflict branch creates task after explicit create-anyway", Boolean(task), { title });
   cleanup.tasks.add(task.task_id);
   addCheck("nudge keep branch preserves original 60 minute duration", (
@@ -888,8 +914,20 @@ async function runNewTaskBranchCoverage(page, token, anchorDeadline) {
     (p) => p.getByRole("button", { name: /^Create$/i }),
     (p) => p.locator('button:has-text("Create")'),
   ], 5_000);
-  await page.getByText(noBindTitle, { exact: false }).first().waitFor({ timeout: 20_000 });
-  const noBindTask = await findTaskByTitle(token, noBindTitle);
+  await clickCreateAnywayIfVisible(page, "new-task-no-deadline-create-anyway");
+  const noBindTask = await pollFor(token, "no-deadline branch backend visibility", async () => {
+    return await findTaskByTitle(token, noBindTitle);
+  }, 20_000, 1_000);
+  const noBindVisible = await page
+    .getByText(noBindTitle, { exact: false })
+    .first()
+    .isVisible({ timeout: 3_000 })
+    .catch(() => false);
+  if (!noBindVisible) {
+    addIssue("no-deadline branch task was not visible in Today before branch assertion", {
+      title: noBindTitle,
+    });
+  }
   addCheck("no-deadline branch creates task without deadline binding", (
     Boolean(noBindTask) && noBindTask.deadline_id === null
   ), {
@@ -932,8 +970,20 @@ async function runNewTaskBranchCoverage(page, token, anchorDeadline) {
     (p) => p.getByRole("button", { name: /^Create$/i }),
     (p) => p.locator('button:has-text("Create")'),
   ], 5_000);
-  await page.getByText(pickAnotherTitle, { exact: false }).first().waitFor({ timeout: 20_000 });
-  const pickAnotherTask = await findTaskByTitle(token, pickAnotherTitle);
+  await clickCreateAnywayIfVisible(page, "new-task-pick-another-create-anyway");
+  const pickAnotherTask = await pollFor(token, "pick-another branch backend visibility", async () => {
+    return await findTaskByTitle(token, pickAnotherTitle);
+  }, 20_000, 1_000);
+  const pickAnotherVisible = await page
+    .getByText(pickAnotherTitle, { exact: false })
+    .first()
+    .isVisible({ timeout: 3_000 })
+    .catch(() => false);
+  if (!pickAnotherVisible) {
+    addIssue("pick-another branch task was not visible in Today before branch assertion", {
+      title: pickAnotherTitle,
+    });
+  }
   addCheck("pick-another branch binds the explicitly chosen deadline", (
     pickAnotherTask?.deadline_id === alternateDeadline.deadline_id
   ), {
@@ -1265,29 +1315,187 @@ async function runBrainDumpBranchCoverage(page, token) {
 }
 
 async function runPressureMapPath(page, token) {
-  const beforeTasks = await findTasksByPrefix(token);
-  await goto(page, "/pulse", "pulse-pressure-map");
-  const previewVisible = await page.getByTestId("pressure-map-preview").first().isVisible({ timeout: 8_000 }).catch(() => false);
-  if (!previewVisible) {
-    addIssue("pressure map preview was not available for current Holmesberg state");
-    return;
-  }
-  await clickAny(page, "pressure preview", [(p) => p.getByTestId("pressure-map-preview")]);
-  await firstVisible(page, [
-    (p) => p.getByTestId("pressure-map-plan-preview"),
-    (p) => p.getByRole("dialog", { name: /Preview recovery plan/i }),
-  ], 8_000);
-  await screenshot(page, "pressure-map-preview");
-  await clickAny(page, "pressure preview dismiss", [
-    (p) => p.getByTestId("pressure-map-preview-dismiss"),
-    (p) => p.getByRole("button", { name: /^Dismiss$/i }),
-  ]);
-  await page.waitForTimeout(1_000);
-  const afterDismissTasks = await findTasksByPrefix(token);
-  addCheck("pressure map dismiss does not create dogfood tasks", afterDismissTasks.length === beforeTasks.length, {
-    before: beforeTasks.length,
-    after: afterDismissTasks.length,
+  const pressureDeadlineTitle = `${prefix} pressure map deadline`;
+  const pressureBlockTitle = `${prefix} pressure recovery block`;
+  const pressureMapPattern = `${apiOrigin.replace(/\/$/, "")}/v1/academic/pressure-map**`;
+  let pressureMapRouteHandler = null;
+  const pressureDeadline = await createDeadlineViaApi(token, {
+    title: pressureDeadlineTitle,
+    dueMinutes: (3 * 24 * 60) - 30,
   });
+  const pressureSnapshot = await apiFetch(token, "/v1/academic/pressure-map?horizon_days=14");
+  const seededPressureItem = Array.isArray(pressureSnapshot.items)
+    ? pressureSnapshot.items.find((item) => item.obligation_id === pressureDeadline.deadline_id)
+    : null;
+  addCheck("pressure map includes seeded due-soon deadline before browser commit", Boolean(
+    seededPressureItem
+    && seededPressureItem.pressure_level === "high"
+    && seededPressureItem.source_class === "native"
+  ), {
+    deadline_id: pressureDeadline.deadline_id,
+    item: seededPressureItem,
+    recovery_options: pressureSnapshot.recovery_options,
+  });
+  const backendPlanOption = Array.isArray(pressureSnapshot.recovery_options)
+    ? pressureSnapshot.recovery_options.find((option) => (
+        option.action === "create_plan" || option.action === "split_into_blocks"
+      ))
+    : null;
+  if (!backendPlanOption) {
+    addGated("real pressure-map recovery option", {
+      reason: "backend returned no create_plan/split_into_blocks option for seeded high-pressure item",
+      warnings: pressureSnapshot.warnings,
+      recovery_options: pressureSnapshot.recovery_options,
+    });
+    if (!forcePressureRecovery) {
+      addIssue("pressure map commit path skipped because backend recovery nudges are gated", {
+        hint: "rerun with --force-pressure-recovery to exercise the browser commit seam against public createTask",
+      });
+      return;
+    }
+    addIssue("pressure map recovery options unavailable; using browser-only recovery fixture for commit seam coverage", {
+      warnings: pressureSnapshot.warnings,
+      recovery_options: pressureSnapshot.recovery_options,
+    });
+    pressureMapRouteHandler = async (route) => {
+      const body = {
+        ...pressureSnapshot,
+        recovery_options: [
+          {
+            action: "create_plan",
+            label: "Create a recovery plan",
+            detail: "Turn the due-soon pressure points into editable study blocks.",
+            obligation_ids: [pressureDeadline.deadline_id],
+          },
+        ],
+        warnings: [
+          ...(pressureSnapshot.warnings || []),
+          "Dogfood browser fixture: recovery option forced because public backend has recovery nudges gated.",
+        ],
+      };
+      await route.fulfill({
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "access-control-allow-origin": frontendOrigin,
+          "access-control-allow-credentials": "true",
+        },
+        body: JSON.stringify(body),
+      });
+    };
+    await page.route(pressureMapPattern, pressureMapRouteHandler);
+  }
+
+  const beforeTasks = await findTasksByPrefix(token);
+  try {
+    await goto(page, "/pulse", "pulse-pressure-map");
+    const previewVisible = await page.getByTestId("pressure-map-preview").first().isVisible({ timeout: 8_000 }).catch(() => false);
+    addCheck("pressure map preview is available after seeded due-soon deadline", previewVisible, {
+      deadline_id: pressureDeadline.deadline_id,
+      title: pressureDeadlineTitle,
+      forced_browser_fixture: Boolean(pressureMapRouteHandler),
+    });
+    await clickAny(page, "pressure preview", [(p) => p.getByTestId("pressure-map-preview")]);
+    await firstVisible(page, [
+      (p) => p.getByTestId("pressure-map-plan-preview"),
+      (p) => p.getByRole("dialog", { name: /Preview recovery plan/i }),
+    ], 8_000);
+    await screenshot(page, "pressure-map-preview");
+    await clickAny(page, "pressure preview dismiss", [
+      (p) => p.getByTestId("pressure-map-preview-dismiss"),
+      (p) => p.getByRole("button", { name: /^Dismiss$/i }),
+    ]);
+    await page.waitForTimeout(1_000);
+    const afterDismissTasks = await findTasksByPrefix(token);
+    addCheck("pressure map dismiss does not create dogfood tasks", afterDismissTasks.length === beforeTasks.length, {
+      before: beforeTasks.length,
+      after: afterDismissTasks.length,
+    });
+    const afterDismissMatches = await findTasksByExactTitle(token, pressureBlockTitle);
+    addCheck("pressure map dismiss does not create recovery block", afterDismissMatches.length === 0, {
+      title: pressureBlockTitle,
+      matches: afterDismissMatches,
+    });
+
+    await clickAny(page, "pressure preview reopen", [(p) => p.getByTestId("pressure-map-preview")], 8_000);
+    const dialog = await firstVisible(page, [
+      (p) => p.getByTestId("pressure-map-plan-preview"),
+      (p) => p.getByRole("dialog", { name: /Preview recovery plan/i }),
+    ], 8_000, "pressure map plan preview reopen");
+    const planRows = dialog.locator('[data-testid="pressure-map-plan-row"]');
+    const rowCount = await planRows.count();
+    let seededRowIndex = -1;
+    for (let i = 0; i < rowCount; i += 1) {
+      const row = planRows.nth(i);
+      const text = await row.innerText();
+      if (text.includes(pressureDeadlineTitle)) {
+        seededRowIndex = i;
+        continue;
+      }
+      const toggle = row.getByTestId("pressure-map-plan-row-toggle").first();
+      const toggleText = await toggle.innerText().catch(() => "");
+      if (/Include/i.test(toggleText)) {
+        await toggle.click();
+      }
+    }
+    addCheck("pressure map plan preview includes seeded editable row", seededRowIndex >= 0, {
+      row_count: rowCount,
+      deadline_title: pressureDeadlineTitle,
+    });
+    const seededRow = planRows.nth(seededRowIndex);
+    const blockStart = futureDate((2 * 24 * 60) + 75);
+    const blockEnd = futureDate((2 * 24 * 60) + 105);
+    await seededRow.getByTestId("pressure-map-plan-row-title").fill(pressureBlockTitle);
+    await seededRow.getByTestId("pressure-map-plan-row-start").fill(localInput(blockStart));
+    await seededRow.getByTestId("pressure-map-plan-row-end").fill(localInput(blockEnd));
+    await screenshot(page, "pressure-map-seeded-commit-preview");
+    const lockIn = await firstVisible(page, [
+      (p) => p.getByTestId("pressure-map-preview-lock-in"),
+      (p) => p.getByRole("button", { name: /Lock in/i }),
+    ], 8_000, "pressure map lock in");
+    await lockIn.evaluate((button) => {
+      button.click();
+      button.click();
+    });
+    const createdMatches = await pollFor(token, "pressure map recovery block visibility", async () => {
+      const matches = await findTasksByExactTitle(token, pressureBlockTitle);
+      return matches.length >= 1 ? matches : null;
+    }, 20_000, 1_000);
+    for (const task of createdMatches || []) cleanup.tasks.add(task.task_id);
+    if (!createdMatches || createdMatches.length === 0) {
+      const createAnyway = dialog.getByRole("button", { name: /Create anyway/i }).first();
+      if (await createAnyway.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await screenshot(page, "pressure-map-soft-conflict-create-anyway");
+        await createAnyway.click();
+      }
+    }
+    await page.waitForTimeout(1_500);
+    const finalMatches = await findTasksByExactTitle(token, pressureBlockTitle);
+    for (const task of finalMatches || []) cleanup.tasks.add(task.task_id);
+    addCheck("pressure map double-lock creates exactly one recovery block", finalMatches.length === 1, {
+      title: pressureBlockTitle,
+      task_ids: finalMatches.map((task) => task.task_id),
+    });
+    const createdTask = finalMatches[0] || null;
+    addCheck("pressure map committed block keeps deadline binding and planning-footprint provenance", Boolean(
+      createdTask
+      && createdTask.deadline_id === pressureDeadline.deadline_id
+      && createdTask.state === "PLANNED"
+      && createdTask.executed_duration_minutes === null
+      && String(createdTask.description || "").includes("Created from Pressure Map recovery preview.")
+      && String(createdTask.description || "").includes("Planning footprint only; execution truth comes from the timer.")
+    ), createdTask || { title: pressureBlockTitle });
+
+    await goto(page, "/calendar", "calendar-after-pressure-map-commit");
+    const calendarText = await page.locator("body").innerText();
+    addCheck("calendar shows pressure-map committed recovery block before cleanup", calendarText.includes(pressureBlockTitle), {
+      title: pressureBlockTitle,
+    });
+  } finally {
+    if (pressureMapRouteHandler) {
+      await page.unroute(pressureMapPattern, pressureMapRouteHandler).catch(() => {});
+    }
+  }
 }
 
 async function runTimerPath(page, token, task) {

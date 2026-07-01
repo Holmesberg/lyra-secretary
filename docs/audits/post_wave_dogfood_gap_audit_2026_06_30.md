@@ -22,6 +22,7 @@ Latest proof:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode standard -IncludeProductLoop -WaveName full-documented-surface-chain-conflict-branch
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode standard -IncludeProductLoop -WaveName new-task-branch-coverage
+node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology public --frontend http://localhost:3010 --api https://api.lyraos.org --proxy-api --force-pressure-recovery --run-id pressure-map-local-20260701-9
 ```
 
 Result:
@@ -31,6 +32,8 @@ Result:
   `tmp/post-wave-dogfood/20260701-043838-full-documented-surface-chain-conflict-branch-standard-public`
 - latest output:
   `tmp/post-wave-dogfood/20260701-054334-new-task-branch-coverage-standard-public`
+- latest targeted pressure-map output:
+  `tmp/browser-product-loop/2026-07-01T03-58-49-682Z/result.json`
 - operator cookie: `LYRA_COOKIE_ALINASSERSABRY`
 - non-operator cookie: `LYRA_COOKIE_HOLMESBERG`
 - mutable writes: Holmesberg synthetic task/deadline/timer/notification rows;
@@ -41,6 +44,10 @@ Result:
   `tmp/operator-readonly-stress-2026-07-01T01-48-03-021Z`
 - latest final operator read-only stress:
   `tmp/operator-readonly-stress-2026-07-01T02-54-16-423Z`
+- latest pressure-map operator read-only stress:
+  `tmp/operator-readonly-stress-2026-07-01T04-04-02-208Z`
+- latest broad Holmesberg cleanup:
+  `tmp/browser-product-loop/2026-07-01T04-05-36-403Z`
 - dashboard status: yellow, explained by known freeze-closure measurement
   blockers, not by exposure/notification/state regressions.
 - notification lifecycle after product loop: `exposure_without_render_count=0`,
@@ -58,6 +65,12 @@ Result:
   must use real visibility waits, not immediate `isVisible()` checks; synthetic
   deadline fixtures must avoid shared ambiguous tokens because the production
   heuristic correctly suppresses multi-competitive candidates.
+- pressure-map recovery commit is now browser-covered through a local
+  fixed-frontend/public-backend pass. The public backend still reports real
+  recovery options as gated by read-only pressure safe mode, so the browser
+  verifier uses an explicit `--force-pressure-recovery` fixture only to exercise
+  the UI commit seam. This is not proof that production recovery options are
+  enabled.
 
 ## Council Synthesis
 
@@ -86,7 +99,7 @@ All six agents converged on the same shape:
 | Pulse hub | Main hub for quick capture, re-entry, deadlines, timers, pressure map, recovery, integrations. | Screenshots and API smoke. | Full click-through product loop from Pulse is not automated. |
 | Brain dump modal | Parse, edit, bind to existing deadlines, handle partial failures, retry, and commit idempotently. | Product-loop browser parse/write-free/commit path, editable rows, mixed success/failure review, edit failed item without retyping, retry, existing-deadline binding, and double-submit guard. | First-run onboarding brain-dump still needs targeted browser coverage. |
 | New task modal | Create/edit task, duration nudge, deadline preview/binding, conflict handling, custom category. | Product-loop browser create + deadline binding, duration nudge Use/Keep paths, soft-conflict Create anyway path, edit mode, terminal deadline rejection/filtering, custom category, no-bind, pick-another, and API creation-nudge/exposure ack. | Nudge absent/error states and rapid double-submit remain targeted. |
-| Pressure map | Diagnostic pressure map with horizon switching, preview, dismiss, edit, commit. | Product-loop browser preview and dismiss-no-mutation. | Commit/edit path still missing. |
+| Pressure map | Diagnostic pressure map with horizon switching, preview, dismiss, edit, commit. | Product-loop browser seeded deadline visibility, preview, dismiss-no-mutation, editable recovery-block preview, double-lock guard, commit, deadline binding, planning-footprint provenance, and Calendar visibility. | Real backend recovery option emission remains gated by read-only pressure safe mode. |
 | Timer UI | Start, pause with reason, resume after refresh/navigation, update completion/scope, stop cleanly. | Product-loop browser start/pause/resume/completion/scope/stop. | Refresh/navigation while paused and long-lived sessions still missing. |
 | Today | Execute tasks, handle deadlines, date navigation, pause confirmations, retroactive edits. | Screenshots and API-created data. | Row interactions and date navigation need browser coverage. |
 | Calendar | Show old/new planned tasks, deadlines, external events, drag/resize planned tasks only. | Screenshots. | Drag/resize/reschedule and dense overlap cases need browser coverage. |
@@ -174,12 +187,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogf
 
 Remaining targeted Playwright scripts in priority order:
 
-1. Pressure-map recovery-block commit.
-2. Timer refresh/navigation while paused and long-lived-session correction.
-3. Notification action/expiry and linked-exposure lifecycle.
-4. Forced insights held/unlocked/error/latency states.
-5. Calendar drag/resize/reschedule and table correction/export.
-6. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.
+1. Timer refresh/navigation while paused and long-lived-session correction.
+2. Notification action/expiry and linked-exposure lifecycle.
+3. Forced insights held/unlocked/error/latency states.
+4. Calendar drag/resize/reschedule and table correction/export.
+5. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.
+6. Real pressure-map recovery options after pressure safe mode is lifted.
 
 ## Open Questions For Future Decision
 

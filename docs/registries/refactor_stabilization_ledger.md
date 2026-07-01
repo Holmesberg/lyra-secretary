@@ -1630,3 +1630,82 @@ Rollback note:
 - Revert only the product-loop branch/proxy additions if the verifier needs to
   roll back. They are harness-only and do not require runtime data repair;
   synthetic Holmesberg rows were voided/deleted by cleanup.
+
+## S1c/R3 - Pressure-Map Recovery Commit Coverage And Lock-In Guard
+
+Changed authority:
+
+- No product/runtime authority moved.
+- Added stable pressure-map recovery preview test selectors so the browser
+  verifier can target the seeded obligation row instead of relying on brittle
+  text-only matching.
+- Added a synchronous `commitInFlightRef` guard to the pressure-map plan preview
+  lock-in path so double-clicks cannot race React state and create duplicate
+  recovery blocks.
+- Expanded the Holmesberg product-loop verifier to cover seeded pressure-map
+  visibility, preview, dismiss-no-mutation, editable recovery-block preview,
+  double-lock commit, deadline binding, planning-footprint provenance, and
+  Calendar visibility.
+- Added an explicit `--force-pressure-recovery` browser fixture for local
+  pre-deploy verification while the public backend keeps real recovery options
+  gated by read-only pressure safe mode. The fixture is test-harness-only and
+  must preserve the backend gate as an issue/gated item in the result.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Real backend pressure-map recovery option emission remains gated until
+  read-only pressure safe mode is lifted.
+- Provider credentials, hard account delete/Redis purge, calendar drag/resize,
+  table correction/export, notification action/expiry, forced insights states,
+  and OpenClaw pending-drain checks remain targeted or gated.
+
+Moved authority:
+
+- None.
+
+Tests and verification:
+
+- Frontend production builds:
+  `cd frontend && npm run build`
+  `cd frontend && npm run build:public`
+- Script syntax/whitespace:
+  `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs`
+- Local fixed-frontend browser proof against public backend:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology public --frontend http://localhost:3010 --api https://api.lyraos.org --proxy-api --force-pressure-recovery --run-id pressure-map-local-20260701-9`
+- Local fixed-frontend output:
+  `tmp/browser-product-loop/2026-07-01T03-58-49-682Z/result.json`.
+- Operator read-only browser stress after mutable proof:
+  `tmp/operator-readonly-stress-2026-07-01T04-04-02-208Z`.
+- Broad Holmesberg cleanup:
+  `tmp/browser-product-loop/2026-07-01T04-05-36-403Z/result.json`.
+
+Behavior parity statement:
+
+- Pressure-map horizon reads remain backend read-only.
+- Dismissing a recovery preview does not create dogfood tasks, recovery blocks,
+  or deadline mutations.
+- Real recovery-option emission remains disabled by the public backend's
+  read-only pressure safe mode; the forced browser fixture only proves the UI
+  commit seam.
+- Double-locking the corrected frontend creates exactly one planned recovery
+  block.
+- The committed block keeps its deadline binding, stays a planned task with no
+  execution truth, and records planning-footprint provenance in the description.
+- The committed block appears on Calendar before cleanup.
+- Holmesberg synthetic writes remained scoped to the non-operator chaos account
+  and cleanup left no active timer.
+- Operator account stayed read-only; dashboard/export counts, route counts, and
+  dashboard snapshots did not change on `/operator` browser reads.
+
+Rollback note:
+
+- Revert the `commitInFlightRef` guard and pressure-map preview test selectors
+  only if a later backend atomic idempotency implementation makes duplicate UI
+  commits impossible independently of frontend state.
+- Revert only the product-loop pressure-map fixture/branch additions if the
+  verifier needs to roll back. They are harness-only and do not require runtime
+  data repair; synthetic Holmesberg rows/deadlines were cleaned after the pass.

@@ -173,7 +173,10 @@ journey through every modal.
 - brain-dump parse as write-free, commit as explicit mutation, editable parsed
   items, partial-failure review, edit/retry without retyping, and
   double-submit duplicate prevention;
-- pressure-map preview and dismiss-no-mutation;
+- pressure-map seeded deadline visibility, horizon API metadata, preview,
+  dismiss-no-mutation, editable recovery-block preview, double-lock guard,
+  deadline-bound planned-block commit, planning-footprint provenance, and
+  Calendar visibility;
 - timer start, pause, resume, completion/scope, stop, and delta projection;
 - insights/ClaimCompiler-safe response shape and forbidden-claim scan;
 - notification enqueue, web pending, toast/render path where available, and
@@ -196,6 +199,13 @@ node scripts\browser_holmesberg_product_loop_dogfood.mjs `
 The proxy is test-harness only. It lets local unreleased UI code exercise the
 public API without changing production CORS or weakening browser runtime
 contracts.
+
+When the public backend is in read-only pressure safe mode,
+`--force-pressure-recovery` may be added to fixture only the pressure-map
+recovery option returned to the browser. The fixture must preserve the real
+backend gate as a reported issue/gated item. It may test the UI commit seam, but
+it must not be cited as proof that the backend is emitting real recovery
+options.
 
 For waves that touch Pulse, task creation, deadlines, timers, calendar,
 pressure map, recovery, insights, notifications, provider display, table, or
@@ -241,8 +251,8 @@ exists.
 | Today execution | Task row start/stop, date nav, retroactive edit, overdue done, void/reschedule/drop. | partially browser covered |
 | Timer/focus | Start, pause, resume, stop, completion/scope, pause event, delta. | browser covered |
 | Timer chaos | Refresh/navigation while paused, long-lived stale session, one-active rejection, interruption/switch/open-thread recovery. | targeted |
-| Pressure map | Exposure metadata, horizon API, preview, dismiss-no-mutation. | browser covered |
-| Pressure-map planning | Horizon UI switches, edit preview, commit recovery block, created blocks appear in Today/Calendar. | targeted |
+| Pressure map | Exposure metadata, horizon API, seeded deadline visibility, preview, dismiss-no-mutation. | browser covered |
+| Pressure-map planning | Edit preview, double-lock guard, commit recovery block, deadline binding, planning-footprint provenance, created blocks appear in Calendar. | browser covered with gated backend recovery option |
 | Calendar | Day/week/month render; old/new tasks and deadlines visible. | partially browser covered |
 | Calendar mutation | Drag/resize planned tasks, reject immutable/executed/deadline/provider rows, dense overlap. | targeted |
 | Table | Route render; executed dogfood row/delta visible. | partially browser covered |
@@ -262,7 +272,8 @@ The current loop is broad, but not a replacement for every human dogfood path.
 It does not yet fully exercise:
 
 - calendar drag/resize/reschedule UI;
-- pressure-map recovery block commit from the UI;
+- real backend pressure-map recovery option emission while read-only pressure
+  safe mode is active;
 - table audit/correction flows;
 - notification action/expiry paths and linked-exposure notification cases;
 - forced insights held/unlocked/latency states;
@@ -274,12 +285,12 @@ script before treating the loop as sufficient.
 
 Highest-priority targeted scripts to add next:
 
-1. Pressure-map recovery-block commit through UI.
-2. Timer UI refresh/navigation during pause and long-lived session handling.
-3. Notification action/expiry lifecycle and linked exposure outcomes.
-4. Forced insights held/unlocked/latency states.
-5. Calendar drag/resize/reschedule and table correction flows.
-6. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.
+1. Timer UI refresh/navigation during pause and long-lived session handling.
+2. Notification action/expiry lifecycle and linked exposure outcomes.
+3. Forced insights held/unlocked/latency states.
+4. Calendar drag/resize/reschedule and table correction flows.
+5. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.
+6. Real pressure-map recovery options after pressure safe mode is lifted.
 
 ## Pass / Fail Rule
 
@@ -333,7 +344,7 @@ Use `docs/registries/refactor_stabilization_ledger.md` for refactor waves.
 Add targeted scripts for:
 
 - calendar drag/resize/reschedule;
-- pressure-map commit;
+- real pressure-map recovery options after pressure safe mode is lifted;
 - notification lifecycle action/expiry;
 - table correction;
 - insights held/unlocked latency.
