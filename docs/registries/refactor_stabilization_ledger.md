@@ -3874,8 +3874,16 @@ Behavior parity statement:
 
 CI/CD proof note:
 
-- Post-push GitHub Actions/PR check status must be recorded for this seam after
-  the branch is pushed.
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28551496478`.
+- Head SHA:
+  `e1216904047d3ec9bfceee3ee3b428b0ad30c9ea`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+- Verifier bug issue:
+  GitHub issue #156 was opened and closed as resolved by this commit.
 
 Rollback note:
 
