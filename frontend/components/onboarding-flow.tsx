@@ -112,6 +112,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
   // user knows which items didn't land before exiting onboarding.
   const [failures, setFailures] = useState<BrainDumpFailedItem[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const commitInFlightRef = useRef(false);
 
   useEffect(() => {
     if (step === "dump") textareaRef.current?.focus();
@@ -170,7 +171,8 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
   }
 
   async function handleCommit() {
-    if (committing) return;
+    if (committing || commitInFlightRef.current) return;
+    commitInFlightRef.current = true;
     setError(null);
     setCommitting(true);
     try {
@@ -204,11 +206,13 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
       if (res.failed_items && res.failed_items.length > 0) {
         setFailures(res.failed_items);
         setStep("review_failures");
+        commitInFlightRef.current = false;
         setCommitting(false);
         return;
       }
       onCompleted();
     } catch (e: unknown) {
+      commitInFlightRef.current = false;
       setError(
         e instanceof Error ? e.message : "Couldn't save your plan.",
       );

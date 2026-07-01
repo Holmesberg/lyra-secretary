@@ -157,6 +157,7 @@ export function BrainDumpQuickModal({
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const commitKeyRef = useRef<string | null>(null);
+  const commitInFlightRef = useRef(false);
 
   // Sync the textarea + step when the modal opens / seed changes.
   useEffect(() => {
@@ -170,6 +171,7 @@ export function BrainDumpQuickModal({
       setCommittedSummary(null);
       setError(null);
       commitKeyRef.current = null;
+      commitInFlightRef.current = false;
       // Focus the textarea on next tick so the autofocus lands after
       // the dialog's mount animation.
       setTimeout(() => textareaRef.current?.focus(), 50);
@@ -209,7 +211,8 @@ export function BrainDumpQuickModal({
   }
 
   async function handleCommit() {
-    if (committing) return;
+    if (committing || commitInFlightRef.current) return;
+    commitInFlightRef.current = true;
     setError(null);
     setCommitting(true);
     try {
@@ -268,11 +271,13 @@ export function BrainDumpQuickModal({
           bindings: res.bindings_applied,
         });
         setStep("review_failures");
+        commitInFlightRef.current = false;
         setCommitting(false);
         return;
       }
       onOpenChange(false);
     } catch (e: unknown) {
+      commitInFlightRef.current = false;
       setError(e instanceof Error ? e.message : "Couldn't save. Try again.");
       setCommitting(false);
     }
@@ -658,7 +663,10 @@ gym sat morning"
                 :
               </p>
             )}
-            <ul className="flex flex-col gap-2 rounded-sm border border-ember/30 bg-ember/[0.04] p-3">
+            <ul
+              data-testid="brain-dump-failures"
+              className="flex flex-col gap-2 rounded-sm border border-ember/30 bg-ember/[0.04] p-3"
+            >
               {failures.map((f) => (
                 <li key={f.item_id} className="text-xs">
                   <div className="font-mono text-[11px] text-parchment">
@@ -677,6 +685,7 @@ gym sat morning"
             <div className="flex flex-wrap justify-end gap-2 pt-1">
               {canMoveFailedToTomorrow && (
                 <button
+                  data-testid="brain-dump-move-failed-to-tomorrow"
                   type="button"
                   onClick={() =>
                     retryFailedItems({ movePastToTomorrow: true })
@@ -687,6 +696,7 @@ gym sat morning"
                 </button>
               )}
               <button
+                data-testid="brain-dump-edit-failed-items"
                 type="button"
                 onClick={() => retryFailedItems()}
                 className="rounded-sm border border-hairline bg-void-2/40 px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-parchment"
@@ -694,6 +704,7 @@ gym sat morning"
                 Edit failed items
               </button>
               <button
+                data-testid="brain-dump-failures-done"
                 type="button"
                 onClick={() => onOpenChange(false)}
                 className="rounded-sm border border-signal/40 bg-signal/10 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20"
