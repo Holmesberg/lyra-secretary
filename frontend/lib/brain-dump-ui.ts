@@ -1,4 +1,9 @@
-import type { BrainDumpBindingSuggestion } from "@/lib/brain-dump";
+import type {
+  BrainDumpBindingSuggestion,
+  BrainDumpCommitBinding,
+  BrainDumpCommitItem,
+  BrainDumpParsedItem,
+} from "@/lib/brain-dump";
 
 export type BrainDumpBindingChoice = "yes" | "no";
 
@@ -41,6 +46,44 @@ export function initialBindingChoices(
   }
 
   return choices;
+}
+
+export function buildBrainDumpCommitItems(
+  items: BrainDumpParsedItem[],
+): BrainDumpCommitItem[] {
+  return items.map((item) => ({
+    item_id: item.item_id,
+    kind: item.kind,
+    title: item.title,
+    description: item.description,
+    when_local: item.when_local,
+    duration_minutes: item.duration_minutes,
+    category: item.category,
+    category_source: item.category_source,
+    duration_source: item.duration_source,
+    duration_confidence: item.duration_confidence,
+    duration_basis: item.duration_basis,
+  }));
+}
+
+export function buildBrainDumpCommitBindings(
+  bindings: BrainDumpBindingSuggestion[],
+  bindingChoices: Record<string, BrainDumpBindingChoice>,
+): BrainDumpCommitBinding[] {
+  return bindings
+    .filter((binding) => bindingChoices[bindingKey(binding)] === "yes")
+    .map((binding) => ({
+      task_item_id: binding.task_item_id,
+      deadline_item_id:
+        binding.target_kind === "parsed_deadline"
+          ? binding.deadline_item_id
+          : null,
+      deadline_id:
+        binding.target_kind === "existing_deadline"
+          ? binding.deadline_id
+          : null,
+      target_kind: binding.target_kind,
+    }));
 }
 
 export function failureCopy(

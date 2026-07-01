@@ -2434,3 +2434,96 @@ Rollback note:
   snapshot from `tmp/e0-exposure-forensics/20260701172151-r3-invalidation-helper`
   and perform an explicit operator-approved data repair. No render evidence was
   fabricated, and no operator invariant was weakened.
+
+## R3 - Brain Dump Commit Builder Extraction
+
+Commit: pending R3 brain-dump commit-builder seam commit.
+
+Changed authority:
+
+- No brain-dump parse, commit, onboarding, Pulse, task, deadline, exposure, or
+  mutation authority changed.
+- `frontend/lib/brain-dump-ui.ts` now owns pure helpers for converting parsed
+  brain-dump items and selected bindings into commit API payloads.
+- Onboarding and Pulse continue to own their own state machines, user-visible
+  copy, commit timing, failure handling, idempotency keys, cache invalidation,
+  and close/step behavior.
+
+Removed paths:
+
+- Removed duplicated commit-item mapping from:
+  - `frontend/components/onboarding-flow.tsx`;
+  - `frontend/components/pulse/BrainDumpQuickModal.tsx`.
+- Removed duplicated selected-binding mapping from the same two surfaces.
+
+Parked paths:
+
+- A full shared brain-dump reducer remains parked. This seam deliberately does
+  not merge onboarding and Pulse state machines.
+- Surface-specific copy remains local. For example, Pulse still labels parsed
+  deadline bindings as "same dump" while onboarding uses "deadline".
+- Retry-copy wording, modal/onboarding step transitions, and failure rendering
+  remain local until a larger characterized extraction is justified.
+
+Moved authority:
+
+- Pure payload-shape construction moved into `brain-dump-ui`.
+- No runtime authority moved.
+
+Agent-loop findings:
+
+- The planned external explorers disconnected during the network interruption,
+  so this pass used a bounded local mini-loop instead of waiting on unavailable
+  agents.
+- The local loop found an exact duplicated pure transformation shared by
+  onboarding and Pulse, while avoiding copy/state/effect unification that would
+  change product behavior.
+
+Tests and verification:
+
+- Frontend production build:
+  `cd frontend && npm run build:public` passed. The build includes Next type
+  validity checks; there is no standalone `npm run typecheck` script.
+- Whitespace:
+  `git diff --check` passed with only CRLF conversion warnings.
+- Local-current frontend proof used `http://localhost:3013` with
+  `compiled_api_origin=http://localhost:8000` and build id
+  `dev-local-current`; topology remains mixed only because alternate
+  local-current ports are tracked separately in GitHub #147.
+- Holmesberg product-loop browser proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r3-brain-dump-commit-builders-local-current --out-dir tmp\browser-product-loop\r3-brain-dump-commit-builders-local-current`
+  passed.
+- Product-loop artifact:
+  `tmp/browser-product-loop/r3-brain-dump-commit-builders-local-current/result.json`.
+- Touched path coverage:
+  brain-dump parse was write-free; commit created task/deadline rows; partial
+  commit saved only the valid item; retry reopened only the failed item; edited
+  retry created the recovered item exactly once; double-submit created exactly
+  one task; export included committed task/deadline/session/pause/exposure and
+  notification rows; cleanup left no active timer and no unrendered synthetic
+  creation-nudge exposures.
+- Operator read-only proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-brain-dump-commit-builders-operator-local-current`
+  passed.
+- Operator read-only artifact:
+  `tmp/operator-readonly-stress-r3-brain-dump-commit-builders-operator-local-current/result.json`.
+- Operator outcome:
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, `cohort_status=yellow`, zero count diffs,
+  zero route count diffs, and zero dashboard snapshot diffs.
+
+Behavior parity statement:
+
+- Both surfaces send the same `BrainDumpCommitItem` fields and
+  `BrainDumpCommitBinding` fields as before.
+- Pulse still supplies its existing commit idempotency key and still invalidates
+  dashboard caches after commit.
+- Onboarding still calls the same commit endpoint without a commit key and
+  exits only after a clean commit.
+- Failure handling and review-failure behavior are unchanged.
+
+Rollback note:
+
+- Revert the R3 brain-dump commit-builder seam commit only. This restores local
+  payload mapping in onboarding and Pulse without touching backend code,
+  schemas, production data, or browser-verifier cleanup logic.

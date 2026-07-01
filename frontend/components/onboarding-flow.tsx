@@ -33,8 +33,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BrainDumpBindingSuggestion,
-  BrainDumpCommitBinding,
-  BrainDumpCommitItem,
   BrainDumpFailedItem,
   BrainDumpParsedItem,
   commitBrainDump,
@@ -42,6 +40,8 @@ import {
 } from "@/lib/brain-dump";
 import {
   bindingKey,
+  buildBrainDumpCommitBindings,
+  buildBrainDumpCommitItems,
   failureCopy,
   initialBindingChoices,
   localIsoNow,
@@ -176,29 +176,11 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
     setError(null);
     setCommitting(true);
     try {
-      const commitItems: BrainDumpCommitItem[] = items.map((i) => ({
-        item_id: i.item_id,
-        kind: i.kind,
-        title: i.title,
-        description: i.description,
-        when_local: i.when_local,
-        duration_minutes: i.duration_minutes,
-        category: i.category,
-        category_source: i.category_source,
-        duration_source: i.duration_source,
-        duration_confidence: i.duration_confidence,
-        duration_basis: i.duration_basis,
-      }));
-      const commitBindings: BrainDumpCommitBinding[] = bindings
-        .filter((b) => bindingChoices[bindingKey(b)] === "yes")
-        .map((b) => ({
-          task_item_id: b.task_item_id,
-          deadline_item_id:
-            b.target_kind === "parsed_deadline" ? b.deadline_item_id : null,
-          deadline_id:
-            b.target_kind === "existing_deadline" ? b.deadline_id : null,
-          target_kind: b.target_kind,
-        }));
+      const commitItems = buildBrainDumpCommitItems(items);
+      const commitBindings = buildBrainDumpCommitBindings(
+        bindings,
+        bindingChoices,
+      );
       const res = await commitBrainDump(commitItems, commitBindings);
       // LYR-114 fix: pause exit on failures so the user actually
       // sees which items didn't land. If everything committed
