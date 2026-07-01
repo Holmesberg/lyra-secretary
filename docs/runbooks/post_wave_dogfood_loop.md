@@ -319,7 +319,7 @@ exists.
 | Settings/export | Export registry sections and no secret markers. | API covered |
 | Settings/delete | Browser export download, staged delete, final hard-delete and Redis purge. | disposable-account gated |
 | Providers/integrations | Credential redaction, provider provenance, connect/disconnect/failure/import idempotency. | credential gated |
-| OpenClaw/operator relay | No accidental product-user exposure, no destructive drain before send, one delivery authority. | authority gated |
+| OpenClaw/operator relay | No accidental product-user exposure, no destructive drain before send, one delivery authority. | relay covered; compatibility pending endpoint operator-gated and peek-only |
 
 ## What The Loop Does Not Yet Prove
 

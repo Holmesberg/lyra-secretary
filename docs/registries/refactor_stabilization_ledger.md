@@ -3781,3 +3781,105 @@ Rollback note:
 - Revert the CI/CD provider credential Redis isolation commit only. This
   restores the test's live Redis dependency without touching runtime code,
   schemas, production data, exposure lifecycle rows, or user content.
+
+## R4 - OpenClaw Pending Compatibility Peek
+
+Changed authority:
+
+- OpenClaw operator relay remains the single delivery authority for operator
+  alerts.
+- `/v1/notifications/openclaw/pending` and legacy
+  `/v1/notifications/pending?channel=openclaw` are now operator-gated,
+  compatibility-only, and read-only.
+- The compatibility endpoints explicitly report
+  `delivery_authority=openclaw_operator_relay` and
+  `destructive_drain=false`.
+
+Removed paths:
+
+- Removed the internal `drain_user_notifications()` helper from
+  `notification_queue.py`.
+- Removed the HTTP path that destructively popped Redis queue items before
+  confirmed OpenClaw delivery.
+
+Parked paths:
+
+- Full OpenClaw runtime/service extraction remains parked.
+- GitHub Actions Node deprecation maintenance remains tracked by issue #155.
+- Frontend lint hard-gating remains parked behind issue #153.
+
+Moved authority:
+
+- Compatibility polling now uses `peek_user_notifications(..., channel="openclaw")`.
+- Reliable dequeue/ack/requeue/dead-letter authority remains in
+  `scripts/openclaw_operator_relay.mjs`.
+- Test Redis cleanup moved away from the OpenClaw product endpoint and into the
+  Redis test helper path.
+
+Agent-loop findings:
+
+- Explorer C identified the destructive `/openclaw/pending` endpoint as the
+  sharpest remaining authority risk because it used Redis `lpop` while the
+  relay already owned processing/ack/requeue semantics.
+- Conservative resolution: keep the route briefly for compatibility, but make
+  it operator-only and non-destructive. No schema migration and no runtime AI
+  wiring.
+
+Tests and verification:
+
+- Removed references:
+  `rg 'drain_user_notifications' backend/app backend/tests -n` returns no
+  matches.
+- Notification/OpenClaw tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_notification_queue_openclaw_mirror.py -q`
+  passed, `12 passed`.
+- Operator route security:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_route_security.py -q`
+  passed, `6 passed`.
+- Operator notifier:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_notifier.py -q`
+  passed, `7 passed`.
+- Multi-user notification isolation:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_multiuser_isolation_adversarial.py::test_notifications_per_user_isolated -q`
+  passed.
+- Relay reliability:
+  `node scripts\test_openclaw_operator_relay.mjs` passed with
+  restore/processing/ack/requeue/dead-letter checks.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-openclaw-pending-peek-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-openclaw-pending-peek-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `8140ms`, mobile `5673ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Web notification pending/ack behavior remains peek/ack based.
+- OpenClaw compatibility endpoints still return pending operator queue payloads
+  to the operator account, but no longer remove Redis items.
+- Non-operators cannot access the OpenClaw pending compatibility endpoint.
+- The reliable relay remains responsible for actual queue consumption and
+  confirmed delivery.
+
+CI/CD proof note:
+
+- Post-push GitHub Actions/PR check status must be recorded for this seam after
+  the branch is pushed.
+
+Rollback note:
+
+- Revert the R4 OpenClaw pending compatibility peek commit only. This restores
+  the previous destructive OpenClaw pending drain behavior without touching
+  schemas, production data, frontend code, exposure lifecycle rows, or user
+  content.

@@ -267,35 +267,3 @@ def ack_user_notifications(
         for raw in preserved:
             redis.client.rpush(key, raw)
     return removed
-
-
-def drain_user_notifications(
-    user_id: int,
-    *,
-    channel: str = "openclaw",
-) -> list[dict[str, Any]]:
-    """Drain pending notifications for one delivery channel.
-
-    The Redis queue is shared with OpenClaw for historical reasons. The web app
-    must not consume operator alerts because those payloads contain incident
-    triage text and reply-oriented instructions intended for the operator bot.
-    OpenClaw keeps the default full drain; the web channel preserves
-    ``operator_alert`` payloads in queue for OpenClaw and returns only
-    user-facing notifications.
-    """
-    redis = RedisClient()
-    key = _queue_key(int(user_id))
-    items: list[dict[str, Any]] = []
-    preserved: list[dict[str, Any]] = []
-    while True:
-        item = redis.client.lpop(key)
-        if not item:
-            break
-        payload = json.loads(item)
-        if channel == "web" and payload.get("type") == "operator_alert":
-            preserved.append(payload)
-            continue
-        items.append(payload)
-    for payload in preserved:
-        redis.client.rpush(key, json.dumps(payload, sort_keys=True))
-    return items

@@ -10,6 +10,7 @@ from app.db.models import (
 )
 from app.services import notification_queue
 from app.services.output_surfaces import create_output_surface_decision
+from tests.conftest import auth_headers
 
 
 class _FakeRedisClient:
@@ -231,11 +232,69 @@ def test_web_channel_preserves_operator_alerts_for_openclaw(monkeypatch):
         "operator_alert",
     ]
 
-    openclaw_items = notification_queue.drain_user_notifications(1)
+    openclaw_items = notification_queue.peek_user_notifications(1, channel="openclaw")
     assert [item["message"] for item in openclaw_items] == [
         "internal triage",
         "second alert",
     ]
+    assert [json.loads(raw)["type"] for raw in queue.items] == [
+        "operator_alert",
+        "operator_alert",
+    ]
+
+
+def test_openclaw_pending_endpoint_is_operator_only_peek(client, db, monkeypatch):
+    redis = _LifecycleRedis()
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+    operator = User(
+        email=f"openclaw-operator-{uuid4()}@example.test",
+        is_operator=True,
+    )
+    user = User(email=f"openclaw-user-{uuid4()}@example.test")
+    db.add_all([operator, user])
+    db.commit()
+
+    payload = {
+        "notification_id": f"op-alert-{uuid4()}",
+        "type": "operator_alert",
+        "message": "internal triage",
+    }
+    redis.rpush(
+        f"notifications:pending:{operator.user_id}",
+        json.dumps(payload, sort_keys=True),
+    )
+    before = list(redis.items)
+
+    forbidden = client.get(
+        "/v1/notifications/openclaw/pending",
+        headers=auth_headers(user.user_id),
+    )
+    assert forbidden.status_code == 403
+    assert redis.items == before
+
+    response = client.get(
+        "/v1/notifications/openclaw/pending",
+        headers=auth_headers(operator.user_id),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["compatibility_only"] is True
+    assert body["destructive_drain"] is False
+    assert body["delivery_authority"] == "openclaw_operator_relay"
+    assert body["notifications"] == [payload]
+    assert redis.items == before
+
+    legacy = client.get(
+        "/v1/notifications/pending?channel=openclaw",
+        headers=auth_headers(operator.user_id),
+    )
+    assert legacy.status_code == 200, legacy.text
+    assert legacy.json()["notifications"] == [payload]
+    assert redis.items == before
 
 
 class _LifecycleRedis:
