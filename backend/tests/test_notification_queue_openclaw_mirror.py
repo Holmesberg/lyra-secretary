@@ -2,8 +2,14 @@
 import json
 from uuid import uuid4
 
-from app.db.models import NotificationLifecycleEvent, User
+from app.db.models import (
+    ExposureAckEvent,
+    ExposureRenderEvent,
+    NotificationLifecycleEvent,
+    User,
+)
 from app.services import notification_queue
+from app.services.output_surfaces import create_output_surface_decision
 
 
 class _FakeRedisClient:
@@ -455,3 +461,109 @@ def test_notification_action_and_expiry_update_after_render_removal(db, monkeypa
     assert expired.rendered_at is not None
     assert expired.expired_at is not None
     assert expired.acted_at is None
+
+
+def test_linked_notification_render_records_exposure_once(db, monkeypatch):
+    redis = _LifecycleRedis()
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+    user = User(email=f"notification-linked-exposure-{uuid4()}@example.test")
+    db.add(user)
+    db.flush()
+    decision = create_output_surface_decision(
+        db,
+        surface_id="worker.resume_prediction",
+        user_id=user.user_id,
+        decision_status="delivered",
+        content_template_id="resume_prediction",
+        trigger_source="worker.resume_prediction",
+    )
+    db.commit()
+
+    notification_id = f"linked-exposure-{uuid4()}"
+    notification_queue.enqueue_user_notification(
+        user.user_id,
+        {
+            "notification_id": notification_id,
+            "type": "resume_prediction",
+            "message": "Pick it back up?",
+            "surface_id": "worker.resume_prediction",
+            "exposure_id": decision.exposure_id,
+        },
+        db=db,
+        surface_id="worker.resume_prediction",
+        exposure_id=decision.exposure_id,
+        content_snapshot="Pick it back up?",
+    )
+    db.commit()
+
+    pending = notification_queue.peek_user_notifications(user.user_id, db=db)
+    assert [row["notification_id"] for row in pending] == [notification_id]
+    removed = notification_queue.ack_user_notifications(
+        user.user_id,
+        [notification_id],
+        db=db,
+        event_type="rendered",
+    )
+    db.commit()
+
+    db.refresh(decision)
+    render_rows = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
+        .all()
+    )
+    ack_rows = (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == decision.exposure_id)
+        .all()
+    )
+    lifecycle = (
+        db.query(NotificationLifecycleEvent)
+        .filter(NotificationLifecycleEvent.notification_id == notification_id)
+        .one()
+    )
+    assert removed == 1
+    assert redis.items == []
+    assert decision.decision_status == "rendered"
+    assert lifecycle.status == "rendered"
+    assert lifecycle.exposure_id == decision.exposure_id
+    assert lifecycle.surface_id == "worker.resume_prediction"
+    assert len(render_rows) == 1
+    assert render_rows[0].surface == "worker.resume_prediction"
+    assert render_rows[0].channel == "notification_queue"
+    assert render_rows[0].content_snapshot == "Pick it back up?"
+    assert len(ack_rows) == 1
+    assert ack_rows[0].event_type == "render"
+    assert ack_rows[0].client_event_id == f"notification:{notification_id}"
+
+    assert notification_queue.ack_user_notifications(
+        user.user_id,
+        [notification_id],
+        db=db,
+        event_type="acted",
+    ) == 0
+    assert notification_queue.ack_user_notifications(
+        user.user_id,
+        [notification_id],
+        db=db,
+        event_type="rendered",
+    ) == 0
+    db.commit()
+
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
+        .count()
+    ) == 1
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == decision.exposure_id)
+        .count()
+    ) == 1
+    db.refresh(lifecycle)
+    assert lifecycle.status == "acted"
+    assert lifecycle.acted_at is not None
