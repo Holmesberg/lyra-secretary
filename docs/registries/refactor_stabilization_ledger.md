@@ -3431,3 +3431,89 @@ Rollback note:
 - Revert the R3 Pulse re-entry cache helper commit only. This restores inline
   invalidation calls without touching schemas, production data, backend code,
   exposure lifecycle rows, Redis data, or user content.
+
+## R3 - Brain Dump Binding Choice Helper
+
+Changed authority:
+
+- No product authority changed.
+- Pulse and onboarding still own their modal/page flows.
+- `frontend/lib/brain-dump-ui.ts` now owns the pure binding-choice transition
+  shared by both surfaces.
+
+Removed paths:
+
+- No runtime path was removed.
+- No route, schema, API payload, task/deadline mutation, exposure lifecycle row,
+  provider path, or onboarding completion path changed.
+
+Parked paths:
+
+- Full shared brain-dump reducer extraction remains parked.
+- First-run onboarding end-to-end browser automation remains parked until the
+  disposable-account path is ready.
+
+Moved authority:
+
+- The "choose yes/no and clear competing deadline bindings for the same parsed
+  task" transition moved from duplicate component-local functions into
+  `chooseBrainDumpBinding()`.
+
+Agent-loop findings:
+
+- Explorer D ranked this as the next-smallest R3 seam after query-key
+  invalidation. The duplicated Pulse/onboarding blocks were identical and
+  suitable for a pure helper; deeper reducer extraction remains too broad for
+  this pass.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Frontend typecheck-equivalent:
+  `npm exec tsc -- --noEmit --pretty false` passed from `frontend/`.
+- Health preflight:
+  local API `/v1/health` returned 200 and local frontend returned 200.
+- Holmesberg mutable product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r3-brain-dump-binding-helper-holmesberg-local-current --out-dir tmp\browser-product-loop\r3-brain-dump-binding-helper-holmesberg-local-current`
+  passed with `ok=true`.
+- Holmesberg product artifact:
+  `tmp/browser-product-loop/r3-brain-dump-binding-helper-holmesberg-local-current/result.json`.
+- Product-loop coverage included route renders, deadline linkage, edit mode,
+  creation nudge branches, brain-dump parse/commit, partial failure, retry,
+  double-submit protection, pressure-map commit, timer pause/resume/stop, export
+  evidence, exposure render/ack rows, notification lifecycle terminal rows,
+  operator leak checks, and cleanup proof.
+- Product-loop cleanup proof:
+  no active Holmesberg timer remained and no unrendered synthetic creation-nudge
+  exposure rows remained.
+- Non-fatal product-loop issues were classified as existing gated/verifier
+  conditions: onboarding gate skip for the chaos account, fallback deadline
+  picker use, parser title normalization, pressure safe-mode recovery fixture,
+  provider credential mutation, hard-delete purge, calendar drag/resize, and
+  OpenClaw pending drain. The deadline-suggestion UX budget remains tracked by
+  GitHub issue #149.
+- Operator-cookie browser proof after mutable loop:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-brain-dump-binding-helper-post-holmesberg-operator-local-current`
+  passed.
+- Operator artifact after mutable loop:
+  `tmp/operator-readonly-stress-r3-brain-dump-binding-helper-post-holmesberg-operator-local-current/result.json`.
+- Operator outcome after mutable loop:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `6110ms`, mobile `5145ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and
+  cohort status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Choosing "yes" for one binding still marks that binding "yes" and marks all
+  other bindings for the same parsed task "no".
+- Choosing "no" still only marks the selected binding "no".
+- Initial tier-1/tier-2 binding choice behavior is unchanged.
+
+Rollback note:
+
+- Revert the R3 brain-dump binding helper commit only. This restores duplicate
+  local helper bodies in Pulse and onboarding without touching schemas,
+  production data, backend code, exposure lifecycle rows, Redis data, or user
+  content.

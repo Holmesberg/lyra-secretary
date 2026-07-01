@@ -48,6 +48,25 @@ export function initialBindingChoices(
   return choices;
 }
 
+export function chooseBrainDumpBinding(
+  current: Record<string, BrainDumpBindingChoice>,
+  bindings: BrainDumpBindingSuggestion[],
+  binding: BrainDumpBindingSuggestion,
+  choice: BrainDumpBindingChoice,
+): Record<string, BrainDumpBindingChoice> {
+  const key = bindingKey(binding);
+  const next = { ...current, [key]: choice };
+  if (choice === "yes") {
+    for (const other of bindings) {
+      const otherKey = bindingKey(other);
+      if (other.task_item_id === binding.task_item_id && otherKey !== key) {
+        next[otherKey] = "no";
+      }
+    }
+  }
+  return next;
+}
+
 export function buildBrainDumpCommitItems(
   items: BrainDumpParsedItem[],
 ): BrainDumpCommitItem[] {
