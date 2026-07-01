@@ -2941,3 +2941,109 @@ Rollback note:
   `operator.py` and removes `operator_dashboard_metrics.py` without touching
   schemas, production data, frontend code, exposure rows, Redis data, or
   browser-verifier cleanup logic.
+
+## R4 - Exposure Terminal Classification Diagnostic Primitive
+
+Commit: `bfdba26 backend: centralize exposure terminal classification`.
+
+Changed authority:
+
+- No exposure write, render acknowledgement, suppression acknowledgement,
+  notification lifecycle transition, operator-readiness rule, schema, migration,
+  user-facing output surface, or production data changed.
+- `backend/app/services/exposure_ledger.py` now owns a pure
+  `classify_exposure_terminal_state(...)` diagnostic primitive that classifies
+  an existing decision from three inputs only: decision status, render-row
+  presence, and suppression-row presence.
+- `/v1/operator/dashboard` now uses the classifier to count actionable
+  missing-render exposure rows while preserving its existing non-blocking
+  treatment of queued and suppressed decisions.
+- `output_surface_diagnostics(...)` now uses the same classifier to count
+  missing terminal events while preserving the stricter dual-write meaning:
+  an actual render row or suppression row is terminal evidence.
+
+Removed paths:
+
+- Removed duplicate local exposure-terminal classification branches from the
+  operator dashboard and output-surface diagnostics.
+- No route, table, model, endpoint response field, lifecycle event, or cleanup
+  path was removed.
+
+Parked paths:
+
+- Output-surface delivery/worker extraction remains parked. Notification queue,
+  notification lifecycle transitions, render/suppression emitters, and
+  OpenClaw mirroring were deliberately not changed.
+- Analytics route-thin extraction remains parked.
+- Exposure repair tooling remains parked unless a future production-data repair
+  decision is explicitly authorized.
+
+Moved authority:
+
+- Diagnostic classification moved into the Exposure Ledger service as a
+  reusable measurement primitive.
+- No mutation authority moved. `ExposureLedger` still owns ledger writes through
+  its existing append-only record helpers; `OutputSurface` still owns registered
+  surface decisions/renders/suppressions; `/operator` remains read-only.
+
+Agent-loop findings:
+
+- The R4 output-surface explorer recommended this exact pure classifier seam as
+  the safest way to unify diagnostic meaning without touching delivery or
+  schema.
+- During implementation, a subtle distinction was preserved: a decision with
+  `decision_status="suppressed"` but no suppression row is non-actionable for
+  operator rollout, but it is still missing terminal evidence for output-surface
+  dual-write diagnostics.
+
+Tests and verification:
+
+- Focused diagnostic tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_exposure_ledger_v0.py::test_exposure_terminal_classifier_preserves_diagnostic_boundaries tests\test_output_surfaces.py::test_output_surface_diagnostics_reports_missing_terminal_event tests\test_operator_dashboard.py::test_operator_dashboard_does_not_block_on_suppressed_exposures tests\test_operator_dashboard.py::test_operator_dashboard_does_not_block_on_queued_notification_decisions -q`
+  passed (`4 passed`).
+- Broader contract tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_exposure_ledger_v0.py tests\test_output_surfaces.py -q`
+  passed (`53 passed`).
+- Python compile:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\exposure_ledger.py app\services\output_surfaces.py app\api\v1\endpoints\operator.py`
+  passed.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Static authority scan:
+  `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py`
+  passed in report-only mode with `missing_owner_count=0`.
+- Static refactor contract scan:
+  `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py`
+  passed with zero findings.
+- Operator read-only proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-exposure-terminal-classifier-v2-operator-local-current`
+  passed.
+- Operator read-only artifact:
+  `tmp/operator-readonly-stress-r4-exposure-terminal-classifier-v2-operator-local-current/result.json`.
+- Operator outcome:
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, `cohort_status=yellow`, zero count diffs,
+  zero route count diffs, zero dashboard snapshot diffs, and no verifier
+  warnings.
+- Issue tracking:
+  the earlier intermittent desktop `/operator` latency warning remains tracked
+  in GitHub #150. This corrected-code run completed under the 12s desktop
+  budget (`11682ms`).
+
+Behavior parity statement:
+
+- Operator readiness still blocks only on actionable exposure decisions missing
+  render or suppression evidence.
+- Queued notification decisions remain counted separately and do not block
+  rollout.
+- Suppressed decisions remain non-actionable for operator readiness, but
+  output-surface dual-write diagnostics still require a real suppression row to
+  count as terminal evidence.
+- No user-facing claim, synthesis, intervention, or AI runtime path was added.
+
+Rollback note:
+
+- Revert `bfdba26` only. This restores the local classification branches in
+  `operator.py` and `output_surfaces.py` and removes
+  `classify_exposure_terminal_state(...)` plus its test, without touching
+  schemas, production data, frontend code, Redis data, or lifecycle rows.
