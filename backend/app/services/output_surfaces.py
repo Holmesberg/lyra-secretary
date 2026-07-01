@@ -589,6 +589,59 @@ def render_existing_surface_decision(
     return True
 
 
+def suppress_existing_surface_decision(
+    db: Session,
+    *,
+    exposure_id: str,
+    user_id: int,
+    suppression_reason: str,
+    suppressed_at=None,
+) -> tuple[SuppressionEvent | None, bool, str]:
+    """Mark an already-created decision as intentionally not rendered.
+
+    Browser clients use this when a latency-sensitive lookup creates a
+    delivered decision, but a later UI branch discards the card before it
+    reaches the render boundary. This is suppression evidence, not exposure
+    evidence.
+    """
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == exposure_id)
+        .first()
+    )
+    if decision is None:
+        raise LookupError("exposure_decision_not_found")
+    if int(decision.user_id) != int(user_id):
+        raise PermissionError("exposure_suppression_wrong_user")
+
+    existing_render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == exposure_id)
+        .first()
+    )
+    if existing_render is not None or decision.decision_status == "rendered":
+        return None, False, "already_rendered"
+
+    existing_suppression = (
+        db.query(SuppressionEvent)
+        .filter(SuppressionEvent.exposure_id == exposure_id)
+        .first()
+    )
+    if existing_suppression is not None:
+        return existing_suppression, False, "already_suppressed"
+
+    suppressed_at = strip_tz(suppressed_at or now_utc())
+    decision.decision_status = "suppressed"
+    suppression = record_suppression(
+        db,
+        exposure_id=exposure_id,
+        suppressed_at=suppressed_at,
+        suppression_reason=suppression_reason,
+        would_have_rendered_template_id=decision.content_template_id,
+    )
+    return suppression, True, "suppressed"
+
+
 def _candidate_tasks_for_profile(
     db: Session,
     *,

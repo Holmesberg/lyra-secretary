@@ -28,6 +28,7 @@ from app.services.output_surfaces import (
     RULE11_CONTROL_ARM,
     RULE11_POLICY_VERSION,
     acknowledge_surface_render,
+    create_output_surface_decision,
     emit_surface_render,
     emit_surface_suppression,
     get_output_surface_spec,
@@ -36,6 +37,7 @@ from app.services.output_surfaces import (
     projection_class_for_profile,
     rule11_no_nudge_control_active,
     rule11_randomization_fields,
+    suppress_existing_surface_decision,
 )
 from app.utils.time_utils import now_utc
 from tests.conftest import auth_headers
@@ -393,6 +395,121 @@ def test_render_ack_endpoint_rejects_cross_account_forgery(db, client):
     assert (
         db.query(ExposureAckEvent)
         .filter(ExposureAckEvent.exposure_id == emitted["exposure_id"])
+        .count()
+    ) == 0
+
+
+def test_existing_decision_suppression_is_idempotent(db):
+    user = User(email=f"suppress-existing-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+    old_stamp = datetime.utcnow() - timedelta(days=30)
+    decision = create_output_surface_decision(
+        db,
+        surface_id="task.creation_nudge",
+        user_id=user.user_id,
+        decision_status="delivered",
+        eligible_at=old_stamp,
+        content_template_id="task_creation_nudge_lookup",
+        trigger_source="analytics.bias_factor.lookup",
+        delivered_at=old_stamp,
+    )
+    decision.created_at = old_stamp
+    db.commit()
+
+    first, first_created, first_status = suppress_existing_surface_decision(
+        db,
+        exposure_id=decision.exposure_id,
+        user_id=user.user_id,
+        suppression_reason="client_discarded_before_render",
+        suppressed_at=old_stamp,
+    )
+    second, second_created, second_status = suppress_existing_surface_decision(
+        db,
+        exposure_id=decision.exposure_id,
+        user_id=user.user_id,
+        suppression_reason="client_discarded_before_render",
+        suppressed_at=old_stamp,
+    )
+    db.commit()
+
+    assert first is not None
+    assert second is not None
+    assert first_created is True
+    assert second_created is False
+    assert first_status == "suppressed"
+    assert second_status == "already_suppressed"
+    assert second.suppression_id == first.suppression_id
+    assert (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == decision.exposure_id)
+        .one()
+        .decision_status
+    ) == "suppressed"
+    assert (
+        db.query(SuppressionEvent)
+        .filter(SuppressionEvent.exposure_id == decision.exposure_id)
+        .count()
+    ) == 1
+
+
+def test_existing_decision_suppression_endpoint_rejects_rendered_decision(db, client):
+    user = User(email=f"suppress-rendered-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+    emitted = emit_surface_render(
+        db,
+        surface_id="task.creation_nudge",
+        user_id=user.user_id,
+        content_snapshot={"kind": "rendered"},
+    )
+    db.commit()
+
+    response = client.post(
+        f"/v1/exposures/{emitted['exposure_id']}/ack/suppress",
+        json={"suppression_reason": "client_discarded_before_render"},
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["created"] is False
+    assert response.json()["status"] == "already_rendered"
+    assert (
+        db.query(SuppressionEvent)
+        .filter(SuppressionEvent.exposure_id == emitted["exposure_id"])
+        .count()
+    ) == 0
+
+
+def test_existing_decision_suppression_endpoint_rejects_cross_account(db, client):
+    owner = User(email=f"suppress-owner-{uuid4()}@example.com", timezone="Africa/Cairo")
+    other = User(email=f"suppress-other-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add_all([owner, other])
+    db.flush()
+    old_stamp = datetime.utcnow() - timedelta(days=30)
+    decision = create_output_surface_decision(
+        db,
+        surface_id="task.creation_nudge",
+        user_id=owner.user_id,
+        decision_status="delivered",
+        eligible_at=old_stamp,
+        content_template_id="task_creation_nudge_lookup",
+        trigger_source="analytics.bias_factor.lookup",
+        delivered_at=old_stamp,
+    )
+    decision.created_at = old_stamp
+    db.commit()
+
+    response = client.post(
+        f"/v1/exposures/{decision.exposure_id}/ack/suppress",
+        json={"suppression_reason": "client_discarded_before_render"},
+        headers=auth_headers(other.user_id),
+    )
+
+    assert response.status_code in {403, 404}
+    assert (
+        db.query(SuppressionEvent)
+        .filter(SuppressionEvent.exposure_id == decision.exposure_id)
         .count()
     ) == 0
 

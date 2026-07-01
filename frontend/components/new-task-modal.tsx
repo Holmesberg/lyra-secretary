@@ -32,7 +32,7 @@ import {
   roundTo5,
   timeOfDay,
 } from "@/lib/task-time";
-import { ackExposureRender } from "@/lib/api";
+import { ackExposureRender, ackExposureSuppression } from "@/lib/api";
 import {
   listDeadlines,
   previewDeadlineBinding,
@@ -57,6 +57,10 @@ const RESEARCH_PRIORS: Record<string, { biasFactor: number; citation: string }> 
 };
 const pendingCreationNudgeRenderAcks = new Set<string>();
 const ackedCreationNudgeRenders = new Set<string>();
+const pendingCreationNudgeSuppressions = new Set<string>();
+const suppressedCreationNudgeExposures = new Set<string>();
+const CREATION_NUDGE_RENDER_ACK_RETRY_MS = [250, 750, 1500, 3000, 6000];
+const CREATION_NUDGE_SUPPRESSION_RETRY_MS = [500, 1500, 3000];
 const CREATION_NUDGE_EXPOSURE_TTL_MS = 30_000;
 const creationNudgeExposureIds = new Map<string, { exposureId: string; expiresAt: number }>();
 
@@ -79,7 +83,11 @@ function exposureIdForCreationNudge(category: string, tod: string, planned: numb
   return exposureId;
 }
 
-function ackCreationNudgeRender(exposureId: string, contentSnapshot: Record<string, unknown>) {
+function ackCreationNudgeRender(
+  exposureId: string,
+  contentSnapshot: Record<string, unknown>,
+  attempt = 0
+) {
   if (
     pendingCreationNudgeRenderAcks.has(exposureId) ||
     ackedCreationNudgeRenders.has(exposureId)
@@ -93,10 +101,48 @@ function ackCreationNudgeRender(exposureId: string, contentSnapshot: Record<stri
     contentSnapshot,
   })
     .then((ok) => {
-      if (ok) ackedCreationNudgeRenders.add(exposureId);
+      if (ok) {
+        ackedCreationNudgeRenders.add(exposureId);
+        return;
+      }
+      const retryDelay = CREATION_NUDGE_RENDER_ACK_RETRY_MS[attempt];
+      if (retryDelay !== undefined) {
+        globalThis.setTimeout(() => {
+          ackCreationNudgeRender(exposureId, contentSnapshot, attempt + 1);
+        }, retryDelay);
+      }
     })
     .finally(() => {
       pendingCreationNudgeRenderAcks.delete(exposureId);
+    });
+}
+
+function suppressCreationNudgeExposure(exposureId: string, attempt = 0) {
+  if (
+    pendingCreationNudgeSuppressions.has(exposureId) ||
+    suppressedCreationNudgeExposures.has(exposureId) ||
+    ackedCreationNudgeRenders.has(exposureId)
+  ) {
+    return;
+  }
+  pendingCreationNudgeSuppressions.add(exposureId);
+  void ackExposureSuppression(exposureId, {
+    suppressionReason: "client_discarded_before_render",
+  })
+    .then((ok) => {
+      if (ok) {
+        suppressedCreationNudgeExposures.add(exposureId);
+        return;
+      }
+      const retryDelay = CREATION_NUDGE_SUPPRESSION_RETRY_MS[attempt];
+      if (retryDelay !== undefined) {
+        globalThis.setTimeout(() => {
+          suppressCreationNudgeExposure(exposureId, attempt + 1);
+        }, retryDelay);
+      }
+    })
+    .finally(() => {
+      pendingCreationNudgeSuppressions.delete(exposureId);
     });
 }
 
@@ -216,6 +262,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     exposureId?: string | null;
     backendReady?: boolean;
   } | null>(null);
+  const creationNudgeExposureRef = useRef<string | null>(null);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
   // rest of this modal session. Prevents the re-suggestion loop the
@@ -306,6 +353,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       const occupancyTriggered =
         occupancyFactor !== null && occupancyFactor >= threshold && pauseOverheadSampleSize >= 3;
       if (!res.cell || magnitude === null || (!executionTriggered && !occupancyTriggered)) {
+        if (res.exposure_id && !res.suppressed_reason) {
+          suppressCreationNudgeExposure(res.exposure_id);
+        }
         if (!abortCtl.signal.aborted) {
           setCalibrationNudge(null);
           setNudgeSource(null);
@@ -328,7 +378,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         planned_minutes: planned,
       };
       if (abortCtl.signal.aborted) {
-        ackCreationNudgeRender(backendExposureId, contentSnapshot);
+        suppressCreationNudgeExposure(backendExposureId);
         return true;
       }
       setCalibrationNudge({
@@ -372,12 +422,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, category, start, end, durHours, durMinutes, isEdit, editScheduleTouched, nudgeDecisionMade]);
 
-  useEffect(() => {
-    const exposureId = calibrationNudge?.exposureId;
-    if (!exposureId || !calibrationNudge.backendReady) {
-      return;
+  const creationNudgeRenderSnapshot = () => {
+    if (!calibrationNudge) {
+      return null;
     }
-    ackCreationNudgeRender(exposureId, {
+    return {
       template: "task_creation_nudge_lookup",
       category: calibrationNudge.cell.category,
       time_of_day: calibrationNudge.cell.time_of_day,
@@ -389,8 +438,56 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       occupancy_suggested_minutes: calibrationNudge.occupancySuggestedMin,
       occupancy_strategy: calibrationNudge.occupancyStrategy,
       planned_minutes: durHours * 60 + durMinutes,
-    });
+    };
+  };
+
+  const ackVisibleCreationNudge = () => {
+    const exposureId = calibrationNudge?.exposureId;
+    const contentSnapshot = creationNudgeRenderSnapshot();
+    if (!exposureId || !contentSnapshot) {
+      return;
+    }
+    ackCreationNudgeRender(exposureId, contentSnapshot);
+  };
+
+  useEffect(() => {
+    if (!calibrationNudge?.exposureId || !calibrationNudge.backendReady) {
+      return;
+    }
+    ackVisibleCreationNudge();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calibrationNudge, durHours, durMinutes, nudgeSource]);
+
+  useEffect(() => {
+    const currentExposureId =
+      calibrationNudge?.backendReady && calibrationNudge.exposureId
+        ? calibrationNudge.exposureId
+        : null;
+    const previousExposureId = creationNudgeExposureRef.current;
+    if (
+      previousExposureId &&
+      previousExposureId !== currentExposureId &&
+      !pendingCreationNudgeRenderAcks.has(previousExposureId) &&
+      !ackedCreationNudgeRenders.has(previousExposureId)
+    ) {
+      suppressCreationNudgeExposure(previousExposureId);
+    }
+    creationNudgeExposureRef.current = currentExposureId;
+  }, [calibrationNudge?.backendReady, calibrationNudge?.exposureId]);
+
+  useEffect(() => {
+    return () => {
+      const previousExposureId = creationNudgeExposureRef.current;
+      if (
+        previousExposureId &&
+        !pendingCreationNudgeRenderAcks.has(previousExposureId) &&
+        !ackedCreationNudgeRenders.has(previousExposureId)
+      ) {
+        suppressCreationNudgeExposure(previousExposureId);
+      }
+      creationNudgeExposureRef.current = null;
+    };
+  }, []);
 
   // Loop 11 Phase K — Pass 2 deadline-binding preview.
   //
@@ -1235,6 +1332,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => {
                     const newMin = calibrationNudge.suggestedMin;
+                    ackVisibleCreationNudge();
                     setNudgeDecisionData({
                       decision: "accepted",
                       suggested_minutes: calibrationNudge.suggestedMin,
@@ -1257,6 +1355,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   disabled={!calibrationNudge.exposureId}
                   className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => {
+                    ackVisibleCreationNudge();
                     setNudgeDecisionData({
                       decision: "dismissed",
                       suggested_minutes: calibrationNudge.suggestedMin,

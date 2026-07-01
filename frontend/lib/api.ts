@@ -158,3 +158,23 @@ export async function ackExposureRender(
     return false;
   }
 }
+
+export async function ackExposureSuppression(
+  exposureId: string | null | undefined,
+  details?: { suppressionReason?: string }
+): Promise<boolean> {
+  if (!exposureId) return false;
+  try {
+    await api(`/v1/exposures/${encodeURIComponent(exposureId)}/ack/suppress`, {
+      method: "POST",
+      body: JSON.stringify({
+        suppression_reason: details?.suppressionReason || "client_discarded_before_render",
+      }),
+    });
+    return true;
+  } catch {
+    // Like render acknowledgement, suppression telemetry must never block the
+    // user's current action. Missing suppression stays visible in /operator.
+    return false;
+  }
+}
