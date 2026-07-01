@@ -2203,3 +2203,101 @@ Rollback note:
 
 - Revert the R5a docs-authority seam commit only. This restores the previous
   wording in the touched docs and ledger without touching product code or data.
+
+## R3 - Deadline Picker Slot Presentational Extraction
+
+Commit: pending R3 deadline-picker-slot seam commit.
+
+Changed authority:
+
+- No task, deadline, parser, nudge, exposure, or mutation authority changed.
+- `DeadlinePickerSlot` moved from a nested `NewTaskModal` function into
+  `frontend/components/deadline-picker-slot.tsx` as a presentational component.
+- `NewTaskModal` still owns deadline choice state, parser suggestion state,
+  render acknowledgement, submit/edit/interruption payloads, conflict handling,
+  and all mutation decisions.
+
+Removed paths:
+
+- Removed the nested `DeadlinePickerSlot` body from
+  `frontend/components/new-task-modal.tsx`.
+
+Parked paths:
+
+- Creation nudge state/effects remain in `NewTaskModal`; they are not moved in
+  this seam because they carry exposure authority.
+- Deadline preview effects remain in `NewTaskModal`; they are not moved in this
+  seam because render acknowledgement and suggestion state are authority
+  sensitive.
+- Create-payload deduplication remains parked because the full-agent preflight
+  found existing create/force/interruption branch asymmetry that needs a
+  characterized bug-fix pass, not a pure extraction.
+- Stopwatch controller extraction and broad `invalidateDomain()` adoption remain
+  parked. Full-agent preflight recommended smaller invalidation-helper seams
+  first.
+
+Moved authority:
+
+- None. This is a UI rendering extraction only.
+
+Agent-loop findings:
+
+- New-task explorer recommended extracting only the nested deadline picker first
+  and preserving all modal-owned state/effects.
+- Timer explorer recommended not extracting the stopwatch controller yet; the
+  safer future seam is an exact timer command invalidation helper.
+- Brain-dump/pressure explorer recommended exact invalidation recipes rather
+  than broad domain invalidation or planner extraction.
+
+Tests and verification:
+
+- Frontend production build:
+  `cd frontend && npm run build:public` passed. The build includes Next type
+  validity checks; there is no standalone `npm run typecheck` script.
+- Whitespace:
+  `git diff --check` passed after removing a trailing blank line from the modal.
+- Local-current frontend proof used `http://localhost:3013` because WSL/Docker
+  owns canonical local port `3000`. The dev server reported
+  `compiled_api_origin=http://localhost:8000` and build id `dev-local-current`;
+  topology verification marked it mixed only because the manifest does not
+  recognize alternate local-current ports.
+- Holmesberg product-loop browser proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --run-id r3-deadline-picker-slot-local-current --out-dir tmp\browser-product-loop\r3-deadline-picker-slot-local-current`
+  passed the touched deadline-picker branches before a later verifier timeout:
+  deadline UI create, task binding, soft conflict create-anyway, creation nudge
+  keep, no-deadline branch, custom category persistence, pick-another explicit
+  deadline binding, and terminal-deadline picker filtering setup.
+- Verifier issue:
+  GitHub #146 tracks the product-loop edit-visibility timeout after backend
+  explicit binding had already passed.
+- Topology verifier issue:
+  GitHub #147 tracks alternate local-current frontend ports being reported as
+  mixed topology.
+- Cleanup proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --cleanup-only --prefix "DOGFOOD 17f3964b" --run-id r3-deadline-picker-slot-cleanup --out-dir tmp\browser-product-loop\r3-deadline-picker-slot-cleanup`
+  passed. A follow-up residue probe found no matching synthetic tasks and only
+  voided DOGFOOD/Zephyr/Orion synthetic deadlines.
+- Operator read-only proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-deadline-picker-slot-operator-local-current`
+  passed with zero count diffs, zero dashboard snapshot diffs, and
+  `exposure_without_render_count=0`.
+- Operator read-only stress artifact:
+  `tmp/operator-readonly-stress-r3-deadline-picker-slot-operator-local-current/result.json`.
+
+Behavior parity statement:
+
+- The extracted component calls the same callbacks with the same values and
+  still fetches bindable deadlines only when the picker is open.
+- Bindable deadline filtering remains `planned` or `active` state on top of the
+  backend list endpoint's non-voided default.
+- Deadline suggestion confirmation, pick-another, no-deadline, clear binding,
+  manual picker, and empty/loading states render the same data-testid hooks.
+- `/operator` remained implementation-green/cohort-yellow and read-only during
+  browser stress.
+
+Rollback note:
+
+- Revert the R3 deadline-picker-slot seam commit only. This restores the nested
+  component in `NewTaskModal` and removes
+  `frontend/components/deadline-picker-slot.tsx` without touching backend code,
+  production data, exposure rows, or task/deadline mutation authority.
