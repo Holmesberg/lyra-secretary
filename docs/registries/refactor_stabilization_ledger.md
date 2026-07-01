@@ -2737,7 +2737,7 @@ Rollback note:
 
 ## R3 - Calibration Nudge Card Presentational Extraction
 
-Commit: pending R3 calibration-nudge-card seam commit.
+Commit: `e2e0e6e frontend: extract calibration nudge card`.
 
 Changed authority:
 
