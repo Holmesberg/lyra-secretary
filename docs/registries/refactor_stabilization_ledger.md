@@ -1345,10 +1345,11 @@ Parked paths:
 
 - Calendar drag/resize, provider credential mutation, OpenClaw pending drain,
   and hard account delete remain gated.
-- Targeted Playwright scripts still remain for NewTaskModal edit/conflict
-  branches, brain-dump retry/partial failure, pressure-map commit, long-lived
-  timer pause/navigation, notification action/expiry, forced insights states,
-  calendar mutation, and table correction/export.
+- Targeted Playwright scripts still remain for brain-dump retry/partial
+  failure, pressure-map commit, long-lived timer pause/navigation,
+  notification action/expiry, forced insights states, calendar mutation, and
+  table correction/export. NewTaskModal branch coverage was completed in the
+  later `S1c/R3 - NewTaskModal Branch Coverage Proof` entry.
 
 Moved authority:
 
@@ -1417,9 +1418,8 @@ Removed paths:
 
 Parked paths:
 
-- `NewTaskModal` edit mode, terminal deadline rejection, custom category,
-  no-bind/pick-another, and nudge-dismiss outcome remain targeted browser
-  coverage.
+- NewTaskModal branch coverage was completed in the later
+  `S1c/R3 - NewTaskModal Branch Coverage Proof` entry.
 - Calendar drag/resize, provider credential mutation, OpenClaw pending drain,
   hard account delete, notification action/expiry, and forced insights states
   remain gated or targeted.
@@ -1472,3 +1472,78 @@ Rollback note:
   should require an explicit exposure-retention decision.
 - Revert only the dogfood selector/branch additions if the harness needs to be
   rolled back; they do not change user/product runtime authority.
+
+## S1c/R3 - NewTaskModal Branch Coverage Proof
+
+Commit: uncommitted browser-coverage hardening pass.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Expanded the Holmesberg product-loop verifier to cover additional
+  `NewTaskModal` branches through public browser runtime.
+- Added test-only selectors for category/custom-category controls so the
+  browser verifier can prove custom-category persistence without relying on
+  brittle CSS shape.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Brain-dump partial failure/retry/edit, pressure-map recovery commit,
+  long-lived timer/navigation, notification action/expiry, forced insights
+  states, calendar mutation, table correction/export, provider credentials,
+  and hard account delete remain targeted or gated.
+- `NewTaskModal` nudge absent/error states and rapid double-submit races remain
+  targeted.
+
+Moved authority:
+
+- No product authority moved.
+- Browser verification now treats deadline-preview suggestions as
+  exposure-sensitive render surfaces with captured request/response diagnostics.
+
+Tests and verification:
+
+- Focused Holmesberg product-loop browser pass:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology public -RunId newtask-branches-20260701-053720`
+- Focused output:
+  `tmp/browser-product-loop/2026-07-01T02-37-21-583Z/result.json`.
+- Operator read-only browser stress after the focused mutable pass:
+  `tmp/operator-readonly-stress-2026-07-01T02-41-57-136Z`.
+- Full reusable post-wave wrapper:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode standard -IncludeProductLoop -WaveName new-task-branch-coverage`
+- Full wrapper output:
+  `tmp/post-wave-dogfood/20260701-054334-new-task-branch-coverage-standard-public`.
+- Nested Holmesberg product-loop result:
+  `tmp/post-wave-dogfood/20260701-054334-new-task-branch-coverage-standard-public/holmesberg-product-loop/result.json`.
+- Final operator read-only stress result:
+  `tmp/operator-readonly-stress-2026-07-01T02-54-16-423Z`.
+- `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs`.
+
+Behavior parity statement:
+
+- Operator account stayed read-only; dashboard/export counts, route counts, and
+  dashboard snapshots did not change on `/operator` browser reads.
+- Holmesberg synthetic writes remained scoped to the non-operator chaos account
+  and cleanup left no active timer.
+- Public browser proof now covers `NewTaskModal` no-deadline, pick-another,
+  custom category, edit mode, terminal-deadline API rejection, terminal deadline
+  picker exclusion, duration-nudge Use/Keep, and soft-conflict Create anyway.
+- Deadline-preview diagnostic captures proved the API returned
+  `task.deadline_binding_suggestion` exposure/render metadata for browser
+  suggestions.
+- The verifier discovered and corrected a harness lie: Playwright
+  `isVisible()` is not a real wait for this branch; the deadline suggestion
+  helper now uses `waitFor({ state: "visible" })`.
+- The verifier also discovered that shared synthetic deadline tokens can
+  correctly trigger the production heuristic's multi-competitive suppression;
+  branch fixtures now avoid ambiguous shared tokens.
+
+Rollback note:
+
+- Revert only the test-id additions and Holmesberg product-loop branch coverage
+  changes if the verifier must be rolled back. No runtime data repair is
+  required; synthetic Holmesberg rows were voided/deleted by cleanup.

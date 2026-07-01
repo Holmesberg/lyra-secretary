@@ -167,6 +167,9 @@ journey through every modal.
 - task creation through the browser, including deadline binding;
 - creation-nudge Use/Keep outcomes plus exposure render acknowledgement;
 - overlapping planned-task soft conflict and explicit Create anyway branch;
+- NewTaskModal edit mode, terminal-deadline API rejection, terminal deadline
+  picker exclusion, custom category, no-deadline branch, and pick-another
+  override branch;
 - brain-dump parse as write-free and commit as explicit mutation;
 - pressure-map preview and dismiss-no-mutation;
 - timer start, pause, resume, completion/scope, stop, and delta projection;
@@ -216,7 +219,7 @@ exists.
 | Brain dump | Parse is write-free; commit creates intended task/deadline/binding. | browser covered |
 | Brain dump chaos | Edit parsed items, partial failure, retry, duplicate commit/idempotency, existing-deadline binding. | targeted |
 | New task modal | Create task, bind deadline, duration nudge exposure, Use/Keep nudge outcomes, create-anyway soft conflict when present. | browser covered |
-| New task branches | Edit mode, terminal deadline rejection, custom category, no-bind/pick-another, Dismiss nudge outcome. | targeted |
+| New task branches | Edit mode, terminal deadline rejection, terminal deadline picker exclusion, custom category, no-bind, pick-another, and nudge Keep/dismissed outcome. | browser covered |
 | Deadlines | Create, edit, complete/skip/reopen staging, void confirm/cancel, duplicate warning. | partially browser covered |
 | Today execution | Task row start/stop, date nav, retroactive edit, overdue done, void/reschedule/drop. | partially browser covered |
 | Timer/focus | Start, pause, resume, stop, completion/scope, pause event, delta. | browser covered |
@@ -241,8 +244,7 @@ exists.
 The current loop is broad, but not a replacement for every human dogfood path.
 It does not yet fully exercise:
 
-- every `NewTaskModal` branch: edit mode, terminal deadline rejection,
-  custom category, nudge dismiss, and all no-bind/pick-another branches;
+- `NewTaskModal` nudge absent/error states and rapid double-submit races;
 - calendar drag/resize/reschedule UI;
 - pressure-map recovery block commit from the UI;
 - table audit/correction flows;
@@ -256,14 +258,12 @@ script before treating the loop as sufficient.
 
 Highest-priority targeted scripts to add next:
 
-1. `NewTaskModal` edit mode, terminal deadline rejection, custom category,
-   no-bind/pick-another, and nudge-dismiss outcome.
-2. Brain dump modal partial failure, edit/retry, and duplicate commit.
-3. Pressure-map recovery-block commit through UI.
-4. Timer UI refresh/navigation during pause and long-lived session handling.
-5. Notification action/expiry lifecycle and linked exposure outcomes.
-6. Forced insights held/unlocked/latency states.
-7. Calendar drag/resize/reschedule and table correction flows.
+1. Brain dump modal partial failure, edit/retry, and duplicate commit.
+2. Pressure-map recovery-block commit through UI.
+3. Timer UI refresh/navigation during pause and long-lived session handling.
+4. Notification action/expiry lifecycle and linked exposure outcomes.
+5. Forced insights held/unlocked/latency states.
+6. Calendar drag/resize/reschedule and table correction flows.
 
 ## Pass / Fail Rule
 
@@ -316,7 +316,6 @@ Use `docs/registries/refactor_stabilization_ledger.md` for refactor waves.
 
 Add targeted scripts for:
 
-- `NewTaskModal` edit/conflict/terminal-deadline UX;
 - calendar drag/resize/reschedule;
 - pressure-map commit;
 - notification lifecycle action/expiry;

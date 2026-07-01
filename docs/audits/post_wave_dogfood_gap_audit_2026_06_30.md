@@ -21,6 +21,7 @@ Latest proof:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode standard -IncludeProductLoop -WaveName full-documented-surface-chain-conflict-branch
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode standard -IncludeProductLoop -WaveName new-task-branch-coverage
 ```
 
 Result:
@@ -28,6 +29,8 @@ Result:
 - status: passed
 - output:
   `tmp/post-wave-dogfood/20260701-043838-full-documented-surface-chain-conflict-branch-standard-public`
+- latest output:
+  `tmp/post-wave-dogfood/20260701-054334-new-task-branch-coverage-standard-public`
 - operator cookie: `LYRA_COOKIE_ALINASSERSABRY`
 - non-operator cookie: `LYRA_COOKIE_HOLMESBERG`
 - mutable writes: Holmesberg synthetic task/deadline/timer/notification rows;
@@ -36,6 +39,8 @@ Result:
 - Holmesberg product loop: passed
 - final operator read-only stress:
   `tmp/operator-readonly-stress-2026-07-01T01-48-03-021Z`
+- latest final operator read-only stress:
+  `tmp/operator-readonly-stress-2026-07-01T02-54-16-423Z`
 - dashboard status: yellow, explained by known freeze-closure measurement
   blockers, not by exposure/notification/state regressions.
 - notification lifecycle after product loop: `exposure_without_render_count=0`,
@@ -43,9 +48,16 @@ Result:
 - remaining cohort blocker: `no_closed_sessions_last_14d`.
 - new browser-covered branch: `NewTaskModal` duration nudge `Keep` outcome
   plus overlapping-task soft conflict `Create anyway`.
+- new browser-covered branches: `NewTaskModal` edit mode, terminal-deadline
+  API rejection, terminal deadline picker exclusion, custom category,
+  no-deadline, and pick-another override.
 - correction discovered by browser verify: queued worker notification decisions
   are counted separately as `queued_without_render_count` and no longer trip the
   actionable exposure-without-render blocker.
+- correction discovered by browser verify: deadline-suggestion Playwright waits
+  must use real visibility waits, not immediate `isVisible()` checks; synthetic
+  deadline fixtures must avoid shared ambiguous tokens because the production
+  heuristic correctly suppresses multi-competitive candidates.
 
 ## Council Synthesis
 
@@ -73,7 +85,7 @@ All six agents converged on the same shape:
 |---|---|---|---|
 | Pulse hub | Main hub for quick capture, re-entry, deadlines, timers, pressure map, recovery, integrations. | Screenshots and API smoke. | Full click-through product loop from Pulse is not automated. |
 | Brain dump modal | Parse, edit, bind to existing deadlines, handle partial failures, retry, and commit idempotently. | Parse/commit API smoke, backend tests, and product-loop parse/write-free/commit path. | Modal edit/partial-failure/double-submit paths still need targeted Playwright. |
-| New task modal | Create/edit task, duration nudge, deadline preview/binding, conflict handling, custom category. | Product-loop browser create + deadline binding, duration nudge Use/Keep paths, soft-conflict Create anyway path, and API creation-nudge/exposure ack. | Edit mode, terminal deadline rejection, custom category, no-bind/pick-another, and nudge-dismiss outcome still need targeted Playwright. |
+| New task modal | Create/edit task, duration nudge, deadline preview/binding, conflict handling, custom category. | Product-loop browser create + deadline binding, duration nudge Use/Keep paths, soft-conflict Create anyway path, edit mode, terminal deadline rejection/filtering, custom category, no-bind, pick-another, and API creation-nudge/exposure ack. | Nudge absent/error states and rapid double-submit remain targeted. |
 | Pressure map | Diagnostic pressure map with horizon switching, preview, dismiss, edit, commit. | Product-loop browser preview and dismiss-no-mutation. | Commit/edit path still missing. |
 | Timer UI | Start, pause with reason, resume after refresh/navigation, update completion/scope, stop cleanly. | Product-loop browser start/pause/resume/completion/scope/stop. | Refresh/navigation while paused and long-lived sessions still missing. |
 | Today | Execute tasks, handle deadlines, date navigation, pause confirmations, retroactive edits. | Screenshots and API-created data. | Row interactions and date navigation need browser coverage. |
@@ -162,13 +174,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogf
 
 Remaining targeted Playwright scripts in priority order:
 
-1. New task modal edit mode, terminal deadline rejection, custom category, no-bind/pick-another, and nudge-dismiss outcome.
-2. Brain dump modal edit/partial-failure/retry/double-submit.
-3. Pressure-map recovery-block commit.
-4. Timer refresh/navigation while paused and long-lived-session correction.
-5. Notification action/expiry and linked-exposure lifecycle.
-6. Forced insights held/unlocked/error/latency states.
-7. Calendar drag/resize/reschedule and table correction/export.
+1. Brain dump modal edit/partial-failure/retry/double-submit.
+2. Pressure-map recovery-block commit.
+3. Timer refresh/navigation while paused and long-lived-session correction.
+4. Notification action/expiry and linked-exposure lifecycle.
+5. Forced insights held/unlocked/error/latency states.
+6. Calendar drag/resize/reschedule and table correction/export.
 
 ## Open Questions For Future Decision
 
