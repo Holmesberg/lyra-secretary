@@ -260,7 +260,7 @@ exists.
 | Insights / ClaimCompiler | Locked/held/unlocked/suppressed states avoid causal/identity/diagnostic claims and show concrete reasons. | partially browser/API covered |
 | Exposure lifecycle | Decision, render or suppression, browser ack, linked interaction outcome where applicable. | partially browser/API covered; existing-decision suppression endpoint covered by backend tests |
 | Notifications | Queue, pending, render, dismiss, terminal lifecycle row. | browser/API covered |
-| Notification branches | Action, expiry, duplicate/cooldown, linked exposure, OpenClaw mirror redaction. | targeted/gated |
+| Notification branches | Action, expiry, duplicate/cooldown, linked exposure, OpenClaw mirror redaction. | action/expiry browser/API covered; duplicate/linked/OpenClaw targeted/gated |
 | Settings/export | Export registry sections and no secret markers. | API covered |
 | Settings/delete | Browser export download, staged delete, final hard-delete and Redis purge. | disposable-account gated |
 | Providers/integrations | Credential redaction, provider provenance, connect/disconnect/failure/import idempotency. | credential gated |
@@ -275,7 +275,7 @@ It does not yet fully exercise:
 - real backend pressure-map recovery option emission while read-only pressure
   safe mode is active;
 - table audit/correction flows;
-- notification action/expiry paths and linked-exposure notification cases;
+- linked-exposure notification cases;
 - forced insights held/unlocked/latency states;
 - long-lived sessions over hours/days;
 - rapid-click race conditions outside the covered brain-dump commit guard.
@@ -286,7 +286,7 @@ script before treating the loop as sufficient.
 Highest-priority targeted scripts to add next:
 
 1. Long-lived timer stale-session handling over hours/days.
-2. Notification action/expiry lifecycle and linked exposure outcomes.
+2. Linked-exposure notification outcomes.
 3. Forced insights held/unlocked/latency states.
 4. Calendar drag/resize/reschedule and table correction flows.
 5. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.

@@ -1782,3 +1782,56 @@ Rollback note:
   later output-surface state machine centralizes delivered/discarded decisions.
 - Revert only the timer dogfood verifier expansion if it becomes flaky; it is
   harness-only and synthetic Holmesberg cleanup leaves no active timer.
+
+## S1c - Notification Action And Expiry Lifecycle Coverage
+
+Changed authority:
+
+- No notification delivery authority moved.
+- Added backend fixture coverage and targeted Holmesberg browser proof for web
+  notification terminal branches after render removal.
+- Added a standalone notification lifecycle dogfood script so action/expiry can
+  be verified without touching task creation, timer, or nudge surfaces.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Linked-exposure notification outcomes, duplicate/cooldown behavior, and
+  OpenClaw drain/redaction remain targeted/gated surfaces.
+- Failed selector attempts left no pending rows; synthetic failed-run action
+  rows were terminalized through the existing acted acknowledgement endpoint.
+
+Moved authority:
+
+- None.
+
+Tests and verification:
+
+- Backend targeted tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_notification_queue_openclaw_mirror.py::test_notification_action_and_expiry_update_after_render_removal tests/test_notification_queue_openclaw_mirror.py::test_web_pending_reserves_and_render_ack_marks_only_rendered tests/test_notification_queue_openclaw_mirror.py::test_lost_unrendered_ack_does_not_mark_rendered -q`
+- Script syntax:
+  `node --check scripts\browser_notification_lifecycle_dogfood.mjs`
+- Holmesberg targeted browser proof:
+  `node scripts\browser_notification_lifecycle_dogfood.mjs --frontend https://lyraos.org --api https://api.lyraos.org --run-id notification-lifecycle-20260701-3`
+- Holmesberg output:
+  `tmp/browser-notification-lifecycle/2026-07-01T04-50-58-661Z/result.json`.
+- Operator read-only browser stress:
+  `tmp/operator-readonly-stress-2026-07-01T04-52-22-671Z`.
+
+Behavior parity statement:
+
+- Browser render still removes web-pending Redis entries.
+- Details-link interaction records `acted` lifecycle truth after render.
+- Auto-dismiss records `expired` lifecycle truth after render.
+- The targeted script leaves no synthetic pending notification rows.
+- Operator account stayed read-only; dashboard/export counts, route counts, and
+  dashboard snapshots did not change on `/operator` browser reads.
+
+Rollback note:
+
+- Revert the standalone notification lifecycle browser script and backend
+  fixture if this coverage becomes flaky; the runtime notification API did not
+  change in this slice.
