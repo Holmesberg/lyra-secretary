@@ -3760,6 +3760,13 @@ Tests and verification:
 - Local provider credential security file:
   `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_provider_credentials_security.py -q`
   passed, `2 passed`.
+- CI rerun after the fix:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28549752568`
+  passed on head `58b1d0c0bd15c76cbaf65b083a46aa6d3e475dda`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
 
 Behavior parity statement:
 
