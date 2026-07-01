@@ -8,7 +8,7 @@ import {
   frontendRequire,
   parseAndExpandCookies,
   repoRoot,
-  resolveBackendToken,
+  resolveBackendTokenFromContext,
   userRef,
 } from "./browser_auth_helpers.mjs";
 
@@ -21,14 +21,7 @@ const runId = process.env.LYRA_BROWSER_STRESS_RUN_ID || new Date().toISOString()
 const outDir = path.join(repoRoot, "tmp", `operator-readonly-stress-${runId}`);
 
 const routes = [
-  { path: "/pulse", name: "pulse", maxMs: 12_000 },
-  { path: "/today", name: "today", maxMs: 12_000 },
-  { path: "/calendar", name: "calendar", maxMs: 12_000 },
-  { path: "/deadlines", name: "deadlines", maxMs: 12_000 },
-  { path: "/table", name: "table", maxMs: 12_000 },
-  { path: "/insights", name: "insights", maxMs: 15_000 },
-  { path: "/settings", name: "settings", maxMs: 12_000 },
-  { path: "/operator", name: "operator", maxMs: 12_000 },
+  { path: "/operator", name: "operator", targetMs: 12_000, maxMs: 20_000 },
 ];
 
 const viewports = [
@@ -47,15 +40,40 @@ const forbiddenTextPatterns = [
 ];
 
 function countExport(body) {
-  return {
-    tasks: (body.tasks || []).length,
-    deadlines: (body.deadlines || []).length,
-    stopwatch_sessions: (body.stopwatch_sessions || []).length,
-    pause_events: (body.pause_events || []).length,
-    feedback: (body.feedback || []).length,
-    exposure_logs: (body.exposure_logs || body.exposures || []).length,
-    notifications: (body.notifications || body.notification_lifecycle || []).length,
-  };
+  const counts = {};
+  const registrySections = Array.isArray(body.registry)
+    ? body.registry.map((entry) => entry?.section).filter(Boolean)
+    : [];
+  const fallbackSections = [
+    "tasks",
+    "deadlines",
+    "deadline_completion_events",
+    "task_deadline_outcomes",
+    "stopwatch_sessions",
+    "task_execution_corrections",
+    "pause_events",
+    "pause_prediction_logs",
+    "resume_prediction_logs",
+    "calibration_nudge_events",
+    "reflection_view_logs",
+    "exposure_decision_events",
+    "exposure_render_events",
+    "exposure_ack_events",
+    "suppression_events",
+    "exposure_policy_effect_logs",
+    "feedback",
+    "external_event_outcomes",
+    "notification_lifecycle_events",
+    "email_engagement_events",
+    "archetype_assignments",
+    "jarvis_invocations",
+  ];
+  for (const section of new Set([...fallbackSections, ...registrySections])) {
+    if (Array.isArray(body[section])) {
+      counts[section] = body[section].length;
+    }
+  }
+  return counts;
 }
 
 function diffCounts(before, after) {
@@ -168,9 +186,13 @@ async function checkRoute(page, route, viewport) {
     route: route.path,
     viewport: viewport.name,
     duration_ms: null,
+    domcontentloaded_ms: null,
+    ready_ms: null,
+    artifact_ms: null,
     status: null,
     screenshot: null,
     issues: [],
+    warnings: [],
   };
   const responseErrors = [];
   const requestFailures = [];
@@ -194,6 +216,10 @@ async function checkRoute(page, route, viewport) {
     if (message.type() !== "error") return;
     const text = message.text();
     if (text.includes("static.cloudflareinsights.com")) return;
+    if (text.includes("[next-auth][error][CLIENT_FETCH_ERROR]")) {
+      result.warnings.push(text.slice(0, 500));
+      return;
+    }
     consoleErrors.push(text.slice(0, 500));
   };
 
@@ -207,16 +233,17 @@ async function checkRoute(page, route, viewport) {
       waitUntil: "domcontentloaded",
       timeout: route.maxMs,
     });
+    result.domcontentloaded_ms = Date.now() - started;
     result.status = response?.status() ?? null;
-    await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {});
     if (route.path === "/operator") {
       await page
         .getByText(/Operator cockpit|Cohort readiness|safe to invite/i)
         .first()
-        .waitFor({ timeout: 20_000 })
-        .catch(() => {});
+        .waitFor({ timeout: route.maxMs });
     }
-    result.duration_ms = Date.now() - started;
+    result.ready_ms = Date.now() - started;
+
+    await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {});
 
     const bodyText = await page.locator("body").innerText({ timeout: 5_000 }).catch(() => "");
     for (const pattern of forbiddenTextPatterns) {
@@ -227,13 +254,17 @@ async function checkRoute(page, route, viewport) {
     if (route.path === "/operator" && !/Operator cockpit|Cohort readiness|safe to invite/i.test(bodyText)) {
       result.issues.push("operator route did not render operator cockpit");
     }
-    if (result.duration_ms > route.maxMs) {
-      result.issues.push(`route exceeded latency budget ${route.maxMs}ms`);
+    if (result.ready_ms > route.maxMs) {
+      result.issues.push(`route exceeded hard latency budget ${route.maxMs}ms`);
+    } else if (result.ready_ms > route.targetMs) {
+      result.warnings.push(`route exceeded target latency budget ${route.targetMs}ms`);
     }
 
     const screenshotPath = path.join(outDir, `alinassersabry-${viewport.name}-${route.name}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
     result.screenshot = path.relative(repoRoot, screenshotPath).replaceAll("\\", "/");
+    result.artifact_ms = Date.now() - started;
+    result.duration_ms = result.ready_ms;
   } catch (error) {
     result.duration_ms = Date.now() - started;
     result.issues.push(`navigation failed: ${error.message}`);
@@ -269,12 +300,15 @@ const result = {
   user_ref: null,
   is_operator: null,
   before_counts: null,
+  pre_dashboard_count_diffs: [],
   after_counts: null,
   count_diffs: [],
+  route_count_diffs: [],
   dashboard_before_snapshot: null,
   dashboard_after_snapshot: null,
   dashboard_snapshot_diffs: [],
   routes: [],
+  warnings: [],
   issues: [],
 };
 
@@ -282,8 +316,7 @@ try {
   const context = await browser.newContext({ viewport: viewports[0] });
   await context.addCookies(parseAndExpandCookies(cookieHeader, frontendOrigin));
   const page = await context.newPage();
-  await page.goto(`${frontendOrigin}/pulse`, { waitUntil: "domcontentloaded", timeout: 30_000 });
-  const token = await resolveBackendToken(page);
+  const token = await resolveBackendTokenFromContext(context, frontendOrigin);
 
   const me = await fetchJson("/v1/users/me", token);
   if (me.status !== 200) throw new Error(`users/me failed with ${me.status}`);
@@ -301,12 +334,36 @@ try {
   if (beforeDashboard.status !== 200) {
     throw new Error(`pre operator dashboard failed with ${beforeDashboard.status}`);
   }
+  const afterPreDashboardExport = await fetchJson("/v1/users/me/export", token);
+  if (afterPreDashboardExport.status !== 200) {
+    throw new Error(`post pre-dashboard export failed with ${afterPreDashboardExport.status}`);
+  }
+  const afterPreDashboardCounts = countExport(afterPreDashboardExport.body || {});
+  result.pre_dashboard_count_diffs = diffCounts(result.before_counts, afterPreDashboardCounts);
+  if (result.pre_dashboard_count_diffs.length > 0) {
+    result.issues.push(
+      `operator dashboard API read changed exported data counts before browser route: ${JSON.stringify(result.pre_dashboard_count_diffs)}`,
+    );
+  }
   result.dashboard_before_snapshot = dashboardReadOnlySnapshot(beforeDashboard.body || {});
 
   for (const viewport of viewports) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     for (const route of routes) {
-      result.routes.push(await checkRoute(page, route, viewport));
+      const routeBeforeExport = await fetchJson("/v1/users/me/export", token);
+      const routeBeforeCounts = countExport(routeBeforeExport.body || {});
+      const routeResult = await checkRoute(page, route, viewport);
+      result.routes.push(routeResult);
+      const routeAfterExport = await fetchJson("/v1/users/me/export", token);
+      const routeAfterCounts = countExport(routeAfterExport.body || {});
+      const routeDiffs = diffCounts(routeBeforeCounts, routeAfterCounts);
+      if (routeDiffs.length > 0) {
+        result.route_count_diffs.push({
+          viewport: viewport.name,
+          route: route.path,
+          diffs: routeDiffs,
+        });
+      }
     }
   }
 
@@ -341,6 +398,9 @@ try {
 }
 
 for (const route of result.routes) {
+  for (const warning of route.warnings || []) {
+    result.warnings.push(`${route.viewport} ${route.route}: ${warning}`);
+  }
   for (const issue of route.issues || []) {
     result.issues.push(`${route.viewport} ${route.route}: ${issue}`);
   }

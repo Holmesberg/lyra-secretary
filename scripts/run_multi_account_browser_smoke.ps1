@@ -42,6 +42,28 @@ Write-Host "Operator cookie length: $($env:LYRA_COOKIE_ALINASSERSABRY.Length)"
 Write-Host "Holmesberg cookie length: $($env:LYRA_COOKIE_HOLMESBERG.Length)"
 Write-Host ""
 
-node scripts/test_browser_auth_helpers.mjs
-node scripts/verify_runtime_topology.mjs --topology $Topology
-node scripts/browser_smoke_two_users.mjs
+function Invoke-NodeChecked {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]]$NodeArgs,
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+
+  & node @NodeArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Name failed with exit code $LASTEXITCODE."
+  }
+}
+
+Invoke-NodeChecked `
+  -Name "browser auth helper self-test" `
+  -NodeArgs @("scripts/test_browser_auth_helpers.mjs")
+
+Invoke-NodeChecked `
+  -Name "runtime topology verifier" `
+  -NodeArgs @("scripts/verify_runtime_topology.mjs", "--topology", $Topology)
+
+Invoke-NodeChecked `
+  -Name "multi-account browser smoke" `
+  -NodeArgs @("scripts/browser_smoke_two_users.mjs")

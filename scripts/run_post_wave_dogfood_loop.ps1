@@ -9,6 +9,8 @@ param(
 
   [switch]$IncludeMutable,
 
+  [switch]$IncludeProductLoop,
+
   [switch]$NoMutable
 )
 
@@ -27,9 +29,12 @@ $outDir = Join-Path $repoRoot "tmp\post-wave-dogfood\$runId"
 
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-$mutableRequested = [bool]$IncludeMutable -and -not [bool]$NoMutable -and $Mode -ne "quick"
+$mutableRequested = ([bool]$IncludeMutable -or [bool]$IncludeProductLoop) -and -not [bool]$NoMutable -and $Mode -ne "quick"
 if ([bool]$IncludeMutable -and [bool]$NoMutable) {
   throw "Use either -IncludeMutable or -NoMutable, not both."
+}
+if ([bool]$IncludeProductLoop -and $Mode -eq "quick") {
+  throw "-IncludeProductLoop requires Mode standard, full, or chaos."
 }
 
 $summary = [System.Collections.Generic.List[object]]::new()
@@ -159,6 +164,20 @@ try {
       }
     }
 
+    if ([bool]$IncludeProductLoop) {
+      Invoke-Step "Holmesberg full product-loop browser dogfood" {
+        Invoke-CheckedScript `
+          -ScriptPath ".\scripts\run_holmesberg_product_loop_dogfood.ps1" `
+          -ScriptArgs @("-Topology", $Topology, "-RunId", $runId, "-OutDir", (Join-Path $outDir "holmesberg-product-loop"))
+      }
+
+      Invoke-Step "operator read-only browser stress after product-loop dogfood" {
+        Invoke-CheckedScript `
+          -ScriptPath ".\scripts\run_operator_readonly_browser_stress.ps1" `
+          -ScriptArgs @("-Topology", $Topology)
+      }
+    }
+
     if ($Mode -eq "chaos" -and $mutableRequested) {
       Invoke-Step "Holmesberg mutable browser smoke repeat" {
         Invoke-CheckedScript `
@@ -195,6 +214,18 @@ try {
           Where-Object { $_.LastWriteTime -ge $runStartedAt } |
           Sort-Object LastWriteTime |
           ForEach-Object { $_.FullName }
+      )
+      product_loop = @(
+        @(
+          Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-product-loop") -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $runStartedAt } |
+            Sort-Object LastWriteTime |
+            ForEach-Object { $_.FullName }
+          $nestedProductLoop = Join-Path $outDir "holmesberg-product-loop"
+          if (Test-Path $nestedProductLoop) {
+            (Resolve-Path $nestedProductLoop).Path
+          }
+        )
       )
     }
     steps = $summary

@@ -27,6 +27,28 @@ Write-Host "API: $env:LYRA_API_ORIGIN"
 Write-Host "Operator cookie length: $($cookie.Length)"
 Write-Host ""
 
-node scripts/test_browser_auth_helpers.mjs
-node scripts/verify_runtime_topology.mjs --topology $Topology
-node scripts/browser_stress_operator_readonly.mjs
+function Invoke-NodeChecked {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]]$NodeArgs,
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+
+  & node @NodeArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Name failed with exit code $LASTEXITCODE."
+  }
+}
+
+Invoke-NodeChecked `
+  -Name "browser auth helper self-test" `
+  -NodeArgs @("scripts/test_browser_auth_helpers.mjs")
+
+Invoke-NodeChecked `
+  -Name "runtime topology verifier" `
+  -NodeArgs @("scripts/verify_runtime_topology.mjs", "--topology", $Topology)
+
+Invoke-NodeChecked `
+  -Name "operator read-only browser stress" `
+  -NodeArgs @("scripts/browser_stress_operator_readonly.mjs")

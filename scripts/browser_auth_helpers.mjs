@@ -130,3 +130,29 @@ export async function resolveBackendToken(page) {
   }
   return token;
 }
+
+export async function resolveBackendTokenFromContext(context, frontendOrigin) {
+  const response = await context.request.get(`${frontendOrigin}/api/auth/session`);
+  const contentType = response.headers()["content-type"];
+  const text = await response.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = { parse_error: text.slice(0, 120) };
+  }
+  const token = body?.backendToken;
+  if (!token) {
+    throw Object.assign(
+      new Error("no backend token resolved"),
+      {
+        detail: {
+          sessionStatus: response.status(),
+          sessionContentType: contentType,
+          sessionKeys: Object.keys(body || {}),
+        },
+      },
+    );
+  }
+  return token;
+}

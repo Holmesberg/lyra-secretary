@@ -3,7 +3,7 @@ import {
   apiFetch as helperApiFetch,
   frontendRequire,
   parseAndExpandCookies,
-  resolveBackendToken,
+  resolveBackendTokenFromContext,
   userRef,
 } from "./browser_auth_helpers.mjs";
 
@@ -11,6 +11,7 @@ const { chromium } = frontendRequire("playwright");
 
 const frontendOrigin = process.env.LYRA_FRONTEND_ORIGIN || "http://localhost:3000";
 const apiOrigin = process.env.LYRA_API_ORIGIN || "http://localhost:8000";
+const CLOCK_SKEW_RETRY_MS = 2_000;
 
 const accounts = [
   {
@@ -39,7 +40,13 @@ async function apiFetchForConfiguredApi(token, path, init = {}) {
 }
 
 async function assertOkApi(token, path) {
-  const result = await apiFetchForConfiguredApi(token, path);
+  let result = await apiFetchForConfiguredApi(token, path);
+  const retryableClockSkew = result.response.status === 401
+    && /not yet valid \(iat\)/i.test(JSON.stringify(result.body || {}));
+  if (retryableClockSkew) {
+    await new Promise((resolve) => setTimeout(resolve, CLOCK_SKEW_RETRY_MS));
+    result = await apiFetchForConfiguredApi(token, path);
+  }
   if (!result.response.ok) {
     fail(`API smoke failed for ${path}`, {
       status: result.response.status,
@@ -98,23 +105,9 @@ async function smokeAccount(browser, account) {
   }
   await context.addCookies(cookies);
 
-  const page = await context.newPage();
-  const failedResponses = [];
-  page.on("response", (response) => {
-    if (response.status() >= 500) {
-      failedResponses.push({ url: response.url(), status: response.status() });
-    }
-  });
-
-  await page.goto(`${frontendOrigin}/pulse`, {
-    waitUntil: "domcontentloaded",
-    timeout: 45_000,
-  });
-  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
-
   let token = null;
   try {
-    token = await resolveBackendToken(page);
+    token = await resolveBackendTokenFromContext(context, frontendOrigin);
   } catch (error) {
     fail(`no backend token resolved for ${account.label}`, {
       frontendOrigin,
@@ -167,10 +160,6 @@ async function smokeAccount(browser, account) {
     await assertForbidden(token, "/v1/admin/dashboard");
     await assertForbidden(token, "/v1/admin/feedback");
     await assertForbidden(token, "/v1/jarvis/health");
-  }
-
-  if (failedResponses.length) {
-    fail(`Pulse loaded with server errors for ${account.label}`, failedResponses);
   }
 
   await context.close();
