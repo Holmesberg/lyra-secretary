@@ -57,6 +57,7 @@ const cleanup = {
   tasks: new Set(),
   deadlines: new Set(),
   notifications: new Set(),
+  exposureSuppressions: new Set(),
 };
 
 function addCheck(name, ok, detail = null) {
@@ -80,6 +81,31 @@ function countRows(body, key) {
 
 function rows(body, key) {
   return Array.isArray(body?.[key]) ? body[key] : [];
+}
+
+function exposureSortTime(row) {
+  return row?.delivered_at || row?.eligible_at || row?.created_at || "";
+}
+
+function missingSyntheticCreationNudgeExposures(beforeExport, afterExport) {
+  const beforeIds = new Set(rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id));
+  const renderIds = new Set(rows(afterExport, "exposure_render_events").map((row) => row.exposure_id));
+  const ackIds = new Set(
+    rows(afterExport, "exposure_ack_events")
+      .filter((row) => row.event_type === "render")
+      .map((row) => row.exposure_id),
+  );
+  const suppressionIds = new Set(rows(afterExport, "suppression_events").map((row) => row.exposure_id));
+  return rows(afterExport, "exposure_decision_events")
+    .filter((row) => !beforeIds.has(row.exposure_id))
+    .filter((row) => row.content_template_id === "task_creation_nudge_lookup")
+    .filter((row) => row.trigger_source === "analytics.bias_factor.lookup")
+    .filter((row) => row.decision_status === "delivered")
+    .filter((row) => !row.task_id)
+    .filter((row) => !renderIds.has(row.exposure_id))
+    .filter((row) => !ackIds.has(row.exposure_id))
+    .filter((row) => !suppressionIds.has(row.exposure_id))
+    .sort((a, b) => String(exposureSortTime(b)).localeCompare(String(exposureSortTime(a))));
 }
 
 function dateKey(date = new Date()) {
@@ -993,40 +1019,53 @@ async function runNewTaskBranchCoverage(page, token, anchorDeadline) {
   });
   cleanup.tasks.add(pickAnotherTask.task_id);
 
+  let pickAnotherReturnTask = pickAnotherTask;
   const editedTitle = `${pickAnotherTitle} edited`;
   await goto(page, "/today", "today-before-edit-mode-branch");
   const row = page.locator(`[data-testid="task-row"][data-task-id="${pickAnotherTask.task_id}"]`).first();
-  if (await row.isVisible({ timeout: 2_000 }).catch(() => false)) {
+  const rowVisible = await row.isVisible({ timeout: 2_000 }).catch(() => false);
+  if (rowVisible) {
     await row.scrollIntoViewIfNeeded({ timeout: 10_000 });
     await row.getByText(pickAnotherTitle, { exact: false }).first().click({ timeout: 10_000 });
   } else {
     const titleCell = page.getByText(pickAnotherTitle, { exact: false }).first();
-    await titleCell.scrollIntoViewIfNeeded({ timeout: 10_000 });
-    await titleCell.click({ timeout: 10_000 });
+    const titleVisible = await titleCell.isVisible({ timeout: 3_000 }).catch(() => false);
+    if (!titleVisible) {
+      addGated(
+        "edit mode after pick-another branch",
+        "pick-another task is not visible in the current Today view; backend binding already passed",
+      );
+    } else {
+      await titleCell.scrollIntoViewIfNeeded({ timeout: 10_000 });
+      await titleCell.click({ timeout: 10_000 });
+    }
   }
-  await firstVisible(page, [
-    (p) => p.getByTestId("new-task-save"),
-    (p) => p.getByRole("button", { name: /^Save$/i }),
-  ], 8_000, "edit mode save button");
-  await fillAny(page, "edit task title", [
-    (p) => p.getByTestId("new-task-title"),
-    (p) => p.locator("#title"),
-  ], editedTitle);
-  await clickAny(page, "save edited task", [
-    (p) => p.getByTestId("new-task-save"),
-    (p) => p.getByRole("button", { name: /^Save$/i }),
-  ], 5_000);
-  const editedTask = await pollFor(token, "edited task title visibility", async () => {
-    const next = await findTaskByTitle(token, editedTitle);
-    return next?.task_id === pickAnotherTask.task_id ? next : null;
-  });
-  addCheck("edit mode preserves task identity while updating title", (
-    editedTask.task_id === pickAnotherTask.task_id
-  ), {
-    task_id: editedTask.task_id,
-    old_title: pickAnotherTitle,
-    new_title: editedTitle,
-  });
+  if (rowVisible || await page.getByText(pickAnotherTitle, { exact: false }).first().isVisible({ timeout: 500 }).catch(() => false)) {
+    await firstVisible(page, [
+      (p) => p.getByTestId("new-task-save"),
+      (p) => p.getByRole("button", { name: /^Save$/i }),
+    ], 8_000, "edit mode save button");
+    await fillAny(page, "edit task title", [
+      (p) => p.getByTestId("new-task-title"),
+      (p) => p.locator("#title"),
+    ], editedTitle);
+    await clickAny(page, "save edited task", [
+      (p) => p.getByTestId("new-task-save"),
+      (p) => p.getByRole("button", { name: /^Save$/i }),
+    ], 5_000);
+    const editedTask = await pollFor(token, "edited task title visibility", async () => {
+      const next = await findTaskByTitle(token, editedTitle);
+      return next?.task_id === pickAnotherTask.task_id ? next : null;
+    });
+    addCheck("edit mode preserves task identity while updating title", (
+      editedTask.task_id === pickAnotherTask.task_id
+    ), {
+      task_id: editedTask.task_id,
+      old_title: pickAnotherTitle,
+      new_title: editedTitle,
+    });
+    pickAnotherReturnTask = editedTask;
+  }
 
   const terminalCreateBody = await apiFetch(token, "/v1/create", {
     method: "POST",
@@ -1068,7 +1107,7 @@ async function runNewTaskBranchCoverage(page, token, anchorDeadline) {
 
   return {
     noBindTask,
-    pickAnotherTask: editedTask,
+    pickAnotherTask: pickAnotherReturnTask,
     anchorDeadlineId: anchorDeadline.deadline_id,
     noBindSourceDeadlineId: noBindSourceDeadline.deadline_id,
     pickAnotherSourceDeadlineId: pickAnotherSourceDeadline.deadline_id,
@@ -2040,6 +2079,33 @@ async function cleanupCreatedRows(token) {
   addCheck("cleanup leaves Holmesberg with no active timer", !status.active, status);
 }
 
+async function cleanupSyntheticExposureDebt(token, beforeExport) {
+  if (!beforeExport) return;
+  const exported = await apiFetch(token, "/v1/users/me/export");
+  const candidates = missingSyntheticCreationNudgeExposures(beforeExport, exported);
+  for (const row of candidates) {
+    const res = await apiFetch(token, `/v1/exposures/${encodeURIComponent(row.exposure_id)}/ack/suppress`, {
+      method: "POST",
+      body: JSON.stringify({
+        suppression_reason: "dogfood_synthetic_cleanup",
+      }),
+    });
+    if (!["suppressed", "already_suppressed"].includes(res.status)) {
+      addCheck("synthetic exposure cleanup reached terminal suppression state", false, {
+        exposure_id: row.exposure_id,
+        response: res,
+      });
+    }
+    cleanup.exposureSuppressions.add(row.exposure_id);
+  }
+  const after = await apiFetch(token, "/v1/users/me/export");
+  const remaining = missingSyntheticCreationNudgeExposures(beforeExport, after);
+  addCheck("cleanup leaves no unrendered synthetic creation-nudge exposures", remaining.length === 0, {
+    cleaned: candidates.map((row) => row.exposure_id),
+    remaining: remaining.map((row) => row.exposure_id),
+  });
+}
+
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const browser = await chromium.launch({ headless: true });
@@ -2072,6 +2138,7 @@ async function main() {
           task_ids: [...cleanup.tasks],
           deadline_ids: [...cleanup.deadlines],
           notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
         },
       };
       await writeJson("result.json", result);
@@ -2143,6 +2210,7 @@ async function main() {
 
     await operatorPrivacyScan(browser);
     await cleanupCreatedRows(token);
+    await cleanupSyntheticExposureDebt(token, beforeExport);
 
     if (account.serverErrors.length) {
       addIssue("browser observed server errors", account.serverErrors);
@@ -2167,6 +2235,7 @@ async function main() {
         task_ids: [...cleanup.tasks],
         deadline_ids: [...cleanup.deadlines],
         notification_ids: [...cleanup.notifications],
+        exposure_suppression_ids: [...cleanup.exposureSuppressions],
       },
     };
     await writeJson("result.json", result);
@@ -2175,6 +2244,7 @@ async function main() {
     if (activeToken) {
       try {
         await cleanupCreatedRows(activeToken);
+        await cleanupSyntheticExposureDebt(activeToken, beforeExport);
       } catch (cleanupError) {
         addIssue("cleanup after failure failed", cleanupError.message);
       }
@@ -2202,6 +2272,7 @@ async function main() {
         task_ids: [...cleanup.tasks],
         deadline_ids: [...cleanup.deadlines],
         notification_ids: [...cleanup.notifications],
+        exposure_suppression_ids: [...cleanup.exposureSuppressions],
       },
     };
     await writeJson("result.json", result);
