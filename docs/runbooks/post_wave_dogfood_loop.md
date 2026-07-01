@@ -37,6 +37,13 @@ Add `-IncludeMutable` when the wave needs Holmesberg chaos dogfooding:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode full -IncludeMutable -WaveName "wave-name"
 ```
 
+Add `-IncludeProductLoop` when the wave touches user-facing product surfaces or
+the delta -> Cortex/analytics -> ClaimCompiler -> exposure chain:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode full -IncludeProductLoop -WaveName "wave-name"
+```
+
 Local topology is allowed only when the local stack is intentionally up:
 
 ```powershell
@@ -54,7 +61,9 @@ The script records:
 - transcript;
 - summary JSON;
 - nested browser outputs under the existing `tmp/browser-smoke` and
-  `tmp/operator-readonly-stress-*` paths.
+  `tmp/operator-readonly-stress-*` paths;
+- product-loop browser outputs under `tmp/browser-product-loop` or the nested
+  `holmesberg-product-loop` directory when `-IncludeProductLoop` is used.
 
 ## Modes
 
@@ -78,6 +87,8 @@ The script records:
 - Holmesberg mutable smoke only with `-IncludeMutable`.
 - second operator read-only stress after mutable cleanup only with
   `-IncludeMutable`.
+- Full Holmesberg product-loop dogfood plus a second operator read-only stress
+  when `-IncludeProductLoop` is passed.
 - Use after most frontend/refactor seams and small backend changes.
 
 `full`
@@ -119,13 +130,18 @@ Mutable product loop on Holmesberg:
 
 Operator read-only invariant:
 
-- core routes load on desktop and mobile;
-- `/operator` loads through the operator account;
-- route reads do not change task, deadline, session, pause, feedback,
-  exposure, or notification counts;
+- `/operator` loads through the operator account on desktop and mobile;
+- cockpit/dashboard reads do not change task, deadline, session, pause,
+  feedback, exposure, notification, provider, or runtime counts;
 - dashboard invariant snapshots do not drift before/after reads;
 - no `[object Object]`, internal alert copy, obvious server error text, or
   non-Cloudflare console failures render.
+
+Product routes are verified through Holmesberg, not through the operator
+read-only stress. Product pages such as `/pulse` and `/insights` may correctly
+create user-facing exposure/render/ack telemetry when they show output
+surfaces. Mixing those routes into the operator read-only invariant hides the
+thing the cockpit test is meant to prove.
 
 Static/refactor integrity:
 
@@ -140,6 +156,26 @@ Static/refactor integrity:
 The wrapper proves contracts, API health, route health, account boundaries, and
 operator read-only invariants. It does not automatically prove the full user
 journey through every modal.
+
+`-IncludeProductLoop` runs
+`scripts/browser_holmesberg_product_loop_dogfood.mjs`, which currently covers:
+
+- non-operator route denial for `/operator`, `/admin`, and parked Jarvis;
+- read-only route sweep for Pulse, Today, Calendar, Deadlines, Table, Insights,
+  and Settings;
+- deadline creation through the browser;
+- task creation through the browser, including deadline binding;
+- creation-nudge Use/Keep outcomes plus exposure render acknowledgement;
+- overlapping planned-task soft conflict and explicit Create anyway branch;
+- brain-dump parse as write-free and commit as explicit mutation;
+- pressure-map preview and dismiss-no-mutation;
+- timer start, pause, resume, completion/scope, stop, and delta projection;
+- insights/ClaimCompiler-safe response shape and forbidden-claim scan;
+- notification enqueue, web pending, toast/render path where available, and
+  lifecycle acknowledgement;
+- export registry-section and secret-marker scan;
+- cleanup of synthetic Holmesberg tasks/deadlines;
+- operator privacy scan after mutable dogfood.
 
 For waves that touch Pulse, task creation, deadlines, timers, calendar,
 pressure map, recovery, insights, notifications, provider display, table, or
@@ -163,18 +199,55 @@ Minimum product-loop journey:
 If a step is not automated yet, record it as manual browser verification in the
 ledger with the account, route, and observed result.
 
+## Documented Surface Coverage Matrix
+
+Use this matrix as the post-wave expansion checklist. A row marked browser
+covered must have a Holmesberg automated path. A row marked fixture-covered
+must have backend/API tests or a seeded targeted script. A row marked gated must
+stay out of unattended dogfood until the named account/credential/authority
+exists.
+
+| Surface / Flow | Required Proof | Current Status |
+|---|---|---|
+| Auth and scoping | Holmesberg is non-operator; operator is operator; non-operator cannot access `/operator`, `/admin`, or active Jarvis. | browser covered |
+| Operator cockpit | `/operator` and `/v1/operator/dashboard` are read-only, content-minimized, invariant-derived. | browser covered |
+| Pulse hub | Quick capture, re-entry visibility, focus card, pressure map, notifications render without raw internals. | partially browser covered |
+| First-run onboarding | Consent/intro, parse, edit dump, lock-in, skip, empty validation. | targeted/gated |
+| Brain dump | Parse is write-free; commit creates intended task/deadline/binding. | browser covered |
+| Brain dump chaos | Edit parsed items, partial failure, retry, duplicate commit/idempotency, existing-deadline binding. | targeted |
+| New task modal | Create task, bind deadline, duration nudge exposure, Use/Keep nudge outcomes, create-anyway soft conflict when present. | browser covered |
+| New task branches | Edit mode, terminal deadline rejection, custom category, no-bind/pick-another, Dismiss nudge outcome. | targeted |
+| Deadlines | Create, edit, complete/skip/reopen staging, void confirm/cancel, duplicate warning. | partially browser covered |
+| Today execution | Task row start/stop, date nav, retroactive edit, overdue done, void/reschedule/drop. | partially browser covered |
+| Timer/focus | Start, pause, resume, stop, completion/scope, pause event, delta. | browser covered |
+| Timer chaos | Refresh/navigation while paused, long-lived stale session, one-active rejection, interruption/switch/open-thread recovery. | targeted |
+| Pressure map | Exposure metadata, horizon API, preview, dismiss-no-mutation. | browser covered |
+| Pressure-map planning | Horizon UI switches, edit preview, commit recovery block, created blocks appear in Today/Calendar. | targeted |
+| Calendar | Day/week/month render; old/new tasks and deadlines visible. | partially browser covered |
+| Calendar mutation | Drag/resize planned tasks, reject immutable/executed/deadline/provider rows, dense overlap. | targeted |
+| Table | Route render; executed dogfood row/delta visible. | partially browser covered |
+| Table audit/correction | Filters, sort, CSV download, voided visibility, executed-row correction. | targeted |
+| Insights / ClaimCompiler | Locked/held/unlocked/suppressed states avoid causal/identity/diagnostic claims and show concrete reasons. | partially browser/API covered |
+| Exposure lifecycle | Decision, render or suppression, browser ack, linked interaction outcome where applicable. | partially browser/API covered |
+| Notifications | Queue, pending, render, dismiss, terminal lifecycle row. | browser/API covered |
+| Notification branches | Action, expiry, duplicate/cooldown, linked exposure, OpenClaw mirror redaction. | targeted/gated |
+| Settings/export | Export registry sections and no secret markers. | API covered |
+| Settings/delete | Browser export download, staged delete, final hard-delete and Redis purge. | disposable-account gated |
+| Providers/integrations | Credential redaction, provider provenance, connect/disconnect/failure/import idempotency. | credential gated |
+| OpenClaw/operator relay | No accidental product-user exposure, no destructive drain before send, one delivery authority. | authority gated |
+
 ## What The Loop Does Not Yet Prove
 
 The current loop is broad, but not a replacement for every human dogfood path.
 It does not yet fully exercise:
 
-- every `NewTaskModal` branch: edit mode, deadline preview, duration nudge
-  keep/use, terminal deadline rejection, conflict UI;
+- every `NewTaskModal` branch: edit mode, terminal deadline rejection,
+  custom category, nudge dismiss, and all no-bind/pick-another branches;
 - calendar drag/resize/reschedule UI;
-- pressure-map preview and recovery block commit from the UI;
+- pressure-map recovery block commit from the UI;
 - table audit/correction flows;
-- notification render, dismiss, action, expiry, and exposure outcome paths;
-- insights held/unlocked/latency states;
+- notification action/expiry paths and linked-exposure notification cases;
+- forced insights held/unlocked/latency states;
 - long-lived sessions over hours/days;
 - rapid-click race conditions.
 
@@ -183,12 +256,13 @@ script before treating the loop as sufficient.
 
 Highest-priority targeted scripts to add next:
 
-1. `NewTaskModal` duration nudge, deadline preview, binding, and conflict UI.
+1. `NewTaskModal` edit mode, terminal deadline rejection, custom category,
+   no-bind/pick-another, and nudge-dismiss outcome.
 2. Brain dump modal partial failure, edit/retry, and duplicate commit.
-3. Pressure-map preview/dismiss/commit through UI.
-4. Timer UI pause/resume/refresh/stop/reflection path.
-5. Notification render/dismiss/action/expiry lifecycle.
-6. Insights held/unlocked/latency states.
+3. Pressure-map recovery-block commit through UI.
+4. Timer UI refresh/navigation during pause and long-lived session handling.
+5. Notification action/expiry lifecycle and linked exposure outcomes.
+6. Forced insights held/unlocked/latency states.
 7. Calendar drag/resize/reschedule and table correction flows.
 
 ## Pass / Fail Rule
@@ -242,9 +316,9 @@ Use `docs/registries/refactor_stabilization_ledger.md` for refactor waves.
 
 Add targeted scripts for:
 
-- `NewTaskModal` duration nudge and deadline-preview UX;
+- `NewTaskModal` edit/conflict/terminal-deadline UX;
 - calendar drag/resize/reschedule;
-- pressure-map preview/commit;
-- notification lifecycle render/dismiss/action;
+- pressure-map commit;
+- notification lifecycle action/expiry;
 - table correction;
 - insights held/unlocked latency.

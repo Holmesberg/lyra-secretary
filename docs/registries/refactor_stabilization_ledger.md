@@ -1320,3 +1320,155 @@ Rollback note:
 
 - Revert the reusable loop commit only. Existing underlying verification
   scripts remain unchanged.
+
+## S1c/R3 - Full Documented-Surface Dogfood Loop Proof
+
+Commit: uncommitted verification hardening pass.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Hardened the Holmesberg product-loop dogfood verifier so it uses real
+  browser-visible state and bounded lifecycle identifiers instead of
+  mutation-prone diagnostic probes.
+- Added stable frontend test ids for deadline-suggestion choices in
+  `NewTaskModal`.
+
+Removed paths:
+
+- Removed the product-loop diagnostic branch that called the
+  `task_creation_nudge_lookup` analytics endpoint merely to explain a missing
+  selector. That diagnostic call could create a delivered exposure decision
+  without browser render proof when the modal already displayed the nudge.
+
+Parked paths:
+
+- Calendar drag/resize, provider credential mutation, OpenClaw pending drain,
+  and hard account delete remain gated.
+- Targeted Playwright scripts still remain for NewTaskModal edit/conflict
+  branches, brain-dump retry/partial failure, pressure-map commit, long-lived
+  timer pause/navigation, notification action/expiry, forced insights states,
+  calendar mutation, and table correction/export.
+
+Moved authority:
+
+- No product authority moved.
+- The verifier now treats operator checks as read-only cockpit checks and
+  Holmesberg checks as mutable product-loop checks.
+
+Tests and verification:
+
+- Reconciled one synthetic dogfood diagnostic exposure row by browser-render
+  acknowledgement through the public exposure lifecycle API:
+  `f4b3a47a-3f27-4500-90fb-f071c6c48d86`.
+- Confirmed Holmesberg export had `danglingCount: 0` for actionable exposure
+  decisions after reconciliation.
+- `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`, screenshots and JSON under
+  `tmp/operator-readonly-stress-2026-07-01T01-09-52-781Z`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode standard -IncludeProductLoop -WaveName full-documented-surface-chain`, output under
+  `tmp/post-wave-dogfood/20260701-041138-full-documented-surface-chain-standard-public`;
+- Nested Holmesberg product-loop result:
+  `tmp/post-wave-dogfood/20260701-041138-full-documented-surface-chain-standard-public/holmesberg-product-loop/result.json`;
+- Final operator read-only stress result:
+  `tmp/operator-readonly-stress-2026-07-01T01-21-18-436Z`.
+
+Behavior parity statement:
+
+- Operator account stayed read-only. Operator dashboard/export counts and
+  invariant snapshots did not change before/after `/operator` browser reads.
+- Holmesberg product-loop writes remained synthetic and scoped to the
+  non-operator chaos account.
+- The product loop proved deadline creation, task creation, explicit deadline
+  binding, brain-dump write-free parse and explicit commit, timer
+  start/pause/resume/stop, pause-event export, task delta export/table display,
+  creation-nudge exposure render acknowledgement, pressure-map render metadata,
+  notification render/dismiss terminal lifecycle, privacy scans, and cleanup.
+- Operator readiness remained yellow only because of the known
+  `no_closed_sessions_last_14d` measurement-integrity blocker; notification
+  and exposure blockers were zero.
+
+Rollback note:
+
+- Revert only the verifier/test-id hardening changes if the harness itself must
+  be rolled back. Runtime data repair is not required for the verifier changes.
+  The one synthetic exposure reconciliation already reflects an actual
+  browser-visible dogfood nudge and should remain as render truth.
+
+## S1b/R3 - Queued Notification Cockpit Classification And Conflict Branch Proof
+
+Commit: uncommitted operator-cockpit and dogfood coverage pass.
+
+Changed authority:
+
+- Operator cockpit now treats queued, delayed, failed, and suppressed output
+  decisions as non-actionable missing-render rows for the critical
+  `exposure_without_render_count` blocker.
+- Queued notification decisions are still observable through
+  `queued_without_render_count`; the row is not hidden, but queue insertion is
+  not treated as render-required exposure.
+- The Holmesberg product-loop verifier now proves the `NewTaskModal`
+  duration-nudge Keep path and overlapping-task soft-conflict Create anyway
+  branch through the public browser UI.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- `NewTaskModal` edit mode, terminal deadline rejection, custom category,
+  no-bind/pick-another, and nudge-dismiss outcome remain targeted browser
+  coverage.
+- Calendar drag/resize, provider credential mutation, OpenClaw pending drain,
+  hard account delete, notification action/expiry, and forced insights states
+  remain gated or targeted.
+
+Moved authority:
+
+- No user/product mutation authority moved.
+- Readiness classification now aligns with the notification/exposure doctrine:
+  queue is not exposure, browser render is render truth, and interaction
+  outcome is separate from render truth.
+
+Tests and verification:
+
+- Product-loop failure artifact that exposed a stale public selector:
+  `tmp/browser-product-loop/2026-07-01T01-26-06-577Z/failure.png`.
+- Corrected the dogfood selector fallback for public builds and reran:
+  `tmp/browser-product-loop/2026-07-01T01-28-28-470Z/result.json`.
+- Targeted backend regression:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_operator_dashboard.py::test_operator_dashboard_blocks_on_exposure_without_render tests/test_operator_dashboard.py::test_operator_dashboard_does_not_block_on_suppressed_exposures tests/test_operator_dashboard.py::test_operator_dashboard_does_not_block_on_queued_notification_decisions -q`
+- Restarted the public backend after the cockpit classification fix and
+  verified operator read-only stress:
+  `tmp/operator-readonly-stress-2026-07-01T01-36-58-855Z`.
+- Full reusable post-wave wrapper:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode standard -IncludeProductLoop -WaveName full-documented-surface-chain-conflict-branch`
+- Full wrapper output:
+  `tmp/post-wave-dogfood/20260701-043838-full-documented-surface-chain-conflict-branch-standard-public`.
+- Nested Holmesberg product-loop result:
+  `tmp/post-wave-dogfood/20260701-043838-full-documented-surface-chain-conflict-branch-standard-public/holmesberg-product-loop/result.json`.
+- Final operator read-only stress result:
+  `tmp/operator-readonly-stress-2026-07-01T01-48-03-021Z`.
+
+Behavior parity statement:
+
+- Operator account stayed read-only before and after the mutable Holmesberg
+  product loop. Dashboard/export counts, route counts, and dashboard snapshots
+  did not change on `/operator` browser reads.
+- `exposure_without_render_count`, `duplicate_prompt_count`, and
+  `render_without_exposure_count` were zero after the full wrapper.
+- Operator readiness remained yellow only because of
+  `no_closed_sessions_last_14d`; the cockpit blocker is concrete and not a
+  stale K-label.
+- Holmesberg synthetic writes remained scoped to the non-operator chaos
+  account and cleanup left no active timer.
+
+Rollback note:
+
+- Revert the operator dashboard classification change if queued worker
+  decisions must again be treated as actionable render-required exposure. That
+  would intentionally violate the current notification/exposure doctrine and
+  should require an explicit exposure-retention decision.
+- Revert only the dogfood selector/branch additions if the harness needs to be
+  rolled back; they do not change user/product runtime authority.

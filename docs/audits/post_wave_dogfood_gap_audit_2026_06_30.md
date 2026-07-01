@@ -14,23 +14,38 @@ Canonical reusable loop:
 
 - Runbook: `docs/runbooks/post_wave_dogfood_loop.md`
 - Wrapper: `scripts/run_post_wave_dogfood_loop.ps1`
+- Product-loop browser dogfood: `scripts/browser_holmesberg_product_loop_dogfood.mjs`
+- Product-loop wrapper: `scripts/run_holmesberg_product_loop_dogfood.ps1`
 
 Latest proof:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode quick -WaveName reusable-loop-v2-smoke
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode standard -IncludeProductLoop -WaveName full-documented-surface-chain-conflict-branch
 ```
 
 Result:
 
 - status: passed
-- output: `tmp/post-wave-dogfood/20260630-213059-reusable-loop-v2-smoke-quick-public`
+- output:
+  `tmp/post-wave-dogfood/20260701-043838-full-documented-surface-chain-conflict-branch-standard-public`
 - operator cookie: `LYRA_COOKIE_ALINASSERSABRY`
 - non-operator cookie: `LYRA_COOKIE_HOLMESBERG`
-- mutable writes: none
+- mutable writes: Holmesberg synthetic task/deadline/timer/notification rows;
+  operator stayed read-only
 - operator read-only stress: passed
+- Holmesberg product loop: passed
+- final operator read-only stress:
+  `tmp/operator-readonly-stress-2026-07-01T01-48-03-021Z`
 - dashboard status: yellow, explained by known freeze-closure measurement
   blockers, not by exposure/notification/state regressions.
+- notification lifecycle after product loop: `exposure_without_render_count=0`,
+  `duplicate_prompt_count=0`, `render_without_exposure_count=0`.
+- remaining cohort blocker: `no_closed_sessions_last_14d`.
+- new browser-covered branch: `NewTaskModal` duration nudge `Keep` outcome
+  plus overlapping-task soft conflict `Create anyway`.
+- correction discovered by browser verify: queued worker notification decisions
+  are counted separately as `queued_without_render_count` and no longer trip the
+  actionable exposure-without-render blocker.
 
 ## Council Synthesis
 
@@ -43,26 +58,31 @@ All six agents converged on the same shape:
 - The reusable gate must separate:
   - contract/runtime proof;
   - mutable non-operator smoke;
-  - targeted UI journeys for touched surfaces.
-- Operator account checks must remain read-only. Holmesberg is the only
-  approved mutable chaos account.
+  - product-loop UI journeys for touched surfaces;
+  - gated checks that need provider credentials or disposable delete accounts.
+- Operator account checks must remain cockpit-only/read-only. Holmesberg is
+  the only approved mutable chaos account.
+- Product routes such as `/pulse`, `/today`, `/insights`, and `/settings` can
+  legitimately emit user-facing exposure/render/ack telemetry when visited.
+  They belong in the Holmesberg product loop, not the operator read-only
+  invariant.
 
 ## Documented Behavior vs Current Verification
 
 | Surface | Documented / Expected Behavior | Current Verification | Gap |
 |---|---|---|---|
 | Pulse hub | Main hub for quick capture, re-entry, deadlines, timers, pressure map, recovery, integrations. | Screenshots and API smoke. | Full click-through product loop from Pulse is not automated. |
-| Brain dump modal | Parse, edit, bind to existing deadlines, handle partial failures, retry, and commit idempotently. | Parse/commit API smoke and backend tests. | Modal edit/binding/partial-failure/double-submit paths need Playwright. |
-| New task modal | Create/edit task, duration nudge, deadline preview/binding, conflict handling, custom category. | Mostly backend/API coverage. | No senior-grade modal browser path yet. |
-| Pressure map | Diagnostic pressure map with horizon switching, preview, dismiss, edit, commit. | API shape and route screenshots. | Preview/dismiss/commit UI path is missing. |
-| Timer UI | Start, pause with reason, resume after refresh/navigation, update completion/scope, stop cleanly. | API smoke plus route screenshots. | UI-driven pause/resume/stop/reflection path is missing. |
+| Brain dump modal | Parse, edit, bind to existing deadlines, handle partial failures, retry, and commit idempotently. | Parse/commit API smoke, backend tests, and product-loop parse/write-free/commit path. | Modal edit/partial-failure/double-submit paths still need targeted Playwright. |
+| New task modal | Create/edit task, duration nudge, deadline preview/binding, conflict handling, custom category. | Product-loop browser create + deadline binding, duration nudge Use/Keep paths, soft-conflict Create anyway path, and API creation-nudge/exposure ack. | Edit mode, terminal deadline rejection, custom category, no-bind/pick-another, and nudge-dismiss outcome still need targeted Playwright. |
+| Pressure map | Diagnostic pressure map with horizon switching, preview, dismiss, edit, commit. | Product-loop browser preview and dismiss-no-mutation. | Commit/edit path still missing. |
+| Timer UI | Start, pause with reason, resume after refresh/navigation, update completion/scope, stop cleanly. | Product-loop browser start/pause/resume/completion/scope/stop. | Refresh/navigation while paused and long-lived sessions still missing. |
 | Today | Execute tasks, handle deadlines, date navigation, pause confirmations, retroactive edits. | Screenshots and API-created data. | Row interactions and date navigation need browser coverage. |
 | Calendar | Show old/new planned tasks, deadlines, external events, drag/resize planned tasks only. | Screenshots. | Drag/resize/reschedule and dense overlap cases need browser coverage. |
 | Table | Filters, sorting, CSV export, voided visibility, executed-row correction. | Screenshots. | Correction/filter/export browser paths missing. |
 | Insights | Locked, held, unlocked, suppressed, error, and evidence states should explain themselves without contradictions. | Screenshots only. | Need forced-state or fixture browser coverage for held/unlocked/latency. |
-| Notifications | Queue/reserve/render/dismiss/action/expire lifecycle separated from exposure and operator alerts. | Backend tests and operator counters. | Browser render/dismiss/action/expiry path missing. |
-| Settings/export/delete | Export scoped data; delete stages; retention options; no credential leaks. | API smoke and backend tests. | Browser export/download/delete-stage walk-through missing. |
-| Operator cockpit | Operator-only, read-only, content-minimized, invariant-derived blockers. | Strong browser/API coverage. | Refresh-click/mobile/partial-degraded sections should be added later. |
+| Notifications | Queue/reserve/render/dismiss/action/expire lifecycle separated from exposure and operator alerts. | Product-loop enqueue/web-pending/render-if-visible/dismiss ack, backend tests, and operator counters. | Action/expiry and linked-exposure cases still missing. |
+| Settings/export/delete | Export scoped data; delete stages; retention options; no credential leaks. | Product-loop export registry/secret-marker scan, API smoke, and backend tests. | Browser export/download/delete-stage walk-through needs a disposable delete account. |
+| Operator cockpit | Operator-only, read-only, content-minimized, invariant-derived blockers. | Strong cockpit-only browser/API coverage. | Refresh-click/partial-degraded sections should be added later. |
 
 ## Reusable Loop Levels
 
@@ -114,6 +134,9 @@ contradicts active invariants.
 
 - Operator account must never create/edit/delete/void tasks, deadlines, timers,
   brain dumps, providers, notifications, or account state.
+- Operator read-only stress must not sweep ordinary product routes as operator.
+  Ordinary product routes can create legitimate exposure telemetry for the
+  authenticated user; verify those routes through Holmesberg.
 - Holmesberg is the mutable chaos account.
 - Export calls may create governance/audit rows. Do not treat governance audit
   row counts as product-state read-only invariants.
@@ -125,14 +148,26 @@ contradicts active invariants.
 
 ## Next Automation Targets
 
-Add targeted Playwright scripts in this order:
+Added product-loop browser dogfood in this pass:
 
-1. Brain dump modal edit/binding/partial-failure/retry/double-submit.
-2. New task modal duration nudge, deadline preview, binding, and conflict UI.
-3. Pressure-map horizon switch, preview, dismiss-no-mutation, commit.
-4. Timer UI start, pause, refresh, resume, update completion, stop.
-5. Notification render, dismiss, action, expiry.
-6. Insights held/unlocked/error/latency states.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology public
+```
+
+It is also available through the reusable wrapper:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode full -IncludeProductLoop -WaveName "wave-name"
+```
+
+Remaining targeted Playwright scripts in priority order:
+
+1. New task modal edit mode, terminal deadline rejection, custom category, no-bind/pick-another, and nudge-dismiss outcome.
+2. Brain dump modal edit/partial-failure/retry/double-submit.
+3. Pressure-map recovery-block commit.
+4. Timer refresh/navigation while paused and long-lived-session correction.
+5. Notification action/expiry and linked-exposure lifecycle.
+6. Forced insights held/unlocked/error/latency states.
 7. Calendar drag/resize/reschedule and table correction/export.
 
 ## Open Questions For Future Decision
