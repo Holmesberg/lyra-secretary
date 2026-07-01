@@ -3047,3 +3047,109 @@ Rollback note:
   `operator.py` and `output_surfaces.py` and removes
   `classify_exposure_terminal_state(...)` plus its test, without touching
   schemas, production data, frontend code, Redis data, or lifecycle rows.
+
+## R4 - Active Stopwatch Store Extraction
+
+Code commit: `15068c1`
+
+Changed authority:
+
+- No endpoint payload, schema, frontend behavior, or task lifecycle behavior
+  changed.
+- `backend/app/services/active_stopwatch_store.py` now owns active stopwatch
+  Redis/DB recovery and orphan cleanup implementation.
+- `StopwatchManager` remains the public stopwatch service surface and keeps
+  compatibility methods for `_get_active`, `_recover_from_db`,
+  `_close_orphan_session`, `_close_open_pause_events`, and `void_cleanup`.
+- The mutation surface registry now lists `active_stopwatch_store.py` under
+  `stopwatch_session_authority`.
+
+Removed paths:
+
+- Inline active-state recovery and orphan-cleanup bodies were removed from
+  `stopwatch_manager.py`.
+- No route, schema, frontend component, production data, or user-visible path
+  was removed.
+
+Parked paths:
+
+- Stopwatch `stop()`/finalizer extraction remains parked because it mixes final
+  pause accounting, `TaskManager.complete_task`, calibration nudges,
+  micro-mirror behavior, Redis clearing, and paused-parent payload semantics.
+- Task lifecycle/binding/integration effects remain parked.
+- Notification/output-surface effects remain parked.
+
+Moved authority:
+
+- Active stopwatch recovery/cleanup implementation moved into a narrower store.
+- Stopwatch truth authority did not move; `StopwatchManager`, canonical
+  stopwatch endpoints, and Redis stopwatch state methods remain the owning
+  surface.
+
+Agent-loop findings:
+
+- The R4 backend extraction pass chose the active-store seam because it reduces
+  `stopwatch_manager.py` size while leaving start/pause/resume/stop semantics
+  untouched.
+- The seam was intentionally kept below the finalizer boundary to avoid
+  changing execution duration, pause aggregation, completion, reflection, or
+  calibration behavior.
+
+Tests and verification:
+
+- Focused recovery/void/orphan tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_void_clears_stopwatch.py tests\test_stopwatch_recovery.py tests\test_recovery_and_negative_pause.py tests\test_pause_resume_pause_event.py::test_close_orphan_session_closes_open_pause_events tests\test_state_consistency.py::test_recover_from_db_blocks_terminal_states tests\test_mutations_reject_voided.py::test_stopwatch_stop_voided_mid_session tests\test_mutations_reject_voided.py::test_update_completion_rejects_voided -q`
+  passed (`13 passed`).
+- Broader stopwatch suite:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_stopwatch_switch.py tests\test_stopwatch_start_errors.py tests\test_stopwatch_pause_counter_anchor.py tests\test_stale_pause_resolution.py tests\test_mutations_reject_voided.py -q`
+  passed (`33 passed`).
+- Python compile:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\active_stopwatch_store.py app\services\stopwatch_manager.py`
+  passed.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Static authority scan:
+  `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py`
+  passed in report-only mode with `missing_owner_count=0`.
+- Static refactor contract scan:
+  `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py`
+  passed with zero findings.
+- Holmesberg mutable product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r4-active-stopwatch-store-local-current --out-dir tmp\browser-product-loop\r4-active-stopwatch-store-local-current`
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/r4-active-stopwatch-store-local-current/result.json`.
+- Holmesberg outcome:
+  task/deadline binding, brain dump, pressure-map commit seam, timer
+  start/pause/resume/stop, export evidence, exposure render/ack rows,
+  notification lifecycle terminal rows, and cleanup all passed. The exported
+  dogfood pause event showed nonzero `duration_minutes`.
+- Operator read-only proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-active-stopwatch-store-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-active-stopwatch-store-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, and `cohort_status=yellow` for real-data
+  gaps only.
+
+Behavior parity statement:
+
+- `_get_active`, `_recover_from_db`, `_close_orphan_session`,
+  `_close_open_pause_events`, and `void_cleanup` remain callable on
+  `StopwatchManager` and delegate to the store.
+- `close_orphan_session` still commits and invalidates task ranges.
+- `close_open_pause_events` still does not commit; callers own the transaction.
+- `void_cleanup` still uses the current request user key and clears Redis only
+  when the active stopwatch points at the voided task.
+- Start, pause, resume, switch, stop, completion, reflection, and export
+  behavior are unchanged.
+
+Rollback note:
+
+- Revert `15068c1` only. This restores the inline active-state recovery and
+  orphan-cleanup bodies in `stopwatch_manager.py`, removes
+  `active_stopwatch_store.py`, and removes its registry entry without touching
+  schemas, production data, frontend code, Redis data, or lifecycle rows.
