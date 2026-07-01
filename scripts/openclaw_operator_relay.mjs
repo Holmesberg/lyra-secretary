@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import net from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
+import { pathToFileURL } from "node:url";
 
 const redisHost = process.env.LYRA_OPERATOR_REDIS_HOST || "redis";
 const redisPort = Number(process.env.LYRA_OPERATOR_REDIS_PORT || "6379");
@@ -21,6 +22,14 @@ let buffer = Buffer.alloc(0);
 
 function log(message) {
   console.log(`${new Date().toISOString()} ${logPrefix} ${message}`);
+}
+
+export function sanitizeRelayReason(value) {
+  return String(value || "unknown")
+    .slice(0, 240)
+    .replace(/bot[A-Za-z0-9:_-]+/g, "bot[redacted]")
+    .replace(/(token|botToken|authorization|api[_-]?key)=([^&\s]+)/gi, "$1=[redacted]")
+    .replace(/(message|payload|raw)=([^&\s]+)/gi, "$1=[redacted]");
 }
 
 function readTelegramConfig() {
@@ -152,57 +161,112 @@ async function redisCommand(args) {
   }
 }
 
-async function restoreProcessingQueue() {
-  let restored = 0;
-  for (;;) {
-    const raw = await redisCommand(["RPOPLPUSH", processingKey, queueKey]);
-    if (!raw) {
-      break;
+export function createRelayOperations({
+  redisCommand: command,
+  queueKey: pendingQueueKey = queueKey,
+  processingKey: activeProcessingKey = processingKey,
+  deadLetterKey: activeDeadLetterKey = deadLetterKey,
+  pollTimeoutSeconds: activePollTimeoutSeconds = pollTimeoutSeconds,
+  log: writeLog = log,
+  now = () => new Date(),
+} = {}) {
+  if (typeof command !== "function") {
+    throw new Error("redisCommand dependency is required");
+  }
+
+  async function restoreProcessingQueue() {
+    let restored = 0;
+    for (;;) {
+      const raw = await command(["RPOPLPUSH", activeProcessingKey, pendingQueueKey]);
+      if (!raw) {
+        break;
+      }
+      restored += 1;
     }
-    restored += 1;
+    if (restored > 0) {
+      writeLog(`restored_processing count=${restored}`);
+    }
+    return restored;
   }
-  if (restored > 0) {
-    log(`restored_processing count=${restored}`);
+
+  async function takePending() {
+    return command([
+      "BRPOPLPUSH",
+      pendingQueueKey,
+      activeProcessingKey,
+      String(activePollTimeoutSeconds),
+    ]);
   }
+
+  async function ackProcessing(raw) {
+    const removed = await command(["LREM", activeProcessingKey, "1", raw]);
+    if (Number(removed) !== 1) {
+      writeLog(`ack_missing_processing removed=${removed}`);
+    }
+    return Number(removed);
+  }
+
+  async function requeueProcessing(raw, reason) {
+    const removed = await command(["LREM", activeProcessingKey, "1", raw]);
+    const safeReason = sanitizeRelayReason(reason);
+    if (Number(removed) === 1) {
+      await command(["LPUSH", pendingQueueKey, raw]);
+      writeLog(`requeued reason=${safeReason}`);
+      return Number(removed);
+    }
+    writeLog(`requeue_missing_processing removed=${removed} reason=${safeReason}`);
+    return Number(removed);
+  }
+
+  async function deadLetterProcessing(raw, reason) {
+    const removed = await command(["LREM", activeProcessingKey, "1", raw]);
+    const safeReason = sanitizeRelayReason(reason);
+    const entry = JSON.stringify(
+      {
+        raw,
+        reason: safeReason,
+        moved_at: now().toISOString(),
+      },
+      null,
+      0,
+    );
+    await command(["LPUSH", activeDeadLetterKey, entry]);
+    writeLog(`dead_lettered removed=${removed} reason=${safeReason}`);
+    return Number(removed);
+  }
+
+  return {
+    restoreProcessingQueue,
+    takePending,
+    ackProcessing,
+    requeueProcessing,
+    deadLetterProcessing,
+  };
+}
+
+const defaultOperations = createRelayOperations({ redisCommand });
+
+async function restoreProcessingQueue() {
+  return defaultOperations.restoreProcessingQueue();
 }
 
 async function takePending() {
-  return redisCommand(["BRPOPLPUSH", queueKey, processingKey, String(pollTimeoutSeconds)]);
+  return defaultOperations.takePending();
 }
 
 async function ackProcessing(raw) {
-  const removed = await redisCommand(["LREM", processingKey, "1", raw]);
-  if (Number(removed) !== 1) {
-    log(`ack_missing_processing removed=${removed}`);
-  }
+  return defaultOperations.ackProcessing(raw);
 }
 
 async function requeueProcessing(raw, reason) {
-  const removed = await redisCommand(["LREM", processingKey, "1", raw]);
-  if (Number(removed) === 1) {
-    await redisCommand(["LPUSH", queueKey, raw]);
-    log(`requeued reason=${reason}`);
-    return;
-  }
-  log(`requeue_missing_processing removed=${removed} reason=${reason}`);
+  return defaultOperations.requeueProcessing(raw, reason);
 }
 
 async function deadLetterProcessing(raw, reason) {
-  const removed = await redisCommand(["LREM", processingKey, "1", raw]);
-  const entry = JSON.stringify(
-    {
-      raw,
-      reason,
-      moved_at: new Date().toISOString(),
-    },
-    null,
-    0,
-  );
-  await redisCommand(["LPUSH", deadLetterKey, entry]);
-  log(`dead_lettered removed=${removed} reason=${reason}`);
+  return defaultOperations.deadLetterProcessing(raw, reason);
 }
 
-function relayText(payload) {
+export function relayText(payload) {
   if (payload && typeof payload.message === "string" && payload.message.trim()) {
     return payload.message.trim();
   }
@@ -227,6 +291,41 @@ async function sendTelegram(token, chatIds, text) {
   }
 }
 
+export async function processPendingRaw(
+  raw,
+  telegram,
+  operations,
+  {
+    sendTelegram: sendTelegramFn = sendTelegram,
+    sleep: sleepFn = sleep,
+    log: writeLog = log,
+  } = {},
+) {
+  if (!raw) {
+    return "empty";
+  }
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch (error) {
+    await operations.deadLetterProcessing(raw, `malformed_json:${error.name}`);
+    await sleepFn(5000);
+    return "dead_lettered";
+  }
+
+  try {
+    const text = relayText(payload);
+    await sendTelegramFn(telegram.token, telegram.chatIds, text);
+    await operations.ackProcessing(raw);
+    writeLog(`sent type=${payload.type || "unknown"} source=${payload.source || "unknown"}`);
+    return "sent";
+  } catch (error) {
+    await operations.requeueProcessing(raw, `send_failed:${sanitizeRelayReason(error.message)}`);
+    await sleepFn(5000);
+    return "requeued";
+  }
+}
+
 async function main() {
   const telegram = readTelegramConfig();
   await restoreProcessingQueue();
@@ -240,25 +339,7 @@ async function main() {
       if (!raw) {
         continue;
       }
-      let payload;
-      try {
-        payload = JSON.parse(raw);
-      } catch (error) {
-        await deadLetterProcessing(raw, `malformed_json:${error.name}`);
-        await sleep(5000);
-        continue;
-      }
-
-      try {
-        const text = relayText(payload);
-        await sendTelegram(telegram.token, telegram.chatIds, text);
-        await ackProcessing(raw);
-        log(`sent type=${payload.type || "unknown"} source=${payload.source || "unknown"}`);
-      } catch (error) {
-        await requeueProcessing(raw, `send_failed:${error.message}`);
-        await sleep(5000);
-        continue;
-      }
+      await processPendingRaw(raw, telegram, defaultOperations);
       await sleep(250);
     } catch (error) {
       log(`error=${error.message}`);
@@ -270,7 +351,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(`${new Date().toISOString()} ${logPrefix} fatal=${error.message}`);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(`${new Date().toISOString()} ${logPrefix} fatal=${error.message}`);
+    process.exit(1);
+  });
+}

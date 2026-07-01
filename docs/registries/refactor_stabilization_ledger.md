@@ -2900,6 +2900,16 @@ Tests and verification:
   passed (`42 passed`).
 - Whitespace:
   `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id s1c-openclaw-relay-gate-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-s1c-openclaw-relay-gate-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `7125ms`, mobile `6684ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and
+  `cohort_status=yellow` for real-data gaps only.
 - Static authority scan:
   `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py`
   passed in report-only mode with `missing_owner_count=0`.
@@ -3257,4 +3267,78 @@ Rollback note:
 - Revert the R5a docs/config commit only. This restores the previous stale
   docs/config wording and OpenClaw tool metadata without touching Lyra schemas,
   production data, frontend code, backend runtime code, Redis data, or
+  lifecycle rows.
+
+## S1c - OpenClaw Operator Relay Hermetic Gate
+
+Changed authority:
+
+- No Lyra product route, schema, frontend component, user-facing behavior, or
+  production data changed.
+- `scripts/openclaw_operator_relay.mjs` now exposes a small testable relay core
+  while preserving the existing CLI loop.
+- `scripts/run_s1c_verification_stack.ps1` now runs the hermetic relay test as
+  a standard S1c gate.
+- Relay send-failure reasons are sanitized before logs/dead-letter metadata can
+  include them.
+
+Removed paths:
+
+- No runtime path was removed.
+- No OpenClaw queue, Redis key, Telegram setting, or operator alert path was
+  deleted.
+
+Parked paths:
+
+- Live Telegram/Redis relay smoke remains a runtime runbook concern.
+- OpenClaw direct product mutation remains parked.
+- Provider credential browser mutation and account hard-delete browser proof
+  remain gated on disposable credentials/accounts.
+
+Moved authority:
+
+- Relay reliability proof moved from manual-only inspection into a reusable
+  hermetic gate.
+- Operator alert transport authority remains with the OpenClaw relay and
+  canonical notification/operator alert services.
+
+Agent-loop findings:
+
+- Explorer C identified OpenClaw pending-drain as the largest remaining
+  reusable verification gap. Backend redaction/mirroring tests existed, but the
+  relay's `pending -> processing -> ack/requeue/dead_letter` state machine was
+  not covered by a fast hermetic test.
+
+Tests and verification:
+
+- Relay unit/harness test:
+  `node scripts\test_openclaw_operator_relay.mjs` passed.
+- Node syntax checks:
+  `node --check scripts\openclaw_operator_relay.mjs` and
+  `node --check scripts\test_openclaw_operator_relay.mjs` passed.
+- S1c lightweight stack:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_s1c_verification_stack.ps1 -Topology local -SkipBackendFull -SkipFrontendBuild -SkipBrowser`
+  passed, including authority scan hard-fail mode, refactor contract scan
+  hard-fail mode, the new OpenClaw relay hermetic test, and Alembic fresh DB
+  smoke.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+
+Behavior parity statement:
+
+- Normal relay startup still reads Telegram config, restores processing rows,
+  blocks on pending notifications, sends Telegram messages, acknowledges only
+  after send success, requeues on send failure, and dead-letters malformed JSON.
+- The new test proves pending entries move into processing before send,
+  successful sends remove processing rows only after the send function runs,
+  send failures requeue instead of dropping, malformed JSON moves to
+  dead-letter, and logs do not expose injected token/raw-payload strings.
+- No Lyra app runtime behavior changed. The operator read-only browser proof
+  was run anyway as the standard post-wave cockpit sanity check.
+
+Rollback note:
+
+- Revert the S1c relay-hardening commit only. This restores the previous relay
+  script and removes the hermetic test from the S1c stack without touching Lyra
+  schemas, production data, frontend code, backend app code, Redis data, or
   lifecycle rows.

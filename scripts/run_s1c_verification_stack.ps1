@@ -58,6 +58,10 @@ try {
     & $python scripts\scan_refactor_contracts.py --fail-on-errors
   }
 
+  Invoke-Step "OpenClaw operator relay hermetic test" {
+    node scripts\test_openclaw_operator_relay.mjs
+  }
+
   Invoke-Step "alembic fresh database smoke" {
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_alembic_fresh_smoke.ps1
   }
