@@ -37,13 +37,13 @@ from app.services.operator_dashboard_metrics import (
     STALE_PAUSE_HOURS,
     activity_dates_by_user as _activity_dates_by_user,
     data_freshness_snapshot as _data_freshness_snapshot,
-    dropoff_points as _dropoff_points,
     dynamic_issue as _dynamic_issue,
     email_hash as _email_hash,
     is_test_or_synthetic_user as _is_test_or_synthetic_user,
     metric_meta as _metric_meta,
     notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
     pct as _pct,
+    product_loop_funnel_snapshot as _product_loop_funnel_snapshot,
     redis_notification_snapshot as _redis_notification_snapshot_impl,
     short_hash as _short_hash,
     user_last_activity_maps as _user_last_activity_maps,
@@ -421,31 +421,17 @@ def operator_dashboard_v12(
             or 0
         )
 
-        product_loop_funnel = {
-            **_metric_meta(basis="mixed", confidence="medium", readiness_impact="warning"),
-            "pulse_opened": None,
-            "quick_capture_used": None,
-            "brain_dump_submitted": None,
-            "preview_confirmed": None,
-            "task_created": int(non_op_task_total),
-            "obligation_bound": int(bound_task_count),
-            "pressure_map_opened": int(pressure_map_opened),
-            "recovery_plan_previewed": None,
-            "recovery_plan_confirmed": int(recovery_plan_confirmed),
-            "timer_started": int(session_started_count),
-            "timer_stopped_cleanly": int(clean_stop_count_all),
-            "recovery_surface_seen": int(recovery_surface_seen),
-            "insight_seen": int(insight_seen),
-            "returned_after_24h": sum(1 for u in non_operator_users if u.d1_return_at),
-        }
-        product_loop_funnel["dropoff_points"] = _dropoff_points(product_loop_funnel)
-        product_loop_funnel["not_instrumented_fields"] = [
-            "pulse_opened",
-            "quick_capture_used",
-            "brain_dump_submitted",
-            "preview_confirmed",
-            "recovery_plan_previewed",
-        ]
+        product_loop_funnel = _product_loop_funnel_snapshot(
+            task_created=non_op_task_total,
+            obligation_bound=bound_task_count,
+            pressure_map_opened=pressure_map_opened,
+            recovery_plan_confirmed=recovery_plan_confirmed,
+            timer_started=session_started_count,
+            timer_stopped_cleanly=clean_stop_count_all,
+            recovery_surface_seen=recovery_surface_seen,
+            insight_seen=insight_seen,
+            returned_after_24h=sum(1 for u in non_operator_users if u.d1_return_at),
+        )
 
         redis_snapshot = _redis_notification_snapshot(non_op_ids)
         notification_counts = redis_snapshot["counts"]

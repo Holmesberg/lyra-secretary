@@ -494,6 +494,7 @@ def test_operator_dashboard_exposure_contamination_is_task_window_scoped(client,
     body = res.json()
     assert body["measurement_integrity"]["clean_trace_ratio"] == 1.0
     assert body["measurement_integrity"]["dirty_reasons"]["exposure_contaminated"] == 0
+    assert body["product_loop_funnel"]["timer_stopped_cleanly"] == 1
 
     contaminating = record_decision(
         db,
@@ -523,6 +524,7 @@ def test_operator_dashboard_exposure_contamination_is_task_window_scoped(client,
     assert res.status_code == 200
     body = res.json()
     assert body["measurement_integrity"]["clean_trace_ratio"] == 0.0
+    assert body["product_loop_funnel"]["timer_stopped_cleanly"] == 1
     assert body["measurement_integrity"]["dirty_trace_count"] == 1
     assert body["measurement_integrity"]["dirty_reasons"]["exposure_contaminated"] == 1
     assert body["measurement_integrity"]["dirty_reason_distribution"]["exposure_contaminated"] == 1

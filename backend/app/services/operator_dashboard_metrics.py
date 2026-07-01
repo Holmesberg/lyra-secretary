@@ -563,6 +563,47 @@ def data_freshness_snapshot(
     return payload
 
 
+def product_loop_funnel_snapshot(
+    *,
+    task_created: int,
+    obligation_bound: int,
+    pressure_map_opened: int,
+    recovery_plan_confirmed: int,
+    timer_started: int,
+    timer_stopped_cleanly: int,
+    recovery_surface_seen: int,
+    insight_seen: int,
+    returned_after_24h: int,
+) -> dict[str, Any]:
+    """Read-only product-loop funnel using already-computed counts."""
+    payload = {
+        **metric_meta(basis="mixed", confidence="medium", readiness_impact="warning"),
+        "pulse_opened": None,
+        "quick_capture_used": None,
+        "brain_dump_submitted": None,
+        "preview_confirmed": None,
+        "task_created": int(task_created),
+        "obligation_bound": int(obligation_bound),
+        "pressure_map_opened": int(pressure_map_opened),
+        "recovery_plan_previewed": None,
+        "recovery_plan_confirmed": int(recovery_plan_confirmed),
+        "timer_started": int(timer_started),
+        "timer_stopped_cleanly": int(timer_stopped_cleanly),
+        "recovery_surface_seen": int(recovery_surface_seen),
+        "insight_seen": int(insight_seen),
+        "returned_after_24h": int(returned_after_24h),
+    }
+    payload["dropoff_points"] = dropoff_points(payload)
+    payload["not_instrumented_fields"] = [
+        "pulse_opened",
+        "quick_capture_used",
+        "brain_dump_submitted",
+        "preview_confirmed",
+        "recovery_plan_previewed",
+    ]
+    return payload
+
+
 def user_last_activity_maps(db: Session) -> dict[int, datetime]:
     values: dict[int, list[datetime]] = defaultdict(list)
     for user_id, stamp in db.query(Task.user_id, func.max(Task.last_modified_at)).group_by(Task.user_id):
