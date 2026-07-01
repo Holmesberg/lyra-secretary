@@ -375,7 +375,7 @@ export function BrainDumpQuickModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" data-testid="brain-dump-modal">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-signal" />
@@ -394,6 +394,7 @@ export function BrainDumpQuickModal({
               lab 8 friday 11pm", "read chapter 3 tomorrow 30min".
             </p>
             <textarea
+              data-testid="brain-dump-textarea"
               ref={textareaRef}
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
@@ -408,6 +409,7 @@ gym sat morning"
             )}
             <div className="flex justify-end gap-2 pt-1">
               <button
+                data-testid="brain-dump-cancel"
                 type="button"
                 onClick={() => onOpenChange(false)}
                 className="rounded-sm border border-hairline bg-void-2/40 px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-parchment"
@@ -415,6 +417,7 @@ gym sat morning"
                 Cancel
               </button>
               <button
+                data-testid="brain-dump-parse"
                 type="button"
                 onClick={handleParse}
                 disabled={parsing}
@@ -478,6 +481,7 @@ gym sat morning"
                         Title
                       </span>
                       <input
+                        data-testid={`brain-dump-item-title-${it.item_id}`}
                         value={it.title}
                         onChange={(event) =>
                           updateItem(it.item_id, { title: event.target.value })
@@ -497,6 +501,7 @@ gym sat morning"
                           {it.kind === "deadline" ? "Due" : "Start"}
                         </span>
                         <input
+                          data-testid={`brain-dump-item-when-${it.item_id}`}
                           type="datetime-local"
                           value={toDateTimeInput(it.when_local)}
                           onChange={(event) =>
@@ -513,6 +518,7 @@ gym sat morning"
                             Minutes
                           </span>
                           <input
+                            data-testid={`brain-dump-item-duration-${it.item_id}`}
                             type="number"
                             min={1}
                             max={720}
@@ -566,6 +572,7 @@ gym sat morning"
                                 ?
                               </span>
                               <button
+                                data-testid={`brain-dump-binding-yes-${bindingKey(b)}`}
                                 type="button"
                                 onClick={() =>
                                   setBindingChoice(b, "yes")
@@ -579,6 +586,7 @@ gym sat morning"
                                 Yes
                               </button>
                               <button
+                                data-testid={`brain-dump-binding-no-${bindingKey(b)}`}
                                 type="button"
                                 onClick={() =>
                                   setBindingChoice(b, "no")
@@ -604,8 +612,9 @@ gym sat morning"
             {error && <p className="text-[11px] text-ember">{error}</p>}
 
             <div className="flex justify-between gap-2 pt-1">
-              <button
-                type="button"
+                  <button
+                    data-testid="brain-dump-edit"
+                    type="button"
                 onClick={() => setStep("dump")}
                 disabled={committing}
                 className="rounded-sm border border-hairline bg-void-2/40 px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-parchment disabled:opacity-50"
@@ -619,6 +628,7 @@ gym sat morning"
                   </span>
                 )}
                 <button
+                  data-testid="brain-dump-lock-in"
                   type="button"
                   onClick={handleCommit}
                   disabled={committing || tier2Unanswered}

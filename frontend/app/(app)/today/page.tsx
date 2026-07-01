@@ -911,6 +911,7 @@ function TodayInner() {
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <button
+            data-testid="today-new-task"
             onClick={() => setNewTaskOpen(true)}
             className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
           >
@@ -918,6 +919,7 @@ function TodayInner() {
             New task
           </button>
           <button
+            data-testid="today-retroactive"
             onClick={() => setRetroOpen(true)}
             className="font-mono text-[10px] uppercase tracking-widest text-dust transition-colors hover:text-parchment"
             title="Log a past session that wasn't tracked live"

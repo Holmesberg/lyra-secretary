@@ -401,7 +401,10 @@ function PlanPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
+      <DialogContent
+        className="max-h-[88vh] max-w-3xl overflow-y-auto"
+        data-testid="pressure-map-plan-preview"
+      >
         <DialogHeader>
           <DialogTitle>Preview recovery plan</DialogTitle>
           <DialogDescription>
@@ -518,10 +521,16 @@ function PlanPreviewDialog({
         )}
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={committing}>
+          <Button
+            data-testid="pressure-map-preview-dismiss"
+            variant="ghost"
+            onClick={onClose}
+            disabled={committing}
+          >
             Dismiss
           </Button>
           <Button
+            data-testid="pressure-map-preview-lock-in"
             onClick={() => onCommit()}
             disabled={committing || enabledCount === 0}
           >
@@ -854,6 +863,7 @@ export function PulseAcademicPressureMap({
                 </div>
                 {primaryIsPlanOption && planOption && canPreviewPlan && (
                   <button
+                    data-testid="pressure-map-preview"
                     type="button"
                     onClick={() => openPlanPreview(planOption)}
                     className="inline-flex items-center gap-1 rounded-sm border border-signal/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/10"
@@ -880,6 +890,7 @@ export function PulseAcademicPressureMap({
                   Planning option
                 </div>
                 <button
+                  data-testid="pressure-map-preview"
                   type="button"
                   onClick={() => openPlanPreview(planOption)}
                   className="inline-flex items-center gap-1 rounded-sm border border-signal/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/10"

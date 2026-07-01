@@ -85,7 +85,13 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
     }
   }
   return (
-    <div className="terminal-panel flex items-start gap-3 p-4">
+    <div
+      data-testid="deadline-row"
+      data-deadline-id={deadline.deadline_id}
+      data-deadline-title={deadline.title}
+      data-deadline-state={deadline.state}
+      className="terminal-panel flex items-start gap-3 p-4"
+    >
       <div className="flex-1 space-y-1">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span className="text-sm font-medium text-parchment">
@@ -133,6 +139,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
             complete the real-world obligation. */}
         {canMarkDone && (
           <button
+            data-testid="deadline-row-done"
             type="button"
             onClick={handleMarkDone}
             disabled={marking}
@@ -143,6 +150,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
           </button>
         )}
         <button
+          data-testid="deadline-row-edit"
           type="button"
           onClick={onEdit}
           className="rounded-sm border border-hairline bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:border-signal/40 hover:text-parchment"
@@ -153,6 +161,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
           (confirming ? (
             <div className="flex gap-1">
               <button
+                data-testid="deadline-row-void-confirm"
                 type="button"
                 onClick={onVoid}
                 className="rounded-sm bg-ember/20 px-2 py-1 text-[11px] text-ember hover:bg-ember/30"
@@ -160,6 +169,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
                 Confirm
               </button>
               <button
+                data-testid="deadline-row-void-cancel"
                 type="button"
                 onClick={() => setConfirming(false)}
                 className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust"
@@ -169,6 +179,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
             </div>
           ) : (
             <button
+              data-testid="deadline-row-void"
               type="button"
               onClick={() => setConfirming(true)}
               className="rounded-sm border border-hairline bg-void-2 px-2 py-1 text-[11px] text-dust-deep transition-colors hover:border-ember/40 hover:text-ember"
@@ -359,7 +370,9 @@ export default function DeadlinesPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-parchment">
           Deadlines
         </h1>
-        <Button onClick={openCreate}>+ New deadline</Button>
+        <Button data-testid="deadlines-new" onClick={openCreate}>
+          + New deadline
+        </Button>
       </div>
 
       {isLoading && (

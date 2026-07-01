@@ -886,6 +886,7 @@ export default function CalendarPage() {
             const isActive = currentView === opt.id;
             return (
               <button
+                data-testid={`calendar-view-${opt.id}`}
                 key={opt.id}
                 type="button"
                 onClick={() => {
@@ -917,6 +918,7 @@ export default function CalendarPage() {
         </div>
       )}
       <div
+        data-testid="calendar-viewport"
         ref={calendarViewportRef}
         className="sx-react-calendar-wrapper h-[calc(100vh-220px)] overflow-y-auto rounded-sm border border-hairline-signal/30"
       >

@@ -853,6 +853,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { resetForm(); onClose(); } }}>
       <DialogContent
+        data-testid="new-task-modal"
         onKeyDown={(e) => {
           if (e.key !== "Enter") return;
           if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -889,6 +890,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="title">Title</Label>
             <Input
+              data-testid="new-task-title"
               id="title"
               ref={titleInputRef}
               value={title}
@@ -903,6 +905,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="start">Start</Label>
               <Input
+                data-testid="new-task-start"
                 id="start"
                 type="datetime-local"
                 value={start}
@@ -929,6 +932,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="end">End</Label>
               <Input
+                data-testid="new-task-end"
                 id="end"
                 type="datetime-local"
                 value={end}
@@ -941,6 +945,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             <Label className="text-xs text-dust">Duration</Label>
             <div className="flex items-center gap-2">
               <Input
+                data-testid="new-task-duration-hours"
                 type="number"
                 min={0}
                 value={durHours}
@@ -949,6 +954,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               />
               <span className="text-xs text-dust-deep">h</span>
               <Input
+                data-testid="new-task-duration-minutes"
                 type="number"
                 min={0}
                 value={durMinutes}
@@ -1021,6 +1027,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               <>
                 <Label htmlFor="description">What does this involve? <span className="text-dust-deep font-normal">(optional)</span></Label>
                 <textarea
+                  data-testid="new-task-description"
                   id="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -1220,6 +1227,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               </div>
               <div className="mt-2 flex gap-2">
                 <button
+                  data-testid="new-task-nudge-use"
                   type="button"
                   disabled={!calibrationNudge.exposureId}
                   className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1242,6 +1250,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   Use {calibrationNudge.suggestedMin} min
                 </button>
                 <button
+                  data-testid="new-task-nudge-keep"
                   type="button"
                   disabled={!calibrationNudge.exposureId}
                   className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment disabled:cursor-not-allowed disabled:opacity-50"
@@ -1276,17 +1285,23 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           </Button>
           {pausedConflict ? (
             <Button
+              data-testid="new-task-start-as-interruption"
               onClick={submitAsInterruption}
               disabled={submitting || pausedConflict.blockingTitles.length > 0}
             >
               Start as interruption
             </Button>
           ) : softConflict ? (
-            <Button onClick={submitWithForce} disabled={submitting}>
+            <Button
+              data-testid="new-task-create-anyway"
+              onClick={submitWithForce}
+              disabled={submitting}
+            >
               Create anyway
             </Button>
           ) : (
             <Button
+              data-testid={isEdit ? "new-task-save" : "new-task-create"}
               onClick={submit}
               disabled={!canSubmit}
             >
@@ -1372,6 +1387,7 @@ function DeadlinePickerSlot({
         </div>
         <div className="mt-2 flex gap-2">
           <button
+            data-testid="new-task-deadline-confirm-suggestion"
             type="button"
             onClick={onConfirmSuggestion}
             className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30"
@@ -1379,6 +1395,7 @@ function DeadlinePickerSlot({
             Confirm
           </button>
           <button
+            data-testid="new-task-deadline-pick-another"
             type="button"
             onClick={onTogglePicker}
             className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment"
@@ -1386,6 +1403,7 @@ function DeadlinePickerSlot({
             Pick another
           </button>
           <button
+            data-testid="new-task-deadline-no-deadline"
             type="button"
             onClick={onDismissSuggestion}
             className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust-deep transition-colors hover:text-dust"
@@ -1422,6 +1440,9 @@ function DeadlinePickerSlot({
           <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
             {bindable.map((d) => (
               <button
+                data-testid="new-task-deadline-option"
+                data-deadline-id={d.deadline_id}
+                data-deadline-title={d.title}
                 key={d.deadline_id}
                 type="button"
                 onClick={() => onPick(d.deadline_id)}

@@ -76,6 +76,8 @@ export function Toast({
 
   return (
     <div
+      data-testid="notification-toast"
+      data-toast-id={id}
       role="status"
       aria-live="polite"
       className="pointer-events-auto flex w-80 flex-col gap-2 rounded-sm border border-hairline-signal/40 bg-void p-3 text-sm text-parchment shadow-lg"
@@ -83,6 +85,7 @@ export function Toast({
       <div className="flex items-start gap-2">
         <div className="flex-1 leading-relaxed">{message}</div>
         <button
+          data-testid="notification-toast-dismiss"
           type="button"
           onClick={() => latestDismiss.current("dismissed")}
           aria-label="Dismiss"
@@ -93,6 +96,7 @@ export function Toast({
       </div>
       {detailHref && (
         <Link
+          data-testid="notification-toast-details"
           href={detailHref}
           onClick={() => latestDismiss.current("acted")}
           className="inline-flex items-center gap-1 self-start font-mono text-[10px] uppercase tracking-widest text-dust-deep transition-colors hover:text-signal"

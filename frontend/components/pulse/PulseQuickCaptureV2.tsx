@@ -51,6 +51,7 @@ export function PulseQuickCaptureV2() {
     <>
       <form
         id="quick-capture"
+        data-testid="pulse-quick-capture"
         onSubmit={openModal}
         className={`terminal-panel flex scroll-mt-6 flex-wrap items-center gap-3 ${
           compact ? "px-4 py-2" : "px-5 py-3"
@@ -62,6 +63,7 @@ export function PulseQuickCaptureV2() {
           <span className="opacity-50"> ]</span>
         </span>
         <input
+          data-testid="pulse-quick-capture-input"
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -85,6 +87,7 @@ export function PulseQuickCaptureV2() {
           <ChipButton icon={Mic} label="Voice" disabled />
         </div>
         <button
+          data-testid="pulse-quick-capture-submit"
           type="submit"
           className={`rounded-sm border border-signal/40 bg-signal/15 font-mono text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon ${
             compact ? "px-3 py-1" : "px-3.5 py-1.5"
