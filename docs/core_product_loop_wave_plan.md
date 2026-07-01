@@ -39,6 +39,149 @@ obligations without making the core branch on provider names.
 Lyra's value is not "more tasks." The value is that real obligations become
 visible, drift becomes recoverable, and the user remains in control.
 
+The abstract north star is:
+
+```text
+align intention with reality
+```
+
+That is broader than productivity and narrower than generic AI coaching. The
+product should help users preserve contact between what they meant to do, what
+constraints actually existed, what happened, and what recovery remains
+available.
+
+Near-term retention should come from this reality-contact loop, not from cheap
+habit mechanics:
+
+```text
+pressure
+-> execution attempt
+-> reality diverges
+-> recovery
+-> reflection
+-> next attempt is slightly better
+-> trust increases
+-> return when reality changes again
+```
+
+Bad retention pressure:
+
+```text
+streaks, guilt nudges, app-open manipulation, dependency loops
+```
+
+Acceptable retention pull:
+
+```text
+the plan no longer matches remaining time;
+an unresolved interruption is still open;
+a recovery option can reduce tomorrow's planning debt;
+the user can leave with a better model than they arrived with.
+```
+
+Recovery conversations are a post-validation product direction, not an
+immediate runtime authority. The current system may improve recovery surfaces
+only inside existing explicit-action, exposure-logged, low-authority flows.
+Stronger recovery dialogue, adaptive scheduling, or AI-mediated intervention
+requires validated research and separate implementation authority.
+
+## Alpha Sequencing
+
+The current path is:
+
+```text
+Instrument
+-> Measurement integrity
+-> Recovery
+-> Validated longitudinal mechanisms
+-> LyraSim counterfactual scaling
+-> University wedges
+-> Middleware / organizations
+```
+
+Phase 1 - Instrument:
+
+- current freeze/refactor work;
+- operator cockpit clarity;
+- exposure ledger integrity;
+- clean traces;
+- ClaimCompiler boundaries;
+- reusable dogfood verification.
+
+Primary question:
+
+```text
+Can Lyra measure execution honestly?
+```
+
+Phase 2 - Recovery:
+
+- only after the instrument is trustworthy enough for a retaining cohort;
+- improve recovery after plan collapse, stale work, missed blocks, open
+  threads, and overrun cascades;
+- keep recovery reversible, user-confirmed, and exposure-logged;
+- avoid psychological labels, shame, or hidden steering.
+
+Primary question:
+
+```text
+Can Lyra reduce recovery latency without corrupting baseline observability?
+```
+
+Phase 3 - Validation:
+
+- first 30-50 retaining alpha users, likely students;
+- longitudinal traces plus qualitative review;
+- test whether recovery helps before increasing adaptive authority.
+
+Primary questions:
+
+```text
+Did recovery latency decrease?
+Did plans become more realistic?
+Did open loops close sooner?
+Did users voluntarily return under pressure?
+Did estimate and recovery behavior improve without dependency?
+```
+
+Phase 4 - LyraSim:
+
+- use real-user mechanisms as the seed;
+- simulate extra chaos and boundary conditions only after real traces exist;
+- never use simulation as a substitute for user reality.
+
+Phase 5 - Scale:
+
+- 100-200 users;
+- university wedge, word of mouth, marketing, and institutional review;
+- only then broader middleware paths for firms, enterprises, and
+  organizations.
+
+Feature requests during alpha should be treated as evidence, not automatic
+scope:
+
+```text
+request
+-> observed pain
+-> hypothesis
+-> parked or promoted
+-> build only if it strengthens the core loop
+```
+
+Maintain a running record once alpha begins:
+
+```text
+Things Reality Changed
+```
+
+Each entry should capture:
+
+- original assumption;
+- observed reality;
+- what changed;
+- what stayed invariant;
+- test or product adjustment.
+
 ## Current Product Loop
 
 The dogfood loop for the current build is:

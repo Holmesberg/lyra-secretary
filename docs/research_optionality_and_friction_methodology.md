@@ -32,7 +32,7 @@ The recommended sequence remains:
 ```text
 stabilize instrument
   -> professor/researcher architecture review
-  -> small cohort with constant feedback
+  -> 30-50 retaining alpha users with constant feedback
   -> validity gates
   -> papers
 ```
@@ -112,7 +112,121 @@ This symmetry is also why scaling must be cautious. More users do not only add
 data; they add intervention effects, provider failures, cohort heterogeneity,
 and new validity threats.
 
-## 4. Neuroadaptive Sequence
+## 4. Recovery As The Next Product-Research Loop
+
+The current product direction is not "more static insights." The core
+retention loop to validate is:
+
+```text
+pressure
+-> execution attempt
+-> plan/reality divergence
+-> recovery
+-> reflection
+-> next attempt
+```
+
+Recovery is where intention and reality meet. Planning is hypothetical until
+execution collides with constraints; recovery is the moment where the system
+can either preserve agency or distort measurement.
+
+Near-term recovery research should ask:
+
+- does Lyra reduce time-to-next-action after a plan breaks?
+- does recovery reduce unresolved open loops?
+- does recovery improve the next accepted plan without hiding uncertainty?
+- do users return under pressure because Lyra helps them regain reality
+  contact?
+- do recovery prompts preserve observability of baseline behavior?
+
+The key tension:
+
+```text
+engagement can increase while measurement quality decreases
+```
+
+Therefore recovery improvements must be evaluated against both product value
+and measurement integrity. Retention should emerge from increased reality
+contact, not psychological dependency.
+
+Forbidden shortcuts:
+
+- streaks or shame loops;
+- app-open manipulation;
+- identity labels;
+- hidden prompt tuning from private traces;
+- stronger interventions before exposure coverage and clean-data admission are
+  reliable.
+
+Good recovery behavior should remain:
+
+- reversible;
+- user-confirmed before mutation;
+- explicit about uncertainty;
+- exposure-logged when behavior-shaping;
+- grounded in current constraints and open work, not hidden psychology.
+
+## 5. Alpha Validation Sequence
+
+The first real product bet is the first 30-50 retaining alpha users, likely
+students or academic-pressure users.
+
+The goal is not large-sample proof. The goal is enough longitudinal contact to
+stop asking "does Lyra work?" and start asking:
+
+```text
+for whom?
+under what pressure?
+through what recovery mechanism?
+where does it fail?
+```
+
+Alpha should collect:
+
+- clean and dirty trace distributions;
+- exposure coverage;
+- recovery latency;
+- open-loop resolution outcomes;
+- qualitative trust and safety feedback;
+- user corrections;
+- return-under-pressure events;
+- cases where Lyra made recovery worse or felt judgmental.
+
+After alpha begins, maintain a research/product log:
+
+```text
+Things Reality Changed
+```
+
+This log should preserve original assumptions, observed reality, changed
+behavior, unchanged invariants, and the test or product change that followed.
+
+## 6. LyraSim After Human Mechanisms
+
+LyraSim should amplify real mechanisms, not replace users.
+
+Correct use:
+
+```text
+real longitudinal traces identify a mechanism
+-> LyraSim stresses boundary conditions
+-> product/research gate decides what changes
+```
+
+Incorrect use:
+
+```text
+simulate humans because real-user evidence is missing
+```
+
+LyraSim becomes most useful after alpha reveals repeated recovery and pressure
+patterns. It should explore counterfactual chaos such as doubled deadline
+density, interruption spikes, offline work, provider failures, delayed recovery
+prompts, and notification/exposure changes.
+
+Reality first. Simulation second.
+
+## 7. Neuroadaptive Sequence
 
 The BCI/neuroadaptive arc is future-gated.
 
@@ -139,7 +253,7 @@ execution instrumentation
 Until those gates hold, BCI remains a complementary-signal hypothesis, not a
 product claim.
 
-## 5. Why The Freeze Matters
+## 8. Why The Freeze Matters
 
 The bottleneck is no longer idea generation.
 
@@ -163,7 +277,7 @@ No new features unless they fix a boundary, test an invariant, or reduce
 operational risk.
 ```
 
-## 6. Next Architecture Priorities
+## 9. Next Architecture Priorities
 
 Two scalability risks should be handled before further provider expansion or
 adaptive-message experiments:

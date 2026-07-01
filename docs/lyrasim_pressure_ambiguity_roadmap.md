@@ -20,6 +20,37 @@ provider, pressure-map, and contamination failures before approximately 400
 users generate real traces. It is not a completeness claim and not a source of
 new product doctrine.
 
+LyraSim must not become an escape hatch from real users. It should amplify
+mechanisms discovered through real longitudinal traces, not invent humans in
+place of them.
+
+Strategic sequence:
+
+```text
+30-50 retaining alpha users
+-> observed recovery/pressure mechanisms
+-> LyraSim counterfactual stress
+-> 100-200 user scale gates
+```
+
+Correct use:
+
+```text
+real users reveal a repeated pressure/recovery mechanism
+-> simulate extra chaos around that mechanism
+-> convert failures into tests, reduced claims, product fixes, or parked notes
+```
+
+Incorrect use:
+
+```text
+insufficient user evidence
+-> simulate plausible humans
+-> treat pass rates as validation
+```
+
+Reality first. Simulation second.
+
 ## V0 Status
 
 LyraSim V0 is complete.
@@ -53,6 +84,17 @@ under real Baseet pressure. Passing LyraSim means only that Lyra survived the
 modeled pressure class; failing LyraSim means the failure is worth triaging.
 Only catastrophic failures, repeated real-world failures, or failures that map
 to an existing authority boundary should produce code architecture changes.
+
+After alpha begins, every new scenario family should declare its origin:
+
+```text
+survey_inferred | operator_dogfood | trusted_user_observed |
+alpha_cohort_observed | provider_failure | synthetic_boundary_probe
+```
+
+Real observed failures outrank synthetic boundary probes. Synthetic variants
+should parameterize known mechanisms instead of creating a second imagined
+product roadmap.
 
 The primary failure loop to attack:
 

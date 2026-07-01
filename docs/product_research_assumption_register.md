@@ -102,6 +102,8 @@ assumptions are observable and falsifiable.
 | P9 | Probabilistic duration estimates must feel like estimates, not judgment. | Cohort/provider-derived duration ranges can help planning if presented as uncertain priors the user can edit, not as truth about the user. | estimate source, edit rate, acceptance rate, correction rate, feedback sentiment, later drift. | Present ranges with low-authority copy; separate `user_entered`, `system_suggested_accepted`, and `system_suggested_edited` before research use. | Users feel judged or system priors contaminate clean user-estimate calibration. | future-gated |
 | P10 | Approximate pressure maps can create value before deep personalization. | A semi-accurate, provenance-labeled pressure map helps users understand workload scale and compression even before personal longitudinal adaptation is strong. | pressure-map return rate, correction rate, plan creation from map, feedback sentiment, mismatch reports, range edits. | Test whether Day-0 pressure maps produce "this explains my week" feedback and accepted corrections without exact-hour claims. | Users find approximate pressure misleading, anxiety-inducing, or not useful enough to return before personalization matures. | partially-supported / killable |
 | P11 | Psychological safety can be maintained through non-accusatory execution language. | Users tolerate uncomfortable execution mirrors when copy frames pressure/drift as structural evidence rather than moral failure or identity. | churn after insight exposure, negative sentiment, support messages, correction acceptance, private/discard use. | Review copy qualitatively; compare neutral structural language against more evaluative wording only under governed exposure. | Users interpret Lyra as judgmental, punitive, or bossware-like despite low-authority framing. | doctrine-locked / testable |
+| P12 | Recovery is the core retention loop after instrumentation. | Users return because Lyra helps them repair plan-reality divergence under pressure, not because static insights are interesting. | recovery option views, recovery confirmation, time-to-next-action, stale/open-loop resolution, return-under-pressure, qualitative "helped me recover" feedback. | In the first 30-50 retaining alpha users, compare pressure periods with and without useful recovery surfaces while conditioning on exposure and clean-data state. | Users like insights but do not use recovery, recovery does not reduce time-to-next-action, or users return mainly for novelty/social pressure rather than recovery value. | partially-supported / killable |
+| P13 | Retention must come from reality contact, not dependency tactics. | Engagement can increase without corrupting measurement if prompts preserve inspectability, reversibility, and user choice. | accepted/rejected prompts, opt-out use, correction rates, trust feedback, exposure rows, dependency/anxiety feedback, return-under-pressure. | Review every behavior-shaping surface for whether it informs rather than manipulates; compare engagement changes with exposure-aware measurement quality. | Streaks, guilt, urgency copy, or hidden personalization raise usage while users report reduced agency or baseline behavior becomes uninterpretable. | partially-supported / testable |
 
 ## 6. Scientific And Behavioral Hypotheses
 
@@ -151,6 +153,7 @@ assumptions are observable and falsifiable.
 | E6 | Reality-contact bandwidth is a real constraint. | Network, credibility, budget, cohort access, trust, and operational stability determine whether the system can learn from reality before claims become story-driven. | active cohort size, interview cadence, recovered data quality, pilot access, uptime, incident rate, usable feedback volume. | Treat contact with real users and real traces as methodological capacity, not vanity. | Architecture keeps expanding without enough user, provider, or operational evidence to pressure-test assumptions. | doctrine-locked |
 | E7 | Sequencing is part of alignment. | Capability becomes safer and more useful when explanations, prompts, and authority are revealed in an order humans can metabolize. | comprehension surveys, prompt fatigue, support questions, presentation feedback, feature misuse, correction flow completion. | Apply sequential revelation doctrine to onboarding, insights, recovery prompts, decks, and future adaptive flows. | True details are dumped too early, hidden too long, or arranged to persuade beyond evidence. | doctrine-locked |
 | E8 | Measurement integrity precedes optimization. | Lyra becomes safer and more scientifically useful by restricting its own right to interpret behavior before trying to optimize behavior. | claim suppressions, dirty-reason distributions, exposure contamination, slice failures, operator dashboard blockers, demoted hypotheses. | Treat every behavior-shaping surface as an intervention candidate; require construct defense before using a metric as a target or guidance basis. | Retention, completion, productivity, or institutional convenience becomes a target before the underlying construct is valid in the relevant slice. | doctrine-locked / publishable candidate |
+| E9 | Specification plus verification loop is the development method. | Coherent contracts become useful only when each wave runs a closed loop: spec, implementation, independent verification, disagreement classification, authority check, refinement, and repeat. | post-wave dogfood artifacts, failed verifier cases, GitHub issue audit trail, rollback notes, changed-authority ledger, manual dogfood deltas. | Require reusable post-wave dogfood plus operator read-only verification; convert missed human dogfood findings into future checks. | Browser verification becomes page-render smoke, harness bugs are ignored, or undocumented failures recur because the loop did not preserve them. | operational / testable |
 
 ## 10. Future Neuroadaptive Assumptions
 
@@ -219,12 +222,16 @@ Current mitigation strategy:
    corrupting calibration or recreating heavy manual cleanup.
 9. Unplanned execution rate explains instability beyond estimation error.
 10. Computed metrics can be traced through event, metric, construct, and
-   bounded-claim layers without unauthorized agency leaps.
+    bounded-claim layers without unauthorized agency leaps.
 11. Read-time drift computation remains fast until a real rollup trigger fires.
 12. Small-cohort qualitative feedback confirms that transparency increases
-   trust rather than confusion.
+    trust rather than confusion.
 13. Longitudinal mirrors remain supportive enough that users keep participating
-   after uncomfortable patterns become visible.
+    after uncomfortable patterns become visible.
+14. Recovery surfaces reduce time-to-next-action and unresolved open loops
+    without making users feel pushed, judged, or dependent.
+15. Return-under-pressure reflects practical recovery value, not manipulative
+    engagement pressure.
 
 Until these survive contact with users and runtime, LyraOS should stay in
 trusted-alpha research-instrument mode.
