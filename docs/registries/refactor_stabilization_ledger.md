@@ -2301,3 +2301,136 @@ Rollback note:
   component in `NewTaskModal` and removes
   `frontend/components/deadline-picker-slot.tsx` without touching backend code,
   production data, exposure rows, or task/deadline mutation authority.
+
+## R3 - Query Invalidation Helpers And Dogfood Cleanup Proof
+
+Commit: pending R3 invalidation-helper seam commit.
+
+Changed authority:
+
+- No task, deadline, timer, pressure-map, brain-dump, exposure, or claim
+  authority changed.
+- `frontend/lib/query-keys.ts` now owns exact invalidation recipes for:
+  - timer command surfaces;
+  - brain-dump commits;
+  - pressure-map recovery commits.
+- The Holmesberg product-loop verifier now owns cleanup proof for newly-created
+  synthetic creation-nudge decisions that never reached render.
+
+Removed paths:
+
+- Removed duplicate timer invalidation lists from:
+  - `frontend/components/active-timer-banner.tsx`;
+  - `frontend/components/pulse/PulseFocusCard.tsx`.
+- Removed duplicate brain-dump commit invalidation from
+  `frontend/components/pulse/BrainDumpQuickModal.tsx`.
+- Removed duplicate pressure recovery commit invalidation from
+  `frontend/components/pulse/PulseAcademicPressureMap.tsx`.
+
+Parked paths:
+
+- Raw invalidation remains in `PulseReentryQueue`, `undo-toast-host`, Today,
+  Calendar, Deadlines, Settings, and Integrations. Those are future small seams,
+  not part of this pass.
+- `invalidateDomain()` remains narrow for admin/operator only. Broad domain
+  invalidation is still parked.
+- Calendar drag/resize, provider credential mutation, hard-delete/Redis purge,
+  and OpenClaw pending-drain browser mutations remain gated in the product-loop
+  verifier until disposable credentials/accounts or authority decisions exist.
+
+Moved authority:
+
+- Cache invalidation recipe ownership moved from individual component command
+  handlers into named query-key helpers.
+- Synthetic dogfood exposure cleanup moved into the reusable verifier so a
+  passed Holmesberg product loop proves its own cleanup instead of relying on a
+  later E0 forensic pass.
+- No runtime product authority moved.
+
+Agent-loop findings:
+
+- The frontend seam initially preserved prior invalidation lists, but the agent
+  loop found the prior lists were under-scoped for warm Pulse/Calendar caches.
+- `invalidateBrainDumpCommitCaches()` now also invalidates
+  `tasksEvidence`.
+- `invalidatePressureRecoveryCommitCaches()` now also invalidates
+  `tasksRange` and `tasksEvidence`.
+- The product-loop edit-mode timeout is classified as a verifier/harness issue:
+  explicit backend deadline binding had passed, but the branch task was not
+  visible in the current Today view. The runner now gates only that edit-mode
+  sub-branch instead of timing out the whole flow.
+
+Tests and verification:
+
+- Harness syntax:
+  `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs` passed.
+- Frontend production build:
+  `cd frontend && npm run build:public` passed. The build includes Next type
+  validity checks; there is no standalone `npm run typecheck` script.
+- Whitespace:
+  `git diff --check` passed with only CRLF conversion warnings.
+- Verifier classification:
+  the first rerun failed before product state because local-current
+  `/api/auth/session` returned 500 after a production build. This is tracked by
+  GitHub #144 as verifier dev-server corruption, not a product failure. The
+  local-current dev server was restarted before rerun.
+- Holmesberg product-loop browser proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r3-invalidation-helpers-rerun-local-current --out-dir tmp\browser-product-loop\r3-invalidation-helpers-rerun-local-current`
+  passed.
+- Product-loop artifact:
+  `tmp/browser-product-loop/r3-invalidation-helpers-rerun-local-current/result.json`.
+- Covered product surfaces:
+  route sweep, deadline create, task create, deadline binding, soft conflict
+  create-anyway, duration nudge keep, no-deadline branch, custom category,
+  pick-another explicit deadline binding, terminal deadline rejection/filtering,
+  brain-dump parse/commit/partial retry/double-submit, pressure-map preview and
+  recovery block commit, calendar visibility, timer start/pause/resume/stop,
+  pause export, exposure decision/render/ack export, notification
+  render/dismiss/action/expiry lifecycle, Insights forbidden-claim scan, Table
+  delta/audit rendering, operator privacy scan, and cleanup proof.
+- Product-loop cleanup proof:
+  `cleanup leaves no unrendered synthetic creation-nudge exposures` passed. The
+  runner suppressed one newly-created dogfood-only pre-render creation-nudge
+  decision and left zero remaining candidates.
+- E0 repair audit for the pre-rerun dogfood row:
+  `docs/audits/e0_exposure_forensics_2026_07_01.md`.
+- Redacted repair artifacts:
+  `tmp/e0-exposure-forensics/20260701172151-r3-invalidation-helper/redacted_before_snapshot.json`,
+  `tmp/e0-exposure-forensics/20260701172151-r3-invalidation-helper/repair_result_redacted.json`,
+  and
+  `tmp/e0-exposure-forensics/20260701172151-r3-invalidation-helper/redacted_after_snapshot.json`.
+- Operator read-only proof after repair:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-invalidation-helpers-rerun-operator-local-current`
+  passed.
+- Operator read-only artifact:
+  `tmp/operator-readonly-stress-r3-invalidation-helpers-rerun-operator-local-current/result.json`.
+- Operator outcome:
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, `cohort_status=yellow`, zero count diffs,
+  zero route count diffs, and zero dashboard snapshot diffs.
+
+Behavior parity statement:
+
+- Timer command handlers still invalidate the same surfaces as before, now
+  through `invalidateTimerCommandSurfaces()`.
+- Brain-dump and pressure-map commit handlers invalidate a superset of the old
+  warm caches so newly-created tasks, evidence rows, deadlines, and pressure
+  state appear without hard refresh.
+- Existing fire-and-forget invalidation behavior is preserved where prior code
+  did not await invalidations. Pressure-map commit still awaits invalidation
+  before resolving the commit flow.
+- The product-loop verifier no longer treats a non-visible Today edit branch as
+  product failure when backend binding already passed; it records a gated
+  verifier branch and continues the rest of the documented flow.
+
+Rollback note:
+
+- Revert the R3 invalidation-helper seam commit to restore inline invalidation
+  calls in touched frontend components.
+- Revert the product-loop cleanup/harness commit to restore the previous
+  verifier behavior.
+- The production data repair is not reverted through Git. If the redacted E0
+  classification were later proven wrong, use the private ignored full-ID
+  snapshot from `tmp/e0-exposure-forensics/20260701172151-r3-invalidation-helper`
+  and perform an explicit operator-approved data repair. No render evidence was
+  fabricated, and no operator invariant was weakened.

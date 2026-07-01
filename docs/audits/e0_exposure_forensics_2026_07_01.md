@@ -81,6 +81,65 @@ worked: it found delivered decisions without terminal render or suppression
 evidence. The correct repair was to classify the dogfood-created rows and add
 suppression evidence through the canonical owner-scoped API.
 
+## Follow-Up R3 Dogfood Row - 2026-07-01
+
+Result: resolved.
+
+During the R3 invalidation-helper verification loop, the Holmesberg product
+loop created one additional `task_creation_nudge_lookup` decision from
+`analytics.bias_factor.lookup` that never crossed the browser render boundary.
+The row was from the Holmesberg dogfood account, had `decision_status=delivered`,
+no task binding, no render row, no render acknowledgement, no notification
+lifecycle row, and no suppression row.
+
+Private full row IDs are kept only under ignored `tmp/` artifacts and must not
+be committed.
+
+| exposure_ref | surface/template | trigger | status before | evidence | classification | repair action | remaining risk |
+|---|---|---|---|---|---|---|---|
+| `705e58d539db` | `task_creation_nudge_lookup` | `analytics.bias_factor.lookup` | `delivered` | Holmesberg user hash; R3 product-loop window; no render/ack/notification/task/suppression; created by local-current dogfood verification | dogfood synthetic delivered-without-render debt | suppression `dogfood_synthetic_cleanup` through owner-scoped API | none for cohort blocker |
+
+Before repair:
+
+- private artifact:
+  `tmp/e0-exposure-forensics/20260701172151-r3-invalidation-helper/PRIVATE_full_ids_do_not_commit.json`
+- redacted before-snapshot:
+  `tmp/e0-exposure-forensics/20260701172151-r3-invalidation-helper/redacted_before_snapshot.json`
+- actionable missing-render candidates: `1`
+- template breakdown: `task_creation_nudge_lookup=1`
+- trigger breakdown: `analytics.bias_factor.lookup=1`
+
+After repair:
+
+- redacted repair result:
+  `tmp/e0-exposure-forensics/20260701172151-r3-invalidation-helper/repair_result_redacted.json`
+- redacted after-snapshot:
+  `tmp/e0-exposure-forensics/20260701172151-r3-invalidation-helper/redacted_after_snapshot.json`
+- actionable missing-render candidates: `0`
+- repaired row now `decision_status=suppressed`
+- render rows added: `0`
+- suppression reason: `dogfood_synthetic_cleanup`
+
+Follow-up verifier fix:
+
+- The reusable Holmesberg product-loop runner now cleans newly-created
+  synthetic `task_creation_nudge_lookup` decisions from the current run if they
+  remain delivered with no render, render ack, suppression, task binding, or
+  notification lifecycle evidence.
+- The runner asserts cleanup with
+  `cleanup leaves no unrendered synthetic creation-nudge exposures`.
+- This is verifier cleanup, not a weaker operator invariant. The operator
+  blocker remains critical for live rows.
+
+Operator verification after repair:
+
+- browser artifact:
+  `tmp/operator-readonly-stress-r3-invalidation-helpers-operator-after-exposure-repair/result.json`
+- `exposure_without_render_count=0`
+- `implementation_green=true`
+- no count diffs, route count diffs, or dashboard snapshot diffs during
+  `/operator` reads.
+
 ## Remaining Work
 
 R2 should now distinguish:
