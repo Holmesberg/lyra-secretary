@@ -188,6 +188,20 @@ Green means cautious trusted-user expansion is allowed.
 
 `safe_to_invite_more_users` may be true only when readiness is green.
 
+The cockpit must distinguish implementation correctness from cohort readiness:
+
+- `implementation_green` means the cockpit is not blocked by known broken
+  invariants, false blockers, privacy leaks, exposure/render debt, provider
+  truth violations, or other cohort-blocking dynamic issues.
+- `cohort_green` means there is enough real clean evidence to invite more
+  trusted users.
+- A cockpit may be `implementation_green=true` and `cohort_green=false`. That
+  means the instrument appears correct, but the cohort still lacks enough clean
+  real-world evidence or has non-blocking instrumentation warnings.
+- Controlled evidence collection is allowed only when implementation is green
+  and the only cohort gap is insufficient real data. It is not general cohort
+  expansion and must not authorize marketing or strong user-facing claims.
+
 ## Measurement Integrity
 
 `clean_trace_ratio` is defined as:

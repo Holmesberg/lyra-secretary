@@ -207,6 +207,26 @@ The proxy is test-harness only. It lets local unreleased UI code exercise the
 public API without changing production CORS or weakening browser runtime
 contracts.
 
+For pre-deploy operator UI/backend seams, use the operator read-only verifier in
+the same local-current style:
+
+```powershell
+$env:LYRA_COOKIE_ALINASSERSABRY = [Environment]::GetEnvironmentVariable(
+  "LYRA_COOKIE_ALINASSERSABRY",
+  "User"
+)
+node scripts\browser_stress_operator_readonly.mjs `
+  --frontend http://localhost:3012 `
+  --api http://localhost:8000 `
+  --proxy-api `
+  --expect-readiness-split `
+  --run-id local-current-operator-check
+```
+
+Label this proof as `local-current`, not `hosted-public`. Hosted-public proof
+still requires `scripts\run_operator_readonly_browser_stress.ps1 -Topology public`
+and must record frontend/backend build IDs when they are available.
+
 When the public backend is in read-only pressure safe mode,
 `--force-pressure-recovery` may be added to fixture only the pressure-map
 recovery option returned to the browser. The fixture must preserve the real

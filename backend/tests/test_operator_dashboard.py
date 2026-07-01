@@ -177,6 +177,10 @@ def test_operator_dashboard_reports_state_and_privacy_boundaries(client, db):
 
     assert body["cohort_readiness"]["status"] == "red"
     assert body["cohort_readiness"]["safe_to_invite_more_users"] is False
+    assert body["cohort_readiness"]["implementation_green"] is False
+    assert body["cohort_readiness"]["implementation_status"] == "red"
+    assert body["cohort_readiness"]["cohort_green"] is False
+    assert body["cohort_readiness"]["cohort_status"] == "red"
     assert body["state_invariants"]["duplicate_open_sessions"] >= 1
     assert body["state_invariants"]["executed_tasks_missing_start_or_end"] >= 1
     assert body["state_invariants"]["stale_reentry_candidates"] >= 1
@@ -195,7 +199,7 @@ def test_operator_dashboard_reports_state_and_privacy_boundaries(client, db):
 
 
 def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
-    ids = [9121, 9122]
+    ids = list(range(9101, 9150))
     _clear_ids(db, ids)
     _clear_notification_lifecycle(db)
     db.add(_user(9121, operator=True))
@@ -211,6 +215,13 @@ def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
     assert "web_rendered" not in body["notification_lifecycle"]["not_instrumented_fields"]
     assert "login_only" in body["meaningful_activity_definition"]["excluded_events"]
     assert "task_created" in body["meaningful_activity_definition"]["included_events"]
+    assert body["cohort_readiness"]["implementation_green"] is True
+    assert body["cohort_readiness"]["implementation_status"] == "green"
+    assert body["cohort_readiness"]["implementation_blockers"] == []
+    assert body["cohort_readiness"]["cohort_green"] is False
+    assert body["cohort_readiness"]["cohort_status"] == "yellow"
+    assert "no_closed_sessions_last_14d" in body["cohort_readiness"]["cohort_evidence_gaps"]
+    assert body["cohort_readiness"]["controlled_evidence_collection_allowed"] is False
     issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
     assert "notification_source_freshness_not_instrumented" in issue_ids
 
@@ -265,6 +276,8 @@ def test_operator_dashboard_blocks_on_exposure_without_render(client, db):
     assert res.status_code == 200
     body = res.json()
     assert body["notification_lifecycle"]["exposure_without_render_count"] >= 1
+    assert body["cohort_readiness"]["implementation_green"] is False
+    assert "exposure_records_without_render_evidence" in body["cohort_readiness"]["implementation_blockers"]
     issue = next(
         issue
         for issue in body["dynamic_issues"]

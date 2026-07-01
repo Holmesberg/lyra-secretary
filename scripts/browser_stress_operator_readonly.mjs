@@ -14,11 +14,27 @@ import {
 
 const { chromium } = frontendRequire("playwright");
 
-const frontendOrigin = process.env.LYRA_FRONTEND_ORIGIN || "https://lyraos.org";
-const apiOrigin = process.env.LYRA_API_ORIGIN || "https://api.lyraos.org";
+const args = new Map();
+for (let i = 2; i < process.argv.length; i += 1) {
+  const arg = process.argv[i];
+  if (!arg.startsWith("--")) continue;
+  const key = arg.slice(2);
+  const next = process.argv[i + 1];
+  if (next && !next.startsWith("--")) {
+    args.set(key, next);
+    i += 1;
+  } else {
+    args.set(key, "true");
+  }
+}
+
+const frontendOrigin = args.get("frontend") || process.env.LYRA_FRONTEND_ORIGIN || "https://lyraos.org";
+const apiOrigin = args.get("api") || process.env.LYRA_API_ORIGIN || "https://api.lyraos.org";
 const cookieHeader = process.env.LYRA_COOKIE_ALINASSERSABRY || "";
-const runId = process.env.LYRA_BROWSER_STRESS_RUN_ID || new Date().toISOString().replace(/[:.]/g, "-");
-const outDir = path.join(repoRoot, "tmp", `operator-readonly-stress-${runId}`);
+const runId = args.get("run-id") || process.env.LYRA_BROWSER_STRESS_RUN_ID || new Date().toISOString().replace(/[:.]/g, "-");
+const outDir = path.resolve(args.get("out-dir") || path.join(repoRoot, "tmp", `operator-readonly-stress-${runId}`));
+const proxyApi = args.get("proxy-api") === "true";
+const expectReadinessSplit = args.get("expect-readiness-split") === "true";
 
 const routes = [
   { path: "/operator", name: "operator", targetMs: 12_000, maxMs: 20_000 },
@@ -101,6 +117,13 @@ function dashboardReadOnlySnapshot(body) {
     cohort_readiness: pick(body?.cohort_readiness, [
       "status",
       "safe_to_invite_more_users",
+      "implementation_green",
+      "implementation_status",
+      "implementation_blockers",
+      "cohort_green",
+      "cohort_status",
+      "cohort_evidence_gaps",
+      "controlled_evidence_collection_allowed",
     ]),
     notification_lifecycle: pick(body?.notification_lifecycle, [
       "web_created",
@@ -162,6 +185,62 @@ function diffObjects(before, after, prefix = "") {
     diffs.push(...diffObjects(beforeRecord[key], afterRecord[key], childPrefix));
   }
   return diffs;
+}
+
+async function installApiProxy(context) {
+  const apiPattern = `${apiOrigin.replace(/\/$/, "")}/**`;
+  await context.route(apiPattern, async (route) => {
+    const request = route.request();
+    const requestHeaders = request.headers();
+    const corsHeaders = {
+      "access-control-allow-origin": frontendOrigin,
+      "access-control-allow-credentials": "true",
+      "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      "access-control-allow-headers": requestHeaders["access-control-request-headers"]
+        || "authorization,content-type,x-idempotency-key",
+      vary: "Origin",
+    };
+    if (request.method().toUpperCase() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: corsHeaders,
+        body: "",
+      });
+      return;
+    }
+
+    const headers = { ...requestHeaders };
+    delete headers.host;
+    delete headers.origin;
+    delete headers.referer;
+    delete headers["sec-fetch-dest"];
+    delete headers["sec-fetch-mode"];
+    delete headers["sec-fetch-site"];
+
+    try {
+      const data = request.postDataBuffer();
+      const response = await context.request.fetch(request.url(), {
+        method: request.method(),
+        headers,
+        data: data && data.length > 0 ? data : undefined,
+        timeout: 45_000,
+        failOnStatusCode: false,
+      });
+      await route.fulfill({
+        status: response.status(),
+        headers: {
+          ...response.headers(),
+          ...corsHeaders,
+        },
+        body: await response.body(),
+      });
+    } catch (error) {
+      if (/Target page, context or browser has been closed/i.test(String(error?.message || error))) {
+        return;
+      }
+      await route.abort("failed").catch(() => {});
+    }
+  });
 }
 
 function isIgnorableRequestFailure(request) {
@@ -254,6 +333,17 @@ async function checkRoute(page, route, viewport) {
     if (route.path === "/operator" && !/Operator cockpit|Cohort readiness|safe to invite/i.test(bodyText)) {
       result.issues.push("operator route did not render operator cockpit");
     }
+    if (route.path === "/operator" && expectReadinessSplit) {
+      for (const label of [
+        /implementation green/i,
+        /cohort green/i,
+        /controlled evidence/i,
+      ]) {
+        if (!label.test(bodyText)) {
+          result.issues.push(`operator route missing readiness split label ${label}`);
+        }
+      }
+    }
     if (result.ready_ms > route.maxMs) {
       result.issues.push(`route exceeded hard latency budget ${route.maxMs}ms`);
     } else if (result.ready_ms > route.targetMs) {
@@ -297,6 +387,8 @@ const result = {
   frontendOrigin,
   apiOrigin,
   outDir: path.relative(repoRoot, outDir).replaceAll("\\", "/"),
+  proxy_api: proxyApi,
+  expect_readiness_split: expectReadinessSplit,
   user_ref: null,
   is_operator: null,
   before_counts: null,
@@ -314,6 +406,9 @@ const result = {
 
 try {
   const context = await browser.newContext({ viewport: viewports[0] });
+  if (proxyApi) {
+    await installApiProxy(context);
+  }
   await context.addCookies(parseAndExpandCookies(cookieHeader, frontendOrigin));
   const page = await context.newPage();
   const token = await resolveBackendTokenFromContext(context, frontendOrigin);

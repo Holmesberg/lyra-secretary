@@ -22,6 +22,14 @@ interface CohortReadiness extends SectionMeta {
   warnings: string[];
   minimum_fix_set: string[];
   safe_to_invite_more_users: boolean;
+  implementation_green: boolean;
+  implementation_status: "red" | "green";
+  implementation_blockers: string[];
+  cohort_green: boolean;
+  cohort_status: ReadinessStatus;
+  cohort_evidence_gaps: string[];
+  controlled_evidence_collection_allowed: boolean;
+  controlled_evidence_collection_reason: string | null;
   rationale: string;
 }
 
@@ -322,8 +330,20 @@ export default function OperatorDashboardPage() {
               label="safe to invite"
               value={readiness.safe_to_invite_more_users}
             />
+            <CompactStat label="implementation green" value={readiness.implementation_green} />
+            <CompactStat label="cohort green" value={readiness.cohort_green} />
+            <CompactStat
+              label="controlled evidence"
+              value={readiness.controlled_evidence_collection_allowed}
+            />
+          </div>
+          <div className="grid gap-3 md:grid-cols-4">
             <CompactStat label="blockers" value={readiness.blockers.length} />
             <CompactStat label="warnings" value={readiness.warnings.length} />
+            <CompactStat
+              label="cohort gaps"
+              value={readiness.cohort_evidence_gaps.length}
+            />
             <CompactStat label="safe to ignore" value={safeToIgnoreSummary(readiness)} />
           </div>
         </CardContent>

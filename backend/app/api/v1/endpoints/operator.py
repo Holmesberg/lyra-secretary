@@ -1494,6 +1494,42 @@ def operator_dashboard_v12(
         else:
             readiness_status = "yellow"
 
+        cohort_evidence_gaps = []
+        if clean_trace_ratio is None:
+            cohort_evidence_gaps.append("no_closed_sessions_last_14d")
+        elif clean_trace_ratio < READINESS_GREEN_TRACE_RATIO:
+            cohort_evidence_gaps.append("clean_trace_ratio_below_green_threshold")
+        if timer_start_to_clean_stop_rate is None:
+            cohort_evidence_gaps.append("timer_closure_rate_not_available")
+        elif timer_start_to_clean_stop_rate < GREEN_TIMER_CLOSURE_RATE:
+            cohort_evidence_gaps.append("timer_closure_rate_below_green_threshold")
+        if not green_loop_condition:
+            cohort_evidence_gaps.append("insufficient_full_loop_users")
+        if reliability["calendar_token_warning_user_visible_count"] > 0:
+            cohort_evidence_gaps.append("user_visible_calendar_warning_leak")
+        for key in (
+            "k01_calendar_warning_leak",
+            "k02_timer_overflow_duplicate",
+            "k04_parked_25h_stale",
+        ):
+            if bug_watchlist[key] != "pass":
+                cohort_evidence_gaps.append(f"{key}_not_pass")
+
+        cohort_gap_ids = list(dict.fromkeys([*cohort_evidence_gaps, *warnings]))
+        insufficient_real_data_gaps = {
+            "no_closed_sessions_last_14d",
+            "timer_closure_rate_not_available",
+            "insufficient_full_loop_users",
+        }
+        implementation_green = not readiness_blockers
+        cohort_green = readiness_status == "green"
+        only_insufficient_real_data = (
+            implementation_green
+            and not cohort_green
+            and bool(cohort_gap_ids)
+            and set(cohort_gap_ids).issubset(insufficient_real_data_gaps)
+        )
+
         minimum_fix_set = list(dict.fromkeys(readiness_blockers[:]))
         if not minimum_fix_set and warnings:
             minimum_fix_set = warnings[:3]
@@ -1505,6 +1541,18 @@ def operator_dashboard_v12(
             "warnings": list(dict.fromkeys(warnings)),
             "minimum_fix_set": minimum_fix_set,
             "safe_to_invite_more_users": readiness_status == "green",
+            "implementation_green": implementation_green,
+            "implementation_status": "green" if implementation_green else "red",
+            "implementation_blockers": list(dict.fromkeys(readiness_blockers)),
+            "cohort_green": cohort_green,
+            "cohort_status": readiness_status,
+            "cohort_evidence_gaps": cohort_gap_ids,
+            "controlled_evidence_collection_allowed": only_insufficient_real_data,
+            "controlled_evidence_collection_reason": (
+                "implementation_green_but_only_real_data_volume_missing"
+                if only_insufficient_real_data
+                else None
+            ),
             "rationale": (
                 "Ready for cautious trusted-user expansion."
                 if readiness_status == "green"

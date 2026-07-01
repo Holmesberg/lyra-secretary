@@ -1996,3 +1996,84 @@ Rollback note:
   full-ID snapshot and remove only the five `dogfood_synthetic_cleanup`
   suppression rows, then restore the corresponding decisions to their prior
   delivered state. Do not delete or rewrite unrelated exposure history.
+
+## R2 - Operator Implementation/Cohort Readiness Split
+
+Commit: pending R2 operator cockpit seam commit.
+
+Changed authority:
+
+- No product mutation authority changed.
+- `/operator` now reports implementation correctness separately from cohort
+  readiness:
+  - `implementation_green` means no current cockpit/invariant blocker is known;
+  - `cohort_green` means enough clean real-world evidence exists for trusted
+    user expansion.
+- Controlled evidence collection is explicit and allowed only when
+  implementation is green and all cohort gaps are insufficient-real-data gaps.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Hosted-public frontend deployment of the first-viewport copy remains pending;
+  hosted proof at the time of this seam reported frontend build `a5290f8`.
+- `notification_source_freshness_not_instrumented`,
+  `invalid_recovery_actions_not_instrumented`, and product-loop/cohort-data
+  warnings remain real cohort gaps, not implementation blockers.
+- Controlled evidence collection remains false while non-real-data warnings are
+  present.
+
+Moved authority:
+
+- No authority moved. The frontend renders backend readiness state and does not
+  derive expansion permission locally.
+- The operator read-only browser verifier now supports opt-in local-current
+  API proxy mode for pre-deploy UI/backend proof. This is test-harness-only and
+  does not change production CORS or runtime behavior.
+
+Tests and verification:
+
+- Backend targeted suite:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_operator_dashboard.py -q`
+  passed `10`.
+- Frontend public production build:
+  `cd frontend && npm run build:public` passed.
+- Script syntax:
+  `node --check scripts\browser_stress_operator_readonly.mjs` passed.
+- Whitespace:
+  `git diff --check` passed.
+- Local-current operator browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r2-implementation-split-local-current-v2`
+  wrote `tmp/operator-readonly-stress-r2-implementation-split-local-current-v2/result.json`.
+- Hosted-public operator read-only stress:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`
+  wrote `tmp/operator-readonly-stress-2026-07-01T16-17-28-027Z/result.json`.
+- Harness failure classification:
+  running `npm run build:public` while a verifier dev server was active
+  corrupted that dev server's `.next` session route. This was classified as a
+  verifier/topology bug; the broken verifier was stopped, restarted cleanly on
+  `localhost:3013`, and the stricter proof passed before final rebuild.
+
+Behavior parity statement:
+
+- Existing `status` and `safe_to_invite_more_users` semantics are unchanged.
+- `/operator` remains read-only: exported operator counts, route counts, and
+  dashboard invariant snapshots were unchanged before/after browser reads.
+- The current live dashboard state is implementation-green/cohort-yellow:
+  exposure-without-render is zero, implementation blockers are empty, and
+  cohort gaps are explicit.
+- A verifier bug was corrected: one cohort-wide operator test previously
+  cleaned only two synthetic user ids while asserting global cohort state. The
+  fixture now clears the full synthetic operator-dashboard id range before the
+  assertion.
+- Browser proof required both backend state and visible first-viewport labels:
+  `implementation green`, `cohort green`, and `controlled evidence`.
+
+Rollback note:
+
+- Revert the R2 operator cockpit seam commit only. This removes the new
+  readiness fields, frontend display cells, verifier proxy option, and related
+  tests/docs without touching production data or mutation paths.
