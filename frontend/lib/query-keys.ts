@@ -45,6 +45,16 @@ export function invalidateTimerCommandSurfaces(queryClient: QueryClient) {
   ]);
 }
 
+export function invalidatePulseReentryCaches(queryClient: QueryClient) {
+  return invalidateKeys(queryClient, [
+    queryKeys.stopwatchStatus,
+    queryKeys.tasks,
+    queryKeys.tasksRange,
+    queryKeys.tasksEvidence,
+    queryKeys.pressureMap,
+  ]);
+}
+
 export function invalidateBrainDumpCommitCaches(queryClient: QueryClient) {
   return invalidateKeys(queryClient, [
     queryKeys.tasks,

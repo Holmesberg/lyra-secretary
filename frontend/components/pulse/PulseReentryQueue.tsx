@@ -16,7 +16,7 @@ import {
   type StopwatchStatus,
   type TaskRow,
 } from "@/lib/tasks";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidatePulseReentryCaches, queryKeys } from "@/lib/query-keys";
 
 interface PulseReentryQueueProps {
   tasks: TaskRow[];
@@ -210,11 +210,7 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
   );
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
-    qc.invalidateQueries({ queryKey: queryKeys.tasks });
-    qc.invalidateQueries({ queryKey: queryKeys.tasksRange });
-    qc.invalidateQueries({ queryKey: queryKeys.tasksEvidence });
-    qc.invalidateQueries({ queryKey: queryKeys.pressureMap });
+    void invalidatePulseReentryCaches(qc);
   };
 
   const resumeM = useMutation({

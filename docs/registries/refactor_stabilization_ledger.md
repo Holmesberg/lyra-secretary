@@ -3342,3 +3342,92 @@ Rollback note:
   script and removes the hermetic test from the S1c stack without touching Lyra
   schemas, production data, frontend code, backend app code, Redis data, or
   lifecycle rows.
+
+## R3 - Pulse Re-entry Cache Invalidation Helper
+
+Changed authority:
+
+- No product authority changed.
+- Pulse remains the hub for re-entry prompts.
+- The shared frontend query-key contract now owns the exact Pulse re-entry
+  cache invalidation set.
+
+Removed paths:
+
+- No runtime path was removed.
+- No route, schema, API payload, timer command, task mutation, exposure row, or
+  provider path changed.
+
+Parked paths:
+
+- Deeper stopwatch controller extraction remains parked.
+- Deeper NewTaskModal submit-flow extraction remains parked.
+- Shared brain-dump reducer extraction remains parked until onboarding coverage
+  is strong enough.
+
+Moved authority:
+
+- The Pulse re-entry refresh invalidation list moved from
+  `PulseReentryQueue.tsx` into `frontend/lib/query-keys.ts`.
+
+Agent-loop findings:
+
+- Explorer D ranked this as the smallest R3 extraction seam: it preserves the
+  current invalidation set exactly and does not touch payload shape, UI branch
+  logic, or mutation authority.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Frontend typecheck-equivalent:
+  `npm exec tsc -- --noEmit --pretty false` passed from `frontend/`.
+- Health preflight:
+  local API `/v1/health` returned 200 and local frontend returned 200.
+- Operator-cookie browser proof before mutable loop:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-pulse-reentry-cache-helper-operator-local-current`
+  passed.
+- Operator artifact before mutable loop:
+  `tmp/operator-readonly-stress-r3-pulse-reentry-cache-helper-operator-local-current/result.json`.
+- Holmesberg mutable product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r3-pulse-reentry-cache-helper-holmesberg-local-current --out-dir tmp\browser-product-loop\r3-pulse-reentry-cache-helper-holmesberg-local-current`
+  passed with `ok=true`.
+- Holmesberg product artifact:
+  `tmp/browser-product-loop/r3-pulse-reentry-cache-helper-holmesberg-local-current/result.json`.
+- Product-loop coverage included route renders, deadline linkage, creation nudge
+  branches, brain-dump retry and double-submit protection, pressure-map commit,
+  timer pause/resume/stop, export evidence, exposure render/ack rows,
+  notification lifecycle terminal rows, operator leak checks, and cleanup proof.
+- Product-loop cleanup proof:
+  no active Holmesberg timer remained and no unrendered synthetic creation-nudge
+  exposure rows remained.
+- Non-fatal product-loop issues were classified as existing gated/verifier
+  conditions: onboarding gate skip for the chaos account, fallback deadline
+  picker use, Today-view visibility gaps after backend assertions, parser title
+  normalization, pressure safe-mode recovery fixture, provider credential
+  mutation, hard-delete purge, calendar drag/resize, and OpenClaw pending drain.
+  The deadline-suggestion UX budget remains tracked by GitHub issue #149.
+- Operator-cookie browser proof after mutable loop:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-pulse-reentry-cache-helper-post-holmesberg-operator-local-current`
+  passed.
+- Operator artifact after mutable loop:
+  `tmp/operator-readonly-stress-r3-pulse-reentry-cache-helper-post-holmesberg-operator-local-current/result.json`.
+- Operator outcome after mutable loop:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `6597ms`, mobile `5169ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and
+  cohort status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Pulse re-entry still invalidates stopwatch status, tasks, task range,
+  task evidence, and pressure map caches after resume, stale-resolution,
+  mark-done, and abandon actions.
+- The helper intentionally does not invalidate `me` or `deadlines`, matching the
+  previous inline behavior.
+
+Rollback note:
+
+- Revert the R3 Pulse re-entry cache helper commit only. This restores inline
+  invalidation calls without touching schemas, production data, backend code,
+  exposure lifecycle rows, Redis data, or user content.
