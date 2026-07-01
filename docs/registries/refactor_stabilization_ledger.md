@@ -1475,7 +1475,10 @@ Rollback note:
 
 ## S1c/R3 - NewTaskModal Branch Coverage Proof
 
-Commit: uncommitted browser-coverage hardening pass.
+Commits:
+
+- `2c1f7b2 test: cover new task modal branch flows`
+- `eb4941a docs: record new task branch dogfood proof`
 
 Changed authority:
 
@@ -1550,7 +1553,10 @@ Rollback note:
 
 ## S1c/R3 - Brain-Dump Chaos Coverage And Commit Race Fix
 
-Commit: uncommitted browser-coverage hardening pass.
+Commits:
+
+- `7e08003 fix: guard brain dump commits against double submit`
+- `45627f1 test: cover brain dump recovery branches`
 
 Changed authority:
 
