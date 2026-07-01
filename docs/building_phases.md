@@ -7,7 +7,9 @@
 > lives in `docs/AUTHORITY.md`, `docs/current_transition_state.md`, and
 > `docs/architecture_freeze_priority_hold_2026_05_20.md`.
 
-Forward-looking canonical document. What remains to be built, organized by phase. Updated at phase boundaries.
+Historical phase map. This preserves April planning context and shipped/parked
+intent, but it is not a forward-looking source of truth during the current
+freeze-closure refactor.
 
 **Last updated:** April 14, 2026 (Phase 4.5 active)
 
@@ -15,7 +17,11 @@ Forward-looking canonical document. What remains to be built, organized by phase
 
 ## Canonical Update Rule
 
-This document is the single source of truth for forward-looking phase planning. Updated at every phase boundary (when a phase closes or opens). `dogfood_findings_living.md` is the fast-moving tactical doc; this document is the slow-moving strategic one. Items from dogfood graduate here when they solidify into phase-level commitments. Items here don't duplicate dogfood — they reference it.
+Historical rule preserved for context only: this file used to act as the
+slow-moving phase plan. During the architecture freeze, do not use this section
+to authorize code or runtime behavior. Current authority lives in
+`docs/AUTHORITY.md`, `docs/current_transition_state.md`,
+`docs/operator_dashboard_contract.md`, and the refactor stabilization ledger.
 
 When a phase ships, its section collapses to a summary line referencing `project_history.md` and any items that slipped forward move to the next phase.
 

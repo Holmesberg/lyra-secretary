@@ -1,7 +1,31 @@
 ---
 name: lyra-secretary
-description: Manage tasks, schedule, and stopwatch via the Lyra Secretary backend API at http://backend:8000. Use for any task creation, rescheduling, deletion, timer start/stop/pause/resume, readiness/reflection logging, retroactive logging, analytics, or "ping"/"status" requests.
+description: Historical Lyra Secretary backend-control skill. During the architecture freeze, do not use this skill for live product mutations unless a current authenticated/audited command path is explicitly reauthorized. Direct http://backend:8000 reachability is not authorization.
 ---
+
+## Freeze Boundary
+
+This skill is retained as compatibility/reference material for the old
+OpenClaw command shell. It does not authorize live task creation,
+rescheduling, deletion, timer start/stop/pause/resume, readiness/reflection
+logging, retroactive logging, analytics mutation, or product wiring during the
+current freeze.
+
+Current authority lives in:
+
+- `docs/openclaw_orchestration_contract_v0.md`
+- `docs/AUTHORITY.md`
+- `docs/current_transition_state.md`
+- `docs/single_authority_contract.md`
+
+Direct Docker-network access to `http://backend:8000` describes reachability,
+not identity, scope, audit, or mutation authority. Any future OpenClaw-to-Lyra
+command path must use a current authenticated/audited canonical command path
+and must be reauthorized before this skill can be used for live mutations.
+
+The endpoint and workflow sections below are historical compatibility notes.
+They may help audit old behavior, but they must not override the freeze
+boundary above.
 
 ## Preamble Rules (NEVER violate)
 1. NEVER CONFIRM WITHOUT A BACKEND RESPONSE (task_id or session_id required)

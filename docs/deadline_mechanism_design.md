@@ -6,10 +6,21 @@
 > runtime AI synthesis, new user-facing insights, schema migrations, or
 > automatic interventions during the architecture freeze.
 
-**Status:** APPROVED for Option B build (2026-04-25, post-midterms start). Locked
-by operator decision. See "Operator decision (Apr 25)" section below for the
-justification chain. This doc is the implementation reference; do not depart from
-the schema, parser, or pre-registration plan without an explicit re-review.
+**Status:** Historical design note for the April deadline mechanism. The
+operator decision and implementation plan below are preserved as provenance,
+not current authorization.
+
+Current freeze-closure interpretation:
+
+- deadline inference is a suggestion/preview surface until the user explicitly
+  accepts or selects a binding;
+- canonical binding and provider/deadline mutations must flow through current
+  task/deadline services;
+- `parser_auto`, soft-warning RCT, per-deadline `bias_factor`, and deadline
+  progress-dashboard language below are historical/parked unless promoted by
+  current authority docs;
+- provider submissions remain evidence/candidates, not canonical completion
+  truth without explicit user confirmation.
 
 **Created:** 2026-04-25, midterm halt window.
 **Approved:** 2026-04-25 by operator. Build starts post-midterms (≥ Apr 27).

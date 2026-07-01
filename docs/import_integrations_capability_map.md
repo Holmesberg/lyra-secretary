@@ -1,6 +1,14 @@
 # Import Integrations — Capability Map
 
-**Status:** Research artifact, 2026-04-21. Not committed implementation. Used to prioritize post-Spring-School ship order.
+**Status:** Historical research artifact, 2026-04-21. Not committed
+implementation. This document cannot authorize new provider adapters, passive
+tracking, schema work, provider completion truth, or runtime import behavior
+during the architecture freeze.
+
+Semantic mappings below are capability hypotheses only. Current provider data
+must enter Lyra as provider facts/candidates with provenance; it must not become
+clean execution truth or canonical task/deadline completion without explicit
+user confirmation and active-contract authority.
 
 **Context:** After dogfood 2026-04-21 showed external users don't plan ahead in the calendar sense (0/9 tasks had >30 min lead), operator pivoted Path B away from custom onboarding UX toward **importing users' existing plans from the tools they already live in.** Rationale: the plans exist, they're just not in Lyra — meeting users where their corpus already is beats any new UI we design.
 
@@ -52,7 +60,9 @@ Six platforms surveyed. Ranked build order at the bottom.
 
 - **Availability:** No API — it's a file format / URL subscription. User uploads `.ics` or pastes subscription URL.
 - **Auth complexity:** NONE for file upload. URL subscribe = no auth unless private.
-- **Data shape mapping:** EXCELLENT. VEVENT maps 1:1 to Lyra task:
+- **Data shape mapping:** EXCELLENT for candidate extraction. VEVENT can
+  propose task-like fields, but imported calendar events remain provider
+  facts/candidates until user confirmation and canonical service handling:
   - `SUMMARY` → title
   - `DTSTART` / `DTEND` → start / end
   - `DESCRIPTION` → description

@@ -3153,3 +3153,108 @@ Rollback note:
   orphan-cleanup bodies in `stopwatch_manager.py`, removes
   `active_stopwatch_store.py`, and removes its registry entry without touching
   schemas, production data, frontend code, Redis data, or lifecycle rows.
+
+## R5a - Stale Authority Docs And OpenClaw Compatibility Guard
+
+Changed authority:
+
+- `docs/current_transition_state.md` now reflects the active
+  `wave-5-sovereignty-integrity-cycle` freeze-closure frame instead of the old
+  evidence-packet branch.
+- `docs/building_phases.md` no longer claims to be the forward-looking source
+  of truth during the architecture freeze.
+- `docs/testing_patterns.md` now distinguishes production fail-closed identity
+  from the test harness default identity.
+- `docs/import_integrations_capability_map.md` now marks provider mappings as
+  historical capability hypotheses, not provider truth or adapter authority.
+- `docs/deadline_mechanism_design.md` now marks old `APPROVED`,
+  `parser_auto`, soft-warning RCT, and per-deadline `bias_factor` wording as
+  historical/parked unless promoted by current authority.
+- `openclaw/skills/lyra-secretary/SKILL.md` now states that the old direct
+  backend-control skill is compatibility/reference material only.
+- `openclaw/config/agent.yml` now parks legacy direct-backend mutation tools as
+  `tools: []`.
+- `docs/audits/doc_alignment_findings_2026_06_04.csv` marks F003, F004, and
+  F006 resolved by this pass.
+
+Removed paths:
+
+- No Lyra app route, schema, frontend component, backend service, production
+  data, Redis key, or user-facing product path was removed.
+- Legacy OpenClaw direct-backend tool definitions were removed from the local
+  compatibility config because direct Docker reachability is not authorization.
+
+Parked paths:
+
+- OpenClaw direct task/timer mutation remains parked until a current
+  authenticated/audited canonical command path is explicitly authorized.
+- Old April roadmap phase planning remains historical context.
+- Deadline soft-warning RCT and per-deadline calibration claims remain parked.
+- Provider adapter expansion and passive telemetry remain parked.
+- Broader doc-alignment findings not touched by this pass remain open in the
+  audit CSV.
+
+Moved authority:
+
+- Current transition authority moved from the old evidence-packet branch frame
+  to the freeze-closure sequence: E0, R2, S1c hardening, R5a, R3/R4 seams,
+  R5b, R6, then post-freeze planning.
+- `AGENT_HANDOFF.md` is treated as historical onboarding context, not a
+  governing implementation document.
+- OpenClaw is reaffirmed as an operator reasoning environment/future draft host,
+  not a mutation owner.
+
+Agent-loop findings:
+
+- Explorer B found that runtime behavior was healthier than stale docs: Jarvis
+  endpoints are parked, exposure fails closed, and provider/deadline code mostly
+  respects canonical ownership, but old docs/config could still mislead future
+  agents.
+- The highest-risk stale path was OpenClaw's old direct backend command shell,
+  because local skill/config files can become live operator behavior.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- YAML parse:
+  `openclaw/config/agent.yml` parsed successfully with PyYAML.
+- Forbidden-claim grep:
+  high-signal active-authority terms were reduced to intentional historical
+  audit records and the explicit `tools: []` parking marker.
+- Runtime behavior:
+  no Lyra app code changed.
+- Operator-cookie browser smoke:
+  first run `r5a-stale-authority-cleanup-operator-local-current` produced no
+  data diffs and no dashboard snapshot diffs, but failed the route text wait on
+  both desktop/mobile after a cold/warm-up over-budget navigation. Classified
+  as verifier/topology warm-up latency rather than product regression because
+  `/v1/health`, `/operator`, and dashboard snapshots were healthy.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r5a-stale-authority-cleanup-v2-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r5a-stale-authority-cleanup-v2-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `7624ms`, mobile `8216ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and
+  `cohort_status=yellow` for real-data gaps only.
+
+Behavior parity statement:
+
+- Lyra product runtime behavior is unchanged.
+- Test auth behavior is unchanged; only documentation now describes the current
+  fail-closed/runtime vs test-harness distinction.
+- Provider/deadline runtime behavior is unchanged; docs now say provider rows
+  remain candidates/evidence unless explicitly confirmed.
+- OpenClaw local compatibility config no longer exposes direct mutation tools
+  by default; reintroduction requires explicit authenticated/audited command
+  authority.
+
+Rollback note:
+
+- Revert the R5a docs/config commit only. This restores the previous stale
+  docs/config wording and OpenClaw tool metadata without touching Lyra schemas,
+  production data, frontend code, backend runtime code, Redis data, or
+  lifecycle rows.
