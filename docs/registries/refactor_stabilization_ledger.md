@@ -2832,3 +2832,112 @@ Rollback note:
   inline nudge JSX in `NewTaskModal` and removes
   `frontend/components/calibration-nudge-card.tsx` without touching backend
   code, schemas, production data, or browser-verifier cleanup logic.
+
+## R4 - Operator Dashboard Metric Helper Extraction
+
+Commit: `502218d backend: extract operator dashboard metric helpers`.
+
+Changed authority:
+
+- No operator authorization, cohort-readiness rule, exposure invariant,
+  notification lifecycle rule, clean-trace denominator, provider-integrity rule,
+  Redis state, task/session/deadline state, or dashboard response contract
+  changed.
+- `backend/app/services/operator_dashboard_metrics.py` now owns read-only
+  helper primitives used by `/v1/operator/dashboard`: metric metadata, hashes,
+  test/synthetic user classification, percentage math, dynamic-issue shaping,
+  watchlist status derivation, dropoff detection, activity-date maps, Redis
+  pending-notification snapshotting, and last-activity aggregation.
+- `backend/app/api/v1/endpoints/operator.py` remains the operator-authenticated
+  dashboard endpoint and still owns the assembled cockpit payload, readiness
+  semantics, and request-scope reset/restore boundary.
+
+Removed paths:
+
+- Removed the inline helper implementations from `operator.py`.
+- No route, endpoint, table, schema, production data, output surface, exposure
+  lifecycle path, or mutation path was removed.
+
+Parked paths:
+
+- Full operator payload-builder extraction remains parked until the helper seam
+  has aged through more verification.
+- Analytics route-thin service extraction remains parked; analytics still owns
+  several hotter exposure/render/suppression paths and should be split only
+  after smaller diagnostic seams.
+- Output-surface terminal-state classifier extraction remains parked as the
+  next likely exposure-diagnostics seam.
+- Stopwatch active-store extraction remains parked as a later backend seam.
+
+Moved authority:
+
+- Read-only helper computation moved into an operator dashboard service module.
+- No runtime authority moved. The endpoint continues to enforce operator access,
+  clear/restore request user scope, and return the dashboard payload.
+
+Agent-loop findings:
+
+- The R4 operator/analytics explorer recommended starting with operator
+  dashboard helper or payload extraction rather than analytics insights because
+  `/operator` is read-only and strongly characterized, while analytics still
+  mixes clean-profile filtering, public translation, Redis seen-state, and
+  exposure render/suppression writes.
+- The R4 output-surface explorer recommended a future pure exposure
+  terminal-state classifier, not a delivery-path refactor.
+- The R4 stopwatch/task explorer recommended a future active stopwatch-store
+  seam around active-state recovery/cleanup, not `stop()` or finalization.
+
+Tests and verification:
+
+- Python compile:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\operator_dashboard_metrics.py app\api\v1\endpoints\operator.py`
+  passed.
+- Operator and admin route tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_route_security.py -q`
+  passed (`16 passed`).
+- Exposure and output-surface contract tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_exposure_ledger_v0.py tests\test_output_surfaces.py -q`
+  passed (`42 passed`).
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Static authority scan:
+  `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py`
+  passed in report-only mode with `missing_owner_count=0`.
+- Static refactor contract scan:
+  `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py`
+  passed with zero findings.
+- Local-current frontend proof used `http://localhost:3013` with
+  `compiled_api_origin=http://localhost:8000` and build id
+  `dev-local-current`.
+- Operator read-only proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-operator-metrics-helper-operator-local-current`
+  passed.
+- Operator read-only artifact:
+  `tmp/operator-readonly-stress-r4-operator-metrics-helper-operator-local-current/result.json`.
+- Operator outcome:
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, `cohort_status=yellow`, zero count diffs,
+  zero route count diffs, and zero dashboard snapshot diffs.
+- Non-blocking finding:
+  the desktop `/operator` route took `14246ms` against the `12000ms` verifier
+  latency budget. GitHub issue #150 tracks this as a verifier-discovered
+  performance warning; it is not a semantic/read-only blocker for this seam.
+
+Behavior parity statement:
+
+- `/v1/operator/dashboard` still returns the same cockpit sections, readiness
+  split, dynamic issues, notification lifecycle counts, clean-trace ratio
+  basis, provider-integrity counts, and privacy-minimized user rows.
+- Existing operator tests still monkeypatch `operator_endpoint.RedisClient`;
+  the endpoint keeps a compatibility wrapper so Redis snapshot behavior remains
+  characterized by the same tests.
+- The helper module performs read-only queries and Redis reads only; it does
+  not call `db.commit`, `db.flush`, output-surface emitters, exposure writers,
+  notification lifecycle writers, or Redis write/delete methods.
+
+Rollback note:
+
+- Revert `502218d` only. This restores the inline helper implementations in
+  `operator.py` and removes `operator_dashboard_metrics.py` without touching
+  schemas, production data, frontend code, exposure rows, Redis data, or
+  browser-verifier cleanup logic.
