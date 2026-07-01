@@ -11,6 +11,8 @@ param(
 
   [switch]$IncludeProductLoop,
 
+  [switch]$IncludeInsightsStates,
+
   [switch]$NoMutable
 )
 
@@ -141,6 +143,15 @@ try {
         -ScriptPath ".\scripts\run_operator_readonly_browser_stress.ps1" `
         -ScriptArgs @("-Topology", $Topology)
     }
+
+    if ([bool]$IncludeInsightsStates) {
+      Invoke-Step "Insights forced-state browser dogfood" {
+        $frontend = if ($Topology -eq "public") { "https://lyraos.org" } else { "http://localhost:3000" }
+        $api = if ($Topology -eq "public") { "https://api.lyraos.org" } else { "http://localhost:8000" }
+        $env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_HOLMESBERG", "User")
+        node scripts\browser_insights_states_dogfood.mjs --frontend $frontend --api $api
+      }
+    }
   } else {
     $stackArgs = @("-Topology", $Topology)
     if ($mutableRequested) {
@@ -154,6 +165,15 @@ try {
       Invoke-CheckedScript `
         -ScriptPath ".\scripts\run_s1c_verification_stack.ps1" `
         -ScriptArgs $stackArgs
+    }
+
+    if ([bool]$IncludeInsightsStates) {
+      Invoke-Step "Insights forced-state browser dogfood" {
+        $frontend = if ($Topology -eq "public") { "https://lyraos.org" } else { "http://localhost:3000" }
+        $api = if ($Topology -eq "public") { "https://api.lyraos.org" } else { "http://localhost:8000" }
+        $env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_HOLMESBERG", "User")
+        node scripts\browser_insights_states_dogfood.mjs --frontend $frontend --api $api
+      }
     }
 
     if ($mutableRequested) {
@@ -226,6 +246,12 @@ try {
             (Resolve-Path $nestedProductLoop).Path
           }
         )
+      )
+      insights_states = @(
+        Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-insights-states") -Directory -ErrorAction SilentlyContinue |
+          Where-Object { $_.LastWriteTime -ge $runStartedAt } |
+          Sort-Object LastWriteTime |
+          ForEach-Object { $_.FullName }
       )
     }
     steps = $summary
