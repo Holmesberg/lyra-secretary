@@ -18,9 +18,7 @@ from app.api.deps import get_db, operator_user_from_scope
 from app.db.models import (
     Deadline,
     DeadlineCompletionEvent,
-    ExposureAckEvent,
     ExposureDecisionEvent,
-    ExposureRenderEvent,
     Feedback,
     StopwatchSession,
     Task,
@@ -38,11 +36,11 @@ from app.services.operator_dashboard_metrics import (
     READINESS_RED_TRACE_RATIO,
     STALE_PAUSE_HOURS,
     activity_dates_by_user as _activity_dates_by_user,
+    data_freshness_snapshot as _data_freshness_snapshot,
     dropoff_points as _dropoff_points,
     dynamic_issue as _dynamic_issue,
     email_hash as _email_hash,
     is_test_or_synthetic_user as _is_test_or_synthetic_user,
-    last_non_null as _last_non_null,
     metric_meta as _metric_meta,
     notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
     pct as _pct,
@@ -712,40 +710,7 @@ def operator_dashboard_v12(
             ],
         }
 
-        data_freshness = {
-            **_metric_meta(basis="direct", confidence="high", readiness_impact="informational"),
-            "generated_at": _iso(generated_at),
-            "source_windows": {
-                "tasks_last_seen_at": _iso(
-                    db.query(func.max(Task.last_modified_at)).scalar()
-                ),
-                "sessions_last_seen_at": _iso(
-                    _last_non_null([
-                        db.query(func.max(StopwatchSession.start_time_utc)).scalar(),
-                        db.query(func.max(StopwatchSession.end_time_utc)).scalar(),
-                    ])
-                ),
-                "notifications_last_seen_at": None,
-                "exposures_last_seen_at": _iso(
-                    _last_non_null([
-                        db.query(func.max(ExposureDecisionEvent.created_at)).scalar(),
-                        db.query(func.max(ExposureRenderEvent.created_at)).scalar(),
-                        db.query(func.max(ExposureAckEvent.created_at)).scalar(),
-                    ])
-                ),
-                "providers_last_seen_at": _iso(
-                    _last_non_null([
-                        db.query(func.max(Deadline.imported_at)).scalar(),
-                        db.query(func.max(User.moodle_last_synced_at)).scalar(),
-                        db.query(func.max(User.moodle_ws_last_synced_at)).scalar(),
-                    ])
-                ),
-            },
-            "stale_sources": [],
-        }
-        for source, stamp in data_freshness["source_windows"].items():
-            if stamp is None:
-                data_freshness["stale_sources"].append(source)
+        data_freshness = _data_freshness_snapshot(db, generated_at=generated_at)
 
         metric_confidence = {
             "retention": "medium",

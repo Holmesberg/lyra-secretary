@@ -215,6 +215,8 @@ def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
     assert "web_rendered" not in body["notification_lifecycle"]["not_instrumented_fields"]
     assert "login_only" in body["meaningful_activity_definition"]["excluded_events"]
     assert "task_created" in body["meaningful_activity_definition"]["included_events"]
+    assert body["data_freshness"]["source_windows"]["notifications_last_seen_at"] is None
+    assert "notifications_last_seen_at" in body["data_freshness"]["stale_sources"]
     assert body["cohort_readiness"]["implementation_green"] is True
     assert body["cohort_readiness"]["implementation_status"] == "green"
     assert body["cohort_readiness"]["implementation_blockers"] == []

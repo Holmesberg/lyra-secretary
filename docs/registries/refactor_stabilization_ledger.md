@@ -3875,15 +3875,13 @@ Behavior parity statement:
 CI/CD proof note:
 
 - GitHub Actions run:
-  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28551496478`.
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28550722518`.
 - Head SHA:
-  `e1216904047d3ec9bfceee3ee3b428b0ad30c9ea`.
+  `25aced5f5bf4d9724152b856e0b0e515410dee4a`.
 - CI jobs passed:
   backend tests, frontend build, and topology contract.
 - Non-blocking CI maintenance warning:
   GitHub Actions Node 20 deprecation warning is tracked as issue #155.
-- Verifier bug issue:
-  GitHub issue #156 was opened and closed as resolved by this commit.
 
 Rollback note:
 
@@ -3974,8 +3972,16 @@ Behavior parity statement:
 
 CI/CD proof note:
 
-- Post-push GitHub Actions/PR check status must be recorded for this seam after
-  the branch is pushed.
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28551496478`.
+- Head SHA:
+  `e1216904047d3ec9bfceee3ee3b428b0ad30c9ea`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+- Verifier bug issue:
+  GitHub issue #156 was opened and closed as resolved by this commit.
 
 Rollback note:
 
@@ -3983,3 +3989,92 @@ Rollback note:
   inline route aggregation and the previous verifier locator without touching
   schemas, production data, exposure lifecycle rows, Redis queues, or user
   content.
+
+## R4 - Operator Data Freshness Builder
+
+Changed authority:
+
+- No runtime mutation authority changed.
+- `/v1/operator/dashboard` remains the operator cockpit authority.
+- Data freshness packaging is now computed by the read-only
+  `data_freshness_snapshot()` helper in `operator_dashboard_metrics.py`.
+- Cohort readiness, dynamic issues, and warning semantics remain in the
+  operator route.
+
+Removed paths:
+
+- Removed duplicated timestamp-packaging code from the operator route body.
+- Removed stale route imports that existed only for data-freshness timestamp
+  aggregation.
+
+Parked paths:
+
+- Cohort readiness/watchlist extraction remains parked because agents split on
+  whether it could blur `/operator` readiness authority.
+- Provider integrity and measurement integrity extractions remain parked until
+  stronger characterization coverage exists.
+- Frontend lint hard-gating remains parked behind issue #153.
+- GitHub Actions Node deprecation maintenance remains tracked by issue #155.
+
+Moved authority:
+
+- Source freshness timestamp calculation moved from inline route code to a
+  registered operator metric helper.
+- The intentional `notifications_last_seen_at=None` source gap remains
+  visible to the operator route and still creates the
+  `notification_source_freshness_not_instrumented` warning.
+
+Agent-loop findings:
+
+- Explorer B ranked `data_freshness` as the lowest-risk next extraction because
+  it is timestamp packaging and must preserve the intentional notification
+  freshness gap.
+- Explorer C recommended a small verifier contract test so the corrected
+  browser-proof behavior stays protected by CI.
+- Explorer A proposed readiness/watchlist extraction, but that seam remains
+  parked for now because readiness authority should stay unambiguous.
+
+Tests and verification:
+
+- Compile check:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\operator_dashboard_metrics.py app\api\v1\endpoints\operator.py`
+  passed.
+- Operator dashboard, route security, and verifier contract:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_route_security.py tests\test_verifier_contracts.py -q`
+  passed, `17 passed`.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-data-freshness-builder-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-data-freshness-builder-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5951ms`, mobile `5413ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Dashboard response shape and readiness semantics are unchanged.
+- `notifications_last_seen_at` remains uninstrumented and appears in
+  `data_freshness.stale_sources`.
+- The notification source freshness warning remains present and non-blocking.
+- Operator dashboard reads remain side-effect-free.
+
+CI/CD proof note:
+
+- Post-push GitHub Actions/PR check status must be recorded for this seam after
+  the branch is pushed.
+
+Rollback note:
+
+- Revert the operator data freshness builder commit only. This restores inline
+  route timestamp packaging without touching schemas, production data,
+  exposure lifecycle rows, Redis queues, or user content.

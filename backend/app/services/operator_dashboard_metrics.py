@@ -516,6 +516,53 @@ def notification_lifecycle_snapshot(
     }
 
 
+def data_freshness_snapshot(
+    db: Session,
+    *,
+    generated_at: datetime,
+) -> dict[str, Any]:
+    """Read-only timestamp coverage for operator source freshness."""
+
+    def iso(value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+    payload = {
+        **metric_meta(basis="direct", confidence="high", readiness_impact="informational"),
+        "generated_at": iso(generated_at),
+        "source_windows": {
+            "tasks_last_seen_at": iso(
+                db.query(func.max(Task.last_modified_at)).scalar()
+            ),
+            "sessions_last_seen_at": iso(
+                last_non_null([
+                    db.query(func.max(StopwatchSession.start_time_utc)).scalar(),
+                    db.query(func.max(StopwatchSession.end_time_utc)).scalar(),
+                ])
+            ),
+            "notifications_last_seen_at": None,
+            "exposures_last_seen_at": iso(
+                last_non_null([
+                    db.query(func.max(ExposureDecisionEvent.created_at)).scalar(),
+                    db.query(func.max(ExposureRenderEvent.created_at)).scalar(),
+                    db.query(func.max(ExposureAckEvent.created_at)).scalar(),
+                ])
+            ),
+            "providers_last_seen_at": iso(
+                last_non_null([
+                    db.query(func.max(Deadline.imported_at)).scalar(),
+                    db.query(func.max(User.moodle_last_synced_at)).scalar(),
+                    db.query(func.max(User.moodle_ws_last_synced_at)).scalar(),
+                ])
+            ),
+        },
+        "stale_sources": [],
+    }
+    for source, stamp in payload["source_windows"].items():
+        if stamp is None:
+            payload["stale_sources"].append(source)
+    return payload
+
+
 def user_last_activity_maps(db: Session) -> dict[int, datetime]:
     values: dict[int, list[datetime]] = defaultdict(list)
     for user_id, stamp in db.query(Task.user_id, func.max(Task.last_modified_at)).group_by(Task.user_id):
