@@ -1535,6 +1535,67 @@ async function runTimerPath(page, token, task) {
   await page.waitForTimeout(1_200);
   status = await apiFetch(token, "/v1/stopwatch/status");
   addCheck("timer pause is reflected in status", Boolean(status.active && status.paused), status);
+  const pausedSessionId = status.session_id;
+  const pauseSecondsBeforeNavigation = Number(status.current_pause_seconds || 0);
+
+  await firstVisible(page, [
+    () => focus.getByTestId("focus-resume"),
+    () => focus.getByRole("button", { name: /^Resume$/i }),
+  ], 8_000, "timer-paused-resume-visible-before-refresh");
+  await screenshot(page, "timer-paused-before-refresh");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await firstVisible(page, [
+    () => page.getByTestId("pulse-focus-card").first().getByTestId("focus-resume"),
+    () => page.getByRole("button", { name: /^Resume$/i }),
+  ], 12_000, "timer-paused-resume-visible-after-refresh");
+  status = await apiFetch(token, "/v1/stopwatch/status");
+  addCheck("timer paused session survives pulse refresh", Boolean(
+    status.active
+    && status.paused
+    && status.session_id === pausedSessionId
+    && status.task_id === task.task_id
+  ), status);
+  await screenshot(page, "timer-paused-after-refresh");
+
+  await goto(page, "/calendar", "calendar-while-timer-paused");
+  status = await apiFetch(token, "/v1/stopwatch/status");
+  addCheck("timer paused session survives calendar navigation", Boolean(
+    status.active
+    && status.paused
+    && status.session_id === pausedSessionId
+    && status.task_id === task.task_id
+  ), status);
+
+  await goto(page, "/today", "today-while-timer-paused");
+  const todayPausedText = await page.locator("body").innerText().catch(() => "");
+  addCheck("today active timer banner shows paused session after navigation", Boolean(
+    todayPausedText.includes(task.title)
+    && /Paused|Resume/i.test(todayPausedText)
+  ), {
+    task_title: task.title,
+    body_excerpt: todayPausedText.slice(0, 500),
+  });
+  await screenshot(page, "today-timer-paused-after-navigation");
+
+  await goto(page, "/pulse", "pulse-after-paused-navigation");
+  focus = page.getByTestId("pulse-focus-card").first();
+  await firstVisible(page, [
+    () => focus.getByTestId("focus-resume"),
+    () => focus.getByRole("button", { name: /^Resume$/i }),
+  ], 12_000, "timer-paused-resume-visible-after-navigation");
+  await page.waitForTimeout(1_500);
+  status = await apiFetch(token, "/v1/stopwatch/status");
+  addCheck("timer pause counter remains anchored across refresh/navigation", Boolean(
+    status.active
+    && status.paused
+    && status.session_id === pausedSessionId
+    && Number(status.current_pause_seconds || 0) >= pauseSecondsBeforeNavigation
+  ), {
+    before_seconds: pauseSecondsBeforeNavigation,
+    after_seconds: status.current_pause_seconds,
+    status,
+  });
 
   await clickAny(page, "resume session", [
     () => focus.getByTestId("focus-resume"),
