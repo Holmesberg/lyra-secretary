@@ -58,14 +58,22 @@ Result:
   `tmp/operator-readonly-stress-2026-07-01T05-01-29-870Z`
 - latest Insights operator read-only stress:
   `tmp/operator-readonly-stress-2026-07-01T05-09-06-593Z`
+- E0 exposure-forensics operator read-only stress:
+  `tmp/operator-readonly-stress-2026-07-01T16-01-59-981Z`
 - latest broad Holmesberg cleanup:
   `tmp/browser-product-loop/2026-07-01T04-05-36-403Z`
-- dashboard status: red, explained by concrete invariant blockers.
+- dashboard status: yellow after E0; exposure lifecycle debt is cleared and
+  remaining issues are data/instrumentation readiness issues.
 - notification lifecycle after the timer/exposure pass:
   `exposure_without_render_count=5`, `duplicate_prompt_count=0`,
   `render_without_exposure_count=0`.
-- remaining cohort blockers include `exposure_without_render_count=5` and
-  `no_closed_sessions_last_14d`.
+- notification lifecycle after E0:
+  `exposure_without_render_count=0`, `duplicate_prompt_count=0`,
+  `render_without_exposure_count=0`.
+- remaining cohort/data issues include `no_closed_sessions_last_14d`,
+  `notification_source_freshness_not_instrumented`,
+  `invalid_recovery_actions_not_instrumented`, and
+  `product_loop_dropoff_detected`.
 - new browser-covered branch: `NewTaskModal` duration nudge `Keep` outcome
   plus overlapping-task soft conflict `Create anyway`.
 - new browser-covered branches: `NewTaskModal` edit mode, terminal-deadline
@@ -89,9 +97,10 @@ Result:
 - correction discovered by browser verify: duration-nudge lookup decisions can
   be delivered by the backend and then discarded by the frontend before render.
   The fix adds owner-scoped suppression for existing delivered decisions and
-  explicit render acknowledgement on visible Use/Keep interactions. Public API
-  deployment is still required before this can clear the live
-  `task_creation_nudge_lookup` missing-render debt.
+  explicit render acknowledgement on visible Use/Keep interactions. E0
+  classified the five live `task_creation_nudge_lookup` rows as Holmesberg
+  dogfood delivered-without-render debt and repaired them through canonical
+  suppression evidence, not fake render evidence.
 - notification action and expiry lifecycle branches are now covered by a
   targeted Holmesberg browser pass plus backend fixture tests. The targeted
   pass records `acted` via the toast details link and `expired` via auto-dismiss

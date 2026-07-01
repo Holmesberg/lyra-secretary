@@ -1932,3 +1932,67 @@ Rollback note:
 - Revert the forced-state script and `-IncludeInsightsStates` wrapper flag if
   the route interception pattern becomes incompatible with the frontend auth
   shell. Runtime Insights code did not change in this slice.
+
+## E0 - Exposure Forensics And Dogfood Suppression Repair
+
+Changed authority:
+
+- No exposure invariant was weakened.
+- The five live `task_creation_nudge_lookup` rows without render or suppression
+  evidence were classified and repaired through the canonical owner-scoped
+  suppression endpoint:
+  `/v1/exposures/{exposure_id}/ack/suppress`.
+- The repair created suppression evidence with
+  `suppression_reason=dogfood_synthetic_cleanup` and did not create render
+  evidence.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- `implementation_green` / `cohort_green` split remains R2 work.
+- Notification source freshness is still not instrumented and remains a
+  warning/dynamic issue.
+- Lack of clean closed sessions remains a cohort/data blocker; do not weaken
+  the denominator to make the cockpit green.
+
+Moved authority:
+
+- None. E0 confirmed that existing suppression repair authority belongs to
+  `suppress_existing_surface_decision` and the exposure suppression endpoint.
+
+Tests and verification:
+
+- Redacted audit:
+  `docs/audits/e0_exposure_forensics_2026_07_01.md`
+- Private full-ID snapshot:
+  `tmp/e0-exposure-forensics/20260701-155800/PRIVATE_full_ids_do_not_commit.json`
+  (ignored; do not commit).
+- Redacted snapshots:
+  `tmp/e0-exposure-forensics/20260701-155800/redacted_snapshot.json`
+  and
+  `tmp/e0-exposure-forensics/20260701-155800/after_snapshot_redacted.json`.
+- Repair result:
+  `tmp/e0-exposure-forensics/20260701-155800/repair_result_redacted.json`.
+- Operator API after repair reported `exposure_without_render_count=0`,
+  readiness `yellow`, and no cohort blockers.
+- Operator read-only browser stress:
+  `tmp/operator-readonly-stress-2026-07-01T16-01-59-981Z`.
+
+Behavior parity statement:
+
+- Delivered creation-nudge decisions that never reached browser render are now
+  represented as suppression evidence, not fake exposure.
+- Operator `/operator` reads remained read-only. Export counts, dashboard
+  invariant snapshots, and route counts did not change during browser stress.
+- Cohort readiness remains yellow because real data volume and instrumentation
+  warnings remain unresolved. The exposure blocker itself is closed.
+
+Rollback note:
+
+- If the repair classification is later found wrong, inspect the private E0
+  full-ID snapshot and remove only the five `dogfood_synthetic_cleanup`
+  suppression rows, then restore the corresponding decisions to their prior
+  delivered state. Do not delete or rewrite unrelated exposure history.

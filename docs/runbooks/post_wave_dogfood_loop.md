@@ -319,6 +319,26 @@ invariants are still open. It fails if readiness regresses in a way the cockpit
 cannot explain, if blockers become stale labels instead of concrete invariants,
 or if critical counters violate active contracts.
 
+Classify every failure before fixing it:
+
+- product bug;
+- verifier/harness bug;
+- topology/deployment bug;
+- authority bug;
+- documentation bug;
+- measurement bug.
+
+Verifier bugs are first-class bugs. If the harness lies, file or record the bug
+with the same seriousness as a product regression.
+
+Evidence beats screenshots. Screenshots explain failures; they do not prove
+behavior. Canonical proof comes from backend state, exported evidence, operator
+invariants, and browser behavior together.
+
+Holmesberg mutable verification is incomplete until synthetic rows are cleaned,
+voided, or proven harmless. Cleanup proof must be recorded before a wave can be
+closed.
+
 ## Ledger Requirement
 
 Every wave or risky PR must record:
