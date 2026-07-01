@@ -333,9 +333,39 @@ async function resolveAccount(browser, label, cookieHeader, expectOperator) {
   await context.addCookies(parseAndExpandCookies(cookieHeader, frontendOrigin));
   const page = await context.newPage();
   const serverErrors = [];
-  page.on("response", (response) => {
+  const deadlinePreviewResponses = [];
+  const deadlinePreviewRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/v1/parse/deadline-preview")) {
+      deadlinePreviewRequests.push({
+        url: request.url(),
+        method: request.method(),
+        body: (request.postData() || "").slice(0, 1000),
+      });
+      if (deadlinePreviewRequests.length > 20) {
+        deadlinePreviewRequests.shift();
+      }
+    }
+  });
+  page.on("response", async (response) => {
     if (response.status() >= 500) {
       serverErrors.push({ url: response.url(), status: response.status() });
+    }
+    if (response.url().includes("/v1/parse/deadline-preview")) {
+      let body = "";
+      try {
+        body = await response.text();
+      } catch (error) {
+        body = `<<unreadable: ${String(error?.message || error).slice(0, 160)}>>`;
+      }
+      deadlinePreviewResponses.push({
+        url: response.url(),
+        status: response.status(),
+        body: body.slice(0, 1000),
+      });
+      if (deadlinePreviewResponses.length > 20) {
+        deadlinePreviewResponses.shift();
+      }
     }
   });
   const token = await resolveBackendTokenFromContext(context, frontendOrigin);
@@ -345,7 +375,7 @@ async function resolveAccount(browser, label, cookieHeader, expectOperator) {
     actual: Boolean(me.is_operator),
     user_ref: userRef(me.user_id),
   });
-  return { context, page, token, me, serverErrors };
+  return { context, page, token, me, serverErrors, deadlinePreviewRequests, deadlinePreviewResponses };
 }
 
 async function findTaskByTitle(token, title) {
@@ -436,6 +466,112 @@ async function createDeadlineThroughUi(page, token) {
   addCheck("deadline UI create reached backend", Boolean(deadline), { title });
   cleanup.deadlines.add(deadline.deadline_id);
   return deadline;
+}
+
+async function createDeadlineViaApi(token, { title, dueMinutes = 360, state = "planned" }) {
+  const deadline = await apiFetch(token, "/v1/deadlines", {
+    method: "POST",
+    body: JSON.stringify({
+      title,
+      due_at_utc: futureDate(dueMinutes).toISOString(),
+    }),
+  }, [200, 201]);
+  cleanup.deadlines.add(deadline.deadline_id);
+  if (state !== "planned") {
+    const updated = await apiFetch(token, `/v1/deadlines/${encodeURIComponent(deadline.deadline_id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ state }),
+    });
+    return updated;
+  }
+  return deadline;
+}
+
+async function openNewTaskModal(page, label = "today new task") {
+  await goto(page, "/today", label);
+  await clickAny(page, "today new task", [
+    (p) => p.getByTestId("today-new-task"),
+    (p) => p.getByRole("button", { name: /New task/i }),
+  ]);
+  await firstVisible(page, [
+    (p) => p.getByTestId("new-task-modal"),
+    (p) => p.getByRole("dialog", { name: /New task/i }),
+  ], 8_000, "new task modal");
+}
+
+async function fillNewTaskCore(page, { title, start, end, hours = "0", minutes = "30" }) {
+  await fillAny(page, "task title", [
+    (p) => p.getByTestId("new-task-title"),
+    (p) => p.locator("#title"),
+  ], title);
+  await fillAny(page, "task start", [
+    (p) => p.getByTestId("new-task-start"),
+    (p) => p.locator("#start"),
+  ], localInput(start));
+  await fillAny(page, "task end", [
+    (p) => p.getByTestId("new-task-end"),
+    (p) => p.locator("#end"),
+  ], localInput(end));
+  await fillAny(page, "task duration hours", [
+    (p) => p.getByTestId("new-task-duration-hours"),
+    (p) => p.getByTestId("new-task-modal").locator('input[type="number"]').nth(0),
+    (p) => p.getByRole("dialog", { name: /New task/i }).locator('input[type="number"]').nth(0),
+    (p) => p.locator('input[type="number"]').nth(0),
+  ], hours);
+  await fillAny(page, "task duration minutes", [
+    (p) => p.getByTestId("new-task-duration-minutes"),
+    (p) => p.getByTestId("new-task-modal").locator('input[type="number"]').nth(1),
+    (p) => p.getByRole("dialog", { name: /New task/i }).locator('input[type="number"]').nth(1),
+    (p) => p.locator('input[type="number"]').nth(1),
+  ], minutes);
+}
+
+async function keepNudgeIfVisible(page, label = "new-task-nudge-keep") {
+  const keepNudge = page
+    .locator('[data-testid="new-task-nudge-keep"], button:has-text("Keep ")')
+    .first();
+  const visible = await keepNudge.isVisible({ timeout: 8_000 }).catch(() => false);
+  if (visible) {
+    await screenshot(page, label);
+    await keepNudge.click();
+  }
+  return visible;
+}
+
+async function chooseCustomCategory(page, category) {
+  const select = await firstVisible(page, [
+    (p) => p.getByTestId("category-select"),
+    (p) => p.locator("#category").first(),
+    (p) => p.getByLabel(/^Category$/i),
+  ], 5_000, "category select");
+  await select.selectOption("__CREATE_NEW__");
+  await fillAny(page, "custom category", [
+    (p) => p.getByTestId("new-task-category-custom"),
+    (p) => p.locator('input#category'),
+    (p) => p.getByPlaceholder(/research|admin|side_project/i),
+  ], category);
+}
+
+async function waitForDeadlineSuggestion(page, title, timeout = 20_000) {
+  const startedAt = Date.now();
+  const suggestion = page.getByText(/Lyra thinks this binds to/i).first();
+  const visible = await suggestion
+    .waitFor({ state: "visible", timeout })
+    .then(() => true)
+    .catch(() => false);
+  const latencyMs = Date.now() - startedAt;
+  addCheck(`deadline suggestion rendered for ${title}`, visible, { title, latency_ms: latencyMs });
+  if (visible) {
+    if (latencyMs > 3_000) {
+      addIssue("deadline suggestion render latency exceeded senior UX budget", {
+        title,
+        latency_ms: latencyMs,
+        budget_ms: 3_000,
+      });
+    }
+    await screenshot(page, `new-task-suggestion-${boundedIdentifier(title, 24)}`);
+  }
+  return visible;
 }
 
 async function createTaskThroughUi(page, token, deadline) {
@@ -636,6 +772,201 @@ async function createSoftConflictTaskThroughUi(page, token) {
     soft_conflict_seen: sawSoftConflict,
   });
   return task;
+}
+
+async function runNewTaskBranchCoverage(page, token, anchorDeadline) {
+  const noBindSourceDeadline = await createDeadlineViaApi(token, {
+    title: `Zephyr ${randomUUID().slice(0, 8)} capstone`,
+    dueMinutes: 420,
+  });
+  const pickAnotherSourceDeadline = await createDeadlineViaApi(token, {
+    title: `Orion ${randomUUID().slice(0, 8)} thesis`,
+    dueMinutes: 450,
+  });
+  const alternateDeadline = await createDeadlineViaApi(token, {
+    title: `Atlas ${randomUUID().slice(0, 8)} workshop`,
+    dueMinutes: 480,
+  });
+  const terminalDeadline = await createDeadlineViaApi(token, {
+    title: `Cypher ${randomUUID().slice(0, 8)} milestone`,
+    dueMinutes: 540,
+    state: "completed",
+  });
+
+  const noBindTitle = noBindSourceDeadline.title;
+  const noBindPreview = await apiFetch(token, "/v1/parse/deadline-preview", {
+    method: "POST",
+    body: JSON.stringify({ title: noBindTitle }),
+  });
+  addCheck("API preview can suggest no-deadline branch source deadline", (
+    noBindPreview.deadline_id === noBindSourceDeadline.deadline_id
+  ), {
+    title: noBindTitle,
+    expected_deadline_id: noBindSourceDeadline.deadline_id,
+    actual_deadline_id: noBindPreview.deadline_id,
+    actual_deadline_title: noBindPreview.deadline_title,
+    source: noBindPreview.deadline_match_source,
+    confidence: noBindPreview.deadline_match_confidence,
+  });
+  const noBindCategory = `dogfood_${runKey.slice(0, 8)}`;
+  await openNewTaskModal(page, "today-before-no-deadline-branch");
+  await fillNewTaskCore(page, {
+    title: noBindTitle,
+    start: futureDate(220),
+    end: futureDate(250),
+    minutes: "30",
+  });
+  if (await waitForDeadlineSuggestion(page, noBindTitle)) {
+    await clickAny(page, "no deadline suggestion", [
+      (p) => p.getByTestId("new-task-deadline-no-deadline"),
+      (p) => p.getByRole("button", { name: /^No deadline$/i }),
+      (p) => p.locator('button:has-text("No deadline")'),
+    ]);
+  }
+  await chooseCustomCategory(page, noBindCategory);
+  const keptNudge = await keepNudgeIfVisible(page, "new-task-custom-category-nudge-keep");
+  await clickAny(page, "create no-deadline custom-category task", [
+    (p) => p.getByTestId("new-task-create"),
+    (p) => p.getByRole("button", { name: /^Create$/i }),
+    (p) => p.locator('button:has-text("Create")'),
+  ], 5_000);
+  await page.getByText(noBindTitle, { exact: false }).first().waitFor({ timeout: 20_000 });
+  const noBindTask = await findTaskByTitle(token, noBindTitle);
+  addCheck("no-deadline branch creates task without deadline binding", (
+    Boolean(noBindTask) && noBindTask.deadline_id === null
+  ), {
+    title: noBindTitle,
+    deadline_id: noBindTask?.deadline_id ?? null,
+    nudge_keep_clicked: keptNudge,
+  });
+  addCheck("custom category branch persists category", (
+    noBindTask?.category === noBindCategory
+  ), {
+    expected: noBindCategory,
+    actual: noBindTask?.category ?? null,
+  });
+  cleanup.tasks.add(noBindTask.task_id);
+
+  const pickAnotherTitle = pickAnotherSourceDeadline.title;
+  await openNewTaskModal(page, "today-before-pick-another-branch");
+  await fillNewTaskCore(page, {
+    title: pickAnotherTitle,
+    start: futureDate(280),
+    end: futureDate(310),
+    minutes: "30",
+  });
+  if (await waitForDeadlineSuggestion(page, pickAnotherTitle)) {
+    await clickAny(page, "pick another deadline", [
+      (p) => p.getByTestId("new-task-deadline-pick-another"),
+      (p) => p.getByRole("button", { name: /^Pick another$/i }),
+      (p) => p.locator('button:has-text("Pick another")'),
+    ]);
+  }
+  const alternateOption = await firstVisible(page, [
+    (p) => p.locator(`[data-testid="new-task-deadline-option"][data-deadline-id="${alternateDeadline.deadline_id}"]`),
+    (p) => p.getByRole("button", { name: new RegExp(escapeRegex(alternateDeadline.title), "i") }),
+  ], 8_000, "alternate deadline option");
+  await alternateOption.scrollIntoViewIfNeeded({ timeout: 5_000 }).catch(() => {});
+  await alternateOption.click({ timeout: 10_000, force: true });
+  await keepNudgeIfVisible(page, "new-task-pick-another-nudge-keep");
+  await clickAny(page, "create pick-another task", [
+    (p) => p.getByTestId("new-task-create"),
+    (p) => p.getByRole("button", { name: /^Create$/i }),
+    (p) => p.locator('button:has-text("Create")'),
+  ], 5_000);
+  await page.getByText(pickAnotherTitle, { exact: false }).first().waitFor({ timeout: 20_000 });
+  const pickAnotherTask = await findTaskByTitle(token, pickAnotherTitle);
+  addCheck("pick-another branch binds the explicitly chosen deadline", (
+    pickAnotherTask?.deadline_id === alternateDeadline.deadline_id
+  ), {
+    task_deadline_id: pickAnotherTask?.deadline_id ?? null,
+    suggested_deadline_id: pickAnotherSourceDeadline.deadline_id,
+    chosen_deadline_id: alternateDeadline.deadline_id,
+  });
+  cleanup.tasks.add(pickAnotherTask.task_id);
+
+  const editedTitle = `${pickAnotherTitle} edited`;
+  await goto(page, "/today", "today-before-edit-mode-branch");
+  const row = page.locator(`[data-testid="task-row"][data-task-id="${pickAnotherTask.task_id}"]`).first();
+  if (await row.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await row.scrollIntoViewIfNeeded({ timeout: 10_000 });
+    await row.getByText(pickAnotherTitle, { exact: false }).first().click({ timeout: 10_000 });
+  } else {
+    const titleCell = page.getByText(pickAnotherTitle, { exact: false }).first();
+    await titleCell.scrollIntoViewIfNeeded({ timeout: 10_000 });
+    await titleCell.click({ timeout: 10_000 });
+  }
+  await firstVisible(page, [
+    (p) => p.getByTestId("new-task-save"),
+    (p) => p.getByRole("button", { name: /^Save$/i }),
+  ], 8_000, "edit mode save button");
+  await fillAny(page, "edit task title", [
+    (p) => p.getByTestId("new-task-title"),
+    (p) => p.locator("#title"),
+  ], editedTitle);
+  await clickAny(page, "save edited task", [
+    (p) => p.getByTestId("new-task-save"),
+    (p) => p.getByRole("button", { name: /^Save$/i }),
+  ], 5_000);
+  const editedTask = await pollFor(token, "edited task title visibility", async () => {
+    const next = await findTaskByTitle(token, editedTitle);
+    return next?.task_id === pickAnotherTask.task_id ? next : null;
+  });
+  addCheck("edit mode preserves task identity while updating title", (
+    editedTask.task_id === pickAnotherTask.task_id
+  ), {
+    task_id: editedTask.task_id,
+    old_title: pickAnotherTitle,
+    new_title: editedTitle,
+  });
+
+  const terminalCreateBody = await apiFetch(token, "/v1/create", {
+    method: "POST",
+    body: JSON.stringify({
+      title: `${terminalDeadline.title} rejected task`,
+      start: futureDate(340).toISOString(),
+      end: futureDate(370).toISOString(),
+      category: "work",
+      source: "web",
+      force: false,
+      deadline_id: terminalDeadline.deadline_id,
+    }),
+  }, [400]);
+  addCheck("terminal deadline explicit create binding is rejected by API", (
+    /terminal|not bindable/i.test(JSON.stringify(terminalCreateBody))
+  ), terminalCreateBody);
+
+  await openNewTaskModal(page, "today-before-terminal-deadline-picker");
+  await fillNewTaskCore(page, {
+    title: `${terminalDeadline.title} picker hidden branch`,
+    start: futureDate(380),
+    end: futureDate(410),
+    minutes: "30",
+  });
+  await clickAny(page, "open deadline picker for terminal filter", [
+    (p) => p.getByRole("button", { name: /\+ Bind to a deadline/i }),
+    (p) => p.getByText(/\+ Bind to a deadline/i),
+  ], 5_000);
+  const terminalOptionVisible = await page
+    .locator(`[data-testid="new-task-deadline-option"][data-deadline-id="${terminalDeadline.deadline_id}"]`)
+    .first()
+    .isVisible({ timeout: 3_000 })
+    .catch(() => false);
+  addCheck("terminal deadline is hidden from browser deadline picker", !terminalOptionVisible, {
+    terminal_deadline_id: terminalDeadline.deadline_id,
+    terminal_state: terminalDeadline.state,
+  });
+  await page.keyboard.press("Escape").catch(() => {});
+
+  return {
+    noBindTask,
+    pickAnotherTask: editedTask,
+    anchorDeadlineId: anchorDeadline.deadline_id,
+    noBindSourceDeadlineId: noBindSourceDeadline.deadline_id,
+    pickAnotherSourceDeadlineId: pickAnotherSourceDeadline.deadline_id,
+    alternateDeadlineId: alternateDeadline.deadline_id,
+    terminalDeadlineId: terminalDeadline.deadline_id,
+  };
 }
 
 async function runBrainDumpPath(page, token) {
@@ -1192,6 +1523,7 @@ async function main() {
     const deadline = await createDeadlineThroughUi(page, token);
     const task = await createTaskThroughUi(page, token, deadline);
     await createSoftConflictTaskThroughUi(page, token);
+    await runNewTaskBranchCoverage(page, token, deadline);
     await runBrainDumpPath(page, token);
     await runPressureMapPath(page, token);
     const timer = await runTimerPath(page, token, task);
@@ -1259,6 +1591,10 @@ async function main() {
       checks,
       issues,
       gated,
+      diagnostics: {
+        deadline_preview_requests: account.deadlinePreviewRequests,
+        deadline_preview_responses: account.deadlinePreviewResponses,
+      },
       cleanup: {
         task_ids: [...cleanup.tasks],
         deadline_ids: [...cleanup.deadlines],
@@ -1290,6 +1626,10 @@ async function main() {
       checks,
       issues,
       gated,
+      diagnostics: {
+        deadline_preview_requests: account?.deadlinePreviewRequests || [],
+        deadline_preview_responses: account?.deadlinePreviewResponses || [],
+      },
       cleanup: {
         task_ids: [...cleanup.tasks],
         deadline_ids: [...cleanup.deadlines],

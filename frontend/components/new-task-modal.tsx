@@ -982,6 +982,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             ) : (
               <div className="flex items-center gap-2">
                 <Input
+                  data-testid="new-task-category-custom"
                   id="category"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -990,6 +991,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   autoFocus
                 />
                 <button
+                  data-testid="new-task-category-back"
                   type="button"
                   className="whitespace-nowrap text-xs text-dust transition-colors hover:text-parchment"
                   onClick={() => {

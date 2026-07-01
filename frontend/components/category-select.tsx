@@ -48,6 +48,7 @@ export function CategorySelect({ value, onChange, id = "category", className }: 
 
   return (
     <select
+      data-testid={`${id}-select`}
       id={id}
       value={value}
       onChange={(e) => onChange(e.target.value)}
