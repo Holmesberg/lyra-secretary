@@ -2527,3 +2527,114 @@ Rollback note:
 - Revert the R3 brain-dump commit-builder seam commit only. This restores local
   payload mapping in onboarding and Pulse without touching backend code,
   schemas, production data, or browser-verifier cleanup logic.
+
+## R3 - Pressure Map Planning Helper Extraction
+
+Commit: pending R3 pressure-map planning-helper seam commit.
+
+Changed authority:
+
+- No pressure-map recovery, task creation, deadline binding, exposure,
+  ClaimCompiler, Cortex, or operator authority changed.
+- `frontend/lib/pressure-map-planning.ts` now owns pressure-map planning
+  helpers: plan-row shape, local-time math, estimate formatting, linked
+  deadline evidence estimates, cold-start calibration text, option item
+  selection, and plan-row construction.
+- `PulseAcademicPressureMap` continues to own UI state, preview dialog
+  lifecycle, enrichment API calls, task creation, force-conflict handling,
+  cache invalidation, and user-visible commit behavior.
+
+Removed paths:
+
+- Removed the inline pressure-map planning/evidence helper block from
+  `frontend/components/pulse/PulseAcademicPressureMap.tsx`.
+- No runtime route, backend path, data model, or mutation path was removed.
+
+Parked paths:
+
+- Real backend pressure-map recovery options remain gated while pressure safe
+  mode is active; the browser verifier still uses a recovery fixture only to
+  cover the preview/commit seam.
+- Deeper pressure-map reducer/state-machine extraction remains parked until a
+  later frontend seam.
+- Calendar drag/resize, provider credential browser mutation, account
+  hard-delete/Redis purge, and OpenClaw pending drain remain gated verifier
+  paths.
+
+Moved authority:
+
+- Pure planning/evidence computation moved into `pressure-map-planning`.
+- No runtime authority moved. The component still decides when a preview opens
+  and when confirmed rows become tasks.
+
+Agent-loop findings:
+
+- A mini explorer loop confirmed that `PlanRow`, estimate helpers, local-time
+  helpers, calibration copy, option filtering, and `buildRows` are safe to move
+  into a library.
+- The same loop flagged that `buildRows` reads current time, so it is
+  deterministic relative to "now" rather than mathematically pure. It remains
+  safe for this seam because it has no app mutation, I/O, hook, cache, or API
+  side effects.
+- The loop confirmed `PlanPreviewDialog`, `enrichColdStartRows`,
+  `openPlanPreview`, `commitPlan`, and hook/memo state must remain in the
+  component because they own UI state, async calls, mutation, or JSX event
+  wiring.
+
+Tests and verification:
+
+- Frontend production build:
+  `cd frontend && npm run build:public` passed. The build includes Next type
+  validity checks; there is no standalone `npm run typecheck` script.
+- Whitespace:
+  `git diff --check` passed with only CRLF conversion warnings.
+- Local-current frontend proof used `http://localhost:3013` with
+  `compiled_api_origin=http://localhost:8000` and build id
+  `dev-local-current`; topology remains mixed only because alternate
+  local-current ports are tracked separately in GitHub #147.
+- Holmesberg product-loop browser proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r3-pressure-map-planning-helpers-local-current --out-dir tmp\browser-product-loop\r3-pressure-map-planning-helpers-local-current`
+  passed.
+- Product-loop artifact:
+  `tmp/browser-product-loop/r3-pressure-map-planning-helpers-local-current/result.json`.
+- Verification classification:
+  the shell command timed out at 300 seconds while the underlying Node verifier
+  was still running. The process was allowed to finish and produced a passing
+  result. This was classified as local orchestration timeout budget, not a
+  product bug, verifier logic bug, authority bug, topology bug, documentation
+  bug, or measurement bug.
+- Touched path coverage:
+  pressure-map seeded deadline appeared in the map; preview was available;
+  dismiss did not create tasks; editable plan row rendered; double-lock created
+  exactly one recovery block; the committed block kept the explicit deadline
+  binding and planning-footprint provenance; calendar showed the committed
+  block before cleanup; export contained the relevant task/deadline/session,
+  pause, exposure, and notification evidence; cleanup left no active timer and
+  no unrendered synthetic creation-nudge exposures.
+- Operator read-only proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-pressure-map-planning-helpers-operator-local-current`
+  passed.
+- Operator read-only artifact:
+  `tmp/operator-readonly-stress-r3-pressure-map-planning-helpers-operator-local-current/result.json`.
+- Operator outcome:
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, `cohort_status=yellow`, zero count diffs,
+  zero route count diffs, and zero dashboard snapshot diffs.
+
+Behavior parity statement:
+
+- Plan-row construction preserves the same default start spacing, option
+  filtering, estimate basis, linked-deadline evidence, cold-start source text,
+  category fallback, conflict state defaults, and deadline binding fields.
+- Preview editing still computes duration and end-time exactly as before.
+- Cold-start enrichment still calls the same bias lookup endpoint and rewrites
+  only pending rows.
+- Commit behavior still sends the same `createTask` payloads and invalidates
+  the same pressure-recovery caches after commit.
+
+Rollback note:
+
+- Revert the R3 pressure-map planning-helper seam commit only. This restores
+  the inline helper block in `PulseAcademicPressureMap` and removes
+  `frontend/lib/pressure-map-planning.ts` without touching backend code,
+  schemas, production data, or browser-verifier cleanup logic.
