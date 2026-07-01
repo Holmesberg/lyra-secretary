@@ -2143,7 +2143,7 @@ Rollback note:
 
 ## R5a - Stale Docs And Authority Cleanup Before Extraction
 
-Commit: R5a docs-authority seam commit
+Commit: `46b63de docs: mark stale authority docs subordinate`
 (`docs: mark stale authority docs subordinate`).
 
 Changed authority:
@@ -2206,7 +2206,7 @@ Rollback note:
 
 ## R3 - Deadline Picker Slot Presentational Extraction
 
-Commit: pending R3 deadline-picker-slot seam commit.
+Commit: `d95e796 frontend: extract deadline picker slot`.
 
 Changed authority:
 
@@ -2304,7 +2304,9 @@ Rollback note:
 
 ## R3 - Query Invalidation Helpers And Dogfood Cleanup Proof
 
-Commit: pending R3 invalidation-helper seam commit.
+Commit: `68dc180 frontend: centralize mutation cache invalidation`.
+
+Follow-up commit: `0a3bf46 docs: record r3 exposure cleanup proof`.
 
 Changed authority:
 
@@ -2437,7 +2439,7 @@ Rollback note:
 
 ## R3 - Brain Dump Commit Builder Extraction
 
-Commit: pending R3 brain-dump commit-builder seam commit.
+Commit: `6cbab9b frontend: share brain dump commit builders`.
 
 Changed authority:
 
@@ -2530,7 +2532,7 @@ Rollback note:
 
 ## R3 - Pressure Map Planning Helper Extraction
 
-Commit: pending R3 pressure-map planning-helper seam commit.
+Commit: `fd0ca15 frontend: extract pressure map planning helpers`.
 
 Changed authority:
 
@@ -2641,7 +2643,7 @@ Rollback note:
 
 ## R3 - Stopwatch Elapsed Fallback Helper Extraction
 
-Commit: pending R3 stopwatch elapsed-helper seam commit.
+Commit: `f4a8d9a frontend: share stopwatch elapsed fallback`.
 
 Changed authority:
 
