@@ -52,6 +52,12 @@ Result:
   `tmp/browser-notification-lifecycle/2026-07-01T04-50-58-661Z/result.json`
 - latest notification operator read-only stress:
   `tmp/operator-readonly-stress-2026-07-01T04-52-22-671Z`
+- latest Insights forced-state browser proof:
+  `tmp/browser-insights-states/2026-07-01T05-06-44-030Z/result.json`
+- latest linked-notification operator read-only stress:
+  `tmp/operator-readonly-stress-2026-07-01T05-01-29-870Z`
+- latest Insights operator read-only stress:
+  `tmp/operator-readonly-stress-2026-07-01T05-09-06-593Z`
 - latest broad Holmesberg cleanup:
   `tmp/browser-product-loop/2026-07-01T04-05-36-403Z`
 - dashboard status: red, explained by concrete invariant blockers.
@@ -94,6 +100,12 @@ Result:
   fixture: a notification tied to an existing output-surface exposure creates
   exactly one exposure render and one render acknowledgement at browser-render
   lifecycle time, and later terminal outcomes do not duplicate render truth.
+- Insights locked, held, unlocked, empty-unlocked, error, and delayed-response
+  states are now browser-covered with API interception against the real
+  `/insights` page. The pass specifically guards against the prior `27 / 3`
+  contradiction in held state, verifies concrete clean-stop reopen copy, checks
+  loading skeleton behavior during a delayed response, and rejects forbidden
+  diagnostic/identity claims in rendered text.
 
 ## Council Synthesis
 
@@ -127,7 +139,7 @@ All six agents converged on the same shape:
 | Today | Execute tasks, handle deadlines, date navigation, pause confirmations, retroactive edits. | Screenshots and API-created data. | Row interactions and date navigation need browser coverage. |
 | Calendar | Show old/new planned tasks, deadlines, external events, drag/resize planned tasks only. | Screenshots. | Drag/resize/reschedule and dense overlap cases need browser coverage. |
 | Table | Filters, sorting, CSV export, voided visibility, executed-row correction. | Screenshots. | Correction/filter/export browser paths missing. |
-| Insights | Locked, held, unlocked, suppressed, error, and evidence states should explain themselves without contradictions. | Screenshots only. | Need forced-state or fixture browser coverage for held/unlocked/latency. |
+| Insights | Locked, held, unlocked, suppressed, error, and evidence states should explain themselves without contradictions. | Forced-state browser/API proof for locked, held, unlocked, empty-unlocked, latency, and error; backend Rule 11 fixtures. | Production-data held/unlocked/error states without interception remain opportunistic. |
 | Notifications | Queue/reserve/render/dismiss/action/expire lifecycle separated from exposure and operator alerts. | Product-loop enqueue/web-pending/render-if-visible/dismiss ack, targeted browser action/expiry pass, linked-exposure backend fixture, backend tests, and operator counters. | Real worker-triggered linked-exposure notification browser path still gated. |
 | Settings/export/delete | Export scoped data; delete stages; retention options; no credential leaks. | Product-loop export registry/secret-marker scan, API smoke, and backend tests. | Browser export/download/delete-stage walk-through needs a disposable delete account. |
 | Operator cockpit | Operator-only, read-only, content-minimized, invariant-derived blockers. | Strong cockpit-only browser/API coverage. | Refresh-click/partial-degraded sections should be added later. |
@@ -212,7 +224,7 @@ Remaining targeted Playwright scripts in priority order:
 
 1. Timer refresh/navigation while paused and long-lived-session correction.
 2. Real worker-triggered linked-exposure notification lifecycle cases.
-3. Forced insights held/unlocked/error/latency states.
+3. Production-data Insights held/unlocked/error/latency states without interception.
 4. Calendar drag/resize/reschedule and table correction/export.
 5. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.
 6. Real pressure-map recovery options after pressure safe mode is lifted.

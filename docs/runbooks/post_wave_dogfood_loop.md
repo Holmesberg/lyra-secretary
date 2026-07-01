@@ -44,6 +44,13 @@ the delta -> Cortex/analytics -> ClaimCompiler -> exposure chain:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode full -IncludeProductLoop -WaveName "wave-name"
 ```
 
+When a wave touches Insights, ClaimCompiler payloads, or insight copy/gates,
+add the forced-state browser fixture:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode standard -IncludeInsightsStates -WaveName "wave-name"
+```
+
 Local topology is allowed only when the local stack is intentionally up:
 
 ```powershell
@@ -257,7 +264,7 @@ exists.
 | Calendar mutation | Drag/resize planned tasks, reject immutable/executed/deadline/provider rows, dense overlap. | targeted |
 | Table | Route render; executed dogfood row/delta visible. | partially browser covered |
 | Table audit/correction | Filters, sort, CSV download, voided visibility, executed-row correction. | targeted |
-| Insights / ClaimCompiler | Locked/held/unlocked/suppressed states avoid causal/identity/diagnostic claims and show concrete reasons. | partially browser/API covered |
+| Insights / ClaimCompiler | Locked/held/unlocked/suppressed states avoid causal/identity/diagnostic claims and show concrete reasons. | forced-state browser/API covered |
 | Exposure lifecycle | Decision, render or suppression, browser ack, linked interaction outcome where applicable. | partially browser/API covered; existing-decision suppression endpoint covered by backend tests |
 | Notifications | Queue, pending, render, dismiss, terminal lifecycle row. | browser/API covered |
 | Notification branches | Action, expiry, duplicate/cooldown, linked exposure, OpenClaw mirror redaction. | action/expiry browser/API covered; linked exposure backend covered; duplicate/OpenClaw targeted/gated |
@@ -276,7 +283,7 @@ It does not yet fully exercise:
   safe mode is active;
 - table audit/correction flows;
 - real worker-triggered linked-exposure notification cases in browser;
-- forced insights held/unlocked/latency states;
+- real production-data Insights unlocked/held/error states without API interception;
 - long-lived sessions over hours/days;
 - rapid-click race conditions outside the covered brain-dump commit guard.
 
@@ -287,7 +294,7 @@ Highest-priority targeted scripts to add next:
 
 1. Long-lived timer stale-session handling over hours/days.
 2. Real worker-triggered linked-exposure notification outcomes in browser.
-3. Forced insights held/unlocked/latency states.
+3. Real production-data Insights unlocked/held/error states without API interception.
 4. Calendar drag/resize/reschedule and table correction flows.
 5. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.
 6. Real pressure-map recovery options after pressure safe mode is lifted.
@@ -347,4 +354,4 @@ Add targeted scripts for:
 - real pressure-map recovery options after pressure safe mode is lifted;
 - notification lifecycle action/expiry;
 - table correction;
-- insights held/unlocked latency.
+- production-data insights held/unlocked latency.

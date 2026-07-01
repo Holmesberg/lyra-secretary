@@ -1880,3 +1880,55 @@ Rollback note:
 - Revert the linked-exposure fixture only if output surfaces later centralize
   notification render ownership in a different service. Runtime code did not
   change in this slice.
+
+## S1c - Insights Forced-State Browser Coverage
+
+Changed authority:
+
+- No Insights, ClaimCompiler, or exposure authority moved.
+- Added a Playwright fixture that intercepts only `/v1/analytics/insights` to
+  force locked, held, unlocked, empty-unlocked, delayed, and error states
+  through the real `/insights` page.
+- Added `-IncludeInsightsStates` to the reusable post-wave dogfood loop.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Production-data held/unlocked/error states without API interception remain
+  opportunistic because they depend on each account's live clean-trace and
+  Rule 11 state.
+
+Moved authority:
+
+- None.
+
+Tests and verification:
+
+- Script syntax:
+  `node --check scripts\browser_insights_states_dogfood.mjs`
+- Forced-state browser proof:
+  `node scripts\browser_insights_states_dogfood.mjs --frontend https://lyraos.org --api https://api.lyraos.org`
+- Output:
+  `tmp/browser-insights-states/2026-07-01T05-06-44-030Z/result.json`.
+- Operator read-only browser stress after the forced-state pass:
+  `tmp/operator-readonly-stress-2026-07-01T05-09-06-593Z`.
+
+Behavior parity statement:
+
+- Locked state shows session-denominator copy without held-state language.
+- Held state shows concrete clean-stop reopen threshold and does not show the
+  contradictory `sessions / min sessions` denominator.
+- Unlocked and empty-unlocked states render bounded evidence/copy without
+  causal, diagnostic, or identity claims.
+- Delayed response shows an in-flight loading skeleton and resolves within the
+  senior UI budget.
+- Error state stays bounded to a retryable load failure.
+
+Rollback note:
+
+- Revert the forced-state script and `-IncludeInsightsStates` wrapper flag if
+  the route interception pattern becomes incompatible with the frontend auth
+  shell. Runtime Insights code did not change in this slice.
