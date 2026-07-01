@@ -853,10 +853,16 @@ def operator_dashboard_v12(
             for row in exposure_without_render_rows
             if row.decision_status == "suppressed" or row.suppression_id is not None
         )
+        non_actionable_missing_render_statuses = {"suppressed", "delayed", "failed", "queued"}
+        queued_without_render = sum(
+            1
+            for row in exposure_without_render_rows
+            if row.decision_status == "queued" and row.suppression_id is None
+        )
         actionable_missing_render_rows = [
             row
             for row in exposure_without_render_rows
-            if row.decision_status not in {"suppressed", "delayed", "failed"}
+            if row.decision_status not in non_actionable_missing_render_statuses
             and row.suppression_id is None
         ]
         exposure_without_render = len(actionable_missing_render_rows)
@@ -900,6 +906,7 @@ def operator_dashboard_v12(
             "render_without_exposure_count": render_without_exposure,
             "exposure_without_render_count": exposure_without_render,
             "suppressed_without_render_count": suppressed_without_render,
+            "queued_without_render_count": queued_without_render,
             "exposure_missing_render_breakdown": exposure_missing_render_breakdown,
             "operator_created": notification_counts["operator_pending"],
             "operator_pending": notification_counts["operator_pending"],

@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta, timezone
+
+import jwt
 import pytest
 
 from app.core import security
@@ -41,3 +44,24 @@ def test_public_runtime_accepts_strong_matching_secret(monkeypatch):
     monkeypatch.setenv("NEXTAUTH_SECRET", strong_secret)
 
     security.validate_runtime_jwt_secret()
+
+
+def test_decode_token_accepts_small_frontend_backend_clock_skew(monkeypatch):
+    strong_secret = "shared-secret-for-test-only-32chars"
+    _public_runtime(monkeypatch, jwt_secret=strong_secret)
+    monkeypatch.setenv("NEXTAUTH_SECRET", strong_secret)
+
+    now = datetime.now(timezone.utc)
+    token = jwt.encode(
+        {
+            "email": "clock-skew@example.test",
+            "iat": now + timedelta(seconds=5),
+            "exp": now + timedelta(hours=1),
+        },
+        strong_secret,
+        algorithm=security.settings.JWT_ALGORITHM,
+    )
+
+    payload = security.decode_token(token)
+
+    assert payload["email"] == "clock-skew@example.test"

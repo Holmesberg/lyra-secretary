@@ -318,6 +318,35 @@ def test_operator_dashboard_does_not_block_on_suppressed_exposures(client, db):
     assert "exposure_records_without_render_evidence" not in issue_ids
 
 
+def test_operator_dashboard_does_not_block_on_queued_notification_decisions(client, db):
+    ids = list(range(9101, 9150))
+    _clear_ids(db, ids)
+    db.add(_user(9131, operator=True))
+    db.add(_user(9132, operator=False))
+    exposure_stamp = datetime.utcnow() - timedelta(minutes=5)
+    queued = record_decision(
+        db,
+        user_id=9132,
+        eligible_at=exposure_stamp,
+        delivered_at=None,
+        decision_status="queued",
+        exposure_category="reminder",
+        content_template_id="pre_task_reminder",
+        initiative="system",
+        trigger_source="worker.reminder",
+    )
+    queued.created_at = exposure_stamp
+    db.commit()
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9131))
+    assert res.status_code == 200
+    body = res.json()
+    assert body["notification_lifecycle"]["exposure_without_render_count"] == 0
+    assert body["notification_lifecycle"]["queued_without_render_count"] == 1
+    issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
+    assert "exposure_records_without_render_evidence" not in issue_ids
+
+
 class _DashboardRedis:
     def __init__(self, rows_by_key):
         self.rows_by_key = rows_by_key

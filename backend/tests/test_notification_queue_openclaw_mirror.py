@@ -295,6 +295,47 @@ def test_web_pending_reserves_and_render_ack_marks_only_rendered(db, monkeypatch
     assert redis.items == []
 
 
+def test_notification_lifecycle_bounds_legacy_overlong_ids(db, monkeypatch):
+    redis = _LifecycleRedis()
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+    user = User(email=f"notification-overlong-{uuid4()}@example.test")
+    db.add(user)
+    db.commit()
+
+    overlong_task_id = f"legacy-task-id-{uuid4()}-{uuid4()}"
+    notification_queue.enqueue_user_notification(
+        user.user_id,
+        {
+            "notification_id": f"notif-{uuid4()}",
+            "type": "resume_prediction",
+            "task_id": overlong_task_id,
+            "session_id": f"legacy-session-id-{uuid4()}-{uuid4()}",
+            "firing_id": f"legacy-firing-id-{uuid4()}-{uuid4()}",
+            "message": "Legacy bridge payload",
+        },
+        db=db,
+    )
+    db.commit()
+
+    lifecycle = (
+        db.query(NotificationLifecycleEvent)
+        .filter(NotificationLifecycleEvent.user_id == user.user_id)
+        .one()
+    )
+    assert lifecycle.status == "queued"
+    assert lifecycle.task_id.startswith("hash:")
+    assert lifecycle.session_id.startswith("hash:")
+    assert lifecycle.firing_id.startswith("hash:")
+    assert len(lifecycle.task_id) <= 36
+    assert len(lifecycle.session_id) <= 36
+    assert len(lifecycle.firing_id) <= 36
+    assert overlong_task_id not in {lifecycle.task_id, lifecycle.session_id, lifecycle.firing_id}
+
+
 def test_lost_unrendered_ack_does_not_mark_rendered(db, monkeypatch):
     redis = _LifecycleRedis()
     monkeypatch.setattr(
