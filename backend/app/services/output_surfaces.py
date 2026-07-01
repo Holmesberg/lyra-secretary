@@ -32,6 +32,7 @@ from app.core.authority import authority_for_surface
 from app.services.operator_notifier import notify_operator, redacted_user_ref
 from app.services.exposure_ledger import (
     baseline_clean_task_ids,
+    classify_exposure_terminal_state,
     exposure_results_for_task,
     record_decision,
     record_render,
@@ -721,6 +722,7 @@ def _surface_activity_counts(
     spec: OutputSurfaceSpec,
     decisions: list[ExposureDecisionEvent],
     render_counts: Counter[str],
+    render_exposure_ids: set[str],
     suppression_exposure_ids: set[str],
 ) -> dict[str, Any]:
     spec_decisions = [
@@ -731,7 +733,15 @@ def _surface_activity_counts(
     decision_ids = {row.exposure_id for row in spec_decisions}
     rendered = render_counts.get(spec.surface_id, 0)
     suppressed = len(decision_ids & suppression_exposure_ids)
-    missing_terminal = max(0, len(decision_ids) - rendered - suppressed)
+    missing_terminal = sum(
+        1
+        for row in spec_decisions
+        if not classify_exposure_terminal_state(
+            decision_status=row.decision_status,
+            has_render=row.exposure_id in render_exposure_ids,
+            has_suppression=row.exposure_id in suppression_exposure_ids,
+        ).has_terminal_event
+    )
     return {
         "decisions": len(spec_decisions),
         "renders": rendered,
@@ -865,10 +875,16 @@ def output_surface_diagnostics(
         )
 
     render_counts = Counter(row.surface for row in renders)
+    render_exposure_ids = {row.exposure_id for row in renders}
     suppression_exposure_ids = {row.exposure_id for row in suppressions}
-    terminal_exposure_ids = {row.exposure_id for row in renders} | suppression_exposure_ids
     missing_terminal_ids = sorted(
-        row.exposure_id for row in decisions if row.exposure_id not in terminal_exposure_ids
+        row.exposure_id
+        for row in decisions
+        if not classify_exposure_terminal_state(
+            decision_status=row.decision_status,
+            has_render=row.exposure_id in render_exposure_ids,
+            has_suppression=row.exposure_id in suppression_exposure_ids,
+        ).has_terminal_event
     )
 
     legacy_adapter_reliance = []
@@ -888,6 +904,7 @@ def output_surface_diagnostics(
             spec=spec,
             decisions=decisions,
             render_counts=render_counts,
+            render_exposure_ids=render_exposure_ids,
             suppression_exposure_ids=suppression_exposure_ids,
         )
         legacy_adapter_reliance.append({
@@ -914,6 +931,7 @@ def output_surface_diagnostics(
             spec=spec,
             decisions=decisions,
             render_counts=render_counts,
+            render_exposure_ids=render_exposure_ids,
             suppression_exposure_ids=suppression_exposure_ids,
         )
         for surface_id, spec in sorted(registry.items())

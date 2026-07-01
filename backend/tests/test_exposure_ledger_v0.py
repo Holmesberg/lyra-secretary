@@ -25,6 +25,7 @@ from app.services.exposure_ledger import (
     affected_categories_for_target,
     baseline_clean_task,
     baseline_clean_task_ids,
+    classify_exposure_terminal_state,
     is_exposed,
     load_horizon_policy,
     record_decision,
@@ -56,6 +57,63 @@ def _user(db, user_id: int = 7101):
     db.add(user)
     db.commit()
     return user
+
+
+def test_exposure_terminal_classifier_preserves_diagnostic_boundaries():
+    rendered = classify_exposure_terminal_state(
+        decision_status="shown",
+        has_render=True,
+        has_suppression=False,
+    )
+    suppressed = classify_exposure_terminal_state(
+        decision_status="shown",
+        has_render=False,
+        has_suppression=True,
+    )
+    queued = classify_exposure_terminal_state(
+        decision_status="queued",
+        has_render=False,
+        has_suppression=False,
+    )
+    suppressed_status_without_row = classify_exposure_terminal_state(
+        decision_status="suppressed",
+        has_render=False,
+        has_suppression=False,
+    )
+    failed = classify_exposure_terminal_state(
+        decision_status="failed",
+        has_render=False,
+        has_suppression=False,
+    )
+    actionable = classify_exposure_terminal_state(
+        decision_status="shown",
+        has_render=False,
+        has_suppression=False,
+    )
+
+    assert rendered.state == "rendered"
+    assert rendered.has_terminal_event is True
+    assert rendered.is_actionable_missing_render is False
+
+    assert suppressed.state == "suppressed"
+    assert suppressed.has_terminal_event is True
+    assert suppressed.is_actionable_missing_render is False
+
+    assert queued.state == "queued_without_render"
+    assert queued.has_terminal_event is False
+    assert queued.is_actionable_missing_render is False
+
+    assert suppressed_status_without_row.state == "suppressed"
+    assert suppressed_status_without_row.has_terminal_event is False
+    assert suppressed_status_without_row.is_actionable_missing_render is False
+
+    assert failed.state == "non_actionable_without_render"
+    assert failed.has_terminal_event is False
+    assert failed.is_actionable_missing_render is False
+
+    assert actionable.state == "actionable_missing_render"
+    assert actionable.has_terminal_event is False
+    assert actionable.is_actionable_missing_render is True
 
 
 def test_horizon_policy_loaded_from_versioned_config(db):

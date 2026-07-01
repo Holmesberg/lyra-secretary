@@ -31,7 +31,10 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import get_current_user_id, set_current_user_id
-from app.services.exposure_ledger import exposure_results_for_task
+from app.services.exposure_ledger import (
+    classify_exposure_terminal_state,
+    exposure_results_for_task,
+)
 from app.services.operator_dashboard_metrics import (
     GREEN_TIMER_CLOSURE_RATE,
     MEANINGFUL_EXCLUDED_EVENTS,
@@ -534,22 +537,31 @@ def operator_dashboard_v12(
             .filter(ExposureRenderEvent.render_id.is_(None))
             .all()
         )
+        terminal_classified_rows = [
+            (
+                row,
+                classify_exposure_terminal_state(
+                    decision_status=row.decision_status,
+                    has_render=False,
+                    has_suppression=row.suppression_id is not None,
+                ),
+            )
+            for row in exposure_without_render_rows
+        ]
         suppressed_without_render = sum(
             1
-            for row in exposure_without_render_rows
-            if row.decision_status == "suppressed" or row.suppression_id is not None
+            for _row, classification in terminal_classified_rows
+            if classification.state == "suppressed"
         )
-        non_actionable_missing_render_statuses = {"suppressed", "delayed", "failed", "queued"}
         queued_without_render = sum(
             1
-            for row in exposure_without_render_rows
-            if row.decision_status == "queued" and row.suppression_id is None
+            for _row, classification in terminal_classified_rows
+            if classification.state == "queued_without_render"
         )
         actionable_missing_render_rows = [
             row
-            for row in exposure_without_render_rows
-            if row.decision_status not in non_actionable_missing_render_statuses
-            and row.suppression_id is None
+            for row, classification in terminal_classified_rows
+            if classification.is_actionable_missing_render
         ]
         exposure_without_render = len(actionable_missing_render_rows)
         exposure_missing_render_breakdown = {
