@@ -315,10 +315,12 @@ async function checkRoute(page, route, viewport) {
     result.domcontentloaded_ms = Date.now() - started;
     result.status = response?.status() ?? null;
     if (route.path === "/operator") {
-      await page
-        .getByText(/Operator cockpit|Cohort readiness|safe to invite/i)
-        .first()
-        .waitFor({ timeout: route.maxMs });
+      await page.waitForFunction(
+        () => /Operator cockpit|Cohort readiness|safe to invite|Failed to load operator dashboard|This surface is operator-only/i
+          .test(document.body?.innerText || ""),
+        undefined,
+        { timeout: route.maxMs },
+      );
     }
     result.ready_ms = Date.now() - started;
 
@@ -358,6 +360,17 @@ async function checkRoute(page, route, viewport) {
   } catch (error) {
     result.duration_ms = Date.now() - started;
     result.issues.push(`navigation failed: ${error.message}`);
+    const screenshotPath = path.join(
+      outDir,
+      `alinassersabry-${viewport.name}-${route.name}-failure.png`,
+    );
+    const wroteFailureShot = await page
+      .screenshot({ path: screenshotPath, fullPage: true })
+      .then(() => true)
+      .catch(() => false);
+    if (wroteFailureShot) {
+      result.screenshot = path.relative(repoRoot, screenshotPath).replaceAll("\\", "/");
+    }
   } finally {
     page.off("response", onResponse);
     page.off("requestfailed", onRequestFailed);

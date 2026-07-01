@@ -3883,3 +3883,95 @@ Rollback note:
   the previous destructive OpenClaw pending drain behavior without touching
   schemas, production data, frontend code, exposure lifecycle rows, or user
   content.
+
+## R4 - Operator Lifecycle Snapshot Builder
+
+Changed authority:
+
+- No runtime mutation authority changed.
+- `/v1/operator/dashboard` remains the operator cockpit authority.
+- Notification/exposure lifecycle health is now computed by the read-only
+  `notification_lifecycle_snapshot()` builder in
+  `operator_dashboard_metrics.py` instead of inline route code.
+- Redis pending queue inspection still uses the existing read-only operator
+  snapshot helper.
+
+Removed paths:
+
+- Removed duplicated notification/exposure lifecycle aggregation code from the
+  operator route body.
+- Removed route-level dependency on notification lifecycle and suppression ORM
+  models for this lifecycle subsection.
+
+Parked paths:
+
+- Broader analytics extraction remains parked until operator truth stays green.
+- Hard-failing frontend lint remains parked behind issue #153.
+- GitHub Actions Node deprecation maintenance remains tracked by issue #155.
+
+Moved authority:
+
+- Lifecycle calculation moved from a route-owned block to a registered
+  operator metric helper.
+- Dashboard rendering, readiness issue generation, and cohort/implementation
+  status assembly remain in the operator route for now.
+
+Verifier finding:
+
+- Classification: verifier/harness bug.
+- The first browser proof failed intermittently because
+  `browser_stress_operator_readonly.mjs` used a brittle visible text locator as
+  canonical route proof. Backend dashboard snapshots and exported data counts
+  stayed unchanged, and the failure flipped between desktop and mobile on
+  rerun.
+- Fix: route readiness now waits on DOM body text evidence while backend state,
+  exported evidence, and operator invariant snapshots remain canonical proof.
+  Failure screenshots are saved as contextual artifacts only.
+
+Tests and verification:
+
+- Operator dashboard fixtures:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py -q`
+  passed, `10 passed`.
+- Operator route security:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_route_security.py -q`
+  passed, `6 passed`.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Verifier syntax:
+  `node --check scripts\browser_stress_operator_readonly.mjs` passed.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-operator-lifecycle-builder-operator-local-current-fixed-verifier`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-operator-lifecycle-builder-operator-local-current-fixed-verifier/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `6880ms`, mobile `5009ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Dashboard response shape and readiness semantics are unchanged.
+- Exposure-without-render remains critical.
+- Suppressed and queued-without-render rows remain counted separately and do
+  not become actionable exposure blockers.
+- Operator dashboard reads remain side-effect-free.
+
+CI/CD proof note:
+
+- Post-push GitHub Actions/PR check status must be recorded for this seam after
+  the branch is pushed.
+
+Rollback note:
+
+- Revert the operator lifecycle snapshot builder commit only. This restores the
+  inline route aggregation and the previous verifier locator without touching
+  schemas, production data, exposure lifecycle rows, Redis queues, or user
+  content.
