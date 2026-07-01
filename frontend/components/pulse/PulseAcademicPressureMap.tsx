@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -421,6 +421,8 @@ function PlanPreviewDialog({
             {rows.map((row) => (
               <div
                 key={row.id}
+                data-testid="pressure-map-plan-row"
+                data-obligation-id={row.obligationId}
                 className="rounded-sm border border-hairline bg-void-2/35 p-3"
               >
                 <div className="mb-3 flex items-start justify-between gap-3">
@@ -433,6 +435,7 @@ function PlanPreviewDialog({
                     </p>
                   </div>
                   <button
+                    data-testid="pressure-map-plan-row-toggle"
                     type="button"
                     onClick={() => updateRow(row.id, { enabled: !row.enabled })}
                     className="rounded-sm border border-hairline px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-signal"
@@ -447,6 +450,7 @@ function PlanPreviewDialog({
                       Title
                     </span>
                     <Input
+                      data-testid="pressure-map-plan-row-title"
                       value={row.title}
                       disabled={!row.enabled || committing}
                       onChange={(event) => updateRow(row.id, { title: event.target.value })}
@@ -457,6 +461,7 @@ function PlanPreviewDialog({
                       Start
                     </span>
                     <Input
+                      data-testid="pressure-map-plan-row-start"
                       type="datetime-local"
                       value={row.startLocal}
                       disabled={!row.enabled || committing}
@@ -468,6 +473,7 @@ function PlanPreviewDialog({
                       End
                     </span>
                     <Input
+                      data-testid="pressure-map-plan-row-end"
                       type="datetime-local"
                       value={row.endLocal}
                       disabled={!row.enabled || committing}
@@ -478,7 +484,7 @@ function PlanPreviewDialog({
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
                       Duration
                     </span>
-                    <div className={`flex min-h-10 items-center rounded-sm border px-3 font-mono text-[12px] ${
+                    <div data-testid="pressure-map-plan-row-duration" className={`flex min-h-10 items-center rounded-sm border px-3 font-mono text-[12px] ${
                       row.durationMinutes >= 15
                         ? "border-hairline bg-void/40 text-parchment"
                         : "border-ember/40 bg-ember/5 text-ember"
@@ -556,6 +562,7 @@ export function PulseAcademicPressureMap({
   const [commitError, setCommitError] = useState<string | null>(null);
   const [forceCandidateId, setForceCandidateId] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  const commitInFlightRef = useRef(false);
   const items = pressure?.items.slice(0, 4) ?? [];
   const hasItems = items.length > 0;
   const planOption = useMemo(() => {
@@ -633,10 +640,12 @@ export function PulseAcademicPressureMap({
   }
 
   async function commitPlan(forceRowId?: string) {
+    if (commitInFlightRef.current) return;
     const enabledRows = forceRowId
       ? rows.filter((row) => row.id === forceRowId)
       : rows.filter((row) => row.enabled);
     if (!enabledRows.length) return;
+    commitInFlightRef.current = true;
     setCommitting(true);
     setCommitError(null);
     if (forceRowId) {
@@ -646,103 +655,107 @@ export function PulseAcademicPressureMap({
     let firstError: string | null = null;
     const nextRows = [...rows];
 
-    for (const row of enabledRows) {
-      const index = nextRows.findIndex((candidate) => candidate.id === row.id);
-      try {
-        const start = new Date(row.startLocal);
-        const end = new Date(row.endLocal);
-        const duration = durationFromLocal(row.startLocal, row.endLocal);
-        if (
-          Number.isNaN(start.getTime()) ||
-          Number.isNaN(end.getTime()) ||
-          duration < 15
-        ) {
-          const message = "Set an end time at least 15 minutes after the start.";
+    try {
+      for (const row of enabledRows) {
+        const index = nextRows.findIndex((candidate) => candidate.id === row.id);
+        try {
+          const start = new Date(row.startLocal);
+          const end = new Date(row.endLocal);
+          const duration = durationFromLocal(row.startLocal, row.endLocal);
+          if (
+            Number.isNaN(start.getTime()) ||
+            Number.isNaN(end.getTime()) ||
+            duration < 15
+          ) {
+            const message = "Set an end time at least 15 minutes after the start.";
+            nextRows[index] = {
+              ...nextRows[index],
+              status: "failed",
+              error: message,
+              canForce: false,
+              conflictTitles: [],
+            };
+            firstError = firstError ?? message;
+            continue;
+          }
+          const response = await createTask({
+            title: row.title.trim() || `Recovery block: ${row.obligationTitle}`,
+            start: start.toISOString(),
+            end: end.toISOString(),
+            category: row.category,
+            deadline_id: row.deadlineId ?? undefined,
+            description: [
+              "Created from Pressure Map recovery preview.",
+              `Linked obligation: ${row.obligationTitle}`,
+              `Estimate source: ${row.estimateSource}`,
+              "Planning footprint only; execution truth comes from the timer.",
+            ].join("\n"),
+            force: forceRowId === row.id,
+          });
+          if (!response.created) {
+            const conflictTitles = response.conflicts.map((conflict) => conflict.title);
+            const canForce = response.can_proceed === true && response.severity !== "hard";
+            const message = conflictTitles.length
+              ? `Conflict with ${conflictTitles.join(", ")}. ${
+                  canForce
+                    ? "Create anyway if this window is intentional."
+                    : "Edit the window and try again."
+                }`
+              : canForce
+                ? "Soft conflict detected. Create anyway if this window is intentional."
+                : "Conflict detected. Edit the window and try again.";
+            nextRows[index] = {
+              ...nextRows[index],
+              status: "failed",
+              error: message,
+              canForce,
+              conflictTitles,
+            };
+            if (canForce) {
+              setForceCandidateId(row.id);
+            }
+            firstError = firstError ?? message;
+            continue;
+          }
+          created += 1;
+          setForceCandidateId(null);
           nextRows[index] = {
             ...nextRows[index],
-            status: "failed",
-            error: message,
+            status: "created",
+            error: null,
+            enabled: false,
             canForce: false,
             conflictTitles: [],
           };
-          firstError = firstError ?? message;
-          continue;
-        }
-        const response = await createTask({
-          title: row.title.trim() || `Recovery block: ${row.obligationTitle}`,
-          start: start.toISOString(),
-          end: end.toISOString(),
-          category: row.category,
-          deadline_id: row.deadlineId ?? undefined,
-          description: [
-            "Created from Pressure Map recovery preview.",
-            `Linked obligation: ${row.obligationTitle}`,
-            `Estimate source: ${row.estimateSource}`,
-            "Planning footprint only; execution truth comes from the timer.",
-          ].join("\n"),
-          force: forceRowId === row.id,
-        });
-        if (!response.created) {
-          const conflictTitles = response.conflicts.map((conflict) => conflict.title);
-          const canForce = response.can_proceed === true && response.severity !== "hard";
-          const message = conflictTitles.length
-            ? `Conflict with ${conflictTitles.join(", ")}. ${
-                canForce
-                  ? "Create anyway if this window is intentional."
-                  : "Edit the window and try again."
-              }`
-            : canForce
-              ? "Soft conflict detected. Create anyway if this window is intentional."
-              : "Conflict detected. Edit the window and try again.";
-          nextRows[index] = {
-            ...nextRows[index],
-            status: "failed",
-            error: message,
-            canForce,
-            conflictTitles,
-          };
-          if (canForce) {
-            setForceCandidateId(row.id);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to create task";
+          if (index >= 0) {
+            nextRows[index] = {
+              ...nextRows[index],
+              status: "failed",
+              error: message,
+              canForce: false,
+              conflictTitles: [],
+            };
           }
           firstError = firstError ?? message;
-          continue;
         }
-        created += 1;
-        setForceCandidateId(null);
-        nextRows[index] = {
-          ...nextRows[index],
-          status: "created",
-          error: null,
-          enabled: false,
-          canForce: false,
-          conflictTitles: [],
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to create task";
-        if (index >= 0) {
-          nextRows[index] = {
-            ...nextRows[index],
-            status: "failed",
-            error: message,
-            canForce: false,
-            conflictTitles: [],
-          };
-        }
-        firstError = firstError ?? message;
+        setRows([...nextRows]);
       }
-      setRows([...nextRows]);
-    }
 
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: queryKeys.tasks }),
-      qc.invalidateQueries({ queryKey: queryKeys.pressureMap }),
-      qc.invalidateQueries({ queryKey: queryKeys.deadlines }),
-    ]);
-    setCommitting(false);
-    if (firstError) {
-      setCommitError(firstError);
-    } else if (created > 0) {
-      setPreviewOpen(false);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.tasks }),
+        qc.invalidateQueries({ queryKey: queryKeys.pressureMap }),
+        qc.invalidateQueries({ queryKey: queryKeys.deadlines }),
+      ]);
+      if (firstError) {
+        setCommitError(firstError);
+      } else if (created > 0) {
+        setPreviewOpen(false);
+      }
+    } finally {
+      commitInFlightRef.current = false;
+      setCommitting(false);
     }
   }
 
