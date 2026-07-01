@@ -90,6 +90,10 @@ Result:
   targeted Holmesberg browser pass plus backend fixture tests. The targeted
   pass records `acted` via the toast details link and `expired` via auto-dismiss
   without leaving synthetic pending notifications.
+- linked-exposure notification render semantics are now covered by a backend
+  fixture: a notification tied to an existing output-surface exposure creates
+  exactly one exposure render and one render acknowledgement at browser-render
+  lifecycle time, and later terminal outcomes do not duplicate render truth.
 
 ## Council Synthesis
 
@@ -124,7 +128,7 @@ All six agents converged on the same shape:
 | Calendar | Show old/new planned tasks, deadlines, external events, drag/resize planned tasks only. | Screenshots. | Drag/resize/reschedule and dense overlap cases need browser coverage. |
 | Table | Filters, sorting, CSV export, voided visibility, executed-row correction. | Screenshots. | Correction/filter/export browser paths missing. |
 | Insights | Locked, held, unlocked, suppressed, error, and evidence states should explain themselves without contradictions. | Screenshots only. | Need forced-state or fixture browser coverage for held/unlocked/latency. |
-| Notifications | Queue/reserve/render/dismiss/action/expire lifecycle separated from exposure and operator alerts. | Product-loop enqueue/web-pending/render-if-visible/dismiss ack, targeted browser action/expiry pass, backend tests, and operator counters. | Linked-exposure notification cases still missing. |
+| Notifications | Queue/reserve/render/dismiss/action/expire lifecycle separated from exposure and operator alerts. | Product-loop enqueue/web-pending/render-if-visible/dismiss ack, targeted browser action/expiry pass, linked-exposure backend fixture, backend tests, and operator counters. | Real worker-triggered linked-exposure notification browser path still gated. |
 | Settings/export/delete | Export scoped data; delete stages; retention options; no credential leaks. | Product-loop export registry/secret-marker scan, API smoke, and backend tests. | Browser export/download/delete-stage walk-through needs a disposable delete account. |
 | Operator cockpit | Operator-only, read-only, content-minimized, invariant-derived blockers. | Strong cockpit-only browser/API coverage. | Refresh-click/partial-degraded sections should be added later. |
 
@@ -207,7 +211,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogf
 Remaining targeted Playwright scripts in priority order:
 
 1. Timer refresh/navigation while paused and long-lived-session correction.
-2. Linked-exposure notification lifecycle cases.
+2. Real worker-triggered linked-exposure notification lifecycle cases.
 3. Forced insights held/unlocked/error/latency states.
 4. Calendar drag/resize/reschedule and table correction/export.
 5. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.

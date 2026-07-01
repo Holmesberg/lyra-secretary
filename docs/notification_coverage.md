@@ -33,18 +33,23 @@ operator messages through the existing OpenClaw Telegram configuration.
    only. Rendered copy stays in the product and exposure ledger; the operator channel sees
    surface id, channel, hashed user/task/exposure/render ids, template, and
    trigger source.
-5. System-health alerts may go to the OpenClaw operator channel, but should avoid task
+5. Notification lifecycle render may complete an already-created
+   output-surface exposure only when the lifecycle row carries both
+   `exposure_id` and `surface_id`. Queue/reserve/deliver alone do not create
+   exposure-render truth; browser render creates render truth, and later
+   dismiss/ack/action/expiry creates interaction-outcome truth.
+6. System-health alerts may go to the OpenClaw operator channel, but should avoid task
    titles, emails, tokens, iCal URLs, OAuth tokens, or raw payload bodies.
-6. Repeated failures must use dedupe/cooldown through
+7. Repeated failures must use dedupe/cooldown through
    `app.services.operator_notifier.notify_operator`.
-7. Missing OpenClaw operator delivery must never break a
+8. Missing OpenClaw operator delivery must never break a
    product mutation or research write.
-7a. The operator relay is observation-only. It must not mutate task, session,
+8a. The operator relay is observation-only. It must not mutate task, session,
     provider, notification-lifecycle, exposure, or user activity state.
-8. Provider outage/auth failures are provider-scoped degradations unless they
+9. Provider outage/auth failures are provider-scoped degradations unless they
    are widespread or persistent. They should say what provider failed, whether
    reconnect is needed, and whether Lyra kept existing data.
-9. Scheduler/bootstrap/database failures are Lyra platform failures. If they
+10. Scheduler/bootstrap/database failures are Lyra platform failures. If they
    repeat, triage immediately.
 
 ## Operational Alert Contract

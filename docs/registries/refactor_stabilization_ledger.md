@@ -1799,8 +1799,9 @@ Removed paths:
 
 Parked paths:
 
-- Linked-exposure notification outcomes, duplicate/cooldown behavior, and
-  OpenClaw drain/redaction remain targeted/gated surfaces.
+- Real worker-triggered linked-exposure browser outcomes,
+  duplicate/cooldown behavior, and OpenClaw drain/redaction remain
+  targeted/gated surfaces.
 - Failed selector attempts left no pending rows; synthetic failed-run action
   rows were terminalized through the existing acted acknowledgement endpoint.
 
@@ -1834,4 +1835,48 @@ Rollback note:
 
 - Revert the standalone notification lifecycle browser script and backend
   fixture if this coverage becomes flaky; the runtime notification API did not
+  change in this slice.
+
+## S1c - Linked Notification Exposure Backend Invariant
+
+Changed authority:
+
+- No notification or exposure authority moved.
+- Added fixture coverage that proves notification render lifecycle can complete
+  a linked output-surface exposure only at render time, not queue/reserve time.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Real worker-triggered linked-exposure browser proof remains gated because no
+  public test route mints a worker notification exposure on demand. Do not fake
+  this by routing an unrelated creation-nudge/modal exposure through a
+  notification toast; that would create invalid telemetry.
+- Duplicate/cooldown and OpenClaw mirror redaction remain targeted/gated.
+
+Moved authority:
+
+- None.
+
+Tests and verification:
+
+- Backend targeted tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_notification_queue_openclaw_mirror.py::test_linked_notification_render_records_exposure_once tests/test_notification_queue_openclaw_mirror.py::test_notification_action_and_expiry_update_after_render_removal tests/test_notification_queue_openclaw_mirror.py::test_web_pending_reserves_and_render_ack_marks_only_rendered -q`
+
+Behavior parity statement:
+
+- Queue and reserve still do not create exposure render truth.
+- Render acknowledgement of a notification with `surface_id` and `exposure_id`
+  creates exactly one `ExposureRenderEvent` and one render `ExposureAckEvent`.
+- Later terminal notification outcomes do not duplicate render or ack evidence.
+- The browser gap is explicitly carried rather than falsified with an invalid
+  surface/channel pairing.
+
+Rollback note:
+
+- Revert the linked-exposure fixture only if output surfaces later centralize
+  notification render ownership in a different service. Runtime code did not
   change in this slice.
