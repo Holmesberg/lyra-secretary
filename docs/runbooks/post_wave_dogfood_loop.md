@@ -227,6 +227,34 @@ Label this proof as `local-current`, not `hosted-public`. Hosted-public proof
 still requires `scripts\run_operator_readonly_browser_stress.ps1 -Topology public`
 and must record frontend/backend build IDs when they are available.
 
+## CI/CD Operations
+
+Local proof, browser dogfood proof, CI proof, and hosted-public proof answer
+different questions. Keep them labeled separately.
+
+After each pushed seam or wave:
+
+- inspect the latest GitHub Actions runs for the pushed branch;
+- record the workflow name, status, conclusion, head SHA, and URL, or record
+  that no workflow ran for the branch;
+- if a PR exists, inspect PR checks and record failing, pending, and skipped
+  checks;
+- classify CI/CD failures before fixing them:
+  - product regression;
+  - verifier/harness bug;
+  - workflow/configuration bug;
+  - dependency/cache/runner failure;
+  - topology/deployment lag;
+  - secret/configuration failure;
+  - external service outage;
+- create or update a GitHub issue for every non-transient CI/CD failure;
+- do not treat screenshots as CI proof;
+- do not treat CI success as browser dogfood proof.
+
+Hosted-public verification must additionally record whether the deployed
+frontend/backend build IDs match the expected commit. If they lag, record the
+lag explicitly instead of treating local-current proof as hosted-public proof.
+
 When the public backend is in read-only pressure safe mode,
 `--force-pressure-recovery` may be added to fixture only the pressure-map
 recovery option returned to the browser. The fixture must preserve the real
@@ -331,7 +359,9 @@ The loop fails on:
 - synthetic cleanup failure;
 - critical browser route issues;
 - authority/static scan failures;
-- backend/frontend build/test failures for the selected mode.
+- backend/frontend build/test failures for the selected mode;
+- unexpected CI/CD failure, missing required check, or unclassified deployment
+  lag for pushed seams/waves.
 
 The loop does not automatically fail just because `/operator` readiness is
 yellow or red. During freeze closure, readiness may be yellow/red because known
@@ -344,6 +374,7 @@ Classify every failure before fixing it:
 - product bug;
 - verifier/harness bug;
 - topology/deployment bug;
+- CI/CD operations bug;
 - authority bug;
 - documentation bug;
 - measurement bug.
@@ -370,6 +401,8 @@ Every wave or risky PR must record:
 - parked paths;
 - moved authority;
 - tests added or named;
+- browser proof artifact;
+- CI/CD proof artifact or run URL after push;
 - rollback note;
 - any gaps the loop did not cover.
 
@@ -385,6 +418,8 @@ Use `docs/registries/refactor_stabilization_ledger.md` for refactor waves.
 5. Record proof in the ledger.
 6. Push only after the loop passes or after the user explicitly accepts a known
    failing invariant.
+7. After push, inspect GitHub Actions/PR checks and record CI/CD proof, failure
+   classification, or deployment lag.
 
 ## Next Coverage Targets
 

@@ -55,6 +55,18 @@ export function invalidatePulseReentryCaches(queryClient: QueryClient) {
   ]);
 }
 
+export function invalidateTodayTaskCommandSurfaces(
+  queryClient: QueryClient,
+  viewedDate: string,
+  nextDate: string,
+) {
+  return invalidateKeys(queryClient, [
+    ["tasks", viewedDate],
+    ["tasks", nextDate],
+    queryKeys.stopwatchStatus,
+  ]);
+}
+
 export function invalidateBrainDumpCommitCaches(queryClient: QueryClient) {
   return invalidateKeys(queryClient, [
     queryKeys.tasks,

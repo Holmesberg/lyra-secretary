@@ -41,7 +41,10 @@ import {
 } from "@/lib/calendar";
 import { ackExposureRender } from "@/lib/api";
 import { announceUndoAvailable } from "@/lib/undo";
-import { queryKeys } from "@/lib/query-keys";
+import {
+  invalidateTodayTaskCommandSurfaces,
+  queryKeys,
+} from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -312,9 +315,7 @@ function TodayInner() {
   }, []);
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });
-    qc.invalidateQueries({ queryKey: ["tasks", nextDateStr] });
-    qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
+    void invalidateTodayTaskCommandSurfaces(qc, viewedDate, nextDateStr);
   };
 
   const status = statusQ.data;

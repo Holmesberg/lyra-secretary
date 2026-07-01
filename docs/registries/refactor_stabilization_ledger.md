@@ -3619,3 +3619,101 @@ Rollback note:
 - Revert the R3 NewTaskModal nudge payload helper commit only. This restores
   inline payload spreads without touching schemas, production data, backend
   code, exposure lifecycle rows, Redis data, or user content.
+
+## R3 - Today Refresh Invalidation Helper And CI/CD Loop Leg
+
+Changed authority:
+
+- No product authority changed.
+- Today remains the execution surface for task commands.
+- The post-wave runbook now treats CI/CD as a separate proof leg after push,
+  distinct from local-current browser proof and hosted-public proof.
+
+Removed paths:
+
+- No runtime path was removed.
+- No route, schema, API contract, exposure lifecycle row, timer command, task
+  mutation authority, deadline binding authority, provider path, or deployment
+  workflow changed.
+
+Parked paths:
+
+- Further Today state-machine extraction remains parked.
+- Active-timer-banner extraction remains parked.
+- CI/CD hard-fail lint gating remains parked until issue #153 is resolved.
+
+Moved authority:
+
+- The repeated Today command refresh invalidation moved into
+  `invalidateTodayTaskCommandSurfaces()`.
+- The helper invalidates the same current-day task, next-day task, and stopwatch
+  status query surfaces as the previous inline code.
+
+Agent-loop findings:
+
+- Explorer F recommended this as the final low-risk R3 seam before stopping
+  frontend extraction: extract only the Today refresh invalidation helper and
+  leave optimistic state, rollback snapshots, and mutation logic untouched.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Frontend typecheck-equivalent:
+  `npm exec tsc -- --noEmit --pretty false` passed from `frontend/`.
+- Frontend lint:
+  `npm run lint` failed before checking source because `next lint` is
+  deprecated/interactive under the current Next.js setup. Classified as a
+  CI/CD operations and verifier-harness bug, not a product regression. Tracked
+  as GitHub issue #153.
+- First Holmesberg mutable product-loop attempt timed out at the shell command
+  budget after producing late-run artifacts but no `result.json`. Classified as
+  local harness timeout budget, not product behavior. The orphan process had
+  already exited when inspected.
+- Holmesberg mutable product-loop rerun:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r3-today-refresh-helper-holmesberg-local-current-rerun --out-dir tmp\browser-product-loop\r3-today-refresh-helper-holmesberg-local-current-rerun`
+  passed with `ok=true`.
+- Holmesberg product artifact:
+  `tmp/browser-product-loop/r3-today-refresh-helper-holmesberg-local-current-rerun/result.json`.
+- Product-loop coverage included route renders, deadline linkage, soft-conflict
+  force-create, nudge Keep branch, no-deadline branch, custom category,
+  deadline pick-another, edit mode, terminal-deadline rejection, brain-dump
+  parse/commit, partial failure, retry, double-submit protection, pressure-map
+  commit, timer pause/resume/stop, export evidence, exposure render/ack rows,
+  notification lifecycle terminal rows, operator leak checks, and cleanup proof.
+- Product-loop cleanup proof:
+  no active Holmesberg timer remained and no unrendered synthetic creation-nudge
+  exposure rows remained.
+- Operator-cookie browser proof after mutable loop:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-today-refresh-helper-post-holmesberg-operator-local-current`
+  passed.
+- Operator artifact after mutable loop:
+  `tmp/operator-readonly-stress-r3-today-refresh-helper-post-holmesberg-operator-local-current/result.json`.
+- Operator outcome after mutable loop:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `6586ms`, mobile `5177ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Today command refresh still invalidates the same current-day task,
+  next-day task, and stopwatch status query surfaces.
+- Start, stop, skip, void, deadline-binding save, and other command handlers
+  keep their existing optimistic updates, rollback snapshots, and mutation
+  behavior.
+- The CI/CD runbook change only changes verification documentation; it does not
+  alter deployment workflow behavior.
+
+CI/CD proof note:
+
+- Local lint cannot currently serve as a hard CI/CD gate because issue #153
+  must be resolved first.
+- Post-push GitHub Actions/PR check status must be recorded for this seam after
+  the branch is pushed.
+
+Rollback note:
+
+- Revert the R3 Today refresh helper commit only. This restores inline
+  invalidations without touching schemas, production data, backend code,
+  exposure lifecycle rows, Redis data, deployment workflows, or user content.
