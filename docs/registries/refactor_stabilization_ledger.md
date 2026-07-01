@@ -2638,3 +2638,97 @@ Rollback note:
   the inline helper block in `PulseAcademicPressureMap` and removes
   `frontend/lib/pressure-map-planning.ts` without touching backend code,
   schemas, production data, or browser-verifier cleanup logic.
+
+## R3 - Stopwatch Elapsed Fallback Helper Extraction
+
+Commit: pending R3 stopwatch elapsed-helper seam commit.
+
+Changed authority:
+
+- No stopwatch command, timer lifecycle, pause/resume/switch mutation,
+  optimistic rollback, exposure, notification, Cortex, ClaimCompiler, or
+  operator authority changed.
+- `frontend/lib/stopwatch-time.ts` now owns the second-precision elapsed
+  fallback: prefer `elapsed_seconds`, otherwise use `elapsed_minutes * 60`.
+- `ActiveTimerBanner`, `PausedOthersChips`, and `RadialFocusTimer` continue to
+  own their local timer anchoring, ticking, pause freezing, resume rebasing,
+  optimistic cache updates, and user interactions.
+
+Removed paths:
+
+- Removed repeated inline `elapsed_seconds ?? elapsed_minutes * 60` fallback
+  expressions from timer display surfaces.
+- No runtime route, backend path, data model, or mutation path was removed.
+
+Parked paths:
+
+- Stopwatch controller extraction remains parked. The current seam deliberately
+  avoids moving hooks, refs, effects, mutation handlers, or React Query
+  optimistic update logic.
+- Pause reason options, switch chips, Pulse reflection flow, and early-stop
+  confirmation remain local until a larger characterized seam is justified.
+
+Moved authority:
+
+- Only pure display-boundary fallback math moved into `stopwatch-time`.
+- No runtime authority moved.
+
+Agent-loop findings:
+
+- A mini explorer loop recommended extracting only a tiny elapsed-seconds
+  helper as the smallest safe stopwatch seam.
+- It explicitly rejected moving `anchor`, `frozenSec`, `lastDisplayedRef`,
+  `prevPausedRef`, `pauseStartRef`, `localPaused`, 1Hz tick effects,
+  task-change reset effects, server catch-up, pause/resume/switch optimistic
+  updates, and Pulse focus-card state in this pass.
+- It identified browser parity requirements around running ticks, pause freeze,
+  cumulative paused time, resume continuation, switch elapsed anchoring, and
+  cross-surface elapsed agreement.
+
+Tests and verification:
+
+- Frontend production build:
+  `cd frontend && npm run build:public` passed. The build includes Next type
+  validity checks; there is no standalone `npm run typecheck` script.
+- Whitespace:
+  `git diff --check` passed with only CRLF conversion warnings.
+- Local-current frontend proof used `http://localhost:3013` with
+  `compiled_api_origin=http://localhost:8000` and build id
+  `dev-local-current`; topology remains mixed only because alternate
+  local-current ports are tracked separately in GitHub #147.
+- Holmesberg product-loop browser proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r3-stopwatch-elapsed-helper-local-current --out-dir tmp\browser-product-loop\r3-stopwatch-elapsed-helper-local-current`
+  passed.
+- Product-loop artifact:
+  `tmp/browser-product-loop/r3-stopwatch-elapsed-helper-local-current/result.json`.
+- Touched path coverage:
+  timer start opened an active session with second-precision elapsed; pause was
+  reflected in status; resume/stop/reflection completed; export contained the
+  dogfood stopwatch session and pause event; notification lifecycle evidence
+  was terminal; cleanup left no active timer and no unrendered synthetic
+  creation-nudge exposures.
+- Operator read-only proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-stopwatch-elapsed-helper-operator-local-current`
+  passed.
+- Operator read-only artifact:
+  `tmp/operator-readonly-stress-r3-stopwatch-elapsed-helper-operator-local-current/result.json`.
+- Operator outcome:
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, `cohort_status=yellow`, zero count diffs,
+  zero route count diffs, and zero dashboard snapshot diffs.
+
+Behavior parity statement:
+
+- Banner and radial timer still prefer second-precision elapsed values.
+- Banner and optimistic switch chips still fall back to minute precision when
+  second precision is absent.
+- No pause/resume/switch command payload, optimistic cache mutation, rollback
+  behavior, reason-picker behavior, reflection flow, or task-state mapping
+  changed.
+
+Rollback note:
+
+- Revert the R3 stopwatch elapsed-helper seam commit only. This restores the
+  inline fallback expressions and removes `frontend/lib/stopwatch-time.ts`
+  without touching backend code, schemas, production data, or browser-verifier
+  cleanup logic.

@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
+import { getElapsedSeconds } from "@/lib/stopwatch-time";
 
 // Matches backend PAUSE_REASONS enum in
 // backend/app/schemas/stopwatch.py:65. Keep in sync.
@@ -96,7 +97,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   // LYR-111: prefer second-precision elapsed_seconds; fall back to
   // elapsed_minutes * 60 for back-compat. Without this, swap-resume
   // snaps the banner to the last whole minute (up to -59s precision loss).
-  const initialSec = status.elapsed_seconds ?? (status.elapsed_minutes ?? 0) * 60;
+  const initialSec = getElapsedSeconds(status);
   const [anchor, setAnchor] = useState<{ sec: number; ts: number }>(() => ({
     sec: initialSec,
     ts: Date.now(),
@@ -165,7 +166,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     prevTaskIdRef.current = status.task_id;
     // LYR-111: anchor off elapsed_seconds (sub-minute precision) when
     // available; without this, swap resets banner to last-whole-minute.
-    const sec = status.elapsed_seconds ?? (status.elapsed_minutes ?? 0) * 60;
+    const sec = getElapsedSeconds(status);
     setLocalPaused(!!status.paused);
     setAnchor({ sec, ts: Date.now() });
     setFrozenSec(status.paused ? sec : null);
@@ -206,7 +207,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   // sub-minute drift, not just whole-minute drift.
   useEffect(() => {
     if (localPaused) return;
-    const serverSec = status.elapsed_seconds ?? (status.elapsed_minutes ?? 0) * 60;
+    const serverSec = getElapsedSeconds(status);
     const localSec = anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
     if (serverSec > localSec) {
       setAnchor({ sec: serverSec, ts: Date.now() });
@@ -555,7 +556,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
                 session_id: sourceSessionId,
                 paused_minutes: 0,
                 elapsed_minutes: old?.elapsed_minutes ?? 0,
-                elapsed_seconds: old?.elapsed_seconds ?? (old?.elapsed_minutes ?? 0) * 60,
+                elapsed_seconds: getElapsedSeconds(old),
                 start_time: old?.start_time ?? null,
                 total_paused_minutes: old?.total_paused_minutes ?? 0,
               },
@@ -570,7 +571,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
         session_id: target.session_id,
         paused: false,
         elapsed_minutes: target.elapsed_minutes,
-        elapsed_seconds: target.elapsed_seconds ?? target.elapsed_minutes * 60,
+        elapsed_seconds: getElapsedSeconds(target),
         total_paused_minutes: target.total_paused_minutes,
         start_time:
           target.start_time ?? old?.start_time ?? new Date().toISOString(),
