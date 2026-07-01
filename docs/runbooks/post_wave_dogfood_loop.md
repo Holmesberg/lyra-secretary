@@ -250,7 +250,7 @@ exists.
 | Deadlines | Create, edit, complete/skip/reopen staging, void confirm/cancel, duplicate warning. | partially browser covered |
 | Today execution | Task row start/stop, date nav, retroactive edit, overdue done, void/reschedule/drop. | partially browser covered |
 | Timer/focus | Start, pause, resume, stop, completion/scope, pause event, delta. | browser covered |
-| Timer chaos | Refresh/navigation while paused, long-lived stale session, one-active rejection, interruption/switch/open-thread recovery. | targeted |
+| Timer chaos | Refresh/navigation while paused, long-lived stale session, one-active rejection, interruption/switch/open-thread recovery. | refresh/navigation browser covered; long-lived stale targeted |
 | Pressure map | Exposure metadata, horizon API, seeded deadline visibility, preview, dismiss-no-mutation. | browser covered |
 | Pressure-map planning | Edit preview, double-lock guard, commit recovery block, deadline binding, planning-footprint provenance, created blocks appear in Calendar. | browser covered with gated backend recovery option |
 | Calendar | Day/week/month render; old/new tasks and deadlines visible. | partially browser covered |
@@ -258,7 +258,7 @@ exists.
 | Table | Route render; executed dogfood row/delta visible. | partially browser covered |
 | Table audit/correction | Filters, sort, CSV download, voided visibility, executed-row correction. | targeted |
 | Insights / ClaimCompiler | Locked/held/unlocked/suppressed states avoid causal/identity/diagnostic claims and show concrete reasons. | partially browser/API covered |
-| Exposure lifecycle | Decision, render or suppression, browser ack, linked interaction outcome where applicable. | partially browser/API covered |
+| Exposure lifecycle | Decision, render or suppression, browser ack, linked interaction outcome where applicable. | partially browser/API covered; existing-decision suppression endpoint covered by backend tests |
 | Notifications | Queue, pending, render, dismiss, terminal lifecycle row. | browser/API covered |
 | Notification branches | Action, expiry, duplicate/cooldown, linked exposure, OpenClaw mirror redaction. | targeted/gated |
 | Settings/export | Export registry sections and no secret markers. | API covered |
@@ -285,7 +285,7 @@ script before treating the loop as sufficient.
 
 Highest-priority targeted scripts to add next:
 
-1. Timer UI refresh/navigation during pause and long-lived session handling.
+1. Long-lived timer stale-session handling over hours/days.
 2. Notification action/expiry lifecycle and linked exposure outcomes.
 3. Forced insights held/unlocked/latency states.
 4. Calendar drag/resize/reschedule and table correction flows.

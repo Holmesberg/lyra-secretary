@@ -1709,3 +1709,76 @@ Rollback note:
 - Revert only the product-loop pressure-map fixture/branch additions if the
   verifier needs to roll back. They are harness-only and do not require runtime
   data repair; synthetic Holmesberg rows/deadlines were cleaned after the pass.
+
+## S1b/S1c - Timer Pause Navigation And Creation-Nudge Exposure Suppression
+
+Changed authority:
+
+- No user-facing feature authority moved.
+- Added owner-scoped suppression acknowledgement for existing delivered
+  exposure decisions that the authenticated client discards before render.
+  This fills the lifecycle gap between backend lookup delivery and browser
+  render truth without fabricating render evidence.
+- Hardened `NewTaskModal` duration-nudge telemetry:
+  - visible `Use` / `Keep` interactions explicitly acknowledge render;
+  - render acknowledgement retries tolerate slow backend decision creation;
+  - discarded or aborted lookup decisions record suppression evidence instead
+    of leaving actionable delivered-without-render rows.
+- Expanded the Holmesberg product-loop verifier to cover timer pause survival
+  across Pulse refresh, Calendar navigation, Today banner visibility, return to
+  Pulse, anchored pause seconds, resume, stop, and exported pause-event
+  duration.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- The five existing live `task_creation_nudge_lookup` rows without render or
+  suppression evidence remain a production data-repair decision. They were
+  created by Holmesberg dogfood runs and should not be silently rewritten
+  without an explicit repair/purge decision.
+- Public API deployment is required before the browser can prove the new
+  suppression endpoint clears future discarded-nudge rows in production.
+- Long-lived stale timer sessions over hours/days remain targeted.
+
+Moved authority:
+
+- Existing-delivered exposure suppression is now owned by
+  `/v1/exposures/{exposure_id}/ack/suppress`, backed by
+  `suppress_existing_surface_decision`.
+
+Tests and verification:
+
+- Backend targeted tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_output_surfaces.py::test_existing_decision_suppression_is_idempotent tests/test_output_surfaces.py::test_existing_decision_suppression_endpoint_rejects_rendered_decision tests/test_output_surfaces.py::test_existing_decision_suppression_endpoint_rejects_cross_account tests/test_operator_dashboard.py::test_operator_dashboard_does_not_block_on_suppressed_exposures tests/test_operator_dashboard.py::test_operator_dashboard_blocks_on_exposure_without_render -q`
+- Frontend public production build:
+  `cd frontend && npm run build:public`
+- Script syntax:
+  `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs`
+- Local fixed-frontend browser proof against public backend:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology public --frontend http://localhost:3010 --api https://api.lyraos.org --proxy-api --force-pressure-recovery --run-id creation-nudge-ack-local-20260701-3`
+- Local fixed-frontend output:
+  `tmp/browser-product-loop/2026-07-01T04-29-55-097Z/result.json`.
+- Operator read-only browser stress:
+  `tmp/operator-readonly-stress-2026-07-01T04-43-21-954Z`.
+
+Behavior parity statement:
+
+- Planned overlapping tasks remain allowed; only active timers remain singular.
+- Timer pause state survives refresh and navigation, and the exported pause
+  event records non-zero paused duration after resume/stop.
+- Creation nudge `Use` and `Keep` remain instant UI actions; telemetry retries
+  in the background and does not block the user.
+- Render truth is only recorded for visible nudge cards. Discarded backend
+  lookup decisions are suppression evidence, not fake render evidence.
+- Operator account stayed read-only; dashboard/export counts, route counts, and
+  dashboard snapshots did not change on `/operator` browser reads.
+
+Rollback note:
+
+- Revert the suppression endpoint/helper and frontend suppression calls if a
+  later output-surface state machine centralizes delivered/discarded decisions.
+- Revert only the timer dogfood verifier expansion if it becomes flaky; it is
+  harness-only and synthetic Holmesberg cleanup leaves no active timer.

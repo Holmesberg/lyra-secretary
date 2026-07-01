@@ -46,13 +46,16 @@ Result:
   `tmp/operator-readonly-stress-2026-07-01T02-54-16-423Z`
 - latest pressure-map operator read-only stress:
   `tmp/operator-readonly-stress-2026-07-01T04-04-02-208Z`
+- latest timer/exposure operator read-only stress:
+  `tmp/operator-readonly-stress-2026-07-01T04-43-21-954Z`
 - latest broad Holmesberg cleanup:
   `tmp/browser-product-loop/2026-07-01T04-05-36-403Z`
-- dashboard status: yellow, explained by known freeze-closure measurement
-  blockers, not by exposure/notification/state regressions.
-- notification lifecycle after product loop: `exposure_without_render_count=0`,
-  `duplicate_prompt_count=0`, `render_without_exposure_count=0`.
-- remaining cohort blocker: `no_closed_sessions_last_14d`.
+- dashboard status: red, explained by concrete invariant blockers.
+- notification lifecycle after the timer/exposure pass:
+  `exposure_without_render_count=5`, `duplicate_prompt_count=0`,
+  `render_without_exposure_count=0`.
+- remaining cohort blockers include `exposure_without_render_count=5` and
+  `no_closed_sessions_last_14d`.
 - new browser-covered branch: `NewTaskModal` duration nudge `Keep` outcome
   plus overlapping-task soft conflict `Create anyway`.
 - new browser-covered branches: `NewTaskModal` edit mode, terminal-deadline
@@ -71,6 +74,14 @@ Result:
   verifier uses an explicit `--force-pressure-recovery` fixture only to exercise
   the UI commit seam. This is not proof that production recovery options are
   enabled.
+- timer refresh/navigation while paused is now browser-covered through
+  `tmp/browser-product-loop/2026-07-01T04-29-55-097Z/result.json`.
+- correction discovered by browser verify: duration-nudge lookup decisions can
+  be delivered by the backend and then discarded by the frontend before render.
+  The fix adds owner-scoped suppression for existing delivered decisions and
+  explicit render acknowledgement on visible Use/Keep interactions. Public API
+  deployment is still required before this can clear the live
+  `task_creation_nudge_lookup` missing-render debt.
 
 ## Council Synthesis
 
@@ -100,7 +111,7 @@ All six agents converged on the same shape:
 | Brain dump modal | Parse, edit, bind to existing deadlines, handle partial failures, retry, and commit idempotently. | Product-loop browser parse/write-free/commit path, editable rows, mixed success/failure review, edit failed item without retyping, retry, existing-deadline binding, and double-submit guard. | First-run onboarding brain-dump still needs targeted browser coverage. |
 | New task modal | Create/edit task, duration nudge, deadline preview/binding, conflict handling, custom category. | Product-loop browser create + deadline binding, duration nudge Use/Keep paths, soft-conflict Create anyway path, edit mode, terminal deadline rejection/filtering, custom category, no-bind, pick-another, and API creation-nudge/exposure ack. | Nudge absent/error states and rapid double-submit remain targeted. |
 | Pressure map | Diagnostic pressure map with horizon switching, preview, dismiss, edit, commit. | Product-loop browser seeded deadline visibility, preview, dismiss-no-mutation, editable recovery-block preview, double-lock guard, commit, deadline binding, planning-footprint provenance, and Calendar visibility. | Real backend recovery option emission remains gated by read-only pressure safe mode. |
-| Timer UI | Start, pause with reason, resume after refresh/navigation, update completion/scope, stop cleanly. | Product-loop browser start/pause/resume/completion/scope/stop. | Refresh/navigation while paused and long-lived sessions still missing. |
+| Timer UI | Start, pause with reason, resume after refresh/navigation, update completion/scope, stop cleanly. | Product-loop browser start/pause/refresh/navigation/resume/completion/scope/stop with exported pause event. | Long-lived stale sessions over hours/days still missing. |
 | Today | Execute tasks, handle deadlines, date navigation, pause confirmations, retroactive edits. | Screenshots and API-created data. | Row interactions and date navigation need browser coverage. |
 | Calendar | Show old/new planned tasks, deadlines, external events, drag/resize planned tasks only. | Screenshots. | Drag/resize/reschedule and dense overlap cases need browser coverage. |
 | Table | Filters, sorting, CSV export, voided visibility, executed-row correction. | Screenshots. | Correction/filter/export browser paths missing. |
