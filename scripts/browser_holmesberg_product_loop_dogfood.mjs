@@ -43,6 +43,7 @@ const runId = args.get("run-id") || `dogfood-${Date.now()}-${randomUUID().slice(
 const runKey = boundedIdentifier(runId, 42);
 const prefix = args.get("prefix") || `DOGFOOD ${randomUUID().slice(0, 8)}`;
 const cleanupOnly = args.get("cleanup-only") === "true";
+const proxyApi = args.get("proxy-api") === "true";
 const holmesbergCookie = process.env.LYRA_COOKIE_HOLMESBERG
   || process.env.LYRA_COOKIE_MORIARTY
   || "";
@@ -325,11 +326,63 @@ async function setRangeAny(page, name, candidates, value, timeout = 5_000) {
   return locator;
 }
 
+async function installApiProxy(context) {
+  const apiPattern = `${apiOrigin.replace(/\/$/, "")}/**`;
+  await context.route(apiPattern, async (route) => {
+    const request = route.request();
+    const requestHeaders = request.headers();
+    const corsHeaders = {
+      "access-control-allow-origin": frontendOrigin,
+      "access-control-allow-credentials": "true",
+      "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      "access-control-allow-headers": requestHeaders["access-control-request-headers"]
+        || "authorization,content-type,x-idempotency-key",
+      "vary": "Origin",
+    };
+    if (request.method().toUpperCase() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: corsHeaders,
+        body: "",
+      });
+      return;
+    }
+
+    const headers = { ...requestHeaders };
+    delete headers.host;
+    delete headers.origin;
+    delete headers.referer;
+    delete headers["sec-fetch-dest"];
+    delete headers["sec-fetch-mode"];
+    delete headers["sec-fetch-site"];
+
+    const data = request.postDataBuffer();
+    const response = await context.request.fetch(request.url(), {
+      method: request.method(),
+      headers,
+      data: data && data.length > 0 ? data : undefined,
+      timeout: 45_000,
+      failOnStatusCode: false,
+    });
+    await route.fulfill({
+      status: response.status(),
+      headers: {
+        ...response.headers(),
+        ...corsHeaders,
+      },
+      body: await response.body(),
+    });
+  });
+}
+
 async function resolveAccount(browser, label, cookieHeader, expectOperator) {
   if (!cookieHeader || cookieHeader.length < 100) {
     throw new Error(`missing usable cookie for ${label}`);
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 950 } });
+  if (proxyApi) {
+    await installApiProxy(context);
+  }
   await context.addCookies(parseAndExpandCookies(cookieHeader, frontendOrigin));
   const page = await context.newPage();
   const serverErrors = [];
@@ -392,6 +445,11 @@ async function findTasksByPrefix(token) {
     `/v1/tasks/query?date_from=${dateKey(new Date(Date.now() - 86400_000))}&date_to=${dateKey(futureDate(21 * 24 * 60))}&state=all`,
   );
   return (body.tasks || []).filter((task) => String(task.title || "").startsWith(prefix));
+}
+
+async function findTasksByExactTitle(token, title) {
+  const tasks = await findTasksByPrefix(token);
+  return tasks.filter((task) => task.title === title);
 }
 
 async function findDeadlineByTitle(token, title) {
@@ -1042,6 +1100,170 @@ async function runBrainDumpPath(page, token) {
   });
 }
 
+async function brainDumpEditableLocators(page) {
+  const dialog = page.getByRole("dialog", { name: /Brain dump/i }).first();
+  let titleInputs = page.locator('[data-testid^="brain-dump-item-title-"]');
+  if (await titleInputs.count() === 0) {
+    titleInputs = dialog.locator("label").filter({ hasText: /^Title$/i }).locator("input");
+  }
+  let whenInputs = page.locator('[data-testid^="brain-dump-item-when-"]');
+  if (await whenInputs.count() === 0) {
+    whenInputs = dialog.locator('input[type="datetime-local"]');
+  }
+  let durationInputs = page.locator('[data-testid^="brain-dump-item-duration-"]');
+  if (await durationInputs.count() === 0) {
+    durationInputs = dialog.locator("label").filter({ hasText: /^Minutes$/i }).locator('input[type="number"]');
+  }
+  return { titleInputs, whenInputs, durationInputs };
+}
+
+async function runBrainDumpBranchCoverage(page, token) {
+  const partialValidTitle = `${prefix} brain dump partial valid`;
+  const partialStaleTitle = `${prefix} brain dump partial stale`;
+  const partialRecoveredTitle = `${prefix} brain dump partial recovered`;
+  const doubleSubmitTitle = `${prefix} brain dump double submit`;
+
+  await goto(page, "/pulse", "pulse-before-brain-dump-partial-failure");
+  await fillAny(page, "quick capture partial failure", [
+    (p) => p.getByTestId("pulse-quick-capture-input"),
+    (p) => p.locator("#quick-capture input").first(),
+    (p) => p.getByPlaceholder(/brain dump anything/i),
+  ], `${partialValidTitle} tomorrow 25min\n${partialStaleTitle} tomorrow 25min`);
+  await clickAny(page, "quick capture partial failure submit", [
+    (p) => p.getByTestId("pulse-quick-capture-submit"),
+    (p) => p.getByRole("button", { name: /Capture/i }),
+  ]);
+  await firstVisible(page, [
+    (p) => p.getByTestId("brain-dump-modal"),
+    (p) => p.getByRole("dialog", { name: /Brain dump/i }),
+  ], 8_000, "brain dump partial modal");
+  await fillAny(page, "brain dump partial textarea", [
+    (p) => p.getByTestId("brain-dump-textarea"),
+    (p) => p.locator("textarea").first(),
+  ], `${partialValidTitle} tomorrow 25min\n${partialStaleTitle} tomorrow 25min`);
+  await clickAny(page, "brain dump partial parse", [
+    (p) => p.getByTestId("brain-dump-parse"),
+    (p) => p.getByRole("button", { name: /^Parse$/i }),
+  ]);
+  await page.getByText(/Lyra found/i).first().waitFor({ timeout: 20_000 });
+
+  const { titleInputs, whenInputs, durationInputs } = await brainDumpEditableLocators(page);
+  addCheck("brain dump partial parse exposes editable item rows", await titleInputs.count() >= 2, {
+    title_inputs: await titleInputs.count(),
+    when_inputs: await whenInputs.count(),
+  });
+  await titleInputs.nth(0).fill(partialValidTitle);
+  await titleInputs.nth(1).fill(partialStaleTitle);
+  await whenInputs.nth(0).fill(localInput(futureDate(95)));
+  await whenInputs.nth(1).fill(localInput(new Date(Date.now() - 24 * 60 * 60_000)));
+  if (await durationInputs.count() >= 2) {
+    await durationInputs.nth(0).fill("25");
+    await durationInputs.nth(1).fill("25");
+  }
+  await screenshot(page, "brain-dump-partial-before-lock");
+  await clickAny(page, "brain dump partial lock in", [
+    (p) => p.getByTestId("brain-dump-lock-in"),
+    (p) => p.getByRole("button", { name: /Lock in/i }),
+  ], 8_000);
+  await firstVisible(page, [
+    (p) => p.getByTestId("brain-dump-failures"),
+    (p) => p.getByText(/need review/i),
+  ], 15_000, "brain dump partial failure review");
+  await screenshot(page, "brain-dump-partial-failure-review");
+
+  const validAfterPartial = await pollFor(token, "brain dump partial valid commit visibility", async () => {
+    const matches = await findTasksByExactTitle(token, partialValidTitle);
+    return matches.length === 1 ? matches : null;
+  });
+  for (const task of validAfterPartial || []) cleanup.tasks.add(task.task_id);
+  const staleAfterPartial = await findTasksByExactTitle(token, partialStaleTitle);
+  addCheck("brain dump partial commit saves valid item only", (validAfterPartial || []).length === 1, {
+    title: partialValidTitle,
+    matches: validAfterPartial,
+  });
+  addCheck("brain dump partial failure does not silently create stale item", staleAfterPartial.length === 0, {
+    title: partialStaleTitle,
+    matches: staleAfterPartial,
+  });
+
+  await clickAny(page, "brain dump edit failed items", [
+    (p) => p.getByTestId("brain-dump-edit-failed-items"),
+    (p) => p.getByRole("button", { name: /Edit failed items/i }),
+  ], 8_000);
+  await page.getByText(/Lyra found/i).first().waitFor({ timeout: 10_000 });
+  const {
+    titleInputs: retryTitleInputs,
+    whenInputs: retryWhenInputs,
+  } = await brainDumpEditableLocators(page);
+  addCheck("brain dump retry reopens only failed item without retyping full dump", await retryTitleInputs.count() === 1, {
+    retry_title_inputs: await retryTitleInputs.count(),
+  });
+  const retrySeedTitle = await retryTitleInputs.nth(0).inputValue();
+  addCheck("brain dump retry preserves failed item text", retrySeedTitle === partialStaleTitle, {
+    expected: partialStaleTitle,
+    actual: retrySeedTitle,
+  });
+  await retryTitleInputs.nth(0).fill(partialRecoveredTitle);
+  await retryWhenInputs.nth(0).fill(localInput(futureDate(125)));
+  await screenshot(page, "brain-dump-partial-edited-retry");
+  await clickAny(page, "brain dump retry lock in", [
+    (p) => p.getByTestId("brain-dump-lock-in"),
+    (p) => p.getByRole("button", { name: /Lock in/i }),
+  ], 8_000);
+  const recoveredAfterRetry = await pollFor(token, "brain dump retry recovered task visibility", async () => {
+    const matches = await findTasksByExactTitle(token, partialRecoveredTitle);
+    return matches.length === 1 ? matches : null;
+  });
+  for (const task of recoveredAfterRetry || []) cleanup.tasks.add(task.task_id);
+  addCheck("brain dump edited retry creates recovered item exactly once", (recoveredAfterRetry || []).length === 1, {
+    title: partialRecoveredTitle,
+    matches: recoveredAfterRetry,
+  });
+
+  await goto(page, "/pulse", "pulse-before-brain-dump-double-submit");
+  await fillAny(page, "quick capture double submit", [
+    (p) => p.getByTestId("pulse-quick-capture-input"),
+    (p) => p.locator("#quick-capture input").first(),
+    (p) => p.getByPlaceholder(/brain dump anything/i),
+  ], `${doubleSubmitTitle} tomorrow 20min`);
+  await clickAny(page, "quick capture double submit open", [
+    (p) => p.getByTestId("pulse-quick-capture-submit"),
+    (p) => p.getByRole("button", { name: /Capture/i }),
+  ]);
+  await firstVisible(page, [
+    (p) => p.getByTestId("brain-dump-modal"),
+    (p) => p.getByRole("dialog", { name: /Brain dump/i }),
+  ], 8_000, "brain dump double submit modal");
+  await fillAny(page, "brain dump double submit textarea", [
+    (p) => p.getByTestId("brain-dump-textarea"),
+    (p) => p.locator("textarea").first(),
+  ], `${doubleSubmitTitle} tomorrow 20min`);
+  await clickAny(page, "brain dump double submit parse", [
+    (p) => p.getByTestId("brain-dump-parse"),
+    (p) => p.getByRole("button", { name: /^Parse$/i }),
+  ]);
+  await page.getByText(/Lyra found/i).first().waitFor({ timeout: 20_000 });
+  const doubleSubmitButton = await firstVisible(page, [
+    (p) => p.getByTestId("brain-dump-lock-in"),
+    (p) => p.getByRole("button", { name: /Lock in/i }),
+  ], 8_000, "brain dump double submit lock in");
+  await doubleSubmitButton.evaluate((button) => {
+    button.click();
+    button.click();
+  });
+  const doubleSubmitMatches = await pollFor(token, "brain dump double submit task visibility", async () => {
+    const matches = await findTasksByExactTitle(token, doubleSubmitTitle);
+    return matches.length >= 1 ? matches : null;
+  });
+  for (const task of doubleSubmitMatches || []) cleanup.tasks.add(task.task_id);
+  const finalDoubleSubmitMatches = await findTasksByExactTitle(token, doubleSubmitTitle);
+  addCheck("brain dump double-submit creates exactly one task", finalDoubleSubmitMatches.length === 1, {
+    title: doubleSubmitTitle,
+    count: finalDoubleSubmitMatches.length,
+    task_ids: finalDoubleSubmitMatches.map((task) => task.task_id),
+  });
+}
+
 async function runPressureMapPath(page, token) {
   const beforeTasks = await findTasksByPrefix(token);
   await goto(page, "/pulse", "pulse-pressure-map");
@@ -1525,6 +1747,7 @@ async function main() {
     await createSoftConflictTaskThroughUi(page, token);
     await runNewTaskBranchCoverage(page, token, deadline);
     await runBrainDumpPath(page, token);
+    await runBrainDumpBranchCoverage(page, token);
     await runPressureMapPath(page, token);
     const timer = await runTimerPath(page, token, task);
     const executedTask = timer.task;

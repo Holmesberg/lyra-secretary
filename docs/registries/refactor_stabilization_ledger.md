@@ -1547,3 +1547,80 @@ Rollback note:
 - Revert only the test-id additions and Holmesberg product-loop branch coverage
   changes if the verifier must be rolled back. No runtime data repair is
   required; synthetic Holmesberg rows were voided/deleted by cleanup.
+
+## S1c/R3 - Brain-Dump Chaos Coverage And Commit Race Fix
+
+Commit: uncommitted browser-coverage hardening pass.
+
+Changed authority:
+
+- No product/runtime authority moved.
+- Added a synchronous in-flight commit guard to the live Pulse brain-dump modal
+  and the older onboarding brain-dump surface so double-clicks cannot race
+  React state and submit duplicate commits.
+- Expanded the Holmesberg product-loop verifier to cover brain-dump editable
+  parsed rows, mixed success/failure review, edit failed item without retyping,
+  retry, and duplicate/double-submit prevention.
+- Added an opt-in Playwright API proxy for local-predeploy browser verification
+  against the public backend. This is test-harness-only and does not change
+  production CORS or runtime authority.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- First-run onboarding brain-dump browser coverage remains targeted even though
+  the shared commit race was sealed.
+- Pressure-map recovery commit, timer refresh/navigation while paused,
+  notification action/expiry, forced insights states, calendar mutation, table
+  correction/export, provider credentials, and hard account delete remain
+  targeted or gated.
+
+Moved authority:
+
+- None.
+
+Tests and verification:
+
+- Public current-frontend failure that exposed the product race:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology public -RunId brain-dump-branches-20260701-2`
+- Failure output:
+  `tmp/browser-product-loop/2026-07-01T03-07-43-470Z/result.json`.
+- Failure found: `brain dump double-submit creates exactly one task` failed
+  because the browser created two tasks with the same synthetic title.
+- Frontend production builds:
+  `cd frontend && npm run build`
+  `cd frontend && npm run build:public`
+- Script syntax/whitespace:
+  `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs`
+  `git diff --check`
+- Local fixed-frontend browser proof against public backend:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology public --frontend http://localhost:3010 --api https://api.lyraos.org --proxy-api --run-id brain-dump-branches-local-20260701-2`
+- Local fixed-frontend output:
+  `tmp/browser-product-loop/2026-07-01T03-16-04-260Z/result.json`.
+- Operator read-only browser stress after mutable proof:
+  `tmp/operator-readonly-stress-2026-07-01T03-21-06-368Z`.
+
+Behavior parity statement:
+
+- Brain-dump parse remains write-free.
+- Mixed brain-dump commit now proves one valid task lands while a stale/past
+  item stays visible in the failure review.
+- `Edit failed items` reopens only the failed item, preserves its text, and the
+  edited retry creates the recovered item exactly once.
+- Double-submit on the corrected frontend creates exactly one task.
+- Holmesberg synthetic writes remained scoped to the non-operator chaos account
+  and cleanup left no active timer.
+- Operator account stayed read-only; dashboard/export counts, route counts, and
+  dashboard snapshots did not change on `/operator` browser reads.
+
+Rollback note:
+
+- Revert the `commitInFlightRef` guards only if a later backend atomic
+  idempotency implementation proves duplicate browser commits are impossible
+  independently of frontend state.
+- Revert only the product-loop branch/proxy additions if the verifier needs to
+  roll back. They are harness-only and do not require runtime data repair;
+  synthetic Holmesberg rows were voided/deleted by cleanup.

@@ -84,7 +84,7 @@ All six agents converged on the same shape:
 | Surface | Documented / Expected Behavior | Current Verification | Gap |
 |---|---|---|---|
 | Pulse hub | Main hub for quick capture, re-entry, deadlines, timers, pressure map, recovery, integrations. | Screenshots and API smoke. | Full click-through product loop from Pulse is not automated. |
-| Brain dump modal | Parse, edit, bind to existing deadlines, handle partial failures, retry, and commit idempotently. | Parse/commit API smoke, backend tests, and product-loop parse/write-free/commit path. | Modal edit/partial-failure/double-submit paths still need targeted Playwright. |
+| Brain dump modal | Parse, edit, bind to existing deadlines, handle partial failures, retry, and commit idempotently. | Product-loop browser parse/write-free/commit path, editable rows, mixed success/failure review, edit failed item without retyping, retry, existing-deadline binding, and double-submit guard. | First-run onboarding brain-dump still needs targeted browser coverage. |
 | New task modal | Create/edit task, duration nudge, deadline preview/binding, conflict handling, custom category. | Product-loop browser create + deadline binding, duration nudge Use/Keep paths, soft-conflict Create anyway path, edit mode, terminal deadline rejection/filtering, custom category, no-bind, pick-another, and API creation-nudge/exposure ack. | Nudge absent/error states and rapid double-submit remain targeted. |
 | Pressure map | Diagnostic pressure map with horizon switching, preview, dismiss, edit, commit. | Product-loop browser preview and dismiss-no-mutation. | Commit/edit path still missing. |
 | Timer UI | Start, pause with reason, resume after refresh/navigation, update completion/scope, stop cleanly. | Product-loop browser start/pause/resume/completion/scope/stop. | Refresh/navigation while paused and long-lived sessions still missing. |
@@ -174,12 +174,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogf
 
 Remaining targeted Playwright scripts in priority order:
 
-1. Brain dump modal edit/partial-failure/retry/double-submit.
-2. Pressure-map recovery-block commit.
-3. Timer refresh/navigation while paused and long-lived-session correction.
-4. Notification action/expiry and linked-exposure lifecycle.
-5. Forced insights held/unlocked/error/latency states.
-6. Calendar drag/resize/reschedule and table correction/export.
+1. Pressure-map recovery-block commit.
+2. Timer refresh/navigation while paused and long-lived-session correction.
+3. Notification action/expiry and linked-exposure lifecycle.
+4. Forced insights held/unlocked/error/latency states.
+5. Calendar drag/resize/reschedule and table correction/export.
+6. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.
 
 ## Open Questions For Future Decision
 

@@ -170,7 +170,9 @@ journey through every modal.
 - NewTaskModal edit mode, terminal-deadline API rejection, terminal deadline
   picker exclusion, custom category, no-deadline branch, and pick-another
   override branch;
-- brain-dump parse as write-free and commit as explicit mutation;
+- brain-dump parse as write-free, commit as explicit mutation, editable parsed
+  items, partial-failure review, edit/retry without retyping, and
+  double-submit duplicate prevention;
 - pressure-map preview and dismiss-no-mutation;
 - timer start, pause, resume, completion/scope, stop, and delta projection;
 - insights/ClaimCompiler-safe response shape and forbidden-claim scan;
@@ -179,6 +181,21 @@ journey through every modal.
 - export registry-section and secret-marker scan;
 - cleanup of synthetic Holmesberg tasks/deadlines;
 - operator privacy scan after mutable dogfood.
+
+For pre-deploy frontend fixes, run the same script against a local production
+frontend and the public backend with the opt-in Playwright API proxy:
+
+```powershell
+node scripts\browser_holmesberg_product_loop_dogfood.mjs `
+  --frontend http://localhost:3010 `
+  --api https://api.lyraos.org `
+  --proxy-api `
+  --run-id local-predeploy-check
+```
+
+The proxy is test-harness only. It lets local unreleased UI code exercise the
+public API without changing production CORS or weakening browser runtime
+contracts.
 
 For waves that touch Pulse, task creation, deadlines, timers, calendar,
 pressure map, recovery, insights, notifications, provider display, table, or
@@ -217,7 +234,7 @@ exists.
 | Pulse hub | Quick capture, re-entry visibility, focus card, pressure map, notifications render without raw internals. | partially browser covered |
 | First-run onboarding | Consent/intro, parse, edit dump, lock-in, skip, empty validation. | targeted/gated |
 | Brain dump | Parse is write-free; commit creates intended task/deadline/binding. | browser covered |
-| Brain dump chaos | Edit parsed items, partial failure, retry, duplicate commit/idempotency, existing-deadline binding. | targeted |
+| Brain dump chaos | Edit parsed items, partial failure, retry, duplicate commit/idempotency, existing-deadline binding. | browser covered |
 | New task modal | Create task, bind deadline, duration nudge exposure, Use/Keep nudge outcomes, create-anyway soft conflict when present. | browser covered |
 | New task branches | Edit mode, terminal deadline rejection, terminal deadline picker exclusion, custom category, no-bind, pick-another, and nudge Keep/dismissed outcome. | browser covered |
 | Deadlines | Create, edit, complete/skip/reopen staging, void confirm/cancel, duplicate warning. | partially browser covered |
@@ -244,26 +261,25 @@ exists.
 The current loop is broad, but not a replacement for every human dogfood path.
 It does not yet fully exercise:
 
-- `NewTaskModal` nudge absent/error states and rapid double-submit races;
 - calendar drag/resize/reschedule UI;
 - pressure-map recovery block commit from the UI;
 - table audit/correction flows;
 - notification action/expiry paths and linked-exposure notification cases;
 - forced insights held/unlocked/latency states;
 - long-lived sessions over hours/days;
-- rapid-click race conditions.
+- rapid-click race conditions outside the covered brain-dump commit guard.
 
 When a wave touches one of those surfaces, add a targeted Playwright dogfood
 script before treating the loop as sufficient.
 
 Highest-priority targeted scripts to add next:
 
-1. Brain dump modal partial failure, edit/retry, and duplicate commit.
-2. Pressure-map recovery-block commit through UI.
-3. Timer UI refresh/navigation during pause and long-lived session handling.
-4. Notification action/expiry lifecycle and linked exposure outcomes.
-5. Forced insights held/unlocked/latency states.
-6. Calendar drag/resize/reschedule and table correction flows.
+1. Pressure-map recovery-block commit through UI.
+2. Timer UI refresh/navigation during pause and long-lived session handling.
+3. Notification action/expiry lifecycle and linked exposure outcomes.
+4. Forced insights held/unlocked/latency states.
+5. Calendar drag/resize/reschedule and table correction flows.
+6. First-run onboarding brain-dump lock-in/skip/empty-validation coverage.
 
 ## Pass / Fail Rule
 
