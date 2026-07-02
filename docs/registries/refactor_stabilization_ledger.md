@@ -5187,3 +5187,123 @@ Rollback note:
   query-key literal without touching schemas, production data, exposure
   lifecycle rows, provider rows, Redis queues, export/delete behavior, or user
   content.
+
+## R3 - Calendar And Pulse Range Query-Key Factory
+
+Changed authority:
+
+- No product, task, timer, exposure, provider, schema, readiness, or mutation
+  authority changed.
+- Calendar and Pulse read-only `tasks-range` React Query keys now go through
+  `queryKeys.tasksRangeWindow(dateFrom, dateTo)` instead of route-local inline
+  arrays.
+- Calendar still owns schedule placement and still calls the same
+  `queryTasksRange(visibleRange.from, visibleRange.to)` transport function.
+- Pulse still owns the hub surface and still calls the same
+  `queryTasksRange(fortnightStart, today)` transport function.
+
+Removed paths:
+
+- Removed two route-local raw `tasks-range` query-key literals from Calendar
+  and Pulse.
+
+Parked paths:
+
+- Pulse route browser proof remains parked for read-only classification because
+  route load may legitimately acknowledge pressure-map exposure render truth
+  via `ackExposureRender(pressureQ.data?.exposure_id)`.
+- NewTaskModal draft/nudge/deadline/submit extraction remains parked until the
+  modal's exposure and rapid-submit behavior is characterized further.
+- Stopwatch controller extraction remains parked because it still touches
+  optimistic updates, rollback, pause state, and active timer authority.
+- Shared brain-dump reducer remains parked until first-run onboarding browser
+  coverage is promoted.
+
+Moved authority:
+
+- No command ownership moved. This is a cache-key vocabulary seam only.
+
+Agent loop notes:
+
+- Mini-loop verifier confirmed the key factory preserves the exact key shape:
+  `["tasks-range", dateFrom, dateTo]`.
+- Mini-loop verifier approved Calendar as a read-only route smoke target when
+  no drag/resize/edit action is performed.
+- Mini-loop verifier warned not to count Pulse as read-only browser proof
+  without explicit exposure-state snapshotting, because Pulse load may create a
+  valid exposure-render acknowledgement.
+
+Tests and verification:
+
+- Typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && npm run build:public` passed.
+- Refactor contract scan:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Calendar route browser proof:
+  operator-cookie local-current Calendar smoke passed after installing the same
+  API proxy pattern used by the operator verifier.
+- Calendar artifact:
+  `tmp/browser-readonly/r3-calendar-pulse-range-query-key-calendar-local-current-proxy/result.json`.
+- Calendar outcome:
+  `/calendar` returned `200`, final URL remained `/calendar`, no onboarding
+  redirect occurred, there were no console/page errors, and export counts were
+  unchanged.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-calendar-pulse-range-query-key-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r3-calendar-pulse-range-query-key-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `11430ms`, mobile `4716ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Verifier bug classifications:
+
+- First Calendar smoke failed with HTTP `500` at `/api/topology` because the
+  local-current Next dev server on port `3013` was stale/corrupted after
+  `npm run build:public`. This matches known issue #144. The verifier server
+  was restarted; no product code change was needed.
+- Second Calendar smoke loaded `/calendar` but browser-side API calls were
+  CORS-blocked because the ad hoc smoke lacked the operator verifier's API
+  proxy. The final proxied smoke passed.
+- Holmesberg was not used for this read-only proof because no mutable
+  user-facing behavior changed and synthetic-row cleanup proof would be
+  unnecessary risk for a cache-key vocabulary seam.
+
+Behavior parity statement:
+
+- The query key values are unchanged:
+  `["tasks-range", visibleRange.from, visibleRange.to]` and
+  `["tasks-range", fortnightStart, today]`.
+- Calendar and Pulse fetch the same API ranges and render the same surfaces.
+- No user data, task state, timer state, exposure row, notification row,
+  provider row, Redis key, or schema changed.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28560745855`.
+- Head SHA:
+  `3c2fb92746f98e264c9089f384f9562203062777`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-calendar-pulse-range-query-key-3c2fb92.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the Calendar/Pulse query-key commit only. This restores the
+  route-local raw query-key literals without touching schemas, production data,
+  exposure lifecycle rows, provider rows, Redis queues, export/delete behavior,
+  or user content.
