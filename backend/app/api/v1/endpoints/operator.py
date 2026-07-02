@@ -30,8 +30,6 @@ from app.db.scoping import get_current_user_id, set_current_user_id
 from app.services.exposure_ledger import exposure_results_for_task
 from app.services.operator_dashboard_metrics import (
     GREEN_TIMER_CLOSURE_RATE,
-    MEANINGFUL_EXCLUDED_EVENTS,
-    MEANINGFUL_INCLUDED_EVENTS,
     READINESS_GREEN_TRACE_RATIO,
     READINESS_RED_TRACE_RATIO,
     STALE_PAUSE_HOURS,
@@ -40,6 +38,8 @@ from app.services.operator_dashboard_metrics import (
     dynamic_issue as _dynamic_issue,
     email_hash as _email_hash,
     is_test_or_synthetic_user as _is_test_or_synthetic_user,
+    meaningful_activity_definition_snapshot as _meaningful_activity_definition_snapshot,
+    metric_confidence_snapshot as _metric_confidence_snapshot,
     metric_meta as _metric_meta,
     notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
     pct as _pct,
@@ -692,15 +692,7 @@ def operator_dashboard_v12(
 
         data_freshness = _data_freshness_snapshot(db, generated_at=generated_at)
 
-        metric_confidence = {
-            "retention": "medium",
-            "login_frequency": "not_instrumented",
-            "clean_trace_ratio": "high",
-            "notification_lifecycle": "medium",
-            "provider_integrity": "medium",
-            "product_loop_funnel": "medium",
-            "state_invariants": "high",
-        }
+        metric_confidence = _metric_confidence_snapshot()
 
         dynamic_issues: list[dict[str, Any]] = []
 
@@ -1084,11 +1076,7 @@ def operator_dashboard_v12(
             "generated_at": _iso(generated_at),
             "data_freshness": data_freshness,
             "metric_confidence": metric_confidence,
-            "meaningful_activity_definition": {
-                **_metric_meta(basis="contract", confidence="high", readiness_impact="informational"),
-                "included_events": MEANINGFUL_INCLUDED_EVENTS,
-                "excluded_events": MEANINGFUL_EXCLUDED_EVENTS,
-            },
+            "meaningful_activity_definition": _meaningful_activity_definition_snapshot(),
             "cohort_readiness": cohort_readiness,
             "cohort_segments": cohort_segments,
             "cohort": cohort,

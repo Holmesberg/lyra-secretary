@@ -74,6 +74,32 @@ def metric_meta(
     return payload
 
 
+def metric_confidence_snapshot() -> dict[str, str]:
+    """Static confidence tiers for operator dashboard metric groups."""
+    return {
+        "retention": "medium",
+        "login_frequency": "not_instrumented",
+        "clean_trace_ratio": "high",
+        "notification_lifecycle": "medium",
+        "provider_integrity": "medium",
+        "product_loop_funnel": "medium",
+        "state_invariants": "high",
+    }
+
+
+def meaningful_activity_definition_snapshot() -> dict[str, Any]:
+    """Static operator-visible contract for meaningful activity proxies."""
+    return {
+        **metric_meta(
+            basis="contract",
+            confidence="high",
+            readiness_impact="informational",
+        ),
+        "included_events": MEANINGFUL_INCLUDED_EVENTS,
+        "excluded_events": MEANINGFUL_EXCLUDED_EVENTS,
+    }
+
+
 def short_hash(value: str | None) -> str:
     return hashlib.sha256((value or "").encode("utf-8")).hexdigest()[:12]
 
