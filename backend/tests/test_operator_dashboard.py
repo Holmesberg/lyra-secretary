@@ -210,6 +210,9 @@ def test_operator_dashboard_reports_state_and_privacy_boundaries(client, db):
     assert body["state_invariants"]["stale_reentry_candidates"] >= 1
     assert body["privacy_boundary"]["raw_task_titles_exposed"] is False
     assert body["privacy_boundary"]["raw_emails_exposed"] is False
+    assert body["privacy_boundary"]["provider_tokens_exposed"] is False
+    assert body["privacy_boundary"]["raw_provider_urls_exposed"] is False
+    assert body["privacy_boundary"]["user_debug_mode_enabled"] is False
     issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
     assert "duplicate_open_sessions" in issue_ids
     assert "executed_tasks_missing_execution_interval" in issue_ids

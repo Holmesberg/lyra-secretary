@@ -43,6 +43,7 @@ from app.services.operator_dashboard_metrics import (
     metric_meta as _metric_meta,
     notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
     pct as _pct,
+    privacy_boundary_snapshot as _privacy_boundary_snapshot,
     product_loop_funnel_snapshot as _product_loop_funnel_snapshot,
     provider_integrity_snapshot as _provider_integrity_snapshot,
     redis_notification_snapshot as _redis_notification_snapshot_impl,
@@ -574,14 +575,7 @@ def operator_dashboard_v12(
             stale_reentry_candidates=stale_reentry_candidates,
         )
 
-        privacy_boundary = {
-            **_metric_meta(basis="direct", confidence="high", readiness_impact="blocker"),
-            "raw_task_titles_exposed": False,
-            "raw_emails_exposed": False,
-            "provider_tokens_exposed": False,
-            "raw_provider_urls_exposed": False,
-            "user_debug_mode_enabled": False,
-        }
+        privacy_boundary = _privacy_boundary_snapshot()
 
         activity_counts_7d = [len(active_dates_7d.get(u.user_id, set())) for u in non_operator_users]
         activity_counts_14d = [len(active_dates_14d.get(u.user_id, set())) for u in non_operator_users]

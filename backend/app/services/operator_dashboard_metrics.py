@@ -656,6 +656,18 @@ def provider_integrity_snapshot(
     }
 
 
+def privacy_boundary_snapshot() -> dict[str, Any]:
+    """Read-only dashboard privacy boundary packet."""
+    return {
+        **metric_meta(basis="direct", confidence="high", readiness_impact="blocker"),
+        "raw_task_titles_exposed": False,
+        "raw_emails_exposed": False,
+        "provider_tokens_exposed": False,
+        "raw_provider_urls_exposed": False,
+        "user_debug_mode_enabled": False,
+    }
+
+
 def user_last_activity_maps(db: Session) -> dict[int, datetime]:
     values: dict[int, list[datetime]] = defaultdict(list)
     for user_id, stamp in db.query(Task.user_id, func.max(Task.last_modified_at)).group_by(Task.user_id):
