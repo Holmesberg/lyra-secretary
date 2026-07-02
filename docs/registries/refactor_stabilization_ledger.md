@@ -4706,3 +4706,93 @@ Rollback note:
   collector script, wrapper switches, and runbook text without touching Lyra app
   runtime behavior, schemas, production data, exposure lifecycle rows, provider
   rows, Redis queues, or user content.
+
+## R4 - Operator Recommendations Projection Helper
+
+Changed authority:
+
+- No product, exposure, provider, readiness, or cohort authority changed.
+- Operator recommendation row projection moved from the `/operator` route into
+  `operator_dashboard_metrics.operator_recommendations_snapshot`.
+- `/operator` still owns dashboard response composition and dynamic issue
+  construction; the helper only projects already-built issue dictionaries into
+  the existing response shape.
+
+Removed paths:
+
+- Removed route-local list comprehension for `operator_recommendations`.
+
+Parked paths:
+
+- Provider/Moodle, Jarvis/OpenClaw, passive academic telemetry, and measurement
+  computation extraction remain blocked behind R5a stale-doc authority cleanup.
+- Analytics/service extraction remains parked until operator truth and exposure
+  invariants stay stable through standard verification.
+
+Moved authority:
+
+- No truth authority moved. A route presentation projection moved to the
+  operator metric-builder layer.
+
+Agent loop notes:
+
+- Explorer A recommended this as a safe R4 follow-up seam because it is
+  read-only payload shaping over existing dynamic issues: no DB query, no
+  denominator, no threshold, no exposure lifecycle write, no schema, and no
+  provider state.
+- Explorer C's R5a blocker still applies to provider, Moodle, Jarvis/OpenClaw,
+  passive academic telemetry, and active-looking parked docs.
+- Verifier note: the first static-scan command used a backend-relative Python
+  path from repo root. This was classified as a harness/command-path issue,
+  corrected immediately, and did not indicate product behavior.
+
+Tests and verification:
+
+- Compile check:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\operator_dashboard_metrics.py app\api\v1\endpoints\operator.py`
+  passed.
+- Operator dashboard, route security, and verifier contract:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_route_security.py tests\test_verifier_contracts.py -q`
+  passed, `18 passed`.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-operator-recommendations-projection-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-operator-recommendations-projection-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5859ms`, mobile `4719ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Dashboard response shape and values are unchanged.
+- Operator recommendations still use the same severity, message,
+  suggested_action, related_section, and blocks_cohort_expansion fields.
+- `/operator` remains read-only and does not repair, suppress, queue, render, or
+  otherwise mutate state.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28558403524`.
+- Head SHA:
+  `fd7eee230e2c81dd3ca624e4a6bde98934db3954`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the operator recommendations projection commit only. This restores the
+  inline route comprehension without touching schemas, production data,
+  exposure lifecycle rows, provider rows, Redis queues, or user content.
