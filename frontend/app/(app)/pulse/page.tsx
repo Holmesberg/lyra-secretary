@@ -52,6 +52,7 @@ import {
   focusMinutesToday,
   winsToday,
 } from "@/lib/pulse-aggregations";
+import { queryKeys } from "@/lib/query-keys";
 
 import { PulseGreeting } from "@/components/pulse/PulseGreeting";
 import { PulseTodaysPlanV2 } from "@/components/pulse/PulseTodaysPlanV2";
@@ -112,7 +113,7 @@ export default function PulsePage() {
   // already collapses count + rows in one round trip (see the latency
   // sweep ship d7993d0), so this is a single Supabase query.
   const tasksRangeQ = useQuery<QueryResponse>({
-    queryKey: ["tasks-range", fortnightStart, today],
+    queryKey: queryKeys.tasksRangeWindow(fortnightStart, today),
     queryFn: () => queryTasksRange(fortnightStart, today),
     staleTime: 60_000,
   });

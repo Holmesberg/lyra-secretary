@@ -375,7 +375,7 @@ export default function CalendarPage() {
   // window made old weeks look task-empty while all-range deadlines still
   // appeared, which was both confusing and false.
   const tasksQ = useQuery({
-    queryKey: ["tasks-range", visibleRange.from, visibleRange.to],
+    queryKey: queryKeys.tasksRangeWindow(visibleRange.from, visibleRange.to),
     queryFn: async () => {
       const res = await queryTasksRange(visibleRange.from, visibleRange.to);
       return res.tasks.filter((t) => t.state !== "DELETED");
@@ -573,8 +573,8 @@ export default function CalendarPage() {
   }
 
   // Refresh both cache keys on any calendar-driven mutation so the
-  // Today view (`["tasks", date]`) and the Calendar view
-  // (`["tasks-range", pivot, days]`) stay in lock-step without either
+  // Today view (`["tasks", date]`) and range views
+  // (`["tasks-range", dateFrom, dateTo]`) stay in lock-step without either
   // side knowing about the other's key shape.
   function refreshAll() {
     qc.invalidateQueries({
