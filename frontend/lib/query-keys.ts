@@ -5,6 +5,8 @@ export const queryKeys = {
   adminEmailEngagement: (campaignVersion: string, sinceDays: number) =>
     ["admin-email-engagement", campaignVersion, sinceDays] as const,
   deadlines: ["deadlines"] as const,
+  deadlineBindingCorrection: ["deadlines", "binding-correction"] as const,
+  deadlinesBindable: ["deadlines", "bindable"] as const,
   me: ["me"] as const,
   operatorDashboard: ["operator-dashboard-v12"] as const,
   pressureMap: ["pressure-map"] as const,

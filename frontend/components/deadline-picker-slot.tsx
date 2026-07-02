@@ -7,6 +7,7 @@ import {
   sortDeadlinesActiveFirst,
   type DeadlinePreviewResponse,
 } from "@/lib/deadlines";
+import { queryKeys } from "@/lib/query-keys";
 
 interface DeadlinePickerSlotProps {
   deadlineId: string | null;
@@ -34,7 +35,7 @@ export function DeadlinePickerSlot({
   // state client-side because the list endpoint accepts only one state
   // at a time and we want both planned and active.
   const { data, isLoading } = useQuery({
-    queryKey: ["deadlines", "bindable"],
+    queryKey: queryKeys.deadlinesBindable,
     queryFn: () => listDeadlines(),
     enabled: showPicker,
   });

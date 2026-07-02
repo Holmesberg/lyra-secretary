@@ -9,6 +9,7 @@ import {
   updateTaskDeadlineBinding,
   type TaskRow,
 } from "@/lib/tasks";
+import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,7 +43,7 @@ export function DeadlineBindingDialog({ task, open, onClose, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const deadlinesQ = useQuery({
-    queryKey: ["deadlines", "binding-correction"],
+    queryKey: queryKeys.deadlineBindingCorrection,
     queryFn: () => listDeadlines(),
     enabled: open,
   });
