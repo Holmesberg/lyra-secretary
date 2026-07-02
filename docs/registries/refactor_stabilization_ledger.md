@@ -4976,3 +4976,101 @@ Rollback note:
   inline route K-watchlist dictionary without touching schemas, production
   data, exposure lifecycle rows, provider rows, Redis queues, export/delete
   behavior, or user content.
+
+## R5a - Stale Authority Docs And CI/CD Proof Alignment
+
+Changed authority:
+
+- Historical roadmap, handoff, audit, manifesto, LyraSim, provider, academic,
+  and OpenClaw skill documents now explicitly subordinate themselves to the
+  active freeze authority chain.
+- CI/CD proof after push is now recorded as part of the stabilization ledger
+  expectation, alongside browser/API/export proof and topology labels.
+- OpenClaw skill documentation remains reference/compatibility material only;
+  it does not authorize live scheduling, timer, task, GPT/OpenClaw synthesis,
+  or product mutation during the freeze.
+
+Removed paths:
+
+- No runtime path was removed.
+- Stale active-sounding command wording was removed from docs where it could
+  imply current runtime permission.
+- Legacy `docker-compose` command snippets in active-looking docs were replaced
+  with `docker compose`.
+
+Parked paths:
+
+- `/insights`, avoidance/motivation/focus/productivity surfaces, passive
+  tracking, behavior-transition equations, new provider adapters, schema
+  migrations, OpenClaw/GPT product wiring, LyraSim-to-product behavior, and
+  cohort expansion remain parked until a new explicit plan authorizes them.
+- `scripts/restart_public_frontend.ps1` remains an unresolved topology
+  operations gap, tracked in GitHub issue #158.
+- CI branch trigger policy remains unresolved, tracked in GitHub issue #157.
+- Alternate local-current frontend origins and wrapper/topology handling remain
+  tracked in GitHub issue #147.
+
+Moved authority:
+
+- No product, exposure, provider, task, timer, notification, schema, or cohort
+  authority moved.
+- Stale docs moved from apparent implementation authority to historical or
+  subordinate planning evidence.
+- Hosted CI proof is now treated as a separate post-push proof leg rather than
+  being inferred from local/browser verification.
+
+Agent loop notes:
+
+- Stale-authority explorer identified LyraSim, phase/backlog, feedback-loop,
+  academic/provider, and handoff docs that needed stronger freeze fences.
+- Forbidden-claim adversary flagged the manifesto surfacing mandate,
+  `dogfood_findings_living.md`, and the OpenClaw skill command protocol as the
+  highest-risk stale authority surfaces.
+- CI/CD and runbook explorer flagged public restart ambiguity, alternate
+  local-current topology proof, and branch CI trigger policy as operational
+  gaps requiring issue tracking.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Stale-authority grep:
+  exact live-command phrases for OpenClaw scheduling, live FastAPI mutation,
+  and old `docker-compose restart/logs/ps` snippets were removed or fenced.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r5a-stale-docs-ci-cd-authority-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r5a-stale-docs-ci-cd-authority-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5840ms`, mobile `4628ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- No runtime source code, schema, migration, product route, API endpoint,
+  provider adapter, exposure lifecycle, task/timer behavior, Redis state, or
+  user-facing surface changed.
+- This pass changes documentation authority and CI/CD process expectations
+  only.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28559696002`.
+- Head SHA:
+  `a9aa73cbc62b7380dc4b019b573532ae23b07b9f`.
+- Structured proof:
+  `tmp/ci-cd-proof/r5a-stale-authority-a9aa73c.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the docs cleanup commit only. This restores previous document wording
+  without touching runtime code, schemas, production data, exposure lifecycle
+  rows, provider rows, Redis queues, export/delete behavior, or user content.
