@@ -4329,7 +4329,14 @@ Behavior parity statement:
 
 CI/CD proof note:
 
-- Pending branch push and GitHub Actions run for this seam.
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28556532122`.
+- Head SHA:
+  `d2570867e8b602c84f92a83e675c3aca536e3812`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
 
 Rollback note:
 
