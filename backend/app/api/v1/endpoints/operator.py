@@ -44,6 +44,7 @@ from app.services.operator_dashboard_metrics import (
     notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
     pct as _pct,
     product_loop_funnel_snapshot as _product_loop_funnel_snapshot,
+    provider_integrity_snapshot as _provider_integrity_snapshot,
     redis_notification_snapshot as _redis_notification_snapshot_impl,
     short_hash as _short_hash,
     state_invariants_snapshot as _state_invariants_snapshot,
@@ -516,16 +517,17 @@ def operator_dashboard_v12(
             if u.moodle_disconnect_reason or u.moodle_ws_disconnect_reason
         )
 
-        provider_integrity = {
-            **_metric_meta(basis="derived", confidence="medium", readiness_impact="warning"),
-            "provider_rows_total": provider_rows_total,
-            "provider_rows_missing_provenance": int(provider_rows_missing_provenance),
-            "provider_completion_candidates": int(provider_completion_candidates),
-            "provider_truth_violations": int(provider_truth_violations),
-            "duplicate_import_candidates": duplicate_import_candidates,
-            "sync_failures_24h": sync_failures,
-            "user_visible_provider_errors_24h": notification_counts["internal_copy_leak_count"],
-        }
+        provider_integrity = _provider_integrity_snapshot(
+            provider_rows_total=provider_rows_total,
+            provider_rows_missing_provenance=provider_rows_missing_provenance,
+            provider_completion_candidates=provider_completion_candidates,
+            provider_truth_violations=provider_truth_violations,
+            duplicate_import_candidates=duplicate_import_candidates,
+            sync_failures_24h=sync_failures,
+            user_visible_provider_errors_24h=notification_counts[
+                "internal_copy_leak_count"
+            ],
+        )
 
         feedback_bug_24h = (
             db.query(func.count(Feedback.feedback_id))

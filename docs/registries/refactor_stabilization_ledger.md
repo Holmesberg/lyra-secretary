@@ -4256,3 +4256,83 @@ Rollback note:
 - Revert the operator state-invariants builder commit only. This restores
   inline state-invariant assembly without touching schemas, production data,
   exposure lifecycle rows, Redis queues, or user content.
+
+## R4 - Operator Provider Integrity Builder
+
+Changed authority:
+
+- No runtime mutation authority changed.
+- `/v1/operator/dashboard` remains the operator cockpit authority.
+- Provider-integrity payload assembly is now computed by the read-only
+  `provider_integrity_snapshot()` helper in `operator_dashboard_metrics.py`.
+- The operator route still owns provider queries/counts, dynamic issues,
+  implementation/cohort status, and provider blocker semantics.
+
+Removed paths:
+
+- Removed duplicated provider-integrity dict assembly from the operator route.
+
+Parked paths:
+
+- Provider query extraction remains parked; this pass only moves count-in,
+  payload-out formatting.
+- Provider connection-model extraction remains parked until schema authority is
+  granted.
+- Measurement integrity extraction remains parked because provider-only rows
+  still participate in denominator and dirty-reason decisions.
+
+Moved authority:
+
+- Provider-integrity formatting moved from inline route code to a registered
+  operator metric helper.
+- Provider-truth violation severity and cohort blocking remain in the operator
+  route, where readiness authority already lives.
+
+Tests and verification:
+
+- Compile check:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\operator_dashboard_metrics.py app\api\v1\endpoints\operator.py`
+  passed.
+- Operator dashboard, route security, and verifier contract:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_route_security.py tests\test_verifier_contracts.py -q`
+  passed, `18 passed`.
+- Characterization added:
+  provider deadlines with missing provenance and provider completion candidates
+  still surface `provider_rows_missing_provenance` and
+  `provider_truth_violation` without treating provider completion as clean
+  execution truth.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-provider-integrity-builder-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-provider-integrity-builder-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5758ms`, mobile `4553ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Dashboard response shape and readiness semantics are unchanged.
+- Provider completion rows remain provenance/candidates; they do not become
+  clean execution truth.
+- Provider warning/blocker issue emission remains route-owned.
+- `/operator` remains read-only and does not repair provider state.
+
+CI/CD proof note:
+
+- Pending branch push and GitHub Actions run for this seam.
+
+Rollback note:
+
+- Revert the operator provider-integrity builder commit only. This restores
+  inline provider-integrity assembly without touching schemas, production data,
+  exposure lifecycle rows, provider rows, Redis queues, or user content.

@@ -633,6 +633,29 @@ def state_invariants_snapshot(
     }
 
 
+def provider_integrity_snapshot(
+    *,
+    provider_rows_total: int,
+    provider_rows_missing_provenance: int,
+    provider_completion_candidates: int,
+    provider_truth_violations: int,
+    duplicate_import_candidates: int,
+    sync_failures_24h: int,
+    user_visible_provider_errors_24h: int,
+) -> dict[str, Any]:
+    """Read-only provider provenance and native-truth boundary snapshot."""
+    return {
+        **metric_meta(basis="derived", confidence="medium", readiness_impact="warning"),
+        "provider_rows_total": int(provider_rows_total),
+        "provider_rows_missing_provenance": int(provider_rows_missing_provenance),
+        "provider_completion_candidates": int(provider_completion_candidates),
+        "provider_truth_violations": int(provider_truth_violations),
+        "duplicate_import_candidates": int(duplicate_import_candidates),
+        "sync_failures_24h": int(sync_failures_24h),
+        "user_visible_provider_errors_24h": int(user_visible_provider_errors_24h),
+    }
+
+
 def user_last_activity_maps(db: Session) -> dict[int, datetime]:
     values: dict[int, list[datetime]] = defaultdict(list)
     for user_id, stamp in db.query(Task.user_id, func.max(Task.last_modified_at)).group_by(Task.user_id):

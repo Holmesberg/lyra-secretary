@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 
 from app.db.models import (
+    Deadline,
+    DeadlineCompletionEvent,
     ExposureAckEvent,
     ExposureDecisionEvent,
     ExposureRenderEvent,
@@ -41,6 +43,10 @@ def _clear_ids(db, ids: list[int]) -> None:
         db.query(NotificationLifecycleEvent).filter(
             NotificationLifecycleEvent.user_id.in_(ids)
         ).delete(synchronize_session=False)
+        db.query(DeadlineCompletionEvent).filter(
+            DeadlineCompletionEvent.user_id.in_(ids)
+        ).delete(synchronize_session=False)
+        db.query(Deadline).filter(Deadline.user_id.in_(ids)).delete()
         db.query(ExposureDecisionEvent).filter(
             ExposureDecisionEvent.user_id.in_(ids)
         ).delete(synchronize_session=False)
@@ -246,6 +252,71 @@ def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
     assert body["cohort_readiness"]["controlled_evidence_collection_allowed"] is False
     issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
     assert "notification_source_freshness_not_instrumented" in issue_ids
+
+
+def test_operator_dashboard_provider_integrity_keeps_provider_completion_as_candidate(client, db):
+    ids = [9151, 9152]
+    _clear_ids(db, ids)
+    _clear_notification_lifecycle(db)
+    db.add(_user(9151, operator=True))
+    db.add(_user(9152, operator=False))
+
+    now = datetime.utcnow()
+    db.add(
+        Deadline(
+            deadline_id="provider-missing-provenance",
+            user_id=9152,
+            title="Provider row missing provenance",
+            due_at_utc=now + timedelta(days=1),
+            state="planned",
+            created_at=now - timedelta(days=1),
+            external_source="moodle_ics",
+            external_id=None,
+            imported_at=None,
+        )
+    )
+    provider_completed = Deadline(
+        deadline_id="provider-completed-candidate",
+        user_id=9152,
+        title="Provider completion candidate",
+        due_at_utc=now + timedelta(hours=3),
+        state="completed",
+        completed_at=now,
+        created_at=now - timedelta(days=1),
+        external_source="moodle_ics",
+        external_id="moodle:provider-completed-candidate",
+        imported_at=now - timedelta(hours=4),
+    )
+    db.add(provider_completed)
+    db.add(
+        DeadlineCompletionEvent(
+            event_id="provider-completion-event",
+            deadline_id=provider_completed.deadline_id,
+            user_id=9152,
+            task_id=None,
+            completion_source="moodle_submission",
+            completed_at_utc=now,
+            recorded_at_utc=now,
+            due_at_utc_at_event=provider_completed.due_at_utc,
+            completed_after_due=False,
+            delay_minutes=-180,
+            time_provenance="external_import",
+        )
+    )
+    db.commit()
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9151))
+    assert res.status_code == 200
+    body = res.json()
+
+    provider = body["provider_integrity"]
+    assert provider["provider_rows_missing_provenance"] >= 1
+    assert provider["provider_completion_candidates"] >= 1
+    assert provider["provider_truth_violations"] >= 1
+    issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
+    assert "provider_rows_missing_provenance" in issue_ids
+    assert "provider_truth_violation" in issue_ids
+    assert body["cohort_readiness"]["implementation_green"] is False
 
 
 def test_operator_dashboard_blocks_on_exposure_without_render(client, db):
