@@ -34,6 +34,7 @@ from app.services.operator_dashboard_metrics import (
     READINESS_RED_TRACE_RATIO,
     STALE_PAUSE_HOURS,
     activity_dates_by_user as _activity_dates_by_user,
+    bug_watchlist_snapshot as _bug_watchlist_snapshot,
     data_freshness_snapshot as _data_freshness_snapshot,
     dynamic_issue as _dynamic_issue,
     is_test_or_synthetic_user as _is_test_or_synthetic_user,
@@ -51,7 +52,6 @@ from app.services.operator_dashboard_metrics import (
     short_hash as _short_hash,
     state_invariants_snapshot as _state_invariants_snapshot,
     user_last_activity_maps as _user_last_activity_maps,
-    watchlist_status_from_issues as _watchlist_status_from_issues,
 )
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
@@ -915,16 +915,7 @@ def operator_dashboard_v12(
                 blocks_cohort_expansion=True,
             ))
 
-        bug_watchlist = {
-            **_metric_meta(basis="derived", confidence="medium", readiness_impact="blocker"),
-            "k01_calendar_warning_leak": _watchlist_status_from_issues(dynamic_issues, "K01"),
-            "k02_timer_overflow_duplicate": _watchlist_status_from_issues(dynamic_issues, "K02"),
-            "k03_invalid_mark_done_executed": _watchlist_status_from_issues(
-                dynamic_issues, "K03", default="unknown"
-            ),
-            "k04_parked_25h_stale": _watchlist_status_from_issues(dynamic_issues, "K04"),
-            "k05_pulse_quick_capture_anchor": "unknown",
-        }
+        bug_watchlist = _bug_watchlist_snapshot(dynamic_issues)
 
         readiness_blockers = [
             issue["id"] for issue in dynamic_issues if issue["blocks_cohort_expansion"]

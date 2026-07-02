@@ -226,6 +226,20 @@ def watchlist_status_from_issues(
     return default
 
 
+def bug_watchlist_snapshot(dynamic_issues: list[dict[str, Any]]) -> dict[str, Any]:
+    """Project dynamic issues into the operator bug-watchlist status row."""
+    return {
+        **metric_meta(basis="derived", confidence="medium", readiness_impact="blocker"),
+        "k01_calendar_warning_leak": watchlist_status_from_issues(dynamic_issues, "K01"),
+        "k02_timer_overflow_duplicate": watchlist_status_from_issues(dynamic_issues, "K02"),
+        "k03_invalid_mark_done_executed": watchlist_status_from_issues(
+            dynamic_issues, "K03", default="unknown"
+        ),
+        "k04_parked_25h_stale": watchlist_status_from_issues(dynamic_issues, "K04"),
+        "k05_pulse_quick_capture_anchor": "unknown",
+    }
+
+
 def last_non_null(values: Iterable[datetime | None]) -> datetime | None:
     return max((v for v in values if v is not None), default=None)
 
