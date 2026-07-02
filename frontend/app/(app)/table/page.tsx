@@ -6,6 +6,7 @@ import { format, subDays, parseISO } from "date-fns";
 import { Download, ChevronUp, ChevronDown } from "lucide-react";
 import { queryTasksRange, type TaskRow, type QueryResponse } from "@/lib/tasks";
 import { ExecutionCorrectionDialog } from "@/components/execution-correction-dialog";
+import { queryKeys } from "@/lib/query-keys";
 import {
   CATEGORIES,
   getCategoryColor,
@@ -449,7 +450,7 @@ export default function TablePage() {
     isLoading: tasksLoading,
     refetch: refetchTasks,
   } = useQuery<QueryResponse>({
-    queryKey: ["tasks-range", dateFrom, dateTo],
+    queryKey: queryKeys.tasksRangeWindow(dateFrom, dateTo),
     queryFn: () => queryTasksRange(dateFrom, dateTo),
     staleTime: 60_000,
   });

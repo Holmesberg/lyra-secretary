@@ -12,6 +12,8 @@ export const queryKeys = {
   tasks: ["tasks"] as const,
   tasksEvidence: ["tasks-evidence"] as const,
   tasksRange: ["tasks-range"] as const,
+  tasksRangeWindow: (dateFrom: string, dateTo: string) =>
+    ["tasks-range", dateFrom, dateTo] as const,
 } satisfies Record<string, QueryKey | ((...args: never[]) => QueryKey)>;
 
 const domainKeys = {
