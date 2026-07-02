@@ -4796,3 +4796,93 @@ Rollback note:
 - Revert the operator recommendations projection commit only. This restores the
   inline route comprehension without touching schemas, production data,
   exposure lifecycle rows, provider rows, Redis queues, or user content.
+
+## R4 - Operator User Row Projection Helper
+
+Changed authority:
+
+- No product, exposure, provider, readiness, cohort, identity, or user-data
+  authority changed.
+- Operator non-operator-user row projection moved from the `/operator` route
+  into `operator_dashboard_metrics.operator_user_rows_snapshot`.
+- `/operator` still owns user selection, all queries, all denominators, all
+  readiness decisions, and dashboard response composition.
+
+Removed paths:
+
+- Removed route-local user payload formatting loop.
+- Removed the route-local `email_hash` alias that was only needed by that loop.
+
+Parked paths:
+
+- Provider/Moodle, Jarvis/OpenClaw, passive academic telemetry, and measurement
+  computation extraction remain blocked behind R5a stale-doc authority cleanup.
+- User account mutation, export/delete, and runtime purge authority were not
+  touched and remain under the user-data registry/user endpoint boundary.
+
+Moved authority:
+
+- No truth authority moved. A read-only presentation projection moved to the
+  operator metric-builder layer.
+
+Agent loop notes:
+
+- This seam follows the mini-loop recommendation for low-risk R4 work: move
+  presentation-only assembly after operator truth and exposure blockers are
+  stable.
+- The helper accepts already-computed maps and user rows; it performs no DB
+  query, Redis call, provider interpretation, exposure lifecycle operation, or
+  readiness threshold decision.
+
+Tests and verification:
+
+- Compile check:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\operator_dashboard_metrics.py app\api\v1\endpoints\operator.py`
+  passed.
+- Operator dashboard, route security, and verifier contract:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_route_security.py tests\test_verifier_contracts.py -q`
+  passed, `18 passed`.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-operator-user-rows-projection-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-operator-user-rows-projection-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5923ms`, mobile `5114ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Dashboard response shape and values are unchanged.
+- User rows still expose the same minimized fields: id, first name/source,
+  hashed email, activity dates/counts, task/session counts, clean trace ratio,
+  open/stale timer counts, and last loop stage.
+- `/operator` remains read-only and does not repair, suppress, queue, render,
+  delete, export, or otherwise mutate state.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28558664138`.
+- Head SHA:
+  `a19a7a7c57c1a44d5566f39a311be4cd4c3d842b`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the operator user row projection commit only. This restores the inline
+  route user-row loop without touching schemas, production data, exposure
+  lifecycle rows, provider rows, Redis queues, export/delete behavior, or user
+  content.
