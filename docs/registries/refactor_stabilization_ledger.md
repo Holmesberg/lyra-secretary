@@ -5307,3 +5307,120 @@ Rollback note:
   route-local raw query-key literals without touching schemas, production data,
   exposure lifecycle rows, provider rows, Redis queues, export/delete behavior,
   or user content.
+
+## R3 - Deadline Binding Query-Key Factory
+
+Changed authority:
+
+- No product, task, timer, exposure, provider, schema, readiness, or mutation
+  authority changed.
+- Deadline binding read queries now go through named `queryKeys` entries
+  instead of route/component-local inline arrays.
+- `DeadlinePickerSlot` still owns the NewTaskModal deadline-picker presentation
+  and still calls the same `listDeadlines()` transport function.
+- `DeadlineBindingDialog` still owns metadata-correction presentation and
+  still calls the same `listDeadlines()` transport function when opened.
+
+Removed paths:
+
+- Removed the route-local raw `["deadlines", "bindable"]` query key from the
+  NewTaskModal deadline picker slot.
+- Removed the route-local raw `["deadlines", "binding-correction"]` query key
+  from the deadline binding correction dialog.
+
+Parked paths:
+
+- NewTaskModal creation-nudge/helper extraction remains parked for a separate
+  seam. It was temporarily stashed while this proof ran so this commit could
+  be verified in isolation.
+- Actual task/deadline binding mutation remains untouched.
+- Table correction/export and Calendar drag/resize remain separate targeted
+  verification surfaces.
+
+Moved authority:
+
+- No command ownership moved. This is a cache-key vocabulary seam only.
+
+Agent loop notes:
+
+- Frontend scout recommended this as the safest next R3 continuation because
+  it touches deadline-linkage vocabulary without moving NewTaskModal state,
+  deadline authority, parser preview logic, or submit behavior.
+- Verification scout required local hard gates, targeted browser proof,
+  operator read-only proof, CI/CD proof, and a ledger entry.
+
+Tests and verification:
+
+- Typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && node scripts/clean-next.mjs && npm run build:public` passed
+  with the local dev server stopped.
+- Refactor contract scan:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed.
+- Targeted deadline browser proof:
+  operator-cookie local-current `/today` proof opened the New Task modal,
+  opened the deadline picker, and did not select or save anything.
+- Targeted artifact:
+  `tmp/browser-readonly/r3-deadline-binding-query-key-surfaces-local-current/result.json`.
+- Targeted outcome:
+  `/today` returned `200`, the deadline picker opened, export counts were
+  unchanged, and no page errors occurred. The current account had zero visible
+  picker options and no visible task binding buttons on `/today`, so the
+  correction dialog subproof was gated rather than forced.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-deadline-binding-query-key-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r3-deadline-binding-query-key-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `6006ms`, mobile `4534ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Verifier bug classifications:
+
+- `npm run build:public` failed twice while the local dev server was running or
+  stale, after successful compilation, with missing `.next` page/runtime
+  artifacts. This matches known issue #144. Stopping the dev server and
+  cleaning `.next` produced a passing build; no product code change was needed.
+- The unrelated NewTaskModal helper extraction was already dirty in the
+  workspace. It was stashed with `--keep-index` before the exact seam proof,
+  then restored after the code commit. It was not part of this commit or CI
+  proof.
+
+Behavior parity statement:
+
+- The query key values are unchanged:
+  `["deadlines", "bindable"]` and
+  `["deadlines", "binding-correction"]`.
+- Deadline picker and binding correction surfaces fetch the same deadline list
+  data as before.
+- No user data, task state, timer state, exposure row, notification row,
+  provider row, Redis key, or schema changed.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28561468761`.
+- Head SHA:
+  `311e2db9335c5c47a8cf8416ef5a727ef77a40b5`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-deadline-binding-query-key-311e2db.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the deadline binding query-key commit only. This restores the
+  component-local raw query-key literals without touching schemas, production
+  data, exposure lifecycle rows, provider rows, Redis queues, export/delete
+  behavior, task/deadline binding mutation, or user content.
