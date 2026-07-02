@@ -4886,3 +4886,93 @@ Rollback note:
   route user-row loop without touching schemas, production data, exposure
   lifecycle rows, provider rows, Redis queues, export/delete behavior, or user
   content.
+
+## R4 - Operator Bug Watchlist Projection Helper
+
+Changed authority:
+
+- No product, exposure, provider, readiness, cohort, schema, or mutation
+  authority changed.
+- Operator bug-watchlist projection moved from the `/operator` route into
+  `operator_dashboard_metrics.bug_watchlist_snapshot`.
+- `/operator` still owns dynamic issue construction, readiness status
+  derivation, cohort evidence gaps, and dashboard response composition.
+
+Removed paths:
+
+- Removed route-local K-watchlist dictionary assembly.
+- Removed the route-local `watchlist_status_from_issues` alias that was only
+  needed by that dictionary.
+
+Parked paths:
+
+- Cohort-readiness extraction remains parked because it is stop/go authority,
+  not mere presentation.
+- Provider/Moodle, Jarvis/OpenClaw, passive academic telemetry, and measurement
+  computation extraction remain blocked behind R5a stale-doc authority cleanup.
+
+Moved authority:
+
+- No truth or readiness authority moved. A read-only dynamic-issue tag
+  projection moved to the operator metric-builder layer.
+
+Agent loop notes:
+
+- This seam was chosen over cohort-readiness extraction because it avoids moving
+  `safe_to_invite_more_users`, implementation/cohort status, or evidence-gap
+  semantics.
+- The helper accepts dynamic issues and returns the same K-status row. It
+  performs no DB query, Redis call, provider interpretation, exposure lifecycle
+  operation, or threshold decision.
+
+Tests and verification:
+
+- Compile check:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\operator_dashboard_metrics.py app\api\v1\endpoints\operator.py`
+  passed.
+- Operator dashboard, route security, and verifier contract:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_route_security.py tests\test_verifier_contracts.py -q`
+  passed, `18 passed`.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-operator-bug-watchlist-projection-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-operator-bug-watchlist-projection-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `6076ms`, mobile `4622ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Dashboard response shape and values are unchanged.
+- Bug-watchlist fields keep the same K01/K02/K03/K04/K05 keys and the same
+  pass/unknown/fail semantics.
+- `/operator` remains read-only and does not repair, suppress, queue, render,
+  delete, export, or otherwise mutate state.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28558907077`.
+- Head SHA:
+  `08eae3b68099f17bf652305296db1720a4eecc79`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the operator bug-watchlist projection commit only. This restores the
+  inline route K-watchlist dictionary without touching schemas, production
+  data, exposure lifecycle rows, provider rows, Redis queues, export/delete
+  behavior, or user content.
