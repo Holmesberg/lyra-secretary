@@ -5074,3 +5074,116 @@ Rollback note:
 - Revert the docs cleanup commit only. This restores previous document wording
   without touching runtime code, schemas, production data, exposure lifecycle
   rows, provider rows, Redis queues, export/delete behavior, or user content.
+
+## R3 - Table Range Query-Key Factory
+
+Changed authority:
+
+- No product, task, timer, exposure, provider, schema, readiness, or mutation
+  authority changed.
+- Table's read-only `tasks-range` React Query key now goes through
+  `queryKeys.tasksRangeWindow(dateFrom, dateTo)` instead of an inline array.
+- The Table page still owns audit/history presentation and still calls the same
+  `queryTasksRange(dateFrom, dateTo)` transport function.
+
+Removed paths:
+
+- Removed one route-local raw query-key literal from the Table page.
+
+Parked paths:
+
+- NewTaskModal draft/nudge/deadline/submit extraction remains parked until the
+  modal's exposure and rapid-submit behavior is characterized further.
+- Stopwatch controller extraction remains parked because it still touches
+  optimistic updates, rollback, pause state, and active timer authority.
+- Shared brain-dump reducer remains parked until first-run onboarding browser
+  coverage is promoted.
+
+Moved authority:
+
+- No command ownership moved. This is a cache-key vocabulary seam only.
+
+Agent loop notes:
+
+- Frontend explorer found the safest R3 continuation was a read-only query-key
+  factory adoption, not a controller or reducer extraction.
+- Backend explorer identified a later R4 candidate:
+  `operator_dashboard_metrics.activity_frequency_snapshot`; it was deferred
+  because v5 sequence keeps remaining frontend extraction before backend
+  extraction.
+- Verification explorer confirmed lint is not a hard gate until issue #153 is
+  resolved, and local-current alternate ports remain non-blocking when labeled
+  under issue #147.
+
+Tests and verification:
+
+- Typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && npm run build:public` passed.
+- Refactor contract scan:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Table route browser proof:
+  operator-cookie local-current Table smoke passed after installing the same
+  API proxy pattern used by the operator verifier.
+- Table artifact:
+  `tmp/browser-readonly/r3-table-query-key-window-operator-table-local-current/result.json`.
+- Table outcome:
+  `/table` returned `200`, final URL remained `/table`, export/task markers
+  rendered, no onboarding redirect occurred, there were no console/page errors,
+  and export counts were unchanged.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-table-query-key-window-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r3-table-query-key-window-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `6103ms`, mobile `5070ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Verifier bug classifications:
+
+- First Table smoke failed with HTTP `500` because the local-current Next dev
+  server on port `3013` was stale/corrupted after `npm run build:public`. This
+  matches known issue #144. The verifier server was restarted; no product code
+  change was needed.
+- Second Table smoke reached `/table` but was CORS-blocked because the ad hoc
+  smoke lacked the operator verifier's API proxy. The final proxied smoke
+  passed.
+- Holmesberg was not used for this read-only proof because that account is
+  still in onboarding; using it would have tested onboarding instead of Table
+  without an intentional mutable setup.
+
+Behavior parity statement:
+
+- The query key values are unchanged: `["tasks-range", dateFrom, dateTo]`.
+- Table fetches the same API range and renders the same audit/history surface.
+- No user data, task state, timer state, exposure row, notification row,
+  provider row, Redis key, or schema changed.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28560259913`.
+- Head SHA:
+  `2f62d3f923842bf92f1f3b29bd58be4aa5e208f6`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-table-query-key-2f62d3f.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the Table query-key commit only. This restores the route-local raw
+  query-key literal without touching schemas, production data, exposure
+  lifecycle rows, provider rows, Redis queues, export/delete behavior, or user
+  content.
