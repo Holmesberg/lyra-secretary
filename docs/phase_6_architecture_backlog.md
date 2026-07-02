@@ -1,5 +1,13 @@
 # Phase 6 Architecture Backlog
 
+> Historical/parked backlog. This document preserves April Phase 6 design
+> context, but it is not current implementation authority during the
+> freeze-closure refactor. Do not use it to authorize runtime features, schema
+> additions, new user-facing insights, confrontation/readiness routing,
+> passive tracking, OpenClaw/GPT wiring, behavior-transition equations, or
+> cohort expansion. Current authority lives in `docs/current_transition_state.md`,
+> `docs/AUTHORITY.md`, and `docs/architecture_freeze_priority_hold_2026_05_20.md`.
+
 ## Orienting Principles (read before designing any Phase 6 component)
 
 ### The branch-laying mechanism

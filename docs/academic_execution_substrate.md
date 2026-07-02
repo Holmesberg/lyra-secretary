@@ -15,6 +15,8 @@ execution inference engine while integrating with academic/content systems.
 During the architecture freeze it also does not authorize new provider
 adapters, passive tracking, runtime AI synthesis, new user-facing insights,
 behavior-transition equations, schema migrations, or automatic interventions.
+Implementation-sounding examples below are future-gated examples unless a
+current authority document explicitly promotes them.
 
 Implementation note: Academic Pressure Map surfaces must follow
 `docs/academic_pressure_map_contract.md`. That contract freezes trust-state

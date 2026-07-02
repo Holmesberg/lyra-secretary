@@ -69,6 +69,14 @@ Check these **facts** on checkout:
 
 ## 5. What to do next (ordered)
 
+> Historical handoff sequence. Do not follow this section as current work
+> order. During the freeze-closure refactor, current authority lives in
+> `docs/current_transition_state.md`, `docs/AUTHORITY.md`, and
+> `docs/runbooks/post_wave_dogfood_loop.md`. The JARVIS/Phase 2/Phase 3 steps
+> below are preserved for lineage only and do not authorize JARVIS runtime work,
+> inference expansion, analytics endpoints, new surfaces, provider adapters,
+> passive tracking, or AI synthesis.
+
 ### A. Documentation hygiene (high leverage, low risk)
 
 1. Add **`docs/current_transition_state.md`** (one page): date, active transition phase, product phase pointer, **next hard gate**.

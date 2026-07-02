@@ -2,17 +2,22 @@
 authority: implementation-plan
 may_authorize_code: true
 runtime_owner: none
+authority_scope: lyrasim-harness-only
 supersedes:
 superseded_by:
 ---
 
 # LyraSim Pressure-And-Ambiguity Roadmap
 
-**Status:** Active roadmap after LyraSim V0 harness bring-up.
+**Status:** Subordinate LyraSim harness roadmap after V0 bring-up.
 **Created:** 2026-05-22.
 
 This document preserves the LyraSim plan across context compaction. It is not a
 runtime product feature spec. It authorizes incremental harness work only.
+During the freeze, that authority is limited to deterministic LyraSim harness
+scripts, fixtures, reports, and tests. It does not authorize product runtime
+code, schemas, provider adapters, passive tracking, user-facing insights,
+behavior-transition equations, OpenClaw/GPT wiring, or cohort readiness claims.
 
 LyraSim exists to pressure the current system before the expected Baseet user
 surge. It is a breakage harness for finding catastrophic authority, privacy,

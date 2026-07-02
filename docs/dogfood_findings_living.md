@@ -3,9 +3,19 @@
 **Owner:** Operator (Ali)
 **Started:** April 9, 2026
 **Last updated:** April 16, 2026 (deployment live on lyraos.org via Cloudflare Tunnel + Supabase Postgres; LYR-098 + ReflectionModal completion % ungate moved to FIXED with commit hashes; calendar-mobile + pause-residual-delay + oslyra.com-watch P2 entries added; alignment audit commit `chore(alignment)` pre-Apr-18 launch cleaned cross-doc drift)
-**Status:** Active dogfood, pre-alpha
+**Status:** Historical dogfood log; subordinate to current freeze authority.
 
-This document is edited continuously as new findings emerge. Sections of this doc are referenced directly in fix-batch prompts to agent runtime. Items move from OPEN to FIXED with commit hash when shipped. FIXED items get pruned every ~2 weeks.
+This document preserves pre-freeze dogfood findings and historical fix-batch
+context. It is not current implementation authority. Do not use stale OPEN,
+P0, Tier, `/insights`, pause-prediction, OpenClaw, schema, provider, or
+analytics-surfacing bullets in this file to authorize runtime work during the
+freeze-closure refactor. Current authority lives in `docs/current_transition_state.md`,
+`docs/AUTHORITY.md`, `docs/operator_dashboard_contract.md`, and
+`docs/runbooks/post_wave_dogfood_loop.md`.
+
+Historical note: this document used to be edited continuously as new findings
+emerged. Sections were referenced directly in fix-batch prompts to agent
+runtime. Items moved from OPEN to FIXED with commit hash when shipped.
 
 ---
 

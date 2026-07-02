@@ -137,6 +137,10 @@ Before any commit or push:
 After any push:
 
 - Check the PR checks in GitHub.
+- On wave branches without automatic CI, manually dispatch the CI workflow or
+  record `no_workflow_ran`/`no_matching_run_for_head` with
+  `scripts/collect_github_ci_cd_proof.ps1`.
+- Treat `no_pr` as an explicit CI/CD state, not as proof failure by itself.
 - Report actual CI status; do not infer success from local tests.
 - If CI fails, inspect the failing job log and fix the contract failure before
   proceeding.

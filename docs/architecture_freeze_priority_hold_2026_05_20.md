@@ -98,7 +98,9 @@ are true:
 
 - finals/academic pressure has cleared enough for cold review;
 - at least one stable evidence cycle has passed without packet grammar churn;
-- current browser/API smoke remains normal;
+- current browser/API smoke and CI/CD proof remain normal;
+- hosted-public proof records frontend/backend build IDs, or explicitly records
+  deployment lag;
 - current cohort traces expose real user value or friction;
 - suppression semantics are boring and well-tested;
 - primary product bottlenecks are empirical, not conceptual;

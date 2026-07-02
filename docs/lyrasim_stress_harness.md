@@ -2,18 +2,25 @@
 authority: implementation-plan
 may_authorize_code: true
 runtime_owner: none
+authority_scope: lyrasim-harness-only
 supersedes:
 superseded_by:
 ---
 
 # LyraSim Stress Harness
 
-**Status:** V0 guarded implementation plan.
+**Status:** V0 guarded harness plan; subordinate to freeze authority.
 **Created:** 2026-05-22.
 **Scope:** Synthetic pressure-and-ambiguity scenarios for testing Lyra's
 authority boundaries. This document does not authorize product features,
 passive telemetry capture, Baseet integration, AI synthesis, cascade alerts, or
 adaptive scheduling.
+
+Freeze interpretation: `may_authorize_code: true` applies only to deterministic
+LyraSim harness scripts, fixtures, reports, and tests. It does not authorize
+product runtime code, schemas, provider adapters, passive tracking, user-facing
+insights, behavior-transition equations, OpenClaw/GPT wiring, or cohort
+readiness claims.
 
 LyraSim simulates ambiguous traces under pressure. It does not simulate human
 truth.

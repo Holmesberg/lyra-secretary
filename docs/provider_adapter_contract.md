@@ -183,6 +183,10 @@ Provider outage paths must not create trusted execution evidence.
 
 ## 6. Adapter Acceptance Checklist
 
+Freeze boundary: this checklist applies only after a new provider adapter has
+been explicitly approved by current authority. It is not permission to start or
+ship a new adapter during the freeze.
+
 A new provider adapter is incomplete unless it has:
 
 - normalized DTO or equivalent mapping,

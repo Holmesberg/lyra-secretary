@@ -56,7 +56,7 @@ Use these documents as the current authority chain:
 3. `docs/operator_dashboard_contract.md` - implementation-green vs
    cohort-green and cockpit readiness semantics.
 4. `docs/runbooks/post_wave_dogfood_loop.md` - reusable browser/API/export
-   verification loop.
+   verification loop plus optional CI/CD proof collection after push.
 5. `docs/registries/refactor_stabilization_ledger.md` - wave/seam audit
    trail, browser artifacts, rollback notes, and issue references.
 6. `docs/audits/e0_exposure_forensics_2026_07_01.md` - E0 row-level exposure
@@ -97,6 +97,8 @@ The current freeze-closure pass may:
   explicit ledger notes,
 - preserve current API response shapes and user-facing behavior,
 - add characterization tests and browser/API/export verification,
+- collect CI/CD proof after pushed seams or record why no matching CI run
+  exists,
 - extract small behavior-preserving seams behind compatibility shims,
 - promote stable, allowlisted scans into hard gates,
 - file and close GitHub issues for product, verifier, topology, authority,

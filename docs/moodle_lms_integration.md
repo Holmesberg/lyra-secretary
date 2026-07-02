@@ -117,9 +117,9 @@ Per `feedback_migration_first` memory: SQL migration on Supabase BEFORE pulling 
 1. **Apply the schema.** Copy `archive/migration_041_for_supabase_sql_editor.sql` into Supabase SQL Editor. Paste, click Run. Verify `alembic_version` table shows `version_num='041'`.
 2. **Install the new dependency.** On the production host: `pip install icalendar==5.0.11` (or `pip install -r backend/requirements.txt` from a fresh venv).
 3. **Pull the code.** `git pull origin main` on the prod host.
-4. **Restart backend + frontend.** `docker-compose restart backend` (backend will register the new APScheduler job). `cd frontend && npm run build && npm run start` (cold restart per `feedback_nextjs_dev_restart` memory).
+4. **Restart backend + frontend.** `docker compose restart backend` (backend will register the new APScheduler job). `cd frontend && npm run build && npm run start` (cold restart per `feedback_nextjs_dev_restart` memory).
 5. **Smoke test.** Visit `lyraos.org/settings`, confirm Moodle card now shows "Not connected" with a Connect button. Click Connect, paste your own ASU Moodle URL, confirm preview shows your real assignments, click Connect, confirm `/deadlines` shows them with the "Moodle" badge.
-6. **Verify the job.** `docker-compose logs backend | grep moodle` should show `moodle: user N sync ok` lines after the first 6h tick.
+6. **Verify the job.** `docker compose logs backend | grep moodle` should show `moodle: user N sync ok` lines after the first 6h tick.
 
 If anything blocks, the rollback is: `DELETE FROM "user" WHERE moodle_ics_url IS NOT NULL` (clears all Moodle data) + revert the commit. Imported deadlines are still Lyra rows so they persist with `external_source='moodle_ics'` — the `WHERE external_source IS NULL` filters keep H2 safe even if the integration is rolled back.
 

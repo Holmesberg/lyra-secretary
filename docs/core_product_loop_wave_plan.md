@@ -1,12 +1,20 @@
 # Core Product Loop Wave Plan
 
-**Status:** Active product-maintenance plan.
+**Status:** Historical/subordinate product-loop plan; not current freeze authority.
 **Created:** 2026-06-01.
 **Updated:** 2026-06-03.
 **Authority:** Implementation guidance. Does not override `MANIFESTO.md`,
 `docs/AUTHORITY.md`, `docs/academic_pressure_map_contract.md`,
 `docs/academic_execution_substrate.md`, or provider adapter contracts.
 **Wave -1 scan artifact:** `docs/wave_minus_1_repo_scan_2026_06_01.md`.
+
+Freeze interpretation: this file may inform later product-loop planning, but it
+does not authorize runtime features, new user-facing insights, provider
+adapters, passive tracking, schema migrations, OpenClaw/GPT wiring,
+behavior-transition equations, or cohort expansion during the freeze-closure
+refactor. Current implementation authority lives in
+`docs/current_transition_state.md`, `docs/AUTHORITY.md`, and
+`docs/runbooks/post_wave_dogfood_loop.md`.
 
 ## Global Product Frame
 

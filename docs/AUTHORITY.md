@@ -162,4 +162,7 @@ If the answer is unclear, the change is not ready.
 Every stabilization wave must also leave a deletion and parking ledger. The
 ledger must say what was removed from runtime, what was moved to another layer,
 what stayed parked, and the exact condition that would justify reintroducing
-it. Silent cuts are not allowed.
+it. It must also record the browser/API/export proof used for the wave, the
+CI/CD proof state after push, whether proof was local-current or hosted-public,
+and any deployment/build lag that changes what the proof demonstrates. Silent
+cuts and silent verification gaps are not allowed.

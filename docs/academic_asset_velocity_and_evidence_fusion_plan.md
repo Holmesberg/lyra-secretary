@@ -12,6 +12,8 @@ Freeze boundary: this document identifies parked future ownership only. It does
 not authorize passive telemetry, evidence-tier schema work, runtime AI
 synthesis, new user-facing insights, behavior-transition equations, new
 provider adapters, or automatic interventions during the architecture freeze.
+Implementation phases and data-model sketches below are parked target
+architecture, not current runtime permission.
 
 This plan is subordinate to:
 

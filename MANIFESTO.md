@@ -61,6 +61,15 @@ Current review note: later historical wording such as "behavioral correction",
 "first system", or early prototype architecture should be read as historical
 lab-notebook language unless restated in a current governance section.
 
+Current freeze override: older sections that say a signal "must surface,"
+describe `/insights` additions, or name avoidance/motivation/focus/productivity
+patterns are historical research/product hypotheses only. During the
+freeze-closure refactor they do not authorize new runtime features, new
+user-facing insights, OpenClaw/GPT wiring, passive tracking, schema migration,
+provider adapters, behavior-transition equations, or agency/avoidance claims.
+Any future promotion must pass the current Authority Map, clean-data admission,
+exposure accounting, ClaimCompiler boundary, and explicit implementation plan.
+
 ---
 
 ## Framing: Research as Quality-Control Infrastructure
@@ -826,6 +835,11 @@ Everything in this system exists to answer that question cleanly, while deliveri
 
 *Added: April 14, 2026. Locks the pre-alpha shipping order after the feedback/output-loop audit.*
 
+**Freeze interpretation:** this section records the April pre-alpha retention
+argument. It is not current permission to add user-facing analytics surfaces.
+Computed signals may be surfaced only when current freeze authority, exposure
+accounting, clean-data rules, and ClaimCompiler boundaries explicitly allow it.
+
 Lyra has two failure modes a pre-alpha can hit:
 
 1. **Correctness failure.** The instrument ships with bugs, edge-case mishandling, or state inconsistency. This is visible, fixable, and ordinary engineering.
@@ -835,7 +849,7 @@ Lyra has two failure modes a pre-alpha can hit:
 
 What this means operationally:
 
-- Every research-relevant signal the backend already computes — `micro_mirror`, `calibration_nudge`, `duration_delta_minutes`, `signed_discrepancy`, `is_future_task`, `mid_task_completion_pct`, `task_completion_percentage`, `initiation_delay_minutes`, `insights[]` — must have a visible user-facing surface before the alpha ships. Computed-but-discarded is worse than not computed, because it burns the server work without closing the loop for the user.
+- Historical April 14 stance: every research-relevant signal the backend already computes — `micro_mirror`, `calibration_nudge`, `duration_delta_minutes`, `signed_discrepancy`, `is_future_task`, `mid_task_completion_pct`, `task_completion_percentage`, `initiation_delay_minutes`, `insights[]` — needed a visible user-facing surface before the original alpha thesis could ship. During the current freeze, this does not authorize new surfaces; computed signals may surface only after current authority, exposure accounting, clean-data rules, and ClaimCompiler boundaries allow them.
 - Correctness fixes (e.g., edit-click vs multi-select checkbox, modal stale-defaults, stale-session-recovery verification) matter, but they do not ship before the surfaces. A polished product with no feedback loop churns faster than a rough product that mirrors back.
 - "Insights unlock in N sessions" framing applies: measurement-state progress is legitimate and desired (see `docs/do_not_add.md` §Gamification — PERMITTED section). It is not a streak, it is not a badge, it is an honest statement of when the instrument has enough data to say something.
 - Onboarding that forces users through the instrument battery *before they see the product* is retention-hostile and is deferred to May 1+. Direct entry to `/today` with progressive instrument capture ships first.

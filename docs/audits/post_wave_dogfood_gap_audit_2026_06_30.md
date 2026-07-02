@@ -7,6 +7,12 @@ created: 2026-06-30
 
 # Post-Wave Dogfood Gap Audit - 2026-06-30
 
+> Historical audit note: this file predates the CI/CD proof collector and the
+> current local-current vs hosted-public proof labels. Use
+> `docs/runbooks/post_wave_dogfood_loop.md` as the active runbook. Local
+> frontend plus public backend proofs in this audit should be read as
+> local-current or mixed-topology historical evidence, not hosted-public proof.
+
 Freeze remains active. This audit defines the reusable dogfood loop and records
 the gaps found by the six-agent review before the next refactor wave.
 

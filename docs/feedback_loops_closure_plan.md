@@ -2,6 +2,14 @@
 
 *Captured: 2026-04-22.*
 
+> Historical/parked closure plan. The loop inventory is useful provenance, but
+> the closure specs below do not authorize new tables, endpoints, columns,
+> Alembic migrations, user-facing insights, passive tracking, OpenClaw/GPT
+> wiring, behavior-transition equations, or runtime feature work during the
+> freeze-closure refactor. Current authority lives in
+> `docs/current_transition_state.md`, `docs/AUTHORITY.md`, and
+> `docs/operator_dashboard_contract.md`.
+
 Ten loops were identified in the 2026-04-22 structural stress test.
 Each captures a signal somewhere in the stack but doesn't route the
 output back to the user or to a subsequent decision — so the

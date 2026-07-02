@@ -251,7 +251,7 @@ Services that survive sleep vs require repair:
 
 | Service | Survives sleep? | Recovery |
 |---------|----------------|----------|
-| Docker (backend + Redis) | Usually yes (containers stay up) | `docker-compose ps` → restart if "Exited" |
+| Docker (backend + Redis) | Usually yes (containers stay up) | `docker compose ps` -> restart if "Exited" |
 | Cloudflared tunnel | Often no (foreground process can die) | Watchdog, or `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` |
 | Next.js (frontend) | Sometimes no (nohup process may die; `.next` can be left incomplete if a build is interrupted) | Watchdog, or `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | APScheduler | Yes (restarts with backend) | Automatic — fires missed jobs on wake |
@@ -261,8 +261,8 @@ Services that survive sleep vs require repair:
 **Quick recovery script (copy-paste):**
 ```bash
 # 1. Docker
-docker-compose ps
-docker-compose restart  # if anything shows Exited
+docker compose ps
+docker compose restart  # if anything shows Exited
 
 # 2. Tunnel
 powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1
