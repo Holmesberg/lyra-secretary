@@ -148,6 +148,20 @@ def _compute_calibration_nudge(task: Task, db: Session) -> Optional[str]:
     )
 
 
+def _derive_current_pause_anchor(
+    pause_state: Optional[dict],
+) -> tuple[int, Optional[str]]:
+    """Return current pause age plus the original pause timestamp string."""
+    if not pause_state or not pause_state.get("paused_at"):
+        return 0, None
+    try:
+        paused_at_dt = strip_tz(datetime.fromisoformat(pause_state["paused_at"]))
+        delta = (now_utc() - paused_at_dt).total_seconds()
+        return max(0, int(delta)), pause_state["paused_at"]
+    except (ValueError, TypeError):
+        return 0, None
+
+
 class StopwatchManager:
     """Manage stopwatch sessions with Redis persistence."""
 
@@ -1515,17 +1529,9 @@ class StopwatchManager:
         # from 00:00 when I stopped the parallel task"). The active-work
         # elapsed (elapsed_seconds) was always correct; this fixes the
         # paused-duration display only.
-        current_pause_seconds = 0
-        current_pause_started_at: Optional[str] = None
-        if is_paused and pause_state and pause_state.get("paused_at"):
-            try:
-                paused_at_dt = strip_tz(datetime.fromisoformat(pause_state["paused_at"]))
-                delta = (now_utc() - paused_at_dt).total_seconds()
-                current_pause_seconds = max(0, int(delta))
-                current_pause_started_at = pause_state["paused_at"]
-            except (ValueError, TypeError):
-                # Defensive — malformed paused_at falls back to 0 / null.
-                pass
+        current_pause_seconds, current_pause_started_at = (
+            _derive_current_pause_anchor(pause_state)
+        )
 
         task = (
             self.db.query(Task)
