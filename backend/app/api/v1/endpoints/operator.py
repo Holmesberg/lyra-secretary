@@ -42,6 +42,7 @@ from app.services.operator_dashboard_metrics import (
     metric_confidence_snapshot as _metric_confidence_snapshot,
     metric_meta as _metric_meta,
     notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
+    operator_recommendations_snapshot as _operator_recommendations_snapshot,
     pct as _pct,
     privacy_boundary_snapshot as _privacy_boundary_snapshot,
     product_loop_funnel_snapshot as _product_loop_funnel_snapshot,
@@ -1031,16 +1032,7 @@ def operator_dashboard_v12(
             ),
         }
 
-        operator_recommendations = [
-            {
-                "severity": issue["severity"],
-                "message": issue["message"],
-                "suggested_action": issue["suggested_action"],
-                "related_section": issue["related_section"],
-                "blocks_cohort_expansion": issue["blocks_cohort_expansion"],
-            }
-            for issue in dynamic_issues
-        ]
+        operator_recommendations = _operator_recommendations_snapshot(dynamic_issues)
 
         users_payload = []
         for user in non_operator_users:

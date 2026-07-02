@@ -145,6 +145,22 @@ def dynamic_issue(
     }
 
 
+def operator_recommendations_snapshot(
+    dynamic_issues: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Project dynamic issues into the dashboard recommendation rows."""
+    return [
+        {
+            "severity": issue["severity"],
+            "message": issue["message"],
+            "suggested_action": issue["suggested_action"],
+            "related_section": issue["related_section"],
+            "blocks_cohort_expansion": issue["blocks_cohort_expansion"],
+        }
+        for issue in dynamic_issues
+    ]
+
+
 def watchlist_status_from_issues(
     issues: list[dict[str, Any]],
     tag: str,
