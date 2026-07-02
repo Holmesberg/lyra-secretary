@@ -4424,3 +4424,103 @@ Rollback note:
 - Revert the operator privacy-boundary builder commit only. This restores
   inline privacy-boundary assembly without touching schemas, production data,
   exposure lifecycle rows, provider rows, Redis queues, or user content.
+
+## R4 - Stopwatch Current Pause Anchor Helper
+
+Changed authority:
+
+- No runtime mutation authority changed.
+- Stopwatch session authority remains with `StopwatchManager` and Redis
+  stopwatch state methods.
+- This pass extracted the read-only current-pause display anchor calculation
+  from `StopwatchManager.get_status()` into `_derive_current_pause_anchor()`.
+
+Removed paths:
+
+- Removed duplicated inline parsing of `pause_state["paused_at"]` from
+  `get_status()`.
+
+Parked paths:
+
+- Broader stopwatch store/lifecycle/finalizer/effects extraction remains
+  parked.
+- Timer recovery, stale-session recovery, and worker-side stopwatch mutation
+  seams remain parked until their characterization tests are hardened.
+- No schema, Redis-key, or notification/exposure lifecycle change was made.
+
+Moved authority:
+
+- No business authority moved. The helper is a count-in, payload-out display
+  primitive for the existing stopwatch status response.
+
+Tests and verification:
+
+- Compile check:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\stopwatch_manager.py`
+  passed.
+- Stopwatch characterization:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_stopwatch_pause_counter_anchor.py tests\test_stopwatch_recovery.py tests\test_state_consistency.py::test_self_heal_skipped_task_clears_banner -q`
+  passed, `5 passed`.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed.
+- Holmesberg mutable browser proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --force-pressure-recovery --run-id r4-stopwatch-pause-anchor-helper-holmesberg-local-current`
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/r4-stopwatch-pause-anchor-helper-holmesberg-local-current/result.json`.
+- Holmesberg outcome:
+  non-operator identity resolved, route smoke passed, task/deadline linkage
+  passed, duration nudge keep branch passed, timer pause/resume/stop path
+  passed, table delta/export evidence contained task, stopwatch session, pause
+  event, exposure decision/render/ack rows, and notification lifecycle terminal
+  rows.
+- Holmesberg cleanup proof:
+  cleanup left no active timer and no unrendered synthetic creation-nudge
+  exposures; cleaned suppression id
+  `b42c337c-bbc5-4b77-8d9f-23e75d02a8d1`.
+- Product-loop proof note:
+  pressure-map recovery options were unavailable and the verifier used a
+  browser-only recovery fixture for commit-seam coverage. This does not prove
+  pressure-map recovery semantics.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-stopwatch-pause-anchor-helper-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-stopwatch-pause-anchor-helper-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5819ms`, mobile `4660ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- The active-work elapsed time semantics are unchanged.
+- Malformed or missing `paused_at` still falls back to `0` seconds and `null`
+  start anchor.
+- The paused-duration display keeps using the original pause anchor rather than
+  restarting from navigation or refresh.
+- No user, task, session, provider, notification, exposure, or Redis lifecycle
+  authority changed.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28557459916`.
+- Head SHA:
+  `2e854b23add747c925a7643a4740549c4c368f1d`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the stopwatch pause-anchor helper commit only. This restores the
+  inline `get_status()` parsing block without touching schemas, production
+  data, exposure lifecycle rows, provider rows, Redis queues, or user content.
