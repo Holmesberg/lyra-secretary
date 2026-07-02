@@ -4524,3 +4524,97 @@ Rollback note:
 - Revert the stopwatch pause-anchor helper commit only. This restores the
   inline `get_status()` parsing block without touching schemas, production
   data, exposure lifecycle rows, provider rows, Redis queues, or user content.
+
+## R4 - Operator Static Metadata Builder
+
+Changed authority:
+
+- No runtime mutation authority changed.
+- `/v1/operator/dashboard` remains the operator cockpit authority.
+- Static operator metadata assembly for metric confidence and meaningful
+  activity definitions moved into read-only helper primitives in
+  `operator_dashboard_metrics.py`.
+
+Removed paths:
+
+- Removed inline `metric_confidence` dict assembly from the operator route.
+- Removed inline `meaningful_activity_definition` dict assembly from the
+  operator route.
+
+Parked paths:
+
+- Cohort readiness/watchlist extraction remains parked.
+- Measurement integrity extraction remains parked.
+- Reliability and output-surface diagnostics extraction remain parked.
+- Provider, Moodle, Jarvis/OpenClaw, and passive academic telemetry work remain
+  blocked by R5a doc cleanup requirements before domain-specific extraction.
+
+Moved authority:
+
+- No truth or readiness authority moved. Only static presentation metadata moved
+  from route-local assembly to operator metric helpers.
+- The route still owns dynamic issue construction, implementation/cohort status,
+  readiness blockers, and dashboard response composition.
+
+Agent loop notes:
+
+- Explorer A recommended this as the safest next R4 backend seam because it is
+  static payload only: no DB query, no denominator, no readiness threshold, no
+  exposure lifecycle, and no schema.
+- Explorer B found the reusable wave loop still lacks structured CI/CD proof
+  collection and recommended a read-only GitHub Actions proof helper.
+- Explorer C found no global block on this seam, but identified provider/Moodle,
+  Jarvis/OpenClaw, parked active-looking docs, and passive academic telemetry
+  docs as blockers for work in those domains.
+
+Tests and verification:
+
+- Compile check:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\operator_dashboard_metrics.py app\api\v1\endpoints\operator.py`
+  passed.
+- Operator dashboard, route security, and verifier contract:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_route_security.py tests\test_verifier_contracts.py -q`
+  passed, `18 passed`.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-operator-static-metadata-builder-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-operator-static-metadata-builder-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5704ms`, mobile `4616ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Dashboard response shape and values are unchanged.
+- `metric_confidence` keeps the same metric keys and tier strings.
+- `meaningful_activity_definition` keeps the same meta fields and
+  included/excluded activity event lists.
+- `/operator` remains read-only and does not repair or mutate state.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28557828081`.
+- Head SHA:
+  `704b586b00815a88f7f99bcba99dc45adf787748`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the operator static metadata builder commit only. This restores inline
+  static metadata assembly in the operator route without touching schemas,
+  production data, exposure lifecycle rows, provider rows, Redis queues, or user
+  content.
