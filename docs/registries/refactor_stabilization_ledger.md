@@ -4172,3 +4172,80 @@ Rollback note:
 - Revert the operator product-loop funnel builder commit only. This restores
   inline funnel assembly without touching schemas, production data, exposure
   lifecycle rows, Redis queues, or user content.
+
+## R4 - Operator State Invariants Builder
+
+Changed authority:
+
+- No runtime mutation authority changed.
+- `/v1/operator/dashboard` remains the operator cockpit authority.
+- State-invariant payload assembly is now computed by the read-only
+  `state_invariants_snapshot()` helper in `operator_dashboard_metrics.py`.
+- The operator route still owns the upstream task/session counts, dynamic
+  issues, implementation/cohort status, and minimum fix set.
+
+Removed paths:
+
+- Removed duplicated state-invariant dict assembly from the operator route.
+
+Parked paths:
+
+- Cohort readiness/watchlist extraction remains parked until readiness
+  authority is explicitly settled.
+- Measurement integrity extraction remains parked until broader denominator and
+  dirty-bucket characterization exists.
+- State repair remains out of scope; this pass only preserves diagnostics.
+
+Moved authority:
+
+- State-invariant formatting moved from inline route code to a registered
+  operator metric helper.
+- State-invariant issue severity and cohort blocking remain in the operator
+  route, where the readiness contract already lives.
+
+Tests and verification:
+
+- Compile check:
+  `cd backend && ..\.venv311\Scripts\python.exe -m py_compile app\services\operator_dashboard_metrics.py app\api\v1\endpoints\operator.py`
+  passed.
+- Operator dashboard, route security, and verifier contract:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_route_security.py tests\test_verifier_contracts.py -q`
+  passed, `17 passed`.
+- Characterization added:
+  `paused_tasks_without_open_session` and
+  `open_sessions_for_executed_tasks` now have explicit dashboard and dynamic
+  issue assertions.
+- Refactor contract scan:
+  `python scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r4-state-invariants-builder-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r4-state-invariants-builder-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5651ms`, mobile `5645ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, `exposure_without_render_count=0`, and cohort
+  status remains yellow only for real-data gaps.
+
+Behavior parity statement:
+
+- Dashboard response shape and readiness semantics are unchanged.
+- State-invariant critical issues still derive from the same route-owned
+  invariant counts.
+- `/operator` remains read-only and does not repair or mutate state.
+
+CI/CD proof note:
+
+- Pending branch push and GitHub Actions run for this seam.
+
+Rollback note:
+
+- Revert the operator state-invariants builder commit only. This restores
+  inline state-invariant assembly without touching schemas, production data,
+  exposure lifecycle rows, Redis queues, or user content.

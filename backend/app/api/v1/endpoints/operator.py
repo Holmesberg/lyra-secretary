@@ -46,6 +46,7 @@ from app.services.operator_dashboard_metrics import (
     product_loop_funnel_snapshot as _product_loop_funnel_snapshot,
     redis_notification_snapshot as _redis_notification_snapshot_impl,
     short_hash as _short_hash,
+    state_invariants_snapshot as _state_invariants_snapshot,
     user_last_activity_maps as _user_last_activity_maps,
     watchlist_status_from_issues as _watchlist_status_from_issues,
 )
@@ -562,17 +563,14 @@ def operator_dashboard_v12(
         if dirty_reasons["missing_timestamps"] or dirty_reasons["impossible_duration"]:
             measurement_integrity["analytic_blockers"].append("timestamp_or_duration_integrity")
 
-        state_invariants = {
-            **_metric_meta(basis="derived", confidence="high", readiness_impact="blocker"),
-            "duplicate_open_sessions": duplicate_open_sessions,
-            "executing_tasks_without_open_session": executing_without_open,
-            "paused_tasks_without_open_session": paused_without_open,
-            "executed_tasks_missing_start_or_end": executed_missing,
-            "open_sessions_for_executed_tasks": open_for_executed,
-            "stale_reentry_candidates": stale_reentry_candidates,
-            "invalid_recovery_actions_seen": None,
-            "not_instrumented_fields": ["invalid_recovery_actions_seen"],
-        }
+        state_invariants = _state_invariants_snapshot(
+            duplicate_open_sessions=duplicate_open_sessions,
+            executing_tasks_without_open_session=executing_without_open,
+            paused_tasks_without_open_session=paused_without_open,
+            executed_tasks_missing_start_or_end=executed_missing,
+            open_sessions_for_executed_tasks=open_for_executed,
+            stale_reentry_candidates=stale_reentry_candidates,
+        )
 
         privacy_boundary = {
             **_metric_meta(basis="direct", confidence="high", readiness_impact="blocker"),

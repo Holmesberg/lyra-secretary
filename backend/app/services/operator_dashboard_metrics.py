@@ -604,6 +604,35 @@ def product_loop_funnel_snapshot(
     return payload
 
 
+def state_invariants_snapshot(
+    *,
+    duplicate_open_sessions: int,
+    executing_tasks_without_open_session: int,
+    paused_tasks_without_open_session: int,
+    executed_tasks_missing_start_or_end: int,
+    open_sessions_for_executed_tasks: int,
+    stale_reentry_candidates: int,
+) -> dict[str, Any]:
+    """Read-only task/session coherence snapshot."""
+    return {
+        **metric_meta(basis="derived", confidence="high", readiness_impact="blocker"),
+        "duplicate_open_sessions": int(duplicate_open_sessions),
+        "executing_tasks_without_open_session": int(
+            executing_tasks_without_open_session
+        ),
+        "paused_tasks_without_open_session": int(
+            paused_tasks_without_open_session
+        ),
+        "executed_tasks_missing_start_or_end": int(
+            executed_tasks_missing_start_or_end
+        ),
+        "open_sessions_for_executed_tasks": int(open_sessions_for_executed_tasks),
+        "stale_reentry_candidates": int(stale_reentry_candidates),
+        "invalid_recovery_actions_seen": None,
+        "not_instrumented_fields": ["invalid_recovery_actions_seen"],
+    }
+
+
 def user_last_activity_maps(db: Session) -> dict[int, datetime]:
     values: dict[int, list[datetime]] = defaultdict(list)
     for user_id, stamp in db.query(Task.user_id, func.max(Task.last_modified_at)).group_by(Task.user_id):

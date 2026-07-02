@@ -145,6 +145,13 @@ def test_operator_dashboard_reports_state_and_privacy_boundaries(client, db):
 
     executing_task = _task(9112, "dup-open-task", state=TaskState.EXECUTING)
     db.add(executing_task)
+    paused_task = _task(9112, "paused-without-open", state=TaskState.PAUSED)
+    db.add(paused_task)
+    executed_with_open = _task(9112, "executed-with-open", state=TaskState.EXECUTED)
+    executed_with_open.executed_start_utc = datetime.utcnow() - timedelta(hours=2)
+    executed_with_open.executed_end_utc = datetime.utcnow() - timedelta(hours=1)
+    executed_with_open.executed_duration_minutes = 60
+    db.add(executed_with_open)
     now = datetime.utcnow()
     db.add_all(
         [
@@ -167,6 +174,15 @@ def test_operator_dashboard_reports_state_and_privacy_boundaries(client, db):
                 total_paused_minutes=0.0,
                 auto_closed=False,
             ),
+            StopwatchSession(
+                session_id="executed-open-session",
+                task_id="executed-with-open",
+                user_id=9112,
+                start_time_utc=now - timedelta(hours=2),
+                end_time_utc=None,
+                total_paused_minutes=0.0,
+                auto_closed=False,
+            ),
         ]
     )
     db.commit()
@@ -183,12 +199,16 @@ def test_operator_dashboard_reports_state_and_privacy_boundaries(client, db):
     assert body["cohort_readiness"]["cohort_status"] == "red"
     assert body["state_invariants"]["duplicate_open_sessions"] >= 1
     assert body["state_invariants"]["executed_tasks_missing_start_or_end"] >= 1
+    assert body["state_invariants"]["paused_tasks_without_open_session"] >= 1
+    assert body["state_invariants"]["open_sessions_for_executed_tasks"] >= 1
     assert body["state_invariants"]["stale_reentry_candidates"] >= 1
     assert body["privacy_boundary"]["raw_task_titles_exposed"] is False
     assert body["privacy_boundary"]["raw_emails_exposed"] is False
     issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
     assert "duplicate_open_sessions" in issue_ids
     assert "executed_tasks_missing_execution_interval" in issue_ids
+    assert "paused_tasks_without_open_session" in issue_ids
+    assert "open_sessions_for_executed_tasks" in issue_ids
     assert "stale_paused_sessions_need_resolution" in issue_ids
     assert "duplicate_open_sessions" in body["cohort_readiness"]["minimum_fix_set"]
     assert "user-9112@cohort.example.com" not in str(body)
