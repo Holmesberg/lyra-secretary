@@ -44,6 +44,18 @@ the delta -> Cortex/analytics -> ClaimCompiler -> exposure chain:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode full -IncludeProductLoop -WaveName "wave-name"
 ```
 
+After pushing a seam or wave, add read-only CI/CD proof collection:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode quick -IncludeCiCdProof -WaveName "wave-name-ci-proof"
+```
+
+For a standalone CI/CD proof artifact without browser checks:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect_github_ci_cd_proof.ps1 -Branch wave-5-sovereignty-integrity-cycle -Workflow CI -OutFile tmp\ci-cd-proof\latest.json
+```
+
 When a wave touches Insights, ClaimCompiler payloads, or insight copy/gates,
 add the forced-state browser fixture:
 
@@ -71,6 +83,7 @@ The script records:
   `tmp/operator-readonly-stress-*` paths;
 - product-loop browser outputs under `tmp/browser-product-loop` or the nested
   `holmesberg-product-loop` directory when `-IncludeProductLoop` is used.
+- `ci_cd_proof.json` when `-IncludeCiCdProof` is used.
 
 ## Modes
 
@@ -250,6 +263,13 @@ After each pushed seam or wave:
 - create or update a GitHub issue for every non-transient CI/CD failure;
 - do not treat screenshots as CI proof;
 - do not treat CI success as browser dogfood proof.
+
+The reusable wrapper can collect the read-only CI/CD artifact with
+`-IncludeCiCdProof`. This records the current branch, head SHA, latest matching
+GitHub Actions run, job results, PR-check state when a PR exists, and explicit
+`no_pr`, `no_workflow_ran`, or `no_matching_run_for_head` states instead of
+silently treating missing checks as success. Use `-CiCdFailOnUnsuccessful` only
+when the seam has already been pushed and CI is required to be green.
 
 Hosted-public verification must additionally record whether the deployed
 frontend/backend build IDs match the expected commit. If they lag, record the

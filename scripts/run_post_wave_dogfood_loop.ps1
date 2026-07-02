@@ -13,7 +13,13 @@ param(
 
   [switch]$IncludeInsightsStates,
 
-  [switch]$NoMutable
+  [switch]$NoMutable,
+
+  [switch]$IncludeCiCdProof,
+
+  [switch]$CiCdFailOnUnsuccessful,
+
+  [string]$CiCdWorkflow = "CI"
 )
 
 $ErrorActionPreference = "Stop"
@@ -107,6 +113,9 @@ try {
   Write-Host "Out: $outDir"
 
   $commitSha = (git rev-parse --short HEAD).Trim()
+  $fullCommitSha = (git rev-parse HEAD).Trim()
+  $branchName = (git branch --show-current).Trim()
+  $ciCdProofPath = Join-Path $outDir "ci_cd_proof.json"
 
   Invoke-Step "cookie check: operator" {
     Assert-Cookie -Account "alinassersabry"
@@ -213,9 +222,27 @@ try {
     }
   }
 
+  if ([bool]$IncludeCiCdProof) {
+    Invoke-Step "CI/CD proof collection" {
+      $ciArgs = @(
+        "-Branch", $branchName,
+        "-HeadSha", $fullCommitSha,
+        "-Workflow", $CiCdWorkflow,
+        "-OutFile", $ciCdProofPath
+      )
+      if ([bool]$CiCdFailOnUnsuccessful) {
+        $ciArgs += "-FailOnUnsuccessful"
+      }
+      Invoke-CheckedScript `
+        -ScriptPath ".\scripts\collect_github_ci_cd_proof.ps1" `
+        -ScriptArgs $ciArgs
+    }
+  }
+
   $result = [pscustomobject]@{
     ok = $true
     commit = $commitSha
+    branch = $branchName
     wave = $WaveName
     mode = $Mode
     topology = $Topology
@@ -253,6 +280,7 @@ try {
           Sort-Object LastWriteTime |
           ForEach-Object { $_.FullName }
       )
+      ci_cd_proof = if (Test-Path $ciCdProofPath) { $ciCdProofPath } else { $null }
     }
     steps = $summary
   }
