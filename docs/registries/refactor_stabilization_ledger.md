@@ -4618,3 +4618,91 @@ Rollback note:
   static metadata assembly in the operator route without touching schemas,
   production data, exposure lifecycle rows, provider rows, Redis queues, or user
   content.
+
+## CI/CD - Structured Wave Proof Collector
+
+Changed authority:
+
+- No Lyra app runtime authority changed.
+- CI/CD proof collection became a reusable, read-only verification leg through
+  `scripts/collect_github_ci_cd_proof.ps1`.
+- The post-wave dogfood wrapper can now opt into CI/CD proof collection with
+  `-IncludeCiCdProof`.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Automatic GitHub issue creation/update for CI failures remains parked because
+  it mutates external project state.
+- Broadening `.github/workflows/ci.yml` to run on every wave branch push remains
+  parked because it changes branch policy/cost/noise.
+- Frontend lint hard-gating remains parked behind issue #153.
+- GitHub Actions Node deprecation maintenance remains tracked by issue #155.
+
+Moved authority:
+
+- Manual CI proof remains valid, but the standard artifact path now includes a
+  structured JSON collector for GitHub Actions and PR-check state.
+- The helper classifies missing/no-matching CI as CI/CD operations state instead
+  of silently treating it as success.
+
+Agent loop notes:
+
+- Explorer B found that the runbook required post-push CI/CD proof, but the
+  reusable wrapper did not implement structured collection.
+- The implemented helper is read-only: `gh run list`, `gh run view`,
+  `gh pr list`, and `gh pr checks` only.
+
+Tests and verification:
+
+- Standalone collector proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect_github_ci_cd_proof.ps1 -Branch wave-5-sovereignty-integrity-cycle -Workflow CI -OutFile tmp\ci-cd-proof\ci-helper-48b2842.json -FailOnUnsuccessful`
+  passed.
+- Collector artifact:
+  `tmp/ci-cd-proof/ci-helper-48b2842.json`.
+- Collector outcome:
+  `ok=true`, `status=ci_success`, branch
+  `wave-5-sovereignty-integrity-cycle`, head `48b2842`, matching CI run
+  `28558079385`, and PR state `no_pr`.
+- PowerShell parse smoke:
+  `powershell -NoProfile -ExecutionPolicy Bypass -Command '$null = [scriptblock]::Create((Get-Content .\scripts\run_post_wave_dogfood_loop.ps1 -Raw)); $null = [scriptblock]::Create((Get-Content .\scripts\collect_github_ci_cd_proof.ps1 -Raw)); Write-Output parsed'`
+  passed.
+- Whitespace:
+  `git diff --check` passed with only Windows CRLF conversion warnings.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id ci-cd-proof-helper-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-ci-cd-proof-helper-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  desktop `5771ms`, mobile `4771ms`, `implementation_green=true`,
+  `implementation_blockers=[]`, and `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No product route, API route, model, schema, Redis key, exposure lifecycle,
+  provider path, or browser UI behavior changed.
+- CI/CD proof collection is opt-in and local-artifact-only unless the caller
+  explicitly chooses `-CiCdFailOnUnsuccessful`.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28558079385`.
+- Head SHA:
+  `48b2842b3e68f9271032d6256032b718d97099a5`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the CI/CD proof collector commit only. This removes the standalone
+  collector script, wrapper switches, and runbook text without touching Lyra app
+  runtime behavior, schemas, production data, exposure lifecycle rows, provider
+  rows, Redis queues, or user content.
