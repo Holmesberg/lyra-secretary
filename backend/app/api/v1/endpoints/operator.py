@@ -36,13 +36,13 @@ from app.services.operator_dashboard_metrics import (
     activity_dates_by_user as _activity_dates_by_user,
     data_freshness_snapshot as _data_freshness_snapshot,
     dynamic_issue as _dynamic_issue,
-    email_hash as _email_hash,
     is_test_or_synthetic_user as _is_test_or_synthetic_user,
     meaningful_activity_definition_snapshot as _meaningful_activity_definition_snapshot,
     metric_confidence_snapshot as _metric_confidence_snapshot,
     metric_meta as _metric_meta,
     notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
     operator_recommendations_snapshot as _operator_recommendations_snapshot,
+    operator_user_rows_snapshot as _operator_user_rows_snapshot,
     pct as _pct,
     privacy_boundary_snapshot as _privacy_boundary_snapshot,
     product_loop_funnel_snapshot as _product_loop_funnel_snapshot,
@@ -1034,35 +1034,19 @@ def operator_dashboard_v12(
 
         operator_recommendations = _operator_recommendations_snapshot(dynamic_issues)
 
-        users_payload = []
-        for user in non_operator_users:
-            closed_for_user = closed_sessions_by_user.get(user.user_id, 0)
-            clean_for_user = clean_sessions_by_user.get(user.user_id, 0)
-            if task_counts_by_user.get(user.user_id, 0) == 0:
-                stage = "signed_up"
-            elif sessions_by_user.get(user.user_id, 0) == 0:
-                stage = "task_created"
-            elif clean_for_user == 0:
-                stage = "timer_started"
-            else:
-                stage = "clean_loop"
-            users_payload.append({
-                "user_id": user.user_id,
-                "first_name": user.google_first_name,
-                "name_source": "google_profile" if user.google_first_name else None,
-                "email_hash": _email_hash(user.email),
-                "created_at": _iso(user.created_at),
-                "last_meaningful_activity_at": _iso(last_activity.get(user.user_id)),
-                "active_days_7d": len(active_dates_7d.get(user.user_id, set())),
-                "active_days_14d": len(active_dates_14d.get(user.user_id, set())),
-                "task_count": task_counts_by_user.get(user.user_id, 0),
-                "executed_task_count": executed_counts_by_user.get(user.user_id, 0),
-                "stopwatch_session_count": sessions_by_user.get(user.user_id, 0),
-                "clean_trace_ratio": _pct(clean_for_user, closed_for_user),
-                "open_timer_count": open_timer_by_user.get(user.user_id, 0),
-                "paused_over_72h_count": stale_open_by_user.get(user.user_id, 0),
-                "last_loop_stage": stage,
-            })
+        users_payload = _operator_user_rows_snapshot(
+            users=non_operator_users,
+            closed_sessions_by_user=closed_sessions_by_user,
+            clean_sessions_by_user=clean_sessions_by_user,
+            task_counts_by_user=task_counts_by_user,
+            sessions_by_user=sessions_by_user,
+            executed_counts_by_user=executed_counts_by_user,
+            open_timer_by_user=open_timer_by_user,
+            stale_open_by_user=stale_open_by_user,
+            active_dates_7d=active_dates_7d,
+            active_dates_14d=active_dates_14d,
+            last_activity=last_activity,
+        )
 
         return {
             "generated_at": _iso(generated_at),
