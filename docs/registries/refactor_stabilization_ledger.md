@@ -6178,3 +6178,137 @@ Rollback note:
   cache-key arrays in the touched frontend surfaces without touching schemas,
   production data, exposure lifecycle rows, provider rows, Redis queues,
   export/delete behavior, task/deadline binding mutation, or user content.
+
+## R3 - Task Day Query-Key Factory
+
+Commit: `e86f2af` (`frontend: add task day query key factory`).
+
+Changed authority:
+
+- No task, timer, deadline, provider, exposure, notification, Redis, schema,
+  export/delete, ClaimCompiler, or clean-data authority changed.
+- `frontend/lib/query-keys.ts` now names the exact existing task-day cache-key
+  tuple as `queryKeys.tasksDay(date)`.
+- Today and Pulse now import that named tuple instead of spelling raw task-day
+  arrays inline.
+
+Removed paths:
+
+- Removed raw `["tasks", viewedDate]` from Today task reads, optimistic cache
+  writes, query cancellation, previous-data snapshots, rollback writes, and
+  invalidation paths.
+- Removed raw `["tasks", nextDate]` from Today command-surface invalidation.
+- Removed raw `["tasks", today]` from the Pulse today-task read.
+
+Parked paths:
+
+- Domain-wide invalidation helpers remain parked until every dependent cache is
+  named and characterized.
+- Stopwatch controller hooks, NewTaskModal submit/draft extraction, shared
+  brain-dump reducer extraction, pressure-map planning mutation, provider
+  credential mutation, calendar drag/resize mutation, account hard-delete /
+  Redis purge, and OpenClaw pending-drain authority remain gated.
+- Notification host/verifier timing behavior is tracked separately as issue
+  `#161`; it was observed during the first mutable proof attempt and was not
+  changed in this seam.
+
+Moved authority:
+
+- No product authority moved. The query-key module names cache keys only.
+- Today still owns execution UI behavior.
+- Stopwatch/backend execution services still own execution truth.
+- The backend remains the source of task, timer, deadline, exposure, provider,
+  and export/delete truth.
+
+Agent loop notes:
+
+- A fresh frontend scout recommended `tasksDay(date)` as the next lowest-risk
+  query-key seam after deadline/integration vocabulary.
+- The scout classified the seam as sensitive enough to deserve its own mutable
+  Holmesberg proof because Today uses the tuple for optimistic execution
+  rollback, not only passive reads.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Frontend typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && node scripts/clean-next.mjs && npm run build:public` passed.
+- Refactor contract scan:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors`
+  passed.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with no missing owners and no worker write drift.
+- First Holmesberg product-loop proof:
+  `tmp/browser-product-loop/r3-task-day-query-key/result.json`.
+- First product-loop classification:
+  task creation, task-day cache behavior, timer behavior, and cleanup were not
+  implicated; the run failed on notification render lifecycle timing. Pending
+  notification follow-up showed `count=0`, so this was classified as a
+  notification host/verifier timing bug and recorded as issue `#161`.
+- Passing Holmesberg product-loop proof:
+  `tmp/browser-product-loop/r3-task-day-query-key-rerun/result.json`.
+- Passing Holmesberg outcome:
+  route rendering, settings/integrations rendering, deadline creation and
+  cleanup, explicit deadline binding, overlap conflict, creation-nudge Keep
+  branch, no-deadline branch, custom category branch, terminal deadline
+  rejection, brain dump parse/commit/partial/retry/double-submit, pressure-map
+  read, timer start/pause/resume/stop/navigation persistence, notification
+  lifecycle, export evidence, operator privacy scan, and cleanup all passed.
+- Cleanup proof:
+  the passing product loop ended with no active Holmesberg timer and no
+  unrendered synthetic creation-nudge exposures; synthetic task, deadline, and
+  notification IDs were recorded in the proof artifact.
+- Operator-cookie browser proof:
+  `tmp/operator-readonly-stress-r3-task-day-query-key-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- `queryKeys.tasksDay(date)` is exactly `["tasks", date]`.
+- Today task reads, query cancellation, optimistic cache writes, previous-data
+  snapshots, rollback writes, and invalidation targets use the same tuple values
+  as before.
+- Pulse still reads the same today-task key.
+- No mutation payload, API call, stopwatch status key, task state transition,
+  rollback branch, deadline binding behavior, exposure lifecycle behavior,
+  notification lifecycle behavior, provider truth, Redis key, or export shape
+  changed.
+
+Verifier and issue notes:
+
+- Issue `#161` records the intermittent notification host/verifier timing
+  failure:
+  `https://github.com/Holmesberg/lyra-secretary/issues/161`.
+- The passing rerun was added to `#161` as evidence that the query-key seam did
+  not reproduce the notification failure:
+  `https://github.com/Holmesberg/lyra-secretary/issues/161#issuecomment-4896090694`.
+- The product loop continued to record expected/gated states: Holmesberg
+  onboarding gate skip, deadline suggestion fallback, brain-dump parser
+  normalization, pressure-map safe-mode gate, provider credential mutation gate,
+  account delete/purge gate, calendar drag/resize manual gate, and OpenClaw
+  pending-drain authority gate.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28812787541`.
+- Head SHA:
+  `e86f2afa8fd97dbb82fb673ea566cce9f5bbf73c`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-task-day-query-key-e86f2af.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+
+Rollback note:
+
+- Revert commit `e86f2af` only. This restores the raw task-day cache-key arrays
+  in Today and Pulse without touching schemas, production data, exposure
+  lifecycle rows, provider rows, Redis queues, export/delete behavior,
+  task/deadline binding mutation, timer state, or user content.
