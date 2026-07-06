@@ -5818,3 +5818,128 @@ Rollback note:
 - Revert the runbook/instructions commit only. This restores the prior CI/CD
   documentation without touching workflows, scripts, schemas, production data,
   exposure lifecycle rows, provider rows, Redis queues, or user content.
+
+## R3 - Pulse Pressure/Evidence Query-Key Factory
+
+Changed authority:
+
+- No product, task, timer, exposure, provider, schema, readiness, or mutation
+  authority changed.
+- Pulse now uses shared query-key factories for the task-evidence window and
+  academic pressure-map horizon.
+- Pulse still owns pressure-horizon UI state and still acknowledges pressure
+  exposure renders through the existing `ackExposureRender` effect.
+
+Removed paths:
+
+- Removed two remaining inline Pulse query-key literals:
+  `["tasks-evidence", taskEvidenceStart, taskEvidenceEnd]` and
+  `["pressure-map", pressureHorizonDays]`.
+
+Parked paths:
+
+- Pressure-map planning/helper extraction remains parked.
+- Real pressure-map recovery-option browser proof remains gated by pressure
+  safe mode.
+- Calendar drag/resize mutation, provider credential mutation, account
+  hard-delete / Redis purge, and OpenClaw pending-drain authority remain gated
+  in the reusable Holmesberg product loop.
+
+Moved authority:
+
+- No authority moved. `frontend/lib/query-keys.ts` now names the exact same
+  cache-key shapes; it does not own fetch semantics, exposure semantics,
+  invalidation authority, pressure-map computation, or recovery mutation.
+
+Agent loop notes:
+
+- Frontend, authority, and verification scouts agreed this was the lowest-risk
+  remaining R3 seam because it preserves exact key shapes and avoids moving
+  exposure render, pressure computation, planning commit behavior, or command
+  invalidation.
+- A verifier/runtime issue was observed while restarting WSL frontend with
+  `-NoBuild` after a Windows-side build: the WSL process attempted to serve an
+  incompatible `.next` artifact and returned 500s for missing Turbopack runtime
+  chunks. This was classified as a topology/verifier bug, not a product
+  regression, and recorded on issue #144.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Frontend typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && node scripts/clean-next.mjs && npm run build:public` passed.
+- Refactor contract scan:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors`
+  passed.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with no missing owners and no worker write drift.
+- Holmesberg product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api true --run-id r3-pulse-pressure-evidence-query-key --out-dir tmp\browser-product-loop\r3-pulse-pressure-evidence-query-key`
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/r3-pulse-pressure-evidence-query-key/result.json`.
+- Holmesberg outcome:
+  route rendering, task creation, explicit deadline binding, overlap conflict,
+  creation-nudge Keep branch, no-deadline branch, custom category branch,
+  terminal deadline rejection, brain dump parse/commit/partial/retry/
+  double-submit, pressure-map read, timer start/pause/resume/stop/navigation
+  persistence, notification lifecycle, export evidence, operator privacy scan,
+  and cleanup all passed.
+- Cleanup proof:
+  the product loop ended with no active Holmesberg timer and no unrendered
+  synthetic creation-nudge exposures.
+- Targeted Pulse horizon proof:
+  `tmp/browser-readonly/r3-pulse-pressure-evidence-query-key-horizons/result.json`.
+- Targeted Pulse outcome:
+  pressure-map horizons `14`, `1`, and `7` were requested through the browser;
+  every response returned status 200 with pressure exposure metadata; product
+  row counts did not change. The only count changes were expected pressure
+  exposure lifecycle rows: three decisions, three renders, and three render
+  acknowledgements.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api true --expect-readiness-split --run-id r3-pulse-pressure-evidence-query-key-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r3-pulse-pressure-evidence-query-key-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, and cohort status remains yellow only for
+  real-data gaps.
+
+Behavior parity statement:
+
+- The query-key array values are unchanged:
+  `["tasks-evidence", dateFrom, dateTo]` and `["pressure-map", horizonDays]`.
+- Existing broad invalidation keys, including `queryKeys.tasksEvidence` and
+  `queryKeys.pressureMap`, remain unchanged.
+- Pulse still fetches the same task-evidence date window, same pressure-map
+  horizon values, same deadlines/integrations/user data, and same exposure
+  render acknowledgement path.
+- No schema, API payload, task mutation, timer mutation, deadline binding,
+  exposure lifecycle contract, notification lifecycle contract, provider truth,
+  Redis key, or user-data export shape changed.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28809717950`.
+- Head SHA:
+  `233ced447aadebd8e77d0e8df23f3a5c1be9857b`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-pulse-query-key-233ced4.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert commit `233ced4` only. This restores the two inline Pulse query-key
+  literals without touching schemas, production data, exposure lifecycle rows,
+  provider rows, Redis queues, export/delete behavior, task/deadline binding
+  mutation, or user content.
