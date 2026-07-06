@@ -21,6 +21,67 @@ if (-not (Test-Path $python)) {
 
 $summary = [System.Collections.Generic.List[object]]::new()
 
+function Ensure-LocalFrontendDev {
+  $outDir = Join-Path $repoRoot "tmp\local-frontend-dev"
+  New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+  $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+  $stdout = Join-Path $outDir "frontend-dev-$stamp.out.log"
+  $stderr = Join-Path $outDir "frontend-dev-$stamp.err.log"
+
+  $existing = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($existing) {
+    Stop-Process -Id $existing.OwningProcess -Force
+    Start-Sleep -Seconds 2
+  }
+
+  $env:NEXTAUTH_URL = "http://localhost:3000"
+  $env:NEXT_PUBLIC_API_URL = "http://localhost:8000"
+  $env:NEXT_PUBLIC_BUILD_ID = "local-current"
+
+  $process = Start-Process `
+    -FilePath "npm.cmd" `
+    -ArgumentList @("run", "dev", "--", "-p", "3000") `
+    -WorkingDirectory $frontendDir `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $stdout `
+    -RedirectStandardError $stderr `
+    -PassThru
+
+  $ready = $false
+  $lastError = $null
+  for ($i = 0; $i -lt 60; $i++) {
+    Start-Sleep -Seconds 1
+    try {
+      $response = Invoke-WebRequest -UseBasicParsing "http://localhost:3000/api/topology" -TimeoutSec 3
+      if ($response.StatusCode -eq 200) {
+        $topology = $response.Content | ConvertFrom-Json
+        if ($topology.verified_topology -eq $true -and
+            $topology.topology_class -eq "local" -and
+            $topology.compiled_api_origin -eq "http://localhost:8000") {
+          $ready = $true
+          break
+        }
+        $lastError = "unexpected topology response: $($response.Content)"
+      }
+    } catch {
+      $lastError = $_.Exception.Message
+    }
+  }
+
+  if (-not $ready) {
+    Write-Host "Local frontend dev stdout: $stdout"
+    Write-Host "Local frontend dev stderr: $stderr"
+    Get-Content $stdout -ErrorAction SilentlyContinue | Select-Object -Last 80
+    Get-Content $stderr -ErrorAction SilentlyContinue | Select-Object -Last 80
+    throw "local frontend dev server did not become topology-ready on localhost:3000. Last error: $lastError"
+  }
+
+  Write-Host "Local frontend dev topology-ready on localhost:3000 (pid=$($process.Id))"
+  Write-Host "stdout=$stdout"
+  Write-Host "stderr=$stderr"
+}
+
 function Invoke-Step {
   param(
     [Parameter(Mandatory = $true)]
@@ -89,6 +150,12 @@ try {
   }
 
   if (-not $SkipBrowser) {
+    if ($Topology -eq "local") {
+      Invoke-Step "local frontend dev restart after build" {
+        Ensure-LocalFrontendDev
+      }
+    }
+
     Invoke-Step "multi-account browser smoke" {
       powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_multi_account_browser_smoke.ps1 -Topology $Topology
     }
