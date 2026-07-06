@@ -5424,3 +5424,202 @@ Rollback note:
   component-local raw query-key literals without touching schemas, production
   data, exposure lifecycle rows, provider rows, Redis queues, export/delete
   behavior, task/deadline binding mutation, or user content.
+
+## R3 - Creation Nudge Dogfood Rule 11 Gate
+
+Changed authority:
+
+- No product, task, timer, exposure, provider, schema, readiness, or mutation
+  authority changed.
+- The Holmesberg product-loop verifier now records bias-factor lookup
+  requests/responses and classifies `rule11_no_nudge_control_day` as a gated
+  branch instead of a failed task-creation nudge render.
+- The verifier now uses a per-run custom category for nudge branches so it does
+  not rely on Holmesberg's current category defaults or personal-history cells.
+
+Removed paths:
+
+- Removed the verifier's implicit assumption that a visible New Task modal must
+  render `task.creation_nudge` for every nudge-eligible-looking task.
+
+Parked paths:
+
+- Browser proof of the `task.creation_nudge` Use branch remains gated whenever
+  the account is assigned to Rule 11 no-nudge control. Backend tests continue
+  to prove the emission/render-ack contract for renderable nudge decisions.
+
+Moved authority:
+
+- No authority moved. This is verifier classification only.
+
+Issue record:
+
+- GitHub issue #159 tracked the verifier bug and was closed as resolved by
+  commit `d38cb32`.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Script syntax:
+  `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs` passed.
+- Holmesberg product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api true --run-id r3-creation-nudge-harness-rule11-gate --out-dir tmp\browser-product-loop\r3-creation-nudge-harness-rule11-gate`
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/r3-creation-nudge-harness-rule11-gate/result.json`.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-creation-nudge-harness-rule11-gate-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r3-creation-nudge-harness-rule11-gate-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- Product runtime behavior is unchanged.
+- `task.creation_nudge` remains suppressed under Rule 11 no-nudge control.
+- Browser screenshots explain the modal state, but the canonical proof is the
+  captured backend bias lookup response with
+  `suppressed_reason=rule11_no_nudge_control_day`.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28805318994`.
+- Head SHA:
+  `d38cb32bb89da0c3db0ee9bb4ea1b1b5663f2d66`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-creation-nudge-harness-rule11-d38cb32.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the verifier commit only. This restores the prior hard-fail behavior
+  in the dogfood harness without touching schemas, production data, exposure
+  lifecycle rows, provider rows, Redis queues, export/delete behavior, or user
+  content.
+
+## R3 - Creation Nudge Helper Extraction
+
+Changed authority:
+
+- No product, task, timer, exposure, provider, schema, readiness, or mutation
+  authority changed.
+- Pure creation-nudge value helpers moved from `NewTaskModal` to
+  `frontend/lib/creation-nudge.ts`.
+- Creation-nudge render acknowledgement, suppression acknowledgement,
+  exposure-id TTL handling, decision state, and modal lifecycle authority remain
+  in `NewTaskModal`.
+
+Removed paths:
+
+- Removed inline research-prior constants from `NewTaskModal`.
+- Removed inline `NudgeDecisionData`, `NudgeDecisionPayload`,
+  `nudgePayloadFromDecision`, `nudgeDecisionFromCalibration`, and
+  `localResearchNudge` definitions from `NewTaskModal`.
+
+Parked paths:
+
+- Deeper NewTaskModal state extraction remains parked for later R3 seams.
+- Browser proof of the `task.creation_nudge` Use branch remains gated while
+  Holmesberg is in Rule 11 no-nudge control.
+- Pressure-map recovery mutation, provider credential mutation, hard delete /
+  Redis purge, Calendar drag/resize, and OpenClaw pending-drain authority
+  remain gated in the reusable product loop.
+
+Moved authority:
+
+- No authority moved. Only pure value construction moved.
+- `frontend/lib/creation-nudge.ts` is explicitly documented as pure helper
+  code, not exposure/render/suppression authority.
+
+Agent loop notes:
+
+- The frontend scout found the extraction behavior-preserving as long as the
+  new helper file is committed with the component.
+- The verification scout required backend nudge tests, production build,
+  Holmesberg mutable product-loop proof, operator read-only proof, cleanup
+  proof, CI/CD proof, and a ledger entry.
+- The verifier loop discovered and fixed the Rule 11 no-nudge harness bug
+  before accepting the helper extraction proof.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Backend targeted tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest -q tests\test_calibration_nudge_event.py tests\test_output_surfaces.py -k "creation_nudge or nudge_decision or task_creation_nudge"`
+  passed with 9 selected tests.
+- Frontend typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && node scripts/clean-next.mjs && npm run build:public` passed
+  with the local dev server stopped.
+- Refactor contract scan:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Holmesberg product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api true --run-id r3-creation-nudge-helper-extraction --out-dir tmp\browser-product-loop\r3-creation-nudge-helper-extraction`
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/r3-creation-nudge-helper-extraction/result.json`.
+- Holmesberg outcome:
+  task creation, explicit deadline binding, overlap conflict, nudge Keep branch,
+  no-deadline branch, custom category branch, edit branch, terminal deadline
+  rejection, brain dump parse/commit/partial/retry/double-submit, pressure map
+  read, timer start/pause/resume/stop/navigation persistence, notification
+  lifecycle, export evidence, operator privacy scan, and cleanup all passed.
+- Creation-nudge Use branch:
+  gated by Rule 11 no-nudge control with backend bias lookup responses recorded
+  in the product-loop artifact.
+- Cleanup proof:
+  the product loop ended with no active Holmesberg timer and no unrendered
+  synthetic creation-nudge exposures.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api --expect-readiness-split --run-id r3-creation-nudge-helper-extraction-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r3-creation-nudge-helper-extraction-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, and cohort status remains yellow only for
+  real-data gaps.
+
+Behavior parity statement:
+
+- The task creation modal builds the same nudge payload fields as before.
+- Research-prior suggested minutes use the same category prior table and
+  `roundTo5` calculation as before.
+- Accept/dismiss decisions still travel through the same create-task payload.
+- No user data, task state, timer state, exposure row, notification row,
+  provider row, Redis key, or schema changed.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28805996755`.
+- Head SHA:
+  `1b04bc91146ff61544b2b0caa13bd9ce39ed2124`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-creation-nudge-helper-1b04bc9.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+
+Rollback note:
+
+- Revert the creation-nudge helper extraction commit only. This restores the
+  inline helper constants/functions in `NewTaskModal` without touching schemas,
+  production data, exposure lifecycle rows, provider rows, Redis queues,
+  export/delete behavior, task/deadline binding mutation, or user content.
