@@ -105,7 +105,7 @@ export default function PulsePage() {
     refetchOnWindowFocus: false,
   });
   const tasksTodayQ = useQuery<TaskRow[]>({
-    queryKey: ["tasks", today],
+    queryKey: queryKeys.tasksDay(today),
     queryFn: () => queryTasks(today, 1),
     staleTime: 30_000,
   });

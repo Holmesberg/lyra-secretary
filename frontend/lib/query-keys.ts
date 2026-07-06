@@ -16,6 +16,7 @@ export const queryKeys = {
     ["pressure-map", horizonDays] as const,
   stopwatchStatus: ["stopwatch-status"] as const,
   tasks: ["tasks"] as const,
+  tasksDay: (date: string) => ["tasks", date] as const,
   tasksEvidence: ["tasks-evidence"] as const,
   tasksEvidenceWindow: (dateFrom: string, dateTo: string) =>
     ["tasks-evidence", dateFrom, dateTo] as const,
@@ -71,8 +72,8 @@ export function invalidateTodayTaskCommandSurfaces(
   nextDate: string,
 ) {
   return invalidateKeys(queryClient, [
-    ["tasks", viewedDate],
-    ["tasks", nextDate],
+    queryKeys.tasksDay(viewedDate),
+    queryKeys.tasksDay(nextDate),
     queryKeys.stopwatchStatus,
   ]);
 }

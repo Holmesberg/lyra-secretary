@@ -162,8 +162,9 @@ function TodayInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today, viewedDate]);
 
+  const tasksDayKey = queryKeys.tasksDay(viewedDate);
   const tasksQ = useQuery({
-    queryKey: ["tasks", viewedDate],
+    queryKey: tasksDayKey,
     queryFn: () => queryTasks(viewedDate),
     // 2026-05-08 latency pass: /today remounts and quick nav were paying a
     // fresh tunnel round-trip for task data even when the cache was seconds
@@ -548,7 +549,7 @@ function TodayInner() {
     });
     // Optimistic task-state flip — the task card flips from "PLANNED" to
     // "EXECUTING" immediately instead of waiting 1.4 s for refresh().
-    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+    qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
       old?.map((t) => {
         if (t.task_id === task.task_id) return { ...t, state: "EXECUTING" };
         if (interruptedTaskId && t.task_id === interruptedTaskId) {
@@ -596,7 +597,7 @@ function TodayInner() {
       if (snapshot !== undefined) {
         qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
-      qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+      qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
         old?.map((t) => {
           if (t.task_id === task.task_id) return { ...t, state: "PLANNED" };
           if (interruptedTaskId && t.task_id === interruptedTaskId) {
@@ -623,7 +624,7 @@ function TodayInner() {
     const stoppedTaskId = snapshot?.task_id;
     qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, { active: false });
     if (stoppedTaskId) {
-      qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+      qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
         old?.map((t) =>
           t.task_id === stoppedTaskId ? { ...t, state: "EXECUTED" } : t
         )
@@ -640,7 +641,7 @@ function TodayInner() {
           qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
         }
         if (stoppedTaskId) {
-          qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+          qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
             old?.map((t) =>
               t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
             )
@@ -682,7 +683,7 @@ function TodayInner() {
         qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
       if (stoppedTaskId) {
-        qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+        qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
           old?.map((t) =>
             t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
           )
@@ -748,11 +749,11 @@ function TodayInner() {
       : "Skip this task?";
     if (!window.confirm(msg)) return;
     setErrorMsg(null);
-    await qc.cancelQueries({ queryKey: ["tasks", viewedDate] });
+    await qc.cancelQueries({ queryKey: tasksDayKey });
     await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
-    const tasksSnapshot = qc.getQueryData<TaskRowType[]>(["tasks", viewedDate]);
+    const tasksSnapshot = qc.getQueryData<TaskRowType[]>(tasksDayKey);
     const statusSnapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+    qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
       old?.map((t) => t.task_id === task.task_id ? { ...t, state: "SKIPPED" } : t)
     );
     if (isLive) {
@@ -763,7 +764,7 @@ function TodayInner() {
       refresh();
     } catch (e: any) {
       if (tasksSnapshot !== undefined) {
-        qc.setQueryData(["tasks", viewedDate], tasksSnapshot);
+        qc.setQueryData(tasksDayKey, tasksSnapshot);
       }
       if (statusSnapshot !== undefined) {
         qc.setQueryData(queryKeys.stopwatchStatus, statusSnapshot);
@@ -774,12 +775,12 @@ function TodayInner() {
 
   async function handleDone(task: TaskRowType) {
     setErrorMsg(null);
-    await qc.cancelQueries({ queryKey: ["tasks", viewedDate] });
-    const snapshot = qc.getQueryData<TaskRowType[]>(["tasks", viewedDate]);
+    await qc.cancelQueries({ queryKey: tasksDayKey });
+    const snapshot = qc.getQueryData<TaskRowType[]>(tasksDayKey);
     const executedStart = task.start;
     const executedEnd = task.end;
     const planned = task.planned_duration_minutes;
-    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+    qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
       old?.map((t) =>
         t.task_id === task.task_id
           ? {
@@ -803,7 +804,7 @@ function TodayInner() {
       refresh();
     } catch (e: any) {
       if (snapshot !== undefined) {
-        qc.setQueryData(["tasks", viewedDate], snapshot);
+        qc.setQueryData(tasksDayKey, snapshot);
       }
       setErrorMsg(e?.message ?? "Failed to mark task done");
     }
@@ -812,7 +813,7 @@ function TodayInner() {
   async function handleDelete(task: TaskRowType) {
     if (!window.confirm("Delete this task? Cancelled plans are recorded as a behavioral signal.")) return;
     setErrorMsg(null);
-    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+    qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
       old?.filter((t) => t.task_id !== task.task_id)
     );
     try {
@@ -847,10 +848,10 @@ function TodayInner() {
     // closing the modal. Now we close the modal AND fade voided tasks from
     // the list instantly; mutations fire in background; on error we rollback
     // and surface via errorMsg.
-    await qc.cancelQueries({ queryKey: ["tasks", viewedDate] });
-    const snapshot = qc.getQueryData<TaskRowType[]>(["tasks", viewedDate]);
+    await qc.cancelQueries({ queryKey: tasksDayKey });
+    const snapshot = qc.getQueryData<TaskRowType[]>(tasksDayKey);
     const nowIso = new Date().toISOString();
-    qc.setQueryData<TaskRowType[]>(["tasks", viewedDate], (old) =>
+    qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
       Array.isArray(old)
         ? old.map((t) =>
             ids.includes(t.task_id) ? { ...t, voided_at: nowIso } : t
@@ -862,12 +863,12 @@ function TodayInner() {
 
     try {
       await Promise.all(ids.map((id) => voidTask(id, reason, detail)));
-      qc.invalidateQueries({ queryKey: ["tasks", viewedDate] });
+      qc.invalidateQueries({ queryKey: tasksDayKey });
       qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
     } catch (e) {
       // Rollback the optimistic mutation; surface error.
       if (snapshot !== undefined) {
-        qc.setQueryData(["tasks", viewedDate], snapshot);
+        qc.setQueryData(tasksDayKey, snapshot);
       }
       setErrorMsg(
         `Void failed: ${e instanceof Error ? e.message : String(e)}`
