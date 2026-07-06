@@ -5943,3 +5943,112 @@ Rollback note:
   literals without touching schemas, production data, exposure lifecycle rows,
   provider rows, Redis queues, export/delete behavior, task/deadline binding
   mutation, or user content.
+
+## R3 - Pressure Horizon Display Helper Extraction
+
+Commit: `8046bb5` (`frontend: extract pressure horizon display helpers`).
+
+Changed authority:
+
+- No pressure-map computation, exposure lifecycle, query-key, recovery-plan,
+  task-creation, provider, timer, or claim authority changed.
+- `frontend/lib/pressure-map-ui.ts` now owns the pressure-map horizon display
+  vocabulary: the horizon option list, horizon labels, and selected/unselected
+  button class strings.
+
+Removed paths:
+
+- Removed the inline `[1, 7, 14]` horizon option array from
+  `PulseAcademicPressureMap`.
+- Removed inline horizon label ternaries and horizon button class construction
+  from `PulseAcademicPressureMap`.
+
+Parked paths:
+
+- Pressure-map planning, recovery commit behavior, exposure render
+  acknowledgement, evidence estimates, deadline linkage, and cache invalidation
+  remain parked for separately characterized seams.
+- Real pressure-map recovery-option mutation proof remains gated by pressure
+  safe mode.
+- Calendar drag/resize mutation, provider credential mutation, account
+  hard-delete / Redis purge, and OpenClaw pending-drain authority remain gated
+  in the reusable Holmesberg product loop.
+
+Moved authority:
+
+- No product authority moved. The extracted helpers own display vocabulary
+  only. They do not own pressure-map API reads, exposure semantics, task
+  mutation, pressure computation, evidence estimation, cache invalidation,
+  ClaimCompiler authority, or user-facing behavioral claims.
+
+Agent loop notes:
+
+- Frontend and verification scouts treated this as a narrow R3 seam because it
+  removes another inline UI branch without touching fetches, effects, mutation
+  payloads, or exposure acknowledgement.
+- The first targeted browser proof produced an `ok:true` result but exited
+  non-zero because Playwright route cleanup raced after context close. This was
+  classified as a verifier cleanup bug, not a product bug. The proof was rerun
+  with tolerant route cleanup and passed. Screenshots remain contextual only;
+  backend counts, route responses, and operator invariants are the proof.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Frontend typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && node scripts/clean-next.mjs && npm run build:public` passed.
+- Refactor contract scan:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors`
+  passed.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with no missing owners and no worker write drift.
+- Targeted Pulse horizon proof:
+  `tmp/browser-readonly/r3-pressure-map-display-helpers-horizons/result.json`.
+- Targeted Pulse outcome:
+  pressure-map horizons `14`, `1`, and `7` were requested through the browser;
+  labels `day`, `week`, and `14d` were observed; every response returned status
+  200 with pressure exposure metadata; product row counts did not change. The
+  only count changes were expected pressure exposure lifecycle rows: three
+  decisions, three renders, and three render acknowledgements.
+- Operator-cookie browser proof:
+  `tmp/operator-readonly-stress-r3-pressure-map-display-helpers-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, and cohort status remains yellow only for
+  real-data gaps.
+
+Behavior parity statement:
+
+- The horizon option values are unchanged: `1`, `7`, and `14`.
+- The visible labels are unchanged: `day`, `week`, and `14d`.
+- The selected and unselected button class strings are unchanged.
+- Pulse still fetches the same pressure-map horizons, receives the same
+  pressure exposure metadata, and acknowledges pressure exposure renders through
+  the existing effect.
+- No schema, API payload, task mutation, timer mutation, deadline binding,
+  exposure lifecycle contract, notification lifecycle contract, provider truth,
+  Redis key, or user-data export shape changed.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28810337122`.
+- Head SHA:
+  `8046bb563452a94cc0f9c1b8737c51304bcd1af9`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-pressure-map-display-8046bb5.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+
+Rollback note:
+
+- Revert commit `8046bb5` only. This restores the inline horizon option array,
+  label ternaries, and class construction in `PulseAcademicPressureMap` without
+  touching schemas, production data, exposure lifecycle rows, provider rows,
+  Redis queues, export/delete behavior, task/deadline binding mutation, or user
+  content.
