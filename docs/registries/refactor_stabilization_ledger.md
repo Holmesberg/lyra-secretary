@@ -6052,3 +6052,129 @@ Rollback note:
   touching schemas, production data, exposure lifecycle rows, provider rows,
   Redis queues, export/delete behavior, task/deadline binding mutation, or user
   content.
+
+## R3 - Deadline And Integration Query-Key Vocabulary
+
+Commit: `8ff0f44` (`frontend: name deadline integration query keys`).
+
+Changed authority:
+
+- No task, deadline, provider, exposure, timer, notification, Redis, schema,
+  export/delete, or ClaimCompiler authority changed.
+- `frontend/lib/query-keys.ts` now names exact existing cache-key tuples for
+  integrations and the all-deadlines query.
+- Deadline and integration surfaces now import those names instead of spelling
+  raw arrays inline.
+
+Removed paths:
+
+- Removed raw `["integrations"]` query/invalidation keys from
+  `IntegrationsSection`.
+- Removed raw `["deadlines"]` query/invalidation keys from touched
+  Today, Calendar, Pulse, Deadlines, and Integrations surfaces.
+- Removed raw `["deadlines", "all"]` from the Deadlines page query.
+
+Parked paths:
+
+- Task-day query-key adoption remains parked for a separate seam because Today
+  uses `["tasks", viewedDate]` in optimistic execution rollback paths.
+- Domain-wide invalidation helpers remain parked until every dependent cache is
+  named and characterized.
+- Stopwatch controller hooks, NewTaskModal submit/draft extraction, shared
+  brain-dump reducer extraction, pressure-map planning mutation, provider
+  credential mutation, calendar drag/resize mutation, account hard-delete /
+  Redis purge, and OpenClaw pending-drain authority remain gated.
+
+Moved authority:
+
+- No product authority moved. The query-key module names cache keys only and
+  does not authorize provider sync, deadline mutation, task mutation, exposure
+  lifecycle truth, notification lifecycle truth, clean-data filtering, claim
+  authority, or adaptive behavior.
+
+Agent loop notes:
+
+- Frontend and verification scouts agreed that query-key vocabulary adoption is
+  among the lowest-risk remaining R3 seams, provided exact tuple values are
+  preserved and Today's optimistic task execution keys are left for a separate
+  proof seam.
+- A fresh scout recommended `tasksDay(date)` next. That recommendation was not
+  folded into this seam because it touches Today optimistic execution rollback
+  and deserves mutable proof as its own commit.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Frontend typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && node scripts/clean-next.mjs && npm run build:public` passed.
+- Refactor contract scan:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors`
+  passed.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with no missing owners and no worker write drift.
+- Holmesberg product-loop proof:
+  `tmp/browser-product-loop/r3-deadline-integration-query-keys/result.json`.
+- Holmesberg outcome:
+  route rendering, settings/integrations rendering, deadline creation and
+  cleanup, explicit deadline binding, overlap conflict, creation-nudge Keep
+  branch, no-deadline branch, custom category branch, terminal deadline
+  rejection, brain dump parse/commit/partial/retry/double-submit, pressure-map
+  read, timer start/pause/resume/stop/navigation persistence, notification
+  lifecycle, export evidence, operator privacy scan, and cleanup all passed.
+- Cleanup proof:
+  the product loop ended with no active Holmesberg timer and no unrendered
+  synthetic creation-nudge exposures.
+- Operator-cookie browser proof:
+  `tmp/operator-readonly-stress-r3-deadline-integration-query-keys-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, and cohort status remains yellow only for
+  real-data gaps.
+
+Behavior parity statement:
+
+- `queryKeys.integrations` is exactly `["integrations"]`.
+- `queryKeys.deadlines` remains exactly `["deadlines"]`.
+- `queryKeys.deadlinesAll` is exactly `["deadlines", "all"]`.
+- Query functions, mutation calls, invalidation targets, provider sync
+  behavior, deadline creation/edit/void behavior, Today/Calendar/Pulse render
+  behavior, and settings integration behavior are unchanged.
+- No broad invalidation set was added or removed. Existing predicate
+  invalidations for calendar events and deadline-prefixed keys remain unchanged.
+- No schema, API payload, task mutation, timer mutation, deadline binding,
+  exposure lifecycle contract, notification lifecycle contract, provider truth,
+  Redis key, or user-data export shape changed.
+
+Verifier and issue notes:
+
+- The product loop again observed that the deadline suggestion chip did not
+  render and used the explicit picker fallback. This is already tracked as
+  issue `#149`; this run was added as a comment:
+  `https://github.com/Holmesberg/lyra-secretary/issues/149#issuecomment-4895919388`.
+- The product loop also recorded expected/gated states: Holmesberg onboarding
+  gate skip, Rule 11 creation-nudge suppression, pressure-map recovery safe
+  mode, provider credential mutation gate, account delete/purge gate, calendar
+  drag/resize manual gate, and OpenClaw pending-drain authority gate.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28811509816`.
+- Head SHA:
+  `8ff0f44148184697018f39d1648aea83d2c8d66c`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-deadline-integration-query-keys-8ff0f44.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+
+Rollback note:
+
+- Revert commit `8ff0f44` only. This restores the raw deadline/integration
+  cache-key arrays in the touched frontend surfaces without touching schemas,
+  production data, exposure lifecycle rows, provider rows, Redis queues,
+  export/delete behavior, task/deadline binding mutation, or user content.
