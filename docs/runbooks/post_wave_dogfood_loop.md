@@ -53,8 +53,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogf
 For a standalone CI/CD proof artifact without browser checks:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect_github_ci_cd_proof.ps1 -Branch wave-5-sovereignty-integrity-cycle -Workflow CI -OutFile tmp\ci-cd-proof\latest.json
+$branch = (git branch --show-current).Trim()
+$head = (git rev-parse HEAD).Trim()
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect_github_ci_cd_proof.ps1 -Branch $branch -HeadSha $head -Workflow CI -OutFile tmp\ci-cd-proof\latest.json
 ```
+
+`-HeadSha` must receive the full commit SHA from `git rev-parse HEAD`, not the
+seven-character display SHA. GitHub Actions reports full `headSha` values; a
+short SHA will produce `no_matching_run_for_head` even when the selected run is
+green. This footgun is tracked in issue #160.
 
 When a wave touches Insights, ClaimCompiler payloads, or insight copy/gates,
 add the forced-state browser fixture:
@@ -248,8 +255,12 @@ different questions. Keep them labeled separately.
 After each pushed seam or wave:
 
 - inspect the latest GitHub Actions runs for the pushed branch;
+- capture the full head SHA with `(git rev-parse HEAD).Trim()` before proof
+  collection;
 - record the workflow name, status, conclusion, head SHA, and URL, or record
   that no workflow ran for the branch;
+- use the same full SHA in `collect_github_ci_cd_proof.ps1 -HeadSha`; short
+  SHAs are display-only;
 - if a PR exists, inspect PR checks and record failing, pending, and skipped
   checks;
 - classify CI/CD failures before fixing them:
@@ -265,11 +276,12 @@ After each pushed seam or wave:
 - do not treat CI success as browser dogfood proof.
 
 The reusable wrapper can collect the read-only CI/CD artifact with
-`-IncludeCiCdProof`. This records the current branch, head SHA, latest matching
-GitHub Actions run, job results, PR-check state when a PR exists, and explicit
-`no_pr`, `no_workflow_ran`, or `no_matching_run_for_head` states instead of
-silently treating missing checks as success. Use `-CiCdFailOnUnsuccessful` only
-when the seam has already been pushed and CI is required to be green.
+`-IncludeCiCdProof`. This records the current branch, full head SHA, latest
+matching GitHub Actions run, job results, PR-check state when a PR exists, and
+explicit `no_pr`, `no_workflow_ran`, or `no_matching_run_for_head` states
+instead of silently treating missing checks as success. Use
+`-CiCdFailOnUnsuccessful` only when the seam has already been pushed and CI is
+required to be green.
 
 Hosted-public verification must additionally record whether the deployed
 frontend/backend build IDs match the expected commit. If they lag, record the

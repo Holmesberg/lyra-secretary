@@ -5752,3 +5752,69 @@ Rollback note:
   suggestion calculations in `NewTaskModal` without touching schemas,
   production data, exposure lifecycle rows, provider rows, Redis queues,
   export/delete behavior, task/deadline binding mutation, or user content.
+
+## CI/CD - Full-SHA Proof Runbook Clarification
+
+Changed authority:
+
+- No runtime, product, task, timer, exposure, provider, schema, readiness, or
+  mutation authority changed.
+- Post-wave CI/CD proof documentation now explicitly requires the full
+  `git rev-parse HEAD` value for `collect_github_ci_cd_proof.ps1 -HeadSha`.
+
+Removed paths:
+
+- Removed ambiguity that allowed a seven-character display SHA to be treated as
+  an acceptable exact-head proof input.
+
+Parked paths:
+
+- Automatic branch CI trigger policy remains parked under issue #157.
+- GitHub Actions Node 20 deprecation maintenance remains parked under issue
+  #155.
+- Collector normalization of unique short SHAs remains optional future
+  hardening; the active runbook now uses full SHAs.
+
+Moved authority:
+
+- No authority moved. The runbook and `.github/instructions.md` now encode the
+  CI/CD proof convention; the workflow and collector behavior did not change.
+
+Discovery / issue link:
+
+- Issue #160 was opened after an exact-head proof was first attempted with
+  `-HeadSha 0e45c33`. The collector correctly produced
+  `no_matching_run_for_head` because GitHub Actions reports the full head SHA.
+- Rerunning with `0e45c33cc87d5a585cc07979588fa821ebbdac74` produced a green
+  exact-head proof. The runbook now prevents this false proof failure.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check -- docs\runbooks\post_wave_dogfood_loop.md .github\instructions.md`
+  passed.
+- Script parse smoke:
+  `powershell -NoProfile -ExecutionPolicy Bypass -Command '$null = [scriptblock]::Create((Get-Content .\scripts\run_post_wave_dogfood_loop.ps1 -Raw)); $null = [scriptblock]::Create((Get-Content .\scripts\collect_github_ci_cd_proof.ps1 -Raw)); Write-Output parsed'`
+  passed.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api true --expect-readiness-split --run-id ci-cd-full-sha-runbook-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-ci-cd-full-sha-runbook-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No app runtime behavior changed.
+- CI/CD proof remains a read-only post-push evidence artifact. It does not
+  replace browser dogfood proof, operator invariants, local-current proof, or
+  hosted-public proof.
+
+Rollback note:
+
+- Revert the runbook/instructions commit only. This restores the prior CI/CD
+  documentation without touching workflows, scripts, schemas, production data,
+  exposure lifecycle rows, provider rows, Redis queues, or user content.

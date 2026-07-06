@@ -140,6 +140,10 @@ After any push:
 - On wave branches without automatic CI, manually dispatch the CI workflow or
   record `no_workflow_ran`/`no_matching_run_for_head` with
   `scripts/collect_github_ci_cd_proof.ps1`.
+- Capture the full pushed head SHA with `(git rev-parse HEAD).Trim()` and pass
+  that full value to `collect_github_ci_cd_proof.ps1 -HeadSha`. Do not pass the
+  seven-character display SHA; GitHub Actions reports full `headSha` values and
+  short SHAs can create false `no_matching_run_for_head` proof artifacts.
 - Treat `no_pr` as an explicit CI/CD state, not as proof failure by itself.
 - Report actual CI status; do not infer success from local tests.
 - If CI fails, inspect the failing job log and fix the contract failure before
