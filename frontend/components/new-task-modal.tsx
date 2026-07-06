@@ -18,9 +18,7 @@ import {
   rescheduleTask,
   lookupBiasFactor,
   type TaskRow,
-  type BiasFactorCell,
   type BiasLookupResponse,
-  type CreateTaskInput,
 } from "@/lib/tasks";
 import {
   addMinutes,
@@ -42,20 +40,14 @@ import {
   CalibrationNudgeCard,
   type CalibrationNudge,
 } from "@/components/calibration-nudge-card";
+import {
+  localResearchNudge,
+  nudgeDecisionFromCalibration,
+  nudgePayloadFromDecision,
+  type NudgeDecisionData,
+} from "@/lib/creation-nudge";
 
 const BIAS_LOOKUP_DEBOUNCE_MS = 120;
-const RESEARCH_PRIOR_DEFAULT = {
-  biasFactor: 1.35,
-  citation: "Kahneman & Tversky 1979 (planning fallacy mean)",
-};
-const RESEARCH_PRIORS: Record<string, { biasFactor: number; citation: string }> = {
-  development: { biasFactor: 1.5, citation: "Buehler et al. 1994; Connolly & Dean 1997" },
-  work: { biasFactor: 1.45, citation: "Buehler et al. 1994" },
-  study: { biasFactor: 1.4, citation: "Newby-Clark et al. 2000" },
-  academic: { biasFactor: 1.4, citation: "Newby-Clark et al. 2000" },
-  exercise: { biasFactor: 1.15, citation: "Roy et al. 2005" },
-  fitness: { biasFactor: 1.15, citation: "Roy et al. 2005" },
-};
 const pendingCreationNudgeRenderAcks = new Set<string>();
 const ackedCreationNudgeRenders = new Set<string>();
 const pendingCreationNudgeSuppressions = new Set<string>();
@@ -65,53 +57,8 @@ const CREATION_NUDGE_SUPPRESSION_RETRY_MS = [500, 1500, 3000];
 const CREATION_NUDGE_EXPOSURE_TTL_MS = 30_000;
 const creationNudgeExposureIds = new Map<string, { exposureId: string; expiresAt: number }>();
 
-type NudgeDecisionData = {
-  decision: "accepted" | "dismissed";
-  suggested_minutes: number;
-  bias_factor: number;
-  sample_size: number;
-  viewed_at: string;
-};
-
-type NudgeDecisionPayload = Pick<
-  CreateTaskInput,
-  | "nudge_decision"
-  | "nudge_suggested_duration_minutes"
-  | "nudge_bias_factor"
-  | "nudge_sample_size"
-  | "nudge_viewed_at"
->;
-
 function newExposureId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function nudgePayloadFromDecision(
-  nudgeDecisionData: NudgeDecisionData | null,
-): NudgeDecisionPayload {
-  if (!nudgeDecisionData) {
-    return {};
-  }
-  return {
-    nudge_decision: nudgeDecisionData.decision,
-    nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
-    nudge_bias_factor: nudgeDecisionData.bias_factor,
-    nudge_sample_size: nudgeDecisionData.sample_size,
-    nudge_viewed_at: nudgeDecisionData.viewed_at,
-  };
-}
-
-function nudgeDecisionFromCalibration(
-  nudge: CalibrationNudge,
-  decision: NudgeDecisionData["decision"],
-): NudgeDecisionData {
-  return {
-    decision,
-    suggested_minutes: nudge.suggestedMin,
-    bias_factor: nudge.factor,
-    sample_size: nudge.cell.sessions,
-    viewed_at: nudge.firedAt,
-  };
 }
 
 function exposureIdForCreationNudge(category: string, tod: string, planned: number): string {
@@ -190,45 +137,6 @@ function suppressCreationNudgeExposure(exposureId: string, attempt = 0) {
     .finally(() => {
       pendingCreationNudgeSuppressions.delete(exposureId);
     });
-}
-
-function localResearchNudge(
-  category: string,
-  tod: string,
-  planned: number,
-  firedAt: string,
-  exposureId: string
-) {
-  const prior = RESEARCH_PRIORS[category] ?? RESEARCH_PRIOR_DEFAULT;
-  const suggestedMin = roundTo5(planned * prior.biasFactor);
-  return {
-    cell: {
-      bias_factor: prior.biasFactor,
-      bias_factor_mean: prior.biasFactor,
-      sessions: 0,
-      confidence: "research",
-      interpretation: "underestimates",
-      category,
-      time_of_day: tod,
-      citation: prior.citation,
-    } satisfies BiasFactorCell,
-    factor: prior.biasFactor,
-    personalFactor: null,
-    blendFactor: prior.biasFactor,
-    personalWeight: 0,
-    priorWeight: 1,
-    priorFactor: prior.biasFactor,
-    priorCitation: prior.citation,
-    suggestedMin,
-    executionSuggestedMin: suggestedMin,
-    pauseOverheadMin: 0,
-    pauseOverheadSampleSize: 0,
-    occupancySuggestedMin: suggestedMin,
-    occupancyStrategy: "execution_only_research_prior",
-    firedAt,
-    exposureId,
-    backendReady: false,
-  };
 }
 
 interface PausedConflict {
