@@ -10,9 +10,13 @@ export const queryKeys = {
   me: ["me"] as const,
   operatorDashboard: ["operator-dashboard-v12"] as const,
   pressureMap: ["pressure-map"] as const,
+  pressureMapHorizon: (horizonDays: number) =>
+    ["pressure-map", horizonDays] as const,
   stopwatchStatus: ["stopwatch-status"] as const,
   tasks: ["tasks"] as const,
   tasksEvidence: ["tasks-evidence"] as const,
+  tasksEvidenceWindow: (dateFrom: string, dateTo: string) =>
+    ["tasks-evidence", dateFrom, dateTo] as const,
   tasksRange: ["tasks-range"] as const,
   tasksRangeWindow: (dateFrom: string, dateTo: string) =>
     ["tasks-range", dateFrom, dateTo] as const,

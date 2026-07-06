@@ -118,7 +118,7 @@ export default function PulsePage() {
     staleTime: 60_000,
   });
   const taskEvidenceQ = useQuery<QueryResponse>({
-    queryKey: ["tasks-evidence", taskEvidenceStart, taskEvidenceEnd],
+    queryKey: queryKeys.tasksEvidenceWindow(taskEvidenceStart, taskEvidenceEnd),
     queryFn: () => queryTasksRange(taskEvidenceStart, taskEvidenceEnd),
     staleTime: 60_000,
   });
@@ -133,7 +133,7 @@ export default function PulsePage() {
     staleTime: 60_000,
   });
   const pressureQ = useQuery<AcademicPressureMapResponse>({
-    queryKey: ["pressure-map", pressureHorizonDays],
+    queryKey: queryKeys.pressureMapHorizon(pressureHorizonDays),
     queryFn: () => getAcademicPressureMap(pressureHorizonDays),
     staleTime: 60_000,
   });
