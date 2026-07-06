@@ -11,6 +11,7 @@ import {
 } from "@/lib/deadlines";
 import { DeadlineModal } from "@/components/deadline-modal";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 const STATE_LABEL: Record<DeadlineState, string> = {
@@ -275,7 +276,7 @@ function Section({
 export default function DeadlinesPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
-    queryKey: ["deadlines", "all"],
+    queryKey: queryKeys.deadlinesAll,
     queryFn: () => listDeadlines(),
     staleTime: 60_000,
   });
@@ -357,11 +358,11 @@ export default function DeadlinesPage() {
 
   async function handleVoid(d: DeadlineResponse) {
     await voidDeadline(d.deadline_id);
-    qc.invalidateQueries({ queryKey: ["deadlines"] });
+    qc.invalidateQueries({ queryKey: queryKeys.deadlines });
   }
 
   function handleSaved() {
-    qc.invalidateQueries({ queryKey: ["deadlines"] });
+    qc.invalidateQueries({ queryKey: queryKeys.deadlines });
   }
 
   return (

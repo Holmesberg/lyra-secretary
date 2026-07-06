@@ -99,7 +99,7 @@ export default function PulsePage() {
   const taskEvidenceEnd = dateKeyOffset(pressureHorizonDays);
 
   const meQ = useQuery<MeLite>({
-    queryKey: ["me"],
+    queryKey: queryKeys.me,
     queryFn: () => api<MeLite>("/v1/users/me"),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
@@ -123,12 +123,12 @@ export default function PulsePage() {
     staleTime: 60_000,
   });
   const deadlinesQ = useQuery<DeadlineListResponse>({
-    queryKey: ["deadlines"],
+    queryKey: queryKeys.deadlines,
     queryFn: () => listDeadlines(),
     staleTime: 60_000,
   });
   const integrationsQ = useQuery<IntegrationsResponse>({
-    queryKey: ["integrations"],
+    queryKey: queryKeys.integrations,
     queryFn: getIntegrations,
     staleTime: 60_000,
   });

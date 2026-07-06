@@ -40,6 +40,7 @@ import {
   type IntegrationState,
   type IntegrationStatus,
 } from "@/lib/integrations";
+import { queryKeys } from "@/lib/query-keys";
 
 // Copy for the callback-redirect banners. Kept here (not in the
 // callback route) so translations can live next to the surface the
@@ -90,8 +91,8 @@ export function IntegrationsSection() {
         kind: "success",
         title: `${humanName(connected)} connected.`,
       });
-      qc.invalidateQueries({ queryKey: ["integrations"] });
-      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: queryKeys.integrations });
+      qc.invalidateQueries({ queryKey: queryKeys.me });
       cleanQueryParams();
     } else if (errored) {
       const text = ERROR_COPY[reason] || "Something went wrong connecting.";
@@ -112,7 +113,7 @@ export function IntegrationsSection() {
   const [wsDisconnectBusy, setWsDisconnectBusy] = useState(false);
 
   const statusQ = useQuery({
-    queryKey: ["integrations"],
+    queryKey: queryKeys.integrations,
     queryFn: getIntegrations,
     staleTime: 30_000,
   });
@@ -126,8 +127,8 @@ export function IntegrationsSection() {
     setCardErrors((e) => ({ ...e, [id]: undefined }));
     try {
       await disconnectIntegration(id);
-      qc.invalidateQueries({ queryKey: ["integrations"] });
-      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: queryKeys.integrations });
+      qc.invalidateQueries({ queryKey: queryKeys.me });
       qc.invalidateQueries({
         predicate: (q) =>
           typeof q.queryKey[0] === "string" &&
@@ -229,8 +230,10 @@ export function IntegrationsSection() {
                     setIcalSyncBusy(true);
                     try {
                       const res = await syncMoodleNow();
-                      qc.invalidateQueries({ queryKey: ["integrations"] });
-                      qc.invalidateQueries({ queryKey: ["deadlines"] });
+                      qc.invalidateQueries({
+                        queryKey: queryKeys.integrations,
+                      });
+                      qc.invalidateQueries({ queryKey: queryKeys.deadlines });
                       const created = res.created ?? 0;
                       const updated = res.updated ?? 0;
                       const parts: string[] = [];
@@ -258,8 +261,10 @@ export function IntegrationsSection() {
                     setWsSyncBusy(true);
                     try {
                       const res = await syncMoodleWSNow();
-                      qc.invalidateQueries({ queryKey: ["integrations"] });
-                      qc.invalidateQueries({ queryKey: ["deadlines"] });
+                      qc.invalidateQueries({
+                        queryKey: queryKeys.integrations,
+                      });
+                      qc.invalidateQueries({ queryKey: queryKeys.deadlines });
                       const backfilled =
                         res.backfilled_completed +
                         (res.backfilled_completion_candidates ?? 0) +
@@ -302,7 +307,9 @@ export function IntegrationsSection() {
                     setWsDisconnectBusy(true);
                     try {
                       await disconnectMoodleWS();
-                      qc.invalidateQueries({ queryKey: ["integrations"] });
+                      qc.invalidateQueries({
+                        queryKey: queryKeys.integrations,
+                      });
                       setBanner({
                         kind: "success",
                         title: "Submission auto-detect disconnected.",
@@ -331,8 +338,8 @@ export function IntegrationsSection() {
           }
           existingWSConnected={!!stateById.get("moodle")?.ws_connected}
           onConnected={(result) => {
-            qc.invalidateQueries({ queryKey: ["integrations"] });
-            qc.invalidateQueries({ queryKey: ["deadlines"] });
+            qc.invalidateQueries({ queryKey: queryKeys.integrations });
+            qc.invalidateQueries({ queryKey: queryKeys.deadlines });
             qc.invalidateQueries({
               predicate: (q) =>
                 typeof q.queryKey[0] === "string" &&

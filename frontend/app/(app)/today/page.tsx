@@ -206,7 +206,7 @@ function TodayInner() {
   //      deadlines (state ∈ {planned, active}, due < now) — pinned to
   //      today so the operator notices and marks complete or skips.
   const deadlinesQ = useQuery({
-    queryKey: ["deadlines"],
+    queryKey: queryKeys.deadlines,
     queryFn: () => listDeadlines(),
     staleTime: 60_000,
   });
@@ -1100,7 +1100,9 @@ function TodayInner() {
                 deadline={item.deadline}
                 overdue={item.overdue}
                 onEdit={(d) => setEditingDeadline(d)}
-                onChanged={() => qc.invalidateQueries({ queryKey: ["deadlines"] })}
+                onChanged={() =>
+                  qc.invalidateQueries({ queryKey: queryKeys.deadlines })
+                }
               />
             )
           )}
@@ -1164,7 +1166,7 @@ function TodayInner() {
         open={!!bindingTask}
         onClose={() => setBindingTask(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: ["deadlines"] });
+          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
           refresh();
         }}
       />
@@ -1182,7 +1184,7 @@ function TodayInner() {
         deadline={editingDeadline}
         onClose={() => setEditingDeadline(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: ["deadlines"] });
+          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
           setEditingDeadline(null);
         }}
       />

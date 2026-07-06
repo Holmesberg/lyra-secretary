@@ -435,7 +435,7 @@ export default function CalendarPage() {
   // so the calendar reads as the historical record of every deadline.
   // Voided deadlines are excluded by default per the list endpoint.
   const deadlinesQ = useQuery({
-    queryKey: ["deadlines"],
+    queryKey: queryKeys.deadlines,
     queryFn: () => listDeadlines(),
     staleTime: 60_000,
     refetchInterval: 60_000,
@@ -951,7 +951,7 @@ export default function CalendarPage() {
         deadline={editingDeadline}
         onClose={() => setEditingDeadline(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: ["deadlines"] });
+          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
           setEditingDeadline(null);
         }}
       />
