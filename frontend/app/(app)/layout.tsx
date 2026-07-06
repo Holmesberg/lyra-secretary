@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { AppShell } from "@/components/app-shell";
 import { ArchetypeSurvey } from "@/components/archetype-survey";
 import { ConsentModal } from "@/components/consent-modal";
@@ -106,7 +107,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // instead of the shared cache key. Now layout's first fetch warms
   // the cache; settings reads it instantly.
   const meQ = useQuery<Me>({
-    queryKey: ["me"],
+    queryKey: queryKeys.me,
     queryFn: () => api<Me>("/v1/users/me"),
     enabled: status === "authenticated",
     retry: false, // 401 must not retry — it'll loop signOut otherwise
@@ -148,7 +149,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Used by gating modals (consent, archetype, tutorial) to refresh
   // /me after the user submits. Invalidate-and-refetch — same key, so
   // every consumer updates simultaneously.
-  const refetchMe = () => qc.invalidateQueries({ queryKey: ["me"] });
+  const refetchMe = () => qc.invalidateQueries({ queryKey: queryKeys.me });
   const skipOnboardingForSession = () => {
     setOnboardingSkippedThisSession(true);
     if (typeof window !== "undefined") {

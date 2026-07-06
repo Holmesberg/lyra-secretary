@@ -45,6 +45,7 @@ import {
   submitArchetypeSurvey,
   type SurveyItem,
 } from "@/lib/archetype";
+import { queryKeys } from "@/lib/query-keys";
 
 type InstrumentSection = {
   key: "meq" | "bfi_c" | "bscs" | "gp";
@@ -106,7 +107,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
   const qc = useQueryClient();
   function invalidateArchetypeDependent() {
     qc.invalidateQueries({ queryKey: ["insights"] });
-    qc.invalidateQueries({ queryKey: ["me"] });
+    qc.invalidateQueries({ queryKey: queryKeys.me });
     // Bias-factor lookups are per (category, tod, planned) — we don't
     // know every key variant open tabs might have cached. Broad match
     // on the first key segment so every cached lookup invalidates.

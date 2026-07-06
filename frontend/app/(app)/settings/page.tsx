@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { signOutAndClear } from "@/lib/sign-out-and-clear";
 import { IntegrationsSection } from "@/components/integrations-section";
 import { ArchetypeSurvey } from "@/components/archetype-survey";
@@ -50,7 +51,7 @@ export default function SettingsPage() {
   // Cache key ["me"] still shared with (app)/layout.tsx and the
   // /insights archetype card so the retake-button render is instant.
   const meQ = useQuery<MeArchetype>({
-    queryKey: ["me"],
+    queryKey: queryKeys.me,
     queryFn: () => api<MeArchetype>("/v1/users/me"),
     refetchOnWindowFocus: false,
     refetchInterval: false,
@@ -59,7 +60,7 @@ export default function SettingsPage() {
   const archetypeMe = meQ.data ?? null;
   const qc = useQueryClient();
   function refreshArchetypeMe() {
-    qc.invalidateQueries({ queryKey: ["me"] });
+    qc.invalidateQueries({ queryKey: queryKeys.me });
   }
   const [surveyOpen, setSurveyOpen] = useState(false);
   // Button label — never-completed users see "Take", returning users

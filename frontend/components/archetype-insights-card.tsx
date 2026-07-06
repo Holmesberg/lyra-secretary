@@ -32,6 +32,7 @@ import { ChevronUp, Sigma } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { ackExposureRender, api } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import {
   getArchetypeProximity,
   getArchetypeProximityTrend,
@@ -77,7 +78,7 @@ export function ArchetypeInsightsCard({
   const [mathOpen, setMathOpen] = useState(false);
 
   const meQ = useQuery({
-    queryKey: ["me"],
+    queryKey: queryKeys.me,
     queryFn: () => api<MeArchetype>("/v1/users/me"),
     staleTime: 60_000,
   });
