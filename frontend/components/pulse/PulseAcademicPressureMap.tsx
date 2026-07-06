@@ -21,11 +21,14 @@ import {
   type TaskRow,
 } from "@/lib/tasks";
 import {
+  PRESSURE_HORIZON_OPTIONS,
   fmtHours,
   fmtTiming,
   fmtTrust,
   genericPressureCopy,
   pressureClass,
+  pressureHorizonClass,
+  pressureHorizonLabel,
 } from "@/lib/pressure-map-ui";
 import {
   buildRows,
@@ -459,18 +462,14 @@ export function PulseAcademicPressureMap({
           <span className="opacity-50"> ]</span>
         </div>
         <div className="flex items-center gap-1">
-          {[1, 7, 14].map((days) => (
+          {PRESSURE_HORIZON_OPTIONS.map((days) => (
             <button
               key={days}
               type="button"
               onClick={() => onHorizonChange?.(days)}
-              className={`rounded-sm border px-2 py-1 font-mono text-[9px] uppercase tracking-widest transition-colors ${
-                horizonDays === days
-                  ? "border-signal/50 bg-signal/10 text-signal"
-                  : "border-hairline text-dust-deep hover:border-signal/30 hover:text-dust"
-              }`}
+              className={pressureHorizonClass(days, horizonDays)}
             >
-              {days === 1 ? "day" : days === 7 ? "week" : "14d"}
+              {pressureHorizonLabel(days)}
             </button>
           ))}
         </div>
