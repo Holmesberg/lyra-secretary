@@ -27,6 +27,8 @@ import {
   diffMinutes,
   formatLocal,
   roundTo5,
+  suggestAmPmSwap as getAmPmSwapSuggestion,
+  suggestPushStartToFuture as getPushStartToFutureSuggestion,
   timeOfDay,
 } from "@/lib/task-time";
 import { ackExposureRender, ackExposureSuppression } from "@/lib/api";
@@ -469,27 +471,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // NEXT day's 9:25 AM, and the time-only display hid the date change.
   // Same-day check on the shifted result catches any cross-midnight
   // shift defensively.
-  const suggestAmPmSwap = (() => {
-    if (!endBeforeStart) return null;
-    const sDate = new Date(start);
-    const eDate = new Date(end);
-    if (Number.isNaN(sDate.getTime()) || Number.isNaN(eDate.getTime())) return null;
-    if (sDate.toDateString() !== eDate.toDateString()) return null;
-    const negDiffMin = diffMinutes(start, end);
-    if (negDiffMin >= 0 || negDiffMin <= -12 * 60) return null;
-    const shifted = addMinutes(end, 12 * 60);
-    const shiftedDate = new Date(shifted);
-    if (Number.isNaN(shiftedDate.getTime())) return null;
-    // The +12h shift must stay on the start's calendar day. Otherwise
-    // the suggestion is nonsense (time-only display formatting hides the
-    // date change from the user) and should not render.
-    if (shiftedDate.toDateString() !== sDate.toDateString()) return null;
-    // Defensive: shifted must now be strictly after start. If the
-    // hour math still produces end <= start, something's off — don't
-    // suggest.
-    if (diffMinutes(start, shifted) <= 0) return null;
-    return shifted;
-  })();
+  const suggestAmPmSwap = endBeforeStart ? getAmPmSwapSuggestion(start, end) : null;
   function applyAmPmSwap() {
     if (!suggestAmPmSwap) return;
     handleEndChange(suggestAmPmSwap);
@@ -505,24 +487,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // the past; the 60s useCurrentTime tick means the suggestion
   // naturally appears after the user lingers past the original
   // round-up mark.
-  const suggestPushStartToFuture = (() => {
-    if (!start) return null;
-    const sDate = new Date(start);
-    if (Number.isNaN(sDate.getTime())) return null;
-    if (sDate.getTime() >= now.getTime()) return null;
-    const next = new Date(now);
-    const mins = next.getMinutes();
-    const next5 = Math.ceil(mins / 5) * 5;
-    if (next5 >= 60) next.setHours(next.getHours() + 1, 0, 0, 0);
-    else next.setMinutes(next5, 0, 0);
-    next.setSeconds(0, 0);
-    // Ensure strictly after `now` — if current minute is a 5-mark
-    // already, Math.ceil returns the same minute. Advance by 5.
-    if (next.getTime() <= now.getTime()) {
-      next.setMinutes(next.getMinutes() + 5);
-    }
-    return formatLocal(next);
-  })();
+  const suggestPushStartToFuture = getPushStartToFutureSuggestion(start, now);
   function applyPushStartToFuture() {
     if (!suggestPushStartToFuture) return;
     handleStartChange(suggestPushStartToFuture);

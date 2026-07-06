@@ -41,6 +41,39 @@ export function diffMinutes(startStr: string, endStr: string): number {
   return Math.round((new Date(endStr).getTime() - new Date(startStr).getTime()) / 60_000);
 }
 
+export function suggestAmPmSwap(startStr: string, endStr: string): string | null {
+  if (diffMinutes(startStr, endStr) > 0) return null;
+  const startDate = new Date(startStr);
+  const endDate = new Date(endStr);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+  if (startDate.toDateString() !== endDate.toDateString()) return null;
+  const negativeDiffMinutes = diffMinutes(startStr, endStr);
+  if (negativeDiffMinutes >= 0 || negativeDiffMinutes <= -12 * 60) return null;
+  const shifted = addMinutes(endStr, 12 * 60);
+  const shiftedDate = new Date(shifted);
+  if (Number.isNaN(shiftedDate.getTime())) return null;
+  if (shiftedDate.toDateString() !== startDate.toDateString()) return null;
+  if (diffMinutes(startStr, shifted) <= 0) return null;
+  return shifted;
+}
+
+export function suggestPushStartToFuture(startStr: string, now: Date = new Date()): string | null {
+  if (!startStr) return null;
+  const startDate = new Date(startStr);
+  if (Number.isNaN(startDate.getTime())) return null;
+  if (startDate.getTime() >= now.getTime()) return null;
+  const next = new Date(now);
+  const mins = next.getMinutes();
+  const next5 = Math.ceil(mins / 5) * 5;
+  if (next5 >= 60) next.setHours(next.getHours() + 1, 0, 0, 0);
+  else next.setMinutes(next5, 0, 0);
+  next.setSeconds(0, 0);
+  if (next.getTime() <= now.getTime()) {
+    next.setMinutes(next.getMinutes() + 5);
+  }
+  return formatLocal(next);
+}
+
 export function timeOfDay(localStr: string): string {
   const h = new Date(localStr).getHours();
   if (h >= 5 && h < 12) return "morning";
