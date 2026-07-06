@@ -5623,3 +5623,132 @@ Rollback note:
   inline helper constants/functions in `NewTaskModal` without touching schemas,
   production data, exposure lifecycle rows, provider rows, Redis queues,
   export/delete behavior, task/deadline binding mutation, or user content.
+
+## R3 - New Task Time Recovery Helper Extraction
+
+Changed authority:
+
+- No product, task, timer, exposure, provider, schema, readiness, or mutation
+  authority changed.
+- Pure local-time recovery math moved from `NewTaskModal` to
+  `frontend/lib/task-time.ts`.
+- `NewTaskModal` still owns modal state, render behavior, user actions,
+  submit/edit/interruption flow, creation-nudge exposure lifecycle calls, and
+  task mutation authority.
+
+Removed paths:
+
+- Removed inline AM/PM swap suggestion calculation from `NewTaskModal`.
+- Removed inline past-start push-forward calculation from `NewTaskModal`.
+
+Parked paths:
+
+- Deeper NewTaskModal draft-state extraction remains parked for later R3 seams.
+- Calendar drag/resize mutation remains gated as a separate browser-specific
+  pass.
+- Provider credential mutation, account hard-delete / Redis purge, OpenClaw
+  pending-drain authority, and pressure-map recovery mutation remain gated in
+  the reusable Holmesberg product loop.
+
+Moved authority:
+
+- No authority moved. `frontend/lib/task-time.ts` now owns only pure time
+  formatting/arithmetic helpers.
+- Browser render, exposure render/suppression acknowledgement, task creation,
+  and edit mutation authority did not move.
+
+Agent loop notes:
+
+- The frontend scout recommended this as the next behavior-preserving
+  NewTaskModal seam: extract `suggestAmPmSwap` and
+  `suggestPushStartToFuture` while preserving `new Date(datetime-local)`
+  parsing, same-day checks, strict negative bounds, and exact five-minute push
+  behavior.
+- The CI/CD scout required exact-head CI proof after commit/push and recommended
+  a follow-up runbook seam for full-SHA proof commands.
+- A verifier pass found two proof-contract issues: the targeted probe needed
+  the standard API proxy for local-current browser proof, and opening
+  NewTaskModal legitimately creates `task.creation_nudge` exposure decision /
+  suppression lifecycle rows. The proof now treats screenshots as context and
+  backend/export row classes as canonical evidence.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Frontend typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && node scripts/clean-next.mjs && npm run build:public` passed
+  with the local dev server stopped.
+- Refactor contract scan:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py` passed.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with no missing owners and no worker write drift.
+- Targeted Holmesberg modal proof:
+  `tmp/browser-readonly/r3-new-task-time-recovery-local-current/result.json`.
+- Targeted proof outcome:
+  Today rendered through local-current proxy; New Task modal opened; push-start
+  and AM/PM swap suggestions rendered and were clickable; canceling the modal
+  changed no product-row counts. The only count changes were expected
+  `task.creation_nudge` exposure-decision and suppression lifecycle rows.
+- Holmesberg product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api true --run-id r3-new-task-time-recovery --out-dir tmp\browser-product-loop\r3-new-task-time-recovery`
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/r3-new-task-time-recovery/result.json`.
+- Holmesberg outcome:
+  route rendering, task creation, explicit deadline binding, overlap conflict,
+  creation-nudge Keep branch, no-deadline branch, custom category branch,
+  terminal deadline rejection, brain dump parse/commit/partial/retry/
+  double-submit, pressure-map read, timer start/pause/resume/stop/navigation
+  persistence, notification lifecycle, export evidence, operator privacy scan,
+  and cleanup all passed.
+- Cleanup proof:
+  the product loop ended with no active Holmesberg timer and no unrendered
+  synthetic creation-nudge exposures.
+- Operator-cookie browser proof:
+  `node scripts\browser_stress_operator_readonly.mjs --frontend http://localhost:3013 --api http://localhost:8000 --proxy-api true --expect-readiness-split --run-id r3-new-task-time-recovery-operator-local-current`
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-r3-new-task-time-recovery-operator-local-current/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, and cohort status remains yellow only for
+  real-data gaps.
+
+Behavior parity statement:
+
+- AM/PM swap suggestion behavior remains same-day only, rejects invalid dates,
+  rejects zero/positive deltas, rejects deltas at or beyond twelve hours, and
+  only suggests when the shifted end is strictly after start.
+- Past-start push behavior still rounds up to the next five-minute mark and
+  advances by five minutes when `now` is already exactly on a five-minute mark.
+- No schema, API payload, task mutation, timer mutation, deadline binding,
+  exposure lifecycle contract, notification lifecycle contract, provider truth,
+  Redis key, or user-data export shape changed.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28807559399`.
+- Head SHA:
+  `0e45c33cc87d5a585cc07979588fa821ebbdac74`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-new-task-time-recovery-0e45c33.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+- Non-blocking CI maintenance warning:
+  GitHub Actions Node 20 deprecation warning is tracked as issue #155.
+- CI/CD documentation issue:
+  issue #160 tracks the proof-collector footgun where short SHAs fail exact-head
+  matching; post-wave docs should show full `git rev-parse HEAD` usage.
+
+Rollback note:
+
+- Revert commit `0e45c33` only. This restores the inline time-recovery
+  suggestion calculations in `NewTaskModal` without touching schemas,
+  production data, exposure lifecycle rows, provider rows, Redis queues,
+  export/delete behavior, task/deadline binding mutation, or user content.
