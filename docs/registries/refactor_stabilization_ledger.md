@@ -6452,3 +6452,111 @@ Rollback note:
   lifecycle rows, provider rows, Redis queues, export/delete behavior,
   task/deadline binding mutation, timer state, auth session data, or user
   content.
+
+## S1c - Local Wrapper Frontend Restart Before Browser Gates
+
+Commit: `4fdf595` (`scripts: restart local frontend before browser gates`).
+
+Changed authority:
+
+- No product, identity, auth, task, timer, deadline, provider, exposure,
+  notification, Redis, schema, ClaimCompiler, AI, or clean-data authority
+  changed.
+- The S1c verification harness now owns a local-topology readiness step before
+  browser gates run after a frontend build.
+
+Removed paths:
+
+- Removed the implicit assumption that a local Next dev server remains valid
+  after the verification stack runs a frontend production build.
+- Removed the failure mode where a local wrapper run could let browser smoke
+  proceed against a dev server whose `.next` artifacts were modified by the
+  build step.
+
+Parked paths:
+
+- Hosted-public deployment proof and build-ID matching remain R5b/R6 work.
+- CI hard-fail lint gating remains parked until existing lint/noise allowlists
+  are encoded.
+- Other verifier issues remain separate tickets when they have different
+  failure modes.
+
+Moved authority:
+
+- No runtime authority moved. This is a verifier/harness sequencing fix only.
+- `run_s1c_verification_stack.ps1` now restarts the local frontend dev server
+  when `-Topology local` and browser checks are enabled.
+- Browser smoke scripts still own browser assertions; topology endpoint still
+  owns frontend/backend topology reporting.
+
+Issue and classification:
+
+- GitHub issue:
+  `https://github.com/Holmesberg/lyra-secretary/issues/162`.
+- Classification:
+  verifier/harness bug and local topology operations bug.
+- Root cause:
+  `run_post_wave_dogfood_loop.ps1` invoked the S1c stack while a local Next dev
+  server was already serving from `.next`; the S1c frontend build rewrote build
+  artifacts, after which the local `/api/topology` browser leg returned 500 and
+  the dev server logged `_buildManifest.js.tmp` ENOENT errors.
+- Resolution:
+  before local browser gates, the S1c stack now stops any process listening on
+  port 3000, starts `npm run dev -- -p 3000` with local topology env vars, and
+  waits for `/api/topology` to report `verified_topology=true`,
+  `topology_class=local`, and `compiled_api_origin=http://localhost:8000`.
+
+Tests and verification:
+
+- PowerShell parser check:
+  `powershell -NoProfile -ExecutionPolicy Bypass -Command '$null = [scriptblock]::Create((Get-Content .\scripts\run_s1c_verification_stack.ps1 -Raw)); Write-Output parsed'`
+  passed.
+- Whitespace:
+  `git diff --check` passed.
+- Full failed-path rerun:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local -Mode standard -IncludeProductLoop -WaveName "s1c-local-wrapper-dev-restart"`
+  passed.
+- Wrapper summary artifact:
+  `tmp/post-wave-dogfood/20260706-213543-s1c-local-wrapper-dev-restart-standard-local/summary.json`.
+- Wrapper outcome:
+  `ok=true`, S1C verification stack passed, operator read-only after mutable
+  pass passed, Holmesberg full product-loop browser dogfood passed, and
+  operator read-only after product-loop dogfood passed.
+- Holmesberg product-loop artifact:
+  `tmp/post-wave-dogfood/20260706-213543-s1c-local-wrapper-dev-restart-standard-local/holmesberg-product-loop/result.json`.
+- Holmesberg outcome:
+  `ok=true`, local topology, cleanup recorded synthetic task/deadline and
+  notification IDs, and no active Holmesberg timer was left behind.
+- Operator-cookie browser proofs:
+  `tmp/operator-readonly-stress-2026-07-06T18-37-33-223Z/result.json`,
+  `tmp/operator-readonly-stress-2026-07-06T18-39-55-092Z/result.json`, and
+  `tmp/operator-readonly-stress-2026-07-06T18-45-34-106Z/result.json`.
+- Operator outcome:
+  all three read-only runs had zero count diffs, zero route count diffs, zero
+  dashboard snapshot diffs, and no warnings or issues.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- The harness change only affects local verification sequencing.
+- Public topology verification behavior is unchanged.
+- Product code, browser scripts, API payloads, mutation paths, database state,
+  Redis state, and export/delete behavior are unchanged.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28818905072`.
+- Head SHA:
+  `4fdf59553d12f248f4fa0664da03ed6e1d0bf877`.
+- Structured proof:
+  `tmp/ci-cd-proof/s1c-local-wrapper-dev-restart-4fdf595.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+
+Rollback note:
+
+- Revert commit `4fdf595` only. This removes the local dev-server restart
+  guard from the S1c stack and restores the prior harness sequencing. No
+  production data, schema, product runtime, exposure lifecycle row, provider row,
+  Redis key, user content, or CI workflow is touched by the rollback.
