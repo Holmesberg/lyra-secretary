@@ -422,6 +422,9 @@ async function resolveAccount(browser, label, cookieHeader, expectOperator) {
   const serverErrors = [];
   const deadlinePreviewResponses = [];
   const deadlinePreviewRequests = [];
+  const biasLookupResponses = [];
+  const biasLookupRequests = [];
+  page.__biasLookupResponses = biasLookupResponses;
   page.on("request", (request) => {
     if (request.url().includes("/v1/parse/deadline-preview")) {
       deadlinePreviewRequests.push({
@@ -431,6 +434,15 @@ async function resolveAccount(browser, label, cookieHeader, expectOperator) {
       });
       if (deadlinePreviewRequests.length > 20) {
         deadlinePreviewRequests.shift();
+      }
+    }
+    if (request.url().includes("/v1/analytics/bias_factor/lookup")) {
+      biasLookupRequests.push({
+        url: request.url(),
+        method: request.method(),
+      });
+      if (biasLookupRequests.length > 40) {
+        biasLookupRequests.shift();
       }
     }
   });
@@ -454,6 +466,22 @@ async function resolveAccount(browser, label, cookieHeader, expectOperator) {
         deadlinePreviewResponses.shift();
       }
     }
+    if (response.url().includes("/v1/analytics/bias_factor/lookup")) {
+      let body = "";
+      try {
+        body = await response.text();
+      } catch (error) {
+        body = `<<unreadable: ${String(error?.message || error).slice(0, 160)}>>`;
+      }
+      biasLookupResponses.push({
+        url: response.url(),
+        status: response.status(),
+        body: body.slice(0, 1600),
+      });
+      if (biasLookupResponses.length > 40) {
+        biasLookupResponses.shift();
+      }
+    }
   });
   const token = await resolveBackendTokenFromContext(context, frontendOrigin);
   const me = await apiFetch(token, "/v1/users/me");
@@ -462,7 +490,17 @@ async function resolveAccount(browser, label, cookieHeader, expectOperator) {
     actual: Boolean(me.is_operator),
     user_ref: userRef(me.user_id),
   });
-  return { context, page, token, me, serverErrors, deadlinePreviewRequests, deadlinePreviewResponses };
+  return {
+    context,
+    page,
+    token,
+    me,
+    serverErrors,
+    deadlinePreviewRequests,
+    deadlinePreviewResponses,
+    biasLookupRequests,
+    biasLookupResponses,
+  };
 }
 
 async function findTaskByTitle(token, title) {
@@ -656,6 +694,10 @@ async function chooseCustomCategory(page, category) {
   ], category);
 }
 
+async function chooseNudgeEligibleCategory(page) {
+  await chooseCustomCategory(page, `dogfood_nudge_${runKey.slice(0, 24)}`);
+}
+
 async function waitForDeadlineSuggestion(page, title, timeout = 20_000) {
   const startedAt = Date.now();
   const suggestion = page.getByText(/Lyra thinks this binds to/i).first();
@@ -711,6 +753,7 @@ async function createTaskThroughUi(page, token, deadline) {
     (p) => p.getByRole("dialog", { name: /New task/i }).locator('input[type="number"]').nth(1),
     (p) => p.locator('input[type="number"]').nth(1),
   ], "0");
+  await chooseNudgeEligibleCategory(page);
 
   const suggestion = page.getByText(/Lyra thinks this binds to/i).first();
   const sawSuggestion = await suggestion.isVisible({ timeout: 8_000 }).catch(() => false);
@@ -768,10 +811,24 @@ async function createTaskThroughUi(page, token, deadline) {
       .first()
       .innerText({ timeout: 3_000 })
       .catch(() => "");
-    addCheck("creation nudge modal renders when research prior text is visible", (
-      /Research prior/i.test(modalText)
-      && /Use\s+\d+\s*min/i.test(modalText)
-    ), { modal_text: modalText.slice(0, 1000) });
+    const latestLookup = [...(page.__biasLookupResponses || [])]
+      .reverse()
+      .find((entry) => entry.url.includes("task") || entry.body.includes("task.creation_nudge") || entry.body.includes("rule11_no_nudge_control_day"));
+    let latestLookupBody = null;
+    if (latestLookup?.body?.startsWith("{")) {
+      latestLookupBody = JSON.parse(latestLookup.body);
+    }
+    if (latestLookupBody?.suppressed_reason === "rule11_no_nudge_control_day") {
+      addGated("creation nudge use branch", "Rule 11 no-nudge control active for Holmesberg/task.creation_nudge");
+    } else {
+      addCheck("creation nudge modal renders when research prior text is visible", (
+        /Research prior/i.test(modalText)
+        && /Use\s+\d+\s*min/i.test(modalText)
+      ), {
+        modal_text: modalText.slice(0, 1000),
+        latest_lookup: latestLookup || null,
+      });
+    }
   }
 
   await clickAny(page, "create task", [
@@ -837,6 +894,7 @@ async function createSoftConflictTaskThroughUi(page, token) {
     (p) => p.getByRole("dialog", { name: /New task/i }).locator('input[type="number"]').nth(1),
     (p) => p.locator('input[type="number"]').nth(1),
   ], "0");
+  await chooseNudgeEligibleCategory(page);
 
   const keepNudge = page
     .locator('[data-testid="new-task-nudge-keep"], button:has-text("Keep ")')
@@ -2230,6 +2288,8 @@ async function main() {
       diagnostics: {
         deadline_preview_requests: account.deadlinePreviewRequests,
         deadline_preview_responses: account.deadlinePreviewResponses,
+        bias_lookup_requests: account.biasLookupRequests,
+        bias_lookup_responses: account.biasLookupResponses,
       },
       cleanup: {
         task_ids: [...cleanup.tasks],
@@ -2267,6 +2327,8 @@ async function main() {
       diagnostics: {
         deadline_preview_requests: account?.deadlinePreviewRequests || [],
         deadline_preview_responses: account?.deadlinePreviewResponses || [],
+        bias_lookup_requests: account?.biasLookupRequests || [],
+        bias_lookup_responses: account?.biasLookupResponses || [],
       },
       cleanup: {
         task_ids: [...cleanup.tasks],
