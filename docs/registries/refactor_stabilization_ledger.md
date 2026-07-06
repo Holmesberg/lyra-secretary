@@ -6312,3 +6312,143 @@ Rollback note:
   in Today and Pulse without touching schemas, production data, exposure
   lifecycle rows, provider rows, Redis queues, export/delete behavior,
   task/deadline binding mutation, timer state, or user content.
+
+## R3 - Shared Me Query-Key Adoption
+
+Commit: `68649d1` (`frontend: adopt shared me query key`).
+
+Changed authority:
+
+- No identity, auth, user account, export/delete, archetype, task, timer,
+  deadline, provider, exposure, notification, Redis, schema, clean-data,
+  ClaimCompiler, or AI authority changed.
+- Existing `queryKeys.me` is now used by the remaining active `/v1/users/me`
+  React Query consumers and invalidation sites.
+
+Removed paths:
+
+- Removed raw `["me"]` from the AppLayout `/v1/users/me` query.
+- Removed raw `["me"]` from the AppLayout post-gate refresh invalidation.
+- Removed raw `["me"]` from the Settings archetype `/v1/users/me` query.
+- Removed raw `["me"]` from the Settings archetype refresh invalidation.
+- Removed raw `["me"]` from the archetype insights card query.
+- Removed raw `["me"]` from the archetype survey completion/skip
+  invalidation.
+
+Parked paths:
+
+- Raw `["insights"]`, `["bias_factor", ...]`, `["proximity", ...]`,
+  `["proximity-trend", ...]`, `["calendar-events", ...]`,
+  `["calendar-events-today", ...]`, `["pause-predictions-pending-confirmation"]`,
+  `["notifications-web-pending"]`, and `["user-categories"]` remain parked
+  until their ownership and verification weight are explicit.
+- Domain-wide invalidation helpers remain parked until every dependent cache is
+  named and characterized.
+- Stopwatch controller hooks, NewTaskModal submit/draft extraction, shared
+  brain-dump reducer extraction, pressure-map planning mutation, provider
+  credential mutation, calendar drag/resize mutation, account hard-delete /
+  Redis purge, and OpenClaw pending-drain authority remain gated.
+- The local wrapper build/dev-server sequencing bug is tracked separately as
+  issue `#162` and was not fixed in this seam.
+
+Moved authority:
+
+- No product authority moved. The query-key module names cache keys only.
+- AppLayout still owns the current-user gate and auth-expiry recovery surface.
+- Settings still owns user export/delete UI and survey retake entry points.
+- The backend remains the source of user identity, account, archetype, export,
+  deletion, provider, and authorization truth.
+
+Agent loop notes:
+
+- The mini scout recommended this as the next smallest safe R3 seam after the
+  task-day key factory.
+- The scout classified it as low code risk and medium verification weight
+  because AppLayout is the app current-user gate and Settings sits near
+  export/delete UI.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Frontend typecheck:
+  `cd frontend && npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend production build:
+  `cd frontend && node scripts/clean-next.mjs && npm run build:public` passed.
+- S1C stack partial proof:
+  `tmp/post-wave-dogfood/20260706-211923-r3-me-query-key-standard-local`.
+  The stack passed diff check, authority scan, refactor contract scan, OpenClaw
+  relay hermetic test, Alembic fresh database smoke, and frontend production
+  build before the local topology browser leg failed.
+- Wrapper failure classification:
+  verifier/harness bug and local topology operations bug. The wrapper ran a
+  production build while an existing Next dev server was serving from `.next`,
+  after which `/api/topology` returned 500 and the dev stderr showed
+  `_buildManifest.js.tmp` ENOENT errors. Tracked as issue `#162`.
+- Follow-up local topology proof:
+  after restarting the local dev frontend, `/api/topology` returned 200 with
+  `verified_topology=true`, frontend origin `http://localhost:3000`, API origin
+  `http://localhost:8000`, and build id `local-current`.
+- Multi-account browser smoke:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_multi_account_browser_smoke.ps1 -Topology local`
+  passed for operator and Holmesberg.
+- Holmesberg product-loop proof:
+  `tmp/browser-product-loop/r3-me-query-key/result.json`.
+- Holmesberg outcome:
+  route rendering, Settings rendering, Insights rendering, deadline creation and
+  cleanup, explicit deadline binding, overlap conflict, creation-nudge Keep
+  branch, no-deadline branch, custom category branch, pick-another branch,
+  terminal deadline rejection, brain dump parse/commit/partial/retry/double
+  submit, pressure-map read, timer start/pause/resume/stop/navigation
+  persistence, notification lifecycle, export evidence, operator privacy scan,
+  and cleanup all passed.
+- Cleanup proof:
+  the product loop ended with no active Holmesberg timer and no unrendered
+  synthetic creation-nudge exposures; synthetic task, deadline, and notification
+  IDs were recorded in the proof artifact.
+- Operator-cookie browser proof:
+  `tmp/operator-readonly-stress-2026-07-06T18-27-51-109Z/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_blockers=[]`,
+  `exposure_without_render_count=0`, and cohort status remains yellow only for
+  real-data gaps.
+
+Behavior parity statement:
+
+- `queryKeys.me` is exactly `["me"]`.
+- AppLayout, Settings, archetype insights, and archetype survey invalidation
+  use the same tuple value as before.
+- No query function, mutation payload, API path, auth recovery behavior,
+  current-user gate, survey submit/skip behavior, export/delete behavior,
+  provider behavior, task/timer/deadline behavior, exposure lifecycle behavior,
+  notification lifecycle behavior, Redis key, or export shape changed.
+
+Verifier and issue notes:
+
+- Issue `#162` records the local wrapper build/dev-server sequencing failure:
+  `https://github.com/Holmesberg/lyra-secretary/issues/162`.
+- The product loop continued to record expected/gated states: Holmesberg
+  onboarding gate skip, deadline suggestion fallback, Today visibility fallback
+  for some branch assertions, brain-dump parser normalization, pressure-map
+  safe-mode gate, provider credential mutation gate, account delete/purge gate,
+  calendar drag/resize manual gate, and OpenClaw pending-drain authority gate.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28814163084`.
+- Head SHA:
+  `68649d1d16c424fad9252eda2457e4b9d54cc24d`.
+- Structured proof:
+  `tmp/ci-cd-proof/r3-me-query-key-68649d1.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+
+Rollback note:
+
+- Revert commit `68649d1` only. This restores the raw `["me"]` arrays in the
+  touched frontend surfaces without touching schemas, production data, exposure
+  lifecycle rows, provider rows, Redis queues, export/delete behavior,
+  task/deadline binding mutation, timer state, auth session data, or user
+  content.
