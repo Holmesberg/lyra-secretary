@@ -6919,3 +6919,62 @@ Rollback note:
   major versions and their warnings. No runtime code, production data, schema,
   exposure row, provider row, Redis key, user content, or browser verifier is
   touched by rollback.
+
+## CI/CD - Wave Branch Trigger Policy
+
+Commit: current commit (`ci: run workflow on wave branches`).
+
+Changed authority:
+
+- No product, task, timer, deadline, provider, exposure, notification, schema,
+  Redis, ClaimCompiler, AI, clean-data, or browser-verifier authority changed.
+- CI now runs automatically on pushes to `wave-*` branches in addition to
+  `main`, pull requests to `main`, and manual dispatch.
+
+Removed paths:
+
+- Removed the need to manually dispatch CI after every pushed wave seam on this
+  branch family.
+- Removed the ambiguous `no_matching_run_for_head` proof state for ordinary
+  `wave-*` branch pushes after this commit lands.
+
+Parked paths:
+
+- Pull-request policy remains unchanged: PR checks still target `main`.
+- Hosted-public build-ID matching remains R6 work.
+
+Moved authority:
+
+- No runtime authority moved.
+- GitHub Actions now owns automatic hosted proof for wave-branch pushes.
+
+Issue and classification:
+
+- GitHub issue:
+  `https://github.com/Holmesberg/lyra-secretary/issues/157`.
+- Classification:
+  CI/CD operations policy gap.
+- Root cause:
+  the refactor loop required hosted CI proof after pushed seams, while the
+  workflow only auto-triggered on `main` pushes and `main` pull requests.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check -- .github\workflows\ci.yml` must pass.
+- Hosted CI proof:
+  the first push of this commit to the current `wave-*` branch must create an
+  automatic `push`-event CI run for the exact head SHA.
+
+Behavior parity statement:
+
+- User-visible app behavior is unchanged.
+- CI will run more often on wave branches, which is intentional for
+  freeze-closure proof discipline.
+
+Rollback note:
+
+- Revert the wave-trigger commit only. This restores manual-dispatch-only CI
+  proof for wave branches. No runtime code, production data, schema, exposure
+  row, provider row, Redis key, user content, or browser verifier is touched by
+  rollback.
