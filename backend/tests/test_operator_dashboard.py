@@ -252,9 +252,17 @@ def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
     assert body["cohort_readiness"]["cohort_green"] is False
     assert body["cohort_readiness"]["cohort_status"] == "yellow"
     assert "no_closed_sessions_last_14d" in body["cohort_readiness"]["cohort_evidence_gaps"]
-    assert body["cohort_readiness"]["controlled_evidence_collection_allowed"] is False
+    assert body["cohort_readiness"]["controlled_evidence_collection_allowed"] is True
+    assert (
+        body["cohort_readiness"]["controlled_evidence_collection_reason"]
+        == "implementation_green_but_only_real_data_volume_missing"
+    )
     issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
     assert "notification_source_freshness_not_instrumented" in issue_ids
+    assert (
+        "notification_source_freshness_not_instrumented"
+        in body["cohort_readiness"]["cohort_evidence_gaps"]
+    )
 
 
 def test_operator_dashboard_provider_integrity_keeps_provider_completion_as_candidate(client, db):

@@ -976,7 +976,8 @@ def operator_dashboard_v12(
             if bug_watchlist[key] != "pass":
                 cohort_evidence_gaps.append(f"{key}_not_pass")
 
-        cohort_gap_ids = list(dict.fromkeys([*cohort_evidence_gaps, *warnings]))
+        blocking_cohort_gap_ids = list(dict.fromkeys(cohort_evidence_gaps))
+        cohort_gap_ids = list(dict.fromkeys([*blocking_cohort_gap_ids, *warnings]))
         insufficient_real_data_gaps = {
             "no_closed_sessions_last_14d",
             "timer_closure_rate_not_available",
@@ -987,8 +988,8 @@ def operator_dashboard_v12(
         only_insufficient_real_data = (
             implementation_green
             and not cohort_green
-            and bool(cohort_gap_ids)
-            and set(cohort_gap_ids).issubset(insufficient_real_data_gaps)
+            and bool(blocking_cohort_gap_ids)
+            and set(blocking_cohort_gap_ids).issubset(insufficient_real_data_gaps)
         )
 
         minimum_fix_set = list(dict.fromkeys(readiness_blockers[:]))

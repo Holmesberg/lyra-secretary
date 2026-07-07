@@ -7087,7 +7087,7 @@ Rollback note:
 
 ## Freeze Closure - Operational Danger And Proof Discipline
 
-Commit: pending commit (`docs: operationalize refactor danger gates`).
+Commit: `61c92e5` (`docs: operationalize refactor danger gates`).
 
 Changed authority:
 
@@ -7130,9 +7130,13 @@ Issue and classification:
 Tests and verification:
 
 - Whitespace:
-  `git diff --check` must pass.
+  `git diff --check` passed.
 - Runtime behavior:
   not applicable; docs-only change.
+- CI/CD:
+  GitHub Actions CI passed for exact SHA
+  `61c92e53d332b0b8808d1781006b8f260aabc503`;
+  artifact: `tmp/ci-cd-proof/danger-gates-61c92e5.json`.
 
 Behavior parity statement:
 
@@ -7145,3 +7149,63 @@ Rollback note:
 - Revert this docs/runbook commit only. This restores the prior plan wording.
   No runtime code, production data, schema, exposure row, provider row, Redis
   key, user content, or CI workflow is touched by rollback.
+
+## R2 Cockpit - Controlled Evidence Collection Warning Semantics
+
+Commit: pending commit (`operator: allow controlled evidence collection with nonblocking warnings`).
+
+Changed authority:
+
+- `/operator` readiness semantics now distinguish cohort evidence blockers
+  from nonblocking warnings when deciding whether controlled evidence
+  collection is allowed.
+- Warnings still appear in the cockpit and in `cohort_evidence_gaps`, but they
+  no longer veto the narrow alpha exception when the only cohort blockers are
+  missing real usage data.
+
+Removed paths:
+
+- Removed the accidental path where an instrumentation warning could make
+  controlled evidence collection look forbidden even though implementation was
+  green and only real closed-loop data was missing.
+
+Parked paths:
+
+- No cohort expansion, marketing launch, AI synthesis, new user-facing insight,
+  schema migration, production repair, or hosted-public mutable dogfood is
+  authorized by this seam.
+
+Moved authority:
+
+- The controlled evidence collection exception remains owned by the operator
+  cockpit readiness contract in `backend/app/api/v1/endpoints/operator.py`.
+- Cohort expansion authority still requires `cohort_green` or an explicit
+  controlled evidence-collection alpha decision.
+
+Issue and classification:
+
+- Classification:
+  operator cockpit semantics bug.
+- GitHub issue:
+  #163, to be closed after commit/push/CI proof.
+
+Tests and verification:
+
+- Targeted backend:
+  from `backend/`, `..\.venv311\Scripts\python.exe -m pytest
+  tests\test_operator_dashboard.py -q` passed after correcting the invocation
+  to the repo's Python 3.11 venv and backend working directory.
+
+Behavior parity statement:
+
+- User product flows are unchanged.
+- The operator dashboard becomes more faithful to the freeze-closure plan: it
+  can show implementation green, cohort yellow, visible warnings, and controlled
+  evidence collection allowed at the same time.
+
+Rollback note:
+
+- Revert this cockpit commit only. This restores the previous stricter
+  controlled evidence flag behavior. No schema, production data, exposure rows,
+  provider rows, Redis keys, user content, or public deployment topology are
+  touched.
