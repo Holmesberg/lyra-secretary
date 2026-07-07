@@ -6775,3 +6775,90 @@ Rollback note:
   code, production data, schema, exposure row, notification lifecycle row,
   provider row, Redis key, user content, or browser verifier is touched by the
   rollback.
+
+## R5b - Public Frontend Restart Compatibility Guard
+
+Commit: current commit (`ops: guard stale public frontend restart path`).
+
+Changed authority:
+
+- `scripts\restart_frontend_wsl.ps1` remains the only authoritative public
+  frontend restart path.
+- `scripts\restart_public_frontend.ps1` is now a compatibility wrapper only:
+  it warns, forwards supported flags to the authoritative WSL script, and can
+  dry-run delegation without restarting anything.
+- Deployment documentation now explicitly states that
+  `restart_public_frontend.ps1` is not a separate restart authority.
+
+Removed paths:
+
+- Removed the stale Windows-hosted public frontend behavior from
+  `restart_public_frontend.ps1`.
+- Removed the path that could stop a Windows port-3000 process, start
+  `npm run start:public` in Windows, and then claim public topology proof while
+  Cloudflare was expected to reach the WSL tmux process.
+
+Parked paths:
+
+- Hosted-public build-ID matching remains R6 work.
+- Public domain/brand rename remains separate from this ops safety seam.
+- GitHub Actions Node 20 deprecation-warning cleanup remains tracked in issue
+  #155.
+
+Moved authority:
+
+- No product runtime authority moved.
+- Public frontend restart authority is now sealed to
+  `scripts\restart_frontend_wsl.ps1`.
+- The old public restart filename remains available only to preserve command
+  compatibility and produce an explicit warning.
+
+Issue and classification:
+
+- GitHub issue:
+  `https://github.com/Holmesberg/lyra-secretary/issues/158`.
+- Classification:
+  topology/deployment operations bug.
+- Root cause:
+  the old script name sounded authoritative while starting a Windows frontend
+  process that was not the documented WSL/tmux public runtime.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check -- scripts\restart_public_frontend.ps1 docs\deployment_architecture.md`
+  passed.
+- PowerShell parser:
+  `Parser::ParseFile` passed for `scripts\restart_public_frontend.ps1`.
+- Dry-run delegation:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\restart_public_frontend.ps1 -NoBuild -SkipPublicCheck -DryRun`
+  printed the delegated `restart_frontend_wsl.ps1` command and did not restart
+  the frontend.
+- Browser/operator proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local -Mode quick -WaveName "ops-public-frontend-restart-wrapper"`
+  passed.
+- Wrapper summary artifact:
+  `tmp/post-wave-dogfood/20260707-152509-ops-public-frontend-restart-wrapper-quick-local/summary.json`.
+- Operator-cookie browser proof:
+  `tmp/operator-readonly-stress-2026-07-07T12-26-54-469Z/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs, no
+  issues, `implementation_green=true`, and `exposure_without_render_count=0`.
+- Non-blocking warning:
+  desktop `/operator` exceeded the existing latency budget; this is tracked by
+  issue #150 and did not affect the restart authority fix.
+
+Behavior parity statement:
+
+- The authoritative public restart behavior is unchanged because
+  `restart_frontend_wsl.ps1` is unchanged.
+- Any caller using the old script path now reaches the authoritative WSL restart
+  path instead of accidentally starting an alternate Windows public frontend.
+- No user-facing app behavior changed.
+
+Rollback note:
+
+- Revert the ops guard commit only. This restores the old Windows public
+  frontend restart behavior and removes the deployment-doc warning. No schema,
+  production data, exposure row, notification row, provider row, Redis key,
+  user content, CI workflow, or product runtime code is touched by rollback.

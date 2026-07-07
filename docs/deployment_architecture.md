@@ -156,6 +156,11 @@ powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1
 node scripts/verify_runtime_topology.mjs --topology public
 ```
 
+`scripts/restart_public_frontend.ps1` is not a separate restart authority. It
+is kept only as a compatibility wrapper that warns and delegates to
+`scripts/restart_frontend_wsl.ps1`; use `-DryRun` to verify delegation without
+restarting the frontend.
+
 Do not use a Windows port-3000 frontend to prove public health while the tunnel
 is served from WSL. If both Windows and WSL have frontend processes, stop and
 verify which process Cloudflare is actually reaching.
