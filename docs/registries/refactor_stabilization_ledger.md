@@ -6862,3 +6862,60 @@ Rollback note:
   frontend restart behavior and removes the deployment-doc warning. No schema,
   production data, exposure row, notification row, provider row, Redis key,
   user content, CI workflow, or product runtime code is touched by rollback.
+
+## CI/CD - GitHub Actions Node 24 Compatibility
+
+Commit: current commit (`ci: update github actions node runtime majors`).
+
+Changed authority:
+
+- No product, task, timer, deadline, provider, exposure, notification, schema,
+  Redis, ClaimCompiler, AI, clean-data, or browser-verifier authority changed.
+- CI workflow action versions now use Node 24-compatible major releases:
+  `actions/checkout@v5`, `actions/setup-node@v5`, and
+  `actions/setup-python@v6`.
+
+Removed paths:
+
+- Removed the Node 20-hosted action versions that caused GitHub Actions to emit
+  deprecation annotations while forcing the actions onto Node 24.
+
+Parked paths:
+
+- Wave-branch automatic CI trigger policy remains tracked in issue #157.
+- Hosted-public build-ID matching remains R6 work.
+
+Moved authority:
+
+- No runtime authority moved.
+- Hosted CI remains the proof authority for backend tests, frontend
+  lint/typecheck/build, and static topology contract.
+
+Issue and classification:
+
+- GitHub issue:
+  `https://github.com/Holmesberg/lyra-secretary/issues/155`.
+- Classification:
+  CI/CD operations maintenance warning.
+- Root cause:
+  the workflow used action majors that targeted Node 20 after GitHub Actions
+  began moving hosted action execution to Node 24.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check -- .github\workflows\ci.yml` passed.
+- Hosted CI proof must pass on the exact commit before issue #155 is closed.
+
+Behavior parity statement:
+
+- CI behavior should remain equivalent except that the GitHub-hosted action
+  runtime deprecation annotations should disappear.
+- User-visible app behavior is unchanged.
+
+Rollback note:
+
+- Revert the CI action-version commit only. This restores the previous action
+  major versions and their warnings. No runtime code, production data, schema,
+  exposure row, provider row, Redis key, user content, or browser verifier is
+  touched by rollback.
