@@ -9,7 +9,8 @@
     "build:public": "node scripts/public-topology.mjs build",
     "start": "node --dns-result-order=ipv4first --no-network-family-autoselection node_modules/next/dist/bin/next start",
     "start:public": "node scripts/public-topology.mjs start",
-    "lint": "next lint"
+    "typecheck": "tsc --noEmit --pretty false",
+    "lint": "npm run typecheck"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.1.2",
