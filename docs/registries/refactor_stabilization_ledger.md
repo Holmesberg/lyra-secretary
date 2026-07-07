@@ -6560,3 +6560,126 @@ Rollback note:
   guard from the S1c stack and restores the prior harness sequencing. No
   production data, schema, product runtime, exposure lifecycle row, provider row,
   Redis key, user content, or CI workflow is touched by the rollback.
+
+## S1c - Web Notification Host Refetch And Render-Proof Gate
+
+Commit: `06c1557` (`frontend: refetch web notifications promptly`).
+
+Changed authority:
+
+- No task, timer, deadline, provider, schema, Redis, ClaimCompiler, AI, or
+  clean-data authority changed.
+- Web notification render truth remains owned by the browser host and web
+  notification acknowledgement endpoint.
+- The browser product-loop verifier now treats browser render as required
+  evidence instead of substituting an API `rendered` acknowledgement when the
+  toast is not observed.
+
+Removed paths:
+
+- Removed the 30-second pending-notification polling gap from the app shell by
+  refetching pending web notifications on route changes and every 5 seconds
+  while the host is mounted.
+- Removed the verifier fallback that could turn a missed browser toast into a
+  synthetic `rendered` lifecycle acknowledgement.
+
+Parked paths:
+
+- Domain/brand rename work remains separate from this S1c seam.
+- Notification delivery load tuning can be revisited after alpha traffic exists.
+- Hosted-public deployment proof and build-ID matching remain R5b/R6 work.
+
+Moved authority:
+
+- No runtime authority moved.
+- The web notification host still decides whether a pending item can render,
+  then records `rendered`, `dismissed`, `acted`, `expired`, or
+  `lost_unrendered` through the existing lifecycle API.
+- The dogfood verifier now cleans a missed pending synthetic row with
+  `lost_unrendered` and fails the render proof instead of recording a false
+  render.
+
+Issue and classification:
+
+- GitHub issue:
+  `https://github.com/Holmesberg/lyra-secretary/issues/161`.
+- Classification:
+  product timing bug plus verifier/harness integrity bug.
+- Root cause:
+  the host used `staleTime=10000` and `refetchInterval=30000`, so a freshly
+  queued web notification could remain invisible to the browser inside the
+  12-second dogfood window after the shell had recently fetched an empty pending
+  list.
+- Resolution:
+  the host now uses `staleTime=0`, `refetchInterval=5000`,
+  `refetchOnMount="always"`, `refetchOnReconnect=true`, and a route-change
+  refetch keyed by the current pathname.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Frontend typecheck:
+  `npm exec tsc -- --noEmit --pretty false` passed.
+- Frontend build:
+  `node scripts/clean-next.mjs; npm run build:public` passed.
+- Script syntax:
+  `node --check scripts\browser_notification_lifecycle_dogfood.mjs` and
+  `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs` passed.
+- Backend notification lifecycle tests:
+  `pytest tests/test_notification_queue_openclaw_mirror.py::test_web_pending_reserves_and_render_ack_marks_only_rendered tests/test_notification_queue_openclaw_mirror.py::test_lost_unrendered_ack_does_not_mark_rendered tests/test_notification_queue_openclaw_mirror.py::test_notification_action_and_expiry_update_after_render_removal tests/test_notification_queue_openclaw_mirror.py::test_linked_notification_render_records_exposure_once -q`
+  passed.
+- Static authority scans:
+  `scripts\scan_refactor_contracts.py --fail-on-errors` and
+  `scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed.
+- Full post-wave wrapper:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local -Mode standard -IncludeProductLoop -WaveName "s1c-notification-host-refetch"`
+  passed.
+- Wrapper summary artifact:
+  `tmp/post-wave-dogfood/20260707-145252-s1c-notification-host-refetch-standard-local/summary.json`.
+- Holmesberg product-loop artifact:
+  `tmp/post-wave-dogfood/20260707-145252-s1c-notification-host-refetch-standard-local/holmesberg-product-loop/result.json`.
+- Holmesberg notification proof:
+  the synthetic resume-prediction notification appeared in web pending, rendered
+  as a browser toast, disappeared from pending without fallback rendered ack,
+  and exported terminal lifecycle rows for dismissed, acted, and expired
+  synthetic notifications.
+- Cleanup proof:
+  Holmesberg cleanup recorded synthetic task, deadline, and notification IDs and
+  left no active Holmesberg timer.
+- Operator-cookie browser proof:
+  `tmp/operator-readonly-stress-2026-07-07T12-02-43-088Z/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs, no
+  warnings, no issues, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- User-visible notification content, notification payload shape, endpoint
+  paths, lifecycle event names, export shape, Redis queue semantics, task/timer
+  behavior, provider behavior, and exposure render authority are unchanged.
+- The only app behavior change is fresher web pending-notification polling while
+  the app shell is open.
+- The only verifier behavior change is stricter proof: browser render must be
+  observed for render truth, and missed synthetic rows use `lost_unrendered`
+  cleanup.
+
+CI/CD proof note:
+
+- GitHub Actions run:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/28864746303`.
+- Head SHA:
+  `06c155786f02be86ae0a259fc33357e9d1a252fc`.
+- Structured proof:
+  `tmp/ci-cd-proof/s1c-notification-host-refetch-06c1557.json`.
+- CI jobs passed:
+  backend tests, frontend build, and topology contract.
+
+Rollback note:
+
+- Revert commit `06c1557` only. This restores the previous 30-second polling
+  cadence and the previous verifier fallback. No schema, production data,
+  exposure row, notification lifecycle row, provider row, Redis key, user
+  content, or CI workflow is touched by the rollback.
