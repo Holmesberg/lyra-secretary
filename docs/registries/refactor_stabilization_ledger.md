@@ -7225,7 +7225,7 @@ Rollback note:
 
 ## S1c Hardening - CI Authority Gates And Session Write Detection
 
-Commit: pending commit (`ci: enforce s1c static authority gates`).
+Commit: `ee605a8` (`ci: enforce s1c static authority gates`).
 
 Changed authority:
 
@@ -7266,7 +7266,7 @@ Issue and classification:
 - Classification:
   S1c measurement/verifier gap and CI/CD operations gap.
 - GitHub issue:
-  #164, to be closed after commit/push/CI proof.
+  #164, closed after commit/push/CI proof.
 
 Tests and verification:
 
@@ -7279,7 +7279,11 @@ Tests and verification:
   `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_alembic_fresh_smoke.ps1`;
   all passed.
 - Pending hosted proof after push:
-  exact-SHA GitHub Actions CI including the new `s1c-static-gates` job.
+- Hosted proof:
+  GitHub Actions CI passed for exact SHA
+  `ee605a821df4f9554505dc3295825edbda7305fe`, including the new
+  `s1c-static-gates` job; artifact:
+  `tmp/ci-cd-proof/s1c-static-gates-ee605a8.json`.
 
 Behavior parity statement:
 
