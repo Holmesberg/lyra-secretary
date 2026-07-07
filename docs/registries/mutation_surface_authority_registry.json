@@ -1,6 +1,6 @@
 {
   "schema_version": "mutation_surface_authority_registry_v1",
-  "status": "s1a_report_only",
+  "status": "s1c_hard_gate_for_missing_owners_and_worker_write_drift",
   "freeze_boundary": "This registry documents current and intended authority. It does not authorize new runtime behavior, schema migration, AI synthesis, or feature work.",
   "source_docs": [
     "docs/AUTHORITY.md",
@@ -17,8 +17,8 @@
   ],
   "scan_contract": {
     "script": "scripts/scan_authority_surfaces.py",
-    "mode": "report_only_until_s1c",
-    "hard_fail_condition_later": "S1c may promote selected missing-owner findings to CI failures after owners and exceptions are settled."
+    "mode": "hard_fail_missing_owners_and_worker_write_drift",
+    "hard_fail_condition": "CI and local S1c verification fail on missing owners or worker write drift after owner exceptions are encoded."
   },
   "surfaces": [
     {
@@ -261,6 +261,19 @@
         "none during dashboard reads"
       ],
       "notes": "Operator/admin reads must not mutate last activity, notification state, exposure state, user metrics, task/session/provider state, or Redis runtime state."
+    },
+    {
+      "id": "security_audit_authority",
+      "truth_classes": ["security_audit_event", "governance_audit_event"],
+      "authority_level": "transport",
+      "owner": "Security audit append-only logger",
+      "paths": [
+        "backend/app/services/security_audit.py"
+      ],
+      "allowed_writes": [
+        "append-only redacted security/governance audit events"
+      ],
+      "notes": "Security audit events are not behavioral telemetry and must not feed Cortex, clean-data profiles, ClaimCompiler, adaptive scheduling, productivity claims, or user behavior analysis."
     },
     {
       "id": "jarvis_compatibility_surface",

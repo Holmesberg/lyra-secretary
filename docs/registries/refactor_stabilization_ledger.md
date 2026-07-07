@@ -7152,7 +7152,7 @@ Rollback note:
 
 ## R2 Cockpit - Controlled Evidence Collection Warning Semantics
 
-Commit: pending commit (`operator: allow controlled evidence collection with nonblocking warnings`).
+Commit: `cd244e2` (`operator: allow controlled evidence collection with nonblocking warnings`).
 
 Changed authority:
 
@@ -7187,7 +7187,7 @@ Issue and classification:
 - Classification:
   operator cockpit semantics bug.
 - GitHub issue:
-  #163, to be closed after commit/push/CI proof.
+  #163, closed after commit/push/CI proof.
 
 Tests and verification:
 
@@ -7195,6 +7195,19 @@ Tests and verification:
   from `backend/`, `..\.venv311\Scripts\python.exe -m pytest
   tests\test_operator_dashboard.py -q` passed after correcting the invocation
   to the repo's Python 3.11 venv and backend working directory.
+- Static authority:
+  `python scripts\scan_authority_surfaces.py --fail-on-missing
+  --fail-on-worker-write-drift` passed.
+- Browser proof:
+  local operator read-only browser stress passed with zero count diffs,
+  implementation green, cohort yellow, and `exposure_without_render_count=0`;
+  artifact:
+  `tmp/operator-readonly-stress-2026-07-07T23-41-33-322Z/result.json`.
+- CI/CD:
+  GitHub Actions CI passed for exact SHA
+  `cd244e27eb1619d8aea6a17ef90bb558ec2bc394`;
+  artifact:
+  `tmp/ci-cd-proof/operator-controlled-evidence-cd244e2.json`.
 
 Behavior parity statement:
 
@@ -7209,3 +7222,74 @@ Rollback note:
   controlled evidence flag behavior. No schema, production data, exposure rows,
   provider rows, Redis keys, user content, or public deployment topology are
   touched.
+
+## S1c Hardening - CI Authority Gates And Session Write Detection
+
+Commit: pending commit (`ci: enforce s1c static authority gates`).
+
+Changed authority:
+
+- The mutation surface registry is now an active S1c hard gate for missing
+  owners and worker write drift, not only a report-only inventory.
+- GitHub Actions CI now runs S1c static gates in addition to backend tests,
+  frontend build/typecheck, and topology contract proof.
+- The authority scanner now detects SQLAlchemy `session.add(...)`,
+  `session.flush(...)`, `session.merge(...)`, `session.execute(...)`, and
+  `session.commit(...)` write idioms, not only `db.commit(...)`.
+
+Removed paths:
+
+- Removed a false-negative path where append-only security audit writes were
+  invisible to the mutation-surface scan.
+- Removed the CI/CD gap where a pushed refactor could pass hosted CI without
+  running local S1c authority/refactor gates.
+
+Parked paths:
+
+- No new mutation authority is created.
+- Security audit rows remain append-only governance transport only and remain
+  forbidden from Cortex, clean-data profiles, ClaimCompiler, adaptive
+  scheduling, productivity claims, or user behavior analysis.
+- Generic lint expansion, broader cosmetic cleanup, and backend god-module
+  extraction remain parked until the S1c hard gates are stable.
+
+Moved authority:
+
+- `backend/app/services/security_audit.py` is explicitly owned by
+  `security_audit_authority` in the mutation surface registry.
+- CI/CD now participates in S1c proof authority by enforcing:
+  authority surface scan, refactor contract scan, OpenClaw relay hermetic test,
+  and Alembic fresh database smoke.
+
+Issue and classification:
+
+- Classification:
+  S1c measurement/verifier gap and CI/CD operations gap.
+- GitHub issue:
+  #164, to be closed after commit/push/CI proof.
+
+Tests and verification:
+
+- Local proof:
+  `git diff --check`;
+  `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  `python -m py_compile scripts\scan_authority_surfaces.py scripts\scan_refactor_contracts.py`;
+  `python scripts\scan_refactor_contracts.py --fail-on-errors`;
+  `node scripts\test_openclaw_operator_relay.mjs`;
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_alembic_fresh_smoke.ps1`;
+  all passed.
+- Pending hosted proof after push:
+  exact-SHA GitHub Actions CI including the new `s1c-static-gates` job.
+
+Behavior parity statement:
+
+- Runtime product behavior is unchanged.
+- The change only strengthens verification so refactor breakage and authority
+  drift become observable in one standard CI/local proof run.
+
+Rollback note:
+
+- Revert this S1c hardening commit only. This removes the new CI job, restores
+  the prior scanner marker set, and returns the registry to report-only
+  language. No schema, production data, exposure row, provider row, Redis key,
+  user content, or public deployment topology is touched.

@@ -36,6 +36,10 @@ SKIP_PARTS = {
 MARKERS: dict[str, re.Pattern[str]] = {
     "db_commit": re.compile(r"\b(?:self\.)?db\.commit\s*\("),
     "db_delete": re.compile(r"\b(?:self\.)?db\.delete\s*\("),
+    "session_commit": re.compile(r"\b(?:self\.)?session\.commit\s*\("),
+    "session_write": re.compile(
+        r"\b(?:self\.)?session\.(?:add|add_all|bulk_save_objects|execute|flush|merge)\s*\("
+    ),
     "query_delete": re.compile(r"\.delete\s*\(\s*synchronize_session"),
     "redis_delete": re.compile(r"\b(?:client|pipe)\.delete\s*\("),
     "redis_write": re.compile(r"\b(?:client|pipe)\.(?:set|setex|rpush|lpush|hset)\s*\("),
