@@ -6683,3 +6683,95 @@ Rollback note:
   cadence and the previous verifier fallback. No schema, production data,
   exposure row, notification lifecycle row, provider row, Redis key, user
   content, or CI workflow is touched by the rollback.
+
+## CI/CD - Deterministic Frontend Lint Gate
+
+Commit: `6d1f2ea` (`ci: make frontend lint deterministic`).
+
+Changed authority:
+
+- No product, task, timer, deadline, provider, exposure, notification, schema,
+  Redis, ClaimCompiler, AI, or clean-data authority changed.
+- CI now runs a deterministic frontend lint/typecheck leg before the frontend
+  production build.
+- `npm run lint` in `frontend/` now delegates to `npm run typecheck`, which
+  runs `tsc --noEmit --pretty false`.
+
+Removed paths:
+
+- Removed the deprecated interactive `next lint` command from the standard
+  frontend package scripts.
+- Removed the blocker that made frontend lint unusable as unattended CI/CD
+  proof.
+
+Parked paths:
+
+- A full ESLint ownership/configuration pass remains parked until after the
+  freeze-closure gates are stable. The current hard gate is deterministic
+  TypeScript validity, not style linting.
+- GitHub Actions Node 20 deprecation-warning cleanup remains tracked
+  separately in issue #155.
+- Wave-branch CI trigger policy remains tracked separately in issue #157.
+
+Moved authority:
+
+- No runtime authority moved.
+- The frontend package script owns the local lint/typecheck command.
+- The GitHub Actions frontend-build job owns the hosted lint/typecheck proof
+  before build.
+
+Issue and classification:
+
+- GitHub issue:
+  `https://github.com/Holmesberg/lyra-secretary/issues/153`.
+- Classification:
+  CI/CD operations bug plus verifier/harness automation gap.
+- Root cause:
+  `next lint` is deprecated for this Next.js version and opened an interactive
+  ESLint setup prompt instead of checking source in unattended verification.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check -- .github\workflows\ci.yml frontend\package.json`
+  passed.
+- Package metadata:
+  `node -e "JSON.parse(require('fs').readFileSync('frontend/package.json','utf8')); console.log('package json ok')"`
+  passed.
+- Frontend lint/typecheck:
+  `npm run lint` passed and executed `tsc --noEmit --pretty false`.
+- Frontend build:
+  `node scripts\clean-next.mjs; npm run build:public` passed.
+- Initial quick local browser proof:
+  `run_post_wave_dogfood_loop.ps1 -Topology local -Mode quick -WaveName "ci-frontend-lint-gate"`
+  failed at the topology verifier because the pre-existing local frontend
+  returned HTTP 500 from `/api/topology`.
+- Failure classification:
+  topology/verifier setup bug, not a product regression from this CI change.
+  Quick mode assumes local topology is already healthy.
+- Passing browser proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local -Mode standard -WaveName "ci-frontend-lint-gate"`
+  passed.
+- Wrapper summary artifact:
+  `tmp/post-wave-dogfood/20260707-151615-ci-frontend-lint-gate-standard-local/summary.json`.
+- Operator-cookie browser proof:
+  `tmp/operator-readonly-stress-2026-07-07T12-18-34-313Z/result.json`.
+- Operator outcome:
+  zero count diffs, zero route count diffs, zero dashboard snapshot diffs, no
+  warnings, no issues, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- User-visible application behavior is unchanged.
+- Hosted CI now fails earlier if the frontend type system fails.
+- The command named `lint` is intentionally a deterministic typecheck gate for
+  freeze closure; it does not claim ESLint style coverage.
+
+Rollback note:
+
+- Revert commit `6d1f2ea` only. This restores the prior interactive
+  `next lint` script and removes the hosted CI lint/typecheck step. No runtime
+  code, production data, schema, exposure row, notification lifecycle row,
+  provider row, Redis key, user content, or browser verifier is touched by the
+  rollback.
