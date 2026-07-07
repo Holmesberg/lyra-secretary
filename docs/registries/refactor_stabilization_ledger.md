@@ -7084,3 +7084,64 @@ Rollback note:
   copy and old public asset paths. No schema migration, production repair,
   exposure row mutation, provider row mutation, Redis purge, or domain
   migration is part of this seam.
+
+## Freeze Closure - Operational Danger And Proof Discipline
+
+Commit: pending commit (`docs: operationalize refactor danger gates`).
+
+Changed authority:
+
+- No product, task, timer, deadline, provider, exposure, notification, schema,
+  Redis, ClaimCompiler, AI, clean-data, or browser-verifier runtime authority
+  changed.
+- The active freeze-closure plan now defines "danger 3-4/10" as an operational
+  gate instead of an intuitive spaghetti score.
+- The post-wave runbook now treats hosted-public mutable dogfood as optional
+  high-care proof unless test-account cleanup is proven safe.
+
+Removed paths:
+
+- Removed the implicit permission to keep doing R3/R4 cleanup merely because it
+  reduces line count, file count, or apparent surface area.
+
+Parked paths:
+
+- Additional brand/domain migration remains parked until a separate topology
+  and runtime-host plan is authorized.
+- Hosted-public mutable dogfood remains parked unless the mutable test account,
+  unique synthetic prefix, cleanup scope, and rollback path are already proven.
+
+Moved authority:
+
+- Refactor continuation authority now depends on recorded danger delta:
+  improved observability, reversibility, ownership, measurement integrity, or
+  runtime proof.
+- Three consecutive cosmetic-only seams must stop opportunistic R3/R4
+  refactoring and redirect the next pass to public proof, users, or S1c
+  hardening.
+
+Issue and classification:
+
+- No product bug was discovered.
+- Classification:
+  governance/runbook correction to prevent refactor ceremony from displacing
+  product proof.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` must pass.
+- Runtime behavior:
+  not applicable; docs-only change.
+
+Behavior parity statement:
+
+- User-visible app behavior is unchanged.
+- The change only alters how future seams are judged, documented, and allowed
+  to continue.
+
+Rollback note:
+
+- Revert this docs/runbook commit only. This restores the prior plan wording.
+  No runtime code, production data, schema, exposure row, provider row, Redis
+  key, user content, or CI workflow is touched by rollback.

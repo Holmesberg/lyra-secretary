@@ -44,6 +44,11 @@ the delta -> Cortex/analytics -> ClaimCompiler -> exposure chain:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology public -Mode full -IncludeProductLoop -WaveName "wave-name"
 ```
 
+Hosted-public mutable/product-loop dogfood is high-care and optional. Prefer
+local-current mutable dogfood plus hosted-public read-only proof unless the
+public mutable account, cleanup path, and rollback path are already proven
+safe. Do not create public synthetic rows merely to make proof feel complete.
+
 After pushing a seam or wave, add read-only CI/CD proof collection:
 
 ```powershell
@@ -287,6 +292,19 @@ Hosted-public verification must additionally record whether the deployed
 frontend/backend build IDs match the expected commit. If they lag, record the
 lag explicitly instead of treating local-current proof as hosted-public proof.
 
+Hosted-public mutable verification may run only when all of these are true:
+
+- Holmesberg or another explicit non-operator test account is the mutable
+  identity.
+- The run has a unique synthetic prefix and bounded cleanup scope.
+- Cleanup/void proof is expected to run before the wave closes.
+- The operator account remains read-only.
+- The ledger records any residual rows, Redis keys, or gated cleanup as a
+  blocker or explicitly harmless residue.
+
+If these are not true, run hosted-public read-only proof and local-current
+mutable proof instead.
+
 When the public backend is in read-only pressure safe mode,
 `--force-pressure-recovery` may be added to fixture only the pressure-map
 recovery option returned to the browser. The fixture must preserve the real
@@ -395,6 +413,11 @@ The loop fails on:
 - unexpected CI/CD failure, missing required check, or unclassified deployment
   lag for pushed seams/waves.
 
+The loop also fails the refactor strategy, even if commands pass, when three
+consecutive R3/R4 seams are cosmetic-only. A seam is not allowed to count as
+danger reduction unless it improves a gate, proof, owner boundary, rollback
+boundary, issue state, or runtime observability.
+
 The loop does not automatically fail just because `/operator` readiness is
 yellow or red. During freeze closure, readiness may be yellow/red because known
 invariants are still open. It fails if readiness regresses in a way the cockpit
@@ -428,6 +451,7 @@ Every wave or risky PR must record:
 
 - command and mode run;
 - output directory;
+- danger delta: what became more observable, reversible, owned, or provable;
 - changed authority;
 - removed paths;
 - parked paths;

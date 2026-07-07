@@ -83,6 +83,14 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
   retention risk, clean-data impact, burden offset, and sunset criteria.
 - Optimize for information gain per unit user friction; passive/internal signal
   expansion is preferred over expanding the user input surface.
+- Do not continue opportunistic refactors just because surface area can be
+  reduced. If three consecutive seams are cosmetic-only and do not improve a
+  gate, proof, owner boundary, rollback boundary, issue state, or runtime
+  observability, stop refactoring and move to public proof, users, or S1c
+  hardening.
+- Treat hosted-public mutable dogfood as high-care and optional. Prefer
+  local-current mutable proof plus hosted-public read-only proof unless the
+  public test-account cleanup path is already proven safe.
 - Prepare completed repository changes as structured commit buckets, then ask
   the operator for explicit confirmation before any commit, push, pull, merge,
   rebase, stash, or branch switch.

@@ -35,14 +35,24 @@ Current sequence:
 2. R2 operator cockpit trusted/red-for-real.
 3. S1c hardening into gates.
 4. R5a stale docs and authority cleanup before further extraction.
-5. R3/R4 behavior-preserving extraction in small reversible seams.
-6. R5b public copy/runtime runbooks.
+5. R3/R4 behavior-preserving extraction in small reversible seams, only while
+   those seams reduce operational danger.
+6. R5b public proof/runtime runbooks.
 7. R6 final cohort proof or controlled evidence-collection alpha.
 8. Post-freeze computation planning only after R6.
 
 No backend god-module extraction should begin while `/operator` has unresolved
 exposure blockers. A cockpit may be implementation-green while cohort-yellow
 for real-data gaps; do not weaken denominators to force cohort-green.
+
+Do not continue opportunistic cleanup indefinitely. If three consecutive
+frontend/backend seams only reduce apparent surface area and do not reduce
+operational danger, stop R3/R4 refactoring and move to public proof, users, or
+S1c hardening.
+
+Do not perform additional brand/domain migration in this cycle. The current
+runtime host compatibility remains parked until a separate topology/domain plan
+is explicitly authorized.
 
 ---
 
@@ -126,6 +136,42 @@ Browser screenshots explain failures but do not prove behavior. Canonical proof
 comes from backend state, exported evidence, operator invariants, and browser
 behavior. Verifier bugs are first-class bugs and must be classified before
 assuming the product is broken.
+
+## Operational Danger Score
+
+The target "danger 3-4/10" is operational, not intuitive. A seam reduces danger
+only if it improves at least one of these observable properties:
+
+- Breakage observability: a failing behavior becomes caught by a standard
+  verification run, targeted test, static scan, or operator invariant.
+- Reversibility: rollback is smaller, documented, and does not require
+  production data repair.
+- Authority clarity: a mutation, exposure, provider, claim, or clean-data path
+  has one clearer owner and fewer bypasses.
+- Measurement integrity: exposure, clean-data, provenance, or output-surface
+  semantics become harder to misread or overclaim.
+- Runtime proof: local-current, hosted-public, CI/CD, or dogfood proof becomes
+  more current, less ambiguous, or more complete.
+
+Danger is allowed to be scored at 3-4 only when all of these are true:
+
+- `/operator` is implementation-green, with no implementation blockers.
+- `exposure_without_render_count` is zero for actionable render-required
+  surfaces.
+- Operator read-only proof has zero DB/API/Redis count diffs.
+- S1c hard gates pass for the touched surface.
+- CI passes on the exact pushed SHA.
+- Hosted-public proof is current, or deployment lag is explicitly classified.
+- Known high-risk findings are closed or parked with owner, test, artifact, and
+  rollback note.
+- New seams are producing danger reduction, not only cosmetic line-count or
+  file-count reduction.
+
+Cosmetic-only seams include renames, move-only splits, helper extraction, or
+surface-area reduction that does not change any proof, gate, ownership,
+rollback boundary, issue state, or runtime observability. Record each seam's
+danger delta in the stabilization ledger. Three consecutive cosmetic-only seams
+means stop refactoring and switch to public proof, users, or S1c hardening.
 
 ---
 
