@@ -52,7 +52,10 @@ def runtime_requires_strong_jwt_secret() -> bool:
     """
     env = (settings.ENVIRONMENT or "").strip().lower()
     frontend_url = (settings.FRONTEND_URL or "").strip().rstrip("/").lower()
-    return env in PRODUCTION_ENVIRONMENTS or frontend_url == "https://lyraos.org"
+    return env in PRODUCTION_ENVIRONMENTS or frontend_url in {
+        "https://barzakh.app",
+        "https://lyraos.org",
+    }
 
 
 def is_weak_jwt_secret(secret: Optional[str]) -> bool:

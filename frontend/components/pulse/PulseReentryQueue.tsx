@@ -455,7 +455,7 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
                   : "not recorded"}.
               </div>
               <div>Paused: {formatMinutes(resolving.pausedMinutes)}.</div>
-              <div>Lyra will close the session at the time you paused it.</div>
+              <div>Barzakh will close the session at the time you paused it.</div>
             </div>
           }
           onCancel={() => setResolving(null)}

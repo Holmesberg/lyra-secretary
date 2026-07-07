@@ -309,7 +309,7 @@ def start_scheduler():
     scheduler.start()
     logger.info("APScheduler started")
     notify_operator(
-        "APScheduler started with Lyra background jobs loaded.",
+        "APScheduler started with Barzakh background jobs loaded.",
         source="scheduler.health",
         severity="info",
         dedupe_key="scheduler-started",

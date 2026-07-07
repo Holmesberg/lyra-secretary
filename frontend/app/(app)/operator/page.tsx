@@ -303,7 +303,7 @@ export default function OperatorDashboardPage() {
             Cohort readiness
           </h1>
           <p className="mt-1 text-sm text-dust">
-            Can Lyra invite more trusted users today?
+            Can Barzakh invite more trusted users today?
           </p>
         </div>
         <Button

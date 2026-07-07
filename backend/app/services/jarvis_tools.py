@@ -239,7 +239,7 @@ READ_TOOLS: list[dict[str, Any]] = [
             "name": "query_dark_columns",
             "description": (
                 "Targeted aggregation over a specific 'dark' column (data "
-                "Lyra collects but doesn't normally surface). Whitelist-"
+                "Barzakh collects but doesn't normally surface). Whitelist-"
                 "scoped — only columns from docs/data_utilization_inventory_"
                 "2026_05_02.md PROMOTE-TO-JARVIS list are queryable. Returns "
                 "distribution / percentiles / counts (never raw rows). Use "
@@ -597,7 +597,7 @@ def _exec_get_pattern_summary(db: Session, user_id: int, args: dict) -> dict:
     """Multi-dimensional cross-cut for analytical questions.
 
     Single SQL window, then in-Python aggregation. Returns a structured dict
-    Lyra can read directly to surface both obvious (largest effect size) and
+    Barzakh can read directly to surface both obvious (largest effect size) and
     subtle (non-headline) patterns. Designed to replace the 4-6 tool chain
     Llama 3.3 70B was previously firing for 'pattern' questions.
 

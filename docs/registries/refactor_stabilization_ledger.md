@@ -6978,3 +6978,109 @@ Rollback note:
   proof for wave branches. No runtime code, production data, schema, exposure
   row, provider row, Redis key, user content, or browser verifier is touched by
   rollback.
+
+## App-Facing Rebrand - Barzakh
+
+Commit: this commit (`rebrand app-facing surfaces to Barzakh`).
+
+Changed authority:
+
+- Product brand authority moves from visible `Lyra` / `LyraOS` copy to
+  `Barzakh` across app shell, landing page, onboarding, settings, integration
+  copy, public policy pages, public AI-readable files, notification copy,
+  email copy, and browser-verifier selectors.
+- Runtime topology, current public host compatibility, lower-case data
+  contracts, env vars, cache keys, and old incident repair scripts do not move
+  authority in this seam.
+
+Removed paths:
+
+- Removed public static brand assets:
+  `frontend/public/lyraos-logo.png`,
+  `frontend/public/lyraos-logo-mark.png`, and
+  `frontend/public/lyraos.md`.
+- Added replacement public assets/brief:
+  `frontend/public/barzakh-logo.png`,
+  `frontend/public/barzakh-logo-mark.png`, and
+  `frontend/public/barzakh.md`.
+
+Parked paths:
+
+- Domain migration remains parked. Current topology and verification defaults
+  may still use `lyraos.org` / `api.lyraos.org` until a separate deployment
+  authority change is planned and verified.
+- Internal compatibility names remain parked for later migration only where
+  safe: `LYRA_*` env vars, `lyra_task`, `planned_lyra_minutes`,
+  `lyra-rq-cache`, `lyra:undo-available`, topology manifest hostnames,
+  historical repair scripts, and historical docs/audits.
+- Broad historical/internal documentation rename is parked. This seam is
+  app-facing and public-served-surface only.
+
+Moved authority:
+
+- Public AI-readable product description moved from `/lyraos.md` to
+  `/barzakh.md`.
+- Public crawler references in `llms.txt`, `robots.txt`, sitemap metadata,
+  OpenGraph/Twitter metadata, and JSON-LD now present the Barzakh brand.
+- Browser verification selectors now look for Barzakh-visible strings.
+
+Issue and classification:
+
+- No new product bug was discovered.
+- Verifier classification notes:
+  - Initial bare `pytest ...` failed because the shell resolved to a Python
+    environment without FastAPI. Rerun through `.venv311` passed.
+  - Initial ad hoc brand-smoke artifact wrapper failed because the temporary JS
+    file ran outside `frontend` and could not resolve Playwright. Rerun with
+    `node -` from `frontend` passed and saved an artifact.
+
+Tests and verification:
+
+- Whitespace:
+  `git diff --check` passed.
+- Frontend:
+  `cd frontend && npm run lint` passed.
+- Frontend production build:
+  `cd frontend && node scripts\clean-next.mjs; npm run build:public` passed.
+- Backend targeted tests:
+  `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_email_delivery.py tests\test_email_engagement.py tests\test_feedback_endpoint.py tests\test_parse_deadline_preview.py tests\test_reactivation_email_script.py tests\test_user_activation_email.py -q`
+  passed.
+- Runtime topology contract:
+  `node scripts\test_runtime_topology_contract.mjs` passed.
+- OpenClaw relay unit:
+  `node scripts\test_openclaw_operator_relay.mjs` passed.
+- Reusable post-wave dogfood loop:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local -Mode standard -WaveName barzakh-app-facing-rebrand -IncludeProductLoop`
+  passed. Summary:
+  `tmp/post-wave-dogfood/20260707-155759-barzakh-app-facing-rebrand-standard-local/summary.json`.
+- Holmesberg mutable product-loop proof:
+  `tmp/post-wave-dogfood/20260707-155759-barzakh-app-facing-rebrand-standard-local/holmesberg-product-loop/result.json`
+  passed with 105 checks, 0 failed checks, cleanup IDs for 8 tasks,
+  7 deadlines, and 3 notifications. Non-fatal notes were onboarding gate open,
+  one suggestion fallback, parser title normalization, and pressure recovery
+  still gated.
+- Operator read-only proof after mutable/product loop:
+  `tmp/operator-readonly-stress-2026-07-07T13-07-41-301Z/result.json`
+  passed with no DB/API/Redis count diffs, no route diffs, no dashboard
+  snapshot diffs, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Explicit public brand browser smoke:
+  `tmp/rebrand-proof/barzakh-brand-smoke-20260707-161215.json`
+  passed for `/`, `/privacy`, `/terms`, `/llms.txt`, `/barzakh.md`; old public
+  paths `/lyraos.md`, `/lyraos-logo.png`, and `/lyraos-logo-mark.png` returned
+  404.
+
+Behavior parity statement:
+
+- User-facing brand copy changes to Barzakh.
+- Task, timer, deadline, exposure, notification, provider, clean-data,
+  ClaimCompiler, schema, and Redis behavior should remain unchanged except for
+  generated display text and email/public-copy branding.
+- Current deployment topology is intentionally unchanged.
+
+Rollback note:
+
+- Revert the Barzakh rebrand commit only. This restores visible Lyra/LyraOS
+  copy and old public asset paths. No schema migration, production repair,
+  exposure row mutation, provider row mutation, Redis purge, or domain
+  migration is part of this seam.

@@ -4,7 +4,7 @@ Path B read-only integration — imports the user's primary Google
 Calendar events as ambient scheduling context. Events are NEVER
 persisted to the `task` table; they're fetched on demand via Redis
 cache. The /calendar UI renders them as read-only grey background
-blocks alongside Lyra tasks.
+blocks alongside Barzakh tasks.
 
 Research-integrity note: imported events must NOT enter the H1 test
 set. The separation is natural-by-design: events live only in the
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # How long the Redis-cached event list stays fresh per (user, window).
 # Operator's spec framed GCal as "instant" — 60s is the practical
 # compromise: the user doesn't hit Google's API on every /calendar
-# mount, but a new event added to GCal appears in Lyra within a minute.
+# mount, but a new event added to GCal appears in Barzakh within a minute.
 CACHE_TTL_SECONDS = 60
 # How long a refreshed Google access_token stays cached in Redis. Google
 # tokens expire at 60 min; we cache for 45 to avoid the expiry edge.
@@ -150,7 +150,7 @@ def _get_credentials(user: User, db=None) -> Optional[Credentials]:
                         scope=redacted_user_ref(user.user_id),
                         retry=(
                             "Calendar context returns empty for this request; "
-                            "Lyra retries when calendar context is requested again."
+                            "Barzakh retries when calendar context is requested again."
                         ),
                         user_action=(
                             "Reconnect Calendar only if the failure persists."
@@ -235,7 +235,7 @@ def fetch_google_events(
                 db.commit()
                 if user.is_operator:
                     notify_operator(
-                        "Google Calendar returned 401, so Lyra cleared the "
+                        "Google Calendar returned 401, so Barzakh cleared the "
                         "stored refresh token. Reconnect Calendar in Settings.\n\n"
                         + format_alert_context(
                             affected="Google Calendar / availability read",
@@ -266,7 +266,7 @@ def fetch_google_events(
                             scope=redacted_user_ref(user_id),
                             retry=(
                                 "Calendar context returns empty for this "
-                                "request; Lyra retries when calendar context "
+                                "request; Barzakh retries when calendar context "
                                 "is requested again."
                             ),
                             user_action=(
@@ -295,7 +295,7 @@ def fetch_google_events(
                         scope=redacted_user_ref(user_id),
                         retry=(
                             "Calendar context returns empty for this request; "
-                            "Lyra retries when calendar context is requested again."
+                            "Barzakh retries when calendar context is requested again."
                         ),
                         user_action=(
                             "No user action unless the provider failure persists."

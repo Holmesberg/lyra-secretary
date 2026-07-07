@@ -108,7 +108,7 @@ export function ArchetypeInsightsCard({
             >
               4-minute survey in Settings
             </a>{" "}
-            gives Lyra a head start on how you tend to plan and work.
+            gives Barzakh a head start on how you tend to plan and work.
             Predictions still personalize as you log sessions.
           </p>
         </CardContent>
@@ -199,11 +199,11 @@ function DynamicProximityCard({
               : (
                 <>
                   {isSettlingIn
-                    ? "Lyra is using your survey quietly in the background while it waits for observed sessions. "
-                    : "Lyra needs a few more recent sessions before it can show behavioral proximity. "}
+                    ? "Barzakh is using your survey quietly in the background while it waits for observed sessions. "
+                    : "Barzakh needs a few more recent sessions before it can show behavioral proximity. "}
                   {remaining > 0
                     ? `After ${remaining === 1 ? "one more eligible session" : `${remaining} more eligible sessions`}, this card can compare recent traces without turning the survey into an identity label.`
-                    : "The backend has not marked this surface ready yet, so Lyra is keeping the interpretation hidden for now."}
+                    : "The backend has not marked this surface ready yet, so Barzakh is keeping the interpretation hidden for now."}
                 </>
               )}
           </p>
@@ -232,7 +232,7 @@ function DynamicProximityCard({
         <ArchetypeSaturationNote top={top} />
 
         <p className="text-[11px] leading-relaxed text-dust-deep">
-          These tendencies shift as Lyra sees more of how you actually work.
+          These tendencies shift as Barzakh sees more of how you actually work.
           Not a fixed identity — a moving observation.
         </p>
 

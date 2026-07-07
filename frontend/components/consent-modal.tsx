@@ -11,7 +11,7 @@ export function ConsentModal({ onAccepted }: { onAccepted: () => void }) {
 
   async function submit() {
     if (!terms) {
-      setError("You must accept the Terms and Privacy Policy to use Lyra Secretary.");
+      setError("You must accept the Terms and Privacy Policy to use Barzakh.");
       return;
     }
     setSubmitting(true);
@@ -44,7 +44,7 @@ export function ConsentModal({ onAccepted }: { onAccepted: () => void }) {
       >
         <h2 className="text-xl font-semibold mb-2">Before you continue</h2>
         <p className="text-muted-foreground text-sm mb-6">
-          Lyra learns from how you plan and work to personalize your scheduler. Please review and accept.
+          Barzakh learns from how you plan and work to personalize your scheduler. Please review and accept.
         </p>
 
         <label className="flex items-start gap-3 mb-4 cursor-pointer">
@@ -71,7 +71,7 @@ export function ConsentModal({ onAccepted }: { onAccepted: () => void }) {
             className="mt-1"
           />
           <span className="text-sm">
-            I allow my anonymized usage data to be used to improve Lyra over time.{" "}
+            I allow my anonymized usage data to be used to improve Barzakh over time.{" "}
             <span className="text-muted-foreground">(optional)</span>
           </span>
         </label>

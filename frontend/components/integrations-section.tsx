@@ -54,14 +54,14 @@ const ERROR_COPY: Record<string, string> = {
     "The session that started the flow isn't the one that finished it. Sign out and back in, then try again.",
   user_denied: "You declined calendar access. No harm done — try again anytime.",
   testing_mode_block:
-    "Your Google account isn't on Lyra's OAuth test-user list yet. Ask the operator to add it.",
+    "Your Google account isn't on Barzakh's OAuth test-user list yet. Ask the operator to add it.",
   google_error: "Google returned an error during consent.",
   token_exchange_failed:
     "Couldn't exchange the consent code with Google. Try again.",
   no_refresh_token:
     "Google didn't return a refresh token. Disconnect anything leftover at myaccount.google.com/permissions, then try again.",
   account_mismatch:
-    "The Google account you consented with doesn't match your Lyra account. Use the same account on both sides.",
+    "The Google account you consented with doesn't match your Barzakh account. Use the same account on both sides.",
   backend_store_failed:
     "Got consent from Google but couldn't save it on the server. Try again.",
 };
@@ -149,7 +149,7 @@ export function IntegrationsSection() {
       <CardHeader>
         <CardTitle>Integrations</CardTitle>
         <p className="text-xs text-dust">
-          Connect Lyra to the tools you already use. Each integration asks
+          Connect Barzakh to the tools you already use. Each integration asks
           for its own permission when you turn it on — we don&apos;t
           request anything at sign-in.
         </p>
@@ -494,7 +494,7 @@ function MoodleDataFeeds({
       ) : (
         <FeedRow
           label="Submissions"
-          description="Show submission evidence from Moodle - imports past items Lyra missed"
+          description="Show submission evidence from Moodle - imports past items Barzakh missed"
           dotState="idle"
           statusLine={<span>not enabled</span>}
           primaryAction={

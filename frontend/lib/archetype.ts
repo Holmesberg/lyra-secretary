@@ -340,28 +340,28 @@ export const ARCHETYPE_LABELS: Record<string, string> = {
  *  tells the user what their profile means for planning, not the math. */
 export const ARCHETYPE_DESCRIPTIONS: Record<string, string> = {
   disciplined_lark:
-    "You wake early and execute on what you plan. Research shows people like you slightly UNDERestimate tasks — your own optimism is the main risk. Lyra applies a gentle discount, then lets your personal data take over.",
+    "You wake early and execute on what you plan. Research shows people like you slightly UNDERestimate tasks — your own optimism is the main risk. Barzakh applies a gentle discount, then lets your personal data take over.",
   disciplined_owl:
-    "Evening energy with solid follow-through. Mornings are structurally harder for owls, so Lyra factors in a small uplift for early-hour tasks — otherwise you'd look like you overrun when you're really just running against your circadian grain.",
+    "Evening energy with solid follow-through. Mornings are structurally harder for owls, so Barzakh factors in a small uplift for early-hour tasks — otherwise you'd look like you overrun when you're really just running against your circadian grain.",
   diffuse_average:
-    "The population midpoint — your planning shape hasn't clustered into a sharper profile yet. Lyra uses Kahneman & Buehler's planning-fallacy mean as your starting prior: ~30% overruns expected on most categories until your own data sharpens the estimate.",
+    "The population midpoint — your planning shape hasn't clustered into a sharper profile yet. Barzakh uses Kahneman & Buehler's planning-fallacy mean as your starting prior: ~30% overruns expected on most categories until your own data sharpens the estimate.",
   procrastinator:
-    "Steel 2010 research shows GP-high folks typically underestimate by 1.6–2.2×. Lyra bakes this in — your scheduled 30 min gets ~54 min of real room by default. This isn't a judgement; it's your runway for shipping what you actually plan.",
+    "Steel 2010 research shows GP-high folks typically underestimate by 1.6–2.2×. Barzakh bakes this in — your scheduled 30 min gets ~54 min of real room by default. This isn't a judgement; it's your runway for shipping what you actually plan.",
   lark_low_discipline:
-    "Morning chronotype gives you a peak window that partially compensates — not a full procrastinator, not a disciplined lark. Lyra predicts middle-ground overruns in your peak hours and larger ones off-peak.",
+    "Morning chronotype gives you a peak window that partially compensates — not a full procrastinator, not a disciplined lark. Barzakh predicts middle-ground overruns in your peak hours and larger ones off-peak.",
 };
 
 /** What the blend means for the user's planning, state-specific. Keep
  *  copy archetype-identity-forward; math lives below the fold. */
 export const ARCHETYPE_PLANNING_IMPLICATION: Record<string, string> = {
   disciplined_lark:
-    "Expect Lyra's predictions to stay close to your planned durations. Your personal data will refine them downward over time.",
+    "Expect Barzakh's predictions to stay close to your planned durations. Your personal data will refine them downward over time.",
   disciplined_owl:
     "Expect slight uplift on morning tasks, neutrality in afternoons/evenings. Personal data sharpens both bands with use.",
   diffuse_average:
     "Expect roughly +30% over plan on most categories until you've built up enough personal data (~30 sessions per category-time cell) for the blend to shift toward you.",
   procrastinator:
-    "Expect Lyra to suggest larger scheduled blocks than you'd typically plan. The suggestion isn't pessimism — it's the runway your history actually needs.",
+    "Expect Barzakh to suggest larger scheduled blocks than you'd typically plan. The suggestion isn't pessimism — it's the runway your history actually needs.",
   lark_low_discipline:
     "Expect moderate uplift on all tasks with slightly less on your peak morning window. Personal data will sharpen the peak-vs-off-peak split.",
 };

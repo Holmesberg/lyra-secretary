@@ -267,7 +267,7 @@ async function goto(page, pathname, name) {
   }
   await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
   let text = await page.locator("body").innerText({ timeout: 10_000 });
-  if (/ONBOARDING|Lyra starts learning from the first plan/i.test(text)) {
+  if (/ONBOARDING|Barzakh starts learning from the first plan/i.test(text)) {
     await completeOnboardingGate(page);
     await page.goto(`${frontendOrigin}${pathname}`, {
       waitUntil: "domcontentloaded",
@@ -700,7 +700,7 @@ async function chooseNudgeEligibleCategory(page) {
 
 async function waitForDeadlineSuggestion(page, title, timeout = 20_000) {
   const startedAt = Date.now();
-  const suggestion = page.getByText(/Lyra thinks this binds to/i).first();
+  const suggestion = page.getByText(/Barzakh thinks this binds to/i).first();
   const visible = await suggestion
     .waitFor({ state: "visible", timeout })
     .then(() => true)
@@ -755,7 +755,7 @@ async function createTaskThroughUi(page, token, deadline) {
   ], "0");
   await chooseNudgeEligibleCategory(page);
 
-  const suggestion = page.getByText(/Lyra thinks this binds to/i).first();
+  const suggestion = page.getByText(/Barzakh thinks this binds to/i).first();
   const sawSuggestion = await suggestion.isVisible({ timeout: 8_000 }).catch(() => false);
   if (sawSuggestion) {
     await screenshot(page, "new-task-deadline-suggestion");
@@ -1200,7 +1200,7 @@ async function runBrainDumpPath(page, token) {
     (p) => p.getByTestId("brain-dump-parse"),
     (p) => p.getByRole("button", { name: /^Parse$/i }),
   ]);
-  await page.getByText(/Lyra found/i).first().waitFor({ timeout: 20_000 });
+  await page.getByText(/Barzakh found/i).first().waitFor({ timeout: 20_000 });
   const afterParse = await apiFetch(token, "/v1/users/me/export");
   addCheck("brain dump parse is write-free for tasks/deadlines", (
     countRows(before, "tasks") === countRows(afterParse, "tasks")
@@ -1292,7 +1292,7 @@ async function runBrainDumpBranchCoverage(page, token) {
     (p) => p.getByTestId("brain-dump-parse"),
     (p) => p.getByRole("button", { name: /^Parse$/i }),
   ]);
-  await page.getByText(/Lyra found/i).first().waitFor({ timeout: 20_000 });
+  await page.getByText(/Barzakh found/i).first().waitFor({ timeout: 20_000 });
 
   const { titleInputs, whenInputs, durationInputs } = await brainDumpEditableLocators(page);
   addCheck("brain dump partial parse exposes editable item rows", await titleInputs.count() >= 2, {
@@ -1337,7 +1337,7 @@ async function runBrainDumpBranchCoverage(page, token) {
     (p) => p.getByTestId("brain-dump-edit-failed-items"),
     (p) => p.getByRole("button", { name: /Edit failed items/i }),
   ], 8_000);
-  await page.getByText(/Lyra found/i).first().waitFor({ timeout: 10_000 });
+  await page.getByText(/Barzakh found/i).first().waitFor({ timeout: 10_000 });
   const {
     titleInputs: retryTitleInputs,
     whenInputs: retryWhenInputs,
@@ -1389,7 +1389,7 @@ async function runBrainDumpBranchCoverage(page, token) {
     (p) => p.getByTestId("brain-dump-parse"),
     (p) => p.getByRole("button", { name: /^Parse$/i }),
   ]);
-  await page.getByText(/Lyra found/i).first().waitFor({ timeout: 20_000 });
+  await page.getByText(/Barzakh found/i).first().waitFor({ timeout: 20_000 });
   const doubleSubmitButton = await firstVisible(page, [
     (p) => p.getByTestId("brain-dump-lock-in"),
     (p) => p.getByRole("button", { name: /Lock in/i }),
@@ -2117,7 +2117,7 @@ async function operatorPrivacyScan(browser) {
     }
     const text = await goto(op.page, "/operator", "operator-after-holmesberg-loop");
     expectNoMarkers(text, "operator page DOM", canaryMarkers);
-    addCheck("operator first viewport/cockpit route rendered", /Can Lyra invite|Cohort readiness|Readiness/i.test(text), {
+    addCheck("operator first viewport/cockpit route rendered", /Can Barzakh invite|Cohort readiness|Readiness/i.test(text), {
       chars: text.length,
     });
   } finally {

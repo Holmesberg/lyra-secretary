@@ -169,7 +169,7 @@ def test_feedback_email_sender_defaults_to_hello(monkeypatch):
     )
 
     assert ok is True
-    assert calls[0]["from"] == "LyraOS <hello@lyraos.org>"
+    assert calls[0]["from"] == "Barzakh <hello@barzakh.app>"
 
 
 def test_feedback_openclaw_channel_routes_through_operator_notifier(monkeypatch):

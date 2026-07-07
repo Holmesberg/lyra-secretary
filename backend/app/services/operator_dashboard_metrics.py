@@ -276,7 +276,7 @@ def dropoff_points(funnel: dict[str, int | None]) -> list[str]:
 
 
 def activity_dates_by_user(db: Session, since: datetime) -> dict[int, set[str]]:
-    """Read-time activity proxy from explicit Lyra state changes."""
+    """Read-time activity proxy from explicit Barzakh state changes."""
     dates: dict[int, set[str]] = defaultdict(set)
 
     task_rows = (

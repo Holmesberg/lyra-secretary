@@ -1,4 +1,4 @@
-"""Redis client with Lyra-specific patterns."""
+"""Redis client with Barzakh-specific patterns."""
 import json
 import redis
 from typing import Optional, Dict, Any

@@ -8,7 +8,7 @@
  * docs/integrations_architecture.md + docs/strategic_decisions_april_22.md).
  * Sign-in requests ONLY non-sensitive scopes (`openid email profile`).
  * Zero OAuth verification required for sign-up, so any Google account
- * can create a Lyra account without being on the Testing-mode test-user
+ * can create a Barzakh account without being on the Testing-mode test-user
  * list.
  *
  * Third-party scopes (Google Calendar, etc.) are acquired via

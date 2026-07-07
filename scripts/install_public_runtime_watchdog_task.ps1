@@ -1,5 +1,5 @@
 param(
-    [string]$TaskName = "LyraOS Public Runtime Watchdog",
+    [string]$TaskName = "Barzakh Public Runtime Watchdog",
     [int]$EveryHours = 12,
     [int]$FirstRunMinutesFromNow = 10,
     [switch]$RunNow
@@ -36,7 +36,7 @@ Register-ScheduledTask `
     -Action $action `
     -Trigger @($logonTrigger, $periodicTrigger) `
     -Settings $settings `
-    -Description "Checks LyraOS public runtime at logon and every $EveryHours hours; repairs Cloudflare/local stack when needed." `
+    -Description "Checks Barzakh public runtime at logon and every $EveryHours hours; repairs Cloudflare/local stack when needed." `
     -Force | Out-Null
 
 Write-Host "Installed scheduled task: $TaskName"

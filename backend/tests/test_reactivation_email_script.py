@@ -22,7 +22,7 @@ def test_recipient_first_name_prefers_explicit_name():
 def test_reactivation_html_uses_signed_tracking_links(monkeypatch):
     monkeypatch.setattr(
         "app.services.email_engagement.settings.EMAIL_TRACKING_BASE_URL",
-        "https://api.lyraos.org",
+        "https://api.barzakh.app",
     )
     user = send_reactivation_email._Recipient(
         "explicit-test",
@@ -32,7 +32,7 @@ def test_reactivation_html_uses_signed_tracking_links(monkeypatch):
 
     text, html = send_reactivation_email._render_body(user)
 
-    assert "https://lyraos.org" in text
-    assert "https://api.lyraos.org/v1/email-engagement/click?t=" in html
-    assert "https://api.lyraos.org/v1/email-engagement/open.gif?t=" in html
+    assert "https://barzakh.app" in text
+    assert "https://api.barzakh.app/v1/email-engagement/click?t=" in html
+    assert "https://api.barzakh.app/v1/email-engagement/open.gif?t=" in html
     assert "operator@example.test" not in html

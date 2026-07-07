@@ -1,6 +1,6 @@
 """Academic execution-intelligence endpoints.
 
-V1 exposes a read-only pressure map from existing Lyra primitives. It
+V1 exposes a read-only pressure map from existing Barzakh primitives. It
 does not create tasks, mutate calendars, or persist academic content.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query

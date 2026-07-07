@@ -78,8 +78,8 @@ def test_activation_mailer_sends_plain_transactional_payload(monkeypatch):
     calls: list[dict] = []
     monkeypatch.setattr(user_mailer.settings, "USER_EMAIL_ENABLED", True)
     monkeypatch.setattr(user_mailer.settings, "RESEND_API_KEY", "resend-key")
-    monkeypatch.setattr(user_mailer.settings, "USER_EMAIL_FROM", "hello@lyraos.org")
-    monkeypatch.setattr(user_mailer.settings, "FRONTEND_URL", "https://lyraos.org")
+    monkeypatch.setattr(user_mailer.settings, "USER_EMAIL_FROM", "hello@barzakh.app")
+    monkeypatch.setattr(user_mailer.settings, "FRONTEND_URL", "https://barzakh.app")
 
     def fake_post(*_args, **kwargs):
         calls.append(kwargs)
@@ -91,10 +91,10 @@ def test_activation_mailer_sends_plain_transactional_payload(monkeypatch):
 
     assert result.sent is True
     payload = calls[0]["json"]
-    assert payload["from"] == "LyraOS <hello@lyraos.org>"
+    assert payload["from"] == "Barzakh <hello@barzakh.app>"
     assert payload["to"] == ["student@example.test"]
-    assert payload["subject"] == "Welcome to LyraOS"
-    assert "https://lyraos.org" in payload["text"]
+    assert payload["subject"] == "Welcome to Barzakh"
+    assert "https://barzakh.app" in payload["text"]
     assert "export your account data" in payload["text"]
     assert "delete your account" in payload["text"]
     forbidden = [
@@ -264,9 +264,9 @@ def test_integrity_error_race_loser_adopts_existing_user_without_email(monkeypat
 
 
 def test_activation_email_copy_is_plain_account_infrastructure():
-    text = activation_email_text(frontend_url="https://lyraos.org")
+    text = activation_email_text(frontend_url="https://barzakh.app")
 
-    assert "Welcome to LyraOS." in text
+    assert "Welcome to Barzakh." in text
     forbidden = [
         "we noticed",
         "task",

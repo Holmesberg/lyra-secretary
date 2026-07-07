@@ -232,7 +232,7 @@ function downloadCsv(tasks: TaskRow[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `lyra-export-${format(new Date(), "yyyy-MM-dd")}.csv`;
+  a.download = `Barzakh-export-${format(new Date(), "yyyy-MM-dd")}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

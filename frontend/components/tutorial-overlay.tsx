@@ -25,14 +25,14 @@ import { api } from "@/lib/api";
 
 const STEPS: Array<{ title: string; body: string }> = [
   {
-    title: "Welcome to Lyra",
+    title: "Welcome to Barzakh",
     body:
-      "Lyra measures how long your tasks actually take vs how long you thought they would. Over time you see the shape of your own planning — where you overrun, where you scope-inflate, where you're spot-on.",
+      "Barzakh measures how long your tasks actually take vs how long you thought they would. Over time you see the shape of your own planning — where you overrun, where you scope-inflate, where you're spot-on.",
   },
   {
     title: "Start from capture",
     body:
-      "Use the Pulse capture bar to brain-dump tasks or obligations. Lyra shows a preview first, so you can edit dates, keep or remove items, and confirm only what should become real.",
+      "Use the Pulse capture bar to brain-dump tasks or obligations. Barzakh shows a preview first, so you can edit dates, keep or remove items, and confirm only what should become real.",
   },
   {
     title: "A 1–5 readiness rating",
@@ -42,7 +42,7 @@ const STEPS: Array<{ title: string; body: string }> = [
   {
     title: "Stop + reflect",
     body:
-      "When you stop a timer we ask how focused you felt during the run (1–5 again). The gap between readiness before and reflection after is one of the signals Lyra tracks. It's not graded — it's data about you.",
+      "When you stop a timer we ask how focused you felt during the run (1–5 again). The gap between readiness before and reflection after is one of the signals Barzakh tracks. It's not graded — it's data about you.",
   },
   {
     title: "Calendar view",
@@ -57,10 +57,10 @@ const STEPS: Array<{ title: string; body: string }> = [
   {
     title: "Integrations are optional",
     body:
-      "Settings → Integrations lets you connect Google Calendar if you want your external events alongside planned Lyra tasks. Nothing is required. You'll never see a consent screen unless you click Connect.",
+      "Settings → Integrations lets you connect Google Calendar if you want your external events alongside planned Barzakh tasks. Nothing is required. You'll never see a consent screen unless you click Connect.",
   },
   {
-    title: "Lyra stays out of your way",
+    title: "Barzakh stays out of your way",
     body:
       "No streaks, no guilt, no push notifications until you've earned them. The system is a mirror, not a coach. If something feels off — a nudge that lands wrong, a prompt that interrupts — tell us from Settings. You're the expert on you.",
   },

@@ -191,10 +191,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           {!isExpiredSession && (
             <div className="mt-4 text-[11px] text-dust-deep">
-              Check that the backend is running at{" "}
+              Check that the backend is running{" "}
               {typeof window !== "undefined" && window.location.hostname.endsWith("lyraos.org")
-                ? "https://api.lyraos.org"
-                : process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"} and
+                ? "for the public Barzakh API"
+                : `at ${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}`} and
               reload.
             </div>
           )}

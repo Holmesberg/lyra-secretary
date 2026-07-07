@@ -361,7 +361,7 @@ export function BrainDumpQuickModal({
           <div className="flex flex-col gap-3">
             <p className="text-xs text-dust">
               Type whatever's in your head — one item per line works best.
-              Lyra parses titles, dates, and durations. Examples: "submit
+              Barzakh parses titles, dates, and durations. Examples: "submit
               lab 8 friday 11pm", "read chapter 3 tomorrow 30min".
             </p>
             <textarea
@@ -404,7 +404,7 @@ gym sat morning"
         {step === "confirm" && (
           <div className="flex flex-col gap-4">
             <p className="text-xs text-dust">
-              Lyra found{" "}
+              Barzakh found{" "}
               <span className="font-display text-signal">
                 {tasksParsed.length}
               </span>{" "}

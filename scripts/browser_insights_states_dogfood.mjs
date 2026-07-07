@@ -77,7 +77,7 @@ const scenarios = [
       reopen_after_clean_sessions: 3,
       new_clean_sessions_since_hold: 1,
       clean_sessions_until_reopen: 2,
-      message: "Insights are unlocked. Lyra is holding these cards until there is new clean evidence after this hold. Complete 2 more cleanly stopped sessions to reopen this surface.",
+      message: "Insights are unlocked. Barzakh is holding these cards until there is new clean evidence after this hold. Complete 2 more cleanly stopped sessions to reopen this surface.",
       suppressed_generators: [],
     },
     expect: [/27 sessions analyzed/i, /2 clean stops to reopen/i, /new clean evidence/i],

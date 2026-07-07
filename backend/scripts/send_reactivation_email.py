@@ -19,27 +19,27 @@ if str(BACKEND_DIR) not in sys.path:
 from app.core.config import settings
 from app.db.models import User
 from app.db.session import SessionLocal
-from app.services.email_delivery import LYRA_FROM_HEADER, send_resend_email
+from app.services.email_delivery import BARZAKH_FROM_HEADER, send_resend_email
 from app.services.email_engagement import (
     build_click_tracking_url,
     build_open_tracking_url,
 )
 
-SUBJECT = "Forgot about Lyra?"
-LANDING_URL = "https://lyraos.org"
-LOGO_URL = "https://lyraos.org/lyraos-logo.png"
+SUBJECT = "Forgot about Barzakh?"
+LANDING_URL = "https://barzakh.app"
+LOGO_URL = "https://barzakh.app/barzakh-logo.png"
 CAMPAIGN_VERSION = "landing-html-v7"
 
 BODY_TEMPLATE = """Hey {first_name},
 
-Quick one - did Lyra slip off your radar?
+Quick one - did Barzakh slip off your radar?
 
 Try this:
 
 Open it and just dump whatever is currently in your head.
 Tasks, deadlines, random obligations - no cleaning, no structure.
 
-Lyra will take that mess and turn it into:
+Barzakh will take that mess and turn it into:
 - structured timeblocks
 - linked deadlines
 - visible workload pressure
@@ -53,13 +53,13 @@ No setup needed. Just dump and see what happens.
 
 If it feels useful (or broken), reply or use the in-app feedback button - I'm actively improving it during this phase.
 
-Please subscribe to get reminders so Lyra can nudge you when it slips off your radar.
+Please subscribe to get reminders so Barzakh can nudge you when it slips off your radar.
 
 - Ali
-LyraOS
+Barzakh
 
-Open Lyra:
-https://lyraos.org
+Open Barzakh:
+https://barzakh.app
 """
 
 HTML_TEMPLATE = """\
@@ -72,12 +72,12 @@ HTML_TEMPLATE = """\
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#13161e;border:1px solid #252836;">
             <tr>
               <td style="padding:28px 28px 8px;">
-                <img src="{logo_url}" alt="LyraOS" width="104" style="display:block;border:0;margin-bottom:24px;">
+                <img src="{logo_url}" alt="Barzakh" width="104" style="display:block;border:0;margin-bottom:24px;">
                 <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#e8eaf0;">Hey {first_name},</p>
-                <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#e8eaf0;">Quick one - did Lyra slip off your radar?</p>
+                <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#e8eaf0;">Quick one - did Barzakh slip off your radar?</p>
                 <p style="margin:0 0 10px;font-size:16px;line-height:1.55;color:#e8eaf0;">Try this:</p>
                 <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#e8eaf0;">Open it and just dump whatever is currently in your head.<br>Tasks, deadlines, random obligations - no cleaning, no structure.</p>
-                <p style="margin:0 0 10px;font-size:16px;line-height:1.55;color:#e8eaf0;">Lyra will take that mess and turn it into:</p>
+                <p style="margin:0 0 10px;font-size:16px;line-height:1.55;color:#e8eaf0;">Barzakh will take that mess and turn it into:</p>
                 <ul style="margin:0 0 20px 20px;padding:0;color:#c8ccda;font-size:15px;line-height:1.7;">
                   <li><strong style="color:#e8eaf0;">structured timeblocks</strong></li>
                   <li><strong style="color:#e8eaf0;">linked deadlines</strong></li>
@@ -88,13 +88,13 @@ HTML_TEMPLATE = """\
                 <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#e8eaf0;">It's less about "organizing tasks" and more about seeing what your execution actually looks like.</p>
                 <p style="margin:0 0 18px;font-size:15px;line-height:1.55;color:#c8ccda;">No setup needed. Just dump and see what happens.</p>
                 <p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#c8ccda;">If it feels useful (or broken), reply or use the in-app feedback button - I'm actively improving it during this phase.</p>
-                <p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#c8ccda;">Please subscribe to get reminders so Lyra can nudge you when it slips off your radar.</p>
+                <p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#c8ccda;">Please subscribe to get reminders so Barzakh can nudge you when it slips off your radar.</p>
                 <p style="margin:0 0 4px;font-size:15px;line-height:1.55;color:#e8eaf0;">- Ali</p>
-                <p style="margin:0 0 24px;font-size:13px;line-height:1.55;color:#6b7280;">LyraOS</p>
+                <p style="margin:0 0 24px;font-size:13px;line-height:1.55;color:#6b7280;">Barzakh</p>
                 <p style="margin:0 0 14px;">
-                  <a href="{click_url}" style="display:inline-block;background:#3bdcff;color:#071013;text-decoration:none;font-weight:700;font-size:14px;padding:12px 18px;border-radius:4px;">Open Lyra</a>
+                  <a href="{click_url}" style="display:inline-block;background:#3bdcff;color:#071013;text-decoration:none;font-weight:700;font-size:14px;padding:12px 18px;border-radius:4px;">Open Barzakh</a>
                 </p>
-                <p style="margin:0;font-size:13px;line-height:1.55;color:#8b93a7;"><a href="{click_url}" style="color:#8b93a7;text-decoration:underline;">https://lyraos.org</a></p>
+                <p style="margin:0;font-size:13px;line-height:1.55;color:#8b93a7;"><a href="{click_url}" style="color:#8b93a7;text-decoration:underline;">https://barzakh.app</a></p>
                 <img src="{open_url}" alt="" width="1" height="1" style="display:none;opacity:0;width:1px;height:1px;border:0;">
               </td>
             </tr>
@@ -177,7 +177,7 @@ def _recipient_first_name(user) -> str | None:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Dry-run or schedule the LyraOS reactivation email."
+        description="Dry-run or schedule the Barzakh reactivation email."
     )
     parser.add_argument(
         "--scope",
@@ -244,7 +244,7 @@ def _send_one(
         html=html,
         scheduled_at=scheduled_at,
         idempotency_key=(
-            f"lyra-reactivation-{CAMPAIGN_VERSION}-{phase}-"
+            f"barzakh-reactivation-{CAMPAIGN_VERSION}-{phase}-"
             f"{scheduled_at or 'immediate'}-{scope_label}-"
             f"{user.user_id}-{_recipient_key(user.email)}"
         ),
@@ -277,7 +277,7 @@ def main() -> int:
             db.close()
         scope_label = args.scope
 
-    print(f"from={LYRA_FROM_HEADER}")
+    print(f"from={BARZAKH_FROM_HEADER}")
     print(f"subject={SUBJECT}")
     print(f"campaign_version={CAMPAIGN_VERSION}")
     print(f"url={LANDING_URL}")

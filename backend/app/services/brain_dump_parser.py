@@ -371,7 +371,7 @@ def _has_explicit_deadline_framing(segment_lower: str) -> bool:
 
 def _now_local(now_iso: Optional[str]) -> datetime:
     """Resolve the user's "current local time" anchor. Falls back to
-    server local time. Strips tz to match Lyra's naive-internal
+    server local time. Strips tz to match Barzakh's naive-internal
     convention."""
     if now_iso:
         try:
@@ -497,7 +497,7 @@ def _extract_when(segment: str, now_local: datetime) -> Optional[datetime]:
     settings = {
         "PREFER_DATES_FROM": "future",
         "RELATIVE_BASE": now_local,
-        # Lyra's production timezone is Cairo and the onboarding audience uses
+        # Barzakh's production timezone is Cairo and the onboarding audience uses
         # day/month numeric dates. Without this, dateparser treats ambiguous
         # slash dates as US-style month/day, so "6/9" lands on June 9 instead
         # of September 6 while the visible title has the date stripped.

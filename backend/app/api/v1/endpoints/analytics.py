@@ -63,7 +63,7 @@ ANALYTICS_INSIGHTS_SURFACE_ID = "analytics.insights"
 ANALYTICS_INSIGHTS_TEMPLATE_ID = "analytics_insights"
 _BIAS_LOOKUP_CACHE_TTL_SECONDS = 30.0
 _bias_lookup_cache: dict[tuple[int, str, str, int, int, str], tuple[float, dict]] = {}
-_bias_lookup_perf_logger = logging.getLogger("lyra.perf.bias_lookup")
+_bias_lookup_perf_logger = logging.getLogger("barzakh.perf.bias_lookup")
 
 
 def _cached_bias_lookup_response(
@@ -613,7 +613,7 @@ def _insights_rule11_reopen_gate(
 def _insights_rule11_hold_message(remaining: int) -> str:
     noun = "session" if remaining == 1 else "sessions"
     return (
-        "Insights are unlocked. Lyra is holding these cards until there is "
+        "Insights are unlocked. Barzakh is holding these cards until there is "
         "new clean evidence after this hold. Complete "
         f"{remaining} more cleanly stopped {noun} to reopen this surface."
     )
@@ -838,7 +838,7 @@ def _insight_readiness_time_of_day(tasks: list) -> Optional[dict]:
     """Self-reported readiness as context for time-window planning fit.
 
     This deliberately avoids "best brain time" or cognitive-capacity copy.
-    The user reported readiness; Lyra observed planning error by time window.
+    The user reported readiness; Barzakh observed planning error by time window.
     The output is a low-authority placement/recovery hypothesis only.
     """
     buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
@@ -2755,7 +2755,7 @@ def get_deadline_shape(
         ]
         planned_minutes = [t.planned_duration_minutes for t in group_tasks if t.planned_duration_minutes]
         # bias_factor_observed: mean(signed delta) / mean(planned_minutes).
-        # Note sign: in Lyra duration_delta = planned - executed, so negative
+        # Note sign: in Barzakh duration_delta = planned - executed, so negative
         # means overran. bias_factor in canonical form is executed/planned;
         # for Rule 15 we report the signed-delta-based ratio per the spec.
         bias_factor_observed = (

@@ -272,7 +272,7 @@ export function relayText(payload) {
   }
   const type = payload?.type || "unknown";
   const source = payload?.source || "unknown";
-  return `[warn] [openclaw.relay] Lyra operator notification lacked message text. type=${type} source=${source}`;
+  return `[warn] [openclaw.relay] Barzakh operator notification lacked message text. type=${type} source=${source}`;
 }
 
 async function sendTelegram(token, chatIds, text) {

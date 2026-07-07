@@ -3,7 +3,7 @@ import { CornerMarks } from "./corner-marks";
 const FIELD_NOTES = [
   {
     quote:
-      "Most productivity tools assume their insights are accurate. LyraOS tests its own.",
+      "Most productivity tools assume their insights are accurate. Barzakh tests its own.",
     section: "Measurement Doctrine",
   },
   {
@@ -35,7 +35,7 @@ export function ManifestoPreview() {
 
           <div className="mx-auto mt-10 max-w-lg space-y-3 text-base leading-relaxed text-dust md:text-[17px]">
             <p>
-              If yes, LyraOS can earn stronger inference rights from repeated,
+              If yes, Barzakh can earn stronger inference rights from repeated,
               provenance-clean traces.
             </p>
             <p>

@@ -3,7 +3,7 @@
 Runs every 6h alongside the iCal sync. For each user with a stored
 moodle_ws_token, queries Moodle's mod_assign_get_submission_status and records
 provider completion candidates when Moodle reports submission/grading. Moodle
-does not silently complete Lyra deadlines; the user remains author of truth.
+does not silently complete Barzakh deadlines; the user remains author of truth.
 
 Cadence rationale: matches the iCal sync 6h cadence so a single
 operator-facing telegram thread carries both kinds of Moodle update
@@ -59,10 +59,10 @@ def _operator_error_message(error: str) -> tuple[str, str, str, str, str]:
             "No submission/completion state is changed from this failure.",
         )
     return (
-        f"Moodle Web Services sync failed with `{error}`. Lyra kept the "
+        f"Moodle Web Services sync failed with `{error}`. Barzakh kept the "
         "connection and will retry on the next cycle.",
         "warn",
-        "Lyra kept the connection and will retry on the next cycle.",
+        "Barzakh kept the connection and will retry on the next cycle.",
         "No user action unless the provider failure persists.",
         "No submission/completion state is changed from this failure.",
     )

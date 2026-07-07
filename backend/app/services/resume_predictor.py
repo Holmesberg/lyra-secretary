@@ -19,7 +19,7 @@ pause history overall:
   - Use COLD_START_FLAT_CAP (30min) as the fire threshold
   - mechanism='cold_start_synthetic'
   - p75_pause_minutes = NULL on the log row
-  - Banner copy: "Lyra hasn't seen enough yet — picking it up?"
+  - Banner copy: "Barzakh hasn't seen enough yet — picking it up?"
 
 Filters (mirror pause_predictor research-integrity discipline):
   - Exclude pause_event rows where self_reported_retroactively=TRUE

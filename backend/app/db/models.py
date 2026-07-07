@@ -1,4 +1,4 @@
-"""SQLAlchemy models for Lyra Secretary."""
+"""SQLAlchemy models for Barzakh."""
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -1078,7 +1078,7 @@ class ResumePredictionLog(Base):
     Cold-start: when fewer than 5 samples exist for the cell OR the
     user has <7 days of pause history, mechanism='cold_start_synthetic'
     and the trigger is a flat 30-min cap with observational copy
-    "Lyra hasn't seen enough yet — picking it up?".
+    "Barzakh hasn't seen enough yet — picking it up?".
 
     Pre-registered footprint: VT-17 sibling (instrument-intervention
     threats apply symmetrically — anchor drift + induced-resume risk).
@@ -1164,7 +1164,7 @@ class CalibrationNudgeEvent(Base):
     task_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("task.task_id"), nullable=False
     )
-    # What Lyra suggested at nudge-fire time.
+    # What Barzakh suggested at nudge-fire time.
     suggested_duration_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False
     )

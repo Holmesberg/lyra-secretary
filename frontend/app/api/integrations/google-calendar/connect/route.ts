@@ -11,7 +11,7 @@
  * The complementary `/callback` route validates state, exchanges the
  * code for a refresh_token, checks the consenting Google account
  * matches the signed-in user, and forwards the refresh_token to the
- * Lyra backend.
+ * Barzakh backend.
  *
  * State param: HS256 JWT with `{purpose:"gcal_connect", user_id,
  * email, nonce}`, 10-min TTL, signed with NEXTAUTH_SECRET. Prevents

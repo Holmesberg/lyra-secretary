@@ -376,7 +376,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               step={1}
               value={readiness}
               onChange={(e) => setReadiness(Number(e.target.value))}
-              className="lyra-range h-2 flex-1"
+              className="barzakh-range h-2 flex-1"
               aria-label="Pre-task readiness 1 to 5"
             />
             <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
@@ -483,7 +483,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               step={1}
               value={reflection ?? 3}
               onChange={(e) => setReflection(Number(e.target.value))}
-              className="lyra-range h-2 flex-1"
+              className="barzakh-range h-2 flex-1"
               aria-label="Post-task reflection 1 to 5"
             />
             <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">

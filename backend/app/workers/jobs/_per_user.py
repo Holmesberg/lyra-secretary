@@ -225,7 +225,7 @@ def for_each_user(
                         "and the scheduler retries on the next tick."
                     ),
                     user_action=(
-                        "No student action. Operator should triage the Lyra DB "
+                        "No student action. Operator should triage the Barzakh DB "
                         "path if this repeats."
                     ),
                     data_integrity=MUTATION_MAY_HAVE_STARTED,

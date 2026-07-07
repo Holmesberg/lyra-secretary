@@ -229,7 +229,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
           </p>
           <h1 className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-parchment md:text-4xl">
             {step === "dump"
-              ? "Lyra starts learning from the first plan you write."
+              ? "Barzakh starts learning from the first plan you write."
               : "Look right? Lock it in."}
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-dust md:text-base">
@@ -238,7 +238,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 "deadlines, half-thoughts. Times and dates inside the " +
                 "text get parsed automatically. You'll review before " +
                 "anything saves."
-              : "Lyra split your dump into tasks and deadlines. " +
+              : "Barzakh split your dump into tasks and deadlines. " +
                 "Confirm any links between them, then save."}
           </p>
         </div>
@@ -485,7 +485,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 }}
                 className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
-                Continue to Lyra
+                Continue to Barzakh
               </button>
             </div>
           </div>

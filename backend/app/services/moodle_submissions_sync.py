@@ -2,12 +2,12 @@
 
 Records provider completion candidates when Moodle confirms the user submitted
 or was graded on the corresponding assignment. Moodle evidence does not
-silently complete Lyra deadlines; the user remains author of canonical
+silently complete Barzakh deadlines; the user remains author of canonical
 deadline truth. iCal feeds carry due dates ONLY - Web Services is the only
 path to submission status.
 
 ARCHITECTURE — course-code matching (operator decision 2026-05-01):
-  Lyra deadline matches a Moodle assignment ONLY when they share the
+  Barzakh deadline matches a Moodle assignment ONLY when they share the
   same course (deadline.category_hint == course_short, or both
   contain the same course code like "CSE281"). Title fuzzy-match +
   due-date proximity then breaks ties WITHIN that course's
@@ -35,9 +35,9 @@ DECISION RULE — what counts as "submitted":
   - status == 'draft' / 'new' / None  → leave alone
 
 MATCHING:
-  Lyra deadline title + due_at_utc → best Moodle assignment via
+  Barzakh deadline title + due_at_utc → best Moodle assignment via
   (title_similarity + due_proximity) score. Each Moodle assignment
-  binds to AT MOST ONE Lyra deadline (greedy first-served by score).
+  binds to AT MOST ONE Barzakh deadline (greedy first-served by score).
   Min score 0.30; high-confidence + due-date proximity protects
   against false matches even at the broader threshold (operator's
   "subject-aware" filter is the primary noise gate).
@@ -82,8 +82,8 @@ MEDIUM_DELTA_HOURS = 168  # 7d
 PENALTY_DELTA_HOURS = 720  # 30d
 
 # Backfill window for assignments that exist on Moodle but not in
-# Lyra's deadline table (operator request 2026-05-01 — "submitted
-# tasks should pop up", "could Lyra pick up unsubmitted as overdue").
+# Barzakh's deadline table (operator request 2026-05-01 — "submitted
+# tasks should pop up", "could Barzakh pick up unsubmitted as overdue").
 # Looking too far back drags in last semester's noise; the operator
 # typically cares about the current term + a 90d safety margin.
 BACKFILL_PAST_DAYS = 90
@@ -181,7 +181,7 @@ def _has_existing_deadline(
     due_window_hours: float,
 ) -> bool:
     """True when `ma` (a Moodle assignment) is already represented in
-    Lyra's deadline table.
+    Barzakh's deadline table.
 
     Three-tier check (any hit short-circuits):
       1. Exact key — if external_source='moodle_ws_backfill' AND
@@ -250,7 +250,7 @@ def is_submitted(status_resp: dict) -> tuple[bool, str]:
 def submission_completed_at(status_resp: dict) -> Optional[datetime]:
     """Best external submission timestamp from Moodle, if one is present.
 
-    This is a Moodle submission trace, not evidence of Lyra task execution.
+    This is a Moodle submission trace, not evidence of Barzakh task execution.
     Moodle does not always expose the exact human completion moment; when it
     does not, callers should record sync-time provenance explicitly.
     """
@@ -411,7 +411,7 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
     in the session and updates user.moodle_ws_last_synced_at).
 
     Architectural note (operator decision 2026-05-01): only deadlines
-    with at least one BOUND (non-voided) Lyra task are synced. Unbound
+    with at least one BOUND (non-voided) Barzakh task are synced. Unbound
     deadlines = noise the user didn't engage with; skipped silently.
     """
     result = SubmissionSyncResult()
@@ -525,7 +525,7 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
     # is the primary noise filter (operator's subject-aware fix), the
     # title + due-date scoring is the within-course tie-breaker.
     # `used_assign_ids` so the same Moodle assignment doesn't bind to
-    # two Lyra deadlines.
+    # two Barzakh deadlines.
     matched_pairs: list[tuple[Deadline, dict, float]] = []
     used_assign_ids: set[int] = set()
     for d in candidate_deadlines:
@@ -616,14 +616,14 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
 
     # ---------------------------------------------------------------
     # Backfill — for any Moodle assignment we DIDN'T match to an
-    # existing Lyra deadline, create one. Operator request 2026-05-01:
-    # "submitted tasks should pop up in deadlines" + "could Lyra pick
+    # existing Barzakh deadline, create one. Operator request 2026-05-01:
+    # "submitted tasks should pop up in deadlines" + "could Barzakh pick
     # up other unsubmitted as overdue".
     #
     # Why: Moodle's iCal "Recent and upcoming" filter drops past
     # assignments + items the school disabled in the calendar export.
     # Operator ended up with 11+ submitted CSE assignments on Moodle
-    # but only 4 deadlines in Lyra. This backfills from WS so the
+    # but only 4 deadlines in Barzakh. This backfills from WS so the
     # timeline reflects the real workload.
     #
     # Research-integrity (per VT-29 / H1): backfilled rows carry

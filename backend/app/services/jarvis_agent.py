@@ -5,7 +5,7 @@ NIM client. The endpoint hands off (user_id, user_message, history) and
 gets back a response object the chat UI can render directly.
 
 Loop semantics:
-  1. Build system prompt (Lyra context + clock + tool list)
+  1. Build system prompt (Barzakh context + clock + tool list)
   2. Send messages + tools to NIM
   3. If NIM returns final content (no tool calls) → return as the answer
   4. If NIM returns READ tool calls → execute immediately, append results,
@@ -44,19 +44,19 @@ MAX_ITERATIONS = 8
 
 
 def _build_system_prompt(user_timezone: str) -> str:
-    """The Lyra context block + tool-use instructions."""
+    """The Barzakh context block + tool-use instructions."""
     return (
-        "You are Lyra, the in-app assistant for the Lyra Secretary product. "
-        "Lyra is a measurement-backed task scheduler that records planned vs "
+        "You are Barzakh, the in-app assistant for the Barzakh product. "
+        "Barzakh is a measurement-backed task scheduler that records planned vs "
         "executed time per task. The user is the operator (the developer who "
-        "built Lyra), so they understand the system deeply and prefer terse, "
+        "built Barzakh), so they understand the system deeply and prefer terse, "
         "direct answers without filler. When you refer to yourself, say "
-        "'Lyra' — never 'JARVIS' or 'the assistant'.\n\n"
+        "'Barzakh' — never 'JARVIS' or 'the assistant'.\n\n"
         f"Current UTC time: {now_utc().isoformat()}.\n"
         f"User timezone: {user_timezone} (interpret natural-language times in this zone).\n\n"
         "When to use tools (be deliberate, not eager):\n"
         "- Greetings, chitchat, meta questions ('hi', 'what can you do?', "
-        "'how does this work?'), and questions about Lyra-the-product itself "
+        "'how does this work?'), and questions about Barzakh-the-product itself "
         "→ answer directly with NO tool calls. A warm one-line intro + an "
         "offer to help is the right shape.\n"
         "- Specific factual questions about ONE dimension ('what's overdue?', "

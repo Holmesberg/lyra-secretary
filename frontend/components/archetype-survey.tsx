@@ -216,10 +216,10 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
               A few quick questions — about 4 minutes.
             </p>
             <p>
-              These help Lyra start with a sense of how you tend to work
+              These help Barzakh start with a sense of how you tend to work
               — morning vs evening, how you approach things — so the
               first time estimates aren&apos;t blind guesses. After a
-              handful of sessions, Lyra stops leaning on this and starts
+              handful of sessions, Barzakh stops leaning on this and starts
               learning from how you actually move through your day. Skip
               anytime: it just means a slower start.
             </p>
@@ -256,7 +256,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
         {confirmSkip && (
           <div className="mt-5 rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
             <p className="mb-2">
-              Skip for now? Lyra will use a generic starting point and
+              Skip for now? Barzakh will use a generic starting point and
               learn from your sessions. You can take the survey from
               Settings whenever — no rush.
             </p>

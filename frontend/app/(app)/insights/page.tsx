@@ -309,7 +309,7 @@ export default function InsightsPage() {
         <div className="rounded-sm border border-hairline bg-void-2/60 p-5">
           <p className="text-sm leading-relaxed text-dust">
             {data?.message ??
-              "Insights are unlocked. Lyra is holding these cards until there is new clean evidence after this hold. Complete new cleanly stopped sessions to reopen this surface."}
+              "Insights are unlocked. Barzakh is holding these cards until there is new clean evidence after this hold. Complete new cleanly stopped sessions to reopen this surface."}
           </p>
           <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
             {reopenLabel}
