@@ -1865,35 +1865,47 @@ async function runNotificationPath(page, token, task) {
     .locator('[data-testid="notification-toast"], [role="status"]')
     .filter({ hasText: /paused/i })
     .first();
+  let toastRendered = false;
   if (await toast.isVisible({ timeout: 12_000 }).catch(() => false)) {
+    toastRendered = true;
     await screenshot(page, "notification-toast-rendered");
     const dismiss = toast
       .locator('[data-testid="notification-toast-dismiss"], button[aria-label="Dismiss"]')
       .first();
     await dismiss.click({ timeout: 5_000 });
   } else {
-    addIssue("notification toast did not render in browser within timeout; API lifecycle ack checked instead", {
+    addIssue("notification toast did not render in browser within timeout", {
       notification_id: notificationId,
     });
   }
   const afterBrowserPending = await apiFetch(token, "/v1/notifications/web/pending");
   const stillPendingAfterBrowser = Array.isArray(afterBrowserPending.notifications)
     && afterBrowserPending.notifications.some((n) => n.notification_id === notificationId);
-  let renderedAck = { acknowledged: 0 };
-  if (stillPendingAfterBrowser) {
-    renderedAck = await apiFetch(token, "/v1/notifications/web/ack", {
+  let lostCleanupAck = { acknowledged: 0 };
+  if (!toastRendered && stillPendingAfterBrowser) {
+    lostCleanupAck = await apiFetch(token, "/v1/notifications/web/ack", {
       method: "POST",
       body: JSON.stringify({
         notification_ids: [notificationId],
-        event_type: "rendered",
+        event_type: "lost_unrendered",
       }),
     });
   }
-  addCheck("notification render lifecycle reached browser or removed exactly one pending item", (
-    !stillPendingAfterBrowser || renderedAck.acknowledged === 1
+  const browserRemovedPending = toastRendered
+    ? await pollFor(token, "notification absent from web pending after browser render/dismiss", async () => {
+        const body = await apiFetch(token, "/v1/notifications/web/pending");
+        return !(
+          Array.isArray(body.notifications)
+          && body.notifications.some((n) => n.notification_id === notificationId)
+        );
+      }, 10_000, 500)
+    : false;
+  addCheck("notification render lifecycle reached browser and removed pending item", (
+    toastRendered && browserRemovedPending
   ), {
+    toast_rendered: toastRendered,
     still_pending_after_browser: stillPendingAfterBrowser,
-    rendered_ack: renderedAck,
+    lost_cleanup_ack: lostCleanupAck,
   });
   const afterRenderPending = await apiFetch(token, "/v1/notifications/web/pending");
   addCheck("notification is absent from web pending after render handling", !(
