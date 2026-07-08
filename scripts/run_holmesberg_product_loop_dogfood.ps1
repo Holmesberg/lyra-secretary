@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("public", "local")]
+  [ValidateSet("public", "local", "local-current")]
   [string]$Topology = "public",
 
   [string]$RunId = "",
@@ -8,7 +8,11 @@ param(
 
   [string]$Prefix = "",
 
-  [switch]$CleanupOnly
+  [switch]$CleanupOnly,
+
+  [int]$LocalCurrentPort = 3013,
+
+  [switch]$ProxyApi
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,9 +38,15 @@ try {
   Import-UserCookieEnv -Name "LYRA_COOKIE_HOLMESBERG"
   Import-UserCookieEnv -Name "LYRA_COOKIE_ALINASSERSABRY"
 
+  $useProxyApi = [bool]$ProxyApi -or $Topology -eq "local-current"
+
   if ($Topology -eq "public") {
     $env:LYRA_FRONTEND_ORIGIN = "https://lyraos.org"
     $env:LYRA_API_ORIGIN = "https://api.lyraos.org"
+  } elseif ($Topology -eq "local-current") {
+    $env:LYRA_FRONTEND_ORIGIN = "http://localhost:$LocalCurrentPort"
+    $env:LYRA_API_ORIGIN = "http://localhost:8000"
+    $env:NEXTAUTH_URL = $env:LYRA_FRONTEND_ORIGIN
   } else {
     $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"
     $env:LYRA_API_ORIGIN = "http://localhost:8000"
@@ -51,7 +61,15 @@ try {
     throw "Operator cookie check failed."
   }
 
-  $args = @("scripts\browser_holmesberg_product_loop_dogfood.mjs", "--topology", $Topology)
+  $args = @(
+    "scripts\browser_holmesberg_product_loop_dogfood.mjs",
+    "--topology", $Topology,
+    "--frontend", $env:LYRA_FRONTEND_ORIGIN,
+    "--api", $env:LYRA_API_ORIGIN
+  )
+  if ($useProxyApi) {
+    $args += "--proxy-api"
+  }
   if (-not [string]::IsNullOrWhiteSpace($RunId)) {
     $args += @("--run-id", $RunId)
   }

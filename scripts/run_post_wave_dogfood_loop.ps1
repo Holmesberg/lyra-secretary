@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("public", "local")]
+  [ValidateSet("public", "local", "local-current")]
   [string]$Topology = "public",
 
   [ValidateSet("quick", "standard", "full", "chaos")]
@@ -21,7 +21,11 @@ param(
 
   [switch]$CiCdFailOnUnsuccessful,
 
-  [string]$CiCdWorkflow = "CI"
+  [string]$CiCdWorkflow = "CI",
+
+  [int]$LocalCurrentPort = 3013,
+
+  [switch]$ProxyApi
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,6 +60,7 @@ if ([bool]$IncludeCalendarTableMutation -and $Mode -eq "quick") {
 if ([bool]$IncludeCalendarTableMutation -and $Topology -eq "public") {
   throw "-IncludeCalendarTableMutation is local-only until hosted-public mutable cleanup is explicitly approved."
 }
+$useProxyApi = [bool]$ProxyApi -or $Topology -eq "local-current"
 
 $summary = [System.Collections.Generic.List[object]]::new()
 
@@ -91,6 +96,49 @@ function Invoke-CheckedScript {
   if ($LASTEXITCODE -ne 0) {
     throw "$ScriptPath failed with exit code $LASTEXITCODE"
   }
+}
+
+function Get-FrontendOriginForTopology {
+  if ($Topology -eq "public") {
+    return "https://lyraos.org"
+  }
+  if ($Topology -eq "local-current") {
+    return "http://localhost:$LocalCurrentPort"
+  }
+  return "http://localhost:3000"
+}
+
+function Get-ApiOriginForTopology {
+  if ($Topology -eq "public") {
+    return "https://api.lyraos.org"
+  }
+  return "http://localhost:8000"
+}
+
+function Get-WrappedTopologyArgs {
+  $args = @("-Topology", $Topology)
+  if ($Topology -eq "local-current") {
+    $args += @("-LocalCurrentPort", [string]$LocalCurrentPort)
+    if ($useProxyApi) {
+      $args += "-ProxyApi"
+    }
+  }
+  return $args
+}
+
+function Get-NodeTopologyArgs {
+  $args = @("--topology", $Topology)
+  if ($Topology -eq "local-current") {
+    $args += @(
+      "--frontend", (Get-FrontendOriginForTopology),
+      "--api", (Get-ApiOriginForTopology),
+      "--nextauth", (Get-FrontendOriginForTopology)
+    )
+    if ($useProxyApi) {
+      $args += "--proxy-api"
+    }
+  }
+  return $args
 }
 
 function Assert-Cookie {
@@ -410,38 +458,38 @@ try {
     }
 
     Invoke-Step "runtime topology verifier" {
-      if ($Topology -eq "public") {
-        $env:LYRA_FRONTEND_ORIGIN = "https://lyraos.org"
-        $env:LYRA_API_ORIGIN = "https://api.lyraos.org"
-      } else {
-        $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"
-        $env:LYRA_API_ORIGIN = "http://localhost:8000"
-      }
-      node scripts\verify_runtime_topology.mjs --topology $Topology --out-file $topologyProofPath
+      $env:LYRA_FRONTEND_ORIGIN = Get-FrontendOriginForTopology
+      $env:LYRA_API_ORIGIN = Get-ApiOriginForTopology
+      $topologyArgs = Get-NodeTopologyArgs
+      $topologyArgs += @("--out-file", $topologyProofPath)
+      node scripts\verify_runtime_topology.mjs @topologyArgs
     }
 
     Invoke-Step "multi-account browser smoke" {
       Invoke-CheckedScript `
         -ScriptPath ".\scripts\run_multi_account_browser_smoke.ps1" `
-        -ScriptArgs @("-Topology", $Topology)
+        -ScriptArgs (Get-WrappedTopologyArgs)
     }
 
     Invoke-Step "operator read-only browser stress" {
       Invoke-CheckedScript `
         -ScriptPath ".\scripts\run_operator_readonly_browser_stress.ps1" `
-        -ScriptArgs @("-Topology", $Topology)
+        -ScriptArgs (Get-WrappedTopologyArgs)
     }
 
     if ([bool]$IncludeInsightsStates) {
       Invoke-Step "Insights forced-state browser dogfood" {
-        $frontend = if ($Topology -eq "public") { "https://lyraos.org" } else { "http://localhost:3000" }
-        $api = if ($Topology -eq "public") { "https://api.lyraos.org" } else { "http://localhost:8000" }
+        $frontend = Get-FrontendOriginForTopology
+        $api = Get-ApiOriginForTopology
         $env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_HOLMESBERG", "User")
         node scripts\browser_insights_states_dogfood.mjs --frontend $frontend --api $api
       }
     }
   } else {
     $stackArgs = @("-Topology", $Topology)
+    if ($Topology -eq "local-current") {
+      $stackArgs += @("-LocalCurrentPort", [string]$LocalCurrentPort)
+    }
     if ($mutableRequested) {
       $stackArgs += "-IncludeMutable"
     }
@@ -456,20 +504,17 @@ try {
     }
 
     Invoke-Step "runtime topology proof manifest" {
-      if ($Topology -eq "public") {
-        $env:LYRA_FRONTEND_ORIGIN = "https://lyraos.org"
-        $env:LYRA_API_ORIGIN = "https://api.lyraos.org"
-      } else {
-        $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"
-        $env:LYRA_API_ORIGIN = "http://localhost:8000"
-      }
-      node scripts\verify_runtime_topology.mjs --topology $Topology --out-file $topologyProofPath
+      $env:LYRA_FRONTEND_ORIGIN = Get-FrontendOriginForTopology
+      $env:LYRA_API_ORIGIN = Get-ApiOriginForTopology
+      $topologyArgs = Get-NodeTopologyArgs
+      $topologyArgs += @("--out-file", $topologyProofPath)
+      node scripts\verify_runtime_topology.mjs @topologyArgs
     }
 
     if ([bool]$IncludeInsightsStates) {
       Invoke-Step "Insights forced-state browser dogfood" {
-        $frontend = if ($Topology -eq "public") { "https://lyraos.org" } else { "http://localhost:3000" }
-        $api = if ($Topology -eq "public") { "https://api.lyraos.org" } else { "http://localhost:8000" }
+        $frontend = Get-FrontendOriginForTopology
+        $api = Get-ApiOriginForTopology
         $env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_HOLMESBERG", "User")
         node scripts\browser_insights_states_dogfood.mjs --frontend $frontend --api $api
       }
@@ -487,7 +532,7 @@ try {
       Invoke-Step "operator read-only browser stress after mutable pass" {
         Invoke-CheckedScript `
           -ScriptPath ".\scripts\run_operator_readonly_browser_stress.ps1" `
-          -ScriptArgs @("-Topology", $Topology)
+          -ScriptArgs (Get-WrappedTopologyArgs)
       }
     }
 
@@ -495,13 +540,13 @@ try {
       Invoke-Step "Holmesberg full product-loop browser dogfood" {
         Invoke-CheckedScript `
           -ScriptPath ".\scripts\run_holmesberg_product_loop_dogfood.ps1" `
-          -ScriptArgs @("-Topology", $Topology, "-RunId", $runId, "-OutDir", (Join-Path $outDir "holmesberg-product-loop"))
+          -ScriptArgs (@("-RunId", $runId, "-OutDir", (Join-Path $outDir "holmesberg-product-loop")) + (Get-WrappedTopologyArgs))
       }
 
       Invoke-Step "operator read-only browser stress after product-loop dogfood" {
         Invoke-CheckedScript `
           -ScriptPath ".\scripts\run_operator_readonly_browser_stress.ps1" `
-          -ScriptArgs @("-Topology", $Topology)
+          -ScriptArgs (Get-WrappedTopologyArgs)
       }
     }
 
@@ -509,13 +554,13 @@ try {
       Invoke-Step "Holmesberg mutable browser smoke repeat" {
         Invoke-CheckedScript `
           -ScriptPath ".\scripts\run_holmesberg_mutable_browser_smoke.ps1" `
-          -ScriptArgs @("-Topology", $Topology)
+          -ScriptArgs (Get-WrappedTopologyArgs)
       }
 
       Invoke-Step "operator read-only browser stress after chaos repeat" {
         Invoke-CheckedScript `
           -ScriptPath ".\scripts\run_operator_readonly_browser_stress.ps1" `
-          -ScriptArgs @("-Topology", $Topology)
+          -ScriptArgs (Get-WrappedTopologyArgs)
       }
     }
   }
@@ -590,7 +635,7 @@ try {
     -MutableRequested $mutableRequested
 
   $result = [pscustomobject]@{
-    ok = $true
+    ok = [bool]$evidenceManifest.ok
     commit = $commitSha
     branch = $branchName
     wave = $WaveName
@@ -604,6 +649,9 @@ try {
     steps = $summary
   }
   $result | ConvertTo-Json -Depth 6 | Tee-Object -FilePath (Join-Path $outDir "summary.json")
+  if (-not $evidenceManifest.ok) {
+    throw "post-wave evidence manifest failed: $($evidenceManifest.classification)"
+  }
 } finally {
   Pop-Location
   Stop-Transcript | Out-Null

@@ -131,7 +131,11 @@ try {
 
     if ($IncludeMutable) {
       Invoke-Step "Holmesberg mutable browser smoke" {
-        powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology $Topology
+        if ($Topology -eq "local-current") {
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology $Topology -LocalCurrentPort $LocalCurrentPort -ProxyApi
+        } else {
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_mutable_browser_smoke.ps1 -Topology $Topology
+        }
       }
     }
   }

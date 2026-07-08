@@ -34,13 +34,13 @@ function Assert-LocalNextArtifactIsolation {
     [Parameter(Mandatory = $true)]
     [string]$Reason,
 
-    [ValidateSet("public", "local")]
+    [ValidateSet("public", "local", "local-current")]
     [string]$Topology = "local",
 
     [switch]$AllowPublicFrontendArtifactMutation
   )
 
-  if ($Topology -ne "local") {
+  if ($Topology -eq "public") {
     return
   }
 

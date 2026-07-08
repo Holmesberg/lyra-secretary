@@ -15,6 +15,7 @@ const { chromium } = frontendRequire("playwright");
 
 const frontendOrigin = process.env.LYRA_FRONTEND_ORIGIN || "http://localhost:3000";
 const apiOrigin = process.env.LYRA_API_ORIGIN || "http://localhost:8000";
+const proxyApi = ["1", "true"].includes(String(process.env.LYRA_PROXY_API || "").toLowerCase());
 const cookieHeader =
   process.env.LYRA_COOKIE_HOLMESBERG
   || process.env.LYRA_COOKIE_MORIARTY
@@ -58,6 +59,35 @@ async function apiMaybe(token, method, pathname, body = undefined, headers = {})
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+async function installApiProxy(context) {
+  const apiPattern = `${apiOrigin.replace(/\/$/, "")}/**`;
+  await context.route(apiPattern, async (route) => {
+    const request = route.request();
+    const headers = {
+      ...request.headers(),
+      origin: frontendOrigin,
+    };
+    delete headers.host;
+
+    const response = await context.request.fetch(request.url(), {
+      method: request.method(),
+      headers,
+      data: request.postDataBuffer() || undefined,
+      timeout: 30_000,
+    });
+    const responseHeaders = {
+      ...response.headers(),
+      "access-control-allow-origin": frontendOrigin,
+      "access-control-allow-credentials": "true",
+    };
+    await route.fulfill({
+      status: response.status(),
+      headers: responseHeaders,
+      body: await response.body(),
+    });
   });
 }
 
@@ -181,6 +211,9 @@ async function main() {
     const cookies = parseAndExpandCookies(cookieHeader, frontendOrigin);
     if (!cookies.length) {
       fail("no Holmesberg cookie pairs parsed");
+    }
+    if (proxyApi) {
+      await installApiProxy(context);
     }
     await context.addCookies(cookies);
 
