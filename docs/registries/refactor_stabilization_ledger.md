@@ -7544,7 +7544,11 @@ Tests and verification:
   passed with `count_diffs=[]`, `route_count_diffs=[]`,
   `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
   `exposure_without_render_count=0`.
-- Pending hosted proof after push:
+- Hosted proof:
+  GitHub Actions CI passed for exact SHA
+  `9ff78f07e237f2d5cf385ef517c2806f560bddd9`; run
+  `28908964700`; artifact:
+  `tmp/ci-cd-proof/r3-pressure-map-plan-controller-9ff78f0.json`.
 
 Behavior parity statement:
 
