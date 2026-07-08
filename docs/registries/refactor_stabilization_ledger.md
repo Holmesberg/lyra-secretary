@@ -8436,3 +8436,88 @@ Rollback note:
   the previous local S1c behavior where local frontend builds/dev restarts could
   proceed while hosted-public WSL frontend was active. No production data,
   schema, cookie, Redis, or deployment rollback is required.
+
+## S1c Verifier Attribution - Operator Read-Only Count Diffs
+
+Commit:
+a81a202388d4ed397af7b0ca15b50dac3b49216c
+
+Changed authority:
+
+- `scripts/browser_stress_operator_readonly.mjs` now packages redacted
+  row-level attribution whenever exported section counts change during an
+  operator read-only proof.
+- Attribution is attached for:
+  - pre-dashboard API count diffs;
+  - per-route browser count diffs;
+  - final before/after count diffs.
+- Screenshots remain contextual evidence only. Count-diff proof now includes
+  backend export evidence sufficient to classify the likely source of a future
+  drift.
+
+Removed paths:
+
+- Removed the evidence gap where a read-only stress failure could report
+  `exposure_decision_events` or `exposure_render_events` count movement without
+  showing which redacted rows were added or removed.
+- Removed the need to reconstruct future count-diff incidents manually from
+  separate exports after the fact.
+
+Parked paths:
+
+- This does not change operator runtime behavior or prove a previous transient
+  count-diff cause.
+- Root cause of the 2026-07-08 transient count-diff remains unknown unless it
+  recurs; future failure artifacts should now include attribution sufficient to
+  classify it.
+
+Moved authority:
+
+- No product runtime, task, exposure, provider, user-data, schema, deployment,
+  or operator dashboard authority moved.
+- Verifier evidence authority moved from count-only reports toward redacted
+  row-level backend evidence.
+
+Issue and classification:
+
+- GitHub issue #175 tracks this seam.
+- Classification: verifier/harness hardening and measurement integrity.
+- Triggering incident:
+  `tmp/operator-readonly-stress-2026-07-08T11-18-53-601Z/result.json`
+  reported a transient pre-route count diff that could not be attributed from
+  the artifact alone.
+
+Tests and verification:
+
+- Syntax proof:
+  `node --check scripts\browser_stress_operator_readonly.mjs`; passed.
+- Harness self-test:
+  `node scripts\browser_stress_operator_readonly.mjs --self-test-attribution`;
+  passed, proving added-row detection and redaction of non-allowlisted message
+  content.
+- Formatting proof:
+  `git diff --check`; passed.
+- Hosted-public operator read-only proof:
+  `tmp/operator-readonly-stress-2026-07-08T11-51-07-523Z/result.json`; passed
+  with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/operator-readonly-attribution-a81a202.json`; passed for
+  commit `a81a202388d4ed397af7b0ca15b50dac3b49216c` on GitHub Actions run
+  `28940508011`.
+
+Behavior parity statement:
+
+- No app behavior changed for users.
+- No schema, API contract, operator dashboard response, frontend route,
+  exposure row, notification row, provider row, Redis key, production repair, or
+  deployment behavior changed.
+- The intended behavior change is verifier-only: failed read-only proofs become
+  more attributable and less likely to overclaim causality.
+
+Rollback note:
+
+- Revert commit `a81a202388d4ed397af7b0ca15b50dac3b49216c` only. That restores
+  count-only read-only stress artifacts. No production data, schema, Redis,
+  cookie, or deployment rollback is required.
