@@ -662,6 +662,14 @@ def test_operator_dashboard_read_is_side_effect_free(client, db):
     }
     res = client.get("/v1/operator/dashboard", headers=auth_headers(9141))
     assert res.status_code == 200
+    body = res.json()
+    assert (
+        body["data_freshness"]["source_windows"]["notifications_last_seen_at"]
+        is not None
+    )
+    assert "notifications_last_seen_at" not in body["data_freshness"]["stale_sources"]
+    issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
+    assert "notification_source_freshness_not_instrumented" not in issue_ids
     after = {
         "notifications": db.query(NotificationLifecycleEvent).count(),
         "decisions": db.query(ExposureDecisionEvent).count(),

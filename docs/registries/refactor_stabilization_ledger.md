@@ -7669,3 +7669,87 @@ Rollback note:
   pause-reason list and loose string typing. No backend code, schema,
   production data, exposure row, provider row, Redis key, or user content is
   touched.
+
+## R2 Operator - Notification Freshness Read Seam
+
+Commit:
+pending.
+
+Changed authority:
+
+- No notification lifecycle mutation authority changed.
+- The operator dashboard data-freshness snapshot now reads durable
+  `NotificationLifecycleEvent` timestamps for `notifications_last_seen_at`
+  instead of hard-coding notification freshness as unavailable.
+- `NotificationLifecycleEvent.last_transition_at` remains the primary freshness
+  timestamp, with `created_at` as a defensive fallback.
+
+Removed paths:
+
+- Removed the stale read path where `/operator` reported
+  `notification_source_freshness_not_instrumented` even when durable
+  notification lifecycle rows existed.
+
+Parked paths:
+
+- No delivery/source freshness age threshold was added. This seam only
+  distinguishes observable notification lifecycle evidence from missing
+  lifecycle evidence.
+- Invalid recovery action instrumentation remains parked; `/operator` still
+  reports that as a cohort evidence gap.
+
+Moved authority:
+
+- No runtime authority moved.
+- Notification lifecycle creation and transition authority remains in
+  notification lifecycle services and notification endpoints.
+- Operator metrics remain read-only diagnostics.
+
+Issue and classification:
+
+- GitHub issue:
+  #168 tracks the operator cockpit / measurement bug.
+- Verifier classification:
+  an initial local operator stress attempt hit a transient local
+  `/api/topology` 500 before the patch was verified. A direct topology read
+  and repeat operator stress passed; no product code was changed for that
+  transient topology event.
+
+Tests and verification:
+
+- Local proof:
+  `git diff --check`;
+  `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_route_security.py -q`;
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors`;
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  all passed.
+- Operator read-only browser proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local`
+  passed with artifact
+  `tmp/operator-readonly-stress-2026-07-08T01-21-42-682Z/result.json`,
+  `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Cockpit result:
+  `notification_source_freshness_not_instrumented` no longer appears when
+  notification lifecycle rows exist. Cohort remains yellow for true evidence
+  gaps including `no_closed_sessions_last_14d`,
+  `timer_closure_rate_below_green_threshold`,
+  `insufficient_full_loop_users`, `no_closed_sessions_for_trace_ratio`,
+  `invalid_recovery_actions_not_instrumented`, and
+  `product_loop_dropoff_detected`.
+- Hosted CI/CD proof:
+  pending after push.
+
+Behavior parity statement:
+
+- Runtime product behavior is intended to be unchanged.
+- Notification queueing, delivery, render, dismiss, action, exposure,
+  suppression, and OpenClaw transport behavior are not changed.
+
+Rollback note:
+
+- Revert this seam commit only. This restores the hard-coded
+  `notifications_last_seen_at=None` cockpit behavior. No schema, production
+  data, notification lifecycle row, exposure row, Redis key, provider row, or
+  user content is touched.

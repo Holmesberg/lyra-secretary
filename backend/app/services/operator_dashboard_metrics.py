@@ -646,7 +646,12 @@ def data_freshness_snapshot(
                     db.query(func.max(StopwatchSession.end_time_utc)).scalar(),
                 ])
             ),
-            "notifications_last_seen_at": None,
+            "notifications_last_seen_at": iso(
+                last_non_null([
+                    db.query(func.max(NotificationLifecycleEvent.last_transition_at)).scalar(),
+                    db.query(func.max(NotificationLifecycleEvent.created_at)).scalar(),
+                ])
+            ),
             "exposures_last_seen_at": iso(
                 last_non_null([
                     db.query(func.max(ExposureDecisionEvent.created_at)).scalar(),
