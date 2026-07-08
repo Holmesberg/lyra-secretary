@@ -1,12 +1,13 @@
 param(
-  [ValidateSet("public", "local")]
+  [ValidateSet("public", "local", "local-current")]
   [string]$Topology = "public",
 
   [switch]$SkipBackendFull,
   [switch]$SkipFrontendBuild,
   [switch]$SkipBrowser,
   [switch]$IncludeMutable,
-  [switch]$AllowPublicFrontendArtifactMutation
+  [switch]$AllowPublicFrontendArtifactMutation,
+  [int]$LocalCurrentPort = 3013
 )
 
 $ErrorActionPreference = "Stop"
@@ -100,16 +101,32 @@ try {
       Invoke-Step "local frontend dev restart after build" {
         Ensure-LocalFrontendDev `
           -Reason "local frontend dev restart after build" `
+          -Port 3000 `
+          -AllowPublicFrontendArtifactMutation:$AllowPublicFrontendArtifactMutation
+      }
+    } elseif ($Topology -eq "local-current") {
+      Invoke-Step "local-current frontend dev restart after build" {
+        Ensure-LocalFrontendDev `
+          -Reason "local-current frontend dev restart after build" `
+          -Port $LocalCurrentPort `
           -AllowPublicFrontendArtifactMutation:$AllowPublicFrontendArtifactMutation
       }
     }
 
     Invoke-Step "multi-account browser smoke" {
-      powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_multi_account_browser_smoke.ps1 -Topology $Topology
+      if ($Topology -eq "local-current") {
+        powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_multi_account_browser_smoke.ps1 -Topology $Topology -LocalCurrentPort $LocalCurrentPort
+      } else {
+        powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_multi_account_browser_smoke.ps1 -Topology $Topology
+      }
     }
 
     Invoke-Step "operator read-only browser stress" {
-      powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology $Topology
+      if ($Topology -eq "local-current") {
+        powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology $Topology -LocalCurrentPort $LocalCurrentPort -AssumeLocalFrontendReady
+      } else {
+        powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology $Topology
+      }
     }
 
     if ($IncludeMutable) {

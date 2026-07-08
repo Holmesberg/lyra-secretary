@@ -82,7 +82,8 @@ Use one of these explicit paths:
 function Ensure-LocalFrontendDev {
   param(
     [switch]$AllowPublicFrontendArtifactMutation,
-    [string]$Reason = "local frontend dev restart"
+    [string]$Reason = "local frontend dev restart",
+    [int]$Port = 3000
   )
 
   Assert-LocalNextArtifactIsolation `
@@ -96,20 +97,21 @@ function Ensure-LocalFrontendDev {
   $stdout = Join-Path $outDir "frontend-dev-$stamp.out.log"
   $stderr = Join-Path $outDir "frontend-dev-$stamp.err.log"
 
-  $existing = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue |
+  $existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
     Select-Object -First 1
   if ($existing) {
     Stop-Process -Id $existing.OwningProcess -Force
     Start-Sleep -Seconds 2
   }
 
-  $env:NEXTAUTH_URL = "http://localhost:3000"
+  $frontendOrigin = "http://localhost:$Port"
+  $env:NEXTAUTH_URL = $frontendOrigin
   $env:NEXT_PUBLIC_API_URL = "http://localhost:8000"
   $env:NEXT_PUBLIC_BUILD_ID = "local-current"
 
   $process = Start-Process `
     -FilePath "npm.cmd" `
-    -ArgumentList @("run", "dev", "--", "-p", "3000") `
+    -ArgumentList @("run", "dev", "--", "-p", "$Port") `
     -WorkingDirectory $script:LyraFrontendDir `
     -WindowStyle Hidden `
     -RedirectStandardOutput $stdout `
@@ -121,12 +123,23 @@ function Ensure-LocalFrontendDev {
   for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 1
     try {
-      $response = Invoke-WebRequest -UseBasicParsing "http://localhost:3000/api/topology" -TimeoutSec 3
+      $response = Invoke-WebRequest -UseBasicParsing "$frontendOrigin/api/topology" -TimeoutSec 3
       if ($response.StatusCode -eq 200) {
         $topology = $response.Content | ConvertFrom-Json
-        if ($topology.verified_topology -eq $true -and
+        $canonicalLocal = (
+            $Port -eq 3000 -and
+            $topology.verified_topology -eq $true -and
             $topology.topology_class -eq "local" -and
-            $topology.compiled_api_origin -eq "http://localhost:8000") {
+            $topology.compiled_api_origin -eq "http://localhost:8000" -and
+            $topology.nextauth_url -eq $frontendOrigin
+        )
+        $localCurrent = (
+            $Port -ne 3000 -and
+            $topology.frontend_origin -eq $frontendOrigin -and
+            $topology.compiled_api_origin -eq "http://localhost:8000" -and
+            $topology.nextauth_url -eq $frontendOrigin
+        )
+        if ($canonicalLocal -or $localCurrent) {
           $ready = $true
           break
         }
@@ -142,10 +155,10 @@ function Ensure-LocalFrontendDev {
     Write-Host "Local frontend dev stderr: $stderr"
     Get-Content $stdout -ErrorAction SilentlyContinue | Select-Object -Last 80
     Get-Content $stderr -ErrorAction SilentlyContinue | Select-Object -Last 80
-    throw "local frontend dev server did not become topology-ready on localhost:3000. Last error: $lastError"
+    throw "local frontend dev server did not become topology-ready on localhost:$Port. Last error: $lastError"
   }
 
-  Write-Host "Local frontend dev topology-ready on localhost:3000 (pid=$($process.Id))"
+  Write-Host "Local frontend dev topology-ready on localhost:$Port (pid=$($process.Id))"
   Write-Host "stdout=$stdout"
   Write-Host "stderr=$stderr"
 }

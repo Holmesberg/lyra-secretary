@@ -19,7 +19,11 @@ function argValue(name, fallback = null) {
 
 const topologyArg = argValue("--topology", "public");
 const outFile = argValue("--out-file", null);
+const frontendOverride = argValue("--frontend", argValue("--frontend-origin", null));
+const apiOverride = argValue("--api", argValue("--api-origin", null));
+const nextauthOverride = argValue("--nextauth", argValue("--nextauth-url", null));
 const skipBrowser = process.argv.includes("--skip-browser");
+const proxyApi = process.argv.includes("--proxy-api");
 const selected =
   topologyArg === "both"
     ? Object.keys(contract.topologies)
@@ -33,6 +37,49 @@ function fail(message, detail = undefined) {
 
 function normalize(value) {
   return String(value || "").replace(/\/$/, "");
+}
+
+function isLocalOrigin(value) {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function topologySpec(topologyName) {
+  const topology = contract.topologies[topologyName];
+  if (topology) return { ...topology, topology_class: topologyName };
+
+  if (topologyName !== "local-current") {
+    fail(`unknown topology ${topologyName}`);
+  }
+
+  const frontendOrigin =
+    frontendOverride || process.env.LYRA_FRONTEND_ORIGIN || "http://localhost:3013";
+  const apiOrigin = apiOverride || process.env.LYRA_API_ORIGIN || "http://localhost:8000";
+  const nextauthUrl = nextauthOverride || process.env.NEXTAUTH_URL || frontendOrigin;
+
+  if (![frontendOrigin, apiOrigin, nextauthUrl].every(isLocalOrigin)) {
+    fail("local-current topology only accepts explicit localhost/127.0.0.1 origins", {
+      frontend_origin: frontendOrigin,
+      api_origin: apiOrigin,
+      nextauth_url: nextauthUrl,
+    });
+  }
+
+  return {
+    topology_class: "local-current",
+    frontend_origin: frontendOrigin,
+    api_origin: apiOrigin,
+    nextauth_url: nextauthUrl,
+    local_current: true,
+    proxy_api: proxyApi,
+  };
 }
 
 function writeResult(payload) {
@@ -180,13 +227,14 @@ async function fetchJson(url, init = {}) {
   }
 }
 
-function assertNoCrossTopologyPoison(topologyName, urls) {
+function assertNoCrossTopologyPoison(topologyName, urls, allowedOrigins = []) {
+  const allowed = new Set(allowedOrigins.map(normalize).filter(Boolean));
   const otherOrigins = Object.entries(contract.topologies)
     .filter(([name]) => name !== topologyName)
     .flatMap(([, topology]) => [topology.frontend_origin, topology.api_origin, topology.nextauth_url])
     .map(normalize);
   const poisoned = urls.filter((url) =>
-    otherOrigins.some((origin) => origin && normalize(url).startsWith(origin))
+    otherOrigins.some((origin) => origin && !allowed.has(origin) && normalize(url).startsWith(origin))
   );
   if (poisoned.length) {
     fail(`cross-topology request detected for ${topologyName}`, poisoned);
@@ -230,8 +278,13 @@ async function verifyCors(topologyName, topology) {
 }
 
 async function verifyTopology(topologyName) {
-  const topology = contract.topologies[topologyName];
-  if (!topology) fail(`unknown topology ${topologyName}`);
+  const topology = topologySpec(topologyName);
+  const localCurrent = Boolean(topology.local_current);
+  const allowedOrigins = [
+    topology.frontend_origin,
+    topology.api_origin,
+    topology.nextauth_url,
+  ];
 
   const frontendUrl = `${topology.frontend_origin}/api/topology`;
   const frontend = await fetchJson(frontendUrl);
@@ -241,12 +294,6 @@ async function verifyTopology(topologyName) {
       endpointFailureDetail(topologyName, "frontend", frontendUrl, frontend)
     );
   }
-  if (frontend.body.verified_topology !== true) {
-    fail(`frontend topology is not verified for ${topologyName}`, frontend.body);
-  }
-  if (frontend.body.topology_class !== topologyName) {
-    fail(`frontend topology class mismatch for ${topologyName}`, frontend.body);
-  }
   if (normalize(frontend.body.frontend_origin) !== normalize(topology.frontend_origin)) {
     fail(`frontend origin mismatch for ${topologyName}`, frontend.body);
   }
@@ -255,6 +302,14 @@ async function verifyTopology(topologyName) {
   }
   if (normalize(frontend.body.nextauth_url) !== normalize(topology.nextauth_url)) {
     fail(`NextAuth URL mismatch for ${topologyName}`, frontend.body);
+  }
+  if (!localCurrent) {
+    if (frontend.body.verified_topology !== true) {
+      fail(`frontend topology is not verified for ${topologyName}`, frontend.body);
+    }
+    if (frontend.body.topology_class !== topologyName) {
+      fail(`frontend topology class mismatch for ${topologyName}`, frontend.body);
+    }
   }
 
   const backendUrl = `${topology.api_origin}/v1/health/topology`;
@@ -267,14 +322,16 @@ async function verifyTopology(topologyName) {
       endpointFailureDetail(topologyName, "backend", backendUrl, backend)
     );
   }
-  if (backend.body.verified_topology !== true) {
-    fail(`backend topology is not verified for ${topologyName}`, backend.body);
-  }
-  if (backend.body.topology_class !== topologyName) {
-    fail(`backend topology class mismatch for ${topologyName}`, backend.body);
-  }
   if (normalize(backend.body.api_origin) !== normalize(topology.api_origin)) {
     fail(`backend API origin mismatch for ${topologyName}`, backend.body);
+  }
+  if (!localCurrent) {
+    if (backend.body.verified_topology !== true) {
+      fail(`backend topology is not verified for ${topologyName}`, backend.body);
+    }
+    if (backend.body.topology_class !== topologyName) {
+      fail(`backend topology class mismatch for ${topologyName}`, backend.body);
+    }
   }
 
   const authUrl = `${topology.frontend_origin}/api/auth/providers`;
@@ -290,7 +347,9 @@ async function verifyTopology(topologyName) {
     fail(`auth provider URL mismatch for ${topologyName}`, google);
   }
 
-  await verifyCors(topologyName, topology);
+  if (!localCurrent || !proxyApi) {
+    await verifyCors(topologyName, topology);
+  }
 
   if (!skipBrowser) {
     const browser = await chromium.launch({ headless: true });
@@ -302,12 +361,14 @@ async function verifyTopology(topologyName) {
     await page.evaluate(async () => {
       await fetch("/api/topology");
     });
-    await page.evaluate(async (apiOrigin) => {
-      await fetch(`${apiOrigin}/v1/health/topology`);
-    }, topology.api_origin);
+    if (!localCurrent || !proxyApi) {
+      await page.evaluate(async (apiOrigin) => {
+        await fetch(`${apiOrigin}/v1/health/topology`);
+      }, topology.api_origin);
+    }
     await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
     await browser.close();
-    assertNoCrossTopologyPoison(topologyName, requests);
+    assertNoCrossTopologyPoison(topologyName, requests, allowedOrigins);
   }
 
   return {
@@ -317,6 +378,7 @@ async function verifyTopology(topologyName) {
     verified_topology: true,
     frontend_build_id: frontend.body.build_id,
     backend_build_id: backend.body.build_id,
+    proxy_api: Boolean(topology.proxy_api),
   };
 }
 
