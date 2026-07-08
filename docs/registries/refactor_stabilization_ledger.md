@@ -8720,3 +8720,118 @@ Rollback note:
   .\scripts\restart_frontend_wsl.ps1` to rebuild the public frontend using the
   previous artifact path.
 - No production data, schema, Redis, cookie, or backend rollback is required.
+
+## Local-Current Topology Verifier Mode
+
+Commit:
+f283db05eb49031ea587147ebc0fbe1336789d57
+
+Changed authority:
+
+- `scripts/verify_runtime_topology.mjs` now supports explicit
+  `--topology local-current` proofs with caller-supplied `--frontend`, `--api`,
+  `--nextauth`, and optional `--proxy-api`.
+- `local-current` is verifier-only. It accepts only localhost/127.0.0.1 origins
+  and does not weaken canonical `local` or hosted `public` topology checks.
+- `scripts/run_operator_readonly_browser_stress.ps1` and
+  `scripts/run_multi_account_browser_smoke.ps1` can now run against
+  `local-current` on an explicit port, defaulting to `3013`.
+- `scripts/local_frontend_topology.ps1` can start and verify local-current dev
+  servers whose frontend/API/NextAuth fields match the requested alternate
+  port.
+- `scripts/run_s1c_verification_stack.ps1` can pass local-current topology and
+  port settings through to reusable browser gates.
+
+Removed paths:
+
+- Removed the path where alternate current-code browser proofs had to be
+  described as canonical `local` or as unmanaged ad hoc overrides.
+- Removed the path where `localhost:3013` with correct local API/auth fields
+  was automatically classified as unusable `mixed` evidence.
+
+Parked paths:
+
+- Direct non-proxied browser API calls from arbitrary local-current ports remain
+  parked unless backend CORS explicitly includes those ports.
+- This does not create a production topology and does not add new public CORS
+  origins.
+
+Moved authority:
+
+- Local-current topology interpretation moved into verifier scripts.
+- Runtime topology authority remains with `runtime_topology.json`, frontend
+  `/api/topology`, backend `/v1/health/topology`, and the public/local
+  contracts.
+- No product runtime, task, deadline, timer, exposure, provider, schema, Redis,
+  deployment, or ClaimCompiler authority moved.
+
+Issue and classification:
+
+- GitHub issue #147 tracks this seam.
+- Classification: verifier/topology bug.
+- Triggering symptom: approved alternate local-current browser ports were
+  indistinguishable from accidental mixed topology.
+
+Tests and verification:
+
+- Parser and syntax proof:
+  - `node --check scripts\verify_runtime_topology.mjs`; passed.
+  - PowerShell parser check passed for:
+    `scripts\local_frontend_topology.ps1`,
+    `scripts\run_operator_readonly_browser_stress.ps1`,
+    `scripts\run_multi_account_browser_smoke.ps1`, and
+    `scripts\run_s1c_verification_stack.ps1`.
+  - `git diff --check`; passed.
+- Local-current topology proof:
+  `tmp/topology-local-current-3013.json`; passed for
+  `frontend=http://localhost:3013`, `api=http://localhost:8000`,
+  `nextauth=http://localhost:3013`, and `proxy_api=true`.
+- Negative safety proof:
+  `tmp/topology-local-current-3013-negative.json`; failed as expected when
+  `--nextauth http://localhost:3000` was supplied against frontend
+  `http://localhost:3013`.
+- Local-current operator read-only proof:
+  `tmp/operator-readonly-stress-2026-07-08T12-43-57-239Z/result.json`; passed
+  with `proxy_api=true`, `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`,
+  `exposure_without_render_count=0`, desktop `/operator` `6841ms`, and mobile
+  `/operator` `6150ms`.
+- Local-current multi-account proof:
+  `scripts\run_multi_account_browser_smoke.ps1 -Topology local-current
+  -LocalCurrentPort 3013`; passed for the operator account and Holmesberg
+  non-operator account.
+- Cleanup proof:
+  the temporary `localhost:3013` dev server was stopped after the proof.
+- Public strictness proof:
+  `tmp/topology-public-after-local-current-change.json`; passed for public
+  topology with `--skip-browser`.
+- S1c static/no-browser gate:
+  `scripts\run_s1c_verification_stack.ps1 -Topology public -SkipBackendFull
+  -SkipFrontendBuild -SkipBrowser`; passed.
+- Hosted-public operator read-only proof after the script change:
+  `tmp/operator-readonly-stress-2026-07-08T12-48-22-229Z/result.json`; passed
+  with `count_diffs=[]`, `dashboard_snapshot_diffs=[]`,
+  `implementation_green=true`, `exposure_without_render_count=0`, desktop
+  `/operator` `8753ms`, and mobile `/operator` `5341ms`.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/local-current-topology-f283db0.json`; passed for commit
+  `f283db05eb49031ea587147ebc0fbe1336789d57` on GitHub Actions run
+  `28943906554`.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- No schema, backend API behavior, operator dashboard payload, task/deadline
+  state, timer state, exposure row, notification row, provider row, production
+  data, Redis key, or deployment behavior changed.
+- Intended behavior change is verifier-only: alternate current-code local
+  browser proofs can be labeled, validated, proxied, and rejected when their
+  auth/API fields do not match.
+
+Rollback note:
+
+- Revert commit `f283db05eb49031ea587147ebc0fbe1336789d57` only. That removes
+  the explicit local-current verifier mode and returns alternate-port proofs to
+  the previous ad hoc/proxy-only workflow.
+- No production data, schema, Redis, cookie, backend, or hosted-public rollback
+  is required.
