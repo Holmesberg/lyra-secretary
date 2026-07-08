@@ -8355,3 +8355,84 @@ Rollback note:
   the previous scattered proof artifacts and topology stdout-only behavior. No
   runtime state, production data, schema, cache, cookie, or deployment rollback
   is required.
+
+## S1c Topology Guard - Local/Public Next Artifact Isolation
+
+Commit:
+828475d90a64e55b264167a1548241ff14f64c96
+
+Changed authority:
+
+- `scripts/run_s1c_verification_stack.ps1` now refuses local-topology frontend
+  artifact mutation while the WSL hosted-public frontend tmux session
+  `lyra-frontend` is running.
+- The guarded mutation surfaces are:
+  - local topology `frontend production build`;
+  - local topology `local frontend dev restart after build`.
+- An explicit override exists for intentional local proof:
+  `-AllowPublicFrontendArtifactMutation` or
+  `LYRA_ALLOW_LOCAL_FRONTEND_WHILE_PUBLIC=1`.
+
+Removed paths:
+
+- Removed the default path where a local S1c verifier run could silently mutate
+  `frontend/.next` while hosted public was serving that same artifact tree.
+- Removed the default path that produced hosted-public `_next` chunk `400`s and
+  browser `ChunkLoadError` after local verifier/build work.
+
+Parked paths:
+
+- Full physical build isolation remains open under GitHub issue #144.
+- Local-current alternate port topology drift remains open under GitHub issue
+  #147.
+- This guard does not split worktrees, add a separate Next `distDir`, or restart
+  public automatically after an override.
+
+Moved authority:
+
+- No product runtime, task, exposure, provider, user-data, schema, or deployment
+  authority moved.
+- Local frontend artifact mutation is now an explicit operator action when the
+  hosted-public frontend is active, not an accidental verifier side effect.
+
+Issue and classification:
+
+- GitHub issue #144 tracks the underlying local/public Next artifact hazard.
+- Classification: topology/verifier guardrail.
+- Discovery evidence: hosted public served stale/mismatched Next static chunks
+  on 2026-07-08 until the WSL public frontend was rebuilt to build `bfca848`.
+
+Tests and verification:
+
+- Parser proof:
+  PowerShell parser check for `scripts\run_s1c_verification_stack.ps1`; passed.
+- Formatting proof:
+  `git diff --check`; passed.
+- Active public-session proof:
+  `wsl.exe -e bash -lc "tmux has-session -t lyra-frontend ..."` reported
+  `public_frontend_session=active`, confirming the guard protects a live
+  hosted-public frontend.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/local-public-artifact-guard-828475d.json` passed for commit
+  `828475d90a64e55b264167a1548241ff14f64c96` on GitHub Actions run
+  `28939713882`.
+- Hosted-public operator read-only proof after the guard:
+  `tmp/operator-readonly-stress-2026-07-08T11-42-29-052Z/result.json`; passed
+  with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No app behavior changed for users.
+- No schema, API contract, frontend component, provider row, exposure row,
+  Redis key, production data repair, or public restart command changed.
+- The intended behavior change is verifier-only: local S1c runs fail closed
+  instead of risking hosted-public static asset corruption.
+
+Rollback note:
+
+- Revert commit `828475d90a64e55b264167a1548241ff14f64c96` only. That restores
+  the previous local S1c behavior where local frontend builds/dev restarts could
+  proceed while hosted-public WSL frontend was active. No production data,
+  schema, cookie, Redis, or deployment rollback is required.
