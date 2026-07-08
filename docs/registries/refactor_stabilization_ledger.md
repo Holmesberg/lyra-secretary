@@ -7440,7 +7440,6 @@ Tests and verification:
   passed with `count_diffs=[]`, `route_count_diffs=[]`,
   `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
   `exposure_without_render_count=0`.
-- Pending hosted proof after push:
 - Hosted proof:
   GitHub Actions CI passed for exact SHA
   `0b1f3da0784969825f71c8316dbf3e9b6836edad`; run
@@ -7458,3 +7457,105 @@ Rollback note:
 - Revert this frontend seam commit only. This restores raw query-key call sites
   and inline invalidation predicates. No backend code, schema, production data,
   exposure row, provider row, Redis key, or user content is touched.
+
+## R3 Frontend - Pressure-Map Plan Commit Controller Seam
+
+Commit:
+pending.
+
+Changed authority:
+
+- No runtime authority changed.
+- The explicit user-action boundary for pressure-map recovery plan creation now
+  has one named controller hook:
+  `frontend/components/pulse/use-pressure-map-plan-commit.ts`.
+- `PulseAcademicPressureMap` remains the presentation and plan-option selection
+  surface.
+- The hook preserves the existing diagnostic-to-task transition:
+  pressure map preview -> explicit lock-in -> canonical `createTask` call ->
+  pressure/deadline/task/calendar cache invalidation.
+
+Removed paths:
+
+- Removed pressure-map recovery plan creation state, cold-start enrichment,
+  conflict force handling, and cache invalidation from the large
+  `PulseAcademicPressureMap` component body.
+- Removed the mixed presentation/mutation path where preview rendering and task
+  creation were interleaved in a single component.
+
+Parked paths:
+
+- Backend recovery-option gating remains unchanged.
+- Pressure-map recovery options remain diagnostic and require explicit user
+  action before task creation.
+- Hosted-public mutable pressure-map dogfood remains high-care and optional
+  unless cleanup proof is safe.
+- Stopwatch controller extraction, NewTaskModal submit/creation-nudge
+  extraction, calendar drag/resize mutation, and table correction/export
+  hardening remain parked for separate seams.
+
+Moved authority:
+
+- No authority moved to the client beyond the pre-existing explicit button path.
+- The pressure-map controller owns only local preview state and the explicit
+  task-creation command already used by the component.
+- The backend task endpoint remains the task mutation authority.
+- Deadline linkage remains explicit in the `deadline_id` carried to
+  `createTask`; pressure-map estimates remain planning footprint only, not
+  execution truth.
+
+Issue and classification:
+
+- Refactor classification:
+  frontend mutation-boundary extraction, behavior-preserving.
+- Verification classification:
+  local topology initially had a stale `localhost:3000` listener returning 500;
+  this is the existing verifier/topology issue #166. The S1c wrapper restarted
+  a verified local-topology frontend before mutable browser proof.
+
+Tests and verification:
+
+- Local proof:
+  `git diff --check`;
+  `cd frontend; npm run typecheck`;
+  `cd frontend; npm run build`;
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors`;
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_academic_pressure_map.py tests\test_create_task_with_deadline.py -q`;
+  all passed.
+- Browser proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_s1c_verification_stack.ps1 -Topology local -SkipBackendFull -SkipFrontendBuild`
+  passed and verified local topology.
+- Holmesberg product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --run-id r3-pressure-map-plan-controller --out-dir tmp\browser-product-loop\r3-pressure-map-plan-controller --force-pressure-recovery`
+  passed with `ok=true`.
+- Pressure-map chain proof:
+  the loop seeded a due-soon deadline, opened pressure map preview, dismissed
+  without creating a task, reopened, locked in a recovery block, verified exactly
+  one created recovery block, verified deadline binding and planning-footprint
+  provenance, verified calendar visibility, and recorded cleanup IDs.
+- Browser-only fixture caveat:
+  backend returned no real `create_plan`/`split_into_blocks` recovery option for
+  the seeded item, so the browser loop forced the recovery option in the
+  pressure-map response. The task creation, deadline binding, provenance,
+  calendar visibility, and cleanup checks still used the real local backend.
+- Operator read-only proof after mutable dogfood:
+  `tmp/operator-readonly-stress-2026-07-08T00-40-11-082Z/result.json`
+  passed with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Pending hosted proof after push:
+
+Behavior parity statement:
+
+- Runtime product behavior is intended to be unchanged.
+- The `createTask` payload, conflict force behavior, cold-start calibration
+  lookup, preview dismiss behavior, cache invalidations, and close-on-success
+  behavior are preserved.
+
+Rollback note:
+
+- Revert this frontend seam commit only. This restores pressure-map recovery
+  preview state and commit logic to `PulseAcademicPressureMap`. No backend code,
+  schema, production data, exposure row, provider row, Redis key, or user
+  content is touched.
