@@ -7859,7 +7859,7 @@ Rollback note:
 ## R5a Stale Docs - Authority Subordination Gate
 
 Commit:
-pending
+0e9e827647122bffa2bfcfb1b1d2434427cdf85b
 
 Changed authority:
 
@@ -7912,6 +7912,17 @@ Tests and verification:
   passed with `missing_owner_count=0`.
 - Formatting proof:
   `git diff --check` passed.
+- Operator read-only browser proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local`
+  passed with artifact
+  `tmp/operator-readonly-stress-2026-07-08T09-41-23-835Z/result.json`,
+  `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/r5a-stale-planning-authority-0e9e827.json` passed for
+  commit `0e9e827647122bffa2bfcfb1b1d2434427cdf85b` on GitHub Actions run
+  `28933136782`.
 
 Behavior parity statement:
 
