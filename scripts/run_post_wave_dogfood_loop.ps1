@@ -112,6 +112,272 @@ function Assert-Cookie {
   Write-Host $cookieText
 }
 
+function Convert-ToRepoRelativePath {
+  param([AllowNull()][string]$PathValue)
+  if ([string]::IsNullOrWhiteSpace($PathValue)) {
+    return $null
+  }
+  try {
+    $resolvedPath = (Resolve-Path $PathValue -ErrorAction Stop).Path
+    $rootPath = (Resolve-Path $repoRoot -ErrorAction Stop).Path.TrimEnd("\", "/")
+    if ($resolvedPath.StartsWith($rootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $resolvedPath.Substring($rootPath.Length).TrimStart("\", "/")
+    }
+    return $resolvedPath
+  } catch {
+    return $PathValue
+  }
+}
+
+function Read-JsonFile {
+  param([Parameter(Mandatory = $true)][string]$PathValue)
+  if (-not (Test-Path $PathValue)) {
+    return $null
+  }
+  try {
+    return Get-Content -Raw -Path $PathValue | ConvertFrom-Json
+  } catch {
+    return [pscustomobject]@{
+      ok = $false
+      error = "json_parse_failed"
+      detail = $_.Exception.Message
+      path = Convert-ToRepoRelativePath $PathValue
+    }
+  }
+}
+
+function Get-FirstValue {
+  param([object[]]$Values)
+  foreach ($value in $Values) {
+    if ($null -ne $value -and -not [string]::IsNullOrWhiteSpace([string]$value)) {
+      return $value
+    }
+  }
+  return $null
+}
+
+function Get-LastNonNullValue {
+  param([object[]]$Values)
+  $last = $null
+  foreach ($value in $Values) {
+    if ($null -ne $value) {
+      $last = $value
+    }
+  }
+  return $last
+}
+
+function Get-NestedResultFiles {
+  param([object]$Artifacts)
+
+  $dirs = @()
+  foreach ($bucketName in @(
+    "operator_readonly_stress",
+    "browser_smoke",
+    "product_loop",
+    "calendar_table_mutation",
+    "insights_states"
+  )) {
+    $bucket = $Artifacts.$bucketName
+    if ($null -ne $bucket) {
+      $dirs += @($bucket)
+    }
+  }
+
+  $dirs |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path $_) } |
+    ForEach-Object {
+      $resultPath = Join-Path $_ "result.json"
+      if (Test-Path $resultPath) {
+        $resultPath
+      }
+    } |
+    Sort-Object -Unique
+}
+
+function Get-ResultSummary {
+  param([Parameter(Mandatory = $true)][string]$ResultPath)
+
+  $json = Read-JsonFile $ResultPath
+  if ($null -eq $json) {
+    return $null
+  }
+
+  $routes = @($json.routes)
+  $routeWarnings = @(
+    $routes |
+      Where-Object { $null -ne $_ } |
+      ForEach-Object {
+        $route = $_
+        @($route.warnings) |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+          ForEach-Object {
+            [pscustomobject]@{
+              route = $route.route
+              viewport = $route.viewport
+              warning = $_
+              duration_ms = $route.duration_ms
+            }
+          }
+      }
+  )
+
+  $cleanupChecks = @(
+    @($json.checks) |
+      Where-Object { $_.name -match "(?i)cleanup" } |
+      ForEach-Object {
+        [pscustomobject]@{
+          name = $_.name
+          ok = [bool]$_.ok
+        }
+      }
+  )
+  $cleanupPresent = ($null -ne $json.cleanup) -or $cleanupChecks.Count -gt 0
+  $cleanupTaskCount = 0
+  $cleanupDeadlineCount = 0
+  $cleanupNotificationCount = 0
+  if ($null -ne $json.cleanup) {
+    $cleanupTaskCount = @($json.cleanup.task_ids | Where-Object { $null -ne $_ }).Count
+    $cleanupDeadlineCount = @($json.cleanup.deadline_ids | Where-Object { $null -ne $_ }).Count
+    $cleanupNotificationCount = @($json.cleanup.notification_ids | Where-Object { $null -ne $_ }).Count
+  }
+  $cleanupOk = if (-not $cleanupPresent) {
+    $null
+  } elseif ($cleanupChecks.Count -gt 0) {
+    -not [bool](@($cleanupChecks | Where-Object { -not $_.ok }).Count)
+  } else {
+    $true
+  }
+
+  [pscustomobject]@{
+    path = Convert-ToRepoRelativePath $ResultPath
+    ok = $json.ok
+    user_ref = $json.user_ref
+    topology = $json.topology
+    frontend_origin = Get-FirstValue @($json.frontendOrigin, $json.frontend_origin)
+    api_origin = Get-FirstValue @($json.apiOrigin, $json.api_origin)
+    output_dir = Convert-ToRepoRelativePath (Get-FirstValue @($json.output_dir, $json.outDir))
+    issues = @($json.issues)
+    warnings = @($json.warnings)
+    route_warnings = $routeWarnings
+    count_diffs = @($json.count_diffs)
+    route_count_diffs = @($json.route_count_diffs)
+    dashboard_snapshot_diffs = @($json.dashboard_snapshot_diffs)
+    implementation_green = $json.dashboard_after_snapshot.cohort_readiness.implementation_green
+    exposure_without_render_count = $json.dashboard_after_snapshot.notification_lifecycle.exposure_without_render_count
+    cleanup = [pscustomobject]@{
+      present = $cleanupPresent
+      ok = $cleanupOk
+      checks = $cleanupChecks
+      task_count = $cleanupTaskCount
+      deadline_count = $cleanupDeadlineCount
+      notification_count = $cleanupNotificationCount
+    }
+  }
+}
+
+function New-EvidenceManifest {
+  param(
+    [Parameter(Mandatory = $true)][object]$Artifacts,
+    [Parameter(Mandatory = $true)][string]$TopologyProofPath,
+    [Parameter(Mandatory = $true)][bool]$MutableRequested
+  )
+
+  $topologyProof = Read-JsonFile $TopologyProofPath
+  $nestedResults = @(
+    Get-NestedResultFiles -Artifacts $Artifacts |
+      ForEach-Object { Get-ResultSummary -ResultPath $_ } |
+      Where-Object { $null -ne $_ }
+  )
+  $nestedIssues = @(
+    $nestedResults |
+      ForEach-Object {
+        $result = $_
+        @($result.issues) |
+          Where-Object { $null -ne $_ } |
+          ForEach-Object {
+            [pscustomobject]@{
+              source = $result.path
+              issue = $_
+            }
+          }
+      }
+  )
+  $nestedWarnings = @(
+    $nestedResults |
+      ForEach-Object {
+        $result = $_
+        @($result.warnings) |
+          Where-Object { $null -ne $_ } |
+          ForEach-Object {
+            [pscustomobject]@{
+              source = $result.path
+              warning = $_
+            }
+          }
+        @($result.route_warnings) |
+          Where-Object { $null -ne $_ } |
+          ForEach-Object {
+            [pscustomobject]@{
+              source = $result.path
+              warning = $_
+            }
+          }
+      }
+  )
+  $failedResults = @($nestedResults | Where-Object { $_.ok -eq $false })
+  $cleanupSummaries = @($nestedResults | Where-Object { $_.cleanup.present })
+  $cleanupOk = if (-not $MutableRequested) {
+    $null
+  } elseif ($cleanupSummaries.Count -eq 0) {
+    $false
+  } else {
+    -not [bool](@($cleanupSummaries | Where-Object { $_.cleanup.ok -ne $true }).Count)
+  }
+
+  $operatorSummaries = @(
+    $nestedResults |
+      Where-Object {
+        $_.path -like "*operator-readonly-stress*" -or
+        $null -ne $_.implementation_green -or
+        $null -ne $_.exposure_without_render_count
+      }
+  )
+
+  [pscustomobject]@{
+    ok = (
+      ($null -ne $topologyProof -and $topologyProof.ok -eq $true) -and
+      $failedResults.Count -eq 0 -and
+      (-not $MutableRequested -or $cleanupOk -eq $true)
+    )
+    classification = if ($null -ne $topologyProof -and $topologyProof.ok -ne $true) {
+      $topologyProof.classification
+    } elseif ($failedResults.Count -gt 0) {
+      "product_or_verifier_failure"
+    } elseif ($MutableRequested -and $cleanupOk -ne $true) {
+      "measurement_cleanup_failure"
+    } else {
+      "standard_wave_proof_passed"
+    }
+    topology_proof_path = Convert-ToRepoRelativePath $TopologyProofPath
+    topology_proof = $topologyProof
+    nested_result_count = $nestedResults.Count
+    failed_results = $failedResults
+    nested_issues = $nestedIssues
+    nested_warnings = $nestedWarnings
+    cleanup = [pscustomobject]@{
+      required = $MutableRequested
+      ok = $cleanupOk
+      summaries = @($cleanupSummaries | ForEach-Object { $_.cleanup })
+    }
+    operator = [pscustomobject]@{
+      summaries = $operatorSummaries
+      implementation_green = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.implementation_green })
+      exposure_without_render_count = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.exposure_without_render_count })
+    }
+  }
+}
+
 $transcriptPath = Join-Path $outDir "transcript.txt"
 Start-Transcript -Path $transcriptPath -Force | Out-Null
 
@@ -128,6 +394,7 @@ try {
   $fullCommitSha = (git rev-parse HEAD).Trim()
   $branchName = (git branch --show-current).Trim()
   $ciCdProofPath = Join-Path $outDir "ci_cd_proof.json"
+  $topologyProofPath = Join-Path $outDir "topology_proof.json"
 
   Invoke-Step "cookie check: operator" {
     Assert-Cookie -Account "alinassersabry"
@@ -150,7 +417,7 @@ try {
         $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"
         $env:LYRA_API_ORIGIN = "http://localhost:8000"
       }
-      node scripts\verify_runtime_topology.mjs --topology $Topology
+      node scripts\verify_runtime_topology.mjs --topology $Topology --out-file $topologyProofPath
     }
 
     Invoke-Step "multi-account browser smoke" {
@@ -186,6 +453,17 @@ try {
       Invoke-CheckedScript `
         -ScriptPath ".\scripts\run_s1c_verification_stack.ps1" `
         -ScriptArgs $stackArgs
+    }
+
+    Invoke-Step "runtime topology proof manifest" {
+      if ($Topology -eq "public") {
+        $env:LYRA_FRONTEND_ORIGIN = "https://lyraos.org"
+        $env:LYRA_API_ORIGIN = "https://api.lyraos.org"
+      } else {
+        $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"
+        $env:LYRA_API_ORIGIN = "http://localhost:8000"
+      }
+      node scripts\verify_runtime_topology.mjs --topology $Topology --out-file $topologyProofPath
     }
 
     if ([bool]$IncludeInsightsStates) {
@@ -259,6 +537,58 @@ try {
     }
   }
 
+  $artifacts = [pscustomobject]@{
+    topology_proof = if (Test-Path $topologyProofPath) { $topologyProofPath } else { $null }
+    operator_readonly_stress = @(
+      Get-ChildItem -Path (Join-Path $repoRoot "tmp") -Directory -Filter "operator-readonly-stress-*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -ge $runStartedAt } |
+        Sort-Object LastWriteTime |
+        ForEach-Object { $_.FullName }
+    )
+    browser_smoke = @(
+      Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-smoke") -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -ge $runStartedAt } |
+        Sort-Object LastWriteTime |
+        ForEach-Object { $_.FullName }
+    )
+    product_loop = @(
+      @(
+        Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-product-loop") -Directory -ErrorAction SilentlyContinue |
+          Where-Object { $_.LastWriteTime -ge $runStartedAt } |
+          Sort-Object LastWriteTime |
+          ForEach-Object { $_.FullName }
+        $nestedProductLoop = Join-Path $outDir "holmesberg-product-loop"
+        if (Test-Path $nestedProductLoop) {
+          (Resolve-Path $nestedProductLoop).Path
+        }
+      )
+    )
+    calendar_table_mutation = @(
+      @(
+        Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-calendar-table-mutation") -Directory -ErrorAction SilentlyContinue |
+          Where-Object { $_.LastWriteTime -ge $runStartedAt } |
+          Sort-Object LastWriteTime |
+          ForEach-Object { $_.FullName }
+        $nestedCalendarTable = Join-Path $outDir "calendar-table-mutation"
+        if (Test-Path $nestedCalendarTable) {
+          (Resolve-Path $nestedCalendarTable).Path
+        }
+      )
+    )
+    insights_states = @(
+      Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-insights-states") -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -ge $runStartedAt } |
+        Sort-Object LastWriteTime |
+        ForEach-Object { $_.FullName }
+    )
+    ci_cd_proof = if (Test-Path $ciCdProofPath) { $ciCdProofPath } else { $null }
+  }
+
+  $evidenceManifest = New-EvidenceManifest `
+    -Artifacts $artifacts `
+    -TopologyProofPath $topologyProofPath `
+    -MutableRequested $mutableRequested
+
   $result = [pscustomobject]@{
     ok = $true
     commit = $commitSha
@@ -269,51 +599,8 @@ try {
     mutable_enabled = $mutableRequested
     output_dir = $outDir
     transcript = $transcriptPath
-    artifacts = @{
-      operator_readonly_stress = @(
-        Get-ChildItem -Path (Join-Path $repoRoot "tmp") -Directory -Filter "operator-readonly-stress-*" -ErrorAction SilentlyContinue |
-          Where-Object { $_.LastWriteTime -ge $runStartedAt } |
-          Sort-Object LastWriteTime |
-          ForEach-Object { $_.FullName }
-      )
-      browser_smoke = @(
-        Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-smoke") -Directory -ErrorAction SilentlyContinue |
-          Where-Object { $_.LastWriteTime -ge $runStartedAt } |
-          Sort-Object LastWriteTime |
-          ForEach-Object { $_.FullName }
-      )
-      product_loop = @(
-        @(
-          Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-product-loop") -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -ge $runStartedAt } |
-            Sort-Object LastWriteTime |
-            ForEach-Object { $_.FullName }
-          $nestedProductLoop = Join-Path $outDir "holmesberg-product-loop"
-          if (Test-Path $nestedProductLoop) {
-            (Resolve-Path $nestedProductLoop).Path
-          }
-        )
-      )
-      calendar_table_mutation = @(
-        @(
-          Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-calendar-table-mutation") -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -ge $runStartedAt } |
-            Sort-Object LastWriteTime |
-            ForEach-Object { $_.FullName }
-          $nestedCalendarTable = Join-Path $outDir "calendar-table-mutation"
-          if (Test-Path $nestedCalendarTable) {
-            (Resolve-Path $nestedCalendarTable).Path
-          }
-        )
-      )
-      insights_states = @(
-        Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-insights-states") -Directory -ErrorAction SilentlyContinue |
-          Where-Object { $_.LastWriteTime -ge $runStartedAt } |
-          Sort-Object LastWriteTime |
-          ForEach-Object { $_.FullName }
-      )
-      ci_cd_proof = if (Test-Path $ciCdProofPath) { $ciCdProofPath } else { $null }
-    }
+    artifacts = $artifacts
+    evidence_manifest = $evidenceManifest
     steps = $summary
   }
   $result | ConvertTo-Json -Depth 6 | Tee-Object -FilePath (Join-Path $outDir "summary.json")

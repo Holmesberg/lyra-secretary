@@ -18,6 +18,7 @@ function argValue(name, fallback = null) {
 }
 
 const topologyArg = argValue("--topology", "public");
+const outFile = argValue("--out-file", null);
 const skipBrowser = process.argv.includes("--skip-browser");
 const selected =
   topologyArg === "both"
@@ -32,6 +33,13 @@ function fail(message, detail = undefined) {
 
 function normalize(value) {
   return String(value || "").replace(/\/$/, "");
+}
+
+function writeResult(payload) {
+  if (!outFile) return;
+  const resolved = path.resolve(repoRoot, outFile);
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
 function relativePath(filePath) {
@@ -317,27 +325,35 @@ try {
   for (const topologyName of selected) {
     results.push(await verifyTopology(topologyName));
   }
-  console.log(JSON.stringify({ ok: true, checked: results }, null, 2));
+  const payload = {
+    ok: true,
+    classification: "topology_verified",
+    topology: topologyArg,
+    skip_browser: skipBrowser,
+    checked: results,
+  };
+  writeResult(payload);
+  console.log(JSON.stringify(payload, null, 2));
 } catch (error) {
-  console.error(
-    JSON.stringify(
-      {
-        ok: false,
-        error: error.message,
-        detail:
-          error.detail ??
-          (error.cause
-            ? {
-                cause_message: error.cause.message,
-                cause_code: error.cause.code,
-                cause_host: error.cause.hostname ?? error.cause.host,
-                cause_port: error.cause.port,
-              }
-            : null),
-      },
-      null,
-      2
-    )
-  );
+  const detail =
+    error.detail ??
+    (error.cause
+      ? {
+          cause_message: error.cause.message,
+          cause_code: error.cause.code,
+          cause_host: error.cause.hostname ?? error.cause.host,
+          cause_port: error.cause.port,
+        }
+      : null);
+  const payload = {
+    ok: false,
+    classification: detail?.classification ?? "topology/deployment_bug",
+    topology: topologyArg,
+    skip_browser: skipBrowser,
+    error: error.message,
+    detail,
+  };
+  writeResult(payload);
+  console.error(JSON.stringify(payload, null, 2));
   process.exit(1);
 }
