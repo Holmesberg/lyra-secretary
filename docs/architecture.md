@@ -164,6 +164,12 @@ All three are independent of Phase 4 analytics features and can be a Sprint 0 in
 
 ## 3. Docker Networking (OpenClaw Bridge)
 
+> Current freeze interpretation: this section documents historical network
+> reachability only. It does not authorize OpenClaw-to-product wiring, runtime
+> identity bypass, Jarvis/OpenClaw expansion, AI synthesis, or direct backend
+> mutation from OpenClaw. Current OpenClaw authority lives in
+> `docs/openclaw_orchestration_contract_v0.md` plus the active authority docs.
+
 Lyra Secretary and OpenClaw run as separate Docker Compose stacks with separate networks. The OpenClaw gateway needs to reach `http://backend:8000`.
 
 **Solution:** Add Lyra's network as external in OpenClaw's docker-compose.yml:

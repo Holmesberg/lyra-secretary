@@ -1,5 +1,19 @@
 # Moodle LMS Integration
 
+> Freeze boundary: this document describes the existing Moodle integration and
+> its research-integrity caveats. It authorizes maintenance of already-shipped
+> Moodle paths only through canonical provider, deadline, and user-data
+> authorities. It does not authorize new provider adapters, broader LMS
+> expansion, passive tracking, provider-derived completion as clean execution
+> truth, runtime AI synthesis, new user-facing insights, behavior-transition
+> equations, schema migrations, or automatic interventions during the
+> architecture freeze.
+>
+> Moodle rows remain provider facts/candidates with provenance. Provider
+> completion evidence may support diagnostics or candidate reconciliation, but
+> it must not become native completion truth without active-contract authority
+> and explicit user confirmation.
+
 **Shipped:** 2026-04-29 (alembic 041)
 **Status:** Live for ASU Engineering Faculty (lms.eng.asu.edu.eg) and any standard Moodle 3.x/4.x install. Tested against Moodle 2019052001.1.
 
@@ -126,6 +140,12 @@ If anything blocks, the rollback is: `DELETE FROM "user" WHERE moodle_ics_url IS
 ---
 
 ## v1.1 — Web Services submission detection + backfill (2026-05-01)
+
+> Current freeze interpretation: this section documents the historical shipped
+> Moodle WS backfill path and its idempotency/provenance requirements. Provider
+> submission evidence remains a candidate/evidence signal; it must not become
+> clean execution truth or native completion truth without current active
+> authority and explicit user confirmation.
 
 `backend/app/services/moodle_submissions_sync.py` adds a second sync layer using Moodle's REST API (token from Moodle → Preferences → Security keys, stored on `user.moodle_ws_token` per alembic 043). Runs every 6h alongside the iCal job.
 

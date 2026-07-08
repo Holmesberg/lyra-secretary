@@ -7297,3 +7297,79 @@ Rollback note:
   the prior scanner marker set, and returns the registry to report-only
   language. No schema, production data, exposure row, provider row, Redis key,
   user content, or public deployment topology is touched.
+
+## R5a Docs - Stale Authority Cleanup Before Extraction
+
+Commit: pending commit (`docs: tighten r5a authority boundaries`).
+
+Changed authority:
+
+- No runtime authority changed.
+- `docs/integrations_architecture.md` now states that future integrations need
+  freeze authority before adding provider adapters, OAuth scopes, passive
+  tracking, provider completion truth, AI synthesis, new insights, behavior
+  equations, schema work, or automatic interventions.
+- `docs/moodle_lms_integration.md` now clarifies that the existing Moodle path
+  may be maintained only through canonical provider, deadline, and user-data
+  authorities.
+- `docs/deadline_mechanism_design.md` now marks the Apr 25 deadline decision as
+  provenance, not current permission for schema work, parser inference,
+  soft-warning UX, background transitions, or provider-derived completion truth.
+- `docs/building_phases.md` now marks Tier 1.5 and Phase 6 as
+  historical/parked roadmap material during freeze.
+- `docs/architecture.md` now marks the OpenClaw Docker networking section as
+  historical reachability documentation, not permission for OpenClaw product
+  wiring, identity bypass, AI synthesis, or direct backend mutation.
+
+Removed paths:
+
+- Removed the active-looking docs path where integration architecture could be
+  mistaken as permission for new provider expansion during freeze.
+- Removed the active-looking Moodle docs path where provider-derived completion
+  evidence could be mistaken as clean execution truth.
+- Removed the active-looking deadline, retention, Phase 6, and OpenClaw
+  networking docs paths where historical design notes could be mistaken as
+  permission for runtime work during freeze.
+
+Parked paths:
+
+- New provider adapters, broader LMS expansion, passive tracking, runtime AI
+  synthesis, OpenClaw-to-product wiring, user-facing insights,
+  behavior-transition equations, schema migrations, parser inference,
+  provider-derived completion truth, pause prediction, and automatic
+  interventions remain parked.
+
+Moved authority:
+
+- Existing shipped integration, deadline, and OpenClaw maintenance remains
+  subordinate to the active authority docs, provider/deadline/user-data
+  contracts, clean-data boundaries, exposure lifecycle, and ClaimCompiler
+  boundaries.
+- Provider facts remain provenance-bearing candidates unless a current active
+  contract and explicit user action promote them into native truth.
+
+Issue and classification:
+
+- Classification:
+  documentation authority gap.
+- GitHub issue:
+  #165, to be closed after commit/push/CI proof.
+
+Tests and verification:
+
+- Pending local proof before commit:
+  `git diff --check`.
+- Pending hosted proof after push:
+  exact-SHA GitHub Actions CI.
+
+Behavior parity statement:
+
+- Runtime product behavior is unchanged.
+- The change only prevents stale/future docs from authorizing runtime work
+  during freeze.
+
+Rollback note:
+
+- Revert this docs commit only. This restores the prior docs wording. No
+  runtime code, production data, schema, exposure row, provider row, Redis key,
+  user content, or CI workflow is touched.

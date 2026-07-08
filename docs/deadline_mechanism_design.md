@@ -32,6 +32,12 @@ conflicts with H1 measurement" section below for the surfaced trade.
 
 ## Operator decision (Apr 25)
 
+> Current freeze supersession: the Apr 25 operator decision below is preserved
+> as provenance only. It does not authorize schema work, parser inference,
+> soft-warning UX, background deadline transitions, provider-derived completion
+> truth, or new deadline behavior during the current freeze. Current mutation
+> authority remains with the active task/deadline/provider contracts.
+
 **Choice:** Option B — build deadline mechanism mid-alpha, before the Jun 18-25
 retention checkpoint and before H1 reaches an explicit decision.
 
