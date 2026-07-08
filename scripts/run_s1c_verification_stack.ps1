@@ -5,7 +5,8 @@ param(
   [switch]$SkipBackendFull,
   [switch]$SkipFrontendBuild,
   [switch]$SkipBrowser,
-  [switch]$IncludeMutable
+  [switch]$IncludeMutable,
+  [switch]$AllowPublicFrontendArtifactMutation
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,7 +22,54 @@ if (-not (Test-Path $python)) {
 
 $summary = [System.Collections.Generic.List[object]]::new()
 
+function Test-WslPublicFrontendSession {
+  if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+    return $false
+  }
+
+  & wsl.exe -e bash -lc "tmux has-session -t lyra-frontend 2>/dev/null" 2>$null
+  return $LASTEXITCODE -eq 0
+}
+
+function Assert-LocalNextArtifactIsolation {
+  param([Parameter(Mandatory = $true)][string]$Reason)
+
+  if ($Topology -ne "local") {
+    return
+  }
+
+  if (-not (Test-WslPublicFrontendSession)) {
+    return
+  }
+
+  $envOverride = [Environment]::GetEnvironmentVariable("LYRA_ALLOW_LOCAL_FRONTEND_WHILE_PUBLIC")
+  if ([bool]$AllowPublicFrontendArtifactMutation -or $envOverride -eq "1") {
+    Write-Warning (
+      "Continuing despite active public frontend artifact risk for '$Reason'. " +
+      "Restart hosted public frontend with scripts\restart_frontend_wsl.ps1 after this run."
+    )
+    return
+  }
+
+  throw @"
+Refusing local frontend artifact mutation while WSL public frontend session 'lyra-frontend' is running.
+
+Reason: $Reason
+
+Local Next build/dev writes frontend\.next, the same artifact directory used by
+the hosted public WSL frontend. This previously caused hosted-public _next chunk
+400s and ChunkLoadError in the browser.
+
+Use one of these explicit paths:
+- run the verifier with -Topology public when local frontend proof is not needed;
+- stop the public frontend before local artifact mutation, then restart it with scripts\restart_frontend_wsl.ps1;
+- pass -AllowPublicFrontendArtifactMutation only for an intentional local proof and restart public immediately after.
+"@
+}
+
 function Ensure-LocalFrontendDev {
+  Assert-LocalNextArtifactIsolation -Reason "local frontend dev restart after build"
+
   $outDir = Join-Path $repoRoot "tmp\local-frontend-dev"
   New-Item -ItemType Directory -Force -Path $outDir | Out-Null
   $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -139,6 +187,8 @@ try {
   }
 
   if (-not $SkipFrontendBuild) {
+    Assert-LocalNextArtifactIsolation -Reason "frontend production build in local topology"
+
     Invoke-Step "frontend production build" {
       Push-Location $frontendDir
       try {
