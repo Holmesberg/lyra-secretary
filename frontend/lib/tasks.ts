@@ -130,10 +130,17 @@ export async function queryTasks(
  */
 export async function queryTasksRange(
   dateFrom: string,
-  dateTo: string
+  dateTo: string,
+  opts: { includeVoided?: boolean } = {}
 ): Promise<QueryResponse> {
+  const qs = new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+    state: "all",
+  });
+  if (opts.includeVoided) qs.set("include_voided", "true");
   return api<QueryResponse>(
-    `/v1/tasks/query?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&state=all`
+    `/v1/tasks/query?${qs.toString()}`
   );
 }
 

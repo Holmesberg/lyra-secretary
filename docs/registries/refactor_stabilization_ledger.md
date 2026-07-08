@@ -7755,3 +7755,101 @@ Rollback note:
   `notifications_last_seen_at=None` cockpit behavior. No schema, production
   data, notification lifecycle row, exposure row, Redis key, provider row, or
   user content is touched.
+
+## S1c Hardening - Calendar/Table Mutation Dogfood Gate
+
+Commit:
+pending.
+
+Changed authority:
+
+- Table audit/history now opts into voided task rows by calling
+  `queryTasksRange(..., { includeVoided: true })`.
+- `queryTasksRange` keeps the default voided-row guard for other callers.
+- `queryKeys.tasksRangeWindow` now includes the include-voided mode so Table
+  cache entries cannot contaminate Pulse or Calendar cache entries.
+- Added a reusable local-only Holmesberg browser dogfood gate for calendar and
+  table mutation/audit paths.
+
+Removed paths:
+
+- Removed the dead Table path where the `Show voided` checkbox could not reveal
+  voided rows because the backend query had already excluded them.
+
+Parked paths:
+
+- Physical Schedule-X drag/resize gesture synthesis remains gated. The new
+  proof exercises the same canonical reschedule authority and browser calendar
+  rendering, but does not synthesize low-level drag/resize DOM gestures.
+- Hosted-public mutable calendar/table dogfood remains blocked by wrapper
+  policy until hosted cleanup is explicitly approved.
+
+Moved authority:
+
+- No mutation authority moved.
+- Calendar reschedule authority remains `/v1/reschedule`.
+- Table correction authority remains `/v1/tasks/{task_id}/execution-correction`.
+- Table remains the audit/history surface that may request voided rows for
+  client-side reveal; Pulse and Calendar remain on default non-voided reads.
+
+Issue and classification:
+
+- GitHub issue:
+  #169 tracks the Table `Show voided` product/audit-history bug.
+- Verifier classifications:
+  - initial table-correction failure was a harness timing error; the script now
+    waits for the exact correction API response and polls canonical task state.
+  - a 44-minute correction result exposed second/millisecond truncation in
+    synthetic fixtures; the script now creates minute-aligned synthetic rows and
+    asserts the backend response's corrected duration.
+  - the CSV header expectation was a harness contract error; Table CSV uses
+    `actual_duration_minutes` for displayed/effective duration.
+  - the first show-voided probe placed the voided row outside Table's default
+    date range; the final script places the probe inside today's range.
+
+Tests and verification:
+
+- Frontend proof:
+  `cd frontend; npm run typecheck; npm run build`;
+  passed.
+- Direct browser proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_calendar_table_mutation_dogfood.ps1 -Topology local -RunId s1c-calendar-table-mutation-local-green2 -OutDir tmp\browser-calendar-table-mutation\s1c-calendar-table-mutation-local-green2`;
+  passed with `ok=true`.
+- Reusable post-wave proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local -Mode standard -WaveName s1c-calendar-table-mutation -IncludeCalendarTableMutation`;
+  passed with summary
+  `tmp/post-wave-dogfood/20260708-044448-s1c-calendar-table-mutation-standard-local/summary.json`.
+- Calendar/table proof artifact:
+  `tmp/post-wave-dogfood/20260708-044448-s1c-calendar-table-mutation-standard-local/calendar-table-mutation/result.json`
+  passed with `ok=true`.
+- Operator read-only proof after mutable pass:
+  `tmp/operator-readonly-stress-2026-07-08T01-50-56-679Z/result.json`
+  passed with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Proven paths:
+  calendar renders a planned synthetic task; canonical reschedule updates
+  planned task times; calendar renders the rescheduled task after reload;
+  executed task reschedule is rejected; Table renders an executed synthetic
+  row; Table correction reaches the backend and updates effective duration;
+  user export contains the correction row; Table hides voided rows by default;
+  `Show voided` reveals the voided row; Table CSV contains corrected and
+  voided rows; CSV has no obvious private markers; cleanup leaves no active
+  Holmesberg timer, no unrendered synthetic creation-nudge exposure debt, and
+  no non-voided synthetic tasks.
+- Hosted CI/CD proof:
+  pending after push.
+
+Behavior parity statement:
+
+- Pulse and Calendar task range reads are intended to remain unchanged.
+- Table default visual behavior is intended to remain unchanged: voided rows are
+  still hidden until the user enables `Show voided`.
+- Table now has the data needed for its existing `Show voided` control to work.
+
+Rollback note:
+
+- Revert this seam commit only. This removes the new S1c browser proof and
+  restores Table to the previous non-voided task range query. No schema,
+  production data, exposure row, provider row, Redis key, or user content is
+  touched.

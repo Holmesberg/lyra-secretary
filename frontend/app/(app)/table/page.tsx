@@ -450,8 +450,8 @@ export default function TablePage() {
     isLoading: tasksLoading,
     refetch: refetchTasks,
   } = useQuery<QueryResponse>({
-    queryKey: queryKeys.tasksRangeWindow(dateFrom, dateTo),
-    queryFn: () => queryTasksRange(dateFrom, dateTo),
+    queryKey: queryKeys.tasksRangeWindow(dateFrom, dateTo, true),
+    queryFn: () => queryTasksRange(dateFrom, dateTo, { includeVoided: true }),
     staleTime: 60_000,
   });
 

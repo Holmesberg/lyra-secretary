@@ -11,6 +11,8 @@ param(
 
   [switch]$IncludeProductLoop,
 
+  [switch]$IncludeCalendarTableMutation,
+
   [switch]$IncludeInsightsStates,
 
   [switch]$NoMutable,
@@ -37,12 +39,22 @@ $outDir = Join-Path $repoRoot "tmp\post-wave-dogfood\$runId"
 
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-$mutableRequested = ([bool]$IncludeMutable -or [bool]$IncludeProductLoop) -and -not [bool]$NoMutable -and $Mode -ne "quick"
+$mutableRequested = (
+  [bool]$IncludeMutable `
+  -or [bool]$IncludeProductLoop `
+  -or [bool]$IncludeCalendarTableMutation
+) -and -not [bool]$NoMutable -and $Mode -ne "quick"
 if ([bool]$IncludeMutable -and [bool]$NoMutable) {
   throw "Use either -IncludeMutable or -NoMutable, not both."
 }
 if ([bool]$IncludeProductLoop -and $Mode -eq "quick") {
   throw "-IncludeProductLoop requires Mode standard, full, or chaos."
+}
+if ([bool]$IncludeCalendarTableMutation -and $Mode -eq "quick") {
+  throw "-IncludeCalendarTableMutation requires Mode standard, full, or chaos."
+}
+if ([bool]$IncludeCalendarTableMutation -and $Topology -eq "public") {
+  throw "-IncludeCalendarTableMutation is local-only until hosted-public mutable cleanup is explicitly approved."
 }
 
 $summary = [System.Collections.Generic.List[object]]::new()
@@ -185,6 +197,14 @@ try {
       }
     }
 
+    if ([bool]$IncludeCalendarTableMutation) {
+      Invoke-Step "Holmesberg calendar/table mutation browser dogfood" {
+        Invoke-CheckedScript `
+          -ScriptPath ".\scripts\run_calendar_table_mutation_dogfood.ps1" `
+          -ScriptArgs @("-Topology", $Topology, "-RunId", $runId, "-OutDir", (Join-Path $outDir "calendar-table-mutation"))
+      }
+    }
+
     if ($mutableRequested) {
       Invoke-Step "operator read-only browser stress after mutable pass" {
         Invoke-CheckedScript `
@@ -271,6 +291,18 @@ try {
           $nestedProductLoop = Join-Path $outDir "holmesberg-product-loop"
           if (Test-Path $nestedProductLoop) {
             (Resolve-Path $nestedProductLoop).Path
+          }
+        )
+      )
+      calendar_table_mutation = @(
+        @(
+          Get-ChildItem -Path (Join-Path $repoRoot "tmp\browser-calendar-table-mutation") -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $runStartedAt } |
+            Sort-Object LastWriteTime |
+            ForEach-Object { $_.FullName }
+          $nestedCalendarTable = Join-Path $outDir "calendar-table-mutation"
+          if (Test-Path $nestedCalendarTable) {
+            (Resolve-Path $nestedCalendarTable).Path
           }
         )
       )

@@ -28,8 +28,13 @@ export const queryKeys = {
   tasksEvidenceWindow: (dateFrom: string, dateTo: string) =>
     ["tasks-evidence", dateFrom, dateTo] as const,
   tasksRange: ["tasks-range"] as const,
-  tasksRangeWindow: (dateFrom: string, dateTo: string) =>
-    ["tasks-range", dateFrom, dateTo] as const,
+  tasksRangeWindow: (dateFrom: string, dateTo: string, includeVoided = false) =>
+    [
+      "tasks-range",
+      dateFrom,
+      dateTo,
+      includeVoided ? "include-voided" : "active",
+    ] as const,
 } satisfies Record<string, QueryKey | ((...args: never[]) => QueryKey)>;
 
 const domainKeys = {
