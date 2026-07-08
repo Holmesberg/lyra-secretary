@@ -40,7 +40,11 @@ import {
   type IntegrationState,
   type IntegrationStatus,
 } from "@/lib/integrations";
-import { queryKeys } from "@/lib/query-keys";
+import {
+  invalidateCalendarEventQueries,
+  invalidateDeadlineQueries,
+  queryKeys,
+} from "@/lib/query-keys";
 
 // Copy for the callback-redirect banners. Kept here (not in the
 // callback route) so translations can live next to the surface the
@@ -129,11 +133,7 @@ export function IntegrationsSection() {
       await disconnectIntegration(id);
       qc.invalidateQueries({ queryKey: queryKeys.integrations });
       qc.invalidateQueries({ queryKey: queryKeys.me });
-      qc.invalidateQueries({
-        predicate: (q) =>
-          typeof q.queryKey[0] === "string" &&
-          (q.queryKey[0] as string).startsWith("calendar-events"),
-      });
+      invalidateCalendarEventQueries(qc);
       setBanner({
         kind: "success",
         title: `${humanName(id)} disconnected.`,
@@ -340,11 +340,7 @@ export function IntegrationsSection() {
           onConnected={(result) => {
             qc.invalidateQueries({ queryKey: queryKeys.integrations });
             qc.invalidateQueries({ queryKey: queryKeys.deadlines });
-            qc.invalidateQueries({
-              predicate: (q) =>
-                typeof q.queryKey[0] === "string" &&
-                (q.queryKey[0] as string).startsWith("deadline"),
-            });
+            invalidateDeadlineQueries(qc);
             const ical = result?.ical ?? null;
             const wsOn = !!result?.ws;
             const parts: string[] = [];

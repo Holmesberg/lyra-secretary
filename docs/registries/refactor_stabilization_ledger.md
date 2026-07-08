@@ -7378,3 +7378,78 @@ Rollback note:
 - Revert this docs commit only. This restores the prior docs wording. No
   runtime code, production data, schema, exposure row, provider row, Redis key,
   user content, or CI workflow is touched.
+
+## R3 Frontend - Query-Key And Invalidation Vocabulary Seam
+
+Commit: pending commit (`frontend: centralize calendar query keys`).
+
+Changed authority:
+
+- No runtime authority changed.
+- `frontend/lib/query-keys.ts` now names the remaining Today/Calendar calendar
+  event query keys and the pending pause-confirmation query key.
+- Integrations invalidation now uses shared calendar/deadline predicate helpers
+  instead of local inline predicates.
+
+Removed paths:
+
+- Removed raw `calendar-events`, `calendar-events-today`, and
+  `pause-predictions-pending-confirmation` query-key call sites from Today and
+  Calendar pages.
+- Removed inline cache-invalidation predicates from the integrations settings
+  surface.
+
+Parked paths:
+
+- NewTaskModal submit/draft/creation-nudge authority remains parked for a
+  separate higher-care seam.
+- Stopwatch controller extraction remains parked.
+- Pressure-map preview/commit authority remains the recommended next real R3
+  danger-reduction seam.
+- Calendar drag/resize mutation, provider credential mutation, and shared
+  brain-dump reducer extraction remain parked until targeted browser proof is
+  selected.
+
+Moved authority:
+
+- None. The tuple values are preserved exactly; only their named accessors and
+  invalidation predicates moved to the query-key vocabulary module.
+
+Issue and classification:
+
+- Refactor classification:
+  frontend cache vocabulary seam, behavior-preserving.
+- Verifier classification:
+  direct local operator stress first failed because a stale Windows Next.js
+  listener owned `localhost:3000`; the corrected local S1c wrapper started a
+  verified local-topology frontend before browser proof.
+- GitHub issue:
+  #166 tracks the verifier/topology collision.
+
+Tests and verification:
+
+- Local proof:
+  `git diff --check`;
+  `cd frontend; npm run typecheck`;
+  `cd frontend; npm run build`;
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_s1c_verification_stack.ps1 -Topology local -SkipBackendFull -SkipFrontendBuild`;
+  all passed.
+- Browser proof:
+  `tmp/operator-readonly-stress-2026-07-08T00-18-17-372Z/result.json`
+  passed with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Pending hosted proof after push:
+  exact-SHA GitHub Actions CI.
+
+Behavior parity statement:
+
+- Runtime product behavior is intended to be unchanged.
+- Query keys keep the same tuple values, so persisted cache roots and existing
+  invalidation semantics remain compatible.
+
+Rollback note:
+
+- Revert this frontend seam commit only. This restores raw query-key call sites
+  and inline invalidation predicates. No backend code, schema, production data,
+  exposure row, provider row, Redis key, or user content is touched.

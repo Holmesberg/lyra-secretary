@@ -391,7 +391,7 @@ export default function CalendarPage() {
   // returns empty events gracefully — no error toast, UI simply shows
   // Barzakh tasks alone.
   const calendarEventsQ = useQuery({
-    queryKey: ["calendar-events", visibleRange.from, visibleRange.to],
+    queryKey: queryKeys.calendarEventsWindow(visibleRange.from, visibleRange.to),
     queryFn: () =>
       getCalendarEvents({
         dateFrom: visibleRange.from,

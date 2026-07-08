@@ -4,6 +4,10 @@ export const queryKeys = {
   adminDashboard: ["admin-dashboard"] as const,
   adminEmailEngagement: (campaignVersion: string, sinceDays: number) =>
     ["admin-email-engagement", campaignVersion, sinceDays] as const,
+  calendarEvents: ["calendar-events"] as const,
+  calendarEventsToday: (date: string) => ["calendar-events-today", date] as const,
+  calendarEventsWindow: (dateFrom: string, dateTo: string) =>
+    ["calendar-events", dateFrom, dateTo] as const,
   deadlines: ["deadlines"] as const,
   deadlineBindingCorrection: ["deadlines", "binding-correction"] as const,
   deadlinesBindable: ["deadlines", "bindable"] as const,
@@ -11,6 +15,9 @@ export const queryKeys = {
   integrations: ["integrations"] as const,
   me: ["me"] as const,
   operatorDashboard: ["operator-dashboard-v12"] as const,
+  pausePredictionsPendingConfirmation: [
+    "pause-predictions-pending-confirmation",
+  ] as const,
   pressureMap: ["pressure-map"] as const,
   pressureMapHorizon: (horizonDays: number) =>
     ["pressure-map", horizonDays] as const,
@@ -36,6 +43,32 @@ function invalidateKeys(queryClient: QueryClient, keys: readonly QueryKey[]) {
   return Promise.all(
     keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
   );
+}
+
+export function isCalendarEventsQueryKey(queryKey: QueryKey) {
+  return (
+    typeof queryKey[0] === "string" &&
+    queryKey[0].startsWith(queryKeys.calendarEvents[0])
+  );
+}
+
+export function isDeadlineQueryKey(queryKey: QueryKey) {
+  return (
+    typeof queryKey[0] === "string" &&
+    queryKey[0].startsWith("deadline")
+  );
+}
+
+export function invalidateCalendarEventQueries(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => isCalendarEventsQueryKey(query.queryKey),
+  });
+}
+
+export function invalidateDeadlineQueries(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => isDeadlineQueryKey(query.queryKey),
+  });
 }
 
 export function invalidateDomain(

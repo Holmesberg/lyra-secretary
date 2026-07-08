@@ -188,7 +188,7 @@ function TodayInner() {
   // "adding an event in Google Calendar → it appears here" near-instant.
   // Query key scoped to `viewedDate` so navigating days invalidates.
   const calEventsQ = useQuery({
-    queryKey: ["calendar-events-today", viewedDate],
+    queryKey: queryKeys.calendarEventsToday(viewedDate),
     queryFn: () =>
       getCalendarEvents({
         dateFrom: viewedDate,
@@ -219,7 +219,7 @@ function TodayInner() {
   // pause_event within ±10 min of predicted_at. We just render what
   // it returns, tracking local dismiss state for the session.
   const pauseConfirmQ = useQuery({
-    queryKey: ["pause-predictions-pending-confirmation"],
+    queryKey: queryKeys.pausePredictionsPendingConfirmation,
     queryFn: listPendingConfirmations,
     staleTime: 10_000,
     refetchInterval: 120_000,
@@ -256,7 +256,7 @@ function TodayInner() {
     // Refetch so if the server still has other pending firings we
     // haven't interacted with, they stay in sync.
     qc.invalidateQueries({
-      queryKey: ["pause-predictions-pending-confirmation"],
+      queryKey: queryKeys.pausePredictionsPendingConfirmation,
     });
   }
   const [newTaskOpen, setNewTaskOpen] = useState(false);
@@ -1091,7 +1091,7 @@ function TodayInner() {
                 now={now}
                 onMutated={() => {
                   qc.invalidateQueries({
-                    queryKey: ["calendar-events-today", viewedDate],
+                    queryKey: queryKeys.calendarEventsToday(viewedDate),
                   });
                 }}
               />
