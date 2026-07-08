@@ -7759,7 +7759,7 @@ Rollback note:
 ## S1c Hardening - Calendar/Table Mutation Dogfood Gate
 
 Commit:
-pending.
+0a75f43d9b2b48d454c7b12d6c5e97f65c3ba257
 
 Changed authority:
 
@@ -7838,7 +7838,9 @@ Tests and verification:
   Holmesberg timer, no unrendered synthetic creation-nudge exposure debt, and
   no non-voided synthetic tasks.
 - Hosted CI/CD proof:
-  pending after push.
+  `tmp/ci-cd-proof/s1c-calendar-table-mutation-0a75f43.json` passed for
+  commit `0a75f43d9b2b48d454c7b12d6c5e97f65c3ba257` on GitHub Actions run
+  `28911782000`.
 
 Behavior parity statement:
 
