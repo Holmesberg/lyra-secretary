@@ -72,7 +72,10 @@ export function DeadlinePickerSlot({
   if (suggestion?.deadline_id && !showPicker) {
     const conf = suggestion.deadline_match_confidence ?? 0;
     return (
-      <div className="rounded-sm border border-hairline-signal/40 bg-void-2/40 p-3 text-xs text-dust">
+      <div
+        data-testid="new-task-deadline-suggestion"
+        className="rounded-sm border border-hairline-signal/40 bg-void-2/40 p-3 text-xs text-dust"
+      >
         <div>
           Barzakh thinks this binds to{" "}
           <span className="font-medium text-parchment">

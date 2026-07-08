@@ -771,15 +771,25 @@ async function chooseNudgeEligibleCategory(page) {
   await chooseCustomCategory(page, `dogfood_nudge_${runKey.slice(0, 24)}`);
 }
 
-async function waitForDeadlineSuggestion(page, title, timeout = 20_000) {
+async function waitForDeadlineSuggestion(page, title, timeout = 20_000, options = {}) {
+  const { required = true } = options;
   const startedAt = Date.now();
-  const suggestion = page.getByText(/Barzakh thinks this binds to/i).first();
-  const visible = await suggestion
-    .waitFor({ state: "visible", timeout })
-    .then(() => true)
-    .catch(() => false);
+  const suggestion = await firstVisible(page, [
+    (p) => p.getByTestId("new-task-deadline-suggestion"),
+    (p) => p.getByText(/Barzakh thinks this binds to/i),
+  ], timeout, `deadline suggestion for ${title}`).catch(() => null);
+  const visible = Boolean(suggestion);
   const latencyMs = Date.now() - startedAt;
-  addCheck(`deadline suggestion rendered for ${title}`, visible, { title, latency_ms: latencyMs });
+  if (!visible) {
+    const detail = { title, latency_ms: latencyMs, timeout_ms: timeout };
+    if (required) {
+      addCheck(`deadline suggestion rendered for ${title}`, false, detail);
+    } else {
+      addIssue("deadline suggestion chip did not render within optional wait; using fallback", detail);
+    }
+    return false;
+  }
+  addCheck(`deadline suggestion rendered for ${title}`, true, { title, latency_ms: latencyMs });
   if (visible) {
     if (latencyMs > 3_000) {
       addIssue("deadline suggestion render latency exceeded senior UX budget", {
@@ -828,8 +838,7 @@ async function createTaskThroughUi(page, token, deadline) {
   ], "0");
   await chooseNudgeEligibleCategory(page);
 
-  const suggestion = page.getByText(/Barzakh thinks this binds to/i).first();
-  const sawSuggestion = await suggestion.isVisible({ timeout: 8_000 }).catch(() => false);
+  const sawSuggestion = await waitForDeadlineSuggestion(page, title, 8_000, { required: false });
   if (sawSuggestion) {
     await screenshot(page, "new-task-deadline-suggestion");
     await clickAny(page, "confirm deadline suggestion", [
