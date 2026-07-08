@@ -7673,7 +7673,7 @@ Rollback note:
 ## R2 Operator - Notification Freshness Read Seam
 
 Commit:
-pending.
+89872b17e0eb38721fe6ab0a0531903b11295dbd
 
 Changed authority:
 
@@ -7739,7 +7739,9 @@ Tests and verification:
   `invalid_recovery_actions_not_instrumented`, and
   `product_loop_dropoff_detected`.
 - Hosted CI/CD proof:
-  pending after push.
+  `tmp/ci-cd-proof/r2-notification-freshness-89872b1.json` passed for commit
+  `89872b17e0eb38721fe6ab0a0531903b11295dbd` on GitHub Actions run
+  `28910615338`.
 
 Behavior parity statement:
 
