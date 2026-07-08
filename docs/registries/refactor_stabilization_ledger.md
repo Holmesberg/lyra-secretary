@@ -8521,3 +8521,93 @@ Rollback note:
 - Revert commit `a81a202388d4ed397af7b0ca15b50dac3b49216c` only. That restores
   count-only read-only stress artifacts. No production data, schema, Redis,
   cookie, or deployment rollback is required.
+
+## S1c Topology Guard - Shared Local Frontend Authority
+
+Commit:
+117d37a9dd16ea935f4f316faa0491bf0916d254
+
+Changed authority:
+
+- Local frontend topology establishment now lives in
+  `scripts/local_frontend_topology.ps1`.
+- `scripts/run_s1c_verification_stack.ps1` and
+  `scripts/run_operator_readonly_browser_stress.ps1` use the same local
+  frontend restart and local/public artifact guard.
+- Direct local operator read-only stress now attempts to establish verified
+  local topology before browser assertions unless
+  `-AssumeLocalFrontendReady` is explicitly passed.
+
+Removed paths:
+
+- Removed duplicated local frontend restart logic from the S1c stack.
+- Removed the path where direct local operator read-only stress could treat a
+  stale `localhost:3000` listener as valid evidence.
+- Removed the path where local operator stress had weaker artifact-isolation
+  semantics than the S1c wrapper.
+
+Parked paths:
+
+- Full physical local/public Next artifact isolation remains open under GitHub
+  issue #144.
+- Direct local operator stress still fails closed rather than mutating local
+  frontend artifacts when the WSL hosted-public frontend session
+  `lyra-frontend` is active, unless explicitly overridden.
+
+Moved authority:
+
+- No product runtime, task, exposure, provider, user-data, schema, deployment,
+  or operator dashboard authority moved.
+- Local frontend topology readiness moved from duplicated wrapper code into a
+  shared verifier helper.
+
+Issue and classification:
+
+- GitHub issue #166 tracks this seam.
+- Classification: verifier/topology bug.
+- Triggering symptom: direct
+  `scripts\run_operator_readonly_browser_stress.ps1 -Topology local` could be
+  misled by stale Windows `localhost:3000` ownership.
+
+Tests and verification:
+
+- Parser proof:
+  PowerShell parser check passed for:
+  - `scripts\local_frontend_topology.ps1`;
+  - `scripts\run_s1c_verification_stack.ps1`;
+  - `scripts\run_operator_readonly_browser_stress.ps1`.
+- Fail-closed local proof:
+  direct local operator stress refused to mutate local frontend artifacts while
+  WSL public frontend session `lyra-frontend` was active, with reason
+  `operator read-only local topology proof`.
+- S1c no-browser local smoke:
+  `scripts\run_s1c_verification_stack.ps1 -Topology local -SkipBackendFull -SkipFrontendBuild -SkipBrowser`;
+  passed.
+- Formatting proof:
+  `git diff --check`; passed.
+- Hosted-public operator read-only proof:
+  `tmp/operator-readonly-stress-2026-07-08T12-02-04-588Z/result.json`; passed
+  with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/local-frontend-topology-guard-117d37a.json`; passed for
+  commit `117d37a9dd16ea935f4f316faa0491bf0916d254` on GitHub Actions run
+  `28941149262`.
+
+Behavior parity statement:
+
+- No app behavior changed for users.
+- No schema, API contract, operator dashboard response, frontend route,
+  exposure row, notification row, provider row, Redis key, production repair, or
+  deployment behavior changed.
+- The intended behavior change is verifier-only: local operator read-only proof
+  now shares the same topology establishment and fail-closed artifact guard as
+  S1c.
+
+Rollback note:
+
+- Revert commit `117d37a9dd16ea935f4f316faa0491bf0916d254` only. That restores
+  duplicated S1c local frontend helper code and returns direct local operator
+  stress to assuming its local frontend is already valid. No production data,
+  schema, Redis, cookie, or deployment rollback is required.
