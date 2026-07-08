@@ -8176,3 +8176,83 @@ Rollback note:
   previous `/v1/create` check-then-set idempotency behavior and removes the new
   Redis reservation helpers and tests. No schema migration, production data
   repair, provider rows, exposure rows, or user-data cleanup are required.
+
+## S1c Verifier Hardening - Local Topology Failure Classification
+
+Commit:
+717933ad5f7cb9561a6fdc55a93dbc12d6f43b01
+
+Changed authority:
+
+- `scripts/verify_runtime_topology.mjs` now classifies local frontend
+  `/api/topology` 500s as verifier/topology failures when they happen before
+  product behavior is reached.
+- The verifier now emits structured endpoint failure details: classification,
+  topology, endpoint, URL, HTTP status, response excerpt, likely cause, detected
+  stale Next cache signals, suggested recovery, and local frontend log tails.
+- Local Next dev cache signatures such as `.next`, `ENOENT`,
+  `app-paths-manifest.json`, and `_buildManifest.js.tmp` are surfaced as
+  diagnostic evidence instead of collapsing to `detail: 500`.
+
+Removed paths:
+
+- Removed the ambiguous failure mode where a local topology endpoint 500 could
+  be mistaken for a product invariant failure during operator/browser proof.
+
+Parked paths:
+
+- Automatic frontend restart/recovery remains parked. The verifier now gives
+  the correct classification and recovery command, but it does not mutate local
+  process state.
+- Public topology failures remain classified as topology/deployment failures;
+  this seam does not add public deployment remediation.
+
+Moved authority:
+
+- No runtime, app, task, exposure, provider, user-data, or deployment authority
+  moved.
+- Browser proof authority remains in the existing operator/Holmesberg
+  verification scripts; this seam only improves preflight evidence quality.
+
+Issue and classification:
+
+- GitHub issue #173 tracks the local topology verifier stale Next cache failure.
+- Classification: verifier/topology bug.
+- Root evidence from the preceding failed proof: local `/api/topology` returned
+  `500` and frontend logs contained stale `.next` `ENOENT` artifacts. A clean
+  dev restart restored the same verifier.
+
+Tests and verification:
+
+- Syntax proof:
+  `node --check scripts/verify_runtime_topology.mjs`; passed.
+- Happy-path topology proof:
+  `node scripts/verify_runtime_topology.mjs --topology local --skip-browser`;
+  passed with local frontend/backend build IDs as `dev`.
+- Formatting proof:
+  `git diff --check`; passed.
+- Operator wrapper proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local`;
+  passed and produced
+  `tmp/operator-readonly-stress-2026-07-08T10-51-03-758Z/result.json` with
+  `count_diffs=[]`, `route_count_diffs=[]`, `dashboard_snapshot_diffs=[]`,
+  `implementation_green=true`, and `exposure_without_render_count=0`.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/topology-diagnostics-717933a.json` passed for commit
+  `717933ad5f7cb9561a6fdc55a93dbc12d6f43b01` on GitHub Actions run
+  `28937101779`.
+
+Behavior parity statement:
+
+- No product runtime behavior changed.
+- No schema, API contract, frontend route, user-facing page, exposure row,
+  provider row, Redis runtime key, or production data changed.
+- The intended behavior change is limited to verifier failure reporting:
+  evidence beats screenshots, and topology failures are classified before
+  product invariants are judged.
+
+Rollback note:
+
+- Revert commit `717933ad5f7cb9561a6fdc55a93dbc12d6f43b01` only. That restores
+  the previous concise topology verifier errors. No runtime state, local cache,
+  production data, schema, or browser cookie state is affected.
