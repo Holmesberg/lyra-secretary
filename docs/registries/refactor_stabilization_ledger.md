@@ -8611,3 +8611,112 @@ Rollback note:
   duplicated S1c local frontend helper code and returns direct local operator
   stress to assuming its local frontend is already valid. No production data,
   schema, Redis, cookie, or deployment rollback is required.
+
+## Hosted Public Next Artifact Isolation
+
+Commit:
+bbd168cc8721950950a6af0ca3e97e410c83cc10
+
+Changed authority:
+
+- Hosted-public frontend builds now use `NEXT_DIST_DIR=.next-public` through
+  `frontend/scripts/public-topology.mjs`.
+- `frontend/next.config.mjs` accepts `NEXT_DIST_DIR`, defaulting local builds
+  to `.next` and public builds to `.next-public`.
+- `scripts/restart_frontend_wsl.ps1` and
+  `scripts/start_public_after_reboot.ps1` rebuild and validate
+  `.next-public/BUILD_ID` before starting `start:public`.
+- Local/frontend artifact guards now allow local `.next` mutation while the WSL
+  public tmux session is active only when `.next-public` isolation is proven.
+- Git hygiene and S1c static scans ignore `.next-public` as generated artifact
+  output.
+
+Removed paths:
+
+- Removed the hosted-public path where a local `npm run build` could rewrite
+  the same `.next` artifact tree that public `next start` was serving.
+- Removed stale runbook wording that described public recovery as rebuilding
+  `.next`.
+
+Parked paths:
+
+- Local-current alternate-port verifier isolation remains a separate topology
+  hardening surface.
+- Cloudflare immutable asset cache remains external state; served HTML asset
+  graph proof is required after public restarts.
+
+Moved authority:
+
+- Public frontend artifact ownership moved from implicit Next default `.next`
+  to the explicit public topology wrapper plus WSL restart scripts.
+- No task, deadline, timer, exposure, provider, user-data, schema, backend, or
+  ClaimCompiler authority moved.
+
+Issue and classification:
+
+- GitHub issue #144 tracks this seam.
+- Classification: topology/deployment bug with verifier impact.
+- Triggering symptom: hosted-public `_next` chunk `400`/`ChunkLoadError` risk
+  when local verification/builds and hosted public shared the same `.next`
+  artifact family.
+
+Tests and verification:
+
+- Parser proof:
+  PowerShell parser check passed for:
+  - `scripts\local_frontend_topology.ps1`;
+  - `scripts\restart_frontend_wsl.ps1`;
+  - `scripts\start_public_after_reboot.ps1`;
+  - `scripts\run_s1c_verification_stack.ps1`;
+  - `scripts\git_hygiene_summary.ps1`.
+- Node/Python syntax proof:
+  - `node --check frontend\scripts\public-topology.mjs`; passed.
+  - `.venv311\Scripts\python.exe -m py_compile
+    scripts\scan_authority_surfaces.py scripts\scan_refactor_contracts.py`;
+    passed.
+- S1c partial gate:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File
+  .\scripts\run_s1c_verification_stack.ps1 -Topology local -SkipBackendFull
+  -SkipBrowser`; passed, including authority scans, refactor contract scan,
+  OpenClaw relay hermetic test, Alembic fresh DB smoke, and local frontend
+  production build while hosted public was active and isolated.
+- Hosted-public restart proof:
+  `scripts\restart_frontend_wsl.ps1`; rebuilt `.next-public`, started the WSL
+  `lyra-frontend` tmux session, and public `/api/topology` reported
+  `frontend_build_id=bbd168c`.
+- Hosted-public topology proof:
+  `tmp/topology-public-bbd168c.json`; passed with
+  `verified_topology=true`, frontend build `bbd168c`, and backend build `dev`.
+- Hosted-public chunk graph proof:
+  `tmp/public-chunk-proof/bbd168c-2026-07-08T12-29-51-976Z.json`; passed with
+  homepage status `200`, all `14` served `_next/static` assets status `200`,
+  and the user-reported console chunk
+  `/_next/static/chunks/434-0e9fd793188923f4.js` status `200`.
+- Hosted-public operator read-only proof:
+  `tmp/operator-readonly-stress-2026-07-08T12-30-37-560Z/result.json`; passed
+  with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`,
+  `exposure_without_render_count=0`, and no operator read mutations.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/public-next-distdir-bbd168c.json`; passed for commit
+  `bbd168cc8721950950a6af0ca3e97e410c83cc10` on GitHub Actions run
+  `28942846394`.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- No schema, backend API contract, operator dashboard response, task/deadline
+  state, timer state, exposure row, notification row, provider row, Redis key,
+  production data repair, or ClaimCompiler behavior changed.
+- Intended behavior change is deployment/verifier safety only: public builds
+  have a separate artifact directory, local builds stop corrupting hosted-public
+  chunks, and local guard behavior is evidence-based instead of blanket
+  blocking.
+
+Rollback note:
+
+- Revert commit `bbd168cc8721950950a6af0ca3e97e410c83cc10`, then run
+  `powershell -NoProfile -ExecutionPolicy Bypass -File
+  .\scripts\restart_frontend_wsl.ps1` to rebuild the public frontend using the
+  previous artifact path.
+- No production data, schema, Redis, cookie, or backend rollback is required.
