@@ -8256,3 +8256,102 @@ Rollback note:
 - Revert commit `717933ad5f7cb9561a6fdc55a93dbc12d6f43b01` only. That restores
   the previous concise topology verifier errors. No runtime state, local cache,
   production data, schema, or browser cookie state is affected.
+
+## S1c Verifier Hardening - Post-Wave Evidence Manifest
+
+Commit:
+fade1399671c57f2389e2fa3624574e344542b57
+
+Changed authority:
+
+- `scripts/run_post_wave_dogfood_loop.ps1` now emits a top-level
+  `evidence_manifest` inside each post-wave `summary.json`.
+- `scripts/verify_runtime_topology.mjs` now accepts `--out-file` and writes a
+  structured topology proof artifact while preserving existing stdout/stderr.
+- The manifest lifts nested browser proof signals into one standard packet:
+  topology proof, frontend/backend build IDs, nested issues, nested warnings,
+  route warnings, operator read-only invariants, and Holmesberg cleanup status
+  when mutable verification is requested.
+
+Removed paths:
+
+- Removed the need to manually inspect scattered transcripts and nested browser
+  artifacts before knowing whether a standard wave proof passed.
+- Removed the ambiguous state where topology proof existed only as console
+  output and could be lost outside the transcript.
+
+Parked paths:
+
+- Count-diff row-level attribution remains parked and is tracked in GitHub issue
+  #175.
+- Local/public Next artifact isolation remains open under GitHub issue #144.
+- The manifest does not auto-repair production data, restart topology, or run
+  mutable hosted-public dogfood.
+
+Moved authority:
+
+- No runtime product, task, exposure, provider, user-data, schema, or deployment
+  authority moved.
+- Verification proof authority became more explicit: standard wave proof now has
+  a single evidence packet instead of relying on screenshots or scattered logs.
+
+Issue and classification:
+
+- GitHub issue #174 tracks this seam.
+- Classification: verifier/harness hardening.
+- During validation, a hosted-public stale Next chunk incident was discovered
+  and recorded on GitHub issue #144. Operational repair rebuilt the WSL public
+  frontend to build `bfca848`; structural local/public artifact isolation remains
+  open.
+- A non-reproducing public operator count-diff failure was preserved as evidence
+  in `tmp/operator-readonly-stress-2026-07-08T11-18-53-601Z/result.json`.
+  Follow-up API isolation and full read-only rerun passed, and issue #175 tracks
+  row-level attribution for future count diffs.
+
+Tests and verification:
+
+- Syntax proof:
+  `node --check scripts\verify_runtime_topology.mjs`; passed.
+- Parser proof:
+  PowerShell parser check for `scripts\run_post_wave_dogfood_loop.ps1`; passed.
+- Formatting proof:
+  `git diff --check`; passed.
+- Topology proof file smoke:
+  `node scripts\verify_runtime_topology.mjs --topology local --skip-browser --out-file tmp\topology-preflight-local-manifest-test.json`;
+  passed and wrote a structured `topology_verified` artifact.
+- Standard local post-wave proof:
+  `tmp/post-wave-dogfood/20260708-140924-s1c-verifier-manifest-v2-standard-local/summary.json`
+  passed with `evidence_manifest.ok=true`,
+  `classification=standard_wave_proof_passed`,
+  `implementation_green=true`, `exposure_without_render_count=0`, no nested
+  issues, no nested warnings, and cleanup marked not required.
+- Hosted-public topology repair proof after the stale chunk incident:
+  `tmp/topology-public-after-frontend-restart.json`; passed with public build
+  `bfca848`.
+- Hosted-public multi-account smoke after repair:
+  operator and Holmesberg both resolved successfully on public topology.
+- Hosted-public operator read-only rerun after repair:
+  `tmp/operator-readonly-stress-2026-07-08T11-26-30-058Z/result.json`; passed
+  with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/post-wave-evidence-manifest-fade139.json` passed for commit
+  `fade1399671c57f2389e2fa3624574e344542b57` on GitHub Actions run
+  `28939196484`.
+
+Behavior parity statement:
+
+- No product runtime behavior changed.
+- No schema, API response contract, frontend route, user-facing page, exposure
+  row, provider row, Redis runtime key, or production data repair changed.
+- The intended behavior change is limited to verifier evidence packaging:
+  evidence beats screenshots, and a wave proof now names topology, operator,
+  cleanup, warnings, issues, and CI/CD evidence in one place.
+
+Rollback note:
+
+- Revert commit `fade1399671c57f2389e2fa3624574e344542b57` only. That restores
+  the previous scattered proof artifacts and topology stdout-only behavior. No
+  runtime state, production data, schema, cache, cookie, or deployment rollback
+  is required.
