@@ -7278,7 +7278,6 @@ Tests and verification:
   `node scripts\test_openclaw_operator_relay.mjs`;
   `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_alembic_fresh_smoke.ps1`;
   all passed.
-- Pending hosted proof after push:
 - Hosted proof:
   GitHub Actions CI passed for exact SHA
   `ee605a821df4f9554505dc3295825edbda7305fe`, including the new
@@ -7381,7 +7380,9 @@ Rollback note:
 
 ## R3 Frontend - Query-Key And Invalidation Vocabulary Seam
 
-Commit: pending commit (`frontend: centralize calendar query keys`).
+Commit:
+`0b1f3da0784969825f71c8316dbf3e9b6836edad`
+(`frontend: centralize calendar query keys`).
 
 Changed authority:
 
@@ -7440,7 +7441,11 @@ Tests and verification:
   `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
   `exposure_without_render_count=0`.
 - Pending hosted proof after push:
-  exact-SHA GitHub Actions CI.
+- Hosted proof:
+  GitHub Actions CI passed for exact SHA
+  `0b1f3da0784969825f71c8316dbf3e9b6836edad`; run
+  `28908134193`; artifact:
+  `tmp/ci-cd-proof/r3-query-keys-0b1f3da.json`.
 
 Behavior parity statement:
 
