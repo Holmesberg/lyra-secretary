@@ -34,6 +34,113 @@ function normalize(value) {
   return String(value || "").replace(/\/$/, "");
 }
 
+function relativePath(filePath) {
+  return path.relative(repoRoot, filePath).replace(/\\/g, "/");
+}
+
+function tailText(value, maxChars = 4_000) {
+  const text = String(value ?? "");
+  if (text.length <= maxChars) return text;
+  return text.slice(text.length - maxChars);
+}
+
+function readTailIfExists(filePath, maxChars = 4_000) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) return null;
+    return {
+      path: relativePath(filePath),
+      tail: tailText(fs.readFileSync(filePath, "utf8"), maxChars),
+    };
+  } catch (error) {
+    return {
+      path: relativePath(filePath),
+      read_error: error.message,
+    };
+  }
+}
+
+function localFrontendLogTails() {
+  const logs = [];
+  const directCandidates = [
+    path.join(repoRoot, "tmp", "frontend-dev-3000.log"),
+    path.join(repoRoot, "tmp", "frontend-dev-3000.err.log"),
+  ];
+  for (const candidate of directCandidates) {
+    const tail = readTailIfExists(candidate);
+    if (tail) logs.push(tail);
+  }
+
+  const devLogDir = path.join(repoRoot, "tmp", "local-frontend-dev");
+  try {
+    if (fs.existsSync(devLogDir)) {
+      const recent = fs
+        .readdirSync(devLogDir)
+        .filter((name) => name.endsWith(".log"))
+        .map((name) => {
+          const filePath = path.join(devLogDir, name);
+          return { filePath, mtimeMs: fs.statSync(filePath).mtimeMs };
+        })
+        .sort((a, b) => b.mtimeMs - a.mtimeMs)
+        .slice(0, 4);
+      for (const item of recent) {
+        const tail = readTailIfExists(item.filePath);
+        if (tail) logs.push(tail);
+      }
+    }
+  } catch (error) {
+    logs.push({
+      path: relativePath(devLogDir),
+      read_error: error.message,
+    });
+  }
+  return logs;
+}
+
+function bodyExcerpt(body) {
+  if (body == null) return null;
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  return tailText(text, 1_500);
+}
+
+function endpointFailureDetail(topologyName, endpointName, url, result) {
+  const status = result?.response?.status ?? null;
+  const detail = {
+    classification: "topology/deployment_bug",
+    topology: topologyName,
+    endpoint: endpointName,
+    url,
+    status,
+    body_excerpt: bodyExcerpt(result?.body),
+  };
+
+  if (topologyName === "local" && endpointName === "frontend" && status >= 500) {
+    const logs = localFrontendLogTails();
+    const combinedLogs = logs.map((entry) => entry.tail || entry.read_error || "").join("\n");
+    const nextCacheSignals = [
+      "app-paths-manifest.json",
+      "_buildManifest.js.tmp",
+      ".next",
+      "ENOENT",
+    ].filter((signal) => combinedLogs.includes(signal));
+
+    detail.classification = "verifier/topology_bug";
+    detail.likely_cause = nextCacheSignals.length
+      ? "local Next dev cache/build artifact state is stale or corrupted"
+      : "local frontend returned a server error before topology could be verified";
+    detail.detected_signals = nextCacheSignals;
+    detail.suggested_recovery = [
+      "Stop the local frontend dev server on port 3000.",
+      "From frontend/, run npm run dev:clean, or rerun the authorized local frontend restart helper.",
+      "Rerun the same browser verifier; do not classify this as a product invariant failure until topology passes.",
+    ];
+    detail.log_tails = logs;
+  }
+
+  return detail;
+}
+
 async function fetchJson(url, init = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
@@ -118,9 +225,13 @@ async function verifyTopology(topologyName) {
   const topology = contract.topologies[topologyName];
   if (!topology) fail(`unknown topology ${topologyName}`);
 
-  const frontend = await fetchJson(`${topology.frontend_origin}/api/topology`);
+  const frontendUrl = `${topology.frontend_origin}/api/topology`;
+  const frontend = await fetchJson(frontendUrl);
   if (!frontend.response.ok) {
-    fail(`frontend topology endpoint failed for ${topologyName}`, frontend.response.status);
+    fail(
+      `frontend topology endpoint failed for ${topologyName}`,
+      endpointFailureDetail(topologyName, "frontend", frontendUrl, frontend)
+    );
   }
   if (frontend.body.verified_topology !== true) {
     fail(`frontend topology is not verified for ${topologyName}`, frontend.body);
@@ -138,11 +249,15 @@ async function verifyTopology(topologyName) {
     fail(`NextAuth URL mismatch for ${topologyName}`, frontend.body);
   }
 
-  const backend = await fetchJson(`${topology.api_origin}/v1/health/topology`, {
+  const backendUrl = `${topology.api_origin}/v1/health/topology`;
+  const backend = await fetchJson(backendUrl, {
     headers: { Origin: topology.frontend_origin },
   });
   if (!backend.response.ok) {
-    fail(`backend topology endpoint failed for ${topologyName}`, backend.response.status);
+    fail(
+      `backend topology endpoint failed for ${topologyName}`,
+      endpointFailureDetail(topologyName, "backend", backendUrl, backend)
+    );
   }
   if (backend.body.verified_topology !== true) {
     fail(`backend topology is not verified for ${topologyName}`, backend.body);
@@ -154,9 +269,13 @@ async function verifyTopology(topologyName) {
     fail(`backend API origin mismatch for ${topologyName}`, backend.body);
   }
 
-  const auth = await fetchJson(`${topology.frontend_origin}/api/auth/providers`);
+  const authUrl = `${topology.frontend_origin}/api/auth/providers`;
+  const auth = await fetchJson(authUrl);
   if (!auth.response.ok) {
-    fail(`auth provider endpoint failed for ${topologyName}`, auth.response.status);
+    fail(
+      `auth provider endpoint failed for ${topologyName}`,
+      endpointFailureDetail(topologyName, "nextauth_provider", authUrl, auth)
+    );
   }
   const google = auth.body?.google;
   if (!google?.signinUrl?.startsWith(`${topology.nextauth_url}/api/auth/signin/google`)) {
