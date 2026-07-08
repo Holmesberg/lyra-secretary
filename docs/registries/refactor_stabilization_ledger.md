@@ -7934,3 +7934,122 @@ Rollback note:
 - Revert this docs/static-scan seam commit only. That restores the prior stale
   doc wording and removes the R5a stale-doc banner guard. No runtime state or
   production data is touched.
+
+## R3 Frontend Extraction - NewTask Submit Controller
+
+Commit:
+pending seam commit
+
+Changed authority:
+
+- NewTask create submission now has a small controller boundary:
+  `frontend/components/use-new-task-submit-controller.ts`.
+- The controller owns shared create-payload assembly for normal create,
+  soft-conflict force-create, and paused-task interruption-create paths.
+- The controller now owns per-mode idempotency keys plus a same-payload
+  in-flight lock so duplicate gestures cannot race two independent create
+  requests before React `submitting` state lands.
+- `frontend/lib/tasks.ts` now accepts an explicit `idempotencyKey` for
+  `/v1/create` requests.
+- The Holmesberg product-loop browser verifier now captures redacted
+  `/v1/create` payloads and asserts NewTask description, deadline binding,
+  force mode, and idempotency headers from browser behavior plus backend state.
+
+Removed paths:
+
+- Removed duplicated create-payload assembly from `NewTaskModal` for normal,
+  force, and interruption create branches.
+- Removed the hidden drift where normal create carried description/deadline
+  fields but force/interruption branches could diverge during future edits.
+- Removed the duplicate-mutation path where same-tick double-clicks on Create
+  could create two backend tasks before UI pending state took effect.
+
+Parked paths:
+
+- Full `NewTaskModal` extraction remains incomplete. Draft-state,
+  deadline-preview, edit-mode, and interruption UX decomposition remain parked
+  for later R3 seams.
+- Full isolated interruption-create browser proof remains parked until the
+  timer/interruption branch is run as its own seam. The shared controller path
+  is covered by code/typecheck, but this seam's browser proof targets normal
+  and force create because those are the branches touched by the immediate
+  duplicate-mutation finding.
+- Hosted-public mutable dogfood remains parked/high-care until hosted cleanup
+  proof is explicitly allowed.
+
+Moved authority:
+
+- No backend mutation authority moved.
+- `/v1/create` remains the canonical task creation authority.
+- NewTask UI still owns modal state and conflict presentation; the new
+  controller only owns create submission assembly/idempotency.
+- Deadline binding authority remains explicit user binding through the NewTask
+  modal and backend deadline validation.
+
+Issue and classification:
+
+- GitHub issue:
+  #171 tracks the NewTask create-path drift and idempotency product bug.
+- Verifier classifications:
+  - first local browser failure was topology/runtime: stale local port-3000
+    frontend returned 500 for NextAuth session resolution. Fixed by restarting
+    only the local Windows frontend verification process.
+  - second local browser failure was a product bug: double-clicking Create
+    created two backend tasks with the same title. Fixed with controller-level
+    same-payload in-flight locking.
+
+Tests and verification:
+
+- Frontend typecheck:
+  `cd frontend; npm run typecheck`; passed.
+- Frontend production build:
+  `cd frontend; npm run build`; passed after the in-flight lock patch.
+- Backend characterization subset:
+  `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_idempotency_user_scope.py tests\test_create_task_with_deadline.py tests\test_parse_deadline_preview.py tests\test_calibration_nudge_event.py tests\test_output_surfaces.py -q`;
+  passed with `73 passed`.
+- Static proof:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`
+  passed with `error_count=0`.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0`.
+- Formatting/syntax proof:
+  `git diff --check` and
+  `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs`;
+  passed.
+- Failing mutable browser proof preserved as product-bug evidence:
+  `tmp/browser-product-loop/r3-new-task-submit-controller/result.json`
+  failed on `normal submit branch creates exactly one backend task` with two
+  backend task ids for one title.
+- Passing Holmesberg mutable browser proof:
+  `tmp/browser-product-loop/r3-new-task-submit-controller-rerun1/result.json`
+  passed with `ok=true`.
+- Operator read-only browser proof after mutable pass:
+  `tmp/operator-readonly-stress-2026-07-08T10-16-17-140Z/result.json`
+  passed with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Proven paths:
+  normal NewTask create preserves description and explicit deadline binding;
+  normal duplicate gesture creates exactly one backend task; normal create
+  carries an idempotency header; forced create after overlap preserves
+  description and deadline binding; forced create carries force=true and an
+  idempotency header; Holmesberg cleanup leaves no active timer and no
+  unrendered synthetic creation-nudge exposure debt.
+
+Behavior parity statement:
+
+- User-visible NewTask behavior is intended to stay the same for valid normal,
+  soft-conflict, and interruption create flows.
+- The intended behavior change is narrower than the UI: duplicate same-payload
+  create gestures collapse to one in-flight request instead of creating
+  duplicate tasks.
+- No schema, backend API shape, provider row, exposure row, Redis key, or
+  production data repair changed.
+
+Rollback note:
+
+- Revert this seam commit only. That restores `NewTaskModal`'s previous inline
+  create logic and removes the new browser payload/idempotency assertions. No
+  schema migration, production data repair, provider data, exposure ledger row,
+  Redis key, or user account content is required for rollback.

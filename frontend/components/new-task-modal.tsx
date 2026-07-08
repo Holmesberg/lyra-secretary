@@ -14,7 +14,6 @@ import { Label } from "@/components/ui/label";
 import { CATEGORIES } from "@/lib/categories";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import {
-  createTask,
   rescheduleTask,
   lookupBiasFactor,
   type TaskRow,
@@ -45,9 +44,14 @@ import {
 import {
   localResearchNudge,
   nudgeDecisionFromCalibration,
-  nudgePayloadFromDecision,
   type NudgeDecisionData,
 } from "@/lib/creation-nudge";
+import {
+  useNewTaskSubmitController,
+  type NewTaskSubmitDraft,
+  type PausedConflict,
+  type SoftConflict,
+} from "@/components/use-new-task-submit-controller";
 
 const BIAS_LOOKUP_DEBOUNCE_MS = 120;
 const pendingCreationNudgeRenderAcks = new Set<string>();
@@ -139,19 +143,6 @@ function suppressCreationNudgeExposure(exposureId: string, attempt = 0) {
     .finally(() => {
       pendingCreationNudgeSuppressions.delete(exposureId);
     });
-}
-
-interface PausedConflict {
-  taskId: string;
-  title: string;
-  blockingTitles: string[];
-}
-
-interface SoftConflict {
-  reasons: string[];
-  overlapTitles: string[];
-  executingTitles: string[];
-  duplicateTitle: string | null;
 }
 
 interface Props {
@@ -591,6 +582,24 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setLastEditId(null);
   }
 
+  const createDraft = (): NewTaskSubmitDraft => ({
+    title,
+    start,
+    end,
+    category,
+    description,
+    deadlineId,
+    nudgeDecisionData,
+  });
+
+  const submitController = useNewTaskSubmitController({
+    open,
+    onReset: resetForm,
+    onCreated,
+    onClose,
+    onInterruptionCreated,
+  });
+
   // --- Bidirectional binding helpers ---
 
   function markEditScheduleChanged() {
@@ -675,69 +684,27 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         return;
       }
 
-      const res = await createTask({
-        title: title.trim(),
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-        category,
-        description: description.trim() || undefined,
-        deadline_id: deadlineId ?? undefined,
-        ...nudgePayloadFromDecision(nudgeDecisionData),
-      });
+      const res = await submitController.submit(createDraft());
       // Debug aid (Apr 16): dogfood diagnostic for severity-render
       // bug. If operator sees the wrong UI (red when expecting yellow
       // or vice versa), the response shape is logged so we can
       // verify severity + gate_ids match expectations.
-      if (!res.created) {
+      if (res.kind !== "created") {
         // eslint-disable-next-line no-console
         console.debug("[create] conflict response:", res);
       }
-      if (!res.created) {
-        if (res.conflicts.length > 0) {
-          const paused = res.conflicts.filter((c) => c.state === "PAUSED");
-          const startingSoon = new Date(start).getTime() - Date.now() < 5 * 60_000;
-          if (paused.length > 0 && onInterruptionCreated && startingSoon) {
-            setPausedConflict({
-              taskId: paused[0].task_id,
-              title: paused[0].title,
-              blockingTitles: res.conflicts
-                .filter((c) => c.state !== "PAUSED")
-                .map((c) => c.title),
-            });
-            return;
-          }
-          if (res.severity === "soft" || res.severity === "hard") {
-            const executing = res.conflicts
-              .filter((c) => c.gate_id === "executing_overlap" || c.gate_id === "active_overlap")
-              .map((c) => c.title);
-            const overlaps = res.conflicts
-              .filter((c) => c.gate_id === "planned_overlap")
-              .map((c) => c.title);
-            const dups = res.conflicts
-              .filter((c) => c.gate_id === "duplicate_title")
-              .map((c) => c.title);
-            setSoftConflict({
-              reasons: res.soft_reasons ?? [],
-              overlapTitles: overlaps,
-              executingTitles: executing,
-              duplicateTitle: dups[0] ?? null,
-            });
-            return;
-          }
-          // Fallback for older backends without severity field.
-          setError(
-            `Conflicts with: ${res.conflicts
-              .map((c) => c.title)
-              .join(", ")}. Adjust the time and try again.`
-          );
-          return;
-        }
-        setError("Task was not created.");
+      if (res.kind === "pausedConflict") {
+        setPausedConflict(res.conflict);
         return;
       }
-      resetForm();
-      onCreated();
-      onClose();
+      if (res.kind === "softConflict") {
+        setSoftConflict(res.conflict);
+        return;
+      }
+      if (res.kind === "error") {
+        setError(res.message);
+        return;
+      }
     } catch (e: any) {
       setError(e?.message ?? "Failed to create task");
     } finally {
@@ -749,32 +716,15 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     // Path A: soft-conflict override. Calls /v1/create with force=true.
     // Backend rejects HARD conflicts even with force, so a 200 with
     // created=false here means the conflict tightened mid-flight (e.g.,
-    // a task transitioned to EXECUTING) — surface as a fresh warning.
+    // a task transitioned to EXECUTING) - surface as a fresh warning.
     setError(null);
     setSubmitting(true);
     try {
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-      const res = await createTask({
-        title: title.trim(),
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-        category,
-        force: true,
-        deadline_id: deadlineId ?? undefined,
-        ...nudgePayloadFromDecision(nudgeDecisionData),
-      });
-      if (!res.created) {
-        setError(
-          res.severity === "hard"
-            ? "Override rejected — an active timer now overlaps. Stop it first."
-            : "Override failed."
-        );
+      const res = await submitController.submitWithForce(createDraft());
+      if (res.kind === "error") {
+        setError(res.message);
         return;
       }
-      resetForm();
-      onCreated();
-      onClose();
     } catch (e: any) {
       setError(e?.message ?? "Failed to create task");
     } finally {
@@ -786,26 +736,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setError(null);
     setSubmitting(true);
     try {
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-      const res = await createTask({
-        title: title.trim(),
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-        category,
-        force: true,
-        deadline_id: deadlineId ?? undefined,
-        ...nudgePayloadFromDecision(nudgeDecisionData),
-      });
-      if (!res.created || !res.task_id) {
-        setError("Failed to create interruption task.");
+      const res = await submitController.submitAsInterruption(createDraft());
+      if (res.kind === "error") {
+        setError(res.message);
         return;
       }
-      const createdTitle = title.trim();
-      const createdId = res.task_id;
-      resetForm();
-      onClose();
-      onInterruptionCreated?.(createdId, createdTitle);
     } catch (e: any) {
       setError(e?.message ?? "Failed to create interruption task");
     } finally {

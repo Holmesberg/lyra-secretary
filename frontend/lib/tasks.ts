@@ -169,6 +169,7 @@ export interface CreateTaskInput {
   // present, backend computes dwell_seconds = decision_time - viewed_at
   // for the ReflectionViewLog row.
   nudge_viewed_at?: string;
+  idempotencyKey?: string;
 }
 
 export interface ConflictSummary {
@@ -206,6 +207,7 @@ export interface CreateTaskResponse {
 export function createTask(input: CreateTaskInput) {
   return api<CreateTaskResponse>("/v1/create", {
     method: "POST",
+    headers: idempotencyHeaders("task-create", input.idempotencyKey),
     body: JSON.stringify({
       title: input.title,
       start: input.start,

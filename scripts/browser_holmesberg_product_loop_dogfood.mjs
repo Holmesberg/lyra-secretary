@@ -424,8 +424,27 @@ async function resolveAccount(browser, label, cookieHeader, expectOperator) {
   const deadlinePreviewRequests = [];
   const biasLookupResponses = [];
   const biasLookupRequests = [];
+  const createTaskRequests = [];
   page.__biasLookupResponses = biasLookupResponses;
+  page.__createTaskRequests = createTaskRequests;
   page.on("request", (request) => {
+    if (request.url().includes("/v1/create") && request.method().toUpperCase() === "POST") {
+      let body = null;
+      try {
+        body = JSON.parse(request.postData() || "{}");
+      } catch (error) {
+        body = { parse_error: String(error?.message || error).slice(0, 160) };
+      }
+      createTaskRequests.push({
+        url: request.url(),
+        method: request.method(),
+        idempotency_key: request.headers()["x-idempotency-key"] || null,
+        body,
+      });
+      if (createTaskRequests.length > 80) {
+        createTaskRequests.shift();
+      }
+    }
     if (request.url().includes("/v1/parse/deadline-preview")) {
       deadlinePreviewRequests.push({
         url: request.url(),
@@ -654,6 +673,60 @@ async function fillNewTaskCore(page, { title, start, end, hours = "0", minutes =
     (p) => p.getByRole("dialog", { name: /New task/i }).locator('input[type="number"]').nth(1),
     (p) => p.locator('input[type="number"]').nth(1),
   ], minutes);
+}
+
+async function fillNewTaskDescription(page, description) {
+  await clickAny(page, "show task description", [
+    (p) => p.getByRole("button", { name: /Add details|Edit details/i }),
+    (p) => p.getByText(/Add details|Edit details/i),
+  ], 5_000);
+  await fillAny(page, "task description", [
+    (p) => p.getByTestId("new-task-description"),
+    (p) => p.locator("#description"),
+  ], description, 5_000);
+}
+
+async function bindDeadlineInNewTaskModal(page, deadline, label = "bind deadline") {
+  await clickAny(page, label, [
+    (p) => p.getByRole("button", { name: /\+ Bind to a deadline/i }),
+    (p) => p.getByText(/\+ Bind to a deadline/i),
+  ], 5_000);
+  const modal = page.getByTestId("new-task-modal").first();
+  const deadlineOption = modal
+    .locator(`[data-testid="new-task-deadline-option"][data-deadline-id="${deadline.deadline_id}"]`)
+    .first();
+  if (await deadlineOption.count().catch(() => 0)) {
+    await deadlineOption.scrollIntoViewIfNeeded({ timeout: 5_000 }).catch(() => {});
+    await deadlineOption.click({ timeout: 10_000, force: true });
+    return;
+  }
+  const fallbackOption = modal
+    .getByRole("button", { name: new RegExp(escapeRegex(deadline.title), "i") })
+    .first();
+  await fallbackOption.scrollIntoViewIfNeeded({ timeout: 5_000 }).catch(() => {});
+  await fallbackOption.click({ timeout: 10_000, force: true });
+}
+
+function createRequestsForTitle(page, title, startIndex = 0) {
+  return (page.__createTaskRequests || [])
+    .slice(startIndex)
+    .filter((request) => request.body?.title === title);
+}
+
+function assertStableCreateIdempotency(label, requests) {
+  addCheck(`${label}: create requests include idempotency header`, (
+    requests.length >= 1 && requests.every((request) => request.idempotency_key)
+  ), requests.map((request) => ({
+    idempotency_key: request.idempotency_key,
+    force: request.body?.force,
+  })));
+  if (requests.length > 1) {
+    const keys = new Set(requests.map((request) => request.idempotency_key));
+    addCheck(`${label}: duplicate create requests reuse one idempotency key`, keys.size === 1, {
+      keys: [...keys],
+      count: requests.length,
+    });
+  }
 }
 
 async function keepNudgeIfVisible(page, label = "new-task-nudge-keep") {
@@ -940,6 +1013,143 @@ async function createSoftConflictTaskThroughUi(page, token) {
     soft_conflict_seen: sawSoftConflict,
   });
   return task;
+}
+
+async function runNewTaskSubmitContractCoverage(page, token) {
+  const contractDeadline = await createDeadlineViaApi(token, {
+    title: `${prefix} submit contract deadline`,
+    dueMinutes: 900,
+  });
+  const normalTitle = `${prefix} idempotent normal create`;
+  const normalDescription = `normal submit contract ${runKey}`;
+  const normalStart = futureDate(620);
+  const normalEnd = futureDate(650);
+
+  await openNewTaskModal(page, "today-before-submit-contract-normal");
+  await fillNewTaskCore(page, {
+    title: normalTitle,
+    start: normalStart,
+    end: normalEnd,
+    minutes: "30",
+  });
+  await fillNewTaskDescription(page, normalDescription);
+  await bindDeadlineInNewTaskModal(page, contractDeadline, "bind submit-contract deadline");
+  await keepNudgeIfVisible(page, "new-task-submit-contract-normal-nudge-keep");
+
+  const normalRequestStart = page.__createTaskRequests?.length || 0;
+  const normalCreate = await firstVisible(page, [
+    (p) => p.getByTestId("new-task-create"),
+    (p) => p.getByRole("button", { name: /^Create$/i }),
+    (p) => p.locator('button:has-text("Create")'),
+  ], 5_000, "submit contract normal create");
+  await normalCreate.evaluate((button) => {
+    button.click();
+    button.click();
+  });
+
+  const normalMatches = await pollFor(token, "normal submit contract backend visibility", async () => {
+    const matches = await findTasksByExactTitle(token, normalTitle);
+    return matches.length ? matches : null;
+  }, 20_000, 1_000);
+  for (const task of normalMatches || []) cleanup.tasks.add(task.task_id);
+  addCheck("normal submit branch creates exactly one backend task", normalMatches.length === 1, {
+    title: normalTitle,
+    matches: normalMatches.map((task) => task.task_id),
+  });
+  const normalTask = normalMatches[0];
+  addCheck("normal submit branch preserves description and deadline binding", (
+    normalTask
+    && String(normalTask.description || "").includes(normalDescription)
+    && normalTask.deadline_id === contractDeadline.deadline_id
+  ), {
+    title: normalTitle,
+    description: normalTask?.description ?? null,
+    expected_deadline_id: contractDeadline.deadline_id,
+    actual_deadline_id: normalTask?.deadline_id ?? null,
+  });
+
+  const normalRequests = createRequestsForTitle(page, normalTitle, normalRequestStart);
+  assertStableCreateIdempotency("normal submit branch", normalRequests);
+  addCheck("normal submit request includes shared create payload fields", (
+    normalRequests.length >= 1
+    && normalRequests.every((request) => (
+      request.body?.description === normalDescription
+      && request.body?.deadline_id === contractDeadline.deadline_id
+      && request.body?.force === false
+    ))
+  ), normalRequests.map((request) => ({
+    description: request.body?.description ?? null,
+    deadline_id: request.body?.deadline_id ?? null,
+    force: request.body?.force ?? null,
+  })));
+
+  const forcedTitle = `${prefix} idempotent forced create`;
+  const forcedDescription = `forced submit contract ${runKey}`;
+  await openNewTaskModal(page, "today-before-submit-contract-force");
+  await fillNewTaskCore(page, {
+    title: forcedTitle,
+    start: normalStart,
+    end: normalEnd,
+    minutes: "30",
+  });
+  await fillNewTaskDescription(page, forcedDescription);
+  await bindDeadlineInNewTaskModal(page, contractDeadline, "bind forced submit-contract deadline");
+  await keepNudgeIfVisible(page, "new-task-submit-contract-force-nudge-keep");
+
+  const forceRequestStart = page.__createTaskRequests?.length || 0;
+  await clickAny(page, "submit contract overlapping create", [
+    (p) => p.getByTestId("new-task-create"),
+    (p) => p.getByRole("button", { name: /^Create$/i }),
+    (p) => p.locator('button:has-text("Create")'),
+  ], 5_000);
+  const createAnyway = await firstVisible(page, [
+    (p) => p.getByTestId("new-task-create-anyway"),
+    (p) => p.getByRole("button", { name: /^Create anyway$/i }),
+    (p) => p.locator('button:has-text("Create anyway")'),
+  ], 8_000, "submit contract create anyway");
+  await screenshot(page, "new-task-submit-contract-create-anyway");
+  await createAnyway.evaluate((button) => {
+    button.click();
+    button.click();
+  });
+
+  const forcedMatches = await pollFor(token, "forced submit contract backend visibility", async () => {
+    const matches = await findTasksByExactTitle(token, forcedTitle);
+    return matches.length ? matches : null;
+  }, 20_000, 1_000);
+  for (const task of forcedMatches || []) cleanup.tasks.add(task.task_id);
+  addCheck("forced submit branch creates exactly one backend task", forcedMatches.length === 1, {
+    title: forcedTitle,
+    matches: forcedMatches.map((task) => task.task_id),
+  });
+  const forcedTask = forcedMatches[0];
+  addCheck("forced submit branch preserves description and deadline binding", (
+    forcedTask
+    && String(forcedTask.description || "").includes(forcedDescription)
+    && forcedTask.deadline_id === contractDeadline.deadline_id
+  ), {
+    title: forcedTitle,
+    description: forcedTask?.description ?? null,
+    expected_deadline_id: contractDeadline.deadline_id,
+    actual_deadline_id: forcedTask?.deadline_id ?? null,
+  });
+
+  const forceRequests = createRequestsForTitle(page, forcedTitle, forceRequestStart);
+  const forcedRequests = forceRequests.filter((request) => request.body?.force === true);
+  assertStableCreateIdempotency("forced submit branch", forcedRequests);
+  addCheck("forced submit request includes shared create payload fields", (
+    forcedRequests.length >= 1
+    && forcedRequests.every((request) => (
+      request.body?.description === forcedDescription
+      && request.body?.deadline_id === contractDeadline.deadline_id
+      && request.body?.force === true
+    ))
+  ), forceRequests.map((request) => ({
+    description: request.body?.description ?? null,
+    deadline_id: request.body?.deadline_id ?? null,
+    force: request.body?.force ?? null,
+    idempotency_key: request.idempotency_key,
+  })));
 }
 
 async function runNewTaskBranchCoverage(page, token, anchorDeadline) {
@@ -2226,6 +2436,7 @@ async function main() {
     await routeSweep(page);
     const deadline = await createDeadlineThroughUi(page, token);
     const task = await createTaskThroughUi(page, token, deadline);
+    await runNewTaskSubmitContractCoverage(page, token);
     await createSoftConflictTaskThroughUi(page, token);
     await runNewTaskBranchCoverage(page, token, deadline);
     await runBrainDumpPath(page, token);
