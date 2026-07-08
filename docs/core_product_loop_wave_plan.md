@@ -16,6 +16,11 @@ refactor. Current implementation authority lives in
 `docs/current_transition_state.md`, `docs/AUTHORITY.md`, and
 `docs/runbooks/post_wave_dogfood_loop.md`.
 
+R5a extraction rule: implementation sequences, "ship now" language, adapter
+ideas, table/schema references, AI-estimate references, and insight-production
+references below are historical/subordinate unless promoted by the active
+authority chain. Use this file for context only during freeze closure.
+
 ## Global Product Frame
 
 Lyra is not an academic-only planner. The academic loop is the first concrete

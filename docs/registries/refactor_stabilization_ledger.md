@@ -7855,3 +7855,71 @@ Rollback note:
   restores Table to the previous non-voided task range query. No schema,
   production data, exposure row, provider row, Redis key, or user content is
   touched.
+
+## R5a Stale Docs - Authority Subordination Gate
+
+Commit:
+pending
+
+Changed authority:
+
+- No runtime authority changed.
+- `docs/current_transition_state.md` now names the stale/parked docs that cannot
+  authorize runtime work during freeze closure.
+- Known stale planning docs now carry an explicit R5a extraction rule: active
+  words such as `ship`, `allowed`, `approved`, schema sketches, passive
+  tracking, AI/synthesis, provider adapters, insight surfaces, and behavior
+  equations are historical/parked unless promoted by the active authority
+  chain.
+- `scripts/scan_refactor_contracts.py` now hard-fails if the known stale-doc
+  authority banners disappear.
+
+Removed paths:
+
+- Removed the unguarded interpretation path where older `SHIP`, build,
+  schema, passive-tracking, AI, provider, or insight wording could be mistaken
+  for current freeze-closure permission.
+
+Parked paths:
+
+- No old roadmap, handoff, deadline, academic, provider, simulation, insight,
+  passive tracking, OpenClaw/GPT, or behavior-equation proposal is promoted.
+- Rebrand/domain migration remains parked for a separate plan.
+
+Moved authority:
+
+- No implementation authority moved.
+- Current authority remains with `docs/AUTHORITY.md`,
+  `docs/current_transition_state.md`, `docs/operator_dashboard_contract.md`,
+  `docs/runbooks/post_wave_dogfood_loop.md`, and the active contracts named
+  there.
+- Historical/subordinate docs remain context only.
+
+Issue and classification:
+
+- GitHub issue:
+  #170 tracks the stale-doc documentation/authority bug.
+- Classification:
+  documentation bug plus authority bug, behavior-preserving.
+
+Tests and verification:
+
+- Static proof:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`
+  passed with `error_count=0`.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0`.
+- Formatting proof:
+  `git diff --check` passed.
+
+Behavior parity statement:
+
+- No runtime product behavior, API shape, schema, exposure row, provider row,
+  Redis key, user content, or public route changed.
+
+Rollback note:
+
+- Revert this docs/static-scan seam commit only. That restores the prior stale
+  doc wording and removes the R5a stale-doc banner guard. No runtime state or
+  production data is touched.

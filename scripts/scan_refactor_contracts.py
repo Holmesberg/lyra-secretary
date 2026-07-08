@@ -173,6 +173,81 @@ def frontend_behavioral_claim_review_findings() -> list[Finding]:
     )
 
 
+STALE_DOC_AUTHORITY_REQUIREMENTS: dict[str, tuple[str, ...]] = {
+    "docs/building_phases.md": (
+        "R5a extraction rule:",
+        "historical/parked",
+        "Do not extract runtime work",
+    ),
+    "docs/phase_6_architecture_backlog.md": (
+        "R5a extraction rule:",
+        "parked design history",
+        "not current implementation permission",
+    ),
+    "docs/deadline_mechanism_design.md": (
+        "R5a extraction rule:",
+        "historical/parked",
+        "work is not authorized",
+    ),
+    "docs/academic_execution_substrate.md": (
+        "R5a extraction rule:",
+        "parked architecture notes",
+        "must not be extracted into runtime code",
+    ),
+    "docs/academic_asset_velocity_and_evidence_fusion_plan.md": (
+        "R5a extraction rule:",
+        "research/planning backlog only",
+        "do not authorize runtime",
+    ),
+    "docs/core_product_loop_wave_plan.md": (
+        "R5a extraction rule:",
+        "historical/subordinate",
+        "Use this file for context only",
+    ),
+    "docs/AGENT_HANDOFF.md": (
+        "R5a extraction rule:",
+        "historical onboarding context",
+        "not permission",
+    ),
+    "docs/provider_adapter_contract.md": (
+        "R5a extraction rule:",
+        "future explicitly approved adapter",
+        "does not authorize new provider-native UI",
+    ),
+}
+
+
+def stale_doc_authority_banner_findings() -> list[Finding]:
+    findings: list[Finding] = []
+    for doc_path, snippets in STALE_DOC_AUTHORITY_REQUIREMENTS.items():
+        path = REPO_ROOT / doc_path
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            findings.append(
+                Finding(
+                    rule_id="stale_docs_must_preserve_freeze_authority_banner",
+                    severity="error",
+                    path=doc_path,
+                    line=1,
+                    excerpt="required stale authority doc is missing",
+                )
+            )
+            continue
+        for snippet in snippets:
+            if snippet not in text:
+                findings.append(
+                    Finding(
+                        rule_id="stale_docs_must_preserve_freeze_authority_banner",
+                        severity="error",
+                        path=doc_path,
+                        line=1,
+                        excerpt=f"missing required freeze/subordination phrase: {snippet}",
+                    )
+                )
+    return findings
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fail-on-errors", action="store_true")
@@ -187,6 +262,7 @@ def main() -> int:
     findings.extend(app_direct_output_surface_helper_findings())
     findings.extend(app_direct_legacy_reflection_row_findings())
     findings.extend(frontend_jarvis_findings())
+    findings.extend(stale_doc_authority_banner_findings())
     if args.include_review:
         findings.extend(frontend_behavioral_claim_review_findings())
 

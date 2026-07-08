@@ -8,6 +8,11 @@
 > `docs/architecture_freeze_priority_hold_2026_05_20.md`,
 > `docs/openclaw_orchestration_contract_v0.md`, and
 > `docs/claim_compiler_and_synthesis_boundary.md`.
+>
+> R5a extraction rule: JARVIS, inference-engine, phase, reflection-surface,
+> telemetry, and agent-action guidance below is historical onboarding context.
+> It is not permission to re-enable deleted/parked tools, add runtime AI,
+> create user-facing insights, or perform autonomous product mutation.
 
 **Purpose:** Onboarding for any autonomous or agentic AI (editor agent, Copilot, agent runtime, etc.). Read this **before** editing code or docs. Cross-check claims against the repo; docs sometimes lag.
 

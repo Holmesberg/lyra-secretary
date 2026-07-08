@@ -18,6 +18,12 @@ behavior-transition equations, schema migrations, or automatic interventions.
 Implementation-sounding examples below are future-gated examples unless a
 current authority document explicitly promotes them.
 
+R5a extraction rule: provider-native surface examples, adapter examples,
+passive academic tracking examples, AI/synthesis examples, and implementation
+sketches below are parked architecture notes. They may inform later design
+review, but they must not be extracted into runtime code, current docs, or user
+claims during freeze closure.
+
 Implementation note: Academic Pressure Map surfaces must follow
 `docs/academic_pressure_map_contract.md`. That contract freezes trust-state
 copy, validity-threat cross-links, research-integrity checks, and the rule that

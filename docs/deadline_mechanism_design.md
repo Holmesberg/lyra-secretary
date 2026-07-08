@@ -5,6 +5,12 @@
 > new provider adapters, passive tracking, behavior-transition equations,
 > runtime AI synthesis, new user-facing insights, schema migrations, or
 > automatic interventions during the architecture freeze.
+>
+> R5a extraction rule: all `Approved`, `locked`, `build`, migration, parser,
+> warning, dashboard, insight, schema, and provider-completion language below
+> is historical/parked unless promoted by the active authority chain. Existing
+> deadline behavior may be characterized and verified; new deadline runtime
+> work is not authorized by this note.
 
 **Status:** Historical design note for the April deadline mechanism. The
 operator decision and implementation plan below are preserved as provenance,

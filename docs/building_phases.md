@@ -7,6 +7,13 @@
 > lives in `docs/AUTHORITY.md`, `docs/current_transition_state.md`, and
 > `docs/architecture_freeze_priority_hold_2026_05_20.md`.
 
+> R5a extraction rule: every active-sounding word below, including `SHIP`,
+> `IN_PROGRESS`, `APPROVED`, `must`, `allowed`, `build`, `self-activate`,
+> `/insights`, schema/table additions, OpenClaw/LLM task creation, passive
+> tracking, archetype revelation, prediction, and readiness scoring language,
+> is historical/parked unless a current authority document explicitly promotes
+> it. Do not extract runtime work from this file during freeze closure.
+
 Historical phase map. This preserves April planning context and shipped/parked
 intent, but it is not a forward-looking source of truth during the current
 freeze-closure refactor.

@@ -14,6 +14,12 @@ During the architecture freeze it also does not authorize new provider
 adapters, passive tracking, runtime AI synthesis, new user-facing insights,
 behavior-transition equations, schema migrations, or automatic interventions.
 
+R5a extraction rule: any "allowed provider-native surface" or adapter-shape
+language below describes the boundary for a future explicitly approved adapter.
+It does not authorize new provider-native UI, imports, passive collection,
+credential storage, schema work, or provider-derived truth during freeze
+closure.
+
 ---
 
 ## 1. Boundary

@@ -15,6 +15,11 @@ provider adapters, or automatic interventions during the architecture freeze.
 Implementation phases and data-model sketches below are parked target
 architecture, not current runtime permission.
 
+R5a extraction rule: passive evidence-fusion formulas, provider/native schema
+sketches, phase plans, contradiction scoring, and asset-velocity estimates in
+this file are research/planning backlog only. They do not authorize runtime
+measurement, provider mutation, user-facing insights, or schema changes.
+
 This plan is subordinate to:
 
 - `MANIFESTO.md`
