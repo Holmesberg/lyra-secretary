@@ -8057,3 +8057,122 @@ Rollback note:
   create logic and removes the new browser payload/idempotency assertions. No
   schema migration, production data repair, provider data, exposure ledger row,
   Redis key, or user account content is required for rollback.
+
+## S1c/R3 Backend - Create Idempotency Reservation
+
+Commit:
+29981de68e9abc0d52470fe56f38881e4c210823
+
+Changed authority:
+
+- `/v1/create` now atomically reserves task-create idempotency keys before
+  entering task mutation authority.
+- `RedisClient` now owns three explicit idempotency helpers:
+  `reserve_idempotency`, `is_idempotency_pending`, and `clear_idempotency`.
+- Duplicate same-key create requests now wait briefly for the first request's
+  completed response and return that response when available.
+- If a same-key duplicate remains pending after the short wait, `/v1/create`
+  returns `409 idempotency_in_progress` instead of attempting a second write.
+- Conflict responses are now cached under the idempotency key too, so repeated
+  client retries replay the same conflict outcome instead of recomputing a new
+  branch.
+
+Removed paths:
+
+- Removed the check-then-set race where two concurrent `/v1/create` requests
+  with the same idempotency key could both pass the initial cache miss and write
+  independently.
+- Removed the replay gap where a cached conflict branch could be recomputed on
+  retry instead of returning the original bounded response.
+
+Parked paths:
+
+- Full distributed-lock/general idempotency middleware remains parked. This seam
+  deliberately protects only the task-create mutation path with the observed
+  product risk.
+- Hosted-public mutable dogfood remains parked/high-care until hosted cleanup
+  proof is explicitly safe.
+- Automatic recovery for stale local Next dev-cache topology failures remains
+  open in GitHub issue #173.
+
+Moved authority:
+
+- No task lifecycle truth authority moved. `TaskManager` still owns task
+  creation semantics; `/v1/create` owns request admission and response caching.
+- Redis remains transport/cache authority for idempotency state only.
+- No schema, provider, exposure, deadline, or user-data authority changed.
+
+Issue and classification:
+
+- GitHub issue #172 tracks the create endpoint idempotency race.
+- Classification: product/runtime mutation bug with measurable duplicate-write
+  risk.
+- A separate verifier/topology issue was discovered while proving this seam:
+  GitHub issue #173 tracks local `/api/topology` failures caused by stale Next
+  dev cache artifacts. It is open because only the manual `dev:clean` recovery
+  path was used in this pass.
+
+Tests and verification:
+
+- Backend characterization subset:
+  `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_idempotency_user_scope.py tests\test_create_task_with_deadline.py tests\test_parse_deadline_preview.py tests\test_calibration_nudge_event.py tests\test_output_surfaces.py -q`;
+  passed with `75 passed`.
+- New backend tests:
+  `test_create_pending_idempotency_key_rejects_duplicate_without_write` and
+  `test_create_conflict_response_is_idempotently_replayed`.
+- Static proof:
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`
+  passed with `error_count=0`.
+- Authority scan:
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`
+  passed with `missing_owner_count=0` and `worker_write_drift_count=0`.
+- Formatting proof:
+  `git diff --check` passed.
+- Local service proof:
+  rebuilt backend with `docker compose up -d --build backend`, ran
+  `docker compose exec -T backend alembic upgrade head`, and verified
+  `http://localhost:8000/v1/health` returned `{"status":"ok","service":"barzakh-api"}`.
+- Initial operator proof exposed a topology/verifier failure before product
+  behavior was reached: local `/api/topology` returned `500` from stale Next dev
+  cache artifacts. Recovery used the existing `frontend` `npm run dev:clean`
+  path and reran the same verifier.
+- Operator read-only browser proof before Holmesberg mutable pass:
+  `tmp/operator-readonly-stress-2026-07-08T10-34-15-885Z/result.json`
+  passed with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Holmesberg mutable product-loop proof:
+  `tmp/browser-product-loop/r3-create-idempotency-reserve/result.json` passed
+  with `ok=true`, `115` checks, no failed checks, normal and forced NewTask
+  create idempotency headers, duplicate-gesture create collapsed to one backend
+  task, deadline binding preserved, timer/session/export/delta evidence present,
+  and cleanup leaving no active timer or unrendered synthetic creation-nudge
+  exposure debt.
+- Operator read-only browser proof after Holmesberg mutable pass:
+  `tmp/operator-readonly-stress-2026-07-08T10-41-15-168Z/result.json`
+  passed with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/create-idempotency-reserve-29981de.json` passed for commit
+  `29981de68e9abc0d52470fe56f38881e4c210823` on GitHub Actions run
+  `28936612112`.
+
+Behavior parity statement:
+
+- Valid task creation, soft-conflict responses, force-create, deadline binding,
+  exposure lifecycle, provider rows, and user-facing NewTask behavior remain
+  behavior-preserving.
+- The intended runtime behavior change is narrow: a duplicate same-key
+  in-flight create request is serialized/replayed or rejected as pending instead
+  of being allowed to race a second write.
+- Unknown failures after mutation has been attempted fail closed by leaving the
+  short-lived pending reservation until TTL expiry, rather than clearing it and
+  risking duplicate task creation.
+
+Rollback note:
+
+- Revert commit `29981de68e9abc0d52470fe56f38881e4c210823` only. That restores
+  previous `/v1/create` check-then-set idempotency behavior and removes the new
+  Redis reservation helpers and tests. No schema migration, production data
+  repair, provider rows, exposure rows, or user-data cleanup are required.
