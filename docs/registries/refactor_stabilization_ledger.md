@@ -7461,7 +7461,7 @@ Rollback note:
 ## R3 Frontend - Pressure-Map Plan Commit Controller Seam
 
 Commit:
-pending.
+9ff78f07e237f2d5cf385ef517c2806f560bddd9
 
 Changed authority:
 
@@ -7567,7 +7567,7 @@ Rollback note:
 ## R3 Frontend - Pause-Reason Contract Seam
 
 Commit:
-pending.
+2ea03c0f44beafebf5e8ff5fe176504bcd2b9ea5
 
 Changed authority:
 
@@ -7651,7 +7651,10 @@ Tests and verification:
   passed with `count_diffs=[]`, `route_count_diffs=[]`,
   `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
   `exposure_without_render_count=0`.
-- Pending hosted proof after push:
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/r3-pause-reason-contract-2ea03c0.json` passed for
+  commit `2ea03c0f44beafebf5e8ff5fe176504bcd2b9ea5` on GitHub Actions run
+  `28910050827`.
 
 Behavior parity statement:
 
