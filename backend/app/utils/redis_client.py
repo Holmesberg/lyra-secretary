@@ -13,6 +13,8 @@ STOPWATCH_TTL_SECONDS = 46800
 
 
 class RedisClient:
+    IDEMPOTENCY_PENDING = "__pending__"
+
     """Redis client with application-specific patterns."""
     
     def __init__(self):
@@ -260,6 +262,32 @@ class RedisClient:
         redis_key = self._idempotency_key(key, user_id=user_id)
         return self.client.get(redis_key)
 
+    @classmethod
+    def is_idempotency_pending(cls, value: Optional[Any]) -> bool:
+        """Return true when an idempotency key is reserved but not completed."""
+        if value is None:
+            return False
+        if isinstance(value, bytes):
+            value = value.decode("utf-8")
+        return str(value) == cls.IDEMPOTENCY_PENDING
+
+    def reserve_idempotency(
+        self,
+        key: str,
+        ttl_seconds: int = 30,
+        user_id: Optional[Any] = None,
+    ) -> bool:
+        """Atomically reserve an idempotency key before a write starts."""
+        redis_key = self._idempotency_key(key, user_id=user_id)
+        return bool(
+            self.client.set(
+                redis_key,
+                self.IDEMPOTENCY_PENDING,
+                ex=ttl_seconds,
+                nx=True,
+            )
+        )
+
     def set_idempotency(
         self,
         key: str,
@@ -270,6 +298,11 @@ class RedisClient:
         """Store idempotency key with response for TTL seconds."""
         redis_key = self._idempotency_key(key, user_id=user_id)
         self.client.setex(redis_key, ttl_seconds, response_json)
+
+    def clear_idempotency(self, key: str, user_id: Optional[Any] = None) -> int:
+        """Remove a reserved idempotency key after an abandoned write."""
+        redis_key = self._idempotency_key(key, user_id=user_id)
+        return int(self.client.delete(redis_key) or 0)
 
     # Notion sync queue
     def queue_notion_sync(self, task_id: str, task_data: Dict[str, Any], user_id: str = "1"):

@@ -1,5 +1,6 @@
 """Task management endpoints."""
 import json
+import time
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -46,6 +47,34 @@ from app.utils.tasks_range_cache import invalidate_user_ranges
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+CREATE_IDEMPOTENCY_WAIT_SECONDS = 2.0
+CREATE_IDEMPOTENCY_POLL_SECONDS = 0.05
+
+
+def _cached_create_response(
+    redis: RedisClient,
+    key: str,
+    user_id: int,
+) -> Optional[TaskCreateResponse]:
+    cached = redis.check_idempotency(key, user_id=user_id)
+    if cached is None or redis.is_idempotency_pending(cached):
+        return None
+    return TaskCreateResponse(**json.loads(cached))
+
+
+def _wait_for_create_idempotency(
+    redis: RedisClient,
+    key: str,
+    user_id: int,
+) -> Optional[TaskCreateResponse]:
+    deadline = time.monotonic() + CREATE_IDEMPOTENCY_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        cached = _cached_create_response(redis, key, user_id)
+        if cached is not None:
+            return cached
+        time.sleep(CREATE_IDEMPOTENCY_POLL_SECONDS)
+    return None
+
 
 @router.post("/create", response_model=TaskCreateResponse)
 def create_task(
@@ -66,20 +95,37 @@ def create_task(
     if current_user_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    redis: Optional[RedisClient] = None
+    idempotency_reserved = False
+    mutation_attempted = False
+
     try:
         # FIX 4: Idempotency check
         redis = RedisClient()
         if x_idempotency_key:
-            cached = redis.check_idempotency(
+            cached = _cached_create_response(redis, x_idempotency_key, current_user_id)
+            if cached:
+                logger.info(f"Idempotency hit for key {x_idempotency_key}")
+                return cached
+            idempotency_reserved = redis.reserve_idempotency(
                 x_idempotency_key,
                 user_id=current_user_id,
             )
-            if cached:
-                logger.info(f"Idempotency hit for key {x_idempotency_key}")
-                return TaskCreateResponse(**json.loads(cached))
+            if not idempotency_reserved:
+                completed = _wait_for_create_idempotency(
+                    redis,
+                    x_idempotency_key,
+                    current_user_id,
+                )
+                if completed is not None:
+                    return completed
+                raise HTTPException(
+                    status_code=409,
+                    detail="idempotency_in_progress",
+                )
 
         manager = TaskManager(db)
-        
+        mutation_attempted = True
         task, result, notion_synced = manager.create_task(
             title=request.title,
             start=request.start,
@@ -124,7 +170,7 @@ def create_task(
                 ))
 
             severity = result.severity()
-            return TaskCreateResponse(
+            response = TaskCreateResponse(
                 task_id=None,
                 created=False,
                 notion_synced=False,
@@ -134,6 +180,13 @@ def create_task(
                 severity=severity,
                 soft_reasons=result.soft_reasons(),
             )
+            if x_idempotency_key and idempotency_reserved:
+                redis.set_idempotency(
+                    x_idempotency_key,
+                    response.model_dump_json(),
+                    user_id=current_user_id,
+                )
+            return response
 
         assert task is not None  # guaranteed by the None check above
         response = TaskCreateResponse(
@@ -157,6 +210,13 @@ def create_task(
         return response
         
     except ValueError as e:
+        if (
+            x_idempotency_key
+            and idempotency_reserved
+            and not mutation_attempted
+            and redis is not None
+        ):
+            redis.clear_idempotency(x_idempotency_key, user_id=current_user_id)
         error_msg = str(e)
         if "start_in_past" in error_msg:
             raise HTTPException(
@@ -165,6 +225,13 @@ def create_task(
             )
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
+        if (
+            x_idempotency_key
+            and idempotency_reserved
+            and not mutation_attempted
+            and redis is not None
+        ):
+            redis.clear_idempotency(x_idempotency_key, user_id=current_user_id)
         raise
     except Exception as e:
         logger.error(f"Task creation error: {e}", exc_info=True)
