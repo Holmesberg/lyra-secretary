@@ -8835,3 +8835,114 @@ Rollback note:
   the previous ad hoc/proxy-only workflow.
 - No production data, schema, Redis, cookie, backend, or hosted-public rollback
   is required.
+
+## Deadline Suggestion Wait And Local-Current Wrapper Proof Split
+
+Commits:
+
+- `0ec08af2adc8b38f627833175316e9d5d56a02c4`
+- `19aa7b315280743f5dc46cadf7067931f43eb343`
+
+Changed authority:
+
+- Deadline-suggestion browser proof now waits on a stable
+  `new-task-deadline-suggestion` test id before falling back to text/role
+  selectors.
+- Local-current wrapper authority now flows through the reusable post-wave
+  wrapper, Holmesberg mutable smoke wrapper, product-loop wrapper, and S1c
+  wrapper instead of ad hoc caller overrides.
+- The post-wave wrapper top-level result now mirrors the evidence manifest
+  and fails if the manifest fails.
+
+Removed paths:
+
+- Removed a brittle one-shot deadline-suggestion visibility check that could
+  misclassify a late render as missing.
+- Removed the path where local-current wrapper runs had to pretend to be
+  canonical `local` topology or bypass wrapper routing manually.
+- Removed the path where a failed evidence manifest could be hidden behind a
+  top-level wrapper success.
+
+Parked paths:
+
+- Full product-loop notification proof remains blocked by GitHub issue #176:
+  the pending notification can disappear without the browser verifier proving
+  render/dismiss/action/expiry evidence.
+- Hosted-public mutable dogfood remains high-care and optional until public
+  test-account cleanup is proven safe and a deploy/restart confirmation gate is
+  explicitly satisfied.
+
+Moved authority:
+
+- No product runtime, schema, user-facing behavior, task/deadline/timer state,
+  exposure authority, notification authority, provider authority, Redis state,
+  deployment authority, or ClaimCompiler authority moved.
+- Verifier topology plumbing moved into the reusable wrapper scripts.
+
+Issues and classification:
+
+- GitHub issue #149 tracked deadline suggestion render latency and is closed.
+  Classification: verifier/browser wait bug.
+- GitHub issue #177 tracked the post-wave wrapper evidence-manifest hard-fail
+  bug and is closed. Classification: verifier/harness bug.
+- GitHub issue #178 tracked local-current mutable smoke browser API proxy
+  support and is closed. Classification: verifier/topology harness bug.
+- GitHub issue #176 remains open for the notification lifecycle ambiguity.
+  Classification: measurement/verifier boundary bug.
+
+Tests and verification:
+
+- Commit `0ec08af2adc8b38f627833175316e9d5d56a02c4`:
+  - `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs`;
+    passed.
+  - `git diff --check`; passed.
+  - `frontend npm run typecheck`; passed.
+  - Local-current Holmesberg product-loop evidence:
+    `tmp\browser-product-loop\deadline-suggestion-wait-0ec08af\result.json`.
+    The full loop failed later in notification proof, but deadline-suggestion
+    checks passed at 1336ms, 1341ms, and 1519ms.
+  - Cleanup-only proof:
+    `tmp\browser-product-loop\cleanup-deadline-suggestion-wait-0ec08af\result.json`;
+    passed with no active timer and no task rows under the dogfood prefix.
+  - Operator read-only proof:
+    `tmp\operator-readonly-stress-2026-07-08T15-15-36-449Z\result.json`;
+    passed with zero count diffs, `implementation_green=true`, and
+    `exposure_without_render_count=0`.
+  - Hosted CI/CD proof: GitHub Actions `CI` run `28953929444`; passed.
+- Commit `19aa7b315280743f5dc46cadf7067931f43eb343`:
+  - `git diff --check`; passed.
+  - `node --check scripts\browser_mutable_holmesberg_smoke.mjs`; passed.
+  - PowerShell parser checks passed for touched wrapper scripts.
+  - Direct local-current mutable proof:
+    `tmp\browser-smoke\holmesberg-2026-07-08T15-24-39-578Z\result.json`;
+    passed, created and cleaned three tasks and two deadlines, and exercised
+    deadline creation, task binding, timer start/pause/resume/stop, parallel
+    timer rejection, and brain dump commit.
+  - Reusable wrapper local-current proof:
+    `tmp\post-wave-dogfood\20260708-182108-wrapper-local-current-proof-quick-local-current\summary.json`;
+    passed for topology, multi-account smoke, and operator read-only routing.
+  - Reusable wrapper local-current mutable proof:
+    `tmp\post-wave-dogfood\20260708-182542-wrapper-local-current-mutable-proof-standard-local-current\summary.json`;
+    passed with `mutable_enabled=true`, `evidence_manifest.ok=true`, cleanup
+    required and ok, operator read-only summaries ok, and
+    `exposure_without_render_count=0`.
+  - Hosted CI/CD proof: GitHub Actions `CI` run `28954961117`; passed.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- No schema, backend API behavior, operator dashboard payload, task/deadline
+  state, timer state, exposure row, notification row, provider row, production
+  data, Redis key, public deploy path, or ClaimCompiler behavior changed.
+- Intended behavior change is verifier-only: the browser waits on stable
+  deadline-suggestion evidence; local-current wrapper proofs are explicit,
+  proxied, and manifest-enforced.
+
+Rollback note:
+
+- Revert `19aa7b315280743f5dc46cadf7067931f43eb343` to remove local-current
+  wrapper routing and restore the previous wrapper behavior.
+- Revert `0ec08af2adc8b38f627833175316e9d5d56a02c4` to remove the stable
+  deadline-suggestion test id and polling wait.
+- No production data, schema, Redis, cookie, backend, hosted-public deploy, or
+  user cleanup rollback is required.

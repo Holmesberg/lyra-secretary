@@ -25,6 +25,11 @@ The branch scope is freeze-closure only:
 measurement forensics -> operator truth -> regression gates -> small safe seams
 ```
 
+The objective of every wave is to reduce uncertainty before reducing
+complexity. Complexity reduction is only performed when supported by
+independent evidence, reversible seams, and mechanically enforced authority
+boundaries.
+
 This is a semantics-preserving stabilization/refactor pass. It should make
 existing behavior easier to verify and maintain, not create stronger claims,
 new surfaces, or new runtime authority.
