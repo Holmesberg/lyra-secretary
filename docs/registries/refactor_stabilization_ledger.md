@@ -7938,7 +7938,7 @@ Rollback note:
 ## R3 Frontend Extraction - NewTask Submit Controller
 
 Commit:
-pending seam commit
+95d791fc91033b761c552bede5eaf39e72566281
 
 Changed authority:
 
@@ -8029,6 +8029,10 @@ Tests and verification:
   passed with `count_diffs=[]`, `route_count_diffs=[]`,
   `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
   `exposure_without_render_count=0`.
+- Hosted CI/CD proof:
+  `tmp/ci-cd-proof/r3-new-task-submit-controller-95d791f.json` passed for
+  commit `95d791fc91033b761c552bede5eaf39e72566281` on GitHub Actions run
+  `28935287814`.
 - Proven paths:
   normal NewTask create preserves description and explicit deadline binding;
   normal duplicate gesture creates exactly one backend task; normal create
