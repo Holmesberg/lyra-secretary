@@ -12,6 +12,23 @@ function Test-WslPublicFrontendSession {
   return $LASTEXITCODE -eq 0
 }
 
+function Test-WslPublicFrontendIsolatedDist {
+  if (-not (Test-WslPublicFrontendSession)) {
+    return $true
+  }
+
+  $wslFrontendDir = (& wsl.exe wslpath -a $script:LyraFrontendDir).Trim()
+  if (-not $wslFrontendDir) {
+    return $false
+  }
+  $safeWslFrontendDir = $wslFrontendDir.Replace("'", "'\''")
+
+  $probe = "cd '$safeWslFrontendDir' && test -s .next-public/BUILD_ID && grep -q '\[public-topology\] NEXT_DIST_DIR=.next-public' /tmp/frontend.log"
+
+  & wsl.exe -e bash -lc $probe 2>$null
+  return $LASTEXITCODE -eq 0
+}
+
 function Assert-LocalNextArtifactIsolation {
   param(
     [Parameter(Mandatory = $true)]
@@ -31,6 +48,10 @@ function Assert-LocalNextArtifactIsolation {
     return
   }
 
+  if (Test-WslPublicFrontendIsolatedDist) {
+    return
+  }
+
   $envOverride = [Environment]::GetEnvironmentVariable("LYRA_ALLOW_LOCAL_FRONTEND_WHILE_PUBLIC")
   if ([bool]$AllowPublicFrontendArtifactMutation -or $envOverride -eq "1") {
     Write-Warning (
@@ -45,9 +66,11 @@ Refusing local frontend artifact mutation while WSL public frontend session 'lyr
 
 Reason: $Reason
 
-Local Next build/dev writes frontend\.next, the same artifact directory used by
-the hosted public WSL frontend. This previously caused hosted-public _next chunk
-400s and ChunkLoadError in the browser.
+The public frontend session is active, but it is not proven to be serving the
+isolated frontend\.next-public artifact. Local Next build/dev writes
+frontend\.next; older public sessions also served from that directory, which
+previously caused hosted-public _next chunk 400s and ChunkLoadError in the
+browser.
 
 Use one of these explicit paths:
 - run the verifier with -Topology public when local frontend proof is not needed;

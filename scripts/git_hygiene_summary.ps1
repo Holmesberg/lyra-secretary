@@ -31,6 +31,7 @@ function Path-IsArtifact([string]$Path) {
     $patterns = @(
         "^tmp/",
         "^frontend/\.next/",
+        "^frontend/\.next-public/",
         "^frontend/out/",
         "^node_modules/",
         "^backend/\.pytest_cache/",

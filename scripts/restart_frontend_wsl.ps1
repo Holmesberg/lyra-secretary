@@ -24,6 +24,7 @@ SKIP_PUBLIC_CHECK='$skipPublicValue'
 SESSION='lyra-frontend'
 START_SCRIPT='/tmp/start_lyra_frontend.sh'
 FRONTEND_LOG='/tmp/frontend.log'
+PUBLIC_NEXT_DIR='.next-public'
 
 source ~/.nvm/nvm.sh
 
@@ -55,19 +56,19 @@ else
 fi
 
 if [ "`$NO_BUILD" != '1' ]; then
-  echo '== rebuilding .next public topology from scratch =='
-  rm -rf .next
+  echo "== rebuilding `$PUBLIC_NEXT_DIR public topology from scratch =="
+  rm -rf "`$PUBLIC_NEXT_DIR"
   npm run build:public
 else
-  echo '== skipping build; validating existing .next =='
+  echo "== skipping build; validating existing `$PUBLIC_NEXT_DIR =="
 fi
 
-if [ ! -s .next/BUILD_ID ]; then
-  echo 'ERROR: .next/BUILD_ID is missing. Refusing to start incomplete production artifact.' >&2
+if [ ! -s "`$PUBLIC_NEXT_DIR/BUILD_ID" ]; then
+  echo "ERROR: `$PUBLIC_NEXT_DIR/BUILD_ID is missing. Refusing to start incomplete production artifact." >&2
   exit 42
 fi
 
-echo "build_id=`$(cat .next/BUILD_ID)"
+echo "build_id=`$(cat "`$PUBLIC_NEXT_DIR/BUILD_ID")"
 
 cat > "`$START_SCRIPT" <<'EOS'
 #!/usr/bin/env bash

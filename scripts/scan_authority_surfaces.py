@@ -27,6 +27,7 @@ INCLUDE_SUFFIXES = {".py", ".js", ".mjs", ".ts", ".tsx", ".json"}
 SKIP_PARTS = {
     ".git",
     ".next",
+    ".next-public",
     ".pytest_cache",
     "__pycache__",
     "node_modules",

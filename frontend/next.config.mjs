@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
+const distDir = process.env.NEXT_DIST_DIR || ".next";
+
 const nextConfig = {
+  distDir,
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,

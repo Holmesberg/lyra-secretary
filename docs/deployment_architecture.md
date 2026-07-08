@@ -10,8 +10,10 @@ failure handling, and public-beta upgrade gates.
 
 ## Current stack
 
-**Current runtime note (May 15, 2026):** the frontend is expected to run as a
+**Current runtime note (May 15, 2026; updated July 8, 2026):** the frontend is expected to run as a
 production build served by `next start` via `scripts/restart_frontend_wsl.ps1`.
+The hosted-public build artifact directory is `frontend/.next-public`, kept
+separate from local development/build artifact directory `frontend/.next`.
 Older diagram labels or checklist text mentioning `npm run dev` are historical
 April notes and should not be used as current production guidance.
 
@@ -215,7 +217,7 @@ Supabase holds the data *off* the laptop so:
 | Backend container down | `https://api.lyraos.org/v1/health` → 502 | `docker compose up -d backend` |
 | CORS split-brain | Browser shows `Failed to fetch` from `/v1/users/me`, while `curl localhost:8000/` returns 200 | Verify `CORS_ALLOWED_ORIGINS` includes the browser origin and rerun preflight; see `archive/docs_history/runtime_incident_cors_split_brain_2026_05_12.md` |
 | Mixed runtime topology | `/api/topology` returns `verified_topology=false`, e.g. `.org` serving localhost auth/API or localhost serving public auth/API | Stop browser verification. Restart the intended frontend env and rerun `node scripts/verify_runtime_topology.mjs --topology public` or `--topology local`. For `.org`, use `scripts/restart_frontend_wsl.ps1`; see `docs/incidents/2026-05-17-public-frontend-mixed-topology.md`. |
-| Frontend process killed or incomplete `.next` artifact | `https://lyraos.org` → 502 while `https://api.lyraos.org/v1/health` stays 200 | From Windows repo root: `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
+| Frontend process killed or incomplete `.next-public` artifact | `https://lyraos.org` → 502 while `https://api.lyraos.org/v1/health` stays 200 | From Windows repo root: `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | Supabase outage | API returns 5xx; connection errors in backend log | Flip `.env` back to SQLite backup + restart backend. Supabase data preserved, new writes go to SQLite until resolved. Manual reconciliation needed after. |
 | Domain issue (registrar lock, DNS break) | `lyraos.org` DNS fails | Cloudflare dashboard → Registrar + DNS tab. `oslyra.com` is the name-swap candidate if lyraos.org becomes unusable (see dogfood P2 entry). |
 | `cert.pem` lost / revoked | `cloudflared` operations fail auth | `cloudflared tunnel login` on laptop, re-authenticate 24p0248@eng.asu.edu.eg |
@@ -258,7 +260,7 @@ Services that survive sleep vs require repair:
 |---------|----------------|----------|
 | Docker (backend + Redis) | Usually yes (containers stay up) | `docker compose ps` -> restart if "Exited" |
 | Cloudflared tunnel | Often no (foreground process can die) | Watchdog, or `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` |
-| Next.js (frontend) | Sometimes no (nohup process may die; `.next` can be left incomplete if a build is interrupted) | Watchdog, or `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
+| Next.js (frontend) | Sometimes no (tmux process may die; `.next-public` can be left incomplete if a public build is interrupted) | Watchdog, or `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
 | APScheduler | Yes (restarts with backend) | Automatic — fires missed jobs on wake |
 | Supabase connection pool | Yes (pool_pre_ping reconnects stale conns) | Automatic |
 | Redis data | Yes (persistent volume) | Automatic |
@@ -274,7 +276,7 @@ powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1
 sleep 2 && curl -sf https://api.lyraos.org/v1/health || echo "TUNNEL DOWN"
 
 # 3. Frontend
-# Stops stale next/npm processes, removes .next, rebuilds public topology,
+# Stops stale next/npm processes, removes .next-public, rebuilds public topology,
 # verifies BUILD_ID and public /api/topology, then starts `start:public`
 # inside WSL tmux session `lyra-frontend`.
 powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1

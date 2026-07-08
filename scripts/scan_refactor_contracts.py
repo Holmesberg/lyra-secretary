@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SKIP_PARTS = {
     ".git",
     ".next",
+    ".next-public",
     ".pytest_cache",
     "__pycache__",
     "node_modules",

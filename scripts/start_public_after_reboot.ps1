@@ -83,6 +83,7 @@ FRONTEND_DIR='$safeWslFrontendDir'
 SESSION='lyra-frontend'
 START_SCRIPT='/tmp/start_lyra_frontend.sh'
 FRONTEND_LOG='/tmp/frontend.log'
+PUBLIC_NEXT_DIR='.next-public'
 
 cd "`$FRONTEND_DIR"
 export NEXT_TELEMETRY_DISABLED=1
@@ -101,12 +102,12 @@ if [ "`${#pids[@]}" -gt 0 ]; then
 fi
 
 if [ '$skipBuildValue' != '1' ]; then
-  rm -rf .next
+  rm -rf "`$PUBLIC_NEXT_DIR"
   npm run build:public
 fi
 
-if [ ! -s .next/BUILD_ID ]; then
-  echo 'ERROR: .next/BUILD_ID is missing. Build public frontend first.' >&2
+if [ ! -s "`$PUBLIC_NEXT_DIR/BUILD_ID" ]; then
+  echo "ERROR: `$PUBLIC_NEXT_DIR/BUILD_ID is missing. Build public frontend first." >&2
   exit 42
 fi
 
