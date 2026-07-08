@@ -45,6 +45,7 @@ import {
   invalidateTodayTaskCommandSurfaces,
   queryKeys,
 } from "@/lib/query-keys";
+import type { PauseReason } from "@/lib/stopwatch-pause-reasons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -287,7 +288,7 @@ function TodayInner() {
   // When set, ActiveTimerBanner skips the reason picker on pause and
   // applies this reason directly — one-tap pause from the prediction
   // banner's primary action (2026-04-22). Clears on handled.
-  const [quickPauseReason, setQuickPauseReason] = useState<string | undefined>(undefined);
+  const [quickPauseReason, setQuickPauseReason] = useState<PauseReason | undefined>(undefined);
   const clearRequestPause = useCallback(() => {
     setRequestPause(false);
     setQuickPauseReason(undefined);

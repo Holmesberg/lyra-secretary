@@ -7563,3 +7563,106 @@ Rollback note:
   preview state and commit logic to `PulseAcademicPressureMap`. No backend code,
   schema, production data, exposure row, provider row, Redis key, or user
   content is touched.
+
+## R3 Frontend - Pause-Reason Contract Seam
+
+Commit:
+pending.
+
+Changed authority:
+
+- No runtime authority changed.
+- Frontend pause reasons now have one typed vocabulary module:
+  `frontend/lib/stopwatch-pause-reasons.ts`.
+- `pauseStopwatch` now accepts `PauseReason` instead of arbitrary `string`.
+- `ActiveTimerBanner.quickPauseReason` now accepts `PauseReason` instead of
+  arbitrary `string`.
+- `PulseFocusCard` keeps the existing one-tap pause behavior but uses the
+  named `QUICK_PAUSE_REASON` constant instead of a raw
+  `"intentional_break"` literal.
+
+Removed paths:
+
+- Removed the duplicate local `PAUSE_REASON_OPTIONS` list from
+  `ActiveTimerBanner`.
+- Removed the raw frontend `pauseStopwatch("intentional_break")` mutation call
+  from `PulseFocusCard`.
+- Removed the loose `string` type path for frontend pause-command reasons.
+
+Parked paths:
+
+- The product/research decision about whether quick pause should continue to
+  map to `intentional_break` remains parked.
+- Browser proof for multi-paused switch-chip UI remains parked; current
+  product-loop coverage does not exercise that chip path.
+- Deeper stopwatch elapsed-clock/controller extraction remains parked until it
+  reduces observable danger rather than only component size.
+
+Moved authority:
+
+- No pause authority moved.
+- The backend stopwatch endpoint remains the validation and mutation authority
+  for pause events.
+- The frontend vocabulary mirrors the backend enum and prevents new noncanonical
+  pause reasons from being introduced accidentally in frontend command code.
+
+Issue and classification:
+
+- Refactor classification:
+  frontend measurement-contract seam, behavior-preserving.
+- GitHub issue:
+  #167 tracks the duplicated/loose frontend pause-reason vocabulary.
+- Verifier classification:
+  a parallel `npm run typecheck` plus `npm run build` attempt caused a transient
+  `.next/types` TS6053 failure while build regenerated Next types. Sequential
+  frontend checks passed; the repo verification wrappers already run these
+  checks sequentially.
+
+Tests and verification:
+
+- Static proof:
+  `rg -n 'pauseStopwatch\("(mental_fatigue|distraction|task_difficulty|external_interruption|intentional_break|prayer|task_switch)"' frontend`
+  returned no matches.
+- Static proof:
+  `rg -n 'quickPauseReason\?: string|pauseStopwatch\(reason\?: string' frontend`
+  returned no matches.
+- Local proof:
+  `git diff --check`;
+  `cd frontend; npm run typecheck`;
+  `cd frontend; npm run build`;
+  `.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors`;
+  `.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_pause_resume_pause_event.py tests\test_stopwatch_switch.py tests\test_stopwatch_recovery.py tests\test_stopwatch_pause_counter_anchor.py tests\test_void_clears_stopwatch.py -q`;
+  all passed.
+- Browser proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_s1c_verification_stack.ps1 -Topology local -SkipBackendFull -SkipFrontendBuild`
+  passed and verified local topology.
+- Holmesberg product-loop proof:
+  `node scripts\browser_holmesberg_product_loop_dogfood.mjs --topology local --run-id r3-pause-reason-contract --out-dir tmp\browser-product-loop\r3-pause-reason-contract --force-pressure-recovery`
+  passed with `ok=true`.
+- Timer-chain proof:
+  product loop verified timer start, pause status, paused-session survival
+  across Pulse refresh and Calendar navigation, Today banner visibility,
+  pause-counter anchoring, resume, stop, execution delta fields, exported
+  stopwatch session rows, exported pause event rows, and cleanup with no active
+  Holmesberg timer.
+- Operator read-only proof after mutable dogfood:
+  `tmp/operator-readonly-stress-2026-07-08T01-06-40-479Z/result.json`
+  passed with `count_diffs=[]`, `route_count_diffs=[]`,
+  `dashboard_snapshot_diffs=[]`, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+- Pending hosted proof after push:
+
+Behavior parity statement:
+
+- Runtime product behavior is intended to be unchanged.
+- Existing pause labels, quick-pause value, Pulse focus-card pause behavior,
+  ActiveTimerBanner reason picker behavior, and backend payload values are
+  preserved.
+
+Rollback note:
+
+- Revert this frontend seam commit only. This restores the duplicate local
+  pause-reason list and loose string typing. No backend code, schema,
+  production data, exposure row, provider row, Redis key, or user content is
+  touched.

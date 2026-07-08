@@ -54,6 +54,7 @@ import {
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
 import { announceUndoAvailable } from "@/lib/undo";
 import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
+import { QUICK_PAUSE_REASON } from "@/lib/stopwatch-pause-reasons";
 
 type Mode = "idle" | "reflection" | "next-prompt";
 
@@ -200,7 +201,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   });
 
   const pauseM = useMutation<unknown, Error, void>({
-    mutationFn: () => pauseStopwatch("intentional_break"),
+    mutationFn: () => pauseStopwatch(QUICK_PAUSE_REASON),
     onSuccess: () => refreshTimerSurfaces(),
     onError: (e) => setErrorMsg(e.message ?? "Failed to pause"),
   });

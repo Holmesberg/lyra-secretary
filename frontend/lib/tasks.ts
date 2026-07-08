@@ -4,6 +4,7 @@
  */
 import { api } from "./api";
 import type { Category } from "./categories";
+import type { PauseReason } from "./stopwatch-pause-reasons";
 
 function newIdempotencyKey(scope: string): string {
   const random =
@@ -408,7 +409,7 @@ export function stopStopwatch(
   });
 }
 
-export function pauseStopwatch(reason?: string, idempotencyKey?: string) {
+export function pauseStopwatch(reason?: PauseReason, idempotencyKey?: string) {
   return api<unknown>("/v1/stopwatch/pause", {
     method: "POST",
     headers: idempotencyHeaders("stopwatch-pause", idempotencyKey),

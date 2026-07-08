@@ -13,10 +13,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
 import { getElapsedSeconds } from "@/lib/stopwatch-time";
+import {
+  PAUSE_REASON_OPTIONS,
+  type PauseReason,
+} from "@/lib/stopwatch-pause-reasons";
 
-// Matches backend PAUSE_REASONS enum in
-// backend/app/schemas/stopwatch.py:65. Keep in sync.
-//
 // `task_switch` exposed to the user-facing picker on 2026-05-02 (operator
 // request during Phase 2 system transition). Previously it was system-only,
 // written by /v1/stopwatch/switch when the operator swapped between paused
@@ -25,15 +26,6 @@ import { getElapsedSeconds } from "@/lib/stopwatch-time";
 // "external_interruption" (it's user-driven and intentional, but breaks
 // flow). Captured separately so context-switch-cost analysis can
 // distinguish operator-initiated swaps from involuntary disruptions.
-const PAUSE_REASON_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "mental_fatigue", label: "Low focus" },
-  { value: "distraction", label: "Distraction" },
-  { value: "task_difficulty", label: "Task difficulty" },
-  { value: "external_interruption", label: "External interruption" },
-  { value: "intentional_break", label: "Intentional break" },
-  { value: "prayer", label: "Prayer" },
-  { value: "task_switch", label: "Switching to another task" },
-];
 
 // Silent default on click-outside was removed Apr 16 — pause_reason is
 // a structural invariant (research-relevant field per do_not_add.md
@@ -71,7 +63,7 @@ interface Props {
   // When set, skip the reason picker and apply pause immediately with
   // this reason. Used by the prediction-banner "Quick pause" action
   // (2026-04-22): operator mid-break shouldn't have to pick a reason.
-  quickPauseReason?: string;
+  quickPauseReason?: PauseReason;
   onRequestPauseHandled?: () => void;
 }
 
@@ -302,7 +294,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     elapsed = fmtTime(activeSec);
   }
 
-  async function applyPause(reason: string | undefined) {
+  async function applyPause(reason: PauseReason | undefined) {
     setShowReasonPicker(false);
     setErr(null);
     setLocalPaused(true);
