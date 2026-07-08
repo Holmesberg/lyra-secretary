@@ -7300,7 +7300,9 @@ Rollback note:
 
 ## R5a Docs - Stale Authority Cleanup Before Extraction
 
-Commit: pending commit (`docs: tighten r5a authority boundaries`).
+Commit:
+`43bbcd151fad22cb01fc0f413d2e64991d077a38`
+(`docs: tighten r5a authority boundaries`).
 
 Changed authority:
 
@@ -7353,14 +7355,17 @@ Issue and classification:
 - Classification:
   documentation authority gap.
 - GitHub issue:
-  #165, to be closed after commit/push/CI proof.
+  #165, closed after commit/push/CI proof.
 
 Tests and verification:
 
-- Pending local proof before commit:
-  `git diff --check`.
-- Pending hosted proof after push:
-  exact-SHA GitHub Actions CI.
+- Local proof:
+  `git diff --check` passed.
+- Hosted proof:
+  GitHub Actions CI passed for exact SHA
+  `43bbcd151fad22cb01fc0f413d2e64991d077a38`; run
+  `28907350174`; artifact:
+  `tmp/ci-cd-proof/r5a-doc-boundaries-43bbcd1.json`.
 
 Behavior parity statement:
 
