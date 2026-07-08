@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -35,6 +36,7 @@ const runId = args.get("run-id") || process.env.LYRA_BROWSER_STRESS_RUN_ID || ne
 const outDir = path.resolve(args.get("out-dir") || path.join(repoRoot, "tmp", `operator-readonly-stress-${runId}`));
 const proxyApi = args.get("proxy-api") === "true";
 const expectReadinessSplit = args.get("expect-readiness-split") === "true";
+const selfTestAttribution = args.get("self-test-attribution") === "true";
 
 const routes = [
   { path: "/operator", name: "operator", targetMs: 12_000, maxMs: 20_000 },
@@ -100,6 +102,210 @@ function diffCounts(before, after) {
     }
   }
   return diffs;
+}
+
+const rowAttributionFields = {
+  exposure_decision_events: [
+    "id",
+    "created_at",
+    "eligible_at",
+    "decided_at",
+    "status",
+    "decision_status",
+    "content_template_id",
+    "surface_id",
+    "surface",
+    "channel",
+    "trigger_source",
+    "render_event_id",
+    "suppression_event_id",
+    "notification_lifecycle_event_id",
+  ],
+  exposure_render_events: [
+    "id",
+    "created_at",
+    "rendered_at",
+    "status",
+    "surface_id",
+    "surface",
+    "channel",
+    "content_template_id",
+    "trigger_source",
+    "decision_event_id",
+    "notification_lifecycle_event_id",
+  ],
+  suppression_events: [
+    "id",
+    "created_at",
+    "suppressed_at",
+    "status",
+    "reason",
+    "surface_id",
+    "surface",
+    "channel",
+    "content_template_id",
+    "trigger_source",
+    "decision_event_id",
+  ],
+  notification_lifecycle_events: [
+    "id",
+    "created_at",
+    "queued_at",
+    "delivered_at",
+    "rendered_at",
+    "acknowledged_at",
+    "dismissed_at",
+    "acted_at",
+    "status",
+    "source",
+    "channel",
+    "surface_id",
+    "notification_type",
+    "exposure_decision_event_id",
+    "exposure_render_event_id",
+  ],
+  security_audit_events: [
+    "id",
+    "created_at",
+    "event_type",
+    "status",
+    "source",
+    "surface_id",
+  ],
+};
+
+const commonAttributionFields = [
+  "id",
+  "created_at",
+  "updated_at",
+  "status",
+  "source",
+  "surface_id",
+  "surface",
+  "channel",
+  "event_type",
+  "trigger_source",
+];
+
+const nonSensitiveLabelFields = new Set([
+  "channel",
+  "content_template_id",
+  "decision_status",
+  "event_type",
+  "notification_type",
+  "reason",
+  "source",
+  "status",
+  "surface",
+  "surface_id",
+  "trigger_source",
+]);
+
+function stableHash(value) {
+  return createHash("sha256").update(String(value ?? "")).digest("hex").slice(0, 16);
+}
+
+function rowIdentity(row) {
+  if (!row || typeof row !== "object") return stableHash(JSON.stringify(row));
+  for (const key of ["id", "uuid", "event_id", "row_id"]) {
+    if (row[key] != null) return `${key}:${String(row[key])}`;
+  }
+  return `hash:${stableHash(JSON.stringify(row))}`;
+}
+
+function timestampValue(row) {
+  if (!row || typeof row !== "object") return 0;
+  for (const key of [
+    "created_at",
+    "rendered_at",
+    "queued_at",
+    "delivered_at",
+    "acted_at",
+    "updated_at",
+    "timestamp",
+  ]) {
+    const value = row[key];
+    if (!value) continue;
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function latestRows(rows, limit = 3) {
+  return [...rows]
+    .sort((left, right) => timestampValue(right) - timestampValue(left))
+    .slice(0, limit);
+}
+
+function redactValue(key, value) {
+  if (value == null || typeof value === "boolean" || typeof value === "number") return value ?? null;
+  if (nonSensitiveLabelFields.has(key)) {
+    return typeof value === "string" && value.length > 120
+      ? { present: true, hash: stableHash(value), length: value.length }
+      : value;
+  }
+  if (key === "id" || key.endsWith("_id")) {
+    return { present: true, hash: stableHash(value) };
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value !== "string") {
+    return { type: Array.isArray(value) ? "array" : typeof value, hash: stableHash(JSON.stringify(value)) };
+  }
+  if (
+    /email|name|token|cookie|secret|password|authorization|ip|address|body|message|title|description|notes?/i
+      .test(key)
+  ) {
+    return { present: value.length > 0, hash: stableHash(value) };
+  }
+  if (value.length > 120) {
+    return { present: true, hash: stableHash(value), length: value.length };
+  }
+  return value;
+}
+
+function redactRow(section, row) {
+  if (!row || typeof row !== "object") {
+    return { value_hash: stableHash(JSON.stringify(row)) };
+  }
+  const fields = new Set([...(rowAttributionFields[section] || commonAttributionFields)]);
+  const redacted = {};
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(row, field)) {
+      redacted[field] = redactValue(field, row[field]);
+    }
+  }
+  redacted.row_identity_hash = stableHash(rowIdentity(row));
+  return redacted;
+}
+
+function changedRows(beforeRows, afterRows, direction) {
+  const base = direction === "added" ? beforeRows : afterRows;
+  const candidate = direction === "added" ? afterRows : beforeRows;
+  const baseIds = new Set(base.map(rowIdentity));
+  return candidate.filter((row) => !baseIds.has(rowIdentity(row)));
+}
+
+function attributeCountDiffs(diffs, beforeBody, afterBody) {
+  return diffs.map((diff) => {
+    const beforeRows = Array.isArray(beforeBody?.[diff.key]) ? beforeBody[diff.key] : [];
+    const afterRows = Array.isArray(afterBody?.[diff.key]) ? afterBody[diff.key] : [];
+    const addedRows = changedRows(beforeRows, afterRows, "added");
+    const removedRows = changedRows(beforeRows, afterRows, "removed");
+    return {
+      section: diff.key,
+      before_count: diff.before,
+      after_count: diff.after,
+      direction: diff.after > diff.before ? "increase" : "decrease",
+      added_count: addedRows.length,
+      removed_count: removedRows.length,
+      added_rows: latestRows(addedRows, 3).map((row) => redactRow(diff.key, row)),
+      removed_rows: latestRows(removedRows, 3).map((row) => redactRow(diff.key, row)),
+      latest_before_rows: latestRows(beforeRows, 2).map((row) => redactRow(diff.key, row)),
+      latest_after_rows: latestRows(afterRows, 2).map((row) => redactRow(diff.key, row)),
+      note: "Rows are redacted. Hashes are for attribution only, not user-facing evidence.",
+    };
+  });
 }
 
 function pick(source, keys) {
@@ -260,6 +466,47 @@ async function fetchJson(pathname, token) {
   return { status: response.status, body };
 }
 
+if (selfTestAttribution) {
+  const beforeBody = {
+    exposure_decision_events: [
+      {
+        id: "decision-before",
+        created_at: "2026-07-08T10:00:00Z",
+        decision_status: "eligible",
+        content_template_id: "task.creation_nudge",
+        surface_id: "pulse",
+        message: "sensitive body is redacted",
+      },
+    ],
+  };
+  const afterBody = {
+    exposure_decision_events: [
+      ...beforeBody.exposure_decision_events,
+      {
+        id: "decision-after",
+        created_at: "2026-07-08T11:00:00Z",
+        decision_status: "eligible",
+        content_template_id: "task.creation_nudge",
+        surface_id: "pulse",
+        message: "sensitive body is redacted",
+      },
+    ],
+  };
+  const attribution = attributeCountDiffs(
+    [{ key: "exposure_decision_events", before: 1, after: 2 }],
+    beforeBody,
+    afterBody,
+  );
+  if (attribution.length !== 1 || attribution[0].added_count !== 1) {
+    throw new Error("row attribution self-test did not detect added row");
+  }
+  if (attribution[0].added_rows[0]?.message !== undefined) {
+    throw new Error("row attribution self-test leaked non-allowlisted message");
+  }
+  console.log(JSON.stringify({ ok: true, attribution }, null, 2));
+  process.exit(0);
+}
+
 async function checkRoute(page, route, viewport) {
   const result = {
     route: route.path,
@@ -406,8 +653,10 @@ const result = {
   is_operator: null,
   before_counts: null,
   pre_dashboard_count_diffs: [],
+  pre_dashboard_count_diff_attribution: [],
   after_counts: null,
   count_diffs: [],
+  count_diff_attribution: [],
   route_count_diffs: [],
   dashboard_before_snapshot: null,
   dashboard_after_snapshot: null,
@@ -448,6 +697,11 @@ try {
   }
   const afterPreDashboardCounts = countExport(afterPreDashboardExport.body || {});
   result.pre_dashboard_count_diffs = diffCounts(result.before_counts, afterPreDashboardCounts);
+  result.pre_dashboard_count_diff_attribution = attributeCountDiffs(
+    result.pre_dashboard_count_diffs,
+    beforeExport.body || {},
+    afterPreDashboardExport.body || {},
+  );
   if (result.pre_dashboard_count_diffs.length > 0) {
     result.issues.push(
       `operator dashboard API read changed exported data counts before browser route: ${JSON.stringify(result.pre_dashboard_count_diffs)}`,
@@ -470,6 +724,11 @@ try {
           viewport: viewport.name,
           route: route.path,
           diffs: routeDiffs,
+          attribution: attributeCountDiffs(
+            routeDiffs,
+            routeBeforeExport.body || {},
+            routeAfterExport.body || {},
+          ),
         });
       }
     }
@@ -479,6 +738,11 @@ try {
   if (afterExport.status !== 200) throw new Error(`post export failed with ${afterExport.status}`);
   result.after_counts = countExport(afterExport.body || {});
   result.count_diffs = diffCounts(result.before_counts, result.after_counts);
+  result.count_diff_attribution = attributeCountDiffs(
+    result.count_diffs,
+    beforeExport.body || {},
+    afterExport.body || {},
+  );
   if (result.count_diffs.length > 0) {
     result.issues.push(`read-only stress changed exported data counts: ${JSON.stringify(result.count_diffs)}`);
   }
