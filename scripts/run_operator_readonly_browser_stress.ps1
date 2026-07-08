@@ -1,9 +1,14 @@
 param(
   [ValidateSet("public", "local")]
-  [string]$Topology = "public"
+  [string]$Topology = "public",
+
+  [switch]$AssumeLocalFrontendReady,
+  [switch]$AllowPublicFrontendArtifactMutation
 )
 
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "local_frontend_topology.ps1")
 
 $cookie = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_ALINASSERSABRY", "User")
 if ([string]::IsNullOrWhiteSpace($cookie) -or $cookie.Length -lt 300) {
@@ -26,6 +31,12 @@ Write-Host "Frontend: $env:LYRA_FRONTEND_ORIGIN"
 Write-Host "API: $env:LYRA_API_ORIGIN"
 Write-Host "Operator cookie length: $($cookie.Length)"
 Write-Host ""
+
+if ($Topology -eq "local" -and -not $AssumeLocalFrontendReady) {
+  Ensure-LocalFrontendDev `
+    -Reason "operator read-only local topology proof" `
+    -AllowPublicFrontendArtifactMutation:$AllowPublicFrontendArtifactMutation
+}
 
 function Invoke-NodeChecked {
   param(
