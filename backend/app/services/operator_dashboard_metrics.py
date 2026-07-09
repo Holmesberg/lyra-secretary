@@ -240,6 +240,126 @@ def bug_watchlist_snapshot(dynamic_issues: list[dict[str, Any]]) -> dict[str, An
     }
 
 
+def cohort_readiness_snapshot(
+    *,
+    dynamic_issues: Iterable[dict[str, Any]],
+    clean_trace_ratio: float | None,
+    timer_start_to_clean_stop_rate: float | None,
+    reliability: dict[str, Any],
+    bug_watchlist: dict[str, Any],
+    full_loop_users: int,
+    activated_user_count: int,
+) -> dict[str, Any]:
+    """Project invariant findings and data volume into the stop/go contract."""
+    issues = list(dynamic_issues)
+    readiness_blockers = [
+        issue["id"] for issue in issues if issue["blocks_cohort_expansion"]
+    ]
+    warnings = [
+        issue["id"] for issue in issues if not issue["blocks_cohort_expansion"]
+    ]
+
+    green_loop_condition = (
+        full_loop_users >= 3
+        or (
+            activated_user_count > 0
+            and (full_loop_users / activated_user_count) >= 0.20
+        )
+    )
+    green_conditions_met = (
+        not readiness_blockers
+        and clean_trace_ratio is not None
+        and clean_trace_ratio >= READINESS_GREEN_TRACE_RATIO
+        and timer_start_to_clean_stop_rate is not None
+        and timer_start_to_clean_stop_rate >= GREEN_TIMER_CLOSURE_RATE
+        and reliability["calendar_token_warning_user_visible_count"] == 0
+        and all(
+            bug_watchlist[key] == "pass"
+            for key in (
+                "k01_calendar_warning_leak",
+                "k02_timer_overflow_duplicate",
+                "k04_parked_25h_stale",
+            )
+        )
+        and green_loop_condition
+    )
+    if readiness_blockers:
+        readiness_status = "red"
+    elif green_conditions_met:
+        readiness_status = "green"
+    else:
+        readiness_status = "yellow"
+
+    cohort_evidence_gaps = []
+    if clean_trace_ratio is None:
+        cohort_evidence_gaps.append("no_closed_sessions_last_14d")
+    elif clean_trace_ratio < READINESS_GREEN_TRACE_RATIO:
+        cohort_evidence_gaps.append("clean_trace_ratio_below_green_threshold")
+    if timer_start_to_clean_stop_rate is None:
+        cohort_evidence_gaps.append("timer_closure_rate_not_available")
+    elif timer_start_to_clean_stop_rate < GREEN_TIMER_CLOSURE_RATE:
+        cohort_evidence_gaps.append("timer_closure_rate_below_green_threshold")
+    if not green_loop_condition:
+        cohort_evidence_gaps.append("insufficient_full_loop_users")
+    if reliability["calendar_token_warning_user_visible_count"] > 0:
+        cohort_evidence_gaps.append("user_visible_calendar_warning_leak")
+    for key in (
+        "k01_calendar_warning_leak",
+        "k02_timer_overflow_duplicate",
+        "k04_parked_25h_stale",
+    ):
+        if bug_watchlist[key] != "pass":
+            cohort_evidence_gaps.append(f"{key}_not_pass")
+
+    blocking_cohort_gap_ids = list(dict.fromkeys(cohort_evidence_gaps))
+    cohort_gap_ids = list(dict.fromkeys([*blocking_cohort_gap_ids, *warnings]))
+    insufficient_real_data_gaps = {
+        "no_closed_sessions_last_14d",
+        "timer_closure_rate_not_available",
+        "insufficient_full_loop_users",
+    }
+    implementation_green = not readiness_blockers
+    cohort_green = readiness_status == "green"
+    only_insufficient_real_data = (
+        implementation_green
+        and not cohort_green
+        and bool(blocking_cohort_gap_ids)
+        and set(blocking_cohort_gap_ids).issubset(insufficient_real_data_gaps)
+    )
+
+    minimum_fix_set = list(dict.fromkeys(readiness_blockers[:]))
+    if not minimum_fix_set and warnings:
+        minimum_fix_set = warnings[:3]
+
+    return {
+        **metric_meta(basis="derived", confidence="medium", readiness_impact="blocker"),
+        "status": readiness_status,
+        "blockers": list(dict.fromkeys(readiness_blockers)),
+        "warnings": list(dict.fromkeys(warnings)),
+        "minimum_fix_set": minimum_fix_set,
+        "safe_to_invite_more_users": readiness_status == "green",
+        "implementation_green": implementation_green,
+        "implementation_status": "green" if implementation_green else "red",
+        "implementation_blockers": list(dict.fromkeys(readiness_blockers)),
+        "cohort_green": cohort_green,
+        "cohort_status": readiness_status,
+        "cohort_evidence_gaps": cohort_gap_ids,
+        "controlled_evidence_collection_allowed": only_insufficient_real_data,
+        "controlled_evidence_collection_reason": (
+            "implementation_green_but_only_real_data_volume_missing"
+            if only_insufficient_real_data
+            else None
+        ),
+        "rationale": (
+            "Ready for cautious trusted-user expansion."
+            if readiness_status == "green"
+            else "Fix blocker set before inviting more users."
+            if readiness_status == "red"
+            else "Dogfood only until warnings are resolved or explicitly accepted."
+        ),
+    }
+
+
 def last_non_null(values: Iterable[datetime | None]) -> datetime | None:
     return max((v for v in values if v is not None), default=None)
 
