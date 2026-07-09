@@ -11526,3 +11526,82 @@ Rollback note:
   `backend/app/services/operator_dashboard_metrics.py`.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Operator Redis Notification Snapshot Extraction
+
+Seam:
+
+- `operator-redis-notification-snapshot-extraction`
+
+Changed authority:
+
+- No notification lifecycle authority, exposure/render invariant, Redis write
+  path, backend endpoint behavior, schema, hosted-public deployment state, or
+  user-visible product behavior changed.
+- Redis pending notifications remain a transient queue snapshot and are not
+  treated as lifecycle truth.
+
+Removed paths:
+
+- Removed inline Redis pending-notification snapshot and duplicate-prompt
+  identity logic from `backend/app/services/operator_dashboard_metrics.py`.
+
+Parked paths:
+
+- Notification lifecycle write authority remains with the lifecycle/queue
+  services and endpoints.
+- Exposure render/suppression lifecycle writer splits remain parked.
+- Hosted-public proof remains blocked by GitHub issue #187 unless public
+  topology recovers without deploy/restart.
+
+Moved authority:
+
+- `backend/app/services/operator_notification_snapshot.py` now owns read-only
+  Redis pending-notification queue snapshotting, duplicate prompt breakdowns,
+  and internal-copy marker checks for `/operator`.
+- `backend/app/services/operator_dashboard_metrics.py` remains the owner for
+  DB-backed lifecycle metrics and re-exports the Redis snapshot helper for
+  compatibility.
+- `backend/app/api/v1/endpoints/operator.py` now imports the Redis snapshot
+  helper from `operator_notification_snapshot` while preserving the endpoint
+  `RedisClient` wrapper used by tests.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned backend read-only extraction.
+- No verifier, topology, product mutation, documentation, or measurement bug was
+  discovered in this seam.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\services\operator_notification_snapshot.py backend\app\services\operator_dashboard_metrics.py backend\app\api\v1\endpoints\operator.py`;
+  passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings
+  for touched backend files.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py`;
+  passed, `12` tests including duplicate legacy reminder fixtures.
+- `python scripts\scan_authority_surfaces.py`; passed in report-only mode with
+  `missing_owner_count=0`.
+- `python scripts\scan_refactor_contracts.py`; passed in report-only mode with
+  zero findings.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T23-04-25-289Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`,
+  `duplicate_prompt_count=0`, and `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29056430623` passed for
+  `3fec7c74100a18e6ea8f8aa44dff12b3c9ad3847`.
+
+Behavior parity statement:
+
+- No intentional endpoint response, duplicate-prompt classification, K02
+  watchlist, notification lifecycle, or exposure invariant behavior change.
+- Existing compatibility imports from `operator_dashboard_metrics` continue to
+  resolve.
+
+Rollback note:
+
+- Revert this seam commit to restore Redis pending-notification snapshot logic
+  inline in `backend/app/services/operator_dashboard_metrics.py`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
