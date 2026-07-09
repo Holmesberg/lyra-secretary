@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -339,8 +339,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     }
   }, [open, editingTask]);
 
-  // Sync form fields when editingTask changes
-  if (editingTask && editingTask.task_id !== lastEditId) {
+  // Sync form fields when editingTask changes.
+  useLayoutEffect(() => {
+    if (!editingTask || editingTask.task_id === lastEditId) {
+      return;
+    }
     const startDate = editingTask.start ? new Date(editingTask.start) : new Date();
     const endDate = editingTask.end ? new Date(editingTask.end) : new Date();
     const dur = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60_000));
@@ -371,7 +374,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setNudgeDecisionData(null);
     setEditScheduleTouched(false);
     setLastEditId(editingTask.task_id);
-  }
+  }, [editingTask, lastEditId]);
 
   function resetForm() {
     const s = defaultDate ? defaultStartForDate(defaultDate, now) : defaultStart(now);

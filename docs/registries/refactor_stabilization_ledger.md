@@ -10611,3 +10611,76 @@ Rollback note:
   calls in `IntegrationsSection` again.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - NewTaskModal Edit-State Sync Effect
+
+Seam:
+
+- `new-task-edit-sync-effect`
+
+Changed authority:
+
+- No task lifecycle authority, deadline authority, creation-nudge exposure
+  authority, schema, Redis behavior, hosted-public deployment state, or
+  readiness denominator changed.
+- `NewTaskModal` still owns task edit/create/interruption modal state and user
+  actions.
+
+Removed paths:
+
+- Removed the render-phase edit-task state synchronization branch from
+  `frontend/components/new-task-modal.tsx`.
+
+Parked paths:
+
+- Deeper `NewTaskModal` draft-state and JSX extraction remains parked until it
+  reduces real danger instead of only reshaping the component.
+- Isolated browser proof for Calendar edit-entry remains parked unless the next
+  seam touches Calendar editing directly; the product loop still covered the
+  create/deadline/nudge paths.
+
+Moved authority:
+
+- Edit-task form hydration now runs in a layout effect keyed by `editingTask`
+  identity instead of during render. This preserves the pre-paint edit-modal
+  feel while avoiding render-time state mutation.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned frontend behavior-preserving
+  hardening for the R3 `NewTaskModal` surface.
+- Holmesberg product-loop issues were classified as existing verifier/product
+  coverage gaps unrelated to this seam: Today visibility timing, onboarding
+  gate bypass, normalized brain-dump deadline copy, and gated pressure-map
+  mutation. Wrapper result remained `ok=true`.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- Holmesberg mutable product-loop proof:
+  `tmp/browser-product-loop/2026-07-09T19-20-22-896Z/result.json`; passed with
+  `run_id=new-task-edit-sync-effect`, cleanup proof, create/deadline/nudge
+  branch checks, and no unrendered synthetic creation-nudge exposure residue.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T19-26-37-218Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional user-visible or data-write behavior changed.
+- Opening an edit task still hydrates title, start/end, duration, category,
+  description, and deadline binding from the edited task; create/force/
+  interruption submit paths were not changed.
+
+Rollback note:
+
+- Revert this seam commit to restore the guarded inline render branch.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
