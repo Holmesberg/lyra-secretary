@@ -9439,3 +9439,71 @@ Rollback note:
   inline calibration nudge aggregation in `analytics.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Pause Prediction Read-Only Service Extraction
+
+Wave:
+
+- Branch: `refactor/freeze-closure`.
+- Seam: backend read-only analytics helper extraction.
+- Commit: `7956b3326af69a06813421bef3672c21cdcfcfe9`.
+
+Changed authority:
+
+- No product mutation authority changed.
+- `/v1/analytics/pause_prediction` remains the public API surface.
+- Pause prediction acceptance-rate projection moved behind
+  `pause_prediction_analytics_service.pause_prediction_snapshot`.
+
+Removed paths:
+
+- Removed inline pause-prediction summary/projection code from
+  `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- Pause prediction log writes remain owned by the pause-prediction lifecycle
+  and worker paths.
+- Notification lifecycle, runtime intervention wiring, schema changes,
+  production repair, hosted mutable dogfood, public deploy/restart, and
+  rebrand/domain migration remain blocked without approval.
+
+Moved authority:
+
+- Pure read-only pause-prediction aggregation moved from the route body into
+  `backend/app/services/pause_prediction_analytics_service.py`.
+- No mutation, exposure, provider, clean-data, notification, task, timer,
+  schema, Redis, deployment, or ClaimCompiler authority moved.
+
+Issues and classification:
+
+- No GitHub issue was created because this was proactive backend extraction,
+  not a discovered bug.
+- Classification: product/runtime read-only refactor.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `python -m py_compile backend/app/api/v1/endpoints/analytics.py backend/app/services/pause_prediction_analytics_service.py`;
+  passed.
+- `PYTHONPATH=backend pytest backend/tests/test_analytics_pause_prediction.py -q`;
+  passed, 5 tests.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- `/v1/analytics/pause_prediction` path, response shape, reconciled-only
+  acceptance-rate denominator, snooze re-fire exclusion, by-mechanism split,
+  and existing scoped-query behavior are preserved.
+- No DB write, schema, production data, Redis state, hosted-public artifact, or
+  public runtime changed.
+
+Rollback note:
+
+- Revert commit `7956b3326af69a06813421bef3672c21cdcfcfe9` to restore the
+  inline pause-prediction aggregation in `analytics.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
