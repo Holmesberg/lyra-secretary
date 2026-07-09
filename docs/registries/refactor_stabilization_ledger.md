@@ -9010,3 +9010,77 @@ Rollback note:
   `--expect-readiness-split true` argument.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Operator Readiness Projection Helper Extraction
+
+Wave:
+
+- Branch: `refactor/freeze-closure`.
+- Seam: backend read-only helper extraction for the operator stop/go cockpit.
+- Commit: `78e1232d5215c86ce86eb8f4bb92ec7d36ebac4f`.
+
+Changed authority:
+
+- No product/runtime mutation authority changed.
+- `/v1/operator/dashboard` still owns DB reads, dynamic issue construction, and
+  response assembly.
+- `operator_dashboard_metrics.py` now owns the pure cohort-readiness projection
+  from dynamic issues, clean-trace ratios, timer closure rate, reliability, bug
+  watchlist, and loop-volume evidence.
+
+Removed paths:
+
+- Removed duplicate inline implementation/cohort/readiness projection logic from
+  the operator endpoint body.
+
+Parked paths:
+
+- Backend writer splits remain parked: task lifecycle, stopwatch finalizer,
+  output render/suppression/outcome writers, auth/scoping, provider connection
+  model, and `models.py` split.
+- No schema migration, production data repair, public deploy/restart, hosted
+  mutable dogfood, or rebrand/domain migration happened in this seam.
+
+Moved authority:
+
+- Pure read-only projection authority moved from the route body into
+  `operator_dashboard_metrics.cohort_readiness_snapshot`.
+- No mutation, exposure, provider, clean-data, notification, task, timer,
+  schema, Redis, deployment, or ClaimCompiler authority moved.
+
+Issues and classification:
+
+- No GitHub issue was created because this was proactive backend extraction,
+  not a discovered bug.
+- Classification: product/runtime read-only refactor.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `python -m py_compile backend/app/api/v1/endpoints/operator.py backend/app/services/operator_dashboard_metrics.py`;
+  passed.
+- `PYTHONPATH=backend pytest backend/tests/test_operator_dashboard.py -q`;
+  passed, 11 tests.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- Local-current operator read-only browser proof:
+  `tmp/operator-readonly-stress-2026-07-09T14-36-10-138Z/result.json`; passed
+  with zero count diffs, zero dashboard diffs, `implementation_green=true`,
+  `cohort_status=yellow`, and `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- No backend API path, response contract, database query, DB write, schema,
+  production data, Redis state, hosted-public artifact, or public runtime
+  changed.
+- The intended change is structural only: cohort-readiness stop/go projection
+  is now a named read-only helper, making future operator extraction safer.
+
+Rollback note:
+
+- Revert commit `78e1232d5215c86ce86eb8f4bb92ec7d36ebac4f` to restore the
+  inline operator endpoint projection.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
