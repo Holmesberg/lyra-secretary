@@ -11818,3 +11818,66 @@ Rollback note:
   old repo-relative-only CI/CD proof output behavior.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Post-Wave Evidence Manifest Contract Gate
+
+Seam:
+
+- `post-wave-evidence-manifest-contract-gate`
+
+Changed authority:
+
+- No product/runtime behavior, schema, hosted-public deployment state,
+  mutation authority, exposure authority, cohort denominator, or readiness
+  threshold changed.
+- S1c static-gate coverage now includes a contract check that the post-wave
+  evidence manifest continues to expose the review-critical proof fields.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Hermetic behavioral fixture tests for manifest classification remain parked;
+  this seam intentionally adds a small static contract gate instead of a large
+  wrapper-module refactor.
+- Output-surface writer extraction remains parked because it would move
+  exposure authority and requires explicit review before implementation.
+
+Moved authority:
+
+- `scripts/test_post_wave_evidence_manifest_contract.mjs` now owns the static
+  CI contract for the post-wave evidence manifest and CI/CD proof outfile
+  normalization.
+- `.github/workflows/ci.yml` runs that contract inside `s1c-static-gates`.
+
+Issues and classification:
+
+- No new GitHub issue was opened; this was planned S1c hardening.
+- Classification: verifier/harness and CI/CD hardening.
+
+Tests and verification:
+
+- `node scripts\test_post_wave_evidence_manifest_contract.mjs`; passed.
+- `node --check scripts\test_post_wave_evidence_manifest_contract.mjs`; passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed with `missing_owner_count=0` and no worker-write drift.
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings.
+- CI proof: GitHub Actions run `29058178626` passed for
+  `66d42389200b81b6ba3fd606213ca059b4a0ccc5`; the
+  `s1c-static-gates` job ran the new post-wave evidence manifest contract gate.
+
+Behavior parity statement:
+
+- No runtime proof path, browser route, API call, cleanup path, or wrapper
+  success/failure classifier changed.
+- The new CI gate guards the already-added manifest fields against silent
+  removal or drift.
+
+Rollback note:
+
+- Revert commit `66d4238` to remove the static manifest contract gate from CI.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
