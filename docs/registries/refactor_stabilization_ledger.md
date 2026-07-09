@@ -9227,3 +9227,72 @@ Rollback note:
   `workflow_dispatch` CI proof.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Deadline Shape Read-Only Service Extraction
+
+Wave:
+
+- Branch: `refactor/freeze-closure`.
+- Seam: backend read-only analytics helper extraction.
+- Commit: `19c5c09dcea5c9a9e7776b3fb54a6aa108a41afd`.
+
+Changed authority:
+
+- No product mutation authority changed.
+- `/v1/analytics/deadline-shape` remains the public API surface and still owns
+  request scoping through `get_current_user_id()`.
+- Deadline-shape query/projection implementation moved behind
+  `deadline_shape_service.deadline_shape_snapshot`.
+
+Removed paths:
+
+- Removed inline deadline-shape query/projection code from
+  `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- Analytics claim-generation extraction remains parked.
+- Exposure-writing analytics paths, task creation nudge lookup, output-surface
+  writes, auth/scoping changes, schema changes, production repair, hosted
+  mutable dogfood, public deploy/restart, and rebrand/domain migration remain
+  blocked without approval.
+
+Moved authority:
+
+- Pure read-only deadline-shape computation moved from the route body into
+  `backend/app/services/deadline_shape_service.py`.
+- No mutation, exposure, provider, clean-data, notification, task, timer,
+  schema, Redis, deployment, or ClaimCompiler authority moved.
+
+Issues and classification:
+
+- No GitHub issue was created because this was proactive backend extraction,
+  not a discovered bug.
+- Classification: product/runtime read-only refactor.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `python -m py_compile backend/app/api/v1/endpoints/analytics.py backend/app/services/deadline_shape_service.py`;
+  passed.
+- `PYTHONPATH=backend pytest backend/tests/test_analytics_deadline_shape.py -q`;
+  passed, 10 tests.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- `/v1/analytics/deadline-shape` path, parameters, response shape, user
+  scoping, voided-row filtering, dirty-stopwatch exclusion, corrected-task
+  exclusion, external-source default, and Rule 14/15 aggregates are preserved.
+- No DB write, schema, production data, Redis state, hosted-public artifact, or
+  public runtime changed.
+
+Rollback note:
+
+- Revert commit `19c5c09dcea5c9a9e7776b3fb54a6aa108a41afd` to restore the
+  inline deadline-shape computation in `analytics.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
