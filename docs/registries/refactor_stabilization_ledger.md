@@ -11081,3 +11081,73 @@ Rollback note:
   in `analytics.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Analytics Cascade Snapshot Extraction
+
+Seam:
+
+- `analytics-cascade-snapshot-extraction`
+
+Changed authority:
+
+- No analytics claim authority, exposure authority, Redis behavior, schema,
+  hosted-public deployment state, or user-visible behavior changed.
+- `/analytics/cascade` remains a read-only route returning the same cascade,
+  morning-anchor, daily-chain, and skip-propagation payload.
+
+Removed paths:
+
+- Removed cascade measurement query/projection body from
+  `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- `/analytics/insights` exposure/write routing remains parked for a later seam.
+- Bias-factor lookup exposure write routing remains parked.
+- ClaimCompiler, Cortex, and output-surface writer splits remain parked.
+
+Moved authority:
+
+- `backend/app/services/cascade_analytics_service.py` now owns
+  `cascade_snapshot(...)`, the read-only cascade analytics query and response
+  projection.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 backend read-only extraction.
+- First operator read-only attempt
+  `tmp/operator-readonly-stress-2026-07-09T20-25-15-403Z/result.json` failed
+  because mobile `/operator` timed out waiting for readiness while desktop
+  passed and all counts/dashboard snapshots stayed unchanged. Classified as a
+  verifier/runtime timing retry, not a product mutation or invariant failure.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\api\v1\endpoints\analytics.py backend\app\services\cascade_analytics_service.py`;
+  passed.
+- `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_cascade.py -q`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with the existing PowerShell/Git line-ending
+  warning for `analytics.py`.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T20-28-51-168Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+- CI proof: pending for this seam commit.
+
+Behavior parity statement:
+
+- No intentional endpoint response change.
+- `days_analyzed`, aggregate cascade score, skip-followed counts, summary,
+  morning-anchor fields, and per-day chain fields remain the same.
+
+Rollback note:
+
+- Revert this seam commit to restore `/analytics/cascade` computation inline in
+  `analytics.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.

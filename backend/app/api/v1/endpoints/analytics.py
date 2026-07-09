@@ -1,7 +1,7 @@
 """Analytics endpoints — discrepancy experiment measurement layer."""
 import json
 from time import monotonic
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, or_
@@ -51,6 +51,7 @@ from app.services.deadline_completion_analytics_service import deadline_completi
 from app.services.deadline_shape_service import deadline_shape_snapshot
 from app.services.pause_prediction_analytics_service import pause_prediction_snapshot
 from app.services.discrepancy_analytics_service import discrepancy_snapshot
+from app.services.cascade_analytics_service import cascade_snapshot
 from app.services.claim_compiler import (
     PRIMARY_SYNTHESIS_ID,
     PRIMARY_SYNTHESIS_SURFACE_ID,
@@ -1567,188 +1568,7 @@ def get_cascade(
     Returns per-day cascade chains, morning-anchor analysis, and
     aggregate cascade_score = P(skip N+1 | skip N).
     """
-    cutoff = now_utc() - timedelta(days=days)
-
-    tasks = (
-        db.query(Task)
-        .filter(
-            Task.planned_start_utc >= cutoff,
-            Task.initiation_status != "system_error",
-            Task.voided_at.is_(None),
-        )
-        .order_by(Task.planned_start_utc)
-        .all()
-    )
-
-    # Group by local date
-    days_map: dict[date, list[Task]] = defaultdict(list)
-    for t in tasks:
-        d = to_local(t.planned_start_utc).date()
-        days_map[d].append(t)
-
-    daily_cascades = []
-    total_skip_followed_by_skip = 0
-    total_skip_followed_by_any = 0
-    morning_anchor_executed_days = 0
-    morning_anchor_skips = 0
-    morning_anchor_cascade_days = 0
-    total_days_with_morning = 0
-    category_skip_counts: dict[str, int] = defaultdict(int)
-    category_total_counts: dict[str, int] = defaultdict(int)
-    tod_skip_counts: dict[str, int] = defaultdict(int)
-    tod_total_counts: dict[str, int] = defaultdict(int)
-    all_cascade_scores: list[float] = []
-
-    def _is_skip(t: Task) -> bool:
-        return t.state == TaskState.SKIPPED or t.initiation_status == "abandoned"
-
-    for d in sorted(days_map.keys()):
-        day_tasks = [t for t in days_map[d] if t.state != TaskState.DELETED]
-        chain = []
-        current_streak = 0
-        first_skip_time = None
-        first_skip_category = None
-        consecutive_sequences: list[list[str]] = []
-        current_seq: list[str] = []
-
-        for i, t in enumerate(day_tasks):
-            skip = _is_skip(t)
-            tod = _time_of_day(to_local(t.planned_start_utc))
-
-            # Category / TOD counters for summary
-            if t.category:
-                category_total_counts[t.category] += 1
-                if skip:
-                    category_skip_counts[t.category] += 1
-            tod_total_counts[tod] += 1
-            if skip:
-                tod_skip_counts[tod] += 1
-
-            if skip:
-                current_streak += 1
-                current_seq.append(t.title)
-                if first_skip_time is None:
-                    first_skip_time = to_local(t.planned_start_utc).strftime("%H:%M")
-                    first_skip_category = t.category
-            else:
-                if current_seq:
-                    consecutive_sequences.append(current_seq)
-                current_seq = []
-                current_streak = 0
-
-            # Track skip-followed-by-skip
-            if i > 0:
-                prev = day_tasks[i - 1]
-                if _is_skip(prev):
-                    total_skip_followed_by_any += 1
-                    if skip:
-                        total_skip_followed_by_skip += 1
-
-            chain.append({
-                "task_id": t.task_id,
-                "title": t.title,
-                "category": t.category,
-                "state": t.state.value if hasattr(t.state, "value") else str(t.state),
-                "initiation_status": t.initiation_status,
-                "is_skip": skip,
-                "streak": current_streak,
-            })
-
-        if current_seq:
-            consecutive_sequences.append(current_seq)
-
-        # Morning anchor analysis (first task before 9am)
-        morning_anchor_executed = False
-        if day_tasks:
-            first = day_tasks[0]
-            local_hour = to_local(first.planned_start_utc).hour
-            if local_hour < 9:
-                total_days_with_morning += 1
-                if _is_skip(first):
-                    morning_anchor_skips += 1
-                    rest_skips = sum(1 for t in day_tasks[1:] if _is_skip(t))
-                    if len(day_tasks) > 1 and rest_skips / (len(day_tasks) - 1) > 0.5:
-                        morning_anchor_cascade_days += 1
-                else:
-                    morning_anchor_executed = True
-                    morning_anchor_executed_days += 1
-
-        executed_count = sum(1 for t in day_tasks if t.state == TaskState.EXECUTED)
-        skipped_count = sum(1 for t in day_tasks if _is_skip(t))
-        max_streak = max((c["streak"] for c in chain), default=0)
-
-        # Per-day cascade score
-        day_skip_pairs = sum(
-            1 for i in range(1, len(day_tasks))
-            if _is_skip(day_tasks[i - 1])
-        )
-        day_skip_skip = sum(
-            1 for i in range(1, len(day_tasks))
-            if _is_skip(day_tasks[i - 1]) and _is_skip(day_tasks[i])
-        )
-        day_cascade = round(day_skip_skip / day_skip_pairs, 3) if day_skip_pairs > 0 else 0.0
-        all_cascade_scores.append(day_cascade)
-
-        daily_cascades.append({
-            "date": d.isoformat(),
-            "total_tasks": len(day_tasks),
-            "total_planned": len(day_tasks),
-            "total_executed": executed_count,
-            "total_skipped": skipped_count,
-            "cascade_score": day_cascade,
-            "morning_anchor_executed": morning_anchor_executed,
-            "first_skip_time": first_skip_time,
-            "first_skip_category": first_skip_category,
-            "consecutive_skip_sequences": consecutive_sequences,
-            "max_streak": max_streak,
-            "chain": chain,
-        })
-
-    cascade_score = (
-        round(total_skip_followed_by_skip / total_skip_followed_by_any, 3)
-        if total_skip_followed_by_any > 0 else 0.0
-    )
-
-    # Most cascade-prone category and TOD (highest skip rate with >= 3 tasks)
-    most_prone_category = max(
-        (c for c in category_total_counts if category_total_counts[c] >= 3),
-        key=lambda c: category_skip_counts.get(c, 0) / category_total_counts[c],
-        default=None,
-    )
-    most_prone_tod = max(
-        (tod for tod in tod_total_counts if tod_total_counts[tod] >= 3),
-        key=lambda tod: tod_skip_counts.get(tod, 0) / tod_total_counts[tod],
-        default=None,
-    )
-
-    return {
-        "days_analyzed": len(daily_cascades),
-        "cascade_score": cascade_score,
-        "cascade_score_label": "P(skip N+1 | skip N)",
-        "total_skip_followed_by_skip": total_skip_followed_by_skip,
-        "total_skip_followed_by_any": total_skip_followed_by_any,
-        "summary": {
-            "avg_cascade_score": round(sum(all_cascade_scores) / len(all_cascade_scores), 3) if all_cascade_scores else 0.0,
-            "skip_propagation_probability": cascade_score,
-            "morning_anchor_execution_rate": (
-                round(morning_anchor_executed_days / total_days_with_morning, 3)
-                if total_days_with_morning > 0 else 0.0
-            ),
-            "most_cascade_prone_category": most_prone_category,
-            "most_cascade_prone_time_of_day": most_prone_tod,
-        },
-        "morning_anchor": {
-            "days_with_morning_task": total_days_with_morning,
-            "morning_anchor_executed_days": morning_anchor_executed_days,
-            "morning_skips": morning_anchor_skips,
-            "cascade_days": morning_anchor_cascade_days,
-            "cascade_rate": (
-                round(morning_anchor_cascade_days / morning_anchor_skips, 3)
-                if morning_anchor_skips > 0 else 0.0
-            ),
-        },
-        "daily": daily_cascades,
-    }
+    return cascade_snapshot(db, days=days)
 
 
 # ---------------------------------------------------------------------------
