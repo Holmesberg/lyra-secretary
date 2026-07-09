@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("public", "local")]
+  [ValidateSet("public", "local", "local-current")]
   [string]$Topology = "local",
 
   [string]$RunId = "",
@@ -8,10 +8,20 @@ param(
 
   [string]$Prefix = "",
 
-  [switch]$CleanupOnly
+  [switch]$CleanupOnly,
+
+  [switch]$AssumeLocalFrontendReady,
+
+  [switch]$AllowPublicFrontendArtifactMutation,
+
+  [int]$LocalCurrentPort = 3013,
+
+  [switch]$ProxyApi
 )
 
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "local_frontend_topology.ps1")
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Push-Location $repoRoot
@@ -33,12 +43,33 @@ try {
 
   Import-UserCookieEnv -Name "LYRA_COOKIE_HOLMESBERG"
 
+  $useProxyApi = [bool]$ProxyApi -or $Topology -eq "local-current"
+
   if ($Topology -eq "public") {
     $env:LYRA_FRONTEND_ORIGIN = "https://lyraos.org"
     $env:LYRA_API_ORIGIN = "https://api.lyraos.org"
+  } elseif ($Topology -eq "local-current") {
+    $env:LYRA_FRONTEND_ORIGIN = "http://localhost:$LocalCurrentPort"
+    $env:LYRA_API_ORIGIN = "http://localhost:8000"
+    $env:NEXTAUTH_URL = $env:LYRA_FRONTEND_ORIGIN
   } else {
     $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"
     $env:LYRA_API_ORIGIN = "http://localhost:8000"
+  }
+
+  Write-Host "Calendar/table mutation dogfood"
+  Write-Host "Topology: $Topology"
+  Write-Host "Frontend: $env:LYRA_FRONTEND_ORIGIN"
+  Write-Host "API: $env:LYRA_API_ORIGIN"
+  Write-Host "Proxy API: $useProxyApi"
+  Write-Host ""
+
+  if (($Topology -eq "local" -or $Topology -eq "local-current") -and -not $AssumeLocalFrontendReady) {
+    $port = if ($Topology -eq "local-current") { $LocalCurrentPort } else { 3000 }
+    Ensure-LocalFrontendDev `
+      -Reason "calendar/table mutation local topology proof" `
+      -Port $port `
+      -AllowPublicFrontendArtifactMutation:$AllowPublicFrontendArtifactMutation
   }
 
   & powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_browser_cookie_env.ps1 -Account holmesberg
@@ -46,7 +77,31 @@ try {
     throw "Holmesberg cookie check failed."
   }
 
-  $args = @("scripts\browser_calendar_table_mutation_dogfood.mjs", "--topology", $Topology)
+  $topologyArgs = @("scripts\verify_runtime_topology.mjs", "--topology", $Topology)
+  if ($Topology -eq "local-current") {
+    $topologyArgs += @(
+      "--frontend", $env:LYRA_FRONTEND_ORIGIN,
+      "--api", $env:LYRA_API_ORIGIN,
+      "--nextauth", $env:LYRA_FRONTEND_ORIGIN
+    )
+    if ($useProxyApi) {
+      $topologyArgs += "--proxy-api"
+    }
+  }
+  node @topologyArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "runtime topology verifier failed with exit code $LASTEXITCODE."
+  }
+
+  $args = @(
+    "scripts\browser_calendar_table_mutation_dogfood.mjs",
+    "--topology", $Topology,
+    "--frontend", $env:LYRA_FRONTEND_ORIGIN,
+    "--api", $env:LYRA_API_ORIGIN
+  )
+  if ($useProxyApi) {
+    $args += "--proxy-api"
+  }
   if (-not [string]::IsNullOrWhiteSpace($RunId)) {
     $args += @("--run-id", $RunId)
   }

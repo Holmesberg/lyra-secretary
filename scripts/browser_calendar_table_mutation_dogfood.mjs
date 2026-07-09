@@ -48,6 +48,7 @@ const runId = args.get("run-id") || `calendar-table-${Date.now()}-${randomUUID()
 const runKey = boundedIdentifier(runId, 42);
 const prefix = args.get("prefix") || `DOGFOOD CT ${randomUUID().slice(0, 8)}`;
 const cleanupOnly = args.get("cleanup-only") === "true";
+const proxyApi = args.get("proxy-api") === "true";
 const holmesbergCookie = process.env.LYRA_COOKIE_HOLMESBERG
   || process.env.LYRA_COOKIE_MORIARTY
   || "";
@@ -258,11 +259,70 @@ async function goto(page, pathname, name) {
   return body;
 }
 
+async function installApiProxy(context) {
+  const apiPattern = `${apiOrigin.replace(/\/$/, "")}/**`;
+  await context.route(apiPattern, async (route) => {
+    const request = route.request();
+    const requestHeaders = request.headers();
+    const corsHeaders = {
+      "access-control-allow-origin": frontendOrigin,
+      "access-control-allow-credentials": "true",
+      "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      "access-control-allow-headers": requestHeaders["access-control-request-headers"]
+        || "authorization,content-type,x-idempotency-key",
+      "vary": "Origin",
+    };
+    if (request.method().toUpperCase() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: corsHeaders,
+        body: "",
+      });
+      return;
+    }
+
+    const headers = { ...requestHeaders };
+    delete headers.host;
+    delete headers.origin;
+    delete headers.referer;
+    delete headers["sec-fetch-dest"];
+    delete headers["sec-fetch-mode"];
+    delete headers["sec-fetch-site"];
+
+    try {
+      const data = request.postDataBuffer();
+      const response = await context.request.fetch(request.url(), {
+        method: request.method(),
+        headers,
+        data: data && data.length > 0 ? data : undefined,
+        timeout: 45_000,
+        failOnStatusCode: false,
+      });
+      await route.fulfill({
+        status: response.status(),
+        headers: {
+          ...response.headers(),
+          ...corsHeaders,
+        },
+        body: await response.body(),
+      });
+    } catch (error) {
+      if (/Target page, context or browser has been closed/i.test(String(error?.message || error))) {
+        return;
+      }
+      await route.abort("failed").catch(() => {});
+    }
+  });
+}
+
 async function bootstrapUserContext(browser) {
   if (!holmesbergCookie || holmesbergCookie.trim().length < 100) {
     throw new Error("LYRA_COOKIE_HOLMESBERG is missing or too short");
   }
   const context = await browser.newContext({ acceptDownloads: true });
+  if (proxyApi) {
+    await installApiProxy(context);
+  }
   await context.addCookies(parseAndExpandCookies(holmesbergCookie, frontendOrigin));
   const page = await context.newPage();
   const serverErrors = [];

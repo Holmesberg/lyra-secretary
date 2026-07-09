@@ -522,9 +522,13 @@ try {
 
     if ([bool]$IncludeCalendarTableMutation) {
       Invoke-Step "Holmesberg calendar/table mutation browser dogfood" {
+        $calendarTableArgs = @("-Topology", $Topology, "-RunId", $runId, "-OutDir", (Join-Path $outDir "calendar-table-mutation"))
+        if ($Topology -eq "local-current") {
+          $calendarTableArgs += @("-LocalCurrentPort", [string]$LocalCurrentPort, "-ProxyApi", "-AssumeLocalFrontendReady")
+        }
         Invoke-CheckedScript `
           -ScriptPath ".\scripts\run_calendar_table_mutation_dogfood.ps1" `
-          -ScriptArgs @("-Topology", $Topology, "-RunId", $runId, "-OutDir", (Join-Path $outDir "calendar-table-mutation"))
+          -ScriptArgs $calendarTableArgs
       }
     }
 
