@@ -9507,3 +9507,89 @@ Rollback note:
   inline pause-prediction aggregation in `analytics.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - NewTaskModal Deadline Preview Hook Extraction
+
+Wave:
+
+- Branch: `refactor/freeze-closure`.
+- Seam: frontend behavior-preserving NewTaskModal extraction.
+- Commit: `dbfd347de3e05d553b98fba884708587c88505aa`
+  (`frontend: extract deadline preview hook`).
+
+Changed authority:
+
+- No product mutation authority changed.
+- `NewTaskModal` still owns the selected `deadlineId` and explicit user
+  binding actions.
+- Deadline preview remains a suggestion/render surface until the user confirms,
+  picks another deadline, dismisses it, or creates a task without binding.
+
+Removed paths:
+
+- Removed inline deadline-preview fetch/render-ack effect code from
+  `frontend/components/new-task-modal.tsx`.
+
+Parked paths:
+
+- Creation-nudge exposure lifecycle remains in `NewTaskModal` for now because
+  it is intervention-sensitive.
+- Deadline/backend parser authority, provider adapter work, schema changes,
+  hosted-public mutable dogfood, public deploy/restart, and rebrand/domain
+  migration remain blocked without approval.
+
+Moved authority:
+
+- Moved read-only deadline-preview state/effect ownership into
+  `frontend/components/use-deadline-preview.ts`.
+- No backend write, task/deadline canonical binding, exposure denominator,
+  schema, Redis, deployment, provider, or ClaimCompiler authority moved.
+
+Issues and classification:
+
+- No GitHub issue was created because this was proactive R3 extraction, not a
+  discovered product bug.
+- Classification: frontend product/runtime refactor, exposure-sensitive but
+  behavior-preserving.
+- Verifier classification note: bare `pytest` first used a non-repo Python that
+  lacked FastAPI. The same targeted suite passed through `.venv311`, so the
+  failed attempt was classified as environment/harness selection, not product
+  failure.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `.venv311\Scripts\python.exe -m pytest backend\tests\test_parse_deadline_preview.py -q`;
+  passed, 13 tests.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- Operator read-only local-current proof before mutable verification:
+  `tmp/operator-readonly-stress-2026-07-09T15-35-23-966Z/result.json`
+  passed with zero count diffs and `exposure_without_render_count=0`.
+- Holmesberg local-current product-loop proof:
+  `tmp/browser-product-loop/2026-07-09T15-36-58-641Z/result.json` passed.
+  It rendered deadline suggestions, confirmed/no-deadline/pick-another
+  branches, and recorded cleanup IDs for synthetic tasks, deadlines, and
+  notifications.
+- Operator read-only local-current proof after mutable verification:
+  `tmp/operator-readonly-stress-2026-07-09T15-43-09-399Z/result.json`
+  passed with zero count diffs and no issues/warnings.
+
+Behavior parity statement:
+
+- No intentional user-visible behavior changed.
+- Deadline preview debounce, stale-response abort behavior, edit-mode
+  suppression, manual-choice precedence, render acknowledgement, confirmation,
+  dismissal, pick-another, and explicit binding behavior are preserved.
+- No production repair, schema migration, public deploy/restart, hosted-public
+  artifact mutation, or operator-account product mutation occurred.
+
+Rollback note:
+
+- Revert commit `dbfd347de3e05d553b98fba884708587c88505aa` to restore the
+  deadline-preview effect inline in `NewTaskModal`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
