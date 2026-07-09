@@ -11373,3 +11373,77 @@ Rollback note:
   helper inline in `frontend/lib/tasks.ts`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-10 - Frontend Task Lifecycle Client Extraction
+
+Seam:
+
+- `frontend-task-lifecycle-client-extraction`
+
+Changed authority:
+
+- No task lifecycle authority, deadline-binding authority, table/calendar audit
+  authority, backend endpoint behavior, schema, hosted-public deployment state,
+  or user-visible UI behavior changed.
+- Task create and mark-done idempotency scopes remain unchanged:
+  `task-create` and `mark-done:{task_id}`.
+
+Removed paths:
+
+- Removed inline task lifecycle/client types and wrappers from
+  `frontend/lib/tasks.ts`.
+
+Parked paths:
+
+- Remaining analytics/insights, user categories, retroactive logging, and LLM
+  chip clients in `frontend/lib/tasks.ts` remain parked.
+- Deeper UI component extraction remains parked.
+- Backend task lifecycle writer split remains parked.
+
+Moved authority:
+
+- `frontend/lib/tasks/lifecycle.ts` now owns frontend task query/create,
+  mark-abandoned, mark-done, execution correction, reschedule, deadline binding,
+  delete, and void client wrappers.
+- `frontend/lib/tasks.ts` remains the compatibility re-export surface for
+  existing `@/lib/tasks` imports.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 frontend behavior-preserving
+  extraction.
+- Hosted-public topology proof remains blocked by GitHub issue #187 and was not
+  treated as proof for this local-current seam.
+
+Tests and verification:
+
+- `git diff --check`; passed with the existing PowerShell/Git line-ending warning
+  for touched frontend files.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- Holmesberg local-current mutable product-loop proof:
+  `tmp/browser-product-loop/2026-07-09T22-36-38-239Z/result.json`; passed with
+  `116` checks, zero failures, task create/deadline binding/edit/table/export
+  proof, timer proof, cleanup leaving no active timer, and no unrendered
+  synthetic creation-nudge exposures.
+- Operator read-only local-current proof after the mutable pass:
+  `tmp/operator-readonly-stress-2026-07-09T22-43-07-014Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29055412273` passed for
+  `51de94c9bb088c85870a68acc1e6bff712d332ee`.
+
+Behavior parity statement:
+
+- No intentional endpoint, payload, idempotency-header, import-path, or UI
+  behavior change.
+- Existing Pulse, Today, Calendar, Table, NewTaskModal, correction, deadline
+  binding, and task-row imports continue resolving through `@/lib/tasks`.
+
+Rollback note:
+
+- Revert this seam commit to restore task lifecycle client wrappers inline in
+  `frontend/lib/tasks.ts`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
