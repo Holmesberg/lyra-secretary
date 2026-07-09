@@ -11152,3 +11152,82 @@ Rollback note:
   `analytics.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Analytics Insight Generator Extraction
+
+Seam:
+
+- `analytics-insight-generator-extraction`
+
+Changed authority:
+
+- No exposure authority, Rule 11 gating authority, Redis seen-state behavior,
+  clean-data eligibility behavior, schema, hosted-public deployment state, or
+  user-visible insight behavior changed.
+- `/analytics/insights` still owns HTTP response assembly and all
+  render/suppression writes.
+
+Removed paths:
+
+- Removed inline contract-safe and profile-aware insight generator bodies from
+  `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- `/analytics/insights` writer-path extraction remains parked.
+- Rule 11 reopen-gate extraction remains parked.
+- Output-surface render/suppression writer split remains parked.
+
+Moved authority:
+
+- `backend/app/services/analytics_insight_generators.py` now owns the pure
+  `_insight_*` generator functions and generator catalogs.
+- `analytics.py` keeps compatibility re-exports so direct tests and historical
+  imports of `_insight_*` continue to resolve.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 backend pure-helper
+  extraction.
+- Two targeted pytest invocations used stale test names:
+  `test_output_surface_exposure_endpoints_emit_expected_lifecycle` /
+  `test_archetype_proximity_exposure_suppresses_when_not_ready` /
+  `test_analytics_insights_emits_render_lifecycle`, and
+  `test_seeded_synthetic_user_insights_surface`. Classified as verifier command
+  selection errors. Current covering tests were located and run successfully.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\api\v1\endpoints\analytics.py backend\app\services\analytics_insight_generators.py`;
+  passed.
+- `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_insights.py -q`;
+  passed.
+- `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_output_surfaces.py -q`;
+  passed.
+- `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_lyrasim_v0.py::test_execution_outlier_validates_real_insights_product_seam -q`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with the existing PowerShell/Git line-ending
+  warning for `analytics.py`.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T20-42-54-321Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+- CI proof: pending for this seam commit.
+
+Behavior parity statement:
+
+- No intentional endpoint response change.
+- Contract-safe generator output, direct `_insight_*` imports, exposure
+  lifecycle behavior, Redis seen-state behavior, and no-contract-safe
+  suppression behavior remain the same.
+
+Rollback note:
+
+- Revert this seam commit to restore insight generator functions and catalogs
+  inline in `analytics.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
