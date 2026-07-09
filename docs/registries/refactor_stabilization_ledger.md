@@ -11232,3 +11232,70 @@ Rollback note:
   inline in `analytics.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-10 - Frontend Notification Client Extraction
+
+Seam:
+
+- `frontend-notification-client-extraction`
+
+Changed authority:
+
+- No notification lifecycle authority, exposure/render truth authority, backend
+  endpoint behavior, schema, hosted-public deployment state, or user-visible UI
+  behavior changed.
+- Queue/delivery still do not count as render proof; the extracted client keeps
+  the same pending fetch and `rendered`/`acted`/`dismissed`/`expired`/
+  `lost_unrendered` acknowledgement payloads.
+
+Removed paths:
+
+- Removed inline notification client types and wrappers from
+  `frontend/lib/tasks.ts`.
+
+Parked paths:
+
+- Broader task API client split remains parked.
+- Notification lifecycle backend semantics and output-surface writer seams remain
+  parked.
+
+Moved authority:
+
+- `frontend/lib/tasks/notifications.ts` now owns the frontend notification client
+  wrapper types/functions.
+- `frontend/lib/tasks.ts` remains the compatibility re-export surface for
+  existing `@/lib/tasks` imports.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 frontend behavior-preserving
+  extraction.
+- Hosted-public topology proof remains blocked by GitHub issue #187 and was not
+  treated as proof for this local-current seam.
+
+Tests and verification:
+
+- `git diff --check`; passed with the existing PowerShell/Git line-ending warning
+  for touched frontend files.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T22-09-27-521Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29053815542` passed for
+  `32a6736a002ae7235f4f9baa28aa21858356a2db`.
+
+Behavior parity statement:
+
+- No intentional endpoint, payload, import-path, or UI behavior change.
+- Existing notification host and prediction banner imports continue resolving
+  through `@/lib/tasks`.
+
+Rollback note:
+
+- Revert this seam commit to restore notification client wrappers inline in
+  `frontend/lib/tasks.ts`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
