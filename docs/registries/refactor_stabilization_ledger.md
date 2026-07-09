@@ -11065,7 +11065,8 @@ Tests and verification:
   Warning: desktop `/operator` exceeded the 12000ms latency budget at 12306ms;
   classified as non-blocking for this read-only analytics extraction because no
   operator code path changed and the proof had no issues or state diffs.
-- CI proof: pending.
+- CI proof: GitHub Actions run `29047269722` passed for
+  `f260b6133b1b8a048a14d858ef5b6dff2f946e96`.
 
 Behavior parity statement:
 
