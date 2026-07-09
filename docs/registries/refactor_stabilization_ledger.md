@@ -10878,3 +10878,69 @@ Rollback note:
   `operator.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Operator Cohort Activity Query Extraction
+
+Seam:
+
+- `operator-cohort-activity-query-extraction`
+
+Changed authority:
+
+- No operator readiness thresholds, cohort denominator, exposure authority,
+  provider authority, schema, Redis behavior, hosted-public deployment state, or
+  user-visible behavior changed.
+- `/operator` remains read-only and continues to expose the same cohort,
+  retention, activation, activity-frequency, reliability, and derived full-loop
+  payloads.
+
+Removed paths:
+
+- Removed cohort/activation/retention/activity/reliability SQL and payload
+  assembly from `backend/app/api/v1/endpoints/operator.py`.
+
+Parked paths:
+
+- Full operator payload-builder extraction remains parked.
+- Writer-path splits remain parked: output render/suppress, stopwatch stop,
+  task lifecycle, auth/scoping, provider connection model, and `models.py`.
+
+Moved authority:
+
+- `backend/app/services/operator_dashboard_metrics.py` now owns
+  `cohort_activity_query_snapshot(...)`, the read-only query/projection bundle
+  for cohort activity and reliability payloads.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 backend read-only extraction.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\api\v1\endpoints\operator.py backend\app\services\operator_dashboard_metrics.py`;
+  passed.
+- `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py -q`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T19-53-43-748Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+- CI proof: pending.
+
+Behavior parity statement:
+
+- No intentional endpoint response change.
+- Cohort segments, activation quality, retention, activity frequency,
+  reliability, full-loop counts/rates, and readiness inputs remain the same.
+
+Rollback note:
+
+- Revert this seam commit to restore cohort activity assembly inline in
+  `operator.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.

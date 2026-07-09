@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable, Iterable
 
 from sqlalchemy import func, or_
@@ -16,6 +16,7 @@ from app.db.models import (
     ExposureAckEvent,
     ExposureDecisionEvent,
     ExposureRenderEvent,
+    Feedback,
     NotificationLifecycleEvent,
     StopwatchSession,
     SuppressionEvent,
@@ -1350,6 +1351,227 @@ def product_loop_funnel_query_snapshot(
         "pressure_map_opened": int(pressure_map_opened),
         "session_started_count": int(session_started_count),
         "clean_stop_count_all": int(clean_stop_count_all),
+    }
+
+
+def cohort_activity_query_snapshot(
+    db: Session,
+    *,
+    user_ids: list[int],
+    users: Iterable[User],
+    operator_user_count: int,
+    test_or_synthetic_user_count: int,
+    generated_at: datetime,
+    day_ago: datetime,
+    week_ago: datetime,
+    two_weeks_ago: datetime,
+    last_activity: dict[int, datetime],
+    active_dates_7d: dict[int, set[str]],
+    active_dates_14d: dict[int, set[str]],
+    task_counts_by_user: dict[int, int],
+    sessions_by_user: dict[int, int],
+    closed_sessions_by_user: Counter,
+    clean_sessions_by_user: Counter,
+    stale_open_by_user: Counter,
+    pressure_map_opened: int,
+    notification_counts: dict[str, Any],
+) -> dict[str, Any]:
+    """Read-only cohort, activation, retention, and reliability snapshots."""
+    users_list = list(users)
+    activated_users = [
+        user
+        for user in users_list
+        if task_counts_by_user.get(user.user_id, 0) > 0
+        and sessions_by_user.get(user.user_id, 0) > 0
+    ]
+    meaningful_active_7d = [
+        user for user in users_list if active_dates_7d.get(user.user_id)
+    ]
+    users_with_clean_sessions = [
+        user
+        for user in users_list
+        if clean_sessions_by_user.get(user.user_id, 0) > 0
+    ]
+    users_with_dirty_data_only = [
+        user
+        for user in users_list
+        if closed_sessions_by_user.get(user.user_id, 0) > 0
+        and clean_sessions_by_user.get(user.user_id, 0) == 0
+    ]
+
+    activity_counts_7d = [
+        len(active_dates_7d.get(user.user_id, set())) for user in users_list
+    ]
+    activity_counts_14d = [
+        len(active_dates_14d.get(user.user_id, set())) for user in users_list
+    ]
+
+    cohort_segments = {
+        **metric_meta(
+            basis="derived",
+            confidence="high",
+            readiness_impact="informational",
+        ),
+        "operator_users_excluded": int(operator_user_count),
+        "test_or_synthetic_users_excluded": int(test_or_synthetic_user_count),
+        "trusted_users": len(users_list),
+        "new_users_7d": sum(1 for user in users_list if user.created_at >= week_ago),
+        "activated_users": len(activated_users),
+        "dormant_users": sum(
+            1
+            for user in users_list
+            if last_activity.get(user.user_id) is None
+            or last_activity[user.user_id] < week_ago
+        ),
+        "users_with_dirty_data_only": len(users_with_dirty_data_only),
+        "users_with_clean_sessions": len(users_with_clean_sessions),
+        "users_with_open_stale_sessions": sum(
+            1
+            for user in users_list
+            if stale_open_by_user.get(user.user_id, 0) > 0
+        ),
+    }
+
+    first_recovery_action_users = (
+        db.query(func.count(func.distinct(Task.user_id)))
+        .filter(Task.user_id.in_(user_ids) if user_ids else False)
+        .filter(Task.notes.ilike("%Pressure Map recovery preview%"))
+        .scalar()
+        or 0
+    )
+    activation_quality = {
+        **metric_meta(basis="derived", confidence="medium", readiness_impact="warning"),
+        "first_task_created_count": sum(1 for user in users_list if user.first_task_at),
+        "first_timer_started_count": sum(
+            1 for user in users_list if user.first_timer_started_at
+        ),
+        "first_clean_stop_count": len(users_with_clean_sessions),
+        "first_pressure_map_action_count": int(pressure_map_opened),
+        "first_recovery_action_count": int(first_recovery_action_users),
+        "median_time_to_first_clean_loop": None,
+        "not_instrumented_fields": ["median_time_to_first_clean_loop"],
+    }
+
+    full_loop_users = sum(
+        1
+        for user in users_list
+        if task_counts_by_user.get(user.user_id, 0) > 0
+        and sessions_by_user.get(user.user_id, 0) > 0
+        and clean_sessions_by_user.get(user.user_id, 0) > 0
+    )
+    full_loop_rate = pct(full_loop_users, len(activated_users))
+
+    cohort = {
+        **metric_meta(
+            basis="derived",
+            confidence="medium",
+            readiness_impact="informational",
+        ),
+        "non_operator_users": len(users_list),
+        "trusted_users_total": len(users_list),
+        "activated_users": len(activated_users),
+        "meaningful_active_users_7d": len(meaningful_active_7d),
+        "weekly_active_users": len(meaningful_active_7d),
+        "dormant_users_7d": cohort_segments["dormant_users"],
+        "dormant_users_14d": sum(
+            1
+            for user in users_list
+            if last_activity.get(user.user_id) is None
+            or last_activity[user.user_id] < two_weeks_ago
+        ),
+    }
+
+    d7_eligible = [
+        user
+        for user in users_list
+        if user.created_at <= generated_at - timedelta(days=7)
+    ]
+    d14_eligible = [
+        user
+        for user in users_list
+        if user.created_at <= generated_at - timedelta(days=14)
+    ]
+    retention = {
+        **metric_meta(basis="proxy", confidence="medium", readiness_impact="informational"),
+        "d1_return_rate": pct(
+            sum(1 for user in users_list if user.d1_return_at),
+            len(users_list),
+        ),
+        "d7_return_rate": pct(
+            sum(
+                1
+                for user in d7_eligible
+                if last_activity.get(user.user_id)
+                and last_activity[user.user_id] >= user.created_at + timedelta(days=7)
+            ),
+            len(d7_eligible),
+        ),
+        "d14_return_rate": pct(
+            sum(
+                1
+                for user in d14_eligible
+                if last_activity.get(user.user_id)
+                and last_activity[user.user_id] >= user.created_at + timedelta(days=14)
+            ),
+            len(d14_eligible),
+        ),
+        "returning_today": sum(
+            1
+            for user in users_list
+            if last_activity.get(user.user_id)
+            and last_activity[user.user_id] >= day_ago
+        ),
+        "returning_7d": len(meaningful_active_7d),
+        "returning_14d": sum(
+            1 for user in users_list if active_dates_14d.get(user.user_id)
+        ),
+        "basis_note": "meaningful_activity_proxy",
+    }
+
+    activity_frequency = {
+        **metric_meta(basis="proxy", confidence="medium", readiness_impact="informational"),
+        "active_days_last_7d": sum(activity_counts_7d),
+        "active_days_last_14d": sum(activity_counts_14d),
+        "median_days_between_activity": None,
+        "login_frequency_status": "not_instrumented",
+        "proxy": "active_days_from_explicit_lyra_events",
+    }
+
+    feedback_bug_24h = (
+        db.query(func.count(Feedback.feedback_id))
+        .filter(Feedback.submitted_at >= day_ago)
+        .filter(Feedback.kind == "bug")
+        .scalar()
+        or 0
+    )
+    reliability = {
+        **metric_meta(basis="derived", confidence="medium", readiness_impact="warning"),
+        "user_visible_error_count_24h": int(feedback_bug_24h),
+        "failed_api_count_24h": None,
+        "calendar_token_warning_user_visible_count": notification_counts[
+            "internal_copy_leak_count"
+        ],
+        "task_state_rejection_count": None,
+        "export_success_count": None,
+        "delete_success_count": None,
+        "not_instrumented_fields": [
+            "failed_api_count_24h",
+            "task_state_rejection_count",
+            "export_success_count",
+            "delete_success_count",
+        ],
+    }
+
+    return {
+        "cohort_segments": cohort_segments,
+        "activation_quality": activation_quality,
+        "cohort": cohort,
+        "retention": retention,
+        "activity_frequency": activity_frequency,
+        "reliability": reliability,
+        "activated_user_count": len(activated_users),
+        "full_loop_users": int(full_loop_users),
+        "full_loop_rate": full_loop_rate,
     }
 
 
