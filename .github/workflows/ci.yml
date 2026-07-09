@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, 'wave-*' ]
+    branches: [ main, 'wave-*', 'refactor/freeze-closure' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
