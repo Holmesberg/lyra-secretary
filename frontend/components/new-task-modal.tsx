@@ -31,10 +31,6 @@ import {
   timeOfDay,
 } from "@/lib/task-time";
 import { ackExposureRender, ackExposureSuppression } from "@/lib/api";
-import {
-  previewDeadlineBinding,
-  type DeadlinePreviewResponse,
-} from "@/lib/deadlines";
 import { CategorySelect } from "@/components/category-select";
 import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
 import {
@@ -52,6 +48,7 @@ import {
   type PausedConflict,
   type SoftConflict,
 } from "@/components/use-new-task-submit-controller";
+import { useDeadlinePreview } from "@/components/use-deadline-preview";
 
 const BIAS_LOOKUP_DEBOUNCE_MS = 120;
 const pendingCreationNudgeRenderAcks = new Set<string>();
@@ -212,8 +209,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // submit button. They live in separate slices so dismissing the suggestion
   // doesn't clobber an already-confirmed picker choice.
   const [deadlineId, setDeadlineId] = useState<string | null>(null);
-  const [parserSuggestion, setParserSuggestion] =
-    useState<DeadlinePreviewResponse | null>(null);
+  const { parserSuggestion, setParserSuggestion } = useDeadlinePreview({
+    open,
+    isEdit,
+    title,
+    description,
+    deadlineId,
+  });
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
 
   // Fetch bias_factor when category, start time, or duration changes
@@ -406,43 +408,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       creationNudgeExposureRef.current = null;
     };
   }, []);
-
-  // Loop 11 Phase K — Pass 2 deadline-binding preview.
-  //
-  // Debounced 500ms (matches the bias_factor lookup cadence) and
-  // race-safe: we abort any in-flight fetch on every input change, so
-  // a slower late-firing response can't overwrite a fresher one. The
-  // effect skips when the user has already explicitly picked a deadline
-  // (deadlineId set) — the manual choice wins and we don't second-guess
-  // it with a parser suggestion.
-  useEffect(() => {
-    if (!open || isEdit) {
-      setParserSuggestion(null);
-      return;
-    }
-    const trimmed = title.trim();
-    if (trimmed.length < 3 || deadlineId) {
-      setParserSuggestion(null);
-      return;
-    }
-    const abortCtl = new AbortController();
-    const timer = setTimeout(() => {
-      previewDeadlineBinding(trimmed, description.trim() || undefined)
-        .then((res) => {
-          if (abortCtl.signal.aborted) return;
-          if (res.deadline_id) setParserSuggestion(res);
-          else setParserSuggestion(null);
-        })
-        .catch(() => {
-          if (!abortCtl.signal.aborted) setParserSuggestion(null);
-        });
-    }, 500);
-    return () => { clearTimeout(timer); abortCtl.abort(); };
-  }, [open, isEdit, title, description, deadlineId]);
-
-  useEffect(() => {
-    void ackExposureRender(parserSuggestion?.exposure_id);
-  }, [parserSuggestion?.exposure_id]);
 
   const totalMinutes = durHours * 60 + durMinutes;
   const endBeforeStart = diffMinutes(start, end) <= 0;
