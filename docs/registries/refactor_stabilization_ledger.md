@@ -11216,7 +11216,8 @@ Tests and verification:
   with zero count diffs, zero dashboard snapshot diffs,
   `implementation_green=true`, `cohort_status=yellow`, and
   `exposure_without_render_count=0`.
-- CI proof: pending for this seam commit.
+- CI proof: GitHub Actions run `29049067082` passed for
+  `744c00f44e6ac203f0fb9e8d1627379a6a034744`.
 
 Behavior parity statement:
 
