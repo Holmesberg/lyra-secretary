@@ -97,8 +97,8 @@ Use these documents as the current authority chain:
 but it is stale April phase planning and is not current implementation
 authority.
 
-`docs/AGENT_HANDOFF.md` remains historical onboarding context only. It cannot
-authorize JARVIS work, OpenClaw runtime mutation, AI synthesis, provider
+`docs/archive/AGENT_HANDOFF.md` remains historical onboarding context only. It
+cannot authorize JARVIS work, OpenClaw runtime mutation, AI synthesis, provider
 adapters, passive tracking, new insight surfaces, or behavior-transition
 equations.
 
@@ -114,7 +114,7 @@ cannot authorize runtime work unless promoted by the authority chain above:
 - `docs/academic_execution_substrate.md`
 - `docs/academic_asset_velocity_and_evidence_fusion_plan.md`
 - `docs/core_product_loop_wave_plan.md`
-- `docs/AGENT_HANDOFF.md`
+- `docs/archive/AGENT_HANDOFF.md`
 - `docs/provider_adapter_contract.md`
 
 ---

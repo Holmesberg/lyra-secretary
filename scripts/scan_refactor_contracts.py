@@ -205,7 +205,7 @@ STALE_DOC_AUTHORITY_REQUIREMENTS: dict[str, tuple[str, ...]] = {
         "historical/subordinate",
         "Use this file for context only",
     ),
-    "docs/AGENT_HANDOFF.md": (
+    "docs/archive/AGENT_HANDOFF.md": (
         "R5a extraction rule:",
         "historical onboarding context",
         "not permission",

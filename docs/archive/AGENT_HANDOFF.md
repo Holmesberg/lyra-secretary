@@ -1,4 +1,4 @@
-# Agent handoff — Lyra Secretary
+# Archived agent handoff - Lyra Secretary
 
 > Historical handoff note. This document may help explain older design intent,
 > but it cannot authorize runtime behavior, JARVIS work, AI synthesis, provider
@@ -86,7 +86,8 @@ Check these **facts** on checkout:
 
 1. Add **`docs/current_transition_state.md`** (one page): date, active transition phase, product phase pointer, **next hard gate**.
 2. Stub **`docs/inference_engine_architecture.md`** as **DRAFT** placeholder **or** implement Phase 3 and write the real doc in the same PR.
-3. Grep for stale links to old handoff filenames and point them at **`docs/AGENT_HANDOFF.md`**.
+3. Grep for stale links to old handoff filenames and point them at
+   **`docs/archive/AGENT_HANDOFF.md`** as historical context only.
 
 ### B. Phase 2 completion (blocks Phase 3)
 
