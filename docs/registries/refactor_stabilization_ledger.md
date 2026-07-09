@@ -10291,3 +10291,84 @@ Rollback note:
 - Revert commit `d642632` to restore direct package-script typecheck.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Operator Measurement Integrity Snapshot Builder
+
+Seam:
+
+- `operator-measurement-integrity-snapshot-builder`
+
+Changed authority:
+
+- No mutation authority, exposure authority, readiness thresholds, schema,
+  Redis behavior, public deployment state, or user-facing cockpit semantics
+  changed.
+- `/v1/operator/dashboard` remains the authority for operator auth, scoping
+  reset, response assembly, dynamic issues, and readiness status.
+
+Removed paths:
+
+- Removed inline clean-trace denominator and dirty-reason computation from
+  `backend/app/api/v1/endpoints/operator.py`.
+
+Parked paths:
+
+- Deeper operator response packaging and writer-path service splits remain
+  parked.
+- Provider connection model, auth/scoping extraction, output-surface writer
+  extraction, and `models.py` split remain parked.
+
+Moved authority:
+
+- `backend/app/services/operator_dashboard_metrics.py` now owns the read-only
+  measurement-integrity snapshot builder for:
+  - eligible closed-session denominator;
+  - denominator exclusions;
+  - dirty reason distribution;
+  - provider-only row reporting;
+  - exposure contamination and unknown-exposure treatment;
+  - closed/clean session counters consumed by operator user rows.
+
+Issues and classification:
+
+- No GitHub issue was created; this was planned R4/R2 read-only cockpit
+  extraction.
+- During characterization, the new unknown-exposure test initially failed
+  because earlier operator-test rows remained in the test database. Classified
+  as test fixture isolation, fixed by clearing the full operator-test ID band
+  before asserting exact denominators.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `python -m compileall -q backend\app\api\v1\endpoints\operator.py backend\app\services\operator_dashboard_metrics.py`;
+  passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py -q`;
+  passed, 12 tests.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_route_security.py backend\tests\test_exposure_ledger_v0.py backend\tests\test_output_surfaces.py -q`;
+  passed, 49 tests.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T17-56-37-765Z/result.json`;
+  passed with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`,
+  `clean_trace_ratio=null`, and `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional API, browser, readiness, or data-write behavior changed.
+- Unknown exposure remains dirty, not clean, and remains in the denominator.
+- Exposure-contaminated sessions remain dirty, not excluded.
+- Provider-only rows remain provenance/candidates and are reported separately
+  without becoming clean execution truth.
+- Operator/test/synthetic/deleted/voided/non-session rows remain excluded and
+  reported through `clean_trace_ratio_basis.excluded_from_denominator`.
+
+Rollback note:
+
+- Revert the operator measurement-integrity snapshot builder commit to restore
+  the denominator and dirty-reason computation inline in `operator.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
