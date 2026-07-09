@@ -11447,3 +11447,82 @@ Rollback note:
   `frontend/lib/tasks.ts`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-10 - Operator Readiness Projection Extraction
+
+Seam:
+
+- `operator-readiness-projection-extraction`
+
+Changed authority:
+
+- No operator readiness thresholds, cohort denominator, exposure lifecycle
+  invariant, backend write path, schema, hosted-public deployment state, or
+  user-visible product behavior changed.
+- `/operator/dashboard` continues to derive dynamic issues and readiness from
+  existing read-only snapshots.
+
+Removed paths:
+
+- Removed inline dynamic-issue, bug-watchlist, recommendation, and cohort
+  readiness projection helpers from
+  `backend/app/services/operator_dashboard_metrics.py`.
+
+Parked paths:
+
+- Operator metric query extraction remains parked.
+- Output render/suppress, stopwatch stop, task lifecycle, auth/scoping,
+  provider connection model, and `models.py` writer splits remain parked.
+- Hosted-public proof remains blocked by GitHub issue #187 unless public
+  topology recovers without deploy/restart.
+
+Moved authority:
+
+- `backend/app/services/operator_readiness.py` now owns read-only operator
+  dynamic issue projection, bug-watchlist projection, recommendation rows, and
+  implementation/cohort readiness projection.
+- `backend/app/services/operator_dashboard_metrics.py` remains the owner for
+  read-only metric/query snapshots and re-exports readiness helpers for
+  compatibility.
+- `backend/app/api/v1/endpoints/operator.py` now imports readiness projection
+  helpers from `operator_readiness`.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned backend read-only extraction.
+- No verifier, topology, product mutation, documentation, or measurement bug was
+  discovered in this seam.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\services\operator_readiness.py backend\app\services\operator_dashboard_metrics.py backend\app\api\v1\endpoints\operator.py`;
+  passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings
+  for touched backend files.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py`;
+  passed, `12` tests.
+- `python scripts\scan_authority_surfaces.py`; passed in report-only mode with
+  `missing_owner_count=0`.
+- `python scripts\scan_refactor_contracts.py`; passed in report-only mode with
+  zero findings.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T22-55-27-823Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29056016014` passed for
+  `8150c880115094228a170a62c8b8e1b7c6b1606b`.
+
+Behavior parity statement:
+
+- No intentional endpoint response, readiness classifier, exposure invariant,
+  operator recommendation, or cohort readiness behavior change.
+- Existing compatibility imports from `operator_dashboard_metrics` continue to
+  resolve.
+
+Rollback note:
+
+- Revert this seam commit to restore readiness projection helpers inline in
+  `backend/app/services/operator_dashboard_metrics.py`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
