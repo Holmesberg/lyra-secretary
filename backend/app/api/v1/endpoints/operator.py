@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, operator_user_from_scope
 from app.db.models import (
-    ExposureDecisionEvent,
     Feedback,
     StopwatchSession,
     Task,
@@ -41,7 +40,7 @@ from app.services.operator_dashboard_metrics import (
     operator_user_rows_snapshot as _operator_user_rows_snapshot,
     pct as _pct,
     privacy_boundary_snapshot as _privacy_boundary_snapshot,
-    product_loop_funnel_snapshot as _product_loop_funnel_snapshot,
+    product_loop_funnel_query_snapshot as _product_loop_funnel_query_snapshot,
     provider_integrity_query_snapshot as _provider_integrity_query_snapshot,
     redis_notification_snapshot as _redis_notification_snapshot_impl,
     state_invariants_snapshot as _state_invariants_snapshot,
@@ -243,70 +242,18 @@ def operator_dashboard_v12(
             and clean_sessions_by_user.get(u.user_id, 0) == 0
         ]
 
-        session_started_count = (
-            db.query(func.count(StopwatchSession.session_id))
-            .filter(StopwatchSession.user_id.in_(non_op_ids) if non_op_ids else False)
-            .scalar()
-            or 0
-        )
-        clean_stop_count_all = (
-            db.query(func.count(StopwatchSession.session_id))
-            .join(Task, Task.task_id == StopwatchSession.task_id)
-            .filter(StopwatchSession.user_id.in_(non_op_ids) if non_op_ids else False)
-            .filter(StopwatchSession.end_time_utc.isnot(None))
-            .filter(StopwatchSession.auto_closed.is_(False))
-            .filter(StopwatchSession.data_quality_flag.is_(None))
-            .filter(Task.voided_at.is_(None))
-            .scalar()
-            or 0
-        )
-        timer_start_to_clean_stop_rate = _pct(clean_stop_count_all, session_started_count)
-
-        pressure_map_opened = (
-            db.query(func.count(func.distinct(ExposureDecisionEvent.user_id)))
-            .filter(ExposureDecisionEvent.content_template_id == "academic_pressure_map")
-            .filter(ExposureDecisionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
-            .scalar()
-            or 0
-        )
-        insight_seen = (
-            db.query(func.count(func.distinct(ExposureDecisionEvent.user_id)))
-            .filter(ExposureDecisionEvent.content_template_id == "analytics_insights")
-            .filter(ExposureDecisionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
-            .scalar()
-            or 0
-        )
-        recovery_surface_seen = (
-            db.query(func.count(func.distinct(ExposureDecisionEvent.user_id)))
-            .filter(
-                ExposureDecisionEvent.content_template_id.in_(
-                    ["resume_prediction", "pause_prediction"]
-                )
-            )
-            .filter(ExposureDecisionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
-            .scalar()
-            or 0
-        )
-        recovery_plan_confirmed = (
-            db.query(func.count(Task.task_id))
-            .filter(Task.user_id.in_(non_op_ids) if non_op_ids else False)
-            .filter(Task.voided_at.is_(None))
-            .filter(Task.notes.ilike("%Pressure Map recovery preview%"))
-            .scalar()
-            or 0
-        )
-
-        product_loop_funnel = _product_loop_funnel_snapshot(
+        product_loop_snapshot = _product_loop_funnel_query_snapshot(
+            db,
+            user_ids=non_op_ids,
+            users=non_operator_users,
             task_created=non_op_task_total,
             obligation_bound=bound_task_count,
-            pressure_map_opened=pressure_map_opened,
-            recovery_plan_confirmed=recovery_plan_confirmed,
-            timer_started=session_started_count,
-            timer_stopped_cleanly=clean_stop_count_all,
-            recovery_surface_seen=recovery_surface_seen,
-            insight_seen=insight_seen,
-            returned_after_24h=sum(1 for u in non_operator_users if u.d1_return_at),
         )
+        product_loop_funnel = product_loop_snapshot["product_loop_funnel"]
+        timer_start_to_clean_stop_rate = product_loop_snapshot[
+            "timer_start_to_clean_stop_rate"
+        ]
+        pressure_map_opened = product_loop_snapshot["pressure_map_opened"]
 
         redis_snapshot = _redis_notification_snapshot(non_op_ids)
         notification_counts = redis_snapshot["counts"]

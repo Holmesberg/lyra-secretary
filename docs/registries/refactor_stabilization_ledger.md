@@ -10813,3 +10813,68 @@ Rollback note:
 - Revert this test-only commit to restore the prior cleanup helper.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Operator Product-Loop Funnel Query Extraction
+
+Seam:
+
+- `operator-product-loop-funnel-query-extraction`
+
+Changed authority:
+
+- No operator readiness thresholds, cohort denominator, task lifecycle
+  authority, exposure authority, schema, Redis behavior, hosted-public
+  deployment state, or user-visible behavior changed.
+- `/operator` remains read-only and continues to expose the same
+  product-loop funnel payload.
+
+Removed paths:
+
+- Removed product-loop funnel SQL assembly from
+  `backend/app/api/v1/endpoints/operator.py`.
+
+Parked paths:
+
+- Full operator payload-builder extraction remains parked.
+- Product-loop funnel instrumentation gaps remain parked:
+  `pulse_opened`, `quick_capture_used`, `brain_dump_submitted`,
+  `preview_confirmed`, and `recovery_plan_previewed`.
+
+Moved authority:
+
+- `backend/app/services/operator_dashboard_metrics.py` now owns
+  `product_loop_funnel_query_snapshot(...)`, the read-only query bundle that
+  feeds the existing `product_loop_funnel_snapshot(...)` projection.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 backend read-only extraction.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\api\v1\endpoints\operator.py backend\app\services\operator_dashboard_metrics.py`;
+  passed.
+- `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py -q`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T19-44-40-556Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional endpoint response change.
+- Product-loop funnel counts, timer-start-to-clean-stop rate, activation
+  quality pressure-map count, and readiness inputs remain the same.
+
+Rollback note:
+
+- Revert this seam commit to restore product-loop funnel SQL assembly inline in
+  `operator.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.

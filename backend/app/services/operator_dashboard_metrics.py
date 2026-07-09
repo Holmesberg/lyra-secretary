@@ -1271,6 +1271,88 @@ def product_loop_funnel_snapshot(
     return payload
 
 
+def product_loop_funnel_query_snapshot(
+    db: Session,
+    *,
+    user_ids: list[int],
+    users: Iterable[User],
+    task_created: int,
+    obligation_bound: int,
+) -> dict[str, Any]:
+    """Read-only product-loop funnel queries for the operator cockpit."""
+    session_started_count = (
+        db.query(func.count(StopwatchSession.session_id))
+        .filter(StopwatchSession.user_id.in_(user_ids) if user_ids else False)
+        .scalar()
+        or 0
+    )
+    clean_stop_count_all = (
+        db.query(func.count(StopwatchSession.session_id))
+        .join(Task, Task.task_id == StopwatchSession.task_id)
+        .filter(StopwatchSession.user_id.in_(user_ids) if user_ids else False)
+        .filter(StopwatchSession.end_time_utc.isnot(None))
+        .filter(StopwatchSession.auto_closed.is_(False))
+        .filter(StopwatchSession.data_quality_flag.is_(None))
+        .filter(Task.voided_at.is_(None))
+        .scalar()
+        or 0
+    )
+    pressure_map_opened = (
+        db.query(func.count(func.distinct(ExposureDecisionEvent.user_id)))
+        .filter(ExposureDecisionEvent.content_template_id == "academic_pressure_map")
+        .filter(ExposureDecisionEvent.user_id.in_(user_ids) if user_ids else False)
+        .scalar()
+        or 0
+    )
+    insight_seen = (
+        db.query(func.count(func.distinct(ExposureDecisionEvent.user_id)))
+        .filter(ExposureDecisionEvent.content_template_id == "analytics_insights")
+        .filter(ExposureDecisionEvent.user_id.in_(user_ids) if user_ids else False)
+        .scalar()
+        or 0
+    )
+    recovery_surface_seen = (
+        db.query(func.count(func.distinct(ExposureDecisionEvent.user_id)))
+        .filter(
+            ExposureDecisionEvent.content_template_id.in_(
+                ["resume_prediction", "pause_prediction"]
+            )
+        )
+        .filter(ExposureDecisionEvent.user_id.in_(user_ids) if user_ids else False)
+        .scalar()
+        or 0
+    )
+    recovery_plan_confirmed = (
+        db.query(func.count(Task.task_id))
+        .filter(Task.user_id.in_(user_ids) if user_ids else False)
+        .filter(Task.voided_at.is_(None))
+        .filter(Task.notes.ilike("%Pressure Map recovery preview%"))
+        .scalar()
+        or 0
+    )
+
+    return {
+        "product_loop_funnel": product_loop_funnel_snapshot(
+            task_created=task_created,
+            obligation_bound=obligation_bound,
+            pressure_map_opened=pressure_map_opened,
+            recovery_plan_confirmed=recovery_plan_confirmed,
+            timer_started=session_started_count,
+            timer_stopped_cleanly=clean_stop_count_all,
+            recovery_surface_seen=recovery_surface_seen,
+            insight_seen=insight_seen,
+            returned_after_24h=sum(1 for user in users if user.d1_return_at),
+        ),
+        "timer_start_to_clean_stop_rate": pct(
+            clean_stop_count_all,
+            session_started_count,
+        ),
+        "pressure_map_opened": int(pressure_map_opened),
+        "session_started_count": int(session_started_count),
+        "clean_stop_count_all": int(clean_stop_count_all),
+    }
+
+
 def state_invariants_snapshot(
     *,
     duplicate_open_sessions: int,
