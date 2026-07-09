@@ -37,7 +37,7 @@
  *      reflection AND no in-flight stop mutation.
  */
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, Pause, Play, Square } from "lucide-react";
 import {
   getStopwatchStatus,
@@ -53,8 +53,9 @@ import {
 } from "@/lib/tasks";
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
 import { announceUndoAvailable } from "@/lib/undo";
-import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
+import { queryKeys } from "@/lib/query-keys";
 import { QUICK_PAUSE_REASON } from "@/lib/stopwatch-pause-reasons";
+import { useTimerCommandInvalidation } from "@/lib/hooks/use-timer-command-invalidation";
 
 type Mode = "idle" | "reflection" | "next-prompt";
 
@@ -88,7 +89,6 @@ const SCOPE_OPTIONS: { value: ScopeOutcome; label: string }[] = [
 ];
 
 export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
-  const qc = useQueryClient();
   const statusQ = useQuery<StopwatchStatus>({
     queryKey: queryKeys.stopwatchStatus,
     queryFn: getStopwatchStatus,
@@ -134,9 +134,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
-  const refreshTimerSurfaces = () => {
-    void invalidateTimerCommandSurfaces(qc);
-  };
+  const refreshTimerSurfaces = useTimerCommandInvalidation();
 
   function beginReflection() {
     setCompletionPct("");

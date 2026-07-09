@@ -11,8 +11,9 @@ import {
 } from "@/lib/tasks";
 import { Button } from "@/components/ui/button";
 import { useActiveStopwatchElapsedClock } from "@/lib/hooks/use-active-stopwatch-elapsed-clock";
+import { useTimerCommandInvalidation } from "@/lib/hooks/use-timer-command-invalidation";
 import { cn } from "@/lib/utils";
-import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
+import { queryKeys } from "@/lib/query-keys";
 import { getElapsedSeconds } from "@/lib/stopwatch-time";
 import {
   PAUSE_REASON_OPTIONS,
@@ -52,10 +53,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   const [err, setErr] = useState<string | null>(null);
   const [showReasonPicker, setShowReasonPicker] = useState(false);
   const pickerRef = useRef<HTMLDivElement | null>(null);
-
-  const refreshTimerSurfaces = () => {
-    void invalidateTimerCommandSurfaces(qc);
-  };
+  const refreshTimerSurfaces = useTimerCommandInvalidation();
 
   // Local pause state, decoupled from React Query poll cycle. Changed
   // ONLY by applyPause/doResume (immediate, no network wait) and on
@@ -348,10 +346,7 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  const refreshTimerSurfaces = () => {
-    void invalidateTimerCommandSurfaces(qc);
-  };
+  const refreshTimerSurfaces = useTimerCommandInvalidation();
 
   // Optimistic swap: mirrors the pause/resume optimistic pattern. The
   // network call to /v1/stopwatch/switch typically takes 300-1000ms (DB
