@@ -11661,3 +11661,84 @@ Rollback note:
 
 - No rollback is required. Reopen #187 if hosted-public read-only topology or
   operator proof fails again.
+
+## 2026-07-10 - Operator Notification Lifecycle Snapshot Extraction
+
+Seam:
+
+- `operator-notification-lifecycle-snapshot-extraction`
+
+Changed authority:
+
+- No notification lifecycle write authority, exposure/render invariant, cohort
+  denominator, backend endpoint behavior, schema, hosted-public deployment
+  state, or user-visible product behavior changed.
+- Queue insertion and delivery remain non-exposure. Browser render remains
+  render truth. Suppression remains terminal non-render lifecycle truth.
+
+Removed paths:
+
+- Removed inline DB-backed notification/exposure lifecycle snapshot logic from
+  `backend/app/services/operator_dashboard_metrics.py`.
+
+Parked paths:
+
+- Notification lifecycle write authority remains with lifecycle/queue services
+  and endpoints.
+- Exposure render/suppression writer splits remain parked.
+- Output-surface writer extraction and deeper provider/auth/model splits remain
+  parked.
+
+Moved authority:
+
+- `backend/app/services/operator_notification_lifecycle.py` now owns the
+  read-only `/operator` notification lifecycle snapshot, including queued,
+  suppressed, duplicate lifecycle prompts, and actionable
+  exposure-without-render classification.
+- `backend/app/services/operator_dashboard_metrics.py` remains the owner for
+  other DB-backed operator metric/query snapshots and re-exports the lifecycle
+  helper for compatibility.
+- `backend/app/api/v1/endpoints/operator.py` now imports the lifecycle helper
+  from `operator_notification_lifecycle`.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned backend read-only extraction.
+- No verifier, topology, product mutation, documentation, or measurement bug was
+  discovered in this seam.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\services\operator_notification_lifecycle.py backend\app\services\operator_dashboard_metrics.py backend\app\api\v1\endpoints\operator.py`;
+  passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings
+  for touched backend files.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py`;
+  passed, `12` tests including actionable exposure-without-render, suppressed
+  exposure, queued decision, and duplicate reminder fixtures.
+- `python scripts\scan_authority_surfaces.py`; passed in report-only mode with
+  `missing_owner_count=0`.
+- `python scripts\scan_refactor_contracts.py`; passed in report-only mode with
+  zero findings.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T23-18-23-786Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`,
+  `duplicate_prompt_count=0`, and `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29057070123` passed for
+  `aaad4d9be9cbcec113782e1a9408f3f755524e36`.
+
+Behavior parity statement:
+
+- No intentional endpoint response, notification lifecycle count, queued vs.
+  rendered exposure rule, suppression rule, or readiness blocker behavior
+  changed.
+- Existing compatibility imports from `operator_dashboard_metrics` continue to
+  resolve.
+
+Rollback note:
+
+- Revert this seam commit to restore DB-backed notification lifecycle snapshot
+  logic inline in `backend/app/services/operator_dashboard_metrics.py`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
