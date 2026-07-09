@@ -10228,3 +10228,66 @@ Rollback note:
   timer command surfaces.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Frontend Typecheck Stale Next Types Guard
+
+Seam:
+
+- `frontend-typecheck-stale-next-types-guard`
+
+Changed authority:
+
+- No product/runtime behavior, user-facing copy, schema, data writes, or
+  hosted-public artifacts changed.
+- Frontend typecheck now runs through a local verifier wrapper that can recover
+  from incomplete local `.next/types` artifacts.
+
+Removed paths:
+
+- Removed direct `tsc --noEmit --pretty false` invocation from
+  `frontend/package.json`.
+
+Parked paths:
+
+- Broader frontend proof ordering and public artifact rollback rehearsal remain
+  future S1c/CI hardening work.
+- The wrapper intentionally does not mutate `.next-public` hosted-public
+  artifacts.
+
+Moved authority:
+
+- `frontend/scripts/typecheck.mjs` now owns local frontend typecheck execution
+  and the narrow stale `.next/types` recovery path.
+- TypeScript remains the source of truth for real type errors.
+
+Issues and classification:
+
+- GitHub issue #185 tracks the verifier/harness bug: local frontend typecheck
+  can falsely fail when local generated Next route types are incomplete.
+
+Tests and verification:
+
+- `npm run typecheck`; passed on a normal local state.
+- Negative recovery proof: after local generated `.next/types` became
+  incomplete, `npm run typecheck` printed the stale local types recovery
+  warning, removed local `.next/types`, reran TypeScript, and passed.
+- Negative real-error proof: a temporary `frontend/tmp-typecheck-negative.ts`
+  with `const shouldBeString: string = 1` made `npm run typecheck` fail with
+  `TS2322`, proving the wrapper does not swallow real type errors.
+- `npm run build` in `frontend`; passed.
+- Final `npm run typecheck` after build regenerated complete local Next types;
+  passed without recovery warning.
+- `git diff --check`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- CI and local proof still run TypeScript; only the known stale local
+  `.next/types` artifact class is repaired before a retry.
+
+Rollback note:
+
+- Revert commit `d642632` to restore direct package-script typecheck.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
