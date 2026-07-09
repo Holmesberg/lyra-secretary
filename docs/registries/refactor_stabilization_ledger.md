@@ -11605,3 +11605,59 @@ Rollback note:
   inline in `backend/app/services/operator_dashboard_metrics.py`.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Hosted-Public Topology Recovery Proof
+
+Seam:
+
+- `hosted-public-topology-recovery-proof`
+
+Changed authority:
+
+- No code, runtime config, deployment state, data, schema, or public restart
+  changed.
+- Hosted-public proof status changed from blocked to recovered based on
+  read-only verification.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Hosted-public mutable dogfood remains high-care and requires explicit user
+  approval.
+- Public deploy/restart remains approval-gated.
+
+Moved authority:
+
+- None.
+
+Issues and classification:
+
+- GitHub issue #187 (`Hosted-public topology proof times out`) was closed after
+  public topology and operator read-only proof recovered without deploy/restart.
+- Classification: transient topology/deployment reachability issue, recovered.
+
+Tests and verification:
+
+- `node scripts\verify_runtime_topology.mjs --topology public`; passed with
+  `frontend_build_id=bbd168c`, `backend_build_id=dev`,
+  `frontend_origin=https://lyraos.org`, and
+  `api_origin=https://api.lyraos.org`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`;
+  passed.
+- Hosted-public operator read-only artifact:
+  `tmp/operator-readonly-stress-2026-07-09T23-11-21-748Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No app behavior changed.
+
+Rollback note:
+
+- No rollback is required. Reopen #187 if hosted-public read-only topology or
+  operator proof fails again.
