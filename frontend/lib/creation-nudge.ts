@@ -1,8 +1,9 @@
 import type { BiasFactorCell, CreateTaskInput } from "./tasks";
 import { roundTo5 } from "./task-time";
 
-// Pure value helpers only. Creation-nudge exposure render, suppression, and
-// decision lifecycle authority stays in NewTaskModal.
+// Pure value helpers only. Creation-nudge exposure render and suppression
+// authority lives in useCreationNudgeExposure; submission decision payload
+// shaping stays here.
 const RESEARCH_PRIOR_DEFAULT = {
   biasFactor: 1.35,
   citation: "Kahneman & Tversky 1979 (planning fallacy mean)",

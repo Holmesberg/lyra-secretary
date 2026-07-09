@@ -30,7 +30,6 @@ import {
   suggestPushStartToFuture as getPushStartToFutureSuggestion,
   timeOfDay,
 } from "@/lib/task-time";
-import { ackExposureRender, ackExposureSuppression } from "@/lib/api";
 import { CategorySelect } from "@/components/category-select";
 import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
 import {
@@ -49,98 +48,13 @@ import {
   type SoftConflict,
 } from "@/components/use-new-task-submit-controller";
 import { useDeadlinePreview } from "@/components/use-deadline-preview";
+import {
+  exposureIdForCreationNudge,
+  suppressCreationNudgeExposure,
+  useCreationNudgeExposure,
+} from "@/lib/hooks/use-creation-nudge-exposure";
 
 const BIAS_LOOKUP_DEBOUNCE_MS = 120;
-const pendingCreationNudgeRenderAcks = new Set<string>();
-const ackedCreationNudgeRenders = new Set<string>();
-const pendingCreationNudgeSuppressions = new Set<string>();
-const suppressedCreationNudgeExposures = new Set<string>();
-const CREATION_NUDGE_RENDER_ACK_RETRY_MS = [250, 750, 1500, 3000, 6000];
-const CREATION_NUDGE_SUPPRESSION_RETRY_MS = [500, 1500, 3000];
-const CREATION_NUDGE_EXPOSURE_TTL_MS = 30_000;
-const creationNudgeExposureIds = new Map<string, { exposureId: string; expiresAt: number }>();
-
-function newExposureId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function exposureIdForCreationNudge(category: string, tod: string, planned: number): string {
-  const key = `${category}\u0000${tod}\u0000${planned}`;
-  const now = Date.now();
-  const cached = creationNudgeExposureIds.get(key);
-  if (cached && cached.expiresAt > now) {
-    return cached.exposureId;
-  }
-  const exposureId = newExposureId();
-  creationNudgeExposureIds.set(key, {
-    exposureId,
-    expiresAt: now + CREATION_NUDGE_EXPOSURE_TTL_MS,
-  });
-  return exposureId;
-}
-
-function ackCreationNudgeRender(
-  exposureId: string,
-  contentSnapshot: Record<string, unknown>,
-  attempt = 0
-) {
-  if (
-    pendingCreationNudgeRenderAcks.has(exposureId) ||
-    ackedCreationNudgeRenders.has(exposureId)
-  ) {
-    return;
-  }
-  pendingCreationNudgeRenderAcks.add(exposureId);
-  void ackExposureRender(exposureId, {
-    surfaceId: "task.creation_nudge",
-    clientEventId: `task.creation_nudge:${exposureId}`,
-    contentSnapshot,
-  })
-    .then((ok) => {
-      if (ok) {
-        ackedCreationNudgeRenders.add(exposureId);
-        return;
-      }
-      const retryDelay = CREATION_NUDGE_RENDER_ACK_RETRY_MS[attempt];
-      if (retryDelay !== undefined) {
-        globalThis.setTimeout(() => {
-          ackCreationNudgeRender(exposureId, contentSnapshot, attempt + 1);
-        }, retryDelay);
-      }
-    })
-    .finally(() => {
-      pendingCreationNudgeRenderAcks.delete(exposureId);
-    });
-}
-
-function suppressCreationNudgeExposure(exposureId: string, attempt = 0) {
-  if (
-    pendingCreationNudgeSuppressions.has(exposureId) ||
-    suppressedCreationNudgeExposures.has(exposureId) ||
-    ackedCreationNudgeRenders.has(exposureId)
-  ) {
-    return;
-  }
-  pendingCreationNudgeSuppressions.add(exposureId);
-  void ackExposureSuppression(exposureId, {
-    suppressionReason: "client_discarded_before_render",
-  })
-    .then((ok) => {
-      if (ok) {
-        suppressedCreationNudgeExposures.add(exposureId);
-        return;
-      }
-      const retryDelay = CREATION_NUDGE_SUPPRESSION_RETRY_MS[attempt];
-      if (retryDelay !== undefined) {
-        globalThis.setTimeout(() => {
-          suppressCreationNudgeExposure(exposureId, attempt + 1);
-        }, retryDelay);
-      }
-    })
-    .finally(() => {
-      pendingCreationNudgeSuppressions.delete(exposureId);
-    });
-}
 
 interface Props {
   open: boolean;
@@ -185,7 +99,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [nudgeSource, setNudgeSource] = useState<"personal" | "research" | null>(null);
   const [calibrationNudge, setCalibrationNudge] =
     useState<CalibrationNudge | null>(null);
-  const creationNudgeExposureRef = useRef<string | null>(null);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
   // rest of this modal session. Prevents the re-suggestion loop the
@@ -342,76 +255,14 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, category, start, end, durHours, durMinutes, isEdit, editScheduleTouched, nudgeDecisionMade]);
 
-  const creationNudgeRenderSnapshot = () => {
-    if (!calibrationNudge) {
-      return null;
-    }
-    return {
-      template: "task_creation_nudge_lookup",
-      category: calibrationNudge.cell.category,
-      time_of_day: calibrationNudge.cell.time_of_day,
-      source: nudgeSource,
-      suggested_minutes: calibrationNudge.suggestedMin,
-      execution_suggested_minutes: calibrationNudge.executionSuggestedMin,
-      pause_overhead_minutes: calibrationNudge.pauseOverheadMin,
-      pause_overhead_sample_size: calibrationNudge.pauseOverheadSampleSize,
-      occupancy_suggested_minutes: calibrationNudge.occupancySuggestedMin,
-      occupancy_strategy: calibrationNudge.occupancyStrategy,
-      planned_minutes: durHours * 60 + durMinutes,
-    };
-  };
-
-  const ackVisibleCreationNudge = () => {
-    const exposureId = calibrationNudge?.exposureId;
-    const contentSnapshot = creationNudgeRenderSnapshot();
-    if (!exposureId || !contentSnapshot) {
-      return;
-    }
-    ackCreationNudgeRender(exposureId, contentSnapshot);
-  };
-
-  useEffect(() => {
-    if (!calibrationNudge?.exposureId || !calibrationNudge.backendReady) {
-      return;
-    }
-    ackVisibleCreationNudge();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calibrationNudge, durHours, durMinutes, nudgeSource]);
-
-  useEffect(() => {
-    const currentExposureId =
-      calibrationNudge?.backendReady && calibrationNudge.exposureId
-        ? calibrationNudge.exposureId
-        : null;
-    const previousExposureId = creationNudgeExposureRef.current;
-    if (
-      previousExposureId &&
-      previousExposureId !== currentExposureId &&
-      !pendingCreationNudgeRenderAcks.has(previousExposureId) &&
-      !ackedCreationNudgeRenders.has(previousExposureId)
-    ) {
-      suppressCreationNudgeExposure(previousExposureId);
-    }
-    creationNudgeExposureRef.current = currentExposureId;
-  }, [calibrationNudge?.backendReady, calibrationNudge?.exposureId]);
-
-  useEffect(() => {
-    return () => {
-      const previousExposureId = creationNudgeExposureRef.current;
-      if (
-        previousExposureId &&
-        !pendingCreationNudgeRenderAcks.has(previousExposureId) &&
-        !ackedCreationNudgeRenders.has(previousExposureId)
-      ) {
-        suppressCreationNudgeExposure(previousExposureId);
-      }
-      creationNudgeExposureRef.current = null;
-    };
-  }, []);
-
   const totalMinutes = durHours * 60 + durMinutes;
   const endBeforeStart = diffMinutes(start, end) <= 0;
   const canSubmit = !submitting && title.trim().length > 0 && !endBeforeStart && totalMinutes > 0;
+  const { ackVisibleCreationNudge } = useCreationNudgeExposure({
+    nudge: calibrationNudge,
+    source: nudgeSource,
+    plannedMinutes: totalMinutes,
+  });
 
   // AM/PM-swap recovery. Native <input type="datetime-local"> keeps
   // whichever period was last rendered; if the user types "1:45" meaning
