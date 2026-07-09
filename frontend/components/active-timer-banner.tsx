@@ -10,6 +10,7 @@ import {
   type PausedOther,
 } from "@/lib/tasks";
 import { Button } from "@/components/ui/button";
+import { useActiveStopwatchElapsedClock } from "@/lib/hooks/use-active-stopwatch-elapsed-clock";
 import { cn } from "@/lib/utils";
 import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
 import { getElapsedSeconds } from "@/lib/stopwatch-time";
@@ -33,28 +34,6 @@ import {
 // Invariants). Click-outside now just dismisses the picker; the user
 // must explicitly pick a reason to pause.
 
-// Display timing — the old formula `now - start - total_paused_minutes`
-// ignored in-progress pauses (total_paused_minutes only accumulates
-// after a resume fires, so the active pause isn't in it), which made
-// the clock visibly jump forward on every 10 s poll while paused and
-// snap back on resume when the delta finally landed. Current approach:
-//   • Maintain a local {sec, ts} anchor with sub-minute precision.
-//   • While running, display = anchor.sec + (now − anchor.ts)/1000.
-//   • On each poll, advance anchor to server `elapsed_minutes` only if
-//     server > local (polls never rewind — server truncates to int min).
-//   • On pause → freeze current display as `frozenSec`.
-//   • On resume → rebase anchor to `frozenSec` so the clock continues
-//     from where the user saw it paused, not from minute-truncated
-//     server truth (which would backward-jump the sub-minute remainder).
-function fmtTime(secs: number) {
-  const safe = Math.max(0, Math.floor(secs));
-  const h = Math.floor(safe / 3600);
-  const m = Math.floor((safe % 3600) / 60);
-  const s = safe % 60;
-  const hh = h > 0 ? `${String(h).padStart(2, "0")}:` : "";
-  return `${hh}${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
 interface Props {
   status: StopwatchStatus;
   showOrphanWarning?: boolean;
@@ -69,7 +48,6 @@ interface Props {
 
 export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWarning, requestPause, quickPauseReason, onRequestPauseHandled }: Props) {
   const qc = useQueryClient();
-  const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showReasonPicker, setShowReasonPicker] = useState(false);
@@ -86,136 +64,18 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   // the optimistic flip, causing a visible pause↔unpause flicker.
   const [localPaused, setLocalPaused] = useState(!!status.paused);
 
-  // LYR-111: prefer second-precision elapsed_seconds; fall back to
-  // elapsed_minutes * 60 for back-compat. Without this, swap-resume
-  // snaps the banner to the last whole minute (up to -59s precision loss).
-  const initialSec = getElapsedSeconds(status);
-  const [anchor, setAnchor] = useState<{ sec: number; ts: number }>(() => ({
-    sec: initialSec,
-    ts: Date.now(),
-  }));
-  const [frozenSec, setFrozenSec] = useState<number | null>(
-    status.paused ? initialSec : null
-  );
-  const prevPausedRef = useRef<boolean>(!!status.paused);
-  const lastDisplayedRef = useRef<number>(initialSec);
-
-  // Pause counter: cumulative pause seconds. pauseBaseSec = completed
-  // pauses from server; pauseStartRef = when the current pause began
-  // (LOCAL ms anchor — Date.now() at the moment we observed the pause
-  // start, NOT the server's wall-clock time). Display = base + (now − start).
-  //
-  // 2026-04-26 fix: server now ships current_pause_seconds (how long the
-  // CURRENT pause has been running per server clock). On mount /
-  // task-swap we anchor pauseStartRef to (Date.now() − current_pause_seconds·1000)
-  // so the counter starts from the actual elapsed pause duration, not
-  // from 00:00. Without this, stopping a parallel task and falling back
-  // onto a previously-paused task showed "paused · 00:00" instead of
-  // "paused · 8h00m" (operator report 2026-04-26: "electronics paused
-  // early but counting from 00:00 when I stopped the parallel task").
-  const [pauseBaseSec, setPauseBaseSec] = useState(
-    (status.total_paused_minutes ?? 0) * 60
-  );
-  const pauseStartRef = useRef<number | null>(
-    status.paused
-      ? Date.now() - (status.current_pause_seconds ?? 0) * 1000
-      : null
-  );
-
-  // Sync pause base from server polls.
-  useEffect(() => {
-    setPauseBaseSec((status.total_paused_minutes ?? 0) * 60);
-  }, [status.total_paused_minutes]);
-
-  // Safety sync: if localPaused disagrees with server AND no mutation is
-  // in-flight, reconcile to server truth. Catches any edge case where
-  // localPaused gets stuck (e.g., task switch via interruption, React
-  // effect ordering, etc.). The !busy guard prevents stale polls from
-  // overwriting optimistic state during a 1.4s mutation.
-  useEffect(() => {
-    if (!busy && localPaused !== !!status.paused) {
-      setLocalPaused(!!status.paused);
-      if (!status.paused) {
-        pauseStartRef.current = null;
-        setFrozenSec(null);
-      } else {
-        // Anchor at server-reported pause start when available so the
-        // counter shows the true pause duration, not a re-zeroed counter.
-        pauseStartRef.current =
-          pauseStartRef.current ??
-          (Date.now() - (status.current_pause_seconds ?? 0) * 1000);
-      }
-    }
-  }, [status.paused, status.current_pause_seconds, busy, localPaused]);
-
-  // Per-session reset: when the active task changes (new start, interruption,
-  // etc.), all local timer state must reset to match the new task. Without
-  // this, the previous task's pause counter / frozen display leaks into the
-  // new session's banner.
-  const prevTaskIdRef = useRef(status.task_id);
-  useEffect(() => {
-    if (status.task_id === prevTaskIdRef.current) return;
-    prevTaskIdRef.current = status.task_id;
-    // LYR-111: anchor off elapsed_seconds (sub-minute precision) when
-    // available; without this, swap resets banner to last-whole-minute.
-    const sec = getElapsedSeconds(status);
-    setLocalPaused(!!status.paused);
-    setAnchor({ sec, ts: Date.now() });
-    setFrozenSec(status.paused ? sec : null);
-    prevPausedRef.current = !!status.paused;
-    lastDisplayedRef.current = sec;
-    setPauseBaseSec((status.total_paused_minutes ?? 0) * 60);
-    // 2026-04-26 fix: when swapping into a previously-paused task, anchor
-    // pauseStartRef using the server's current_pause_seconds so the
-    // "paused · MM:SS" counter resumes from the actual elapsed pause
-    // duration, not from 00:00. See banner-init comment block above.
-    pauseStartRef.current = status.paused
-      ? Date.now() - (status.current_pause_seconds ?? 0) * 1000
-      : null;
-  }, [status.task_id, status.paused, status.elapsed_minutes, status.elapsed_seconds, status.total_paused_minutes, status.current_pause_seconds]);
-
-  // Pause-transition effect — freezes on pause, rebases anchor on resume.
-  // Uses lastDisplayedRef (the value the user SAW on screen) to avoid a
-  // forward-snap when frozenSec would otherwise recompute from anchor+now
-  // (which includes time that elapsed while the reason picker was open).
-  useEffect(() => {
-    const wasPaused = prevPausedRef.current;
-    const isPaused = localPaused;
-    if (!wasPaused && isPaused) {
-      setFrozenSec(lastDisplayedRef.current);
-    } else if (wasPaused && !isPaused) {
-      if (frozenSec !== null) {
-        setAnchor({ sec: frozenSec, ts: Date.now() });
-      }
-      setFrozenSec(null);
-    }
-    prevPausedRef.current = isPaused;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localPaused]);
-
-  // Server catch-up — advance to server elapsed only if it passes the
-  // local tick. Strict `>` so polls never rewind the display. LYR-111:
-  // catch up off elapsed_seconds when available so server can correct
-  // sub-minute drift, not just whole-minute drift.
-  useEffect(() => {
-    if (localPaused) return;
-    const serverSec = getElapsedSeconds(status);
-    const localSec = anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
-    if (serverSec > localSec) {
-      setAnchor({ sec: serverSec, ts: Date.now() });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status.elapsed_minutes, status.elapsed_seconds]);
-
-  // 1-Hz local tick — always runs unless the reason picker is open
-  // (pre-freeze: timer appears to stop the moment the user clicks
-  // Pause). While paused, the tick drives the pause counter instead
-  // of the active counter.
-  useEffect(() => {
-    if (showReasonPicker && !localPaused) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [showReasonPicker, localPaused]);
+  const {
+    elapsed,
+    tick,
+    markPauseStarted,
+    markResumeStarted,
+  } = useActiveStopwatchElapsedClock({
+    status,
+    localPaused,
+    setLocalPaused,
+    busy,
+    showReasonPicker,
+  });
 
   // Click-outside listener for pause reason picker.
   // MUST be declared before the early return below to satisfy React's
@@ -278,27 +138,11 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
   const paused = localPaused;
 
-  let elapsed: string;
-  if (paused) {
-    // Pause counter: cumulative pause time
-    const currentPauseSec = pauseStartRef.current
-      ? Math.floor((Date.now() - pauseStartRef.current) / 1000)
-      : 0;
-    elapsed = `paused · ${fmtTime(Math.floor(pauseBaseSec + currentPauseSec))}`;
-  } else {
-    // Active counter: cumulative active work time
-    const activeSec = frozenSec !== null
-      ? frozenSec
-      : anchor.sec + Math.floor((Date.now() - anchor.ts) / 1000);
-    lastDisplayedRef.current = activeSec;
-    elapsed = fmtTime(activeSec);
-  }
-
   async function applyPause(reason: PauseReason | undefined) {
     setShowReasonPicker(false);
     setErr(null);
     setLocalPaused(true);
-    pauseStartRef.current = Date.now();
+    markPauseStarted();
     setBusy(true);
     // Cancel any in-flight stopwatch-status poll so it can't return
     // stale (pre-pause) data AFTER our optimistic flip and overwrite
@@ -344,7 +188,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
   async function doResume() {
     setErr(null);
     setLocalPaused(false);
-    pauseStartRef.current = null;
+    markResumeStarted();
     setBusy(true);
     await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
     const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
@@ -363,7 +207,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
       refreshTimerSurfaces();
     } catch (e) {
       setLocalPaused(true);
-      pauseStartRef.current = Date.now();
+      markPauseStarted();
       if (snapshot !== undefined) {
         qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
