@@ -9659,3 +9659,82 @@ Rollback note:
   backend pytest wrapper.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Calendar/Table Local-Current Dogfood Wrapper
+
+Wave:
+
+- Branch: `refactor/freeze-closure`.
+- Seam: S1c verifier/harness hardening.
+- Commit: `57b6826` (`scripts: support local-current calendar table dogfood`).
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Calendar/table mutation dogfood can now run against `local-current` topology
+  through the standard wrapper path.
+
+Removed paths:
+
+- No runtime path removed.
+- The post-wave wrapper no longer drops local-current port/proxy context when
+  invoking the calendar/table mutation dogfood child wrapper.
+
+Parked paths:
+
+- Hosted-public mutable calendar/table dogfood remains out of scope without
+  explicit approval.
+- Physical Schedule-X drag/resize gesture synthesis remains gated; this proof
+  exercises the same reschedule authority through the canonical API and browser
+  render checks.
+
+Moved authority:
+
+- No app, mutation, exposure, clean-data, provider, task, timer, schema, Redis,
+  or deployment authority moved.
+- Local-current topology trust remains with `verify_runtime_topology.mjs`; the
+  child wrapper now runs that verifier before mutable browser steps.
+
+Issues and classification:
+
+- No GitHub issue was created because this was planned S1c gate hardening, not a
+  discovered product bug.
+- Classification: verifier/harness and topology trust hardening.
+
+Tests and verification:
+
+- PowerShell parser checks for `scripts/run_calendar_table_mutation_dogfood.ps1`
+  and `scripts/run_post_wave_dogfood_loop.ps1`; passed.
+- `node --check .\scripts\browser_calendar_table_mutation_dogfood.mjs`; passed.
+- `git diff --check`; passed.
+- Negative topology proof:
+  `tmp/negative-local-current-calendar-table-topology.json` failed closed when
+  `local-current` was given a public frontend origin.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- Direct Holmesberg local-current calendar/table proof:
+  `tmp/calendar-table-local-current-wrapper-direct/result.json` passed with
+  cleanup proof, zero server 500s, no active timer, no unrendered synthetic
+  creation-nudge exposures, and no non-voided synthetic tasks.
+- Standard post-wave proof with calendar/table mutation:
+  `tmp/post-wave-dogfood/20260709-190535-calendar-table-local-current-wrapper-standard-local-current/summary.json`
+  passed with `standard_wave_proof_passed`, `cleanup.ok=true`, zero nested
+  issues/warnings, and operator read-only `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional user-visible product behavior changed.
+- Calendar schedule placement, immutable executed-task reschedule rejection,
+  Table correction/export, voided-row visibility, and cleanup behavior were
+  re-proven through existing browser dogfood.
+- No production repair, schema migration, public deploy/restart,
+  hosted-public artifact mutation, or operator-account product mutation
+  occurred.
+
+Rollback note:
+
+- Revert commit `57b6826` to restore the previous local/public-only
+  calendar/table dogfood wrapper behavior.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
