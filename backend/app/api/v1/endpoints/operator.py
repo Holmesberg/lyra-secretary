@@ -29,7 +29,6 @@ from app.services.operator_dashboard_metrics import (
     meaningful_activity_definition_snapshot as _meaningful_activity_definition_snapshot,
     measurement_integrity_snapshot as _measurement_integrity_snapshot,
     metric_confidence_snapshot as _metric_confidence_snapshot,
-    notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
     operator_user_rows_snapshot as _operator_user_rows_snapshot,
     privacy_boundary_snapshot as _privacy_boundary_snapshot,
     product_loop_funnel_query_snapshot as _product_loop_funnel_query_snapshot,
@@ -40,6 +39,9 @@ from app.services.operator_dashboard_metrics import (
 )
 from app.services.operator_notification_snapshot import (
     redis_notification_snapshot as _redis_notification_snapshot_impl,
+)
+from app.services.operator_notification_lifecycle import (
+    notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
 )
 from app.services.operator_readiness import (
     bug_watchlist_snapshot as _bug_watchlist_snapshot,
