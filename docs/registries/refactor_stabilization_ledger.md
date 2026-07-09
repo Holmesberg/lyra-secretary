@@ -10463,3 +10463,81 @@ Rollback note:
   keep the LyraOS naming changes.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Stopwatch Optimistic State Helper
+
+Seam:
+
+- `stopwatch-optimistic-status-helper`
+
+Changed authority:
+
+- No stopwatch mutation authority, task lifecycle authority, schema, Redis
+  behavior, backend endpoint behavior, hosted-public deployment state, or
+  readiness denominator changed.
+- `ActiveTimerBanner` remains the UI command surface for pause, resume, and
+  switch actions.
+
+Removed paths:
+
+- Removed duplicated inline optimistic stopwatch-status and task-list shaping
+  from `frontend/components/active-timer-banner.tsx`.
+
+Parked paths:
+
+- Full stopwatch controller hook extraction remains parked.
+- Backend stopwatch writer/service extraction remains parked.
+- Multi-task switch browser edge cases beyond the existing product-loop path
+  remain parked.
+
+Moved authority:
+
+- `frontend/lib/stopwatch-optimistic.ts` now owns pure optimistic state
+  builders for:
+  - pause status flag;
+  - resume status flag;
+  - task-row state patches;
+  - switch target/source status shaping with elapsed-second preservation.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned frontend behavior-preserving
+  extraction.
+- Holmesberg product loop reported unrelated nonblocking issues/gates already
+  known to the dogfood wrapper: onboarding gate skip, Today branch visibility
+  warnings, parser title normalization, gated pressure-map recovery, disposable
+  provider/account cleanup gates, calendar drag/resize gate, and OpenClaw drain
+  authority gate. Timer-specific checks passed.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- Holmesberg product-loop proof:
+  `tmp/browser-product-loop/2026-07-09T18-57-29-158Z/result.json`; passed with
+  `ok=true`. Timer-specific checks passed for active start, pause status,
+  paused-session navigation survival, Today banner visibility, pause-counter
+  anchoring, resume, stop, export stopwatch row, export pause row, and cleanup
+  leaving no active timer.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T19-03-52-910Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional user-visible behavior changed.
+- Pause/resume/switch still cancel in-flight stopwatch-status polls, snapshot
+  before optimistic mutation, patch task rows immediately, call the same
+  stopwatch endpoints, refresh the same query surfaces on success, and roll
+  back to the same task states on failure.
+
+Rollback note:
+
+- Revert the stopwatch optimistic helper commit to inline the state builders in
+  `ActiveTimerBanner` again.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.

@@ -14,7 +14,12 @@ import { useActiveStopwatchElapsedClock } from "@/lib/hooks/use-active-stopwatch
 import { useTimerCommandInvalidation } from "@/lib/hooks/use-timer-command-invalidation";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/query-keys";
-import { getElapsedSeconds } from "@/lib/stopwatch-time";
+import {
+  buildOptimisticSwitchStatus,
+  markStopwatchStatusPaused,
+  markStopwatchStatusResumed,
+  updateTaskStatesInQueryData,
+} from "@/lib/stopwatch-optimistic";
 import {
   PAUSE_REASON_OPTIONS,
   type PauseReason,
@@ -150,17 +155,16 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
     // Snapshot for rollback before we optimistically mutate.
     const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, (old) =>
-      old ? { ...old, paused: true } : old
+    qc.setQueryData<StopwatchStatus>(
+      queryKeys.stopwatchStatus,
+      markStopwatchStatusPaused
     );
     // Optimistic task-state flip — task card shows PAUSED instantly instead
     // of waiting for the 10s tasks poll to return the new state.
     qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-      Array.isArray(old)
-        ? old.map((t: Record<string, unknown>) =>
-            t.task_id === status.task_id ? { ...t, state: "PAUSED" } : t
-          )
-        : old
+      updateTaskStatesInQueryData(old, [
+        { taskId: status.task_id, state: "PAUSED" },
+      ])
     );
     try {
       await pauseStopwatch(reason);
@@ -171,11 +175,9 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
         qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
       qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-        Array.isArray(old)
-          ? old.map((t: Record<string, unknown>) =>
-              t.task_id === status.task_id ? { ...t, state: "EXECUTING" } : t
-            )
-          : old
+        updateTaskStatesInQueryData(old, [
+          { taskId: status.task_id, state: "EXECUTING" },
+        ])
       );
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -190,15 +192,14 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     setBusy(true);
     await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
     const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, (old) =>
-      old ? { ...old, paused: false } : old
+    qc.setQueryData<StopwatchStatus>(
+      queryKeys.stopwatchStatus,
+      markStopwatchStatusResumed
     );
     qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-      Array.isArray(old)
-        ? old.map((t: Record<string, unknown>) =>
-            t.task_id === status.task_id ? { ...t, state: "EXECUTING" } : t
-          )
-        : old
+      updateTaskStatesInQueryData(old, [
+        { taskId: status.task_id, state: "EXECUTING" },
+      ])
     );
     try {
       await resumeStopwatch();
@@ -210,11 +211,9 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
         qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
       }
       qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-        Array.isArray(old)
-          ? old.map((t: Record<string, unknown>) =>
-              t.task_id === status.task_id ? { ...t, state: "PAUSED" } : t
-            )
-          : old
+        updateTaskStatesInQueryData(old, [
+          { taskId: status.task_id, state: "PAUSED" },
+        ])
       );
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -371,55 +370,20 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
     // value instantly. Pre-fix used elapsed=0 + start=now, which made the
     // timer count up from 0:00 for the entire round-trip duration (the
     // operator saw 16 seconds of wrong-value over the Cloudflare Tunnel).
-    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, (old) => {
-      const remainingOthers = (old?.paused_others ?? []).filter(
-        (o) => o.task_id !== target.task_id
-      );
-      // For the source we're demoting: copy what we know from snapshot
-      // and approximate the chip fields (paused_minutes=0 since we just
-      // paused it; elapsed and start carry forward).
-      const newOthers =
-        sourceTaskId && sourceTitle && sourceSessionId
-          ? [
-              {
-                task_id: sourceTaskId,
-                title: sourceTitle,
-                session_id: sourceSessionId,
-                paused_minutes: 0,
-                elapsed_minutes: old?.elapsed_minutes ?? 0,
-                elapsed_seconds: getElapsedSeconds(old),
-                start_time: old?.start_time ?? null,
-                total_paused_minutes: old?.total_paused_minutes ?? 0,
-              },
-              ...remainingOthers,
-            ]
-          : remainingOthers;
-      return {
-        ...(old ?? {}),
-        active: true,
-        task_id: target.task_id,
-        task_title: target.title,
-        session_id: target.session_id,
-        paused: false,
-        elapsed_minutes: target.elapsed_minutes,
-        elapsed_seconds: getElapsedSeconds(target),
-        total_paused_minutes: target.total_paused_minutes,
-        start_time:
-          target.start_time ?? old?.start_time ?? new Date().toISOString(),
-        paused_others: newOthers,
-      } as StopwatchStatus;
-    });
+    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, (old) =>
+      buildOptimisticSwitchStatus(old, target, {
+        taskId: sourceTaskId,
+        title: sourceTitle,
+        sessionId: sourceSessionId,
+      })
+    );
 
     // Optimistic task list: target → EXECUTING, source → PAUSED.
     qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-      Array.isArray(old)
-        ? old.map((t: Record<string, unknown>) => {
-            if (t.task_id === target.task_id) return { ...t, state: "EXECUTING" };
-            if (sourceTaskId && t.task_id === sourceTaskId)
-              return { ...t, state: "PAUSED" };
-            return t;
-          })
-        : old
+      updateTaskStatesInQueryData(old, [
+        { taskId: target.task_id, state: "EXECUTING" },
+        { taskId: sourceTaskId, state: "PAUSED" },
+      ])
     );
 
     try {
@@ -433,14 +397,10 @@ function PausedOthersChips({ others }: { others: PausedOther[] }) {
         qc.setQueryData(queryKeys.stopwatchStatus, statusSnapshot);
       }
       qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-        Array.isArray(old)
-          ? old.map((t: Record<string, unknown>) => {
-              if (t.task_id === target.task_id) return { ...t, state: "PAUSED" };
-              if (sourceTaskId && t.task_id === sourceTaskId)
-                return { ...t, state: "EXECUTING" };
-              return t;
-            })
-          : old
+        updateTaskStatesInQueryData(old, [
+          { taskId: target.task_id, state: "PAUSED" },
+          { taskId: sourceTaskId, state: "EXECUTING" },
+        ])
       );
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
