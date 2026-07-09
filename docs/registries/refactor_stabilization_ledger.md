@@ -10153,3 +10153,78 @@ Rollback note:
   `analytics.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Frontend Timer Invalidation Hook
+
+Seam:
+
+- `frontend-timer-invalidation-hook`
+
+Changed authority:
+
+- No timer command semantics, API payloads, optimistic task state transitions,
+  schema, Redis behavior, or user-facing copy changed.
+- Shared frontend timer-command cache invalidation moved behind a hook.
+
+Removed paths:
+
+- Removed duplicate local `refreshTimerSurfaces` wrappers from
+  `frontend/components/active-timer-banner.tsx`,
+  `frontend/components/pulse/PulseFocusCard.tsx`, and the paused-task switch
+  chip component.
+
+Parked paths:
+
+- Deeper stopwatch controller extraction remains parked.
+- Optimistic pause/resume/switch state transitions remain in
+  `ActiveTimerBanner`; Pulse reflection/start/stop state remains in
+  `PulseFocusCard`.
+
+Moved authority:
+
+- `frontend/lib/hooks/use-timer-command-invalidation.ts` now owns the
+  client-side wrapper around `invalidateTimerCommandSurfaces`.
+- `frontend/lib/query-keys.ts` remains the query-key/invalidation contract.
+
+Issues and classification:
+
+- No GitHub issue was created; this was planned R3 behavior-preserving
+  frontend extraction.
+- Initial `npm run typecheck` failed before local `.next/types` existed after
+  artifact cleanup. This was classified as verifier/order artifact; local
+  `npm run build` generated the types and the rerun passed.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `npm run build` in `frontend`; passed.
+- `npm run typecheck` in `frontend` after local build generated `.next/types`;
+  passed.
+- Holmesberg local-current product-loop proof:
+  `tmp/browser-product-loop/timer-invalidation-hook/result.json`; passed with
+  115 checks.
+- Product-loop timer checks proved start, pause, paused-state survival across
+  Pulse refresh and Calendar navigation, Today banner paused visibility,
+  anchored pause counter across refresh/navigation, resume, stop, execution
+  delta writes, export stopwatch/pause rows, and cleanup with no active timer.
+- Operator read-only proof after mutable pass:
+  `tmp/operator-readonly-stress-2026-07-09T17-31-00-523Z/result.json`;
+  passed with zero count diffs, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional user-visible behavior changed.
+- Both Pulse and Today timer command surfaces still invalidate the same timer,
+  task, task-range, task-evidence, pressure-map, and user caches after
+  successful timer commands.
+- Holmesberg synthetic tasks, deadlines, notifications, stopwatch session, and
+  pause event were cleaned/voided by the product-loop harness.
+
+Rollback note:
+
+- Revert commit `3b1341e` to restore inline local invalidation callbacks in
+  timer command surfaces.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
