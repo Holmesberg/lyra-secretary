@@ -114,6 +114,9 @@ jobs:
         python -m py_compile scripts/scan_refactor_contracts.py
         python scripts/scan_refactor_contracts.py --fail-on-errors
 
+    - name: Run post-wave evidence manifest contract gate
+      run: node scripts/test_post_wave_evidence_manifest_contract.mjs
+
     - name: Run OpenClaw operator relay hermetic test
       run: node scripts/test_openclaw_operator_relay.mjs
 
