@@ -22,6 +22,18 @@ def _clear_ids(db, ids: list[int]) -> None:
     original_uid = get_current_user_id()
     set_current_user_id(None)
     try:
+        fixture_ids = {
+            int(row[0])
+            for row in (
+                db.query(User.user_id)
+                .filter(User.email.like("user-%@cohort.example.com"))
+                .all()
+            )
+        }
+        ids = sorted(set(ids) | fixture_ids)
+        if not ids:
+            db.commit()
+            return
         exposure_ids = [
             row[0]
             for row in (

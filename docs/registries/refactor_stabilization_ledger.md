@@ -10755,3 +10755,61 @@ Rollback note:
   `operator.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Operator Dashboard Test Cleanup Order Hardening
+
+Seam:
+
+- `operator-dashboard-test-cleanup-order-hardening`
+
+Changed authority:
+
+- No runtime authority, provider authority, operator readiness rule, schema,
+  Redis behavior, hosted-public deployment state, or user-visible behavior
+  changed.
+- This is a verifier/test-harness-only seam for #186.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Broader transaction-per-test fixture isolation remains parked.
+- SQLAlchemy warning cleanup for provider subqueries remains parked unless it
+  becomes a hard gate or obscures a real failure.
+
+Moved authority:
+
+- None. The operator-dashboard test cleanup helper now clears all
+  `user-%@cohort.example.com` fixture users in addition to the caller-provided
+  ID range, making the tests order-independent for existing fixture users.
+
+Issues and classification:
+
+- Fixed #186: custom ordering of operator-dashboard tests could leave provider
+  fixture rows outside the next test's cleanup range and create a false
+  implementation-red cockpit result.
+- Classification: verifier/test-harness bug.
+
+Tests and verification:
+
+- Negative proof / reproduced-order check:
+  `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py::test_operator_dashboard_provider_integrity_keeps_provider_completion_as_candidate tests\test_operator_dashboard.py::test_operator_dashboard_read_is_side_effect_free tests\test_operator_dashboard.py::test_operator_dashboard_marks_uninstrumented_metrics -q`;
+  passed.
+- File-order proof:
+  `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py -q`;
+  passed.
+- `git diff --check`; passed.
+
+Behavior parity statement:
+
+- Runtime behavior is unchanged.
+- The verifier now fails less falsely when targeted operator-dashboard tests are
+  run outside file order.
+
+Rollback note:
+
+- Revert this test-only commit to restore the prior cleanup helper.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
