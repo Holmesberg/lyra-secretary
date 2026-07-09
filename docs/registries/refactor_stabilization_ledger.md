@@ -9738,3 +9738,94 @@ Rollback note:
   calendar/table dogfood wrapper behavior.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Active Timer Elapsed Clock Hook Extraction
+
+Wave:
+
+- Branch: `refactor/freeze-closure`.
+- Seam: R3 frontend behavior-preserving extraction.
+- Commit: `83fbb0807067a3296fd9eb3ddc4cc2fb0c669eb1`
+  (`frontend: extract active timer elapsed clock`).
+
+Changed authority:
+
+- No backend, stopwatch command, mutation, Redis, schema, exposure, provider,
+  or clean-data authority changed.
+- Active timer elapsed/pause-counter display ownership moved from
+  `frontend/components/active-timer-banner.tsx` into
+  `frontend/lib/hooks/use-active-stopwatch-elapsed-clock.ts`.
+
+Removed paths:
+
+- Removed the inline elapsed-clock state/effects from
+  `ActiveTimerBanner`.
+- No user-facing timer command, pause reason, resume, switch, stop, or
+  query-invalidation path was removed.
+
+Parked paths:
+
+- Deeper stopwatch controller extraction remains parked until command handlers
+  can be split without mixing UI display state and mutation semantics.
+- Hosted-public mutable dogfood, provider credential mutation, account
+  hard-delete/Redis purge, physical Schedule-X drag/resize synthesis, and
+  OpenClaw pending drain remain parked/gated.
+
+Moved authority:
+
+- Display-only elapsed timing, pause-counter anchoring, server catch-up,
+  pause freeze, and resume rebase moved into the hook.
+- `ActiveTimerBanner` still owns pause/resume/switch buttons, optimistic
+  query updates, command error handling, and pause reason UI.
+
+Issues and classification:
+
+- No product bug issue was created; this was planned frontend extraction.
+- GitHub issue #184 was created for an adjacent verifier/topology discovery:
+  the product-loop local-current wrapper can trust stale frontend state after a
+  production build. The first product-loop attempt failed before mutation with
+  `no backend token resolved`; local-current topology recovery and retry passed.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- Failed pre-mutation verifier artifact, classified as local-current
+  topology/verifier state:
+  `tmp/browser-product-loop/active-timer-elapsed-hook/result.json`.
+- Recovery topology proof:
+  `tmp/active-timer-elapsed-hook-topology-proof.json` passed with
+  `frontend_build_id=local-current`, `backend_build_id=dev`, and
+  `proxy_api=true`.
+- Holmesberg local-current product-loop proof:
+  `tmp/browser-product-loop/active-timer-elapsed-hook-retry1/result.json`
+  passed with 115 checks, including timer start, pause, paused-session
+  survival across refresh/navigation, pause counter anchoring, resume, stop,
+  execution delta fields, export evidence, and cleanup.
+- Operator read-only proof after mutable timer pass:
+  `tmp/operator-readonly-stress-2026-07-09T16-30-26-103Z/result.json`
+  passed with zero count diffs, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional user-visible behavior changed.
+- The active timer still prefers `elapsed_seconds`, never rewinds from
+  minute-truncated polling, freezes while paused/reason-picker is open, anchors
+  `current_pause_seconds`, rebases after resume, and resets on task swap.
+- The product loop ended with no active Holmesberg timer and recorded cleanup
+  for synthetic tasks, deadlines, and notifications.
+- No production repair, schema migration, public deploy/restart,
+  hosted-public artifact mutation, or operator-account product mutation
+  occurred.
+
+Rollback note:
+
+- Revert commit `83fbb0807067a3296fd9eb3ddc4cc2fb0c669eb1` to restore the
+  elapsed-clock state/effects inline in `ActiveTimerBanner`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
