@@ -24,9 +24,9 @@ for (let i = 2; i < process.argv.length; i += 1) {
 
 const frontendOrigin = args.get("frontend") || "https://lyraos.org";
 const apiOrigin = args.get("api") || "https://api.lyraos.org";
-const cookie = process.env.LYRA_COOKIE_HOLMESBERG || process.env.LYRA_COOKIE_ALINASSERSABRY || "";
+const cookie = process.env.LYRA_COOKIE_HOLMESBERG || "";
 if (cookie.length < 100) {
-  throw new Error("LYRA_COOKIE_HOLMESBERG or LYRA_COOKIE_ALINASSERSABRY is missing or looks truncated.");
+  throw new Error("LYRA_COOKIE_HOLMESBERG is missing or looks truncated.");
 }
 
 const outDir = path.join(
