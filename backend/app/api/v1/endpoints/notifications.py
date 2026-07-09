@@ -9,7 +9,6 @@ from app.api.deps import get_db, operator_user_from_scope
 from app.db.scoping import get_current_user_id
 from app.services.notification_queue import (
     ack_user_notifications,
-    drain_user_notifications,
     enqueue_user_notification,
     peek_user_notifications,
 )
@@ -62,8 +61,17 @@ def get_pending(
         items = peek_user_notifications(uid, channel="web", db=db)
         db.commit()
     else:
-        items = drain_user_notifications(uid, channel="openclaw")
-    return {"notifications": items, "count": len(items)}
+        operator_user_from_scope(db, request=request)
+        items = peek_user_notifications(uid, channel="openclaw")
+    return {
+        "notifications": items,
+        "count": len(items),
+        "compatibility_only": channel == "openclaw",
+        "destructive_drain": False,
+        "delivery_authority": (
+            "openclaw_operator_relay" if channel == "openclaw" else "web_ack"
+        ),
+    }
 
 
 @router.get("/web/pending")
@@ -108,11 +116,27 @@ def ack_web_pending(
 
 
 @router.get("/openclaw/pending")
-def get_openclaw_pending(request: Request):
-    """Drain notifications for the OpenClaw/operator delivery channel."""
+def get_openclaw_pending(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Compatibility peek for the operator relay queue.
+
+    OpenClaw delivery truth lives in ``scripts/openclaw_operator_relay.mjs``,
+    which uses processing/ack/requeue semantics. This endpoint is intentionally
+    read-only so HTTP compatibility callers cannot destructively consume Redis
+    items before confirmed delivery.
+    """
     uid = _require_explicit_identity(request)
-    items = drain_user_notifications(uid, channel="openclaw")
-    return {"notifications": items, "count": len(items)}
+    operator_user_from_scope(db, request=request)
+    items = peek_user_notifications(uid, channel="openclaw")
+    return {
+        "notifications": items,
+        "count": len(items),
+        "compatibility_only": True,
+        "destructive_drain": False,
+        "delivery_authority": "openclaw_operator_relay",
+    }
 
 
 # ---------------------------------------------------------------------------

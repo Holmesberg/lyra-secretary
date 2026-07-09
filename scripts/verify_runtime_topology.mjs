@@ -18,7 +18,12 @@ function argValue(name, fallback = null) {
 }
 
 const topologyArg = argValue("--topology", "public");
+const outFile = argValue("--out-file", null);
+const frontendOverride = argValue("--frontend", argValue("--frontend-origin", null));
+const apiOverride = argValue("--api", argValue("--api-origin", null));
+const nextauthOverride = argValue("--nextauth", argValue("--nextauth-url", null));
 const skipBrowser = process.argv.includes("--skip-browser");
+const proxyApi = process.argv.includes("--proxy-api");
 const selected =
   topologyArg === "both"
     ? Object.keys(contract.topologies)
@@ -32,6 +37,163 @@ function fail(message, detail = undefined) {
 
 function normalize(value) {
   return String(value || "").replace(/\/$/, "");
+}
+
+function isLocalOrigin(value) {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function topologySpec(topologyName) {
+  const topology = contract.topologies[topologyName];
+  if (topology) return { ...topology, topology_class: topologyName };
+
+  if (topologyName !== "local-current") {
+    fail(`unknown topology ${topologyName}`);
+  }
+
+  const frontendOrigin =
+    frontendOverride || process.env.LYRA_FRONTEND_ORIGIN || "http://localhost:3013";
+  const apiOrigin = apiOverride || process.env.LYRA_API_ORIGIN || "http://localhost:8000";
+  const nextauthUrl = nextauthOverride || process.env.NEXTAUTH_URL || frontendOrigin;
+
+  if (![frontendOrigin, apiOrigin, nextauthUrl].every(isLocalOrigin)) {
+    fail("local-current topology only accepts explicit localhost/127.0.0.1 origins", {
+      frontend_origin: frontendOrigin,
+      api_origin: apiOrigin,
+      nextauth_url: nextauthUrl,
+    });
+  }
+
+  return {
+    topology_class: "local-current",
+    frontend_origin: frontendOrigin,
+    api_origin: apiOrigin,
+    nextauth_url: nextauthUrl,
+    local_current: true,
+    proxy_api: proxyApi,
+  };
+}
+
+function writeResult(payload) {
+  if (!outFile) return;
+  const resolved = path.resolve(repoRoot, outFile);
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
+function relativePath(filePath) {
+  return path.relative(repoRoot, filePath).replace(/\\/g, "/");
+}
+
+function tailText(value, maxChars = 4_000) {
+  const text = String(value ?? "");
+  if (text.length <= maxChars) return text;
+  return text.slice(text.length - maxChars);
+}
+
+function readTailIfExists(filePath, maxChars = 4_000) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) return null;
+    return {
+      path: relativePath(filePath),
+      tail: tailText(fs.readFileSync(filePath, "utf8"), maxChars),
+    };
+  } catch (error) {
+    return {
+      path: relativePath(filePath),
+      read_error: error.message,
+    };
+  }
+}
+
+function localFrontendLogTails() {
+  const logs = [];
+  const directCandidates = [
+    path.join(repoRoot, "tmp", "frontend-dev-3000.log"),
+    path.join(repoRoot, "tmp", "frontend-dev-3000.err.log"),
+  ];
+  for (const candidate of directCandidates) {
+    const tail = readTailIfExists(candidate);
+    if (tail) logs.push(tail);
+  }
+
+  const devLogDir = path.join(repoRoot, "tmp", "local-frontend-dev");
+  try {
+    if (fs.existsSync(devLogDir)) {
+      const recent = fs
+        .readdirSync(devLogDir)
+        .filter((name) => name.endsWith(".log"))
+        .map((name) => {
+          const filePath = path.join(devLogDir, name);
+          return { filePath, mtimeMs: fs.statSync(filePath).mtimeMs };
+        })
+        .sort((a, b) => b.mtimeMs - a.mtimeMs)
+        .slice(0, 4);
+      for (const item of recent) {
+        const tail = readTailIfExists(item.filePath);
+        if (tail) logs.push(tail);
+      }
+    }
+  } catch (error) {
+    logs.push({
+      path: relativePath(devLogDir),
+      read_error: error.message,
+    });
+  }
+  return logs;
+}
+
+function bodyExcerpt(body) {
+  if (body == null) return null;
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  return tailText(text, 1_500);
+}
+
+function endpointFailureDetail(topologyName, endpointName, url, result) {
+  const status = result?.response?.status ?? null;
+  const detail = {
+    classification: "topology/deployment_bug",
+    topology: topologyName,
+    endpoint: endpointName,
+    url,
+    status,
+    body_excerpt: bodyExcerpt(result?.body),
+  };
+
+  if (topologyName === "local" && endpointName === "frontend" && status >= 500) {
+    const logs = localFrontendLogTails();
+    const combinedLogs = logs.map((entry) => entry.tail || entry.read_error || "").join("\n");
+    const nextCacheSignals = [
+      "app-paths-manifest.json",
+      "_buildManifest.js.tmp",
+      ".next",
+      "ENOENT",
+    ].filter((signal) => combinedLogs.includes(signal));
+
+    detail.classification = "verifier/topology_bug";
+    detail.likely_cause = nextCacheSignals.length
+      ? "local Next dev cache/build artifact state is stale or corrupted"
+      : "local frontend returned a server error before topology could be verified";
+    detail.detected_signals = nextCacheSignals;
+    detail.suggested_recovery = [
+      "Stop the local frontend dev server on port 3000.",
+      "From frontend/, run npm run dev:clean, or rerun the authorized local frontend restart helper.",
+      "Rerun the same browser verifier; do not classify this as a product invariant failure until topology passes.",
+    ];
+    detail.log_tails = logs;
+  }
+
+  return detail;
 }
 
 async function fetchJson(url, init = {}) {
@@ -65,13 +227,14 @@ async function fetchJson(url, init = {}) {
   }
 }
 
-function assertNoCrossTopologyPoison(topologyName, urls) {
+function assertNoCrossTopologyPoison(topologyName, urls, allowedOrigins = []) {
+  const allowed = new Set(allowedOrigins.map(normalize).filter(Boolean));
   const otherOrigins = Object.entries(contract.topologies)
     .filter(([name]) => name !== topologyName)
     .flatMap(([, topology]) => [topology.frontend_origin, topology.api_origin, topology.nextauth_url])
     .map(normalize);
   const poisoned = urls.filter((url) =>
-    otherOrigins.some((origin) => origin && normalize(url).startsWith(origin))
+    otherOrigins.some((origin) => origin && !allowed.has(origin) && normalize(url).startsWith(origin))
   );
   if (poisoned.length) {
     fail(`cross-topology request detected for ${topologyName}`, poisoned);
@@ -115,18 +278,21 @@ async function verifyCors(topologyName, topology) {
 }
 
 async function verifyTopology(topologyName) {
-  const topology = contract.topologies[topologyName];
-  if (!topology) fail(`unknown topology ${topologyName}`);
+  const topology = topologySpec(topologyName);
+  const localCurrent = Boolean(topology.local_current);
+  const allowedOrigins = [
+    topology.frontend_origin,
+    topology.api_origin,
+    topology.nextauth_url,
+  ];
 
-  const frontend = await fetchJson(`${topology.frontend_origin}/api/topology`);
+  const frontendUrl = `${topology.frontend_origin}/api/topology`;
+  const frontend = await fetchJson(frontendUrl);
   if (!frontend.response.ok) {
-    fail(`frontend topology endpoint failed for ${topologyName}`, frontend.response.status);
-  }
-  if (frontend.body.verified_topology !== true) {
-    fail(`frontend topology is not verified for ${topologyName}`, frontend.body);
-  }
-  if (frontend.body.topology_class !== topologyName) {
-    fail(`frontend topology class mismatch for ${topologyName}`, frontend.body);
+    fail(
+      `frontend topology endpoint failed for ${topologyName}`,
+      endpointFailureDetail(topologyName, "frontend", frontendUrl, frontend)
+    );
   }
   if (normalize(frontend.body.frontend_origin) !== normalize(topology.frontend_origin)) {
     fail(`frontend origin mismatch for ${topologyName}`, frontend.body);
@@ -137,33 +303,53 @@ async function verifyTopology(topologyName) {
   if (normalize(frontend.body.nextauth_url) !== normalize(topology.nextauth_url)) {
     fail(`NextAuth URL mismatch for ${topologyName}`, frontend.body);
   }
+  if (!localCurrent) {
+    if (frontend.body.verified_topology !== true) {
+      fail(`frontend topology is not verified for ${topologyName}`, frontend.body);
+    }
+    if (frontend.body.topology_class !== topologyName) {
+      fail(`frontend topology class mismatch for ${topologyName}`, frontend.body);
+    }
+  }
 
-  const backend = await fetchJson(`${topology.api_origin}/v1/health/topology`, {
+  const backendUrl = `${topology.api_origin}/v1/health/topology`;
+  const backend = await fetchJson(backendUrl, {
     headers: { Origin: topology.frontend_origin },
   });
   if (!backend.response.ok) {
-    fail(`backend topology endpoint failed for ${topologyName}`, backend.response.status);
-  }
-  if (backend.body.verified_topology !== true) {
-    fail(`backend topology is not verified for ${topologyName}`, backend.body);
-  }
-  if (backend.body.topology_class !== topologyName) {
-    fail(`backend topology class mismatch for ${topologyName}`, backend.body);
+    fail(
+      `backend topology endpoint failed for ${topologyName}`,
+      endpointFailureDetail(topologyName, "backend", backendUrl, backend)
+    );
   }
   if (normalize(backend.body.api_origin) !== normalize(topology.api_origin)) {
     fail(`backend API origin mismatch for ${topologyName}`, backend.body);
   }
+  if (!localCurrent) {
+    if (backend.body.verified_topology !== true) {
+      fail(`backend topology is not verified for ${topologyName}`, backend.body);
+    }
+    if (backend.body.topology_class !== topologyName) {
+      fail(`backend topology class mismatch for ${topologyName}`, backend.body);
+    }
+  }
 
-  const auth = await fetchJson(`${topology.frontend_origin}/api/auth/providers`);
+  const authUrl = `${topology.frontend_origin}/api/auth/providers`;
+  const auth = await fetchJson(authUrl);
   if (!auth.response.ok) {
-    fail(`auth provider endpoint failed for ${topologyName}`, auth.response.status);
+    fail(
+      `auth provider endpoint failed for ${topologyName}`,
+      endpointFailureDetail(topologyName, "nextauth_provider", authUrl, auth)
+    );
   }
   const google = auth.body?.google;
   if (!google?.signinUrl?.startsWith(`${topology.nextauth_url}/api/auth/signin/google`)) {
     fail(`auth provider URL mismatch for ${topologyName}`, google);
   }
 
-  await verifyCors(topologyName, topology);
+  if (!localCurrent || !proxyApi) {
+    await verifyCors(topologyName, topology);
+  }
 
   if (!skipBrowser) {
     const browser = await chromium.launch({ headless: true });
@@ -175,12 +361,14 @@ async function verifyTopology(topologyName) {
     await page.evaluate(async () => {
       await fetch("/api/topology");
     });
-    await page.evaluate(async (apiOrigin) => {
-      await fetch(`${apiOrigin}/v1/health/topology`);
-    }, topology.api_origin);
+    if (!localCurrent || !proxyApi) {
+      await page.evaluate(async (apiOrigin) => {
+        await fetch(`${apiOrigin}/v1/health/topology`);
+      }, topology.api_origin);
+    }
     await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
     await browser.close();
-    assertNoCrossTopologyPoison(topologyName, requests);
+    assertNoCrossTopologyPoison(topologyName, requests, allowedOrigins);
   }
 
   return {
@@ -190,6 +378,7 @@ async function verifyTopology(topologyName) {
     verified_topology: true,
     frontend_build_id: frontend.body.build_id,
     backend_build_id: backend.body.build_id,
+    proxy_api: Boolean(topology.proxy_api),
   };
 }
 
@@ -198,27 +387,35 @@ try {
   for (const topologyName of selected) {
     results.push(await verifyTopology(topologyName));
   }
-  console.log(JSON.stringify({ ok: true, checked: results }, null, 2));
+  const payload = {
+    ok: true,
+    classification: "topology_verified",
+    topology: topologyArg,
+    skip_browser: skipBrowser,
+    checked: results,
+  };
+  writeResult(payload);
+  console.log(JSON.stringify(payload, null, 2));
 } catch (error) {
-  console.error(
-    JSON.stringify(
-      {
-        ok: false,
-        error: error.message,
-        detail:
-          error.detail ??
-          (error.cause
-            ? {
-                cause_message: error.cause.message,
-                cause_code: error.cause.code,
-                cause_host: error.cause.hostname ?? error.cause.host,
-                cause_port: error.cause.port,
-              }
-            : null),
-      },
-      null,
-      2
-    )
-  );
+  const detail =
+    error.detail ??
+    (error.cause
+      ? {
+          cause_message: error.cause.message,
+          cause_code: error.cause.code,
+          cause_host: error.cause.hostname ?? error.cause.host,
+          cause_port: error.cause.port,
+        }
+      : null);
+  const payload = {
+    ok: false,
+    classification: detail?.classification ?? "topology/deployment_bug",
+    topology: topologyArg,
+    skip_browser: skipBrowser,
+    error: error.message,
+    detail,
+  };
+  writeResult(payload);
+  console.error(JSON.stringify(payload, null, 2));
   process.exit(1);
 }

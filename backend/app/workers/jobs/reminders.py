@@ -10,7 +10,10 @@ from app.db.session import SessionLocal, engine
 from app.db.models import Task, TaskState, User
 from app.services.notification_queue import enqueue_user_notification
 from app.services.operator_notifier import notify_operator
-from app.services.output_surfaces import emit_surface_render, emit_surface_suppression
+from app.services.output_surfaces import (
+    create_output_surface_decision,
+    emit_surface_suppression,
+)
 from app.utils.time_utils import now_utc, to_local
 from app.utils.redis_client import RedisClient
 from app.workers.jobs._per_user import for_each_user
@@ -150,6 +153,7 @@ def _run_for_one_user(db, user: User):
 
     for task in tasks:
         notified_key = f"reminder_sent:{user.user_id}:{task.task_id}"
+        dedupe_key = f"reminder:{user.user_id}:{task.task_id}"
         if redis.client.exists(notified_key):
             continue
 
@@ -164,29 +168,37 @@ def _run_for_one_user(db, user: User):
         )
 
         delivered = False
-        queued = False
         try:
-            enqueue_user_notification(
-                user.user_id,
-                {"type": "reminder", "message": message},
-            )
-            queued = True
-            emit_surface_render(
+            decision = create_output_surface_decision(
                 db,
                 surface_id="worker.reminder",
                 user_id=user.user_id,
                 task_id=task.task_id,
-                content_snapshot=message,
+                decision_status="queued",
                 content_template_id="pre_task_reminder",
-                initiative="system",
                 trigger_source="worker.reminder",
                 eligible_at=now,
-                rendered_at=now,
+                delivered_at=None,
+            )
+            enqueue_user_notification(
+                user.user_id,
+                {
+                    "type": "reminder",
+                    "message": message,
+                    "task_id": task.task_id,
+                    "dedupe_key": dedupe_key,
+                    "surface_id": "worker.reminder",
+                    "exposure_id": decision.exposure_id,
+                },
+                db=db,
+                surface_id="worker.reminder",
+                exposure_id=decision.exposure_id,
+                dedupe_key=dedupe_key,
+                content_snapshot=message,
             )
             db.commit()
             delivered = True
         except Exception as e:
-            delivered = queued
             db.rollback()
             try:
                 emit_surface_suppression(

@@ -299,9 +299,9 @@ def _ws_call_mock(courses, assignments_by_course, submission_status_by_assign):
     return _call
 
 
-def test_sync_user_marks_submitted_assignment_complete(db, monkeypatch):
+def test_sync_user_records_submitted_assignment_as_candidate(db, monkeypatch):
     """Happy path: course code matches, title matches, Moodle says
-    submitted → Lyra deadline transitions to completed."""
+    submitted -> Lyra records provider completion evidence only."""
     user = _make_user(db)
     set_current_user_id(user.user_id)
     d = _make_deadline(
@@ -334,16 +334,65 @@ def test_sync_user_marks_submitted_assignment_complete(db, monkeypatch):
     db.refresh(d)
 
     assert res.matched == 1
-    assert res.marked_complete == 1
-    assert d.state == "completed"
-    assert d.completed_at is not None
-    assert "HandsOn Lab8 is due" in res.marked_titles
+    assert res.marked_complete == 0
+    assert res.completion_candidates == 1
+    assert d.state == "planned"
+    assert d.completed_at is None
+    assert "HandsOn Lab8 is due" in res.completion_candidate_titles
     event = db.query(DeadlineCompletionEvent).filter(
         DeadlineCompletionEvent.deadline_id == d.deadline_id
     ).one()
     assert event.completion_source == "moodle_submission"
     assert event.time_provenance == "external_import_sync_time"
-    assert event.completed_at_utc == d.completed_at
+    assert event.completed_at_utc is not None
+    assert d.completed_at is None
+
+
+def test_sync_user_submission_candidate_is_idempotent(db, monkeypatch):
+    """Repeated WS sync must not duplicate provider completion evidence."""
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    d = _make_deadline(
+        db, user.user_id,
+        title="HandsOn Lab8 is due",
+        due_at=datetime(2026, 4, 24, 20, 59, 0),
+        category_hint="CSE281",
+    )
+
+    courses = [{"id": 100, "shortname": "CSE281 (UG2023) - Software Engineering"}]
+    assignments_by_course = {
+        100: [{
+            "id": 45928,
+            "name": "HandsOn Lab8",
+            "duedate": int(datetime(2026, 4, 24, 20, 59, 0).timestamp()),
+        }],
+    }
+    submission_status_by_assign = {
+        45928: {"lastattempt": {"submission": {"status": "submitted"}}}
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+
+    res1 = sync_user(user, "https://lms.test/", db)
+    db.commit()
+    res2 = sync_user(user, "https://lms.test/", db)
+    db.commit()
+    db.refresh(d)
+
+    assert res1.completion_candidates == 1
+    assert res2.completion_candidates == 0
+    assert d.state == "planned"
+    assert d.completed_at is None
+    events = db.query(DeadlineCompletionEvent).filter(
+        DeadlineCompletionEvent.deadline_id == d.deadline_id,
+        DeadlineCompletionEvent.completion_source == "moodle_submission",
+    ).all()
+    assert len(events) == 1
 
 
 def test_sync_user_uses_moodle_submission_timestamp_for_matched_deadline(db, monkeypatch):
@@ -389,8 +438,10 @@ def test_sync_user_uses_moodle_submission_timestamp_for_matched_deadline(db, mon
     db.commit()
     db.refresh(d)
 
-    assert res.marked_complete == 1
-    assert d.completed_at == submitted_at
+    assert res.marked_complete == 0
+    assert res.completion_candidates == 1
+    assert d.state == "planned"
+    assert d.completed_at is None
     event = db.query(DeadlineCompletionEvent).filter(
         DeadlineCompletionEvent.deadline_id == d.deadline_id
     ).one()
@@ -481,7 +532,7 @@ def test_sync_user_skips_terminal_state_deadlines(db, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_sync_user_backfills_submitted_assignment_as_completed(db, monkeypatch):
+def test_sync_user_backfills_submitted_assignment_as_completion_candidate(db, monkeypatch):
     """Operator's primary ask: when WS sees a submitted assignment that
     isn't represented in Lyra (iCal feed dropped it), create a completed
     deadline so it shows up on the Done tab."""
@@ -520,7 +571,8 @@ def test_sync_user_backfills_submitted_assignment_as_completed(db, monkeypatch):
     res = sync_user(user, "https://lms.test/", db)
     db.commit()
 
-    assert res.backfilled_completed == 1
+    assert res.backfilled_completed == 0
+    assert res.backfilled_completion_candidates == 1
     assert res.backfilled_missed == 0
     assert res.backfilled_planned == 0
 
@@ -529,8 +581,8 @@ def test_sync_user_backfills_submitted_assignment_as_completed(db, monkeypatch):
     ).all()
     assert len(backfilled) == 1
     bf = backfilled[0]
-    assert bf.state == "completed"
-    assert bf.completed_at == submitted_at
+    assert bf.state == "missed"
+    assert bf.completed_at is None
     assert bf.title == "HandsOn1 Lab2"
     assert bf.external_id == "44612"
     assert bf.category_hint == "CSE281"
@@ -654,15 +706,61 @@ def test_sync_user_backfill_dedupes_against_existing_ical_deadline(db, monkeypat
     db.commit()
     db.refresh(existing)
 
-    # iCal deadline got marked complete via matched_pairs; no backfill.
+    # iCal deadline got completion candidate evidence via matched_pairs; no backfill.
     assert res.matched == 1
-    assert res.marked_complete == 1
+    assert res.marked_complete == 0
+    assert res.completion_candidates == 1
     assert res.backfilled_completed == 0
-    assert existing.state == "completed"
+    assert existing.state == "planned"
     bf = db.query(DeadlineModel).filter(
         DeadlineModel.external_source == "moodle_ws_backfill"
     ).all()
     assert bf == []
+
+
+def test_sync_user_backfill_skips_native_duplicate_deadline(db, monkeypatch):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+
+    due = datetime(2026, 4, 24, 20, 59, 0)
+    native = Deadline(
+        deadline_id=str(uuid4()),
+        user_id=user.user_id,
+        title="HandsOn Lab8",
+        due_at_utc=due,
+        state="planned",
+        external_source=None,
+        external_id=None,
+        category_hint="CSE281",
+    )
+    db.add(native)
+    db.commit()
+
+    courses = [{"id": 100, "shortname": "CSE281"}]
+    assignments_by_course = {
+        100: [{"id": 45928, "name": "HandsOn Lab8", "duedate": int(due.timestamp())}],
+    }
+    submission_status_by_assign = {
+        45928: {"lastattempt": {"submission": {"status": "submitted"}}}
+    }
+
+    import os
+    os.environ["MOODLE_WS_USERID"] = "34554"
+    monkeypatch.setattr(
+        "app.services.moodle_submissions_sync._MoodleWS.call",
+        _ws_call_mock(courses, assignments_by_course, submission_status_by_assign),
+    )
+    res = sync_user(user, "https://lms.test/", db)
+    db.commit()
+
+    assert res.backfilled_completion_candidates == 0
+    assert (
+        db.query(Deadline)
+        .filter(Deadline.user_id == user.user_id)
+        .filter(Deadline.external_source == "moodle_ws_backfill")
+        .count()
+        == 0
+    )
 
 
 def test_sync_user_backfill_skips_assignments_without_duedate(db, monkeypatch):
@@ -874,9 +972,16 @@ def test_sync_user_backfill_is_idempotent(db, monkeypatch):
     res2 = sync_user(user, "https://lms.test/", db)
     db.commit()
 
-    assert res1.backfilled_completed == 1
+    assert res1.backfilled_completed == 0
+    assert res1.backfilled_completion_candidates == 1
     assert res2.backfilled_completed == 0  # second run dedups
+    assert res2.backfilled_completion_candidates == 0
     bf = db.query(DeadlineModel).filter(
         DeadlineModel.external_source == "moodle_ws_backfill"
     ).all()
     assert len(bf) == 1
+    events = db.query(DeadlineCompletionEvent).filter(
+        DeadlineCompletionEvent.deadline_id == bf[0].deadline_id,
+        DeadlineCompletionEvent.completion_source == "moodle_backfill_submission",
+    ).all()
+    assert len(events) == 1

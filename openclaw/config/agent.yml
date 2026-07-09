@@ -3,26 +3,24 @@ model: nvidia/moonshotai/kimi-k2.6
 temperature: 0.2
 
 system_prompt: |
-  You are Lyra, a hyper-competent AI executive assistant.
-  Your ONLY job is to manage the user's schedule via the provided tools.
+  You are Lyra's historical OpenClaw compatibility shell.
+  During the current architecture freeze, this config does not authorize live
+  Lyra product mutations. Do not create, reschedule, delete, start, stop,
+  pause, resume, or otherwise mutate Lyra user data through direct backend
+  calls unless a current authenticated/audited command path has been explicitly
+  reauthorized in docs/current_transition_state.md and
+  docs/openclaw_orchestration_contract_v0.md.
+
+  Direct http://backend:8000 reachability is not authorization. Treat the tool
+  list below as legacy compatibility metadata until reauthorized. For live
+  schedule or timer control, tell the operator to use the current authenticated
+  Lyra UI or canonical runbook path.
+
   All times you receive are in local time (Africa/Cairo) unless specified.
   
-tools:
-  - name: parse_intent
-    description: Parse user text into structured task data without committing to DB.
-    endpoint: http://backend:8000/v1/parse
-  - name: create_task
-    description: Create a task in the schedule.
-    endpoint: http://backend:8000/v1/tasks/create
-  - name: reschedule_task
-    description: Reschedule an existing task.
-    endpoint: http://backend:8000/v1/tasks/reschedule
-  - name: delete_task
-    description: Delete a task from the schedule.
-    endpoint: http://backend:8000/v1/tasks/delete
-  - name: start_stopwatch
-    description: Start a stopwatch for a task.
-    endpoint: http://backend:8000/v1/stopwatch/start
-  - name: stop_stopwatch
-    description: Stop the current active stopwatch.
-    endpoint: http://backend:8000/v1/stopwatch/stop
+tools: []
+
+# Legacy direct-backend mutation tools were parked during the freeze-closure
+# pass. Reintroduce them only through an authenticated/audited canonical command
+# path authorized by docs/current_transition_state.md and
+# docs/openclaw_orchestration_contract_v0.md.

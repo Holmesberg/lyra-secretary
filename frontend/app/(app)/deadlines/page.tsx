@@ -11,6 +11,7 @@ import {
 } from "@/lib/deadlines";
 import { DeadlineModal } from "@/components/deadline-modal";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 const STATE_LABEL: Record<DeadlineState, string> = {
@@ -85,7 +86,13 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
     }
   }
   return (
-    <div className="terminal-panel flex items-start gap-3 p-4">
+    <div
+      data-testid="deadline-row"
+      data-deadline-id={deadline.deadline_id}
+      data-deadline-title={deadline.title}
+      data-deadline-state={deadline.state}
+      className="terminal-panel flex items-start gap-3 p-4"
+    >
       <div className="flex-1 space-y-1">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span className="text-sm font-medium text-parchment">
@@ -99,7 +106,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
           >
             {STATE_LABEL[deadline.state]}
           </span>
-          {deadline.external_source === "moodle_ics" && (
+          {deadline.external_source?.startsWith("moodle") && (
             <span
               title="Imported from Moodle"
               className="rounded border border-ember/30 bg-ember/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ember"
@@ -126,13 +133,14 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
       <div className="flex shrink-0 flex-col gap-1">
         {/* One-click mark-done — operator pain point 2026-05-01 with
             Moodle-imported overdue items they completed out-of-
-            band but Lyra had no way to know about (iCal carries due
+            band but Barzakh had no way to know about (iCal carries due
             dates, NOT submission status). Surfaced on planned/active
             plus missed deadlines, because missed only means the sweeper
             passed the due time; it does not prove the user failed to
             complete the real-world obligation. */}
         {canMarkDone && (
           <button
+            data-testid="deadline-row-done"
             type="button"
             onClick={handleMarkDone}
             disabled={marking}
@@ -143,6 +151,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
           </button>
         )}
         <button
+          data-testid="deadline-row-edit"
           type="button"
           onClick={onEdit}
           className="rounded-sm border border-hairline bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:border-signal/40 hover:text-parchment"
@@ -153,6 +162,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
           (confirming ? (
             <div className="flex gap-1">
               <button
+                data-testid="deadline-row-void-confirm"
                 type="button"
                 onClick={onVoid}
                 className="rounded-sm bg-ember/20 px-2 py-1 text-[11px] text-ember hover:bg-ember/30"
@@ -160,6 +170,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
                 Confirm
               </button>
               <button
+                data-testid="deadline-row-void-cancel"
                 type="button"
                 onClick={() => setConfirming(false)}
                 className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust"
@@ -169,6 +180,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
             </div>
           ) : (
             <button
+              data-testid="deadline-row-void"
               type="button"
               onClick={() => setConfirming(true)}
               className="rounded-sm border border-hairline bg-void-2 px-2 py-1 text-[11px] text-dust-deep transition-colors hover:border-ember/40 hover:text-ember"
@@ -264,7 +276,7 @@ function Section({
 export default function DeadlinesPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
-    queryKey: ["deadlines", "all"],
+    queryKey: queryKeys.deadlinesAll,
     queryFn: () => listDeadlines(),
     staleTime: 60_000,
   });
@@ -346,11 +358,11 @@ export default function DeadlinesPage() {
 
   async function handleVoid(d: DeadlineResponse) {
     await voidDeadline(d.deadline_id);
-    qc.invalidateQueries({ queryKey: ["deadlines"] });
+    qc.invalidateQueries({ queryKey: queryKeys.deadlines });
   }
 
   function handleSaved() {
-    qc.invalidateQueries({ queryKey: ["deadlines"] });
+    qc.invalidateQueries({ queryKey: queryKeys.deadlines });
   }
 
   return (
@@ -359,7 +371,9 @@ export default function DeadlinesPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-parchment">
           Deadlines
         </h1>
-        <Button onClick={openCreate}>+ New deadline</Button>
+        <Button data-testid="deadlines-new" onClick={openCreate}>
+          + New deadline
+        </Button>
       </div>
 
       {isLoading && (
@@ -368,7 +382,7 @@ export default function DeadlinesPage() {
 
       {!isLoading && deadlines.length === 0 && (
         <p className="text-sm text-dust">
-          Add a deadline to anchor your tasks. Lyra binds tasks automatically
+          Add a deadline to anchor your tasks. Barzakh binds tasks automatically
           when titles match — or you can pick one explicitly when creating a
           task.
         </p>

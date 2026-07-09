@@ -1,6 +1,6 @@
 # Testing patterns — cross-user isolation seam guide
 
-**Status:** canonical reference. Last revised 2026-04-27 (Part A of E→A→B→D→C plan).
+**Status:** canonical test-reference. Last revised 2026-07-01.
 **Audience:** anyone writing a backend test in this repo.
 **Why this exists:** Lyra's per-user scoping is enforced through TWO different seams depending on whether the test goes through the FastAPI middleware or talks directly to the ORM/services. Mixing the seams silently produces tests that pass for the wrong reason. This doc names the patterns explicitly so the trap is visible.
 
@@ -75,9 +75,19 @@ def test_task_manager_creates_task_for_user_77(db):
 
 **Seam:** `headers=auth_headers(uid)` on every `client.X(...)` call.
 
-**Why it works:** The `UserScopeMiddleware` at `backend/app/main.py:44-88` reads `X-User-Id` from request headers and calls `set_current_user_id(uid)` for the duration of the request handler. **It overrides whatever the ContextVar was set to outside the request** — calling `set_current_user_id(77)` in your fixture and then `client.post("/endpoint", ...)` without the X-User-Id header silently runs as `user_id=1` (the middleware's default for missing-header fallback at `main.py:50, 76-82`).
+**Why it works:** The runtime auth/scoping layer rejects `X-User-Id` outside
+test mode and otherwise fails closed when no request identity exists. The test
+harness explicitly installs `allow_test_identity_header=True` and a test DB
+override that can default missing TestClient identity to user `1`. **A
+ContextVar set outside the request is not enough for TestClient calls** —
+calling `set_current_user_id(77)` in your fixture and then
+`client.post("/endpoint", ...)` without the X-User-Id header can silently run
+under the test harness default instead of user `77`.
 
-This is the single most-common cross-user-isolation trap. The footgun is that the test PASSES — the middleware just operates on whatever data user_id=1 has.
+This is the single most-common cross-user-isolation trap. The footgun is that
+the test PASSES because it exercised the test harness default, not the seeded
+user. Do not generalize this to production: production/runtime requests must
+use authenticated identity and do not get a public `user_id=1` fallback.
 
 ```python
 import pytest
@@ -110,7 +120,7 @@ def test_archetype_endpoint_for_user_77(db):
 
 **The footgun in code form**:
 ```python
-# ❌ WRONG — silently runs as user_id=1, NOT user 77
+# ❌ WRONG — in tests this may silently run as the harness default, NOT user 77
 set_current_user_id(77)
 resp = client.post("/v1/something", json={...})
 
@@ -161,7 +171,19 @@ def test_user_a_cannot_see_user_b_deadlines(db):
 
 ---
 
-## The middleware's default-to-user-id-1 footgun
+## The test-harness default identity footgun
+
+Current runtime requests must resolve authenticated identity and fail closed
+when identity is missing. `X-User-Id` is test-only unless the app explicitly
+sets `allow_test_identity_header=True`.
+
+Backend tests deliberately install that override in `backend/tests/conftest.py`
+so TestClient can exercise multi-user paths without real login cookies. The
+same test harness can also default missing TestClient identity to user `1`.
+The historical middleware note below is retained only to explain old tests; do
+not treat it as current runtime behavior.
+
+### Historical Note: Old Middleware Default
 
 `backend/app/main.py:50, 76-82`:
 
@@ -179,11 +201,20 @@ if not resolved:
 set_current_user_id(user_id)
 ```
 
-This default exists for backwards compatibility with single-user dev clients. It is **not** a bug — it's a deliberate compatibility shim documented at line 29 of `main.py`. But it means **any TestClient call without X-User-Id silently runs as the operator (user_id=1)**.
+This historical default existed for backwards compatibility with earlier
+single-user dev clients. Current runtime auth fails closed; in tests, the
+important point is that any TestClient call without `auth_headers(uid)` may
+exercise a harness default instead of the user you seeded.
 
-If your test seeds user_id=77's data and then calls `client.get(...)` without `auth_headers(77)`, the request runs as user_id=1. user_id=1 has no rows in user 77's seeded data, so most tests fall through to "empty response" or 404 — which often happens to match the test's expectation, hiding the bug.
+If your test seeds user_id=77's data and then calls `client.get(...)` without
+`auth_headers(77)`, the request may run under the wrong test identity. That
+identity has no rows in user 77's seeded data, so most tests fall through to
+"empty response" or 404, which often happens to match the test's expectation
+and hides the bug.
 
-The only way the bug surfaces is when user_id=1 happens to have data that satisfies a different assertion. **Do not rely on coincidence.** Use `auth_headers(uid)` every time.
+The only way the bug surfaces is when the wrong test identity happens to have
+data that satisfies a different assertion. **Do not rely on coincidence.** Use
+`auth_headers(uid)` every time.
 
 ---
 
@@ -196,7 +227,7 @@ def auth_headers(user_id: int) -> dict:
     """Build an X-User-Id header dict for TestClient requests.
 
     Always use this when calling client.{post,get,put,delete}. Without it,
-    UserScopeMiddleware defaults to user_id=1 silently.
+    the test harness may use its default identity instead of your seeded user.
     """
     return {"X-User-Id": str(user_id)}
 ```

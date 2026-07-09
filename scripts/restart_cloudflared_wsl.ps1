@@ -5,6 +5,10 @@ param(
 $ErrorActionPreference = "Stop"
 $forceValue = if ($ForceRestart) { "1" } else { "0" }
 
+function ConvertTo-Lf([string]$Text) {
+    return ($Text -replace "`r`n", "`n" -replace "`r", "`n")
+}
+
 $dnsRepairScript = @'
 set -euo pipefail
 
@@ -19,7 +23,7 @@ EOF
 getent hosts region1.v2.argotunnel.com >/dev/null
 '@
 
-$dnsEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($dnsRepairScript))
+$dnsEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Lf $dnsRepairScript)))
 & wsl.exe -u root -e bash -lc "echo $dnsEncoded | base64 -d | bash"
 
 if ($LASTEXITCODE -ne 0) {
@@ -78,7 +82,7 @@ echo "== tunnel info =="
 
 $bashScript = $bashScript.Replace("__FORCE_RESTART__", $forceValue)
 
-$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bashScript))
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Lf $bashScript)))
 & wsl.exe -e bash -lc "echo $encoded | base64 -d | bash"
 
 if ($LASTEXITCODE -ne 0) {

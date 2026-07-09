@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { queryKeys } from "@/lib/query-keys";
 
 type ReadinessStatus = "red" | "yellow" | "green";
 
@@ -21,6 +22,14 @@ interface CohortReadiness extends SectionMeta {
   warnings: string[];
   minimum_fix_set: string[];
   safe_to_invite_more_users: boolean;
+  implementation_green: boolean;
+  implementation_status: "red" | "green";
+  implementation_blockers: string[];
+  cohort_green: boolean;
+  cohort_status: ReadinessStatus;
+  cohort_evidence_gaps: string[];
+  controlled_evidence_collection_allowed: boolean;
+  controlled_evidence_collection_reason: string | null;
   rationale: string;
 }
 
@@ -78,12 +87,15 @@ interface OperatorDashboard {
     clean_trace_ratio: number | null;
     dirty_trace_count: number;
     dirty_reasons: Record<string, number>;
+    dirty_reason_distribution?: Record<string, number>;
+    clean_trace_ratio_basis?: Record<string, unknown>;
+    dirty_session_reason_sample?: Record<string, string[]>;
     analytic_blockers: string[];
     calibration_safe: boolean;
     insights_safe: boolean;
   };
   state_invariants: SectionMeta & Record<string, number | string | string[] | null | undefined>;
-  notification_lifecycle: SectionMeta & Record<string, number | string | string[] | null | undefined>;
+  notification_lifecycle: SectionMeta & Record<string, unknown>;
   provider_integrity: SectionMeta & Record<string, number | string | undefined>;
   reliability: SectionMeta & Record<string, number | string | string[] | null | undefined>;
   privacy_boundary: SectionMeta & Record<string, boolean | string | undefined>;
@@ -107,6 +119,29 @@ function titleize(value: string) {
   return value.replaceAll("_", " ");
 }
 
+function collectInstrumentationGaps(data: OperatorDashboard): string[] {
+  const sections: Array<[string, Record<string, unknown>]> = [
+    ["Product loop", data.product_loop_funnel],
+    ["State invariants", data.state_invariants],
+    ["Notification lifecycle", data.notification_lifecycle],
+    ["Reliability", data.reliability],
+    ["Activation quality", data.activation_quality],
+  ];
+  const gaps: string[] = [];
+  for (const [sectionName, section] of sections) {
+    const fields = section.not_instrumented_fields;
+    if (Array.isArray(fields)) {
+      for (const field of fields) {
+        gaps.push(`${sectionName}: ${titleize(String(field))}`);
+      }
+    }
+  }
+  for (const source of data.data_freshness.stale_sources ?? []) {
+    gaps.push(`Freshness: ${titleize(String(source))}`);
+  }
+  return Array.from(new Set(gaps));
+}
+
 function fmt(value: unknown): string {
   if (value === null || value === undefined) return "not instrumented";
   if (typeof value === "boolean") return value ? "yes" : "no";
@@ -116,7 +151,9 @@ function fmt(value: unknown): string {
     }
     return String(value);
   }
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "none";
+  if (Array.isArray(value)) {
+    return value.length ? value.map((item) => fmt(item)).join(" / ") : "none";
+  }
   if (typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>);
     if (!entries.length) return "none";
@@ -150,8 +187,14 @@ function SectionGrid({
           <span className="text-[10px] uppercase tracking-[0.22em] text-dust-deep">
             {sectionRecord.basis ? `${sectionRecord.basis}` : "derived"}
             {sectionRecord.confidence ? ` / ${sectionRecord.confidence}` : ""}
+            {sectionRecord.readiness_impact ? ` / ${sectionRecord.readiness_impact}` : ""}
           </span>
         </CardTitle>
+        {sectionRecord.safe_to_ignore_when ? (
+          <p className="text-xs text-dust">
+            Safe to ignore when: {String(sectionRecord.safe_to_ignore_when)}
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {entries.map(([key, value]) => (
@@ -185,9 +228,14 @@ function CompactStat({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function safeToIgnoreSummary(readiness: CohortReadiness): string {
+  if (readiness.status === "green") return "accepted risks";
+  return "none yet";
+}
+
 export default function OperatorDashboardPage() {
   const q = useQuery<OperatorDashboard>({
-    queryKey: ["operator-dashboard-v12"],
+    queryKey: queryKeys.operatorDashboard,
     queryFn: () => api<OperatorDashboard>("/v1/operator/dashboard"),
     staleTime: 60_000,
     refetchInterval: 2 * 60_000,
@@ -240,6 +288,9 @@ export default function OperatorDashboardPage() {
 
   const data = q.data;
   const readiness = data.cohort_readiness;
+  const blockingIssues = data.dynamic_issues.filter((issue) => issue.blocks_cohort_expansion);
+  const instrumentationGaps = collectInstrumentationGaps(data);
+  const fixSetBlocks = new Set(readiness.blockers);
 
   return (
     <div className="flex flex-col gap-6">
@@ -252,7 +303,7 @@ export default function OperatorDashboardPage() {
             Cohort readiness
           </h1>
           <p className="mt-1 text-sm text-dust">
-            Can Lyra invite more trusted users today?
+            Can Barzakh invite more trusted users today?
           </p>
         </div>
         <Button
@@ -274,18 +325,31 @@ export default function OperatorDashboardPage() {
             <div className="mt-2 text-4xl font-bold uppercase">{readiness.status}</div>
             <div className="mt-2 text-sm">{readiness.rationale}</div>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <CompactStat
               label="safe to invite"
               value={readiness.safe_to_invite_more_users}
             />
+            <CompactStat label="implementation green" value={readiness.implementation_green} />
+            <CompactStat label="cohort green" value={readiness.cohort_green} />
+            <CompactStat
+              label="controlled evidence"
+              value={readiness.controlled_evidence_collection_allowed}
+            />
+          </div>
+          <div className="grid gap-3 md:grid-cols-4">
             <CompactStat label="blockers" value={readiness.blockers.length} />
             <CompactStat label="warnings" value={readiness.warnings.length} />
+            <CompactStat
+              label="cohort gaps"
+              value={readiness.cohort_evidence_gaps.length}
+            />
+            <CompactStat label="safe to ignore" value={safeToIgnoreSummary(readiness)} />
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Minimum Fix Set</CardTitle>
@@ -295,7 +359,11 @@ export default function OperatorDashboardPage() {
               readiness.minimum_fix_set.map((item) => (
                 <div
                   key={item}
-                  className="rounded-sm border border-ember/30 bg-ember/5 px-3 py-2 text-sm text-parchment"
+                  className={`rounded-sm border px-3 py-2 text-sm text-parchment ${
+                    fixSetBlocks.has(item)
+                      ? "border-ember/30 bg-ember/5"
+                      : "border-amber-400/20 bg-amber-400/5"
+                  }`}
                 >
                   {titleize(item)}
                 </div>
@@ -308,21 +376,46 @@ export default function OperatorDashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Operator Recommendations</CardTitle>
+            <CardTitle>Critical Dynamic Issues</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {data.operator_recommendations.length ? (
-              data.operator_recommendations.slice(0, 6).map((rec, index) => (
+            {blockingIssues.length ? (
+              blockingIssues.slice(0, 6).map((issue) => (
                 <div
-                  key={`${rec.related_section}-${index}`}
-                  className="rounded-sm border border-cyan/10 bg-ink/40 px-3 py-2 text-sm"
+                  key={issue.id}
+                  className="rounded-sm border border-ember/30 bg-ember/5 px-3 py-2 text-sm"
                 >
-                  <div className="font-semibold text-parchment">{rec.message}</div>
-                  <div className="mt-1 text-xs text-dust">{rec.suggested_action}</div>
+                  <div className="font-semibold text-parchment">{issue.message}</div>
+                  <div className="mt-1 text-xs text-dust">{issue.suggested_action}</div>
+                  {issue.tags.length ? (
+                    <div className="mt-2 text-[10px] uppercase tracking-[0.18em] text-cyan">
+                      Tags: {issue.tags.join(" / ")}
+                    </div>
+                  ) : null}
                 </div>
               ))
             ) : (
-              <div className="text-sm text-dust">No recommendations.</div>
+              <div className="text-sm text-dust">No cohort-blocking issues detected.</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Instrumentation Gaps</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {instrumentationGaps.length ? (
+              instrumentationGaps.slice(0, 6).map((gap) => (
+                <div
+                  key={gap}
+                  className="rounded-sm border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-sm text-parchment"
+                >
+                  {gap}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-dust">No instrumentation gaps reported.</div>
             )}
           </CardContent>
         </Card>
@@ -330,7 +423,28 @@ export default function OperatorDashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Dynamic Issues</CardTitle>
+          <CardTitle>Operator Recommendations</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {data.operator_recommendations.length ? (
+            data.operator_recommendations.slice(0, 8).map((rec, index) => (
+              <div
+                key={`${rec.related_section}-${index}`}
+                className="rounded-sm border border-cyan/10 bg-ink/40 px-3 py-2 text-sm"
+              >
+                <div className="font-semibold text-parchment">{rec.message}</div>
+                <div className="mt-1 text-xs text-dust">{rec.suggested_action}</div>
+              </div>
+            ))
+          ) : (
+            <div className="text-sm text-dust">No recommendations.</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>All Dynamic Issues</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
           {data.dynamic_issues.length ? (

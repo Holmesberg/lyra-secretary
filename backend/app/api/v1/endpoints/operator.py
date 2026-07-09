@@ -6,11 +6,9 @@ secrets, or behavioral labels.
 """
 from __future__ import annotations
 
-import hashlib
-import json
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timedelta
-from typing import Any, Iterable
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, or_
@@ -20,11 +18,8 @@ from app.api.deps import get_db, operator_user_from_scope
 from app.db.models import (
     Deadline,
     DeadlineCompletionEvent,
-    ExposureAckEvent,
     ExposureDecisionEvent,
-    ExposureRenderEvent,
     Feedback,
-    NotificationLifecycleEvent,
     StopwatchSession,
     Task,
     TaskExecutionCorrection,
@@ -33,42 +28,35 @@ from app.db.models import (
 )
 from app.db.scoping import get_current_user_id, set_current_user_id
 from app.services.exposure_ledger import exposure_results_for_task
+from app.services.operator_dashboard_metrics import (
+    GREEN_TIMER_CLOSURE_RATE,
+    READINESS_GREEN_TRACE_RATIO,
+    READINESS_RED_TRACE_RATIO,
+    STALE_PAUSE_HOURS,
+    activity_dates_by_user as _activity_dates_by_user,
+    bug_watchlist_snapshot as _bug_watchlist_snapshot,
+    data_freshness_snapshot as _data_freshness_snapshot,
+    dynamic_issue as _dynamic_issue,
+    is_test_or_synthetic_user as _is_test_or_synthetic_user,
+    meaningful_activity_definition_snapshot as _meaningful_activity_definition_snapshot,
+    metric_confidence_snapshot as _metric_confidence_snapshot,
+    metric_meta as _metric_meta,
+    notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
+    operator_recommendations_snapshot as _operator_recommendations_snapshot,
+    operator_user_rows_snapshot as _operator_user_rows_snapshot,
+    pct as _pct,
+    privacy_boundary_snapshot as _privacy_boundary_snapshot,
+    product_loop_funnel_snapshot as _product_loop_funnel_snapshot,
+    provider_integrity_snapshot as _provider_integrity_snapshot,
+    redis_notification_snapshot as _redis_notification_snapshot_impl,
+    short_hash as _short_hash,
+    state_invariants_snapshot as _state_invariants_snapshot,
+    user_last_activity_maps as _user_last_activity_maps,
+)
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
 
 router = APIRouter()
-
-READINESS_RED_TRACE_RATIO = 0.60
-READINESS_GREEN_TRACE_RATIO = 0.80
-GREEN_TIMER_CLOSURE_RATE = 0.70
-STALE_PAUSE_HOURS = 72
-
-MEANINGFUL_INCLUDED_EVENTS = [
-    "task_created",
-    "brain_dump_confirmed",
-    "timer_started",
-    "timer_stopped",
-    "pressure_map_opened",
-    "recovery_action_taken",
-    "insight_opened",
-    "export_requested",
-]
-MEANINGFUL_EXCLUDED_EVENTS = [
-    "login_only",
-    "page_refresh",
-    "settings_view_only",
-    "background_sync",
-]
-
-FORBIDDEN_WEB_MARKERS = (
-    "[warn]",
-    "[alert]",
-    "calendar.sync",
-    "affected provider/subsystem",
-    "reply with",
-    "operator",
-    "openclaw",
-)
 
 
 def _require_operator(db: Session, request: Request) -> User:
@@ -79,235 +67,11 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def _metric_meta(
-    *,
-    basis: str = "derived",
-    confidence: str = "medium",
-    readiness_impact: str = "informational",
-    safe_to_ignore_when: str | None = None,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "basis": basis,
-        "confidence": confidence,
-        "readiness_impact": readiness_impact,
-    }
-    if safe_to_ignore_when:
-        payload["safe_to_ignore_when"] = safe_to_ignore_when
-    return payload
-
-
-def _short_hash(value: str | None) -> str:
-    return hashlib.sha256((value or "").encode("utf-8")).hexdigest()[:12]
-
-
-def _email_hash(email: str | None) -> str:
-    return _short_hash(email)
-
-
-def _is_test_or_synthetic_user(user: User) -> bool:
-    email = (user.email or "").strip().lower()
-    return (
-        email.endswith(".test")
-        or email.endswith("@example.test")
-        or email.startswith(("test-", "synthetic-", "wave-", "wave1-", "wave2-", "wave3-"))
-    )
-
-
-def _pct(numerator: int, denominator: int) -> float | None:
-    if denominator <= 0:
-        return None
-    return round(numerator / denominator, 4)
-
-
-def _dynamic_issue(
-    *,
-    issue_id: str,
-    severity: str,
-    message: str,
-    suggested_action: str,
-    related_section: str,
-    blocks_cohort_expansion: bool,
-    tags: list[str] | None = None,
-) -> dict[str, Any]:
-    return {
-        "id": issue_id,
-        "severity": severity,
-        "message": message,
-        "suggested_action": suggested_action,
-        "related_section": related_section,
-        "readiness_impact": "blocker" if blocks_cohort_expansion else "warning",
-        "blocks_cohort_expansion": blocks_cohort_expansion,
-        "tags": tags or [],
-    }
-
-
-def _watchlist_status_from_issues(
-    issues: list[dict[str, Any]],
-    tag: str,
-    *,
-    default: str = "pass",
-) -> str:
-    tagged = [issue for issue in issues if tag in issue.get("tags", [])]
-    if any(issue.get("blocks_cohort_expansion") for issue in tagged):
-        return "fail"
-    if tagged:
-        return "unknown"
-    return default
-
-
-def _last_non_null(values: Iterable[datetime | None]) -> datetime | None:
-    return max((v for v in values if v is not None), default=None)
-
-
-def _dropoff_points(funnel: dict[str, int | None]) -> list[str]:
-    points: list[str] = []
-    keys = [
-        "pulse_opened",
-        "quick_capture_used",
-        "brain_dump_submitted",
-        "preview_confirmed",
-        "task_created",
-        "obligation_bound",
-        "pressure_map_opened",
-        "timer_started",
-        "timer_stopped_cleanly",
-        "recovery_surface_seen",
-        "insight_seen",
-        "returned_after_24h",
-    ]
-    previous_key: str | None = None
-    previous_value: int | None = None
-    for key in keys:
-        value = funnel.get(key)
-        if value is None:
-            continue
-        if previous_value is not None and previous_value > 0:
-            drop = 1 - (value / previous_value)
-            if drop >= 0.5:
-                points.append(f"{previous_key}->{key}")
-        previous_key = key
-        previous_value = value
-    return points
-
-
-def _activity_dates_by_user(db: Session, since: datetime) -> dict[int, set[str]]:
-    """Read-time activity proxy from explicit Lyra state changes."""
-    dates: dict[int, set[str]] = defaultdict(set)
-
-    task_rows = (
-        db.query(Task.user_id, Task.created_at, Task.last_modified_at)
-        .filter(Task.voided_at.is_(None))
-        .filter(or_(Task.created_at >= since, Task.last_modified_at >= since))
-        .all()
-    )
-    for user_id, created_at, modified_at in task_rows:
-        for stamp in (created_at, modified_at):
-            if stamp and stamp >= since:
-                dates[int(user_id)].add(stamp.date().isoformat())
-
-    session_rows = (
-        db.query(
-            StopwatchSession.user_id,
-            StopwatchSession.start_time_utc,
-            StopwatchSession.end_time_utc,
-        )
-        .filter(
-            or_(
-                StopwatchSession.start_time_utc >= since,
-                StopwatchSession.end_time_utc >= since,
-            )
-        )
-        .all()
-    )
-    for user_id, start_at, end_at in session_rows:
-        for stamp in (start_at, end_at):
-            if stamp and stamp >= since:
-                dates[int(user_id)].add(stamp.date().isoformat())
-
-    deadline_rows = (
-        db.query(Deadline.user_id, Deadline.created_at, Deadline.completed_at)
-        .filter(Deadline.voided_at.is_(None))
-        .filter(or_(Deadline.created_at >= since, Deadline.completed_at >= since))
-        .all()
-    )
-    for user_id, created_at, completed_at in deadline_rows:
-        for stamp in (created_at, completed_at):
-            if stamp and stamp >= since:
-                dates[int(user_id)].add(stamp.date().isoformat())
-
-    exposure_rows = (
-        db.query(ExposureAckEvent.user_id, ExposureAckEvent.acked_at)
-        .filter(ExposureAckEvent.acked_at >= since)
-        .all()
-    )
-    for user_id, acked_at in exposure_rows:
-        if acked_at:
-            dates[int(user_id)].add(acked_at.date().isoformat())
-
-    return dates
-
-
 def _redis_notification_snapshot(user_ids: list[int]) -> dict[str, Any]:
-    """Best-effort current queue snapshot; Redis is not the lifecycle ledger."""
-    counts = {
-        "web_queued": 0,
-        "operator_pending": 0,
-        "duplicate_prompt_count": 0,
-        "internal_copy_leak_count": 0,
-    }
-    errors: list[str] = []
-    try:
-        redis = RedisClient()
-        seen = Counter()
-        for user_id in user_ids:
-            key = f"notifications:pending:{int(user_id)}"
-            for raw in redis.client.lrange(key, 0, -1):
-                try:
-                    payload = json.loads(raw)
-                except Exception:
-                    continue
-                payload_type = str(payload.get("type") or "unknown")
-                body = " ".join(
-                    str(payload.get(k) or "")
-                    for k in ("message", "body", "title", "description")
-                ).lower()
-                stable_key = (
-                    payload_type,
-                    str(payload.get("task_id") or ""),
-                    str(payload.get("session_id") or ""),
-                    str(payload.get("firing_id") or ""),
-                )
-                seen[stable_key] += 1
-                if payload_type == "operator_alert":
-                    counts["operator_pending"] += 1
-                else:
-                    counts["web_queued"] += 1
-                    if any(marker in body for marker in FORBIDDEN_WEB_MARKERS):
-                        counts["internal_copy_leak_count"] += 1
-        counts["duplicate_prompt_count"] = sum(max(0, n - 1) for n in seen.values())
-    except Exception as exc:  # noqa: BLE001 - dashboard should degrade.
-        errors.append(type(exc).__name__)
-    return {"counts": counts, "errors": errors}
-
-
-def _user_last_activity_maps(db: Session) -> dict[int, datetime]:
-    values: dict[int, list[datetime]] = defaultdict(list)
-    for user_id, stamp in db.query(Task.user_id, func.max(Task.last_modified_at)).group_by(Task.user_id):
-        if stamp:
-            values[int(user_id)].append(stamp)
-    for user_id, stamp in db.query(StopwatchSession.user_id, func.max(StopwatchSession.end_time_utc)).group_by(StopwatchSession.user_id):
-        if stamp:
-            values[int(user_id)].append(stamp)
-    for user_id, stamp in db.query(StopwatchSession.user_id, func.max(StopwatchSession.start_time_utc)).group_by(StopwatchSession.user_id):
-        if stamp:
-            values[int(user_id)].append(stamp)
-    for user_id, stamp in db.query(Deadline.user_id, func.max(Deadline.created_at)).group_by(Deadline.user_id):
-        if stamp:
-            values[int(user_id)].append(stamp)
-    for user_id, stamp in db.query(ExposureAckEvent.user_id, func.max(ExposureAckEvent.acked_at)).group_by(ExposureAckEvent.user_id):
-        if stamp:
-            values[int(user_id)].append(stamp)
-    return {uid: max(stamps) for uid, stamps in values.items() if stamps}
+    return _redis_notification_snapshot_impl(
+        user_ids,
+        redis_client_factory=RedisClient,
+    )
 
 
 @router.get("/operator/dashboard")
@@ -661,105 +425,26 @@ def operator_dashboard_v12(
             or 0
         )
 
-        product_loop_funnel = {
-            **_metric_meta(basis="mixed", confidence="medium", readiness_impact="warning"),
-            "pulse_opened": None,
-            "quick_capture_used": None,
-            "brain_dump_submitted": None,
-            "preview_confirmed": None,
-            "task_created": int(non_op_task_total),
-            "obligation_bound": int(bound_task_count),
-            "pressure_map_opened": int(pressure_map_opened),
-            "recovery_plan_previewed": None,
-            "recovery_plan_confirmed": int(recovery_plan_confirmed),
-            "timer_started": int(session_started_count),
-            "timer_stopped_cleanly": int(clean_stop_count_all),
-            "recovery_surface_seen": int(recovery_surface_seen),
-            "insight_seen": int(insight_seen),
-            "returned_after_24h": sum(1 for u in non_operator_users if u.d1_return_at),
-        }
-        product_loop_funnel["dropoff_points"] = _dropoff_points(product_loop_funnel)
-        product_loop_funnel["not_instrumented_fields"] = [
-            "pulse_opened",
-            "quick_capture_used",
-            "brain_dump_submitted",
-            "preview_confirmed",
-            "recovery_plan_previewed",
-        ]
+        product_loop_funnel = _product_loop_funnel_snapshot(
+            task_created=non_op_task_total,
+            obligation_bound=bound_task_count,
+            pressure_map_opened=pressure_map_opened,
+            recovery_plan_confirmed=recovery_plan_confirmed,
+            timer_started=session_started_count,
+            timer_stopped_cleanly=clean_stop_count_all,
+            recovery_surface_seen=recovery_surface_seen,
+            insight_seen=insight_seen,
+            returned_after_24h=sum(1 for u in non_operator_users if u.d1_return_at),
+        )
 
         redis_snapshot = _redis_notification_snapshot(non_op_ids)
         notification_counts = redis_snapshot["counts"]
-        lifecycle_rows = (
-            db.query(NotificationLifecycleEvent)
-            .filter(NotificationLifecycleEvent.created_at >= two_weeks_ago)
-            .filter(NotificationLifecycleEvent.channel == "web")
-            .filter(NotificationLifecycleEvent.user_id.in_(non_op_ids) if non_op_ids else False)
-            .all()
+        notification_lifecycle = _notification_lifecycle_snapshot(
+            db,
+            user_ids=non_op_ids,
+            since=two_weeks_ago,
+            redis_snapshot=redis_snapshot,
         )
-        lifecycle_status_counts = Counter(row.status for row in lifecycle_rows)
-        lifecycle_dedupe_counts = Counter(
-            (row.user_id, row.dedupe_key)
-            for row in lifecycle_rows
-            if row.dedupe_key
-            and row.status in {"queued", "reserved"}
-        )
-        lifecycle_duplicate_count = sum(
-            max(0, count - 1) for count in lifecycle_dedupe_counts.values()
-        )
-        exposure_render_count = (
-            db.query(func.count(ExposureRenderEvent.render_id))
-            .filter(ExposureRenderEvent.rendered_at >= two_weeks_ago)
-            .scalar()
-            or 0
-        )
-        exposure_ack_count = (
-            db.query(func.count(ExposureAckEvent.ack_id))
-            .filter(ExposureAckEvent.acked_at >= two_weeks_ago)
-            .scalar()
-            or 0
-        )
-        exposure_without_render = (
-            db.query(func.count(ExposureDecisionEvent.exposure_id))
-            .outerjoin(
-                ExposureRenderEvent,
-                ExposureRenderEvent.exposure_id == ExposureDecisionEvent.exposure_id,
-            )
-            .filter(
-                or_(
-                    ExposureDecisionEvent.created_at >= two_weeks_ago,
-                    ExposureDecisionEvent.eligible_at >= two_weeks_ago,
-                    ExposureDecisionEvent.delivered_at >= two_weeks_ago,
-                )
-            )
-            .filter(ExposureRenderEvent.render_id.is_(None))
-            .scalar()
-            or 0
-        )
-        render_without_exposure = 0  # FK-enforced by schema when tables are migrated.
-
-        notification_lifecycle = {
-            **_metric_meta(basis="mixed", confidence="medium", readiness_impact="warning"),
-            "web_created": len(lifecycle_rows),
-            "web_queued": lifecycle_status_counts.get("queued", 0),
-            "web_reserved": lifecycle_status_counts.get("reserved", 0),
-            "web_rendered": sum(1 for row in lifecycle_rows if row.rendered_at is not None),
-            "web_acted": sum(1 for row in lifecycle_rows if row.acted_at is not None),
-            "web_dismissed": sum(1 for row in lifecycle_rows if row.dismissed_at is not None),
-            "web_expired": sum(1 for row in lifecycle_rows if row.expired_at is not None),
-            "web_lost_unrendered": sum(
-                1 for row in lifecycle_rows if row.lost_unrendered_at is not None
-            ),
-            "duplicate_prompt_count": max(
-                notification_counts["duplicate_prompt_count"],
-                lifecycle_duplicate_count,
-            ),
-            "render_without_exposure_count": render_without_exposure,
-            "exposure_without_render_count": exposure_without_render,
-            "operator_created": notification_counts["operator_pending"],
-            "operator_pending": notification_counts["operator_pending"],
-            "not_instrumented_fields": [],
-            "redis_errors": redis_snapshot["errors"],
-        }
 
         provider_rows_total = int(provider_only) + (
             db.query(func.count(DeadlineCompletionEvent.event_id))
@@ -788,6 +473,30 @@ def operator_dashboard_v12(
             .scalar()
             or 0
         )
+        user_confirmed_deadline_ids = (
+            db.query(DeadlineCompletionEvent.deadline_id)
+            .filter(DeadlineCompletionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
+            .filter(
+                DeadlineCompletionEvent.completion_source.in_(
+                    ("user_deadline_done", "task_retroactive_done")
+                )
+            )
+            .subquery()
+        )
+        provider_truth_violations = (
+            db.query(func.count(func.distinct(Deadline.deadline_id)))
+            .join(
+                DeadlineCompletionEvent,
+                DeadlineCompletionEvent.deadline_id == Deadline.deadline_id,
+            )
+            .filter(Deadline.user_id.in_(non_op_ids) if non_op_ids else False)
+            .filter(Deadline.external_source.ilike("moodle%"))
+            .filter(Deadline.state == "completed")
+            .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
+            .filter(Deadline.deadline_id.notin_(user_confirmed_deadline_ids))
+            .scalar()
+            or 0
+        )
         duplicate_import_candidates = 0
         import_groups = (
             db.query(
@@ -810,16 +519,17 @@ def operator_dashboard_v12(
             if u.moodle_disconnect_reason or u.moodle_ws_disconnect_reason
         )
 
-        provider_integrity = {
-            **_metric_meta(basis="derived", confidence="medium", readiness_impact="warning"),
-            "provider_rows_total": provider_rows_total,
-            "provider_rows_missing_provenance": int(provider_rows_missing_provenance),
-            "provider_completion_candidates": int(provider_completion_candidates),
-            "provider_truth_violations": 0,
-            "duplicate_import_candidates": duplicate_import_candidates,
-            "sync_failures_24h": sync_failures,
-            "user_visible_provider_errors_24h": notification_counts["internal_copy_leak_count"],
-        }
+        provider_integrity = _provider_integrity_snapshot(
+            provider_rows_total=provider_rows_total,
+            provider_rows_missing_provenance=provider_rows_missing_provenance,
+            provider_completion_candidates=provider_completion_candidates,
+            provider_truth_violations=provider_truth_violations,
+            duplicate_import_candidates=duplicate_import_candidates,
+            sync_failures_24h=sync_failures,
+            user_visible_provider_errors_24h=notification_counts[
+                "internal_copy_leak_count"
+            ],
+        )
 
         feedback_bug_24h = (
             db.query(func.count(Feedback.feedback_id))
@@ -857,26 +567,16 @@ def operator_dashboard_v12(
         if dirty_reasons["missing_timestamps"] or dirty_reasons["impossible_duration"]:
             measurement_integrity["analytic_blockers"].append("timestamp_or_duration_integrity")
 
-        state_invariants = {
-            **_metric_meta(basis="derived", confidence="high", readiness_impact="blocker"),
-            "duplicate_open_sessions": duplicate_open_sessions,
-            "executing_tasks_without_open_session": executing_without_open,
-            "paused_tasks_without_open_session": paused_without_open,
-            "executed_tasks_missing_start_or_end": executed_missing,
-            "open_sessions_for_executed_tasks": open_for_executed,
-            "stale_reentry_candidates": stale_reentry_candidates,
-            "invalid_recovery_actions_seen": None,
-            "not_instrumented_fields": ["invalid_recovery_actions_seen"],
-        }
+        state_invariants = _state_invariants_snapshot(
+            duplicate_open_sessions=duplicate_open_sessions,
+            executing_tasks_without_open_session=executing_without_open,
+            paused_tasks_without_open_session=paused_without_open,
+            executed_tasks_missing_start_or_end=executed_missing,
+            open_sessions_for_executed_tasks=open_for_executed,
+            stale_reentry_candidates=stale_reentry_candidates,
+        )
 
-        privacy_boundary = {
-            **_metric_meta(basis="direct", confidence="high", readiness_impact="blocker"),
-            "raw_task_titles_exposed": False,
-            "raw_emails_exposed": False,
-            "provider_tokens_exposed": False,
-            "raw_provider_urls_exposed": False,
-            "user_debug_mode_enabled": False,
-        }
+        privacy_boundary = _privacy_boundary_snapshot()
 
         activity_counts_7d = [len(active_dates_7d.get(u.user_id, set())) for u in non_operator_users]
         activity_counts_14d = [len(active_dates_14d.get(u.user_id, set())) for u in non_operator_users]
@@ -991,50 +691,9 @@ def operator_dashboard_v12(
             ],
         }
 
-        data_freshness = {
-            **_metric_meta(basis="direct", confidence="high", readiness_impact="informational"),
-            "generated_at": _iso(generated_at),
-            "source_windows": {
-                "tasks_last_seen_at": _iso(
-                    db.query(func.max(Task.last_modified_at)).scalar()
-                ),
-                "sessions_last_seen_at": _iso(
-                    _last_non_null([
-                        db.query(func.max(StopwatchSession.start_time_utc)).scalar(),
-                        db.query(func.max(StopwatchSession.end_time_utc)).scalar(),
-                    ])
-                ),
-                "notifications_last_seen_at": None,
-                "exposures_last_seen_at": _iso(
-                    _last_non_null([
-                        db.query(func.max(ExposureDecisionEvent.created_at)).scalar(),
-                        db.query(func.max(ExposureRenderEvent.created_at)).scalar(),
-                        db.query(func.max(ExposureAckEvent.created_at)).scalar(),
-                    ])
-                ),
-                "providers_last_seen_at": _iso(
-                    _last_non_null([
-                        db.query(func.max(Deadline.imported_at)).scalar(),
-                        db.query(func.max(User.moodle_last_synced_at)).scalar(),
-                        db.query(func.max(User.moodle_ws_last_synced_at)).scalar(),
-                    ])
-                ),
-            },
-            "stale_sources": [],
-        }
-        for source, stamp in data_freshness["source_windows"].items():
-            if stamp is None:
-                data_freshness["stale_sources"].append(source)
+        data_freshness = _data_freshness_snapshot(db, generated_at=generated_at)
 
-        metric_confidence = {
-            "retention": "medium",
-            "login_frequency": "not_instrumented",
-            "clean_trace_ratio": "high",
-            "notification_lifecycle": "medium",
-            "provider_integrity": "medium",
-            "product_loop_funnel": "medium",
-            "state_invariants": "high",
-        }
+        metric_confidence = _metric_confidence_snapshot()
 
         dynamic_issues: list[dict[str, Any]] = []
 
@@ -1066,22 +725,49 @@ def operator_dashboard_v12(
                 blocks_cohort_expansion=True,
                 tags=["K01"],
             ))
-        if notification_lifecycle["duplicate_prompt_count"] > 0:
+        duplicate_type_counts = notification_lifecycle["duplicate_prompt_type_counts"]
+        timer_overflow_duplicate_count = int(duplicate_type_counts.get("timer_overflow", 0))
+        non_timer_duplicate_count = (
+            int(notification_lifecycle["duplicate_prompt_count"])
+            - timer_overflow_duplicate_count
+        )
+        if timer_overflow_duplicate_count > 0:
             dynamic_issues.append(_dynamic_issue(
-                issue_id="duplicate_notification_prompt",
+                issue_id="duplicate_timer_overflow_prompt",
                 severity="critical",
-                message="Duplicate queued notification prompts were detected.",
-                suggested_action="Fix notification dedupe and lifecycle accounting.",
+                message=(
+                    f"Duplicate timer overflow prompts were detected ({timer_overflow_duplicate_count})."
+                ),
+                suggested_action="Fix timer overflow dedupe and lifecycle accounting.",
                 related_section="notification_lifecycle",
                 blocks_cohort_expansion=True,
                 tags=["K02"],
+            ))
+        if non_timer_duplicate_count > 0:
+            non_timer_types = {
+                key: value
+                for key, value in duplicate_type_counts.items()
+                if key != "timer_overflow" and value
+            }
+            top_type = next(iter(non_timer_types), "notification")
+            dynamic_issues.append(_dynamic_issue(
+                issue_id=f"duplicate_pending_{top_type}_prompt",
+                severity="critical",
+                message=(
+                    f"Duplicate pending {top_type} prompts were detected ({non_timer_duplicate_count})."
+                ),
+                suggested_action=(
+                    "Fix source dedupe metadata or clear stale pending prompts after verification."
+                ),
+                related_section="notification_lifecycle",
+                blocks_cohort_expansion=True,
             ))
         if notification_lifecycle["exposure_without_render_count"] > 0:
             dynamic_issues.append(_dynamic_issue(
                 issue_id="exposure_records_without_render_evidence",
                 severity="critical",
                 message=(
-                    f"Exposure ledger contains {notification_lifecycle['exposure_without_render_count']} exposure records without render evidence."
+                    f"Exposure ledger contains {notification_lifecycle['exposure_without_render_count']} actionable exposure records without render or suppression evidence."
                 ),
                 suggested_action=(
                     "Do not treat exposure-influenced metrics as valid until render linkage is reconciled."
@@ -1219,17 +905,17 @@ def operator_dashboard_v12(
                 related_section="provider_integrity",
                 blocks_cohort_expansion=False,
             ))
+        if provider_integrity["provider_truth_violations"] > 0:
+            dynamic_issues.append(_dynamic_issue(
+                issue_id="provider_truth_violation",
+                severity="critical",
+                message="Provider evidence appears to have completed canonical deadlines.",
+                suggested_action="Reconcile provider completion rows as candidates or add explicit user confirmation evidence.",
+                related_section="provider_integrity",
+                blocks_cohort_expansion=True,
+            ))
 
-        bug_watchlist = {
-            **_metric_meta(basis="derived", confidence="medium", readiness_impact="blocker"),
-            "k01_calendar_warning_leak": _watchlist_status_from_issues(dynamic_issues, "K01"),
-            "k02_timer_overflow_duplicate": _watchlist_status_from_issues(dynamic_issues, "K02"),
-            "k03_invalid_mark_done_executed": _watchlist_status_from_issues(
-                dynamic_issues, "K03", default="unknown"
-            ),
-            "k04_parked_25h_stale": _watchlist_status_from_issues(dynamic_issues, "K04"),
-            "k05_pulse_quick_capture_anchor": "unknown",
-        }
+        bug_watchlist = _bug_watchlist_snapshot(dynamic_issues)
 
         readiness_blockers = [
             issue["id"] for issue in dynamic_issues if issue["blocks_cohort_expansion"]
@@ -1269,6 +955,43 @@ def operator_dashboard_v12(
         else:
             readiness_status = "yellow"
 
+        cohort_evidence_gaps = []
+        if clean_trace_ratio is None:
+            cohort_evidence_gaps.append("no_closed_sessions_last_14d")
+        elif clean_trace_ratio < READINESS_GREEN_TRACE_RATIO:
+            cohort_evidence_gaps.append("clean_trace_ratio_below_green_threshold")
+        if timer_start_to_clean_stop_rate is None:
+            cohort_evidence_gaps.append("timer_closure_rate_not_available")
+        elif timer_start_to_clean_stop_rate < GREEN_TIMER_CLOSURE_RATE:
+            cohort_evidence_gaps.append("timer_closure_rate_below_green_threshold")
+        if not green_loop_condition:
+            cohort_evidence_gaps.append("insufficient_full_loop_users")
+        if reliability["calendar_token_warning_user_visible_count"] > 0:
+            cohort_evidence_gaps.append("user_visible_calendar_warning_leak")
+        for key in (
+            "k01_calendar_warning_leak",
+            "k02_timer_overflow_duplicate",
+            "k04_parked_25h_stale",
+        ):
+            if bug_watchlist[key] != "pass":
+                cohort_evidence_gaps.append(f"{key}_not_pass")
+
+        blocking_cohort_gap_ids = list(dict.fromkeys(cohort_evidence_gaps))
+        cohort_gap_ids = list(dict.fromkeys([*blocking_cohort_gap_ids, *warnings]))
+        insufficient_real_data_gaps = {
+            "no_closed_sessions_last_14d",
+            "timer_closure_rate_not_available",
+            "insufficient_full_loop_users",
+        }
+        implementation_green = not readiness_blockers
+        cohort_green = readiness_status == "green"
+        only_insufficient_real_data = (
+            implementation_green
+            and not cohort_green
+            and bool(blocking_cohort_gap_ids)
+            and set(blocking_cohort_gap_ids).issubset(insufficient_real_data_gaps)
+        )
+
         minimum_fix_set = list(dict.fromkeys(readiness_blockers[:]))
         if not minimum_fix_set and warnings:
             minimum_fix_set = warnings[:3]
@@ -1280,6 +1003,18 @@ def operator_dashboard_v12(
             "warnings": list(dict.fromkeys(warnings)),
             "minimum_fix_set": minimum_fix_set,
             "safe_to_invite_more_users": readiness_status == "green",
+            "implementation_green": implementation_green,
+            "implementation_status": "green" if implementation_green else "red",
+            "implementation_blockers": list(dict.fromkeys(readiness_blockers)),
+            "cohort_green": cohort_green,
+            "cohort_status": readiness_status,
+            "cohort_evidence_gaps": cohort_gap_ids,
+            "controlled_evidence_collection_allowed": only_insufficient_real_data,
+            "controlled_evidence_collection_reason": (
+                "implementation_green_but_only_real_data_volume_missing"
+                if only_insufficient_real_data
+                else None
+            ),
             "rationale": (
                 "Ready for cautious trusted-user expansion."
                 if readiness_status == "green"
@@ -1289,56 +1024,27 @@ def operator_dashboard_v12(
             ),
         }
 
-        operator_recommendations = [
-            {
-                "severity": issue["severity"],
-                "message": issue["message"],
-                "suggested_action": issue["suggested_action"],
-                "related_section": issue["related_section"],
-                "blocks_cohort_expansion": issue["blocks_cohort_expansion"],
-            }
-            for issue in dynamic_issues
-        ]
+        operator_recommendations = _operator_recommendations_snapshot(dynamic_issues)
 
-        users_payload = []
-        for user in non_operator_users:
-            closed_for_user = closed_sessions_by_user.get(user.user_id, 0)
-            clean_for_user = clean_sessions_by_user.get(user.user_id, 0)
-            if task_counts_by_user.get(user.user_id, 0) == 0:
-                stage = "signed_up"
-            elif sessions_by_user.get(user.user_id, 0) == 0:
-                stage = "task_created"
-            elif clean_for_user == 0:
-                stage = "timer_started"
-            else:
-                stage = "clean_loop"
-            users_payload.append({
-                "user_id": user.user_id,
-                "first_name": user.google_first_name,
-                "name_source": "google_profile" if user.google_first_name else None,
-                "email_hash": _email_hash(user.email),
-                "created_at": _iso(user.created_at),
-                "last_meaningful_activity_at": _iso(last_activity.get(user.user_id)),
-                "active_days_7d": len(active_dates_7d.get(user.user_id, set())),
-                "active_days_14d": len(active_dates_14d.get(user.user_id, set())),
-                "task_count": task_counts_by_user.get(user.user_id, 0),
-                "executed_task_count": executed_counts_by_user.get(user.user_id, 0),
-                "stopwatch_session_count": sessions_by_user.get(user.user_id, 0),
-                "clean_trace_ratio": _pct(clean_for_user, closed_for_user),
-                "open_timer_count": open_timer_by_user.get(user.user_id, 0),
-                "paused_over_72h_count": stale_open_by_user.get(user.user_id, 0),
-                "last_loop_stage": stage,
-            })
+        users_payload = _operator_user_rows_snapshot(
+            users=non_operator_users,
+            closed_sessions_by_user=closed_sessions_by_user,
+            clean_sessions_by_user=clean_sessions_by_user,
+            task_counts_by_user=task_counts_by_user,
+            sessions_by_user=sessions_by_user,
+            executed_counts_by_user=executed_counts_by_user,
+            open_timer_by_user=open_timer_by_user,
+            stale_open_by_user=stale_open_by_user,
+            active_dates_7d=active_dates_7d,
+            active_dates_14d=active_dates_14d,
+            last_activity=last_activity,
+        )
 
         return {
             "generated_at": _iso(generated_at),
             "data_freshness": data_freshness,
             "metric_confidence": metric_confidence,
-            "meaningful_activity_definition": {
-                **_metric_meta(basis="contract", confidence="high", readiness_impact="informational"),
-                "included_events": MEANINGFUL_INCLUDED_EVENTS,
-                "excluded_events": MEANINGFUL_EXCLUDED_EVENTS,
-            },
+            "meaningful_activity_definition": _meaningful_activity_definition_snapshot(),
             "cohort_readiness": cohort_readiness,
             "cohort_segments": cohort_segments,
             "cohort": cohort,

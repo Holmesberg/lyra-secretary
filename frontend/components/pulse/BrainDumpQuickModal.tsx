@@ -32,37 +32,25 @@ import {
   parseBrainDump,
   commitBrainDump,
   type BrainDumpBindingSuggestion,
-  type BrainDumpCommitBinding,
-  type BrainDumpCommitItem,
   type BrainDumpFailedItem,
   type BrainDumpParsedItem,
 } from "@/lib/brain-dump";
+import {
+  bindingKey,
+  buildBrainDumpCommitBindings,
+  buildBrainDumpCommitItems,
+  chooseBrainDumpBinding,
+  failureCopy,
+  initialBindingChoices,
+  localIsoNow,
+  pad2,
+  type BrainDumpBindingChoice,
+} from "@/lib/brain-dump-ui";
+import { invalidateBrainDumpCommitCaches } from "@/lib/query-keys";
 
 type Step = "dump" | "confirm" | "review_failures";
 
-/** Map machine-readable failure reason → warm-tone user-facing copy.
- *  Keep these short; modal real estate is tight. */
-function failureCopy(reason: string): string {
-  switch (reason) {
-    case "past_time":
-      return "the time is already in the past";
-    case "missing_when":
-      return "no due date was parsed";
-    case "deadline_terminal_state":
-      return "the linked deadline is already finished";
-    case "deadline_not_found":
-      return "couldn't find the linked deadline";
-    case "duplicate_deadline":
-      return "already exists; linked tasks use the existing deadline";
-    case "conflict_blocked":
-      return "blocked by a hard conflict with an active session";
-    case "validation":
-      return "didn't pass scheduling rules";
-    default:
-      return "couldn't be saved";
-  }
-}
-
+/** Pulse-specific retry hints; shared failure wording lives in brain-dump-ui. */
 function retryCopy(hint: string | null): string {
   switch (hint) {
     case "schedule_tomorrow_same_time":
@@ -76,17 +64,6 @@ function retryCopy(hint: string | null): string {
     default:
       return "";
   }
-}
-
-function pad2(n: number): string {
-  return n.toString().padStart(2, "0");
-}
-
-function localIsoNow(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
-    d.getDate()
-  )}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
 function newCommitKey(): string {
@@ -132,40 +109,10 @@ function fmtWhen(iso: string | null): string {
   }
 }
 
-function bindingKey(b: BrainDumpBindingSuggestion): string {
-  return (
-    b.binding_id ||
-    `${b.task_item_id}:${b.target_kind}:${b.deadline_id ?? b.deadline_item_id}`
-  );
-}
-
 function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
   return b.target_kind === "existing_deadline"
     ? "existing obligation"
     : "same dump";
-}
-
-function initialBindingChoices(
-  nextBindings: BrainDumpBindingSuggestion[],
-): Record<string, "yes" | "no"> {
-  const choices: Record<string, "yes" | "no"> = {};
-  const acceptedTasks = new Set<string>();
-
-  for (const b of nextBindings) {
-    if (b.tier === "tier1_auto" && !acceptedTasks.has(b.task_item_id)) {
-      choices[bindingKey(b)] = "yes";
-      acceptedTasks.add(b.task_item_id);
-    }
-  }
-
-  for (const b of nextBindings) {
-    const key = bindingKey(b);
-    if (acceptedTasks.has(b.task_item_id) && choices[key] !== "yes") {
-      choices[key] = "no";
-    }
-  }
-
-  return choices;
 }
 
 export interface BrainDumpQuickModalProps {
@@ -204,13 +151,14 @@ export function BrainDumpQuickModal({
   const [items, setItems] = useState<BrainDumpParsedItem[]>([]);
   const [bindings, setBindings] = useState<BrainDumpBindingSuggestion[]>([]);
   const [bindingChoices, setBindingChoices] = useState<
-    Record<string, "yes" | "no">
+    Record<string, BrainDumpBindingChoice>
   >({});
   const [parsing, setParsing] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const commitKeyRef = useRef<string | null>(null);
+  const commitInFlightRef = useRef(false);
 
   // Sync the textarea + step when the modal opens / seed changes.
   useEffect(() => {
@@ -224,6 +172,7 @@ export function BrainDumpQuickModal({
       setCommittedSummary(null);
       setError(null);
       commitKeyRef.current = null;
+      commitInFlightRef.current = false;
       // Focus the textarea on next tick so the autofocus lands after
       // the dialog's mount animation.
       setTimeout(() => textareaRef.current?.focus(), 50);
@@ -263,33 +212,16 @@ export function BrainDumpQuickModal({
   }
 
   async function handleCommit() {
-    if (committing) return;
+    if (committing || commitInFlightRef.current) return;
+    commitInFlightRef.current = true;
     setError(null);
     setCommitting(true);
     try {
-      const commitItems: BrainDumpCommitItem[] = items.map((i) => ({
-        item_id: i.item_id,
-        kind: i.kind,
-        title: i.title,
-        description: i.description,
-        when_local: i.when_local,
-        duration_minutes: i.duration_minutes,
-        category: i.category,
-        category_source: i.category_source,
-        duration_source: i.duration_source,
-        duration_confidence: i.duration_confidence,
-        duration_basis: i.duration_basis,
-      }));
-      const commitBindings: BrainDumpCommitBinding[] = bindings
-        .filter((b) => bindingChoices[bindingKey(b)] === "yes")
-        .map((b) => ({
-          task_item_id: b.task_item_id,
-          deadline_item_id:
-            b.target_kind === "parsed_deadline" ? b.deadline_item_id : null,
-          deadline_id:
-            b.target_kind === "existing_deadline" ? b.deadline_id : null,
-          target_kind: b.target_kind,
-        }));
+      const commitItems = buildBrainDumpCommitItems(items);
+      const commitBindings = buildBrainDumpCommitBindings(
+        bindings,
+        bindingChoices,
+      );
       if (!commitKeyRef.current) {
         commitKeyRef.current = newCommitKey();
       }
@@ -301,11 +233,7 @@ export function BrainDumpQuickModal({
       // Invalidate every cache key the dashboard depends on so the
       // moment the modal closes (or the review_failures step lands)
       // the new rows are visible behind the modal.
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      qc.invalidateQueries({ queryKey: ["deadlines"] });
-      qc.invalidateQueries({ queryKey: ["me"] });
-      qc.invalidateQueries({ queryKey: ["tasks-range"] });
-      qc.invalidateQueries({ queryKey: ["pressure-map"] });
+      void invalidateBrainDumpCommitCaches(qc);
       onCompleted?.({
         tasks: res.tasks_created,
         deadlines: res.deadlines_created,
@@ -322,11 +250,13 @@ export function BrainDumpQuickModal({
           bindings: res.bindings_applied,
         });
         setStep("review_failures");
+        commitInFlightRef.current = false;
         setCommitting(false);
         return;
       }
       onOpenChange(false);
     } catch (e: unknown) {
+      commitInFlightRef.current = false;
       setError(e instanceof Error ? e.message : "Couldn't save. Try again.");
       setCommitting(false);
     }
@@ -336,22 +266,9 @@ export function BrainDumpQuickModal({
     binding: BrainDumpBindingSuggestion,
     choice: "yes" | "no",
   ) {
-    const key = bindingKey(binding);
-    setBindingChoices((s) => {
-      const next = { ...s, [key]: choice };
-      if (choice === "yes") {
-        for (const other of bindings) {
-          const otherKey = bindingKey(other);
-          if (
-            other.task_item_id === binding.task_item_id &&
-            otherKey !== key
-          ) {
-            next[otherKey] = "no";
-          }
-        }
-      }
-      return next;
-    });
+    setBindingChoices((s) =>
+      chooseBrainDumpBinding(s, bindings, binding, choice),
+    );
   }
 
   function updateItem(
@@ -429,7 +346,7 @@ export function BrainDumpQuickModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" data-testid="brain-dump-modal">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-signal" />
@@ -444,10 +361,11 @@ export function BrainDumpQuickModal({
           <div className="flex flex-col gap-3">
             <p className="text-xs text-dust">
               Type whatever's in your head — one item per line works best.
-              Lyra parses titles, dates, and durations. Examples: "submit
+              Barzakh parses titles, dates, and durations. Examples: "submit
               lab 8 friday 11pm", "read chapter 3 tomorrow 30min".
             </p>
             <textarea
+              data-testid="brain-dump-textarea"
               ref={textareaRef}
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
@@ -462,6 +380,7 @@ gym sat morning"
             )}
             <div className="flex justify-end gap-2 pt-1">
               <button
+                data-testid="brain-dump-cancel"
                 type="button"
                 onClick={() => onOpenChange(false)}
                 className="rounded-sm border border-hairline bg-void-2/40 px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-parchment"
@@ -469,6 +388,7 @@ gym sat morning"
                 Cancel
               </button>
               <button
+                data-testid="brain-dump-parse"
                 type="button"
                 onClick={handleParse}
                 disabled={parsing}
@@ -484,7 +404,7 @@ gym sat morning"
         {step === "confirm" && (
           <div className="flex flex-col gap-4">
             <p className="text-xs text-dust">
-              Lyra found{" "}
+              Barzakh found{" "}
               <span className="font-display text-signal">
                 {tasksParsed.length}
               </span>{" "}
@@ -532,6 +452,7 @@ gym sat morning"
                         Title
                       </span>
                       <input
+                        data-testid={`brain-dump-item-title-${it.item_id}`}
                         value={it.title}
                         onChange={(event) =>
                           updateItem(it.item_id, { title: event.target.value })
@@ -551,6 +472,7 @@ gym sat morning"
                           {it.kind === "deadline" ? "Due" : "Start"}
                         </span>
                         <input
+                          data-testid={`brain-dump-item-when-${it.item_id}`}
                           type="datetime-local"
                           value={toDateTimeInput(it.when_local)}
                           onChange={(event) =>
@@ -567,6 +489,7 @@ gym sat morning"
                             Minutes
                           </span>
                           <input
+                            data-testid={`brain-dump-item-duration-${it.item_id}`}
                             type="number"
                             min={1}
                             max={720}
@@ -620,6 +543,7 @@ gym sat morning"
                                 ?
                               </span>
                               <button
+                                data-testid={`brain-dump-binding-yes-${bindingKey(b)}`}
                                 type="button"
                                 onClick={() =>
                                   setBindingChoice(b, "yes")
@@ -633,6 +557,7 @@ gym sat morning"
                                 Yes
                               </button>
                               <button
+                                data-testid={`brain-dump-binding-no-${bindingKey(b)}`}
                                 type="button"
                                 onClick={() =>
                                   setBindingChoice(b, "no")
@@ -658,8 +583,9 @@ gym sat morning"
             {error && <p className="text-[11px] text-ember">{error}</p>}
 
             <div className="flex justify-between gap-2 pt-1">
-              <button
-                type="button"
+                  <button
+                    data-testid="brain-dump-edit"
+                    type="button"
                 onClick={() => setStep("dump")}
                 disabled={committing}
                 className="rounded-sm border border-hairline bg-void-2/40 px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-parchment disabled:opacity-50"
@@ -673,6 +599,7 @@ gym sat morning"
                   </span>
                 )}
                 <button
+                  data-testid="brain-dump-lock-in"
                   type="button"
                   onClick={handleCommit}
                   disabled={committing || tier2Unanswered}
@@ -702,7 +629,10 @@ gym sat morning"
                 :
               </p>
             )}
-            <ul className="flex flex-col gap-2 rounded-sm border border-ember/30 bg-ember/[0.04] p-3">
+            <ul
+              data-testid="brain-dump-failures"
+              className="flex flex-col gap-2 rounded-sm border border-ember/30 bg-ember/[0.04] p-3"
+            >
               {failures.map((f) => (
                 <li key={f.item_id} className="text-xs">
                   <div className="font-mono text-[11px] text-parchment">
@@ -710,7 +640,7 @@ gym sat morning"
                     {f.title}
                   </div>
                   <div className="mt-0.5 text-[11px] text-ember/80">
-                    {failureCopy(f.reason)}
+                    {failureCopy(f.reason, { duplicateDeadlineCopy: true })}
                     {retryCopy(f.retry_hint) && (
                       <span className="text-dust"> · {retryCopy(f.retry_hint)}</span>
                     )}
@@ -721,6 +651,7 @@ gym sat morning"
             <div className="flex flex-wrap justify-end gap-2 pt-1">
               {canMoveFailedToTomorrow && (
                 <button
+                  data-testid="brain-dump-move-failed-to-tomorrow"
                   type="button"
                   onClick={() =>
                     retryFailedItems({ movePastToTomorrow: true })
@@ -731,6 +662,7 @@ gym sat morning"
                 </button>
               )}
               <button
+                data-testid="brain-dump-edit-failed-items"
                 type="button"
                 onClick={() => retryFailedItems()}
                 className="rounded-sm border border-hairline bg-void-2/40 px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-parchment"
@@ -738,6 +670,7 @@ gym sat morning"
                 Edit failed items
               </button>
               <button
+                data-testid="brain-dump-failures-done"
                 type="button"
                 onClick={() => onOpenChange(false)}
                 className="rounded-sm border border-signal/40 bg-signal/10 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20"

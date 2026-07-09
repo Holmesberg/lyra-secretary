@@ -2,7 +2,7 @@
 
 The /health route is the standard liveness probe.
 
-The /health/env-invariants route is a Lyra-specific probe that
+The /health/env-invariants route is a Barzakh-specific probe that
 catches recurring environment-assumption regressions before they
 surface as user-visible bugs. Operator-locked 2026-04-29 after the
 LYR-113 OAuth IPv4 incident (third recurrence) and the H0 tz hotfix
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 @router.get("/health")
 def health_check():
     """Service health check."""
-    return {"status": "ok", "service": "lyra-secretary"}
+    return {"status": "ok", "service": "barzakh-api"}
 
 
 @router.get("/health/topology")
@@ -49,7 +49,7 @@ def topology_check(request: Request) -> dict[str, Any]:
 def env_invariants(
     request: Request, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    """Probe Lyra's environment assumptions and report any drift.
+    """Probe Barzakh's environment assumptions and report any drift.
 
     Each invariant returns ok=True/False with a brief detail string.
     Top-level `all_ok` is True iff every invariant holds.
@@ -64,7 +64,7 @@ def env_invariants(
     results: dict[str, dict[str, Any]] = {}
 
     # --- Invariant 1: now_utc() returns naive datetime
-    # Why: Lyra's internal convention is naive-UTC. Subtractions
+    # Why: Barzakh's internal convention is naive-UTC. Subtractions
     # against aware datetimes raise TypeError. If now_utc() ever
     # starts returning aware (someone forgets the .replace(tzinfo=
     # None) at the end), every comparison site breaks at once.

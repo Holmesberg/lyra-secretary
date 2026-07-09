@@ -8,11 +8,18 @@ Security companion: `docs/prodblueprint_security.md` defines the broader
 trusted-alpha access-control, audit, redaction, and provider-failure boundary.
 
 - **Per-user queue:** authenticated in-app/user-facing delivery through
-  `notifications:pending:{user_id}` and `/v1/notifications/pending`.
+  `notifications:pending:{user_id}` and `/v1/notifications/web/pending`.
 - **OpenClaw operator channel:** shared OpenClaw-polled queue for system state,
   operator-owned events, and redacted observability metadata only. OpenClaw
   relays this through its existing Telegram bot. Non-operator behavioral
   content must not be sent to this channel.
+
+The legacy `/v1/notifications/pending` route requires an explicit channel and
+must not be used by new callers. OpenClaw delivery uses either
+`/v1/notifications/openclaw/pending` from an authenticated OpenClaw agent flow
+or the deterministic relay in `scripts/openclaw_operator_relay.mjs`, which
+drains only `notifications:pending:{OPENCLAW_OPERATOR_USER_ID}` and sends
+operator messages through the existing OpenClaw Telegram configuration.
 
 ## Boundary Rules
 
@@ -26,16 +33,23 @@ trusted-alpha access-control, audit, redaction, and provider-failure boundary.
    only. Rendered copy stays in the product and exposure ledger; the operator channel sees
    surface id, channel, hashed user/task/exposure/render ids, template, and
    trigger source.
-5. System-health alerts may go to the OpenClaw operator channel, but should avoid task
+5. Notification lifecycle render may complete an already-created
+   output-surface exposure only when the lifecycle row carries both
+   `exposure_id` and `surface_id`. Queue/reserve/deliver alone do not create
+   exposure-render truth; browser render creates render truth, and later
+   dismiss/ack/action/expiry creates interaction-outcome truth.
+6. System-health alerts may go to the OpenClaw operator channel, but should avoid task
    titles, emails, tokens, iCal URLs, OAuth tokens, or raw payload bodies.
-6. Repeated failures must use dedupe/cooldown through
+7. Repeated failures must use dedupe/cooldown through
    `app.services.operator_notifier.notify_operator`.
-7. Missing OpenClaw operator delivery must never break a
+8. Missing OpenClaw operator delivery must never break a
    product mutation or research write.
-8. Provider outage/auth failures are provider-scoped degradations unless they
+8a. The operator relay is observation-only. It must not mutate task, session,
+    provider, notification-lifecycle, exposure, or user activity state.
+9. Provider outage/auth failures are provider-scoped degradations unless they
    are widespread or persistent. They should say what provider failed, whether
    reconnect is needed, and whether Lyra kept existing data.
-9. Scheduler/bootstrap/database failures are Lyra platform failures. If they
+10. Scheduler/bootstrap/database failures are Lyra platform failures. If they
    repeat, triage immediately.
 
 ## Operational Alert Contract
@@ -142,6 +156,20 @@ enrichment, not authentication, user scoping, or core scheduling truth. See
 | LLM enrichment | no | system | 30m | Aggregate failed/unavailable/pending counts only. |
 | Stale/orphan recovery | no | operator-owned only | 30m | Recovery summaries; no user content. |
 | Overdue/missed deadline sweep | no | operator-owned only | caller-specific | Existing operator-only summaries. |
+
+## Runtime Relay
+
+`scripts/start_openclaw_operator_relay.ps1` installs and restarts the live
+OpenClaw bridge inside `openclaw-openclaw-gateway-1`. The relay:
+
+- reads the Telegram bot token and allowlisted operator chat from OpenClaw's
+  existing config/environment;
+- drains `notifications:pending:1` by default;
+- relays `payload.message` exactly for `operator_alert` and other known
+  message-bearing payloads;
+- requeues on send failure instead of dropping alerts;
+- is restarted by `scripts/start_public_after_reboot.ps1` and checked by
+  `scripts/watch_public_runtime.ps1`.
 
 ## Explicit Non-Coverage
 

@@ -28,7 +28,7 @@ import { createEventsServicePlugin } from "@schedule-x/events-service";
 import { createDragAndDropPlugin } from "@schedule-x/drag-and-drop";
 import { createResizePlugin } from "@schedule-x/resize";
 import {
-  queryTasks,
+  queryTasksRange,
   rescheduleTask,
   getStopwatchStatus,
   type TaskRow as TaskRowType,
@@ -50,6 +50,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/query-keys";
 
 // TIMEZONE CONTRACT (Apr 11 2026, single-timezone alpha):
 // Backend sends and accepts naked Cairo-local ISO strings
@@ -121,7 +122,7 @@ const STATE_CALENDARS: Record<string, CalendarType> = {
     },
   },
   // Google Calendar read-only import (Path B, 2026-04-21). Rendered
-  // as muted grey background blocks — distinct from every Lyra state
+  // as muted grey background blocks — distinct from every Barzakh state
   // so the user can't confuse "my tracked plan" with "my external
   // commitment." Events carry disableDND + disableResize via
   // _options so Schedule-X doesn't offer interaction handles.
@@ -130,7 +131,7 @@ const STATE_CALENDARS: Record<string, CalendarType> = {
     label: "Google Calendar",
     darkColors: {
       main: "#6B7280", // muted grey (same ramp as EXECUTED)
-      container: "#111827", // darker void, sinks behind Lyra blocks
+      container: "#111827", // darker void, sinks behind Barzakh blocks
       onContainer: "#9CA3AF", // dust-mid — readable but not attention-grabbing
     },
   },
@@ -186,6 +187,90 @@ function toZdt(iso: string): Temporal.ZonedDateTime {
 // and throws.
 function deadlineToZdt(iso: string): Temporal.ZonedDateTime {
   return Temporal.Instant.from(iso).toZonedDateTimeISO(TIMEZONE);
+}
+
+function eventDateString(event: CalendarEventExternal): string | null {
+  const start = event.start as unknown as {
+    toPlainDate?: () => { toString: () => string };
+    toString?: () => string;
+  };
+  if (typeof start?.toPlainDate === "function") {
+    return start.toPlainDate().toString();
+  }
+  if (typeof start?.toString === "function") {
+    return start.toString().slice(0, 10);
+  }
+  return null;
+}
+
+function isBarzakhTaskEvent(event: CalendarEventExternal): boolean {
+  const id = String(event.id);
+  return !id.startsWith("gcal-") && !id.startsWith("deadline-");
+}
+
+function eventIdSelector(eventId: string): string {
+  const escaped = eventId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `[data-event-id="${escaped}"]`;
+}
+
+function scrollElementIntoCalendarViewport(
+  viewport: HTMLDivElement,
+  element: HTMLElement,
+) {
+  const viewportRect = viewport.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  const targetTop =
+    viewport.scrollTop +
+    (elementRect.top - viewportRect.top) -
+    Math.max(96, viewport.clientHeight * 0.24);
+
+  viewport.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: "auto",
+  });
+}
+
+function scrollCalendarViewportToNow(viewport: HTMLDivElement) {
+  const now = Temporal.Now.zonedDateTimeISO(TIMEZONE);
+  const startHour = 6;
+  const endHour = 23;
+  const minutesFromStart = Math.max(
+    0,
+    Math.min((endHour - startHour) * 60, (now.hour - startHour) * 60 + now.minute),
+  );
+  const ratio = minutesFromStart / ((endHour - startHour) * 60);
+  const targetTop = viewport.scrollHeight * ratio - viewport.clientHeight * 0.35;
+
+  viewport.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: "auto",
+  });
+}
+
+type CalendarQueryRange = {
+  from: string;
+  to: string;
+};
+
+type ScheduleRange = {
+  start: Temporal.ZonedDateTime;
+  end: Temporal.ZonedDateTime;
+};
+
+function initialCalendarQueryRange(): CalendarQueryRange {
+  const today = Temporal.Now.plainDateISO(TIMEZONE);
+  const weekStart = today.subtract({ days: today.dayOfWeek - 1 });
+  return {
+    from: weekStart.toString(),
+    to: weekStart.add({ days: 6 }).toString(),
+  };
+}
+
+function calendarRangeToQueryRange(range: ScheduleRange): CalendarQueryRange {
+  return {
+    from: range.start.toPlainDate().toString(),
+    to: range.end.toPlainDate().toString(),
+  };
 }
 
 function taskToEvent(
@@ -270,12 +355,12 @@ function taskToEvent(
 // string the backend will interpret as UTC, shifting every drag by the
 // Cairo offset.
 function zdtToIso(zdt: Temporal.ZonedDateTime | Temporal.PlainDate): string {
-  // Lyra events are always timed; PlainDate only appears for all-day
+  // Barzakh events are always timed; PlainDate only appears for all-day
   // views, which we don't use. Defensive narrow so a future all-day
   // experiment doesn't silently corrupt reschedule payloads.
   if (!(zdt instanceof Temporal.ZonedDateTime)) {
     throw new Error(
-      "zdtToIso: unexpected PlainDate — Lyra events are always timed"
+      "zdtToIso: unexpected PlainDate — Barzakh events are always timed"
     );
   }
   return zdt.toPlainDateTime().toString();
@@ -283,44 +368,34 @@ function zdtToIso(zdt: Temporal.ZonedDateTime | Temporal.PlainDate): string {
 
 export default function CalendarPage() {
   const qc = useQueryClient();
-  // Pull a wide window so the calendar has something to render across
-  // day/week/month navigation. Pivot 14 days before today and pull 62
-  // days forward: covers two weeks of history + ~6 weeks ahead, which
-  // is enough for month-view scrolling without yet another round trip.
-  // Cached under a distinct key so this bulk fetch doesn't collide
-  // with Today view's single-day query.
-  const pivot = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 14);
-    return d;
-  }, []);
-  const pivotKey = format(pivot, "yyyy-MM-dd");
-  const RANGE_DAYS = 62;
-
+  const [visibleRange, setVisibleRange] = useState<CalendarQueryRange>(() =>
+    initialCalendarQueryRange(),
+  );
+  // Fetch the range Schedule-X is actually showing. A fixed "near today"
+  // window made old weeks look task-empty while all-range deadlines still
+  // appeared, which was both confusing and false.
   const tasksQ = useQuery({
-    queryKey: ["tasks-range", pivotKey, RANGE_DAYS],
-    queryFn: () => queryTasks(pivotKey, RANGE_DAYS),
+    queryKey: queryKeys.tasksRangeWindow(visibleRange.from, visibleRange.to),
+    queryFn: async () => {
+      const res = await queryTasksRange(visibleRange.from, visibleRange.to);
+      return res.tasks.filter((t) => t.state !== "DELETED");
+    },
     staleTime: 60_000,
   });
 
-  // Google Calendar read-only events. Same window as the task query so
-  // external events render alongside Lyra tasks across the operator's
+  // Google Calendar read-only events. Same visible range as the task query so
+  // external events render alongside Barzakh tasks across the operator's
   // scrollable view. 60s staleTime matches the backend Redis TTL, so
-  // switching views feels instant but Lyra picks up newly-added GCal
+  // switching views feels instant but Barzakh picks up newly-added GCal
   // events within ~1 minute. Connected=false (no refresh_token yet)
   // returns empty events gracefully — no error toast, UI simply shows
-  // Lyra tasks alone.
-  const calEnd = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + (RANGE_DAYS - 14));
-    return d;
-  }, []);
+  // Barzakh tasks alone.
   const calendarEventsQ = useQuery({
-    queryKey: ["calendar-events", pivotKey, calEnd.toISOString().slice(0, 10)],
+    queryKey: queryKeys.calendarEventsWindow(visibleRange.from, visibleRange.to),
     queryFn: () =>
       getCalendarEvents({
-        dateFrom: pivotKey,
-        dateTo: calEnd.toISOString().slice(0, 10),
+        dateFrom: visibleRange.from,
+        dateTo: visibleRange.to,
       }),
     staleTime: 60_000,
     refetchInterval: 60_000,
@@ -335,7 +410,7 @@ export default function CalendarPage() {
   // crossed yet) — without that dep the block would only grow on
   // minute boundaries, not on every 10 s poll.
   const statusQ = useQuery({
-    queryKey: ["stopwatch-status"],
+    queryKey: queryKeys.stopwatchStatus,
     queryFn: getStopwatchStatus,
     refetchInterval: 10_000,
   });
@@ -351,6 +426,8 @@ export default function CalendarPage() {
   // (the prior CSS-flatten attempt was dead because the items list
   // wasn't in the DOM to style). 2026-04-30 mobile-fix recovery.
   const [currentView, setCurrentView] = useState<"day" | "week" | "month-grid">("week");
+  const calendarViewportRef = useRef<HTMLDivElement | null>(null);
+  const autoScrolledKeyRef = useRef<string | null>(null);
 
   // Deadlines render as Schedule-X events on their actual due day.
   // No state filter — completed/missed/skipped deadlines also surface
@@ -358,7 +435,7 @@ export default function CalendarPage() {
   // so the calendar reads as the historical record of every deadline.
   // Voided deadlines are excluded by default per the list endpoint.
   const deadlinesQ = useQuery({
-    queryKey: ["deadlines"],
+    queryKey: queryKeys.deadlines,
     queryFn: () => listDeadlines(),
     staleTime: 60_000,
     refetchInterval: 60_000,
@@ -386,7 +463,7 @@ export default function CalendarPage() {
     const liveEnd = activeId
       ? Temporal.Now.zonedDateTimeISO(TIMEZONE)
       : null;
-    const lyraEvents = tasksQ.data
+    const BarzakhEvents = tasksQ.data
       .filter((t) => !t.voided_at)
       .map((t) => {
         const isActive = t.task_id === activeId;
@@ -402,8 +479,8 @@ export default function CalendarPage() {
     // calendarId="google_external" picks up the muted grey scheme
     // registered in STATE_CALENDARS; _options disables DND/resize so
     // Schedule-X treats them as immutable alongside EXECUTED/SKIPPED
-    // Lyra tasks. id-prefixed with `gcal-` so onEventClick can
-    // distinguish external events from Lyra task ids (Lyra uses
+    // Barzakh tasks. id-prefixed with `gcal-` so onEventClick can
+    // distinguish external events from Barzakh task ids (Barzakh uses
     // UUIDs, external uses gcal-<google_event_id>). Hyphen — not
     // colon — because Schedule-X uses document.querySelector on the
     // event id, and `:` is a CSS pseudo-class delimiter that breaks
@@ -449,7 +526,7 @@ export default function CalendarPage() {
       } as CalendarEventExternal;
     });
 
-    return [...lyraEvents, ...gcalEvents, ...deadlineEvents];
+    return [...BarzakhEvents, ...gcalEvents, ...deadlineEvents];
     // dataUpdatedAt changes on every poll, guaranteeing a fresh
     // Temporal.Now on each refresh cycle. Without this dep the block
     // would only grow when the status payload shape differs — but
@@ -496,8 +573,8 @@ export default function CalendarPage() {
   }
 
   // Refresh both cache keys on any calendar-driven mutation so the
-  // Today view (`["tasks", date]`) and the Calendar view
-  // (`["tasks-range", pivot, days]`) stay in lock-step without either
+  // Today view (`["tasks", date]`) and range views
+  // (`["tasks-range", dateFrom, dateTo]`) stay in lock-step without either
   // side knowing about the other's key shape.
   function refreshAll() {
     qc.invalidateQueries({
@@ -602,6 +679,15 @@ export default function CalendarPage() {
       // same Temporal class.
       selectedDate: Temporal.Now.plainDateISO(TIMEZONE),
       callbacks: {
+        onRangeUpdate(range) {
+          const nextRange = calendarRangeToQueryRange(range);
+          autoScrolledKeyRef.current = null;
+          setVisibleRange((prev) =>
+            prev.from === nextRange.from && prev.to === nextRange.to
+              ? prev
+              : nextRange,
+          );
+        },
         onEventClick(evt) {
           const idStr = String(evt.id);
           // Branch on prefix: deadlines open the DeadlineModal in
@@ -663,6 +749,71 @@ export default function CalendarPage() {
     if (!calendar) return;
     eventsService.set(events);
   }, [calendar, events, eventsService]);
+
+  // Schedule-X starts the time-grid at the top of the day-boundary window.
+  // With 06:00-23:00 cropped into a fixed-height internal scroll viewport,
+  // afternoon/evening work can be correctly rendered but below the fold,
+  // making the calendar look empty. After events mount, land the viewport on
+  // the active task first when it is visible, then the first Barzakh task in the
+  // viewed range, then current time.
+  useEffect(() => {
+    if (!calendar || currentView === "month-grid") return;
+    const viewport = calendarViewportRef.current;
+    if (!viewport || tasksQ.isLoading) return;
+
+    const activeId =
+      statusQ.data?.active && statusQ.data.task_id
+        ? String(statusQ.data.task_id)
+        : null;
+    const activeEvent = activeId
+      ? events.find((event) => String(event.id) === activeId)
+      : undefined;
+    const today = Temporal.Now.plainDateISO(TIMEZONE).toString();
+    const firstTodayTask = events.find(
+      (event) => isBarzakhTaskEvent(event) && eventDateString(event) === today,
+    );
+    const firstVisibleTask = events.find(isBarzakhTaskEvent);
+    const firstVisibleEvent = events[0];
+    const targetId = activeEvent
+      ? String(activeEvent.id)
+      : firstTodayTask
+        ? String(firstTodayTask.id)
+        : firstVisibleTask
+          ? String(firstVisibleTask.id)
+          : firstVisibleEvent
+            ? String(firstVisibleEvent.id)
+            : null;
+    const scrollKey = `${currentView}:${visibleRange.from}:${visibleRange.to}:${targetId ?? "now"}:${events.length}`;
+    if (autoScrolledKeyRef.current === scrollKey) return;
+
+    const timeoutId = window.setTimeout(() => {
+      let didScrollToEvent = false;
+      if (targetId) {
+        const element = viewport.querySelector(
+          eventIdSelector(targetId),
+        ) as HTMLElement | null;
+        if (element) {
+          scrollElementIntoCalendarViewport(viewport, element);
+          didScrollToEvent = true;
+        }
+      }
+      if (!didScrollToEvent) {
+        scrollCalendarViewportToNow(viewport);
+      }
+      autoScrolledKeyRef.current = scrollKey;
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    calendar,
+    currentView,
+    events,
+    statusQ.data?.active,
+    statusQ.data?.task_id,
+    tasksQ.isLoading,
+    visibleRange.from,
+    visibleRange.to,
+  ]);
 
   return (
     <div>
@@ -735,9 +886,11 @@ export default function CalendarPage() {
             const isActive = currentView === opt.id;
             return (
               <button
+                data-testid={`calendar-view-${opt.id}`}
                 key={opt.id}
                 type="button"
                 onClick={() => {
+                  autoScrolledKeyRef.current = null;
                   setCurrentView(opt.id);
                   // Schedule-X internal API — public surface in v5 per
                   // their roadmap; until then we reach into $app.
@@ -764,7 +917,11 @@ export default function CalendarPage() {
           })}
         </div>
       )}
-      <div className="sx-react-calendar-wrapper h-[calc(100vh-220px)] overflow-y-auto rounded-sm border border-hairline-signal/30">
+      <div
+        data-testid="calendar-viewport"
+        ref={calendarViewportRef}
+        className="sx-react-calendar-wrapper h-[calc(100vh-220px)] overflow-y-auto rounded-sm border border-hairline-signal/30"
+      >
         {calendar && <ScheduleXCalendar calendarApp={calendar} />}
       </div>
 
@@ -794,7 +951,7 @@ export default function CalendarPage() {
         deadline={editingDeadline}
         onClose={() => setEditingDeadline(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: ["deadlines"] });
+          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
           setEditingDeadline(null);
         }}
       />

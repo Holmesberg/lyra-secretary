@@ -33,13 +33,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BrainDumpBindingSuggestion,
-  BrainDumpCommitBinding,
-  BrainDumpCommitItem,
   BrainDumpFailedItem,
   BrainDumpParsedItem,
   commitBrainDump,
   parseBrainDump,
 } from "@/lib/brain-dump";
+import {
+  bindingKey,
+  buildBrainDumpCommitBindings,
+  buildBrainDumpCommitItems,
+  chooseBrainDumpBinding,
+  failureCopy,
+  initialBindingChoices,
+  localIsoNow,
+  type BrainDumpBindingChoice,
+} from "@/lib/brain-dump-ui";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -51,26 +59,7 @@ interface Props {
 
 type Step = "dump" | "confirm" | "review_failures";
 
-/** Same vocabulary as BrainDumpQuickModal — keep in sync if changed. */
-function failureCopy(reason: string): string {
-  switch (reason) {
-    case "past_time":
-      return "the time is already in the past";
-    case "missing_when":
-      return "no due date was parsed";
-    case "deadline_terminal_state":
-      return "the linked deadline is already finished";
-    case "deadline_not_found":
-      return "couldn't find the linked deadline";
-    case "conflict_blocked":
-      return "blocked by a hard conflict with an active session";
-    case "validation":
-      return "didn't pass scheduling rules";
-    default:
-      return "couldn't be saved";
-  }
-}
-
+/** Onboarding-specific retry hints; shared failure wording lives in brain-dump-ui. */
 function retryCopy(hint: string | null): string {
   switch (hint) {
     case "schedule_tomorrow_same_time":
@@ -82,17 +71,6 @@ function retryCopy(hint: string | null): string {
     default:
       return "";
   }
-}
-
-function localIsoNow(): string {
-  // Naive local-time ISO (no offset). The backend reinterprets via
-  // settings.USER_TIMEZONE; matches Lyra's naive-internal convention.
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-  );
 }
 
 function formatWhen(iso: string | null): string {
@@ -108,40 +86,10 @@ function formatWhen(iso: string | null): string {
   });
 }
 
-function bindingKey(b: BrainDumpBindingSuggestion): string {
-  return (
-    b.binding_id ||
-    `${b.task_item_id}:${b.target_kind}:${b.deadline_id ?? b.deadline_item_id}`
-  );
-}
-
 function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
   return b.target_kind === "existing_deadline"
     ? "existing obligation"
     : "deadline";
-}
-
-function initialBindingChoices(
-  nextBindings: BrainDumpBindingSuggestion[],
-): Record<string, "yes" | "no"> {
-  const choices: Record<string, "yes" | "no"> = {};
-  const acceptedTasks = new Set<string>();
-
-  for (const b of nextBindings) {
-    if (b.tier === "tier1_auto" && !acceptedTasks.has(b.task_item_id)) {
-      choices[bindingKey(b)] = "yes";
-      acceptedTasks.add(b.task_item_id);
-    }
-  }
-
-  for (const b of nextBindings) {
-    const key = bindingKey(b);
-    if (acceptedTasks.has(b.task_item_id) && choices[key] !== "yes") {
-      choices[key] = "no";
-    }
-  }
-
-  return choices;
 }
 
 export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
@@ -155,7 +103,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
   // Pre-populated from parser tier: tier1_auto starts "yes",
   // tier2_ask starts unanswered (block requires resolution).
   const [bindingChoices, setBindingChoices] = useState<
-    Record<string, "yes" | "no">
+    Record<string, BrainDumpBindingChoice>
   >({});
   const [parsing, setParsing] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -165,6 +113,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
   // user knows which items didn't land before exiting onboarding.
   const [failures, setFailures] = useState<BrainDumpFailedItem[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const commitInFlightRef = useRef(false);
 
   useEffect(() => {
     if (step === "dump") textareaRef.current?.focus();
@@ -223,33 +172,16 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
   }
 
   async function handleCommit() {
-    if (committing) return;
+    if (committing || commitInFlightRef.current) return;
+    commitInFlightRef.current = true;
     setError(null);
     setCommitting(true);
     try {
-      const commitItems: BrainDumpCommitItem[] = items.map((i) => ({
-        item_id: i.item_id,
-        kind: i.kind,
-        title: i.title,
-        description: i.description,
-        when_local: i.when_local,
-        duration_minutes: i.duration_minutes,
-        category: i.category,
-        category_source: i.category_source,
-        duration_source: i.duration_source,
-        duration_confidence: i.duration_confidence,
-        duration_basis: i.duration_basis,
-      }));
-      const commitBindings: BrainDumpCommitBinding[] = bindings
-        .filter((b) => bindingChoices[bindingKey(b)] === "yes")
-        .map((b) => ({
-          task_item_id: b.task_item_id,
-          deadline_item_id:
-            b.target_kind === "parsed_deadline" ? b.deadline_item_id : null,
-          deadline_id:
-            b.target_kind === "existing_deadline" ? b.deadline_id : null,
-          target_kind: b.target_kind,
-        }));
+      const commitItems = buildBrainDumpCommitItems(items);
+      const commitBindings = buildBrainDumpCommitBindings(
+        bindings,
+        bindingChoices,
+      );
       const res = await commitBrainDump(commitItems, commitBindings);
       // LYR-114 fix: pause exit on failures so the user actually
       // sees which items didn't land. If everything committed
@@ -257,11 +189,13 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
       if (res.failed_items && res.failed_items.length > 0) {
         setFailures(res.failed_items);
         setStep("review_failures");
+        commitInFlightRef.current = false;
         setCommitting(false);
         return;
       }
       onCompleted();
     } catch (e: unknown) {
+      commitInFlightRef.current = false;
       setError(
         e instanceof Error ? e.message : "Couldn't save your plan.",
       );
@@ -281,22 +215,9 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
     binding: BrainDumpBindingSuggestion,
     choice: "yes" | "no",
   ) {
-    const key = bindingKey(binding);
-    setBindingChoices((s) => {
-      const next = { ...s, [key]: choice };
-      if (choice === "yes") {
-        for (const other of bindings) {
-          const otherKey = bindingKey(other);
-          if (
-            other.task_item_id === binding.task_item_id &&
-            otherKey !== key
-          ) {
-            next[otherKey] = "no";
-          }
-        }
-      }
-      return next;
-    });
+    setBindingChoices((s) =>
+      chooseBrainDumpBinding(s, bindings, binding, choice),
+    );
   }
 
   return (
@@ -308,7 +229,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
           </p>
           <h1 className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-parchment md:text-4xl">
             {step === "dump"
-              ? "Lyra starts learning from the first plan you write."
+              ? "Barzakh starts learning from the first plan you write."
               : "Look right? Lock it in."}
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-dust md:text-base">
@@ -317,7 +238,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 "deadlines, half-thoughts. Times and dates inside the " +
                 "text get parsed automatically. You'll review before " +
                 "anything saves."
-              : "Lyra split your dump into tasks and deadlines. " +
+              : "Barzakh split your dump into tasks and deadlines. " +
                 "Confirm any links between them, then save."}
           </p>
         </div>
@@ -564,7 +485,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 }}
                 className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
-                Continue to Lyra
+                Continue to Barzakh
               </button>
             </div>
           </div>

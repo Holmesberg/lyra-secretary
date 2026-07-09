@@ -39,10 +39,10 @@ class TaskCreateRequest(BaseModel):
     # CalibrationNudgeEvent row in the same transaction as the task.
     nudge_decision: Optional[Literal["accepted", "dismissed"]] = Field(
         None,
-        description="'accepted' (used Lyra's suggestion) or 'dismissed' (kept typed duration)",
+        description="'accepted' (used Barzakh's suggestion) or 'dismissed' (kept typed duration)",
     )
     nudge_suggested_duration_minutes: Optional[int] = Field(
-        None, ge=1, le=480, description="What Lyra suggested at nudge-fire time"
+        None, ge=1, le=480, description="What Barzakh suggested at nudge-fire time"
     )
     nudge_bias_factor: Optional[float] = Field(
         None, ge=0.1, le=10.0, description="bias_factor used to compute the suggestion"

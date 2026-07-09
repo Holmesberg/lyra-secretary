@@ -40,6 +40,7 @@ from app.db.session import SessionLocal
 DEFAULT_JWT_SECRET = "dev-only-replace-me-with-32-byte-urlsafe-secret"
 MIN_RUNTIME_JWT_SECRET_LENGTH = 32
 PRODUCTION_ENVIRONMENTS = {"production", "prod"}
+JWT_DECODE_CLOCK_SKEW_SECONDS = 10
 
 
 def runtime_requires_strong_jwt_secret() -> bool:
@@ -51,7 +52,10 @@ def runtime_requires_strong_jwt_secret() -> bool:
     """
     env = (settings.ENVIRONMENT or "").strip().lower()
     frontend_url = (settings.FRONTEND_URL or "").strip().rstrip("/").lower()
-    return env in PRODUCTION_ENVIRONMENTS or frontend_url == "https://lyraos.org"
+    return env in PRODUCTION_ENVIRONMENTS or frontend_url in {
+        "https://barzakh.app",
+        "https://lyraos.org",
+    }
 
 
 def is_weak_jwt_secret(secret: Optional[str]) -> bool:
@@ -88,7 +92,12 @@ def validate_runtime_jwt_secret() -> None:
 def decode_token(token: str) -> dict:
     validate_runtime_jwt_secret()
     try:
-        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        return jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+            leeway=JWT_DECODE_CLOCK_SKEW_SECONDS,
+        )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="token expired")
     except jwt.InvalidTokenError as e:

@@ -88,7 +88,7 @@ def invalidate_user_ranges(user_id: int) -> None:
     so a new task appears in any in-flight range query within 60s."""
     try:
         client = RedisClient().client
-        # SCAN for the user-prefixed keys. Lyra alpha cohort is small;
+        # SCAN for the user-prefixed keys. Barzakh alpha cohort is small;
         # typical user has ≤ 5 cached ranges (different windows /pulse,
         # /table, /insights might be requesting). SCAN is non-blocking
         # so safe even if the prefix matches more.

@@ -23,6 +23,10 @@ function Convert-ToWslPathLiteral($WindowsPath) {
     return "/mnt/$drive/$rest"
 }
 
+function ConvertTo-Lf([string]$Text) {
+    return ($Text -replace "`r`n", "`n" -replace "`r", "`n")
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $frontendDir = Join-Path $repoRoot "frontend"
 $wslFrontendDir = Convert-ToWslPathLiteral $frontendDir
@@ -64,6 +68,12 @@ if ($LASTEXITCODE -ne 0) {
     throw "alembic upgrade failed."
 }
 
+Write-Step "Starting OpenClaw operator relay"
+powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\start_openclaw_operator_relay.ps1")
+if ($LASTEXITCODE -ne 0) {
+    throw "OpenClaw operator relay start failed."
+}
+
 Write-Step "Starting public frontend in WSL"
 $skipBuildValue = if ($NoBuild -or $SkipFrontendBuild) { "1" } else { "0" }
 $bash = @"
@@ -73,6 +83,7 @@ FRONTEND_DIR='$safeWslFrontendDir'
 SESSION='lyra-frontend'
 START_SCRIPT='/tmp/start_lyra_frontend.sh'
 FRONTEND_LOG='/tmp/frontend.log'
+PUBLIC_NEXT_DIR='.next-public'
 
 cd "`$FRONTEND_DIR"
 export NEXT_TELEMETRY_DISABLED=1
@@ -91,12 +102,12 @@ if [ "`${#pids[@]}" -gt 0 ]; then
 fi
 
 if [ '$skipBuildValue' != '1' ]; then
-  rm -rf .next
+  rm -rf "`$PUBLIC_NEXT_DIR"
   npm run build:public
 fi
 
-if [ ! -s .next/BUILD_ID ]; then
-  echo 'ERROR: .next/BUILD_ID is missing. Build public frontend first.' >&2
+if [ ! -s "`$PUBLIC_NEXT_DIR/BUILD_ID" ]; then
+  echo "ERROR: `$PUBLIC_NEXT_DIR/BUILD_ID is missing. Build public frontend first." >&2
   exit 42
 fi
 
@@ -111,12 +122,25 @@ EOS
 chmod +x "`$START_SCRIPT"
 : > "`$FRONTEND_LOG"
 tmux new-session -d -s "`$SESSION" "`$START_SCRIPT"
-sleep 8
+ready=0
+for second in `$(seq 1 45); do
+  if curl -fsS -o /dev/null --max-time 2 http://localhost:3000/; then
+    echo "wsl_frontend_ready_after:`${second}s"
+    ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "`$ready" != '1' ]; then
+  echo 'ERROR: WSL frontend did not become ready within 45s.' >&2
+  tail -80 "`$FRONTEND_LOG" >&2 || true
+  exit 44
+fi
 tail -30 "`$FRONTEND_LOG"
 curl -s -o /dev/null -w 'wsl_frontend:%{http_code},time=%{time_total}\n' --max-time 15 http://localhost:3000/
 "@
 
-$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Lf $bash)))
 wsl.exe -d Ubuntu -e bash -lc "echo $encoded | base64 -d | bash"
 if ($LASTEXITCODE -ne 0) {
     throw "WSL frontend start failed."
@@ -142,4 +166,4 @@ if (-not $SkipPublicCheck) {
 }
 
 Write-Host ""
-Write-Host "Lyra public stack is up."
+Write-Host "Barzakh public stack is up."

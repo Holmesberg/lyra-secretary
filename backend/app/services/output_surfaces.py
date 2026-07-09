@@ -32,6 +32,7 @@ from app.core.authority import authority_for_surface
 from app.services.operator_notifier import notify_operator, redacted_user_ref
 from app.services.exposure_ledger import (
     baseline_clean_task_ids,
+    classify_exposure_terminal_state,
     exposure_results_for_task,
     record_decision,
     record_render,
@@ -450,11 +451,24 @@ def create_output_surface_decision(
     trigger_source: Optional[str] = None,
     delivered_at=None,
     data_snapshot_hash: Optional[str] = None,
+    randomization_arm: str = "none",
+    randomization_policy_version: Optional[str] = None,
+    exposure_id: Optional[str] = None,
 ) -> ExposureDecisionEvent:
     """Create a registered output-surface decision without claiming render."""
     spec = get_output_surface_spec(surface_id)
     _assert_surface_allowed_for_user(db, spec=spec, user_id=user_id)
     eligible_at = strip_tz(eligible_at or now_utc())
+    if exposure_id:
+        existing = (
+            db.query(ExposureDecisionEvent)
+            .filter(ExposureDecisionEvent.exposure_id == exposure_id)
+            .first()
+        )
+        if existing is not None:
+            if int(existing.user_id) != int(user_id):
+                raise PermissionError("output_surface_exposure_wrong_user")
+            return existing
     return record_decision(
         db,
         user_id=user_id,
@@ -466,7 +480,10 @@ def create_output_surface_decision(
         content_template_id=content_template_id,
         trigger_source=trigger_source or surface_id,
         data_snapshot_hash=data_snapshot_hash,
+        randomization_arm=randomization_arm,
+        randomization_policy_version=randomization_policy_version,
         delivered_at=strip_tz(delivered_at) if delivered_at is not None else None,
+        exposure_id=exposure_id,
     )
 
 
@@ -573,6 +590,59 @@ def render_existing_surface_decision(
     return True
 
 
+def suppress_existing_surface_decision(
+    db: Session,
+    *,
+    exposure_id: str,
+    user_id: int,
+    suppression_reason: str,
+    suppressed_at=None,
+) -> tuple[SuppressionEvent | None, bool, str]:
+    """Mark an already-created decision as intentionally not rendered.
+
+    Browser clients use this when a latency-sensitive lookup creates a
+    delivered decision, but a later UI branch discards the card before it
+    reaches the render boundary. This is suppression evidence, not exposure
+    evidence.
+    """
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == exposure_id)
+        .first()
+    )
+    if decision is None:
+        raise LookupError("exposure_decision_not_found")
+    if int(decision.user_id) != int(user_id):
+        raise PermissionError("exposure_suppression_wrong_user")
+
+    existing_render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == exposure_id)
+        .first()
+    )
+    if existing_render is not None or decision.decision_status == "rendered":
+        return None, False, "already_rendered"
+
+    existing_suppression = (
+        db.query(SuppressionEvent)
+        .filter(SuppressionEvent.exposure_id == exposure_id)
+        .first()
+    )
+    if existing_suppression is not None:
+        return existing_suppression, False, "already_suppressed"
+
+    suppressed_at = strip_tz(suppressed_at or now_utc())
+    decision.decision_status = "suppressed"
+    suppression = record_suppression(
+        db,
+        exposure_id=exposure_id,
+        suppressed_at=suppressed_at,
+        suppression_reason=suppression_reason,
+        would_have_rendered_template_id=decision.content_template_id,
+    )
+    return suppression, True, "suppressed"
+
+
 def _candidate_tasks_for_profile(
     db: Session,
     *,
@@ -652,6 +722,7 @@ def _surface_activity_counts(
     spec: OutputSurfaceSpec,
     decisions: list[ExposureDecisionEvent],
     render_counts: Counter[str],
+    render_exposure_ids: set[str],
     suppression_exposure_ids: set[str],
 ) -> dict[str, Any]:
     spec_decisions = [
@@ -662,7 +733,15 @@ def _surface_activity_counts(
     decision_ids = {row.exposure_id for row in spec_decisions}
     rendered = render_counts.get(spec.surface_id, 0)
     suppressed = len(decision_ids & suppression_exposure_ids)
-    missing_terminal = max(0, len(decision_ids) - rendered - suppressed)
+    missing_terminal = sum(
+        1
+        for row in spec_decisions
+        if not classify_exposure_terminal_state(
+            decision_status=row.decision_status,
+            has_render=row.exposure_id in render_exposure_ids,
+            has_suppression=row.exposure_id in suppression_exposure_ids,
+        ).has_terminal_event
+    )
     return {
         "decisions": len(spec_decisions),
         "renders": rendered,
@@ -796,10 +875,16 @@ def output_surface_diagnostics(
         )
 
     render_counts = Counter(row.surface for row in renders)
+    render_exposure_ids = {row.exposure_id for row in renders}
     suppression_exposure_ids = {row.exposure_id for row in suppressions}
-    terminal_exposure_ids = {row.exposure_id for row in renders} | suppression_exposure_ids
     missing_terminal_ids = sorted(
-        row.exposure_id for row in decisions if row.exposure_id not in terminal_exposure_ids
+        row.exposure_id
+        for row in decisions
+        if not classify_exposure_terminal_state(
+            decision_status=row.decision_status,
+            has_render=row.exposure_id in render_exposure_ids,
+            has_suppression=row.exposure_id in suppression_exposure_ids,
+        ).has_terminal_event
     )
 
     legacy_adapter_reliance = []
@@ -819,6 +904,7 @@ def output_surface_diagnostics(
             spec=spec,
             decisions=decisions,
             render_counts=render_counts,
+            render_exposure_ids=render_exposure_ids,
             suppression_exposure_ids=suppression_exposure_ids,
         )
         legacy_adapter_reliance.append({
@@ -845,6 +931,7 @@ def output_surface_diagnostics(
             spec=spec,
             decisions=decisions,
             render_counts=render_counts,
+            render_exposure_ids=render_exposure_ids,
             suppression_exposure_ids=suppression_exposure_ids,
         )
         for surface_id, spec in sorted(registry.items())

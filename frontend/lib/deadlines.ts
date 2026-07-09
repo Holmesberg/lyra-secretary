@@ -4,7 +4,7 @@
  * Mirrors the backend CRUD at /v1/deadlines + the read-only Pass 2
  * preview at /v1/parse/deadline-preview. The list page consumes the
  * full CRUD; the new-task modal consumes the preview to surface
- * "Lyra thinks this binds to X" before the user submits.
+ * "Barzakh thinks this binds to X" before the user submits.
  *
  * voided_at_guard: list/get exclude voided rows by default; the audit
  * paths set include_voided=true. Terminal-state rows (completed,
@@ -156,9 +156,9 @@ export interface DeadlinePreviewResponse {
 }
 
 /**
- * Preview which guarded deadline candidate Lyra would suggest for a
+ * Preview which guarded deadline candidate Barzakh would suggest for a
  * given title+description, without creating a task or binding anything.
- * Used by the new-task modal to surface a soft "Lyra thinks this binds
+ * Used by the new-task modal to surface a soft "Barzakh thinks this binds
  * to X" affordance the user can confirm or override.
  *
  * Returns all-null fields when no candidate clears the threshold or

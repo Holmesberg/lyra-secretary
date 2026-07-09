@@ -1,4 +1,4 @@
-"""Redis client with Lyra-specific patterns."""
+"""Redis client with Barzakh-specific patterns."""
 import json
 import redis
 from typing import Optional, Dict, Any
@@ -13,6 +13,8 @@ STOPWATCH_TTL_SECONDS = 46800
 
 
 class RedisClient:
+    IDEMPOTENCY_PENDING = "__pending__"
+
     """Redis client with application-specific patterns."""
     
     def __init__(self):
@@ -203,6 +205,45 @@ class RedisClient:
         """Clear undo data (per-user)."""
         key = f"undo:{user_id}:{entity_id}"
         self.client.delete(key)
+
+    def purge_user_runtime_state(self, user_id: str | int) -> int:
+        """Delete all known ephemeral Redis state for a user.
+
+        Account deletion must clear short-lived runtime state as well as DB
+        rows. Keep patterns here, next to the code that creates most of these
+        keys, so new per-user Redis surfaces are easier to audit.
+        """
+        uid = str(user_id)
+        exact_keys = [
+            self._active_stopwatch_key(uid),
+            self._pause_state_key(uid),
+            f"notifications:pending:{uid}",
+            f"notion:sync_queue:{uid}",
+            f"last_operated_task:{uid}",
+            f"gcal:access_token:{uid}",
+        ]
+        patterns = [
+            f"undo:{uid}:*",
+            f"idempotency:user:{uid}:*",
+            f"tasks_range:{uid}:*",
+            f"me:{uid}:*",
+            f"gcal:events:{uid}:*",
+            f"reminder_sent:{uid}:*",
+            f"overflow_sent:{uid}:*",
+            f"insight_shown:{uid}:*",
+        ]
+
+        keys: set[str] = set(exact_keys)
+        for pattern in patterns:
+            for key in self.client.scan_iter(match=pattern, count=100):
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                keys.add(str(key))
+
+        if not keys:
+            return 0
+        return int(self.client.delete(*sorted(keys)) or 0)
+
     # Idempotency (duplicate request protection)
     def _idempotency_key(self, key: str, user_id: Optional[Any] = None) -> str:
         """Build the Redis idempotency key.
@@ -221,6 +262,32 @@ class RedisClient:
         redis_key = self._idempotency_key(key, user_id=user_id)
         return self.client.get(redis_key)
 
+    @classmethod
+    def is_idempotency_pending(cls, value: Optional[Any]) -> bool:
+        """Return true when an idempotency key is reserved but not completed."""
+        if value is None:
+            return False
+        if isinstance(value, bytes):
+            value = value.decode("utf-8")
+        return str(value) == cls.IDEMPOTENCY_PENDING
+
+    def reserve_idempotency(
+        self,
+        key: str,
+        ttl_seconds: int = 30,
+        user_id: Optional[Any] = None,
+    ) -> bool:
+        """Atomically reserve an idempotency key before a write starts."""
+        redis_key = self._idempotency_key(key, user_id=user_id)
+        return bool(
+            self.client.set(
+                redis_key,
+                self.IDEMPOTENCY_PENDING,
+                ex=ttl_seconds,
+                nx=True,
+            )
+        )
+
     def set_idempotency(
         self,
         key: str,
@@ -231,6 +298,11 @@ class RedisClient:
         """Store idempotency key with response for TTL seconds."""
         redis_key = self._idempotency_key(key, user_id=user_id)
         self.client.setex(redis_key, ttl_seconds, response_json)
+
+    def clear_idempotency(self, key: str, user_id: Optional[Any] = None) -> int:
+        """Remove a reserved idempotency key after an abandoned write."""
+        redis_key = self._idempotency_key(key, user_id=user_id)
+        return int(self.client.delete(redis_key) or 0)
 
     # Notion sync queue
     def queue_notion_sync(self, task_id: str, task_data: Dict[str, Any], user_id: str = "1"):

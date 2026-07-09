@@ -6,6 +6,7 @@ import { format, subDays, parseISO } from "date-fns";
 import { Download, ChevronUp, ChevronDown } from "lucide-react";
 import { queryTasksRange, type TaskRow, type QueryResponse } from "@/lib/tasks";
 import { ExecutionCorrectionDialog } from "@/components/execution-correction-dialog";
+import { queryKeys } from "@/lib/query-keys";
 import {
   CATEGORIES,
   getCategoryColor,
@@ -231,7 +232,7 @@ function downloadCsv(tasks: TaskRow[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `lyra-export-${format(new Date(), "yyyy-MM-dd")}.csv`;
+  a.download = `Barzakh-export-${format(new Date(), "yyyy-MM-dd")}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -449,8 +450,8 @@ export default function TablePage() {
     isLoading: tasksLoading,
     refetch: refetchTasks,
   } = useQuery<QueryResponse>({
-    queryKey: ["tasks-range", dateFrom, dateTo],
-    queryFn: () => queryTasksRange(dateFrom, dateTo),
+    queryKey: queryKeys.tasksRangeWindow(dateFrom, dateTo, true),
+    queryFn: () => queryTasksRange(dateFrom, dateTo, { includeVoided: true }),
     staleTime: 60_000,
   });
 

@@ -187,6 +187,7 @@ export function DeadlineModal({
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
+        data-testid="deadline-modal"
         onKeyDown={(e) => {
           // Enter submits — except inside textareas (where Enter inserts
           // a newline) and when modifier keys are held. Mirrors the
@@ -213,6 +214,7 @@ export function DeadlineModal({
           <label className="flex flex-col gap-1 text-xs text-dust">
             Title
             <input
+              data-testid="deadline-title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -225,6 +227,7 @@ export function DeadlineModal({
           <label className="flex flex-col gap-1 text-xs text-dust">
             Description (optional)
             <textarea
+              data-testid="deadline-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What ships when this deadline lands?"
@@ -236,6 +239,7 @@ export function DeadlineModal({
           <label className="flex flex-col gap-1 text-xs text-dust">
             Due at
             <input
+              data-testid="deadline-due-at"
               type="datetime-local"
               value={dueAt}
               onChange={(e) => setDueAt(e.target.value)}
@@ -267,6 +271,7 @@ export function DeadlineModal({
                   autoFocus
                 />
                 <button
+                  data-testid="deadline-create-anyway"
                   type="button"
                   className="whitespace-nowrap text-xs text-dust transition-colors hover:text-parchment"
                   onClick={() => {
@@ -291,6 +296,7 @@ export function DeadlineModal({
               <p>{duplicateWarning}</p>
               <div className="flex flex-wrap gap-2">
                 <button
+                  data-testid="deadline-edit-details"
                   type="button"
                   onClick={() => void handleSave(true)}
                   disabled={submitting}
@@ -330,6 +336,7 @@ export function DeadlineModal({
                     "border-signal bg-signal/30 text-parchment";
                   return (
                     <button
+                      data-testid={`deadline-state-${opt}`}
                       key={opt}
                       type="button"
                       onClick={() => stageState(opt)}
@@ -375,7 +382,11 @@ export function DeadlineModal({
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={() => void handleSave()} disabled={!canSubmit}>
+          <Button
+            data-testid={mode === "edit" ? "deadline-save" : "deadline-create"}
+            onClick={() => void handleSave()}
+            disabled={!canSubmit}
+          >
             {submitting ? "Saving…" : mode === "edit" ? "Save" : "Create"}
           </Button>
         </DialogFooter>

@@ -10,6 +10,7 @@ import uuid
 
 from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
 from app.core.exceptions import InvalidStateTransitionError
+from app.services.active_stopwatch_store import ActiveStopwatchStore
 from app.services.interruption_metrics import task_interruption_metrics
 from app.services.task_manager import TaskManager
 from app.utils.tasks_range_cache import invalidate_user_ranges
@@ -147,6 +148,20 @@ def _compute_calibration_nudge(task: Task, db: Session) -> Optional[str]:
     )
 
 
+def _derive_current_pause_anchor(
+    pause_state: Optional[dict],
+) -> tuple[int, Optional[str]]:
+    """Return current pause age plus the original pause timestamp string."""
+    if not pause_state or not pause_state.get("paused_at"):
+        return 0, None
+    try:
+        paused_at_dt = strip_tz(datetime.fromisoformat(pause_state["paused_at"]))
+        delta = (now_utc() - paused_at_dt).total_seconds()
+        return max(0, int(delta)), pause_state["paused_at"]
+    except (ValueError, TypeError):
+        return 0, None
+
+
 class StopwatchManager:
     """Manage stopwatch sessions with Redis persistence."""
 
@@ -154,6 +169,11 @@ class StopwatchManager:
         self.db = db
         self.redis = RedisClient()
         self.task_manager = TaskManager(db)
+        self.active_store = ActiveStopwatchStore(
+            db=db,
+            redis=self.redis,
+            invalidate_task_ranges=self._invalidate_task_ranges,
+        )
 
     @staticmethod
     def _user_key() -> str:
@@ -189,27 +209,7 @@ class StopwatchManager:
     # ------------------------------------------------------------------
 
     def _get_active(self, user_id: str) -> Optional[dict]:
-        active = self.redis.get_active_stopwatch(user_id)
-        if not active:
-            active = self._recover_from_db(user_id)
-        if active:
-            # Self-heal: if the bound task has been voided or reached a
-            # terminal state since the session started, close the orphan
-            # session and clear Redis so the next status poll returns None.
-            # Without this the frontend banner keeps showing a PAUSED timer
-            # for a voided/skipped task forever. Originally only checked
-            # voided_at (CO-block 65h incident); expanded to cover SKIPPED
-            # after mark-abandoned left ghost banners (Apr 12).
-            task = self.db.query(Task).filter(
-                Task.task_id == active["task_id"]
-            ).first()
-            if task is None or task.voided_at is not None or task.state in (
-                TaskState.SKIPPED, TaskState.EXECUTED, TaskState.DELETED,
-            ):
-                self._close_orphan_session(active["session_id"])
-                self.redis.clear_stopwatch_state(user_id)
-                return None
-        return active
+        return self.active_store.get_active(user_id)
 
     def _close_orphan_session(self, session_id: str) -> None:
         """Close an unclosed StopwatchSession without touching task metrics.
@@ -224,17 +224,7 @@ class StopwatchManager:
         signal — analytics filtering on clean data should exclude auto-closed
         sessions rather than filtering open/closed pause_events directly.
         """
-        session = self.db.query(StopwatchSession).filter(
-            StopwatchSession.session_id == session_id
-        ).first()
-        if session and session.end_time_utc is None:
-            end = now_utc()
-            session.end_time_utc = end
-            session.auto_closed = True
-            session.paused_at_utc = None
-            self._close_open_pause_events(session_id, end)
-            self.db.commit()
-            self._invalidate_task_ranges(session.user_id)
+        self.active_store.close_orphan_session(session_id)
 
     def _close_open_pause_events(self, session_id: str, closed_at: datetime) -> None:
         """Close any PauseEvent rows for this session that are still open.
@@ -243,19 +233,7 @@ class StopwatchManager:
         and computes duration_minutes from paused_at_utc. Does not commit —
         caller owns the transaction.
         """
-        open_events = (
-            self.db.query(PauseEvent)
-            .filter(
-                PauseEvent.session_id == session_id,
-                PauseEvent.resumed_at_utc.is_(None),
-            )
-            .all()
-        )
-        for evt in open_events:
-            evt.resumed_at_utc = closed_at
-            evt.duration_minutes = (
-                (closed_at - evt.paused_at_utc).total_seconds() / 60.0
-            )
+        self.active_store.close_open_pause_events(session_id, closed_at)
 
     def void_cleanup(self, task_id: str) -> None:
         """Clear stopwatch state bound to a task that is being voided.
@@ -267,19 +245,7 @@ class StopwatchManager:
         points at this task.
         """
         user_id = self._user_key()
-        session = (
-            self.db.query(StopwatchSession)
-            .filter(
-                StopwatchSession.task_id == task_id,
-                StopwatchSession.end_time_utc.is_(None),
-            )
-            .first()
-        )
-        if session:
-            self._close_orphan_session(session.session_id)
-        active = self.redis.get_active_stopwatch(user_id)
-        if active and active.get("task_id") == task_id:
-            self.redis.clear_stopwatch_state(user_id)
+        self.active_store.void_cleanup(task_id=task_id, user_id=user_id)
 
     def _get_session(self, session_id: str) -> StopwatchSession:
         session = self.db.query(StopwatchSession).filter(
@@ -365,83 +331,7 @@ class StopwatchManager:
         task was actually EXECUTING — the swap chip then disappeared because
         get_paused_others excludes the Redis-active session.
         """
-        # Defensive cross-user safety: explicitly scope StopwatchSession.user_id.
-        # Task query is auto-scoped via ContextVar, but the StopwatchSession
-        # base query isn't, and the user_id comes from _user_key() which reads
-        # ContextVar. Explicit filter matches the get_paused_others pattern.
-        try:
-            uid_int = int(user_id)
-        except (TypeError, ValueError):
-            return None
-
-        # Priority 1: find the EXECUTING task for this user with an open session.
-        executing_session = (
-            self.db.query(StopwatchSession)
-            .join(Task, Task.task_id == StopwatchSession.task_id)
-            .filter(
-                StopwatchSession.user_id == uid_int,
-                StopwatchSession.end_time_utc.is_(None),
-                Task.state == TaskState.EXECUTING,
-                Task.voided_at.is_(None),
-            )
-            .order_by(StopwatchSession.start_time_utc.desc())
-            .first()
-        )
-
-        if executing_session:
-            task = self.db.query(Task).filter(
-                Task.task_id == executing_session.task_id
-            ).first()
-            self.redis.activate_stopwatch(
-                user_id=user_id,
-                session_id=executing_session.session_id,
-                task_id=task.task_id,
-                title=task.title,
-                start_time=executing_session.start_time_utc.isoformat(),
-            )
-            return self.redis.get_active_stopwatch(user_id)
-
-        # Priority 2: no EXECUTING task. Fall back to the most-recently-paused
-        # PAUSED task (one the user most recently interacted with).
-        paused_session = (
-            self.db.query(StopwatchSession)
-            .join(Task, Task.task_id == StopwatchSession.task_id)
-            .filter(
-                StopwatchSession.user_id == uid_int,
-                StopwatchSession.end_time_utc.is_(None),
-                Task.state == TaskState.PAUSED,
-                Task.voided_at.is_(None),
-            )
-            .order_by(StopwatchSession.paused_at_utc.desc())
-            .first()
-        )
-
-        if paused_session:
-            task = self.db.query(Task).filter(
-                Task.task_id == paused_session.task_id
-            ).first()
-            # Rehydrate pause_state so the banner correctly shows paused.
-            if paused_session.paused_at_utc:
-                self.redis.activate_paused_stopwatch(
-                    user_id=user_id,
-                    session_id=paused_session.session_id,
-                    task_id=task.task_id,
-                    title=task.title,
-                    start_time=paused_session.start_time_utc.isoformat(),
-                    paused_at=paused_session.paused_at_utc.isoformat(),
-                )
-            else:
-                self.redis.activate_stopwatch(
-                    user_id=user_id,
-                    session_id=paused_session.session_id,
-                    task_id=task.task_id,
-                    title=task.title,
-                    start_time=paused_session.start_time_utc.isoformat(),
-                )
-            return self.redis.get_active_stopwatch(user_id)
-
-        # No EXECUTING and no PAUSED open sessions — nothing to recover.
-        return None
+        return self.active_store.recover_from_db(user_id)
 
     # ------------------------------------------------------------------
     # Public API
@@ -1639,17 +1529,9 @@ class StopwatchManager:
         # from 00:00 when I stopped the parallel task"). The active-work
         # elapsed (elapsed_seconds) was always correct; this fixes the
         # paused-duration display only.
-        current_pause_seconds = 0
-        current_pause_started_at: Optional[str] = None
-        if is_paused and pause_state and pause_state.get("paused_at"):
-            try:
-                paused_at_dt = strip_tz(datetime.fromisoformat(pause_state["paused_at"]))
-                delta = (now_utc() - paused_at_dt).total_seconds()
-                current_pause_seconds = max(0, int(delta))
-                current_pause_started_at = pause_state["paused_at"]
-            except (ValueError, TypeError):
-                # Defensive — malformed paused_at falls back to 0 / null.
-                pass
+        current_pause_seconds, current_pause_started_at = (
+            _derive_current_pause_anchor(pause_state)
+        )
 
         task = (
             self.db.query(Task)

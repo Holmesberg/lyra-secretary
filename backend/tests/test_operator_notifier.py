@@ -12,16 +12,26 @@ from app.services.operator_notifier import (
 
 
 class _FakeRedisClient:
-    def __init__(self, pushes):
-        self.client = _FakeRedis(pushes)
+    def __init__(self, pushes, store=None):
+        self.client = _FakeRedis(pushes, store if store is not None else {})
 
 
 class _FakeRedis:
-    def __init__(self, pushes):
+    def __init__(self, pushes, store):
         self._pushes = pushes
+        self._store = store
 
     def rpush(self, key, value):
         self._pushes.append((key, value))
+
+    def set(self, key, value, ex=None, nx=False):
+        if nx and key in self._store:
+            return None
+        self._store[key] = {"value": value, "ex": ex}
+        return True
+
+    def delete(self, key):
+        return 1 if self._store.pop(key, None) is not None else 0
 
 
 @pytest.fixture(autouse=True)
@@ -65,10 +75,11 @@ def test_notify_operator_queues_openclaw_operator_alert(monkeypatch):
 
 def test_notify_operator_dedupes_with_cooldown(monkeypatch):
     pushes = []
+    store = {}
     monkeypatch.setattr(
         operator_notifier,
         "RedisClient",
-        lambda: _FakeRedisClient(pushes),
+        lambda: _FakeRedisClient(pushes, store),
     )
     monkeypatch.setattr(
         operator_notifier.settings,
@@ -91,6 +102,41 @@ def test_notify_operator_dedupes_with_cooldown(monkeypatch):
         cooldown_seconds=60,
     )
 
+    assert len(pushes) == 1
+    assert len(store) == 1
+
+
+def test_notify_operator_dedupe_survives_process_restart(monkeypatch):
+    pushes = []
+    store = {}
+    monkeypatch.setattr(
+        operator_notifier,
+        "RedisClient",
+        lambda: _FakeRedisClient(pushes, store),
+    )
+    monkeypatch.setattr(
+        operator_notifier.settings,
+        "OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED",
+        True,
+    )
+
+    assert notify_operator(
+        "first",
+        source="unit.test",
+        severity="error",
+        dedupe_key="same",
+        cooldown_seconds=60,
+    )
+
+    clear_operator_notification_dedupe()
+
+    assert not notify_operator(
+        "second",
+        source="unit.test",
+        severity="error",
+        dedupe_key="same",
+        cooldown_seconds=60,
+    )
     assert len(pushes) == 1
 
 

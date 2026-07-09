@@ -55,7 +55,7 @@ def seed():
         {"keyword": "implement", "category": "development"},
         {"keyword": "fix", "category": "development"},
         {"keyword": "feature", "category": "development"},
-        {"keyword": "Lyra", "category": "development"},
+        {"keyword": "Barzakh", "category": "development"},
         # meeting
         {"keyword": "meeting", "category": "meeting"},
         {"keyword": "call", "category": "meeting"},

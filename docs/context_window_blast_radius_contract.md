@@ -141,9 +141,11 @@ For implementation waves:
 5. Run topology verifier before browser smoke.
 6. Browser smoke with alt accounts when user-facing behavior, auth, or routing
    changed.
-7. Push only after browser verification.
-8. Watch CI until pass or diagnose failure immediately.
-9. Record meaningful incidents in the wave execution log.
+7. Run senior-grade UI/UX verification for the actual features, bugs, and
+   product paths changed by the wave.
+8. Push only after browser verification.
+9. Watch CI until pass or diagnose failure immediately.
+10. Record meaningful incidents in the wave execution log.
 
 Branch cadence:
 
@@ -165,6 +167,45 @@ The default alt-account smoke accounts are:
 
 These accounts are verification tools, not authorization shortcuts. Manual and
 browser verification must still use the bearer/session path.
+
+## Senior-Grade UI/UX Verification Gate
+
+Smoke tests prove wiring. They do not prove product quality. For any
+user-facing feature, bug fix, or product workflow change, Codex must run a
+senior-grade UI/UX pass scoped to the changed behavior.
+
+Required checks:
+
+- verify the exact bug/feature path, not only generic page load;
+- use the real browser/session path, never direct DB or header shortcuts as the
+  only proof;
+- capture desktop and mobile screenshots under repo `tmp/`;
+- inspect visible copy for internal/operator-only text, raw floats, stack traces,
+  provider secrets, or implementation jargon;
+- inspect console errors, failed API calls, and slow route/API timings;
+- verify loading, empty, error, and success states when the change affects them;
+- verify that controls are visible, labeled, and reachable in the intended
+  viewport;
+- verify the changed path against the relevant account authority:
+  `alinassersabry` is the operator account; `moriartyholmesberg` and
+  `asabryhafez` are alternates only unless a test explicitly says otherwise;
+- record screenshots/result JSON paths in the final report.
+
+Data mutation rule:
+
+- Prefer read-only UI/UX verification.
+- If a test must create a task, deadline, session, notification, or provider
+  row, tag it as synthetic/test-created, then void/delete/cleanup it in the same
+  turn.
+- Before final reporting, prove cleanup with before/after counts or explicit
+  row IDs and final states.
+- If cleanup fails, stop and report the unvoided row instead of continuing.
+
+Current operator read-only stress command:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_operator_readonly_browser_stress.ps1 -Topology public
+```
 
 ## Pre-Final Git Hygiene Gate
 

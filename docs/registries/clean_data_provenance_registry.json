@@ -1,0 +1,81 @@
+{
+  "schema_version": "clean_data_provenance_registry_v1",
+  "status": "active_s1a_contract",
+  "freeze_boundary": "This registry documents vocabulary only. It does not authorize new metrics, insights, AI synthesis, or behavior-transition equations.",
+  "clean_data_principles": [
+    "Admission/Coverage Gate decides row eligibility.",
+    "EvidencePacket packages already-eligible evidence.",
+    "ClaimCompiler decides whether a bounded deterministic claim may emit.",
+    "Provider rows, operator/test/synthetic rows, voided tasks, and non-session tasks are excluded from explicit stopwatch clean-trace denominators unless separately reported.",
+    "Exposure contamination is a property of linked task/session evidence, not unrelated render rows."
+  ],
+  "eligible_explicit_stopwatch_session": {
+    "required": [
+      "user-owned row",
+      "explicit stopwatch session",
+      "non-voided task if linked",
+      "non-provider-only row",
+      "non-operator/test/synthetic row",
+      "coherent start and end timestamps",
+      "duration within accepted bounds"
+    ],
+    "excluded_unless_reported_separately": [
+      "provider-only rows",
+      "operator/test/synthetic rows",
+      "voided tasks",
+      "deleted tasks",
+      "non-session tasks",
+      "dirty or repaired sessions"
+    ]
+  },
+  "clean_trace_ratio": {
+    "definition": "clean eligible explicit stopwatch sessions / all eligible explicit stopwatch sessions",
+    "required_companion_metric": "dirty_reason_distribution"
+  },
+  "dirty_reason_distribution": [
+    "auto_closed",
+    "stale_recovered",
+    "retroactive",
+    "corrected",
+    "voided",
+    "missing_timestamps",
+    "impossible_duration",
+    "unknown_exposure",
+    "provider_only",
+    "exposure_contaminated"
+  ],
+  "provenance_levels": [
+    {
+      "id": "user_confirmed_native",
+      "meaning": "User-created or user-confirmed canonical app truth."
+    },
+    {
+      "id": "explicit_stopwatch",
+      "meaning": "User-started stopwatch trace, subject to clean-data admission."
+    },
+    {
+      "id": "provider_candidate",
+      "meaning": "External provider fact or completion candidate that cannot silently become clean execution truth."
+    },
+    {
+      "id": "operator_test_synthetic",
+      "meaning": "Operator, test, seed, or synthetic data that must be excluded or separately bucketed."
+    },
+    {
+      "id": "repaired_or_corrected",
+      "meaning": "User/operator-corrected or stale-recovered row that may be useful but must not masquerade as clean raw trace."
+    },
+    {
+      "id": "exposure_influenced",
+      "meaning": "Behavior-shaping surface was rendered or interacted with before the measured outcome."
+    }
+  ],
+  "forbidden_claim_vocab": [
+    "discipline",
+    "motivation score",
+    "focus score",
+    "avoidance diagnosis",
+    "identity label",
+    "causal pressure-return claim without controls"
+  ]
+}

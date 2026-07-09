@@ -46,6 +46,134 @@ operator-only, or stale.
 Canonical research note:
 `docs/measurement_integrity_before_agency_claims.md`.
 
+Senior-grade UI/UX verification rule:
+
+```text
+For every feature, bug, or product path changed by this closure cycle, browser
+verification must exercise the actual changed workflow, not just page load.
+Prefer read-only passes; if testing creates tasks, deadlines, sessions,
+notifications, or provider rows, void/delete them in the same turn and report
+cleanup evidence.
+```
+
+Current read-only operator stress proof:
+
+- account: `alinassersabry` operator cookie;
+- command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_operator_readonly_browser_stress.ps1 -Topology public`;
+- latest result:
+  `tmp/operator-readonly-stress-2026-06-22T16-08-55-462Z/result.json`;
+- coverage: Pulse, Today, Calendar, Deadlines, Table, Insights, Settings, and
+  Operator on desktop and mobile;
+- cleanup proof: before/after export counts matched for tasks, deadlines,
+  stopwatch sessions, pause events, feedback, exposure logs, and notifications.
+
+## Operator Cockpit Notification/Exposure Correction - 2026-06-22
+
+Status: implemented and public-browser verified.
+
+Problem found:
+
+- `/operator` was under-explaining notification blockers and over-risking some
+  exposure rows.
+- `exposure_without_render_count` could include intentionally suppressed
+  exposure decisions. Those rows are not render failures; they are explicit
+  non-renders.
+- duplicate prompt counts were collapsing reminder duplicates and timer-overflow
+  duplicates into one K02-shaped issue.
+
+Current correction:
+
+- `exposure_without_render_count` now counts only actionable exposure decisions
+  that require render evidence and lack both render evidence and suppression
+  evidence;
+- intentionally suppressed non-renders are reported separately as
+  `suppressed_without_render_count`;
+- duplicate prompt diagnostics now include redacted breakdowns by source,
+  notification type, hashed user/task/session/firing references, and stable
+  target presence;
+- K02 tags apply only to `timer_overflow` duplicates;
+- reminder duplicates surface as `duplicate_pending_reminder_prompt`, not K02;
+- reminder scheduler payloads now carry `task_id`, `dedupe_key`, and
+  `surface_id=worker.reminder` so future pending duplicates are attributable;
+- operator page object/array formatting no longer degrades into
+  `[object Object]`.
+
+Live verification:
+
+- public topology passed with frontend build `add822d`;
+- `powershell -NoProfile -ExecutionPolicy Bypass -File
+  scripts\run_operator_readonly_browser_stress.ps1 -Topology public` returned
+  `ok: true`;
+- `/operator` first viewport remained red, but the concrete critical blocker
+  was `duplicate_pending_reminder_prompt`;
+- `exposure_without_render_count` was `0` in the verified cockpit;
+- K02 timer-overflow duplicate watchlist showed `pass`;
+- no raw task titles, emails, provider secrets, or `[object Object]` appeared in
+  the verified screenshots;
+- OpenClaw relay was live inside `openclaw-openclaw-gateway-1` and relayed a
+  fresh `calendar.sync` operator alert at `2026-06-22T16:08:59Z`;
+- `notifications:pending:1` was empty after relay drain.
+
+Remaining meaning:
+
+```text
+The current notification blocker is real, but it is reminder pending-queue
+duplication, not timer-overflow K02 and not an exposure-ledger render failure.
+```
+
+## Current Freeze Closure Map - 2026-06-22
+
+Status: current orientation for the freeze-closure cycle. Later dated closure
+sections in this document supersede older six-agent tables and historical CSV
+rows where they conflict.
+
+```text
+Freeze remains active.
+Operator cockpit clarity and final cohort-readiness proof come before any new
+feature work.
+```
+
+| Area | Current status | Verification state |
+|---|---|---|
+| Wave A / K01-K05 browser checkpoint | Closed for tested web paths | Public browser pass with synthetic cleanup under `tmp/`. |
+| Wave B / measurement cleanliness | Closed for targeted paths | Backend targeted tests, frontend build, public browser proof. |
+| Wave 1 / notification lifecycle and exposure truth | Implemented | Local browser proof; keep lifecycle regressions. |
+| Wave 2 / stale pause, cache, state freshness | Closed | Full backend run recorded `1016 passed, 1 xfailed`; user browser verified. |
+| Wave 3 / product-loop authority and recovery UX | Implemented | Local browser proof; keep safe-mode and brain-dump recovery regressions. |
+| Wave 4 / operator dynamic issues | Implemented | Targeted tests, public topology, and operator-cookie browser proof; cockpit remains the active decision surface. |
+| Wave 5A / data sovereignty | Closed | Targeted tests, build, and user browser verification. |
+| Wave 5B / provider security and integrity | Closed for current tested paths | Targeted provider tests, frontend build, operator-cookie read-only stress, and fixture-based browser proof for unsafe URL UX, Moodle provenance, provider candidates, duplicate imports, terminal binding UI, and operator provider-integrity display. |
+| Wave 6 / final cohort proof | Failing as intended | Full backend regression, public frontend build, public topology, and operator read-only stress passed. `/operator` remains `red`; dual-account browser proof is blocked by truncated alt cookies. |
+
+Current blockers before new features:
+
+- resolve current `/operator` critical blocker:
+  duplicate pending reminder prompts;
+- keep actionable exposure-without-render at zero and preserve the separate
+  suppressed-non-render bucket;
+- rerun dual-account browser proof with valid non-operator alt cookies;
+- complete Wave 6 final cohort-readiness proof with `/operator` green;
+- reconcile stale documentation so old findings cannot re-open closed waves by
+  accident.
+
+Non-authorizing parked follow-up:
+
+- `docs/parked/behavior_transition_equation_stack.md` preserves the
+  behavior-change equation direction without runtime authority;
+- `docs/claim_compiler_and_synthesis_boundary.md` records the deterministic
+  ClaimCompiler / future AI-synthesis boundary without authorizing AI
+  synthesis.
+
+Stop line:
+
+```text
+No AI synthesis, behavior-transition runtime equations, cascade interventions,
+new insight types, archetype/profile labels, passive tracking, provider
+adapters, or adaptive scheduling authority until Wave 6 passes and the
+architecture freeze is explicitly revisited.
+```
+
 ## Implementation Checkpoint - 2026-06-04 Evening
 
 Status: partial implementation pass completed for K01-K04.
@@ -568,6 +696,263 @@ sovereignty, Wave 5B provider security/integrity, or the Wave 6 final green
 cohort proof.
 ```
 
+## Wave 5A Closure - Data Sovereignty - 2026-06-15
+
+Status: implemented, targeted-tested locally, and user browser-verified.
+
+Scope closed:
+
+- added a central user-owned data registry:
+  `backend/app/services/user_data_registry.py`;
+- `/v1/users/me/export` now uses the registry instead of a hand-curated
+  `user/tasks/stopwatch/archetype` list;
+- export now includes registered user-owned sections for:
+  - tasks;
+  - deadlines;
+  - deadline completion and task-deadline outcome rows;
+  - stopwatch sessions;
+  - task execution corrections;
+  - pause events;
+  - pause/resume prediction logs;
+  - calibration nudge events;
+  - reflection view logs;
+  - exposure decisions, renders, acknowledgements, suppressions, and policy
+    diagnostics;
+  - feedback;
+  - external event outcomes;
+  - notification lifecycle rows;
+  - email engagement rows;
+  - archetype assignments;
+  - JARVIS invocation rows.
+- export includes an `integration_state` summary without exporting raw Google
+  refresh tokens, Moodle iCal URLs, Moodle WS tokens, or raw provider URLs;
+- export redacts token-like values in operational URL fields;
+- security audit rows remain outside the behavioral/user-data registry because
+  `SecurityAuditEvent` is append-only governance infrastructure and is blocked
+  from behavioral paths by `tests/test_security_audit.py`;
+- export now names that exception in `governance_audit_policy` instead of
+  silently omitting it;
+- account delete now uses the registry purge/anonymization helpers instead of
+  endpoint-local SQL table lists;
+- retain-for-research mode still anonymizes task/session rows and purges
+  auxiliary user-owned rows;
+- hard-delete mode purges task/session rows as well;
+- `RedisClient.purge_user_runtime_state()` now clears known user-scoped Redis
+  runtime keys:
+  - active/paused stopwatch;
+  - pending notifications;
+  - undo and idempotency keys;
+  - `/me` and task-range caches;
+  - Google Calendar access-token/event caches;
+  - reminder/timer-overflow/insight seen keys;
+  - Notion sync queue;
+  - last-operated task.
+
+Automated verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_delete_account_modern_auxiliary_rows.py
+  tests/test_redis_state_contract.py -q`
+  - result: `8 passed`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_delete_account_modern_auxiliary_rows.py
+  tests/test_redis_state_contract.py
+  tests/test_delete_account_with_external_outcomes.py
+  tests/test_multiuser_isolation_adversarial.py::test_export_and_delete_account_do_not_cross_user_boundaries
+  tests/test_security_audit.py -q`
+  - result: `15 passed`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_notification_queue_openclaw_mirror.py tests/test_me_cache.py -q`
+  - result: `16 passed`.
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_delete_account_modern_auxiliary_rows.py
+  tests/test_redis_state_contract.py
+  tests/test_delete_account_with_external_outcomes.py
+  tests/test_multiuser_isolation_adversarial.py tests/test_security_audit.py
+  tests/test_raw_sql_user_scope_scan.py -q`
+  - result: `39 passed`;
+- `cd frontend && npm run build`
+  - result: production build passed.
+
+Important nuance:
+
+```text
+Wave 5A closes export/delete registry coverage and Redis runtime purge. It does
+not close provider SSRF protection, credential encryption, provider provenance,
+duplicate provider imports, or terminal-deadline binding correction; those are
+Wave 5B.
+```
+
+## Wave 5B Closure - Provider Security And Integrity - 2026-06-15
+
+Status: implemented, targeted-tested locally, production-built, operator-cookie
+read-only stressed on public topology, and fixture-browser verified locally.
+Wave 6 final cohort-readiness proof remains open.
+
+Scope closed:
+
+- added provider URL network-safety guard:
+  `backend/app/utils/provider_url_safety.py`;
+- Moodle iCal and Moodle WS fetches now validate every resolved target and
+  redirect hop before request;
+- loopback, private, link-local, multicast, reserved, unspecified, metadata IP,
+  and redirect-to-private targets are rejected;
+- Google refresh tokens are now Fernet-encrypted at rest;
+- Moodle iCal URLs are now Fernet-encrypted at rest;
+- legacy plaintext Google/Moodle credentials still read and rewrite encrypted;
+- Moodle WS plaintext legacy tokens still read and rewrite encrypted;
+- Moodle WS submission sync now records provider completion candidates instead
+  of silently completing canonical deadlines;
+- Moodle WS backfilled submitted assignments create visible external deadlines
+  plus completion-candidate evidence, not completed canonical rows;
+- Settings/Moodle copy now says submission evidence instead of auto-marking;
+- `moodle_ws_backfill` deadlines render with Moodle provenance in Today,
+  Deadlines, and Pulse;
+- external imports now skip native same-title/same-day duplicate deadlines
+  instead of creating duplicate obligations;
+- deadline-binding correction now rejects terminal deadlines
+  (`completed`, `missed`, `skipped`);
+- frontend deadline-binding correction now filters terminal deadlines out of
+  the picker, matching the backend rejection contract;
+- operator provider integrity now counts provider-truth violations and raises a
+  critical dynamic issue if provider evidence has completed canonical
+  deadlines without user confirmation.
+
+Automated verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_provider_url_safety.py tests/test_provider_credentials_security.py
+  tests/test_moodle_ics_sync.py tests/test_moodle_submissions_sync.py
+  tests/test_deadline_binding_correction.py tests/test_operator_route_security.py
+  -q`
+  - result: `75 passed`;
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest
+  tests/test_provider_url_safety.py tests/test_provider_credentials_security.py
+  tests/test_moodle_ics_sync.py tests/test_moodle_submissions_sync.py
+  tests/test_deadline_binding_correction.py tests/test_operator_route_security.py
+  tests/test_delete_account_modern_auxiliary_rows.py tests/test_security_audit.py
+  tests/test_raw_sql_user_scope_scan.py tests/test_multiuser_isolation_adversarial.py
+  -q`
+  - result: `108 passed`;
+- `cd frontend && npm run build`
+  - result: production build passed.
+
+Codex browser verification:
+
+- live read-only operator stress through the `alinassersabry` operator cookie:
+  - command:
+    `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_operator_readonly_browser_stress.ps1 -Topology public`;
+  - result:
+    `tmp/operator-readonly-stress-2026-06-21T22-57-11-562Z/result.json`;
+  - Pulse, Today, Calendar, Deadlines, Table, Insights, Settings, and Operator
+    returned `200` on desktop and mobile;
+  - before/after export counts matched exactly for tasks, deadlines, stopwatch
+    sessions, pause events, feedback, exposure logs, and notifications;
+  - no real account rows were created, edited, or deleted.
+- fixture-based local browser proof on rebuilt frontend:
+  - result: `tmp/wave5b-browser-verify-result.json`;
+  - screenshots:
+    - `tmp/wave5b-settings-moodle-unsafe-url.png`;
+    - `tmp/wave5b-deadlines-moodle-provenance.png`;
+    - `tmp/wave5b-today-moodle-provenance.png`;
+    - `tmp/wave5b-binding-dialog-terminal-filter.png`;
+    - `tmp/wave5b-pulse-moodle-provenance.png`;
+    - `tmp/wave5b-operator-provider-integrity.png`.
+
+Browser checks:
+
+| Check | Result | Evidence |
+|---|---|---|
+| Moodle unsafe URL UX | Pass | Settings modal showed safe connection-failure copy; raw loopback URL and authtoken did not render. |
+| Moodle submission copy | Pass | Settings copy says `submission evidence`, not silent auto-completion. |
+| Moodle provenance | Pass | `moodle_ws_backfill` fixture rendered a Moodle badge on Deadlines, Today, and Pulse. |
+| Terminal binding UI | Pass | Binding correction dialog showed planned/active targets and excluded completed, missed, skipped, and voided targets. |
+| Provider truth boundary | Pass | Operator provider-integrity fields showed completion candidates, duplicate import candidates, and provider truth violations without raw provider content. |
+| Privacy boundary | Pass | Fixture verifier rejected raw emails, provider tokens, provider URLs, loopback URL, `authtoken`, and `[object Object]` text. |
+
+Important nuance:
+
+```text
+Wave 5B closes the provider security/integrity bug class for the current tested
+paths. It does not prove final cohort readiness; Wave 6 must still verify the
+full green gate, two-account browser behavior, and cleanup state.
+```
+
+## Wave 6 Checkpoint - Final Cohort Proof Attempt - 2026-06-22
+
+Status: proof ran, but cohort readiness did not pass.
+
+Result:
+
+```text
+Do not invite more trusted users yet.
+```
+
+What passed:
+
+- full backend regression:
+  - `cd backend && ..\.venv311\Scripts\python.exe -m pytest -q`;
+  - result: `1045 passed, 1 xfailed`;
+- public frontend production build:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restart_frontend_wsl.ps1`;
+  - Next production build passed for public topology;
+- public runtime topology:
+  - `node scripts\verify_runtime_topology.mjs --topology public`;
+  - result: `ok=true`, frontend build `add822d`, backend build `dev`;
+- public frontend restart health:
+  - `scripts\restart_frontend_wsl.ps1 -NoBuild`;
+  - result: WSL frontend became ready after `15s`, `lyraos.org` returned `200`,
+    and `/api/topology` matched the public topology contract;
+- operator read-only browser stress through the `alinassersabry` operator cookie:
+  - command:
+    `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_operator_readonly_browser_stress.ps1 -Topology public`;
+  - result:
+    `tmp/operator-readonly-stress-2026-06-21T23-43-39-760Z/result.json`;
+  - Pulse, Today, Calendar, Deadlines, Table, Insights, Settings, and Operator
+    returned `200` on desktop and mobile;
+  - before/after export counts matched for tasks, deadlines, stopwatch
+    sessions, pause events, feedback, exposure logs, and notifications;
+  - no real account rows were created, edited, or deleted.
+
+Operational fix made during proof:
+
+- `scripts/restart_frontend_wsl.ps1` now waits up to `45s` for
+  `http://localhost:3000/` readiness instead of assuming the production server
+  is ready after `8s`;
+- this prevents false "server down" failures when Next takes longer to warm.
+
+What failed or blocked:
+
+- `/operator` first viewport correctly reported readiness `red`;
+- `safe_to_invite_more_users` was `no`;
+- critical dynamic issues included:
+  - duplicate queued notification prompts;
+  - exposure records without render evidence;
+- instrumentation gaps remained visible, including notification source
+  freshness and several product-loop events;
+- two-account browser proof could not run because the saved alt cookies were
+  truncated:
+  - `LYRA_COOKIE_ASABRYHAFEZ` length `122`;
+  - `LYRA_COOKIE_MORIARTY` length `116`;
+  - `scripts\browser_smoke_two_users.mjs` failed with
+    `no backend token resolved for asabryhafez`.
+
+Visual verification:
+
+- operator screenshot:
+  `tmp/operator-readonly-stress-2026-06-21T23-43-39-760Z/alinassersabry-desktop-operator.png`;
+- the cockpit showed the decision answer in the first viewport and did not show
+  raw emails, raw task titles, provider tokens, provider URLs, or
+  `[object Object]`.
+
+Exit criteria still open:
+
+- resolve current critical dynamic issues or explicitly park them with owner,
+  test, and rollback path;
+- provide valid non-operator cookies for at least one alt-account browser proof;
+- rerun Wave 6 until `/operator` is green and
+  `safe_to_invite_more_users=true`.
+
 ## Wave B Implementation And Verification - 2026-06-05
 
 Status: implemented and verified on the deployed public web app.
@@ -772,13 +1157,13 @@ Agent test note:
 | Bug class | Status | Evidence | Required verification |
 |---|---|---|---|
 | Provider provenance marking | Neutralized | Deadlines carry `external_source`/`imported_at`; completion events carry provenance; pressure map separates external load. | Browser check that `moodle_ws_backfill` displays as external Moodle source. |
-| Moodle iCal/WS SSRF/private URL/redirect guard | Still occurring | URL shape checks exist, but loopback/private/link-local/metadata and redirect-to-private are not fully blocked. | Add backend SSRF tests for localhost, RFC1918, link-local, metadata, redirects. |
-| Google refresh token + Moodle iCal encryption | Still occurring | Model comments and storage paths still store Google refresh token and Moodle iCal URL plaintext; Moodle WS token is encrypted. | DB assertions after connect: stored values encrypted/prefixed and decryptable. |
-| Provider facts becoming canonical truth | Still occurring | Moodle WS can directly set `Deadline.state=completed` and backfill terminal rows. | Test requiring confirmation or explicit provider-truth policy. |
-| Native/imported duplicate deadlines | Still occurring | Manual duplicate warning exists; imported duplicates key mostly by external ID, not normalized title/date against native rows. | Native same-title/date plus import should surface/link duplicate. |
-| Terminal deadline binding correction | Still occurring | Normal create guard rejects terminal deadlines; deadline-binding correction endpoint checks not-found/voided but not terminal states. | Regression for completed/missed/skipped deadline binding correction. |
-| Export completeness | Still occurring | Export returns user/tasks/stopwatch/archetype only; omits deadlines, pauses, feedback, exposure, external outcomes, email engagement, integration state. | Export registry/completeness test. |
-| Delete completeness + Redis purge | Still occurring | DB auxiliary purge improved; delete does not clearly purge Redis runtime keys. | Delete test with Redis keys: notifications, stopwatch, gcal, me, task ranges. |
+| Moodle iCal/WS SSRF/private URL/redirect guard | Backend neutralized; browser pending | Shared provider URL guard validates resolved targets and redirect hops before Moodle iCal/WS requests. | Browser: unsafe Moodle URL fails safely without leaking raw URL/token. |
+| Google refresh token + Moodle iCal encryption | Backend neutralized | Google refresh tokens and Moodle iCal URLs store Fernet-prefixed; legacy plaintext rewrites encrypted on read. | DB assertions passed for encrypted storage and legacy fallback. |
+| Provider facts becoming canonical truth | Backend neutralized; browser pending | Moodle WS now records completion candidates instead of setting canonical completed state. | Browser: submitted Moodle evidence does not auto-complete user deadline. |
+| Native/imported duplicate deadlines | Backend neutralized; browser pending | External import upsert/backfill skips native same-title/same-day duplicates. | Browser/API: native/imported duplicate is prevented or surfaced. |
+| Terminal deadline binding correction | Backend neutralized; browser pending | Correction endpoint now rejects non-bindable terminal deadlines. | Regression passed for completed/missed/skipped deadline binding correction. |
+| Export completeness | Neutralized; browser passed | Registry-backed export includes user-owned data sections and integration-state summary without raw secrets. | Export registry/completeness test. |
+| Delete completeness + Redis purge | Neutralized; browser passed | Delete uses registry helpers and purges user-scoped Redis runtime state. | Delete test with Redis keys: notifications, stopwatch, gcal, me, task ranges. |
 | Provider sync backpressure | Still occurring | Per-request timeouts exist, but per-user sync loops lack wall-clock cap/circuit breaker. | Stress test blackholed URLs plus many users. |
 
 Agent test note:
@@ -816,6 +1201,14 @@ Agent test note:
 
 ## Neutralized Vs Still Occurring Summary
 
+Historical note:
+
+```text
+This section captures an intermediate verification pass. Use the 2026-06-22
+Current Freeze Closure Map near the top of this document for present
+go/no-go status.
+```
+
 Neutralized enough for current dogfood/browser path:
 
 - K01 web calendar/operator alert leak;
@@ -848,10 +1241,9 @@ Still occurring and cohort-relevant:
 - dashboard denominator/operator/test/synthetic contamination risks remain;
 - `exposure_contaminated` dashboard counts render rows rather than joined
   contaminated task/session rows;
-- provider URL SSRF guards, credential encryption, export/delete registry, and
-  Redis purge remain open;
-- Moodle WS can still mutate canonical deadline terminal state;
-- imported/native duplicate deadlines remain insufficiently surfaced;
+- provider URL SSRF guards, credential encryption, export/delete registry,
+  Redis purge, provider truth, and duplicate imports are backend-fixed but
+  still need browser verification and Wave 6 readiness proof;
 - local/UTC/naive-aware time boundaries and rollover sessions remain unsafe;
 - persisted frontend cache is not user-scoped by key.
 
@@ -917,6 +1309,10 @@ Fix:
 - Pulse stop flow captures focus, completion percent, and scope.
 
 ### Wave C - Provider And Data Sovereignty
+
+Status: split and implemented as Wave 5A (data sovereignty) and Wave 5B
+(provider security/integrity). Wave 5B provider UI/error surfaces are
+browser-verified in the dated closure section above.
 
 Fix:
 
@@ -1494,6 +1890,14 @@ Browser verification:
 4. Verify quick capture shrinks but remains usable.
 
 ## Agent Report Synthesis
+
+Historical note:
+
+```text
+The six-agent rows below are retained as the original audit evidence. They are
+not the current closure map when a later dated Wave A/B/1/2/3/4/5A/5B section
+above says a bug class was implemented, verified, or reclassified.
+```
 
 ### Agent 1 - User-Facing Product Loop
 

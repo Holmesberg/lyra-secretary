@@ -1,6 +1,6 @@
 """Operator-facing notification fan-out through OpenClaw.
 
-Lyra does not own a separate Telegram bot. Operator notifications are queued
+Barzakh does not own a separate Telegram bot. Operator notifications are queued
 into the same per-user Redis notification path that OpenClaw already polls,
 then OpenClaw relays them through its existing Telegram runtime.
 """
@@ -28,6 +28,11 @@ _PREFIX = {
 }
 
 _LAST_SENT_AT: dict[str, float] = {}
+
+
+def _dedupe_key(fingerprint: str) -> str:
+    digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
+    return f"operator_alert:dedupe:{digest}"
 
 
 def redacted_user_ref(user_id: int | str | None) -> str:
@@ -67,6 +72,7 @@ def _enqueue_openclaw_operator_alert(
     *,
     source: str,
     severity: Severity,
+    redis: RedisClient | None = None,
 ) -> bool:
     """Queue an operator alert for OpenClaw to relay through Telegram."""
     if not getattr(settings, "OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED", True):
@@ -79,7 +85,7 @@ def _enqueue_openclaw_operator_alert(
         "severity": severity,
         "created_at": now_utc().isoformat(),
     }
-    redis = RedisClient()
+    redis = redis or RedisClient()
     redis.client.rpush(_operator_queue_key(), json.dumps(payload, sort_keys=True))
     return True
 
@@ -109,7 +115,18 @@ def notify_operator(
     Failures log + return False; notification delivery must never block product
     mutations or research writes.
     """
+    if not getattr(settings, "OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED", True):
+        logger.debug(
+            "operator_notifier: OpenClaw operator notifications disabled "
+            "source=%s",
+            source,
+        )
+        return False
+
     fingerprint = None
+    redis_dedupe_key = None
+    redis_dedupe_acquired = False
+    redis: RedisClient | None = None
     if dedupe_key and cooldown_seconds and cooldown_seconds > 0:
         fingerprint = f"{source}:{severity}:{dedupe_key}"
         last_sent = _LAST_SENT_AT.get(fingerprint)
@@ -125,21 +142,43 @@ def notify_operator(
     prefix = _PREFIX.get(severity, _PREFIX["info"])
     formatted = f"{prefix} [{source}] {message}"
     try:
+        if fingerprint and cooldown_seconds:
+            redis = RedisClient()
+            redis_dedupe_key = _dedupe_key(fingerprint)
+            redis_dedupe_acquired = bool(
+                redis.client.set(
+                    redis_dedupe_key,
+                    now_utc().isoformat(),
+                    ex=cooldown_seconds,
+                    nx=True,
+                )
+            )
+            if not redis_dedupe_acquired:
+                logger.debug(
+                    "operator_notifier: suppressed duplicate notification "
+                    "via Redis source=%s dedupe_key=%s",
+                    source,
+                    dedupe_key,
+                )
+                return False
+
         ok = _enqueue_openclaw_operator_alert(
             formatted,
             source=source,
             severity=severity,
+            redis=redis,
         )
         if ok and fingerprint:
             _LAST_SENT_AT[fingerprint] = monotonic()
-        if not ok:
-            logger.debug(
-                "operator_notifier: OpenClaw operator notifications disabled "
-                "source=%s",
-                source,
-            )
+        if not ok and redis_dedupe_acquired and redis and redis_dedupe_key:
+            redis.client.delete(redis_dedupe_key)
         return ok
     except Exception as e:  # noqa: BLE001 - non-fatal observation channel
+        if redis_dedupe_acquired and redis and redis_dedupe_key:
+            try:
+                redis.client.delete(redis_dedupe_key)
+            except Exception:  # noqa: BLE001 - best-effort cleanup
+                pass
         logger.warning(
             "operator_notifier: unexpected error queueing OpenClaw alert: %s "
             "(source=%s)",

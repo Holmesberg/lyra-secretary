@@ -1,5 +1,5 @@
 param(
-    [string]$TaskName = "LyraOS Public Runtime Watchdog",
+    [string]$TaskName = "Barzakh Public Runtime Watchdog",
     [int]$EveryHours = 12,
     [int]$FirstRunMinutesFromNow = 10,
     [switch]$RunNow
@@ -17,11 +17,12 @@ $powershell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$watchdogPath`""
 
 $action = New-ScheduledTaskAction -Execute $powershell -Argument $arguments -WorkingDirectory $repoRoot
-$trigger = New-ScheduledTaskTrigger `
+$periodicTrigger = New-ScheduledTaskTrigger `
     -Once `
     -At (Get-Date).AddMinutes($FirstRunMinutesFromNow) `
     -RepetitionInterval (New-TimeSpan -Hours $EveryHours) `
     -RepetitionDuration (New-TimeSpan -Days 3650)
+$logonTrigger = New-ScheduledTaskTrigger -AtLogOn
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -MultipleInstances IgnoreNew `
@@ -33,13 +34,13 @@ $settings = New-ScheduledTaskSettingsSet `
 Register-ScheduledTask `
     -TaskName $TaskName `
     -Action $action `
-    -Trigger $trigger `
+    -Trigger @($logonTrigger, $periodicTrigger) `
     -Settings $settings `
-    -Description "Checks LyraOS public runtime every $EveryHours hours and repairs Cloudflare/local stack when needed." `
+    -Description "Checks Barzakh public runtime at logon and every $EveryHours hours; repairs Cloudflare/local stack when needed." `
     -Force | Out-Null
 
 Write-Host "Installed scheduled task: $TaskName"
-Write-Host "Cadence: every $EveryHours hours"
+Write-Host "Triggers: at logon, then every $EveryHours hours"
 Write-Host "First run: about $FirstRunMinutesFromNow minutes from now"
 Write-Host "Action: $powershell $arguments"
 Write-Host "Logs: $(Join-Path $repoRoot 'tmp\runtime-watchdog')"

@@ -1,10 +1,9 @@
 """Moodle Web Services submission-detection job.
 
 Runs every 6h alongside the iCal sync. For each user with a stored
-moodle_ws_token, queries Moodle's mod_assign_get_submission_status
-for each task-bound active deadline and auto-marks completed when
-Moodle confirms submission/grading. Operator-Telegram fanout fires
-once per sync (aggregate summary, no per-mark spam).
+moodle_ws_token, queries Moodle's mod_assign_get_submission_status and records
+provider completion candidates when Moodle reports submission/grading. Moodle
+does not silently complete Barzakh deadlines; the user remains author of truth.
 
 Cadence rationale: matches the iCal sync 6h cadence so a single
 operator-facing telegram thread carries both kinds of Moodle update
@@ -60,10 +59,10 @@ def _operator_error_message(error: str) -> tuple[str, str, str, str, str]:
             "No submission/completion state is changed from this failure.",
         )
     return (
-        f"Moodle Web Services sync failed with `{error}`. Lyra kept the "
+        f"Moodle Web Services sync failed with `{error}`. Barzakh kept the "
         "connection and will retry on the next cycle.",
         "warn",
-        "Lyra kept the connection and will retry on the next cycle.",
+        "Barzakh kept the connection and will retry on the next cycle.",
         "No user action unless the provider failure persists.",
         "No submission/completion state is changed from this failure.",
     )
@@ -139,38 +138,39 @@ def _run_for_one_user(db, user: User) -> None:
 
     backfilled = (
         result.backfilled_completed
+        + result.backfilled_completion_candidates
         + result.backfilled_planned
         + result.backfilled_missed
     )
     logger.info(
-        "moodle_ws: user %s sync ok — matched=%d marked_complete=%d "
+        "moodle_ws: user %s sync ok - matched=%d completion_candidates=%d "
         "skipped_no_match=%d skipped_not_submitted=%d backfilled=%d",
         user.user_id,
         result.matched,
-        result.marked_complete,
+        result.completion_candidates,
         result.skipped_no_match,
         result.skipped_not_submitted,
         backfilled,
     )
 
-    if user.is_operator and (result.marked_complete or backfilled):
+    if user.is_operator and (result.completion_candidates or backfilled):
         lines = []
-        if result.marked_complete:
+        if result.completion_candidates:
             lines.append(
-                f"Auto-marked *{result.marked_complete}* deadline(s) complete:"
+                f"Recorded *{result.completion_candidates}* Moodle completion candidate(s):"
             )
-            lines.extend(f"• {t}" for t in result.marked_titles)
+            lines.extend(f"- {t}" for t in result.completion_candidate_titles)
         if backfilled:
             lines.append(
                 f"Backfilled *{backfilled}* assignment(s) "
-                f"({result.backfilled_completed} done, "
+                f"({result.backfilled_completion_candidates} completion candidate, "
                 f"{result.backfilled_missed} missed, "
                 f"{result.backfilled_planned} planned)."
             )
         notify_operator(
-            "Moodle WS sync —\n" + "\n".join(lines),
+            "Moodle WS sync -\n" + "\n".join(lines),
             source="scheduler.moodle-ws",
             severity="info",
-            dedupe_key=f"moodle-ws-summary:{user.user_id}:{result.marked_complete}:{backfilled}",
+            dedupe_key=f"moodle-ws-summary:{user.user_id}:{result.completion_candidates}:{backfilled}",
             cooldown_seconds=15 * 60,
         )

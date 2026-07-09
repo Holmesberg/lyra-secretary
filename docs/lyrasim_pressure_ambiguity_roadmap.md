@@ -2,23 +2,59 @@
 authority: implementation-plan
 may_authorize_code: true
 runtime_owner: none
+authority_scope: lyrasim-harness-only
 supersedes:
 superseded_by:
 ---
 
 # LyraSim Pressure-And-Ambiguity Roadmap
 
-**Status:** Active roadmap after LyraSim V0 harness bring-up.
+**Status:** Subordinate LyraSim harness roadmap after V0 bring-up.
 **Created:** 2026-05-22.
 
 This document preserves the LyraSim plan across context compaction. It is not a
 runtime product feature spec. It authorizes incremental harness work only.
+During the freeze, that authority is limited to deterministic LyraSim harness
+scripts, fixtures, reports, and tests. It does not authorize product runtime
+code, schemas, provider adapters, passive tracking, user-facing insights,
+behavior-transition equations, OpenClaw/GPT wiring, or cohort readiness claims.
 
 LyraSim exists to pressure the current system before the expected Baseet user
 surge. It is a breakage harness for finding catastrophic authority, privacy,
 provider, pressure-map, and contamination failures before approximately 400
 users generate real traces. It is not a completeness claim and not a source of
 new product doctrine.
+
+LyraSim must not become an escape hatch from real users. It should amplify
+mechanisms discovered through real longitudinal traces, not invent humans in
+place of them.
+
+Strategic sequence:
+
+```text
+30-50 retaining alpha users
+-> observed recovery/pressure mechanisms
+-> LyraSim counterfactual stress
+-> 100-200 user scale gates
+```
+
+Correct use:
+
+```text
+real users reveal a repeated pressure/recovery mechanism
+-> simulate extra chaos around that mechanism
+-> convert failures into tests, reduced claims, product fixes, or parked notes
+```
+
+Incorrect use:
+
+```text
+insufficient user evidence
+-> simulate plausible humans
+-> treat pass rates as validation
+```
+
+Reality first. Simulation second.
 
 ## V0 Status
 
@@ -53,6 +89,17 @@ under real Baseet pressure. Passing LyraSim means only that Lyra survived the
 modeled pressure class; failing LyraSim means the failure is worth triaging.
 Only catastrophic failures, repeated real-world failures, or failures that map
 to an existing authority boundary should produce code architecture changes.
+
+After alpha begins, every new scenario family should declare its origin:
+
+```text
+survey_inferred | operator_dogfood | trusted_user_observed |
+alpha_cohort_observed | provider_failure | synthetic_boundary_probe
+```
+
+Real observed failures outrank synthetic boundary probes. Synthetic variants
+should parameterize known mechanisms instead of creating a second imagined
+product roadmap.
 
 The primary failure loop to attack:
 

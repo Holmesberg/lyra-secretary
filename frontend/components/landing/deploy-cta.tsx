@@ -28,8 +28,8 @@ export function DeployCta() {
               className="absolute -inset-6 -z-10 rounded-full bg-signal/30 blur-2xl motion-safe:animate-pulse-glow"
             />
             <Image
-              src="/lyraos-logo.png"
-              alt="LyraOS"
+              src="/barzakh-logo.png"
+              alt="Barzakh"
               width={120}
               height={120}
               quality={100}

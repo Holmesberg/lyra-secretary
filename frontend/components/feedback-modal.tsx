@@ -33,7 +33,7 @@ interface Props {
 
 const KIND_OPTIONS: Array<{ value: FeedbackKind; label: string; hint: string }> = [
   { value: "bug",        label: "Found a bug",  hint: "Something broke or behaved unexpectedly" },
-  { value: "suggestion", label: "Suggestion",   hint: "Idea for improving Lyra" },
+  { value: "suggestion", label: "Suggestion",   hint: "Idea for improving Barzakh" },
   { value: "confused",   label: "Confused",     hint: "Something didn't make sense" },
   { value: "other",      label: "Other",        hint: "" },
 ];
@@ -98,7 +98,7 @@ export function FeedbackModal({ open, onClose }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Help improve Lyra</DialogTitle>
+          <DialogTitle>Help improve Barzakh</DialogTitle>
           <DialogDescription className="text-dust">
             Whatever you write goes straight to Ali. Bugs, suggestions, anything weird.
           </DialogDescription>

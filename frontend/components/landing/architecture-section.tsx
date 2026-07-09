@@ -36,7 +36,7 @@ const STACK = [
 const BOUNDARIES = [
   {
     title: "AI is bounded support",
-    body: "LLM enrichment, JARVIS, and OpenClaw support parsing, operator work, and implementation. They are not the behavioral truth substrate.",
+    body: "LLM enrichment and OpenClaw support parsing, operator work, and implementation. They are not the behavioral truth substrate.",
   },
   {
     title: "Adaptive scheduling is future-gated",
@@ -61,7 +61,7 @@ export function ArchitectureSection() {
             <span className="neon-cyan">explicit boundaries</span>.
           </h2>
           <p className="mx-auto mt-6 max-w-2xl text-sm leading-relaxed text-dust md:text-base">
-            LyraOS is intentionally more traditional than the hype suggests:
+            Barzakh is intentionally more traditional than the hype suggests:
             rule-based where rules are safer, probabilistic where uncertainty
             matters, and conservative about what the system is allowed to claim.
           </p>

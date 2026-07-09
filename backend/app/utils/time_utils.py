@@ -3,7 +3,7 @@
 CRITICAL RULE: All times stored in UTC, displayed in user's local time.
 
 Convention (locked 2026-04-28):
-  - Internal Lyra datetime arithmetic uses NAIVE-UTC datetimes.
+  - Internal Barzakh datetime arithmetic uses NAIVE-UTC datetimes.
   - `now_utc()`, `to_utc(...)`, `to_local(...)` all return naive.
   - Datetimes loaded from Postgres/Supabase may be AWARE (when the
     column type is TIMESTAMPTZ — Supabase's default even when the

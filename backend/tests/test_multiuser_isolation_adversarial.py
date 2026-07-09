@@ -25,6 +25,7 @@ from app.db.models import (
     User,
 )
 from app.db.scoping import set_current_user_id
+from app.utils.redis_client import RedisClient
 from tests.conftest import TestingSession
 
 
@@ -479,10 +480,12 @@ def test_cross_user_interruption_blocked(adv_users, client):
 @needs_redis
 def test_notifications_per_user_isolated(adv_users, client):
     """Push a notification as user 98 → user 99 must NOT receive it."""
-    # Web delivery is peek/ack now. Clear prior Redis residue for this
-    # isolation test through the operator drain endpoint before asserting counts.
-    client.get("/v1/notifications/openclaw/pending", headers=_h(98))
-    client.get("/v1/notifications/openclaw/pending", headers=_h(99))
+    # Web delivery is peek/ack now. Clear prior Redis residue directly through
+    # the test Redis helper; OpenClaw compatibility endpoints are read-only and
+    # must not be used as cleanup drains.
+    redis = RedisClient().client
+    redis.delete("notifications:pending:98")
+    redis.delete("notifications:pending:99")
 
     # Push as user 98
     client.post(

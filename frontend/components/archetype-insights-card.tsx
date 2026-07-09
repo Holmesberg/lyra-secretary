@@ -32,6 +32,7 @@ import { ChevronUp, Sigma } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { ackExposureRender, api } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import {
   getArchetypeProximity,
   getArchetypeProximityTrend,
@@ -69,11 +70,15 @@ const SAMPLE_CATEGORY = "development";
 const SAMPLE_TOD = "morning";
 const SAMPLE_MINUTES = 60;
 
-export function ArchetypeInsightsCard() {
+export function ArchetypeInsightsCard({
+  insightsUnlocked = false,
+}: {
+  insightsUnlocked?: boolean;
+} = {}) {
   const [mathOpen, setMathOpen] = useState(false);
 
   const meQ = useQuery({
-    queryKey: ["me"],
+    queryKey: queryKeys.me,
     queryFn: () => api<MeArchetype>("/v1/users/me"),
     staleTime: 60_000,
   });
@@ -103,7 +108,7 @@ export function ArchetypeInsightsCard() {
             >
               4-minute survey in Settings
             </a>{" "}
-            gives Lyra a head start on how you tend to plan and work.
+            gives Barzakh a head start on how you tend to plan and work.
             Predictions still personalize as you log sessions.
           </p>
         </CardContent>
@@ -114,6 +119,7 @@ export function ArchetypeInsightsCard() {
   return (
     <DynamicProximityCard
       archetypeId={archetypeId}
+      insightsUnlocked={insightsUnlocked}
       mathOpen={mathOpen}
       onToggleMath={() => setMathOpen((o) => !o)}
       blendData={blendQ.data}
@@ -127,11 +133,13 @@ export function ArchetypeInsightsCard() {
 
 function DynamicProximityCard({
   archetypeId,
+  insightsUnlocked,
   mathOpen,
   onToggleMath,
   blendData,
 }: {
   archetypeId: string;
+  insightsUnlocked: boolean;
   mathOpen: boolean;
   onToggleMath: () => void;
   blendData?: BiasBlendSample;
@@ -186,12 +194,18 @@ function DynamicProximityCard({
             {isSettlingIn ? "Settling in" : "Your pattern"}
           </div>
           <p className="text-sm leading-relaxed text-dust">
-            {isSettlingIn
-              ? "Lyra is using your survey quietly in the background while it waits for observed sessions. "
-              : "Lyra needs a few more recent sessions before it can show behavioral proximity. "}
-            {remaining > 0
-              ? `After ${remaining === 1 ? "one more eligible session" : `${remaining} more eligible sessions`}, this card can compare recent traces without turning the survey into an identity label.`
-              : "The backend has not marked this surface ready yet, so Lyra is keeping the interpretation hidden for now."}
+            {insightsUnlocked
+              ? "Main insights are unlocked. This optional profile comparison waits for more eligible recent traces before rendering, so it does not turn sparse data into an identity label."
+              : (
+                <>
+                  {isSettlingIn
+                    ? "Barzakh is using your survey quietly in the background while it waits for observed sessions. "
+                    : "Barzakh needs a few more recent sessions before it can show behavioral proximity. "}
+                  {remaining > 0
+                    ? `After ${remaining === 1 ? "one more eligible session" : `${remaining} more eligible sessions`}, this card can compare recent traces without turning the survey into an identity label.`
+                    : "The backend has not marked this surface ready yet, so Barzakh is keeping the interpretation hidden for now."}
+                </>
+              )}
           </p>
         </CardContent>
       </Card>
@@ -218,7 +232,7 @@ function DynamicProximityCard({
         <ArchetypeSaturationNote top={top} />
 
         <p className="text-[11px] leading-relaxed text-dust-deep">
-          These tendencies shift as Lyra sees more of how you actually work.
+          These tendencies shift as Barzakh sees more of how you actually work.
           Not a fixed identity — a moving observation.
         </p>
 

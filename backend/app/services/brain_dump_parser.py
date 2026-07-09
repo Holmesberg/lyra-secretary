@@ -182,6 +182,14 @@ TIME_RANGE_RE = re.compile(
 )
 
 
+NOW_UNTIL_RE = re.compile(
+    r"\b(?:(?:also)\s+)?(?:starting\s+now|start\s+now|from\s+now|now)\s+"
+    r"(?:till|til|until|to)\s+"
+    r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b",
+    re.IGNORECASE,
+)
+
+
 def _extract_duration(segment: str) -> Optional[int]:
     """Extract user-provided duration in minutes. Returns None when no
     explicit duration is present (caller falls back to default).
@@ -274,6 +282,69 @@ def _extract_time_range_and_normalize(segment: str) -> tuple[Optional[int], str]
     return duration, new_segment
 
 
+def _ceil_minutes_between(start: datetime, end: datetime) -> int:
+    seconds = max(0.0, (end - start).total_seconds())
+    return int((seconds + 59) // 60)
+
+
+def _extract_now_until_range_and_normalize(
+    segment: str,
+    now_local: datetime,
+) -> tuple[Optional[datetime], Optional[datetime], Optional[int], str]:
+    """Detect "starting now till 3pm" style ranges.
+
+    Users often describe an immediate work block by its end time instead of
+    by a duration. Treat that as an explicit start at the current local anchor
+    and derive duration from the end time. Remove the matched phrase from the
+    title so preview cards show the work name instead of parser debris.
+    """
+    match = NOW_UNTIL_RE.search(segment)
+    if match is None:
+        return None, None, None, segment
+
+    try:
+        end_h = int(match.group(1))
+        end_m = int(match.group(2) or 0)
+        end_ampm = match.group(3).lower()
+    except (ValueError, AttributeError, TypeError):
+        return None, None, None, segment
+
+    if end_ampm == "pm" and end_h < 12:
+        end_h += 12
+    elif end_ampm == "am" and end_h == 12:
+        end_h = 0
+
+    start_local = now_local.replace(second=0, microsecond=0)
+    end_local = start_local.replace(
+        hour=end_h,
+        minute=end_m,
+        second=0,
+        microsecond=0,
+    )
+    if end_local <= start_local:
+        end_local += timedelta(days=1)
+
+    duration = _ceil_minutes_between(start_local, end_local)
+    if duration <= 0 or duration > 720:
+        return None, None, None, segment
+
+    new_segment = (segment[: match.start()] + " " + segment[match.end() :]).strip()
+    new_segment = re.sub(r"\s+", " ", new_segment).strip(" .,;:-")
+    new_segment = re.sub(
+        r"\b(?:also)\b\s*$",
+        "",
+        new_segment,
+        flags=re.IGNORECASE,
+    ).strip(" .,;:-")
+    new_segment = re.sub(
+        r"^\s*(?:also)\b\s+",
+        "",
+        new_segment,
+        flags=re.IGNORECASE,
+    ).strip(" .,;:-")
+    return start_local, end_local, duration, new_segment or segment
+
+
 def _has_deadline_kw(segment_lower: str) -> bool:
     """True if a deadline keyword appears as a whole word in the
     segment. Substring match ('submit' in 'submitting') would false-
@@ -300,7 +371,7 @@ def _has_explicit_deadline_framing(segment_lower: str) -> bool:
 
 def _now_local(now_iso: Optional[str]) -> datetime:
     """Resolve the user's "current local time" anchor. Falls back to
-    server local time. Strips tz to match Lyra's naive-internal
+    server local time. Strips tz to match Barzakh's naive-internal
     convention."""
     if now_iso:
         try:
@@ -426,7 +497,7 @@ def _extract_when(segment: str, now_local: datetime) -> Optional[datetime]:
     settings = {
         "PREFER_DATES_FROM": "future",
         "RELATIVE_BASE": now_local,
-        # Lyra's production timezone is Cairo and the onboarding audience uses
+        # Barzakh's production timezone is Cairo and the onboarding audience uses
         # day/month numeric dates. Without this, dateparser treats ambiguous
         # slash dates as US-style month/day, so "6/9" lands on June 9 instead
         # of September 6 while the visible title has the date stripped.
@@ -631,24 +702,37 @@ def parse_brain_dump(
     scheduled_task_slots: list[tuple[datetime, datetime]] = []
 
     for seg in segments:
-        # Two-stage extraction (LYR-115 + time-range fix 2026-04-30):
-        # 1. Pull time-range patterns ("2-4pm") FIRST. Returns the
+        # Three-stage extraction (LYR-115 + time-range fix 2026-04-30):
+        # 1. Pull "starting now till 3pm" ranges first. They carry an
+        #    explicit start and end, and the matched phrase is title debris.
+        # 2. Pull time-range patterns ("2-4pm"). Returns the
         #    range duration AND a normalized segment where the range
         #    is replaced by just the start time so dateparser sees
         #    a clean single time downstream.
-        # 2. Pull explicit duration tokens ("60 min", "1.5 hours") on
+        # 3. Pull explicit duration tokens ("60 min", "1.5 hours") on
         #    the normalized segment. Explicit duration wins over the
         #    range-derived duration if both are somehow present (rare).
-        # 3. Date extraction + title stripping run on the normalized
+        # 4. Date extraction + title stripping run on the normalized
         #    segment so the title doesn't get range-debris like
         #    "study 1" / "break".
-        range_duration, normalized = _extract_time_range_and_normalize(seg)
+        (
+            explicit_start,
+            explicit_end,
+            now_range_duration,
+            normalized,
+        ) = _extract_now_until_range_and_normalize(seg, now_local)
+        range_duration, normalized = _extract_time_range_and_normalize(normalized)
         explicit_duration = _extract_duration(normalized)
         if explicit_duration is not None:
             derived_duration = explicit_duration
             duration_source = "explicit_text"
             duration_confidence = 1.0
             duration_basis = "user supplied a duration in the text"
+        elif now_range_duration is not None:
+            derived_duration = now_range_duration
+            duration_source = "now_until_range"
+            duration_confidence = 0.95
+            duration_basis = "duration derived from a 'now until' end time"
         elif range_duration is not None:
             derived_duration = range_duration
             duration_source = "time_range"
@@ -661,7 +745,7 @@ def parse_brain_dump(
             duration_basis = None
 
         kind, kind_conf = _classify_kind(normalized)
-        when = _extract_when(normalized, now_local)
+        when = explicit_start or _extract_when(normalized, now_local)
         title = _strip_date_tokens(normalized) or normalized
         category = infer_academic_category(title)
         category_source = "title_heuristic_v1" if category else None
@@ -705,11 +789,15 @@ def parse_brain_dump(
             if when is None:
                 when = next_default_task_start
                 conf = max(0.35, conf - 0.10)
-            when = _first_non_overlapping_start(
-                when,
-                duration,
-                scheduled_task_slots,
-            )
+            # Planned candidates may overlap when the user explicitly says so
+            # ("also starting now"). Stopwatch/runtime code owns the stricter
+            # invariant: one active timer per user.
+            if explicit_start is None:
+                when = _first_non_overlapping_start(
+                    when,
+                    duration,
+                    scheduled_task_slots,
+                )
             task_end = when + timedelta(minutes=duration)
             scheduled_task_slots.append((when, task_end))
             if used_default_when and task_end > next_default_task_start:

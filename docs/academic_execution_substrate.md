@@ -12,6 +12,17 @@ This document does not authorize hidden tracking, autonomous scheduling,
 copyrighted content ingestion, product merger, or stronger behavioral claims.
 It defines the architecture needed for LyraOS to remain a provider-agnostic
 execution inference engine while integrating with academic/content systems.
+During the architecture freeze it also does not authorize new provider
+adapters, passive tracking, runtime AI synthesis, new user-facing insights,
+behavior-transition equations, schema migrations, or automatic interventions.
+Implementation-sounding examples below are future-gated examples unless a
+current authority document explicitly promotes them.
+
+R5a extraction rule: provider-native surface examples, adapter examples,
+passive academic tracking examples, AI/synthesis examples, and implementation
+sketches below are parked architecture notes. They may inform later design
+review, but they must not be extracted into runtime code, current docs, or user
+claims during freeze closure.
 
 Implementation note: Academic Pressure Map surfaces must follow
 `docs/academic_pressure_map_contract.md`. That contract freezes trust-state

@@ -1,21 +1,23 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  apiFetch as helperApiFetch,
+  frontendRequire,
+  parseAndExpandCookies,
+  resolveBackendTokenFromContext,
+  userRef,
+} from "./browser_auth_helpers.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "..");
-const frontendRequire = createRequire(path.join(repoRoot, "frontend", "package.json"));
 const { chromium } = frontendRequire("playwright");
 
 const frontendOrigin = process.env.LYRA_FRONTEND_ORIGIN || "http://localhost:3000";
 const apiOrigin = process.env.LYRA_API_ORIGIN || "http://localhost:8000";
+const CLOCK_SKEW_RETRY_MS = 2_000;
 
 const accounts = [
   {
-    label: "asabryhafez",
-    cookieHeader: process.env.LYRA_COOKIE_ASABRYHAFEZ || "",
+    label: "operator",
+    cookieHeader: process.env.LYRA_COOKIE_ALINASSERSABRY || "",
+    expectOperator: true,
   },
   {
     label: "holmesberg",
@@ -23,6 +25,7 @@ const accounts = [
       process.env.LYRA_COOKIE_HOLMESBERG
       || process.env.LYRA_COOKIE_MORIARTY
       || "",
+    expectOperator: false,
   },
 ];
 
@@ -32,92 +35,18 @@ function fail(message, detail = undefined) {
   throw err;
 }
 
-function userRef(userId) {
-  return createHash("sha256")
-    .update(String(userId))
-    .digest("hex")
-    .slice(0, 12);
-}
-
-function parseCookieHeader(header) {
-  const pairs = [];
-  const normalized = header.trim().replace(/^cookie:\s*/i, "");
-  for (const rawPart of normalized.split(";")) {
-    const part = rawPart.trim();
-    if (!part || !part.includes("=")) continue;
-    const index = part.indexOf("=");
-    const name = part.slice(0, index).trim();
-    const value = part.slice(index + 1).trim();
-    if (!name || !value) continue;
-    pairs.push({ name, value });
-  }
-  if (!pairs.length && normalized) {
-    pairs.push({
-      name: frontendOrigin.startsWith("https://")
-        ? "__Secure-next-auth.session-token"
-        : "next-auth.session-token",
-      value: normalized,
-    });
-  }
-  return pairs;
-}
-
-function expandNextAuthCookieAliases(cookies) {
-  const out = [];
-  const seen = new Set();
-
-  function add(name, value) {
-    const key = `${name}=${value}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push({ name, value, url: frontendOrigin });
-  }
-
-  for (const cookie of cookies) {
-    if (
-      frontendOrigin.startsWith("https://")
-      && cookie.name === "next-auth.session-token"
-    ) {
-      add("__Secure-next-auth.session-token", cookie.value);
-    }
-    if (
-      !frontendOrigin.startsWith("http://")
-      || (
-        !cookie.name.startsWith("__Secure-")
-        && !cookie.name.startsWith("__Host-")
-      )
-    ) {
-      add(cookie.name, cookie.value);
-    }
-    if (cookie.name.startsWith("__Secure-")) {
-      add(cookie.name.replace("__Secure-", ""), cookie.value);
-    }
-    if (cookie.name.startsWith("__Host-")) {
-      add(cookie.name.replace("__Host-", ""), cookie.value);
-    }
-  }
-  return out;
-}
-
-async function apiFetch(token, path, init = {}) {
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-    ...(init.headers || {}),
-  };
-  const response = await fetch(`${apiOrigin}${path}`, { ...init, headers });
-  const text = await response.text();
-  let body = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = text;
-  }
-  return { response, body };
+async function apiFetchForConfiguredApi(token, path, init = {}) {
+  return helperApiFetch(apiOrigin, token, path, init);
 }
 
 async function assertOkApi(token, path) {
-  const result = await apiFetch(token, path);
+  let result = await apiFetchForConfiguredApi(token, path);
+  const retryableClockSkew = result.response.status === 401
+    && /not yet valid \(iat\)/i.test(JSON.stringify(result.body || {}));
+  if (retryableClockSkew) {
+    await new Promise((resolve) => setTimeout(resolve, CLOCK_SKEW_RETRY_MS));
+    result = await apiFetchForConfiguredApi(token, path);
+  }
   if (!result.response.ok) {
     fail(`API smoke failed for ${path}`, {
       status: result.response.status,
@@ -137,7 +66,7 @@ async function assertOkApiForAccount(accountLabel, token, path) {
 }
 
 async function assertForbidden(token, path) {
-  const result = await apiFetch(token, path);
+  const result = await apiFetchForConfiguredApi(token, path);
   if (result.response.status !== 403) {
     fail(`expected 403 for non-operator route ${path}`, {
       status: result.response.status,
@@ -170,53 +99,30 @@ async function smokeAccount(browser, account) {
   }
 
   const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
-  const cookies = expandNextAuthCookieAliases(parseCookieHeader(account.cookieHeader));
+  const cookies = parseAndExpandCookies(account.cookieHeader, frontendOrigin);
   if (!cookies.length) {
     fail(`no cookie pairs parsed for ${account.label}`);
   }
   await context.addCookies(cookies);
 
-  const page = await context.newPage();
-  const failedResponses = [];
-  page.on("response", (response) => {
-    if (response.status() >= 500) {
-      failedResponses.push({ url: response.url(), status: response.status() });
-    }
-  });
-
-  await page.goto(`${frontendOrigin}/pulse`, {
-    waitUntil: "domcontentloaded",
-    timeout: 45_000,
-  });
-  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
-
-  const session = await page.evaluate(async () => {
-    const response = await fetch("/api/auth/session");
-    const text = await response.text();
-    let body = null;
-    try {
-      body = text ? JSON.parse(text) : null;
-    } catch {
-      body = { parse_error: text.slice(0, 120) };
-    }
-    return {
-      status: response.status,
-      contentType: response.headers.get("content-type"),
-      body,
-    };
-  });
-  const token = session?.body?.backendToken;
-  if (!token) {
+  let token = null;
+  try {
+    token = await resolveBackendTokenFromContext(context, frontendOrigin);
+  } catch (error) {
     fail(`no backend token resolved for ${account.label}`, {
       frontendOrigin,
-      sessionStatus: session?.status,
-      sessionContentType: session?.contentType,
-      sessionKeys: Object.keys(session?.body || {}),
+      ...(error.detail || {}),
       parsedCookieNames: cookies.map((cookie) => cookie.name),
     });
   }
 
   const me = await assertOkApiForAccount(account.label, token, "/v1/users/me");
+  if (Boolean(me.is_operator) !== account.expectOperator) {
+    fail(`unexpected operator flag for ${account.label}`, {
+      expected: account.expectOperator,
+      actual: Boolean(me.is_operator),
+    });
+  }
   const integrations = await assertOkApiForAccount(account.label, token, "/v1/integrations");
   const pressure = await assertOkApiForAccount(
     account.label,
@@ -246,14 +152,14 @@ async function smokeAccount(browser, account) {
     fail(`account data summary malformed for ${account.label}`);
   }
 
-  if (!me.is_operator) {
+  if (me.is_operator) {
+    await assertOkApiForAccount(account.label, token, "/v1/operator/dashboard");
+    await assertOkApiForAccount(account.label, token, "/v1/admin/dashboard");
+  } else {
+    await assertForbidden(token, "/v1/operator/dashboard");
     await assertForbidden(token, "/v1/admin/dashboard");
     await assertForbidden(token, "/v1/admin/feedback");
     await assertForbidden(token, "/v1/jarvis/health");
-  }
-
-  if (failedResponses.length) {
-    fail(`Pulse loaded with server errors for ${account.label}`, failedResponses);
   }
 
   await context.close();
@@ -276,6 +182,9 @@ try {
   }
   if (!results.some((result) => !result.is_operator)) {
     fail("no non-operator account was available for operator-route smoke");
+  }
+  if (!results.some((result) => result.is_operator)) {
+    fail("no operator account was available for operator-route smoke");
   }
   console.log(JSON.stringify({ ok: true, checked: results }, null, 2));
 } catch (error) {

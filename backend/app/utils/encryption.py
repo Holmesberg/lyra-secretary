@@ -64,6 +64,11 @@ def encrypt_secret(plaintext: str) -> str:
     return PREFIX + token
 
 
+def is_encrypted_secret(stored: Optional[str]) -> bool:
+    """True when a stored value already uses this Fernet envelope."""
+    return bool(stored and stored.startswith(PREFIX))
+
+
 def decrypt_secret(stored: Optional[str]) -> Optional[str]:
     """Decrypt if `stored` carries the Fernet prefix; otherwise return
     as-is (legacy plaintext path).

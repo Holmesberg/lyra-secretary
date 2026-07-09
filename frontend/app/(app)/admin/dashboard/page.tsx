@@ -21,10 +21,13 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/query-keys";
 
 interface UserRow {
   user_id: number;
   email: string;
+  email_hash: string;
+  user_ref: string;
   is_operator: boolean;
   signed_up_at: string;
   onboarded_at: string | null;
@@ -69,6 +72,12 @@ interface VtProgressEntry {
 
 interface DashboardData {
   calculated_at: string;
+  authority_status: {
+    status: string;
+    subordinate_to: string;
+    read_only: boolean;
+    note: string;
+  };
   totals: Totals;
   funnel: Funnel;
   users: UserRow[];
@@ -90,7 +99,7 @@ interface EmailEngagementData {
 
 export default function AdminDashboardPage() {
   const q = useQuery<DashboardData>({
-    queryKey: ["admin-dashboard"],
+    queryKey: queryKeys.adminDashboard,
     queryFn: () => api<DashboardData>("/v1/admin/dashboard"),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
@@ -103,7 +112,7 @@ export default function AdminDashboardPage() {
     },
   });
   const emailQ = useQuery<EmailEngagementData>({
-    queryKey: ["admin-email-engagement", "landing-html-v7"],
+    queryKey: queryKeys.adminEmailEngagement("landing-html-v7", 30),
     queryFn: () =>
       api<EmailEngagementData>(
         "/v1/admin/email-engagement?campaign_version=landing-html-v7&since_days=30"
@@ -158,7 +167,7 @@ export default function AdminDashboardPage() {
     );
   }
 
-  const { calculated_at, totals, funnel, users, vt_progress } = q.data;
+  const { calculated_at, authority_status, totals, funnel, users, vt_progress } = q.data;
   const lastCalculated = new Date(calculated_at);
 
   return (
@@ -169,7 +178,12 @@ export default function AdminDashboardPage() {
             Admin Dashboard
           </h1>
           <p className="mt-1 text-xs text-dust-deep">
+            Historical read-only surface. /operator is the readiness authority.
             Last calculated {lastCalculated.toLocaleTimeString()}. Refreshes every 5 min.
+          </p>
+          <p className="mt-1 text-xs text-dust-deep">
+            {authority_status.status.replaceAll("_", " ")}; subordinate to{" "}
+            {authority_status.subordinate_to}.
           </p>
         </div>
         <Button
@@ -288,7 +302,7 @@ export default function AdminDashboardPage() {
             <thead className="border-b border-hairline text-left text-dust-deep">
               <tr>
                 <th className="px-2 py-1 font-medium">#</th>
-                <th className="px-2 py-1 font-medium">Email</th>
+                <th className="px-2 py-1 font-medium">User</th>
                 <th className="px-2 py-1 font-medium">Stage</th>
                 <th className="px-2 py-1 font-medium">Signup</th>
                 <th className="px-2 py-1 font-medium">Onboarded</th>
@@ -316,7 +330,7 @@ export default function AdminDashboardPage() {
                 >
                   <td className="px-2 py-1.5 text-dust">{u.user_id}</td>
                   <td className="px-2 py-1.5 text-parchment">
-                    {u.email}
+                    {u.user_ref || u.email_hash || u.email}
                     {u.is_operator && (
                       <span className="ml-1 text-[10px] text-signal">op</span>
                     )}

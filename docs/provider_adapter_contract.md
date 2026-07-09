@@ -10,6 +10,15 @@ calendar, Jira/Linear, or future structured environments expand the substrate.
 This document authorizes no new provider feature. It defines the normalization
 contract that must exist before provider-specific data reaches Cortex,
 clean-data profiles, adaptive scheduling, or stronger research claims.
+During the architecture freeze it also does not authorize new provider
+adapters, passive tracking, runtime AI synthesis, new user-facing insights,
+behavior-transition equations, schema migrations, or automatic interventions.
+
+R5a extraction rule: any "allowed provider-native surface" or adapter-shape
+language below describes the boundary for a future explicitly approved adapter.
+It does not authorize new provider-native UI, imports, passive collection,
+credential storage, schema work, or provider-derived truth during freeze
+closure.
 
 ---
 
@@ -179,6 +188,10 @@ Examples:
 Provider outage paths must not create trusted execution evidence.
 
 ## 6. Adapter Acceptance Checklist
+
+Freeze boundary: this checklist applies only after a new provider adapter has
+been explicitly approved by current authority. It is not permission to start or
+ship a new adapter during the freeze.
 
 A new provider adapter is incomplete unless it has:
 

@@ -28,6 +28,7 @@ from app.services.output_surfaces import (
     RULE11_CONTROL_ARM,
     RULE11_POLICY_VERSION,
     acknowledge_surface_render,
+    create_output_surface_decision,
     emit_surface_render,
     emit_surface_suppression,
     get_output_surface_spec,
@@ -36,6 +37,7 @@ from app.services.output_surfaces import (
     projection_class_for_profile,
     rule11_no_nudge_control_active,
     rule11_randomization_fields,
+    suppress_existing_surface_decision,
 )
 from app.utils.time_utils import now_utc
 from tests.conftest import auth_headers
@@ -397,6 +399,121 @@ def test_render_ack_endpoint_rejects_cross_account_forgery(db, client):
     ) == 0
 
 
+def test_existing_decision_suppression_is_idempotent(db):
+    user = User(email=f"suppress-existing-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+    old_stamp = datetime.utcnow() - timedelta(days=30)
+    decision = create_output_surface_decision(
+        db,
+        surface_id="task.creation_nudge",
+        user_id=user.user_id,
+        decision_status="delivered",
+        eligible_at=old_stamp,
+        content_template_id="task_creation_nudge_lookup",
+        trigger_source="analytics.bias_factor.lookup",
+        delivered_at=old_stamp,
+    )
+    decision.created_at = old_stamp
+    db.commit()
+
+    first, first_created, first_status = suppress_existing_surface_decision(
+        db,
+        exposure_id=decision.exposure_id,
+        user_id=user.user_id,
+        suppression_reason="client_discarded_before_render",
+        suppressed_at=old_stamp,
+    )
+    second, second_created, second_status = suppress_existing_surface_decision(
+        db,
+        exposure_id=decision.exposure_id,
+        user_id=user.user_id,
+        suppression_reason="client_discarded_before_render",
+        suppressed_at=old_stamp,
+    )
+    db.commit()
+
+    assert first is not None
+    assert second is not None
+    assert first_created is True
+    assert second_created is False
+    assert first_status == "suppressed"
+    assert second_status == "already_suppressed"
+    assert second.suppression_id == first.suppression_id
+    assert (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == decision.exposure_id)
+        .one()
+        .decision_status
+    ) == "suppressed"
+    assert (
+        db.query(SuppressionEvent)
+        .filter(SuppressionEvent.exposure_id == decision.exposure_id)
+        .count()
+    ) == 1
+
+
+def test_existing_decision_suppression_endpoint_rejects_rendered_decision(db, client):
+    user = User(email=f"suppress-rendered-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add(user)
+    db.flush()
+    emitted = emit_surface_render(
+        db,
+        surface_id="task.creation_nudge",
+        user_id=user.user_id,
+        content_snapshot={"kind": "rendered"},
+    )
+    db.commit()
+
+    response = client.post(
+        f"/v1/exposures/{emitted['exposure_id']}/ack/suppress",
+        json={"suppression_reason": "client_discarded_before_render"},
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["created"] is False
+    assert response.json()["status"] == "already_rendered"
+    assert (
+        db.query(SuppressionEvent)
+        .filter(SuppressionEvent.exposure_id == emitted["exposure_id"])
+        .count()
+    ) == 0
+
+
+def test_existing_decision_suppression_endpoint_rejects_cross_account(db, client):
+    owner = User(email=f"suppress-owner-{uuid4()}@example.com", timezone="Africa/Cairo")
+    other = User(email=f"suppress-other-{uuid4()}@example.com", timezone="Africa/Cairo")
+    db.add_all([owner, other])
+    db.flush()
+    old_stamp = datetime.utcnow() - timedelta(days=30)
+    decision = create_output_surface_decision(
+        db,
+        surface_id="task.creation_nudge",
+        user_id=owner.user_id,
+        decision_status="delivered",
+        eligible_at=old_stamp,
+        content_template_id="task_creation_nudge_lookup",
+        trigger_source="analytics.bias_factor.lookup",
+        delivered_at=old_stamp,
+    )
+    decision.created_at = old_stamp
+    db.commit()
+
+    response = client.post(
+        f"/v1/exposures/{decision.exposure_id}/ack/suppress",
+        json={"suppression_reason": "client_discarded_before_render"},
+        headers=auth_headers(other.user_id),
+    )
+
+    assert response.status_code in {403, 404}
+    assert (
+        db.query(SuppressionEvent)
+        .filter(SuppressionEvent.exposure_id == decision.exposure_id)
+        .count()
+    ) == 0
+
+
 def test_unregistered_output_surface_hard_fails():
     with pytest.raises(ValueError, match="unregistered_output_surface"):
         get_output_surface_spec("missing.surface")
@@ -596,7 +713,7 @@ def test_task_creation_nudge_lookup_emits_exposure_when_it_will_render(db):
     assert body["clean_profile"] == "planning_calibration"
     assert body["fallback_mode"] == "suppress"
     assert body["exposure_id"]
-    assert body["render_id"]
+    assert body["render_id"] is None
     assert body["execution_suggested_minutes"] >= 5
     assert body["pause_overhead_minutes"] == 0
     assert body["occupancy_suggested_minutes"] == body["execution_suggested_minutes"]
@@ -606,21 +723,276 @@ def test_task_creation_nudge_lookup_emits_exposure_when_it_will_render(db):
         .filter(ExposureDecisionEvent.exposure_id == body["exposure_id"])
         .one()
     )
-    render = (
-        db.query(ExposureRenderEvent)
-        .filter(ExposureRenderEvent.render_id == body["render_id"])
-        .one()
-    )
     assert decision.user_id == user.user_id
+    assert decision.decision_status == "delivered"
     assert decision.exposure_category == "scheduling_suggestion"
     assert decision.trigger_source == "analytics.bias_factor.lookup"
+
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == body["exposure_id"])
+        .first()
+        is None
+    )
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        ack_response = client.post(
+            f"/v1/exposures/{body['exposure_id']}/ack/render",
+            headers=auth_headers(user.user_id),
+            json={
+                "surface_id": "task.creation_nudge",
+                "content_snapshot": {
+                    "template": "task_creation_nudge_lookup",
+                    "category": "study",
+                    "planned_minutes": 30,
+                    "suggested_minutes": body["occupancy_suggested_minutes"],
+                    "execution_suggested_minutes": body["execution_suggested_minutes"],
+                    "pause_overhead_minutes": body["pause_overhead_minutes"],
+                    "occupancy_suggested_minutes": body["occupancy_suggested_minutes"],
+                    "personal_weight": body["personal_weight"],
+                    "prior_weight": body["prior_weight"],
+                },
+            },
+        )
+
+    assert ack_response.status_code == 200, ack_response.text
+    render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == body["exposure_id"])
+        .one()
+    )
     assert render.surface == "task.creation_nudge"
-    assert "Suggested window is" in render.content_snapshot
+    assert "task_creation_nudge_lookup" in render.content_snapshot
     assert "execution_suggested_minutes" in render.content_snapshot
     assert "pause_overhead_minutes" in render.content_snapshot
     assert "occupancy_suggested_minutes" in render.content_snapshot
     assert "personal_weight" in render.content_snapshot
     assert "prior_weight" in render.content_snapshot
+
+
+def test_task_creation_nudge_lookup_prefilters_to_requested_category(db, monkeypatch):
+    user = User(
+        email=f"creation-nudge-prefilter-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=False,
+    )
+    db.add(user)
+    db.flush()
+
+    base = datetime.utcnow() - timedelta(days=3)
+    for idx in range(8):
+        task = Task(
+            task_id=str(uuid4()),
+            title=f"work-history-{idx}",
+            planned_start_utc=base + timedelta(hours=idx),
+            planned_end_utc=base + timedelta(hours=idx, minutes=60),
+            planned_duration_minutes=60,
+            executed_start_utc=base + timedelta(hours=idx),
+            executed_end_utc=base + timedelta(hours=idx, minutes=75),
+            executed_duration_minutes=75,
+            state=TaskState.EXECUTED,
+            source=TaskSource.MANUAL,
+            user_id=user.user_id,
+            category="work",
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            StopwatchSession(
+                session_id=str(uuid4()),
+                task_id=task.task_id,
+                user_id=user.user_id,
+                start_time_utc=task.executed_start_utc,
+                end_time_utc=task.executed_end_utc,
+                total_paused_minutes=0.0,
+                auto_closed=False,
+                data_quality_flag=None,
+            )
+        )
+    db.commit()
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_blend(_db, _user_id, tasks, category, _tod, planned_minutes):
+        captured["categories"] = [task.category for task in tasks]
+        return {
+            "cell": {
+                "bias_factor": 1.0,
+                "bias_factor_mean": 1.0,
+                "sessions": len(tasks),
+                "confidence": "low",
+                "interpretation": "on target",
+                "category": category,
+                "time_of_day": "morning",
+                "citation": "test",
+            },
+            "sessions": len(tasks),
+            "min_sessions": 3,
+            "source": "research",
+            "signal_level": "research",
+            "signals": [],
+            "bias_factor_final": 1.0,
+            "personal_weight": 0.0,
+            "prior_weight": 1.0,
+            "archetype_id": "diffuse_average",
+            "archetype_prior_bias_factor": 1.3,
+            "archetype_prior_for_cell": 1.0,
+            "archetype_scaling": 1.0,
+            "archetype_prior_citation": "test",
+            "execution_suggested_minutes": planned_minutes,
+            "pause_overhead_minutes": 0,
+            "pause_overhead_sample_size": 0,
+            "occupancy_suggested_minutes": planned_minutes,
+            "occupancy_strategy": "execution_only_research_prior",
+            "occupancy_factor": 1.0,
+        }
+
+    monkeypatch.setattr("app.services.bias_factor_service.blend", fake_blend)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/v1/analytics/bias_factor/lookup?category=study&tod=morning&planned_minutes=30",
+            headers=auth_headers(user.user_id),
+        )
+
+    assert response.status_code == 200, response.text
+    assert captured["categories"] == []
+
+
+def test_task_creation_nudge_lookup_dedupes_identical_rapid_calls(db):
+    user = User(
+        email=f"creation-nudge-dedupe-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=False,
+    )
+    db.add(user)
+    if db.query(Archetype).filter_by(archetype_id="diffuse_average").first() is None:
+        db.add(
+            Archetype(
+                archetype_id="diffuse_average",
+                name="Diffuse Average",
+                prior_bias_factor=1.30,
+                prior_sigma=0.30,
+            )
+        )
+    db.commit()
+
+    path = "/v1/analytics/bias_factor/lookup?category=study&tod=morning&planned_minutes=30"
+    with TestClient(app, raise_server_exceptions=False) as client:
+        first = client.get(path, headers=auth_headers(user.user_id))
+        second = client.get(path, headers=auth_headers(user.user_id))
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    first_body = first.json()
+    second_body = second.json()
+    assert first_body["exposure_id"] == second_body["exposure_id"]
+    assert first_body["render_id"] == second_body["render_id"]
+    assert (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.user_id == user.user_id)
+        .count()
+        == 1
+    )
+    assert (
+        db.query(ExposureRenderEvent)
+        .join(
+            ExposureDecisionEvent,
+            ExposureDecisionEvent.exposure_id == ExposureRenderEvent.exposure_id,
+        )
+        .filter(ExposureDecisionEvent.user_id == user.user_id)
+        .count()
+        == 0
+    )
+
+
+def test_task_creation_nudge_fast_lookup_can_hydrate_full_pause_overhead(db):
+    user = User(
+        email=f"creation-nudge-hydrate-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=False,
+    )
+    db.add(user)
+    if db.query(Archetype).filter_by(archetype_id="diffuse_average").first() is None:
+        db.add(
+            Archetype(
+                archetype_id="diffuse_average",
+                name="Diffuse Average",
+                prior_bias_factor=1.30,
+                prior_sigma=0.30,
+            )
+        )
+    db.flush()
+
+    base = datetime(2026, 6, 1, 6, 0)
+    for idx, pause in enumerate([0.0, 20.0, 40.0]):
+        start = base + timedelta(days=idx)
+        task = Task(
+            task_id=str(uuid4()),
+            title=f"hydrate-study-{idx}",
+            planned_start_utc=start,
+            planned_end_utc=start + timedelta(minutes=60),
+            planned_duration_minutes=60,
+            executed_start_utc=start,
+            executed_end_utc=start + timedelta(minutes=90),
+            executed_duration_minutes=90,
+            state=TaskState.EXECUTED,
+            source=TaskSource.MANUAL,
+            user_id=user.user_id,
+            category="study",
+            initiation_status="initiated",
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            StopwatchSession(
+                session_id=str(uuid4()),
+                task_id=task.task_id,
+                user_id=user.user_id,
+                start_time_utc=task.executed_start_utc,
+                end_time_utc=task.executed_start_utc
+                + timedelta(minutes=90 + int(pause)),
+                total_paused_minutes=pause,
+                auto_closed=False,
+                data_quality_flag=None,
+            )
+        )
+    db.commit()
+
+    exposure_id = str(uuid4())
+    fast_path = (
+        "/v1/analytics/bias_factor/lookup?category=study&tod=morning"
+        f"&planned_minutes=60&fast=true&exposure_id={exposure_id}"
+    )
+    full_path = (
+        "/v1/analytics/bias_factor/lookup?category=study&tod=morning"
+        f"&planned_minutes=60&exposure_id={exposure_id}"
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        fast_response = client.get(fast_path, headers=auth_headers(user.user_id))
+        full_response = client.get(full_path, headers=auth_headers(user.user_id))
+
+    assert fast_response.status_code == 200, fast_response.text
+    assert full_response.status_code == 200, full_response.text
+    fast_body = fast_response.json()
+    full_body = full_response.json()
+
+    assert fast_body["source"] == "research"
+    assert fast_body["pause_overhead_sample_size"] == 0
+    assert fast_body["pause_overhead_minutes"] == 0
+    assert full_body["source"] == "personal"
+    assert full_body["pause_overhead_sample_size"] == 3
+    assert full_body["pause_overhead_minutes"] == 20
+    assert full_body["occupancy_suggested_minutes"] == (
+        full_body["execution_suggested_minutes"] + 20
+    )
+    assert full_body["exposure_id"] == fast_body["exposure_id"] == exposure_id
+    assert (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == exposure_id)
+        .count()
+        == 1
+    )
 
 
 def test_task_creation_nudge_lookup_excludes_dirty_personal_rows(db):
@@ -707,7 +1079,7 @@ def test_task_creation_nudge_lookup_suppresses_if_exposure_logging_fails(db, mon
     def boom(*_args, **_kwargs):
         raise RuntimeError("ledger unavailable")
 
-    monkeypatch.setattr("app.api.v1.endpoints.analytics.emit_surface_render", boom)
+    monkeypatch.setattr("app.api.v1.endpoints.analytics.create_output_surface_decision", boom)
 
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(

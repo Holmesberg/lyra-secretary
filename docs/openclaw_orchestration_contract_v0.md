@@ -10,6 +10,16 @@ This contract documents runtime governance only. It does not authorize new
 Lyra schema, predictors, user prompts, exposure/adaptation inference, or
 psychological claims.
 
+As of the single-authority documentation pass, OpenClaw is also the nominated
+future host for GPT-class AI synthesis if that work is later reopened. That
+nomination does not authorize AI synthesis now. It only prevents future
+synthesis from being scattered across Jarvis, frontend code, background
+workers, and ad hoc endpoint calls.
+
+This nomination identifies preferred future ownership only. It does not
+authorize runtime AI synthesis, model integration, prompt execution,
+user-facing draft generation, or OpenClaw-to-product wiring.
+
 ---
 
 ## 1. Boundary
@@ -23,6 +33,9 @@ It may:
 - run adversarial review agents
 - preserve disagreement and uncertainty
 - summarize local memory and provenance
+- later generate AI synthesis drafts from explicit EvidencePackets, if and
+  only if the freeze is lifted and the ClaimCompiler boundary authorizes the
+  drafting path
 
 It must not:
 
@@ -31,9 +44,16 @@ It must not:
 - create Lyra research labels
 - replace Cortex clean-data profiles
 - silently merge disagreement into consensus
+- own canonical task, deadline, timer, provider, notification, exposure, or
+  insight mutation
+- publish user-facing synthesis without ClaimCompiler and output-surface policy
+  acceptance
 
 The Lyra product/research boundary remains governed by
 `docs/cortex_product_research_contract_v0.md`.
+
+The cross-surface authority boundary is governed by
+`docs/single_authority_contract.md`.
 
 ---
 
@@ -112,6 +132,11 @@ dependency must be explicit.
 - Data labels must be one of `OBSERVED`, `DERIVED`, `INFERRED`, or `UNKNOWN`.
 - `INFERRED` must never be converted into `OBSERVED`.
 - `UNKNOWN` must remain explicit.
+- OpenClaw output is reasoning output, not product truth.
+- OpenClaw may request canonical actions; it must not become the canonical
+  mutation owner.
+- Future OpenClaw/GPT synthesis drafts must remain drafts until accepted by
+  ClaimCompiler and the registered surface policy.
 
 ---
 
@@ -172,3 +197,7 @@ The external OpenClaw runtime also contains a local copy of this contract at:
 This contract refines the operator-only tooling boundary already stated in
 `MANIFESTO.md`. It does not change Lyra's research variables, user-facing
 claims, clean-data profiles, or product/research boundary.
+
+Read this contract with `docs/claim_compiler_and_synthesis_boundary.md` and
+`docs/single_authority_contract.md` before adding any new OpenClaw, Jarvis, or
+LLM-powered synthesis path.

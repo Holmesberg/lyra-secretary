@@ -1,11 +1,13 @@
 # Current Transition State
 
-**Date:** 2026-05-20
-**Status:** Active implementation orientation for the evidence-packet branch.
+**Date:** 2026-07-01
+**Status:** Active implementation orientation for the freeze-closure and safe
+refactor cycle.
 
-This document resolves phase-authority drift for the current implementation
+This document resolves phase-authority drift for the current stabilization
 pass. It does not authorize new inference, user-facing claims, adaptive
-scheduling, AI synthesis, or schema expansion.
+scheduling, AI synthesis, schema expansion, provider adapters, or marketing
+cohort expansion.
 
 ---
 
@@ -14,17 +16,48 @@ scheduling, AI synthesis, or schema expansion.
 The active implementation branch is:
 
 ```text
-feature/evidence-packet-claim-compiler
+wave-5-sovereignty-integrity-cycle
 ```
 
-The branch scope is Phase 0+1 only:
+The branch scope is freeze-closure only:
 
 ```text
-raw traces -> EvidencePacket -> ClaimCompiler -> existing registered surface
+measurement forensics -> operator truth -> regression gates -> small safe seams
 ```
 
-This is a semantics-preserving refactor. It should make existing behavioral
-claims easier to inspect and govern, not create stronger claims.
+The objective of every wave is to reduce uncertainty before reducing
+complexity. Complexity reduction is only performed when supported by
+independent evidence, reversible seams, and mechanically enforced authority
+boundaries.
+
+This is a semantics-preserving stabilization/refactor pass. It should make
+existing behavior easier to verify and maintain, not create stronger claims,
+new surfaces, or new runtime authority.
+
+Current sequence:
+
+1. E0 exposure forensics and repair ledger.
+2. R2 operator cockpit trusted/red-for-real.
+3. S1c hardening into gates.
+4. R5a stale docs and authority cleanup before further extraction.
+5. R3/R4 behavior-preserving extraction in small reversible seams, only while
+   those seams reduce operational danger.
+6. R5b public proof/runtime runbooks.
+7. R6 final cohort proof or controlled evidence-collection alpha.
+8. Post-freeze computation planning only after R6.
+
+No backend god-module extraction should begin while `/operator` has unresolved
+exposure blockers. A cockpit may be implementation-green while cohort-yellow
+for real-data gaps; do not weaken denominators to force cohort-green.
+
+Do not continue opportunistic cleanup indefinitely. If three consecutive
+frontend/backend seams only reduce apparent surface area and do not reduce
+operational danger, stop R3/R4 refactoring and move to public proof, users, or
+S1c hardening.
+
+Do not perform additional brand/domain migration in this cycle. The current
+runtime host compatibility remains parked until a separate topology/domain plan
+is explicitly authorized.
 
 ---
 
@@ -32,41 +65,78 @@ claims easier to inspect and govern, not create stronger claims.
 
 Use these documents as the current authority chain:
 
-1. `MANIFESTO.md` - highest-level product/research doctrine and kill criteria.
-2. `docs/cortex_contract_v0.md` - observed/derived/latent boundaries,
+1. `docs/AUTHORITY.md` - cross-repo authority hierarchy.
+2. `docs/single_authority_contract.md` - one owner per truth class, mutation
+   path, and claim path.
+3. `docs/operator_dashboard_contract.md` - implementation-green vs
+   cohort-green and cockpit readiness semantics.
+4. `docs/runbooks/post_wave_dogfood_loop.md` - reusable browser/API/export
+   verification loop plus optional CI/CD proof collection after push.
+5. `docs/registries/refactor_stabilization_ledger.md` - wave/seam audit
+   trail, browser artifacts, rollback notes, and issue references.
+6. `docs/audits/e0_exposure_forensics_2026_07_01.md` - E0 row-level exposure
+   forensics and repair evidence.
+7. `docs/audits/refactor_spaghetti_audit_2026_06_29.md` - documentation-only
+   ordering input for stabilization work.
+8. `MANIFESTO.md` - highest-level product/research doctrine and kill criteria.
+9. `docs/cortex_contract_v0.md` - observed/derived/latent boundaries,
    canonical metrics, clean-data profiles, and Cortex phase rules.
-3. `docs/cortex_product_research_contract_v0.md` - user-burden, product vs
+10. `docs/cortex_product_research_contract_v0.md` - user-burden, product vs
    research separation, and low-friction instrumentation contract.
-4. `docs/AGENT_HANDOFF.md` - agent onboarding and operator-only inference
-   boundaries.
-5. `docs/research_mapping.md` - explanatory claim map for current support vs
+11. `docs/architecture_freeze_priority_hold_2026_05_20.md` - active freeze
+   boundary for evidence/synthesis ideas; preserve later, do not implement now.
+12. `docs/research_mapping.md` - explanatory claim map for current support vs
    speculation.
-6. `docs/cross_domain_breakthrough_audit_2026_05_20.md` - literature
+13. `docs/cross_domain_breakthrough_audit_2026_05_20.md` - literature
    compression and breakthrough map; not research validation.
-7. `docs/tightened_docs/15_long_term_repo_strategy.md` and
+14. `docs/tightened_docs/15_long_term_repo_strategy.md` and
    `docs/tightened_docs/17_immediate_freeze_targets.md` - semantic-entropy and
    freeze-gate constraints.
-8. `docs/architecture_freeze_priority_hold_2026_05_20.md` - temporary
-   priority hold for the evidence/synthesis breakthrough; preserve it for
-   later, but do not implement it during this branch.
 
 `docs/building_phases.md` remains useful historical/product roadmap context,
-but it is stale April phase planning and is not the only active phase
-authority for May 2026 Cortex/evidence work.
+but it is stale April phase planning and is not current implementation
+authority.
+
+`docs/AGENT_HANDOFF.md` remains historical onboarding context only. It cannot
+authorize JARVIS work, OpenClaw runtime mutation, AI synthesis, provider
+adapters, passive tracking, new insight surfaces, or behavior-transition
+equations.
+
+The following documents are explicitly historical, parked, or subordinate
+during the current freeze-closure pass. Active-sounding text inside them,
+including "ship", "allowed", "approved", schema sketches, passive tracking,
+AI/synthesis, provider adapters, insight surfaces, or behavior equations,
+cannot authorize runtime work unless promoted by the authority chain above:
+
+- `docs/building_phases.md`
+- `docs/phase_6_architecture_backlog.md`
+- `docs/deadline_mechanism_design.md`
+- `docs/academic_execution_substrate.md`
+- `docs/academic_asset_velocity_and_evidence_fusion_plan.md`
+- `docs/core_product_loop_wave_plan.md`
+- `docs/AGENT_HANDOFF.md`
+- `docs/provider_adapter_contract.md`
 
 ---
 
 ## Current Implementation Rule
 
-Phase 0+1 may:
+The current freeze-closure pass may:
 
-- centralize evidence metadata that is already implicit in analytics outputs,
-- compile existing deterministic claims from explicit evidence packets,
-- preserve current API response shapes,
-- add tests that prevent claim inflation,
-- and clarify documentation lineage.
+- perform evidence-backed production forensics only with redacted artifacts and
+  explicit ledger notes,
+- preserve current API response shapes and user-facing behavior,
+- add characterization tests and browser/API/export verification,
+- collect CI/CD proof after pushed seams or record why no matching CI run
+  exists,
+- extract small behavior-preserving seams behind compatibility shims,
+- promote stable, allowlisted scans into hard gates,
+- file and close GitHub issues for product, verifier, topology, authority,
+  documentation, and measurement bugs,
+- and clarify documentation lineage when stale docs could authorize wrong
+  runtime behavior.
 
-Phase 0+1 must not:
+The current freeze-closure pass must not:
 
 - add new user-facing analytics claims,
 - add new behavioral metrics or latent labels,
@@ -75,29 +145,79 @@ Phase 0+1 must not:
 - implement cascade alerts,
 - implement adaptive scheduling,
 - change clean-data semantics,
-- or create new user-burden inputs.
+- create new user-burden inputs,
+- introduce schema migrations without explicit user approval,
+- wire OpenClaw/GPT into product runtime,
+- add new provider adapters,
+- add passive tracking,
+- or weaken operator denominators to force a green readiness state.
+
+Browser screenshots explain failures but do not prove behavior. Canonical proof
+comes from backend state, exported evidence, operator invariants, and browser
+behavior. Verifier bugs are first-class bugs and must be classified before
+assuming the product is broken.
+
+## Operational Danger Score
+
+The target "danger 3-4/10" is operational, not intuitive. A seam reduces danger
+only if it improves at least one of these observable properties:
+
+- Breakage observability: a failing behavior becomes caught by a standard
+  verification run, targeted test, static scan, or operator invariant.
+- Reversibility: rollback is smaller, documented, and does not require
+  production data repair.
+- Authority clarity: a mutation, exposure, provider, claim, or clean-data path
+  has one clearer owner and fewer bypasses.
+- Measurement integrity: exposure, clean-data, provenance, or output-surface
+  semantics become harder to misread or overclaim.
+- Runtime proof: local-current, hosted-public, CI/CD, or dogfood proof becomes
+  more current, less ambiguous, or more complete.
+
+Danger is allowed to be scored at 3-4 only when all of these are true:
+
+- `/operator` is implementation-green, with no implementation blockers.
+- `exposure_without_render_count` is zero for actionable render-required
+  surfaces.
+- Operator read-only proof has zero DB/API/Redis count diffs.
+- S1c hard gates pass for the touched surface.
+- CI passes on the exact pushed SHA.
+- Hosted-public proof is current, or deployment lag is explicitly classified.
+- Known high-risk findings are closed or parked with owner, test, artifact, and
+  rollback note.
+- New seams are producing danger reduction, not only cosmetic line-count or
+  file-count reduction.
+
+Cosmetic-only seams include renames, move-only splits, helper extraction, or
+surface-area reduction that does not change any proof, gate, ownership,
+rollback boundary, issue state, or runtime observability. Record each seam's
+danger delta in the stabilization ledger. Three consecutive cosmetic-only seams
+means stop refactoring and switch to public proof, users, or S1c hardening.
 
 ---
 
 ## Deferred Work
 
-The following remain later phases:
+The following remain later phases and require a new explicit plan:
 
-- dormant decision-point registry for cascade/sequence disruption,
-- NVIDIA/Kimi rate-budget enforcement before any synthesis path,
-- AI synthesis over evidence packets,
-- public cascade intervention surfaces,
-- and any stronger adaptive authority.
+- Admission/Coverage Gate, Execution Drift Decomposition, Re-entry Resolution
+  Survival, and Pressure-to-Execution Funnel beyond operator diagnostics.
+- AI synthesis over evidence packets or OpenClaw/GPT product wiring.
+- Public cascade intervention surfaces.
+- Behavior-transition runtime equations.
+- New provider adapters or passive tracking.
+- Any stronger adaptive authority or cohort expansion beyond controlled
+  evidence collection.
 
-Those phases require separate implementation plans and must re-check exposure,
-clean-data, and output-surface gates before code lands.
-
-The temporary priority hold in
-`docs/architecture_freeze_priority_hold_2026_05_20.md` is the current reminder
-that AI synthesis and public cascade intervention remain later, not hidden
-Phase 1 scope.
+If implementation-green is true and the only cohort blocker is insufficient
+real data, Lyra may enter controlled evidence-collection alpha: limited trusted
+users, explicit research/dogfood status, no marketing, and no strong claims.
 
 ---
+
+## Historical Evidence-Packet Ledgers
+
+The remaining Wave 3-6 ledgers below are retained as historical branch context.
+They do not supersede the current freeze-closure sequence above.
 
 ## Wave 3 Deletion And Parking Ledger
 

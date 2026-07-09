@@ -35,6 +35,11 @@ from app.db.scoping import get_current_user_id
 from app.utils.tasks_range_cache import invalidate_user_ranges
 from app.utils.time_utils import now_utc, strip_tz
 
+PROVIDER_COMPLETION_SOURCES = {
+    "moodle_submission",
+    "moodle_backfill_submission",
+}
+
 
 # State transitions a user is allowed to drive directly via update_deadline.
 # `missed` itself is reconciliation-driven, but missed -> completed is a
@@ -52,7 +57,7 @@ from app.utils.time_utils import now_utc, strip_tz
 # task auto-transitions planned → active per the existing path.
 USER_TRANSITIONS_FROM: dict[str, set[str]] = {
     # `planned → completed` allowed for the no-bind path (operator
-    # finished a deadline manually without ever binding a Lyra task).
+    # finished a deadline manually without ever binding a Barzakh task).
     # Apr 27 dogfood: operator caught this on first try after the
     # auto-save fix. Without it, the user has to click "Reopen → Save"
     # → reopen modal → "Active" wait, you can't even set active
@@ -61,7 +66,7 @@ USER_TRANSITIONS_FROM: dict[str, set[str]] = {
     "planned": {"active", "completed", "skipped"},
     "active": {"completed", "skipped"},
     # Reopen paths from terminal states. `missed -> completed` preserves the
-    # one-click offline/late completion path after the sweeper runs. Lyra still
+    # one-click offline/late completion path after the sweeper runs. Barzakh still
     # does NOT distinguish "freshly created" from "reopened" in the schema —
     # analytics that care about completion fidelity should look at completed_at /
     # task_deadline_outcome, not at the current state alone.
@@ -124,12 +129,26 @@ def record_deadline_completion_event(
     This is intentionally not canonicalizing. One deadline can have multiple
     valid completion events from different sources; analytics must choose
     whether it is counting behaviors or distinct completed deadlines.
+
+    Provider completion sources are idempotent across sync retries. Moodle can
+    report the same submitted assignment on every run, and that must remain one
+    provider evidence row, not one new "behavior" each time the worker wakes up.
     """
     completed_at = strip_tz(completed_at_utc)
     recorded_at = strip_tz(recorded_at_utc) or now_utc()
     due_at = strip_tz(deadline.due_at_utc)
     if completed_at is None or due_at is None:
         raise ValueError("deadline_completion_event requires completed_at and due_at")
+
+    existing = find_existing_provider_completion_event(
+        db,
+        deadline,
+        completion_source=completion_source,
+        completed_at_utc=completed_at,
+        time_provenance=time_provenance,
+    )
+    if existing is not None:
+        return existing
 
     delay_minutes = int((completed_at - due_at).total_seconds() / 60)
     event = DeadlineCompletionEvent(
@@ -146,6 +165,38 @@ def record_deadline_completion_event(
     )
     db.add(event)
     return event
+
+
+def find_existing_provider_completion_event(
+    db: Session,
+    deadline: Deadline,
+    *,
+    completion_source: str,
+    completed_at_utc: datetime,
+    time_provenance: str,
+) -> Optional[DeadlineCompletionEvent]:
+    """Return an existing provider completion event when a sync repeats.
+
+    External imports with a real provider timestamp dedupe on that timestamp.
+    Sync-time fallbacks dedupe by deadline + source because the timestamp would
+    otherwise be "now" on every scheduler tick.
+    """
+    if completion_source not in PROVIDER_COMPLETION_SOURCES:
+        return None
+
+    completed_at = strip_tz(completed_at_utc)
+    q = db.query(DeadlineCompletionEvent).filter(
+        DeadlineCompletionEvent.deadline_id == deadline.deadline_id,
+        DeadlineCompletionEvent.user_id == deadline.user_id,
+        DeadlineCompletionEvent.completion_source == completion_source,
+        DeadlineCompletionEvent.voided_at.is_(None),
+    )
+    if time_provenance == "external_import_sync_time":
+        return q.order_by(DeadlineCompletionEvent.recorded_at_utc.asc()).first()
+    return q.filter(
+        DeadlineCompletionEvent.completed_at_utc == completed_at,
+        DeadlineCompletionEvent.time_provenance == time_provenance,
+    ).first()
 
 
 class DeadlineManager:
@@ -277,11 +328,12 @@ class DeadlineManager:
         """Create-or-update a deadline imported from a third-party source.
 
         Used by the LMS sync job (alembic 041, 2026-04-29) to ingest
-        Moodle iCal events as Lyra deadlines. Keyed on
+        Moodle iCal events as Barzakh deadlines. Keyed on
         (user_id, external_source, external_id) — the partial unique
         index `uq_deadline_external` is the DB-level guarantee.
 
-        Returns one of: 'created', 'updated', 'unchanged', 'skipped_voided'.
+        Returns one of: 'created', 'updated', 'unchanged', 'skipped_voided',
+        'duplicate_existing'.
 
         Voided rows are NOT resurrected — if a user explicitly voided an
         imported deadline, a subsequent sync sees it and skips. The user
@@ -303,6 +355,9 @@ class DeadlineManager:
         )
 
         if existing is None:
+            duplicate = self.find_duplicate_deadline(title, due_at_utc)
+            if duplicate is not None:
+                return "duplicate_existing"
             now = datetime.utcnow()
             deadline = Deadline(
                 deadline_id=str(uuid4()),
@@ -346,6 +401,93 @@ class DeadlineManager:
         self.db.commit()
         _invalidate_deadline_user_ranges(uid)
         return "updated"
+
+    def stage_provider_backfill_deadline(
+        self,
+        *,
+        external_source: str,
+        external_id: str,
+        title: str,
+        due_at_utc: datetime,
+        state: str,
+        description: Optional[str] = None,
+        category_hint: Optional[str] = None,
+        imported_at_utc: Optional[datetime] = None,
+    ) -> tuple[str, Optional[Deadline]]:
+        """Stage a provider-created deadline without committing.
+
+        Moodle WS backfill is provider evidence, not user-authored native
+        truth. It may create/update provider rows as `planned` or `missed`,
+        but it may not create canonical completed deadlines.
+
+        Returns `(op, deadline)` where op is one of:
+        `created`, `updated`, `unchanged`, `skipped_voided`,
+        `duplicate_existing`.
+        """
+        uid = _require_current_user("stage_provider_backfill_deadline")
+        if not external_source or not external_id:
+            raise ValueError("provider_backfill_requires_external_key")
+        if state not in {"planned", "missed"}:
+            raise ValueError(f"provider_backfill_invalid_state: {state}")
+
+        due_at = strip_tz(due_at_utc) or due_at_utc
+        existing = (
+            self.db.query(Deadline)
+            .filter(
+                Deadline.user_id == uid,
+                Deadline.external_source == external_source,
+                Deadline.external_id == external_id,
+            )
+            .first()
+        )
+
+        if existing is None:
+            duplicate = self.find_duplicate_deadline(title, due_at)
+            if duplicate is not None:
+                return "duplicate_existing", duplicate
+            imported_at = strip_tz(imported_at_utc) or now_utc()
+            deadline = Deadline(
+                deadline_id=str(uuid4()),
+                user_id=uid,
+                title=title,
+                description=description,
+                due_at_utc=due_at,
+                category_hint=category_hint,
+                state=state,
+                created_at=imported_at,
+                external_source=external_source,
+                external_id=external_id,
+                imported_at=imported_at,
+                completed_at=None,
+            )
+            self.db.add(deadline)
+            _invalidate_deadline_user_ranges(uid)
+            return "created", deadline
+
+        if existing.voided_at is not None:
+            return "skipped_voided", existing
+
+        next_state = existing.state
+        if existing.state in {"planned", "missed"}:
+            next_state = state
+
+        changed = (
+            existing.title != title
+            or existing.due_at_utc != due_at
+            or (existing.description or "") != (description or "")
+            or (existing.category_hint or "") != (category_hint or "")
+            or existing.state != next_state
+        )
+        if not changed:
+            return "unchanged", existing
+
+        existing.title = title
+        existing.due_at_utc = due_at
+        existing.description = description
+        existing.category_hint = category_hint
+        existing.state = next_state
+        _invalidate_deadline_user_ranges(uid)
+        return "updated", existing
 
     def update_deadline(
         self,

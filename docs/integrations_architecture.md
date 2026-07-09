@@ -1,9 +1,20 @@
 # Integrations Architecture
 
+> Freeze boundary: this document describes the integration architecture and
+> consent model, but it does not authorize new provider adapters, new OAuth
+> scopes, passive tracking, provider completion truth, runtime AI synthesis,
+> new user-facing insights, behavior-transition equations, schema migrations,
+> or automatic interventions during the architecture freeze.
+>
+> Existing shipped integration paths may be maintained only through their
+> canonical provider/deadline/user-data authorities. Provider facts remain
+> provenance-bearing candidates unless a current active contract and explicit
+> user action promote them into native truth.
+
 Canonical reference for how Lyra connects to third-party systems. First
 written 2026-04-22 alongside the incremental-OAuth refactor (see
 `strategic_decisions_april_22.md`). Intended as the forward-looking
-source of truth every new integration must match.
+reference every future integration must match after freeze authority exists.
 
 ---
 
@@ -269,6 +280,11 @@ the callback route can emit.
 ---
 
 ## Adding a new integration — checklist
+
+> Freeze gate: this checklist applies only after current authority explicitly
+> approves a new provider. It is not permission to add adapters, OAuth scopes,
+> schema, passive tracking, provider completion truth, or provider-derived
+> native task/deadline truth during freeze.
 
 - [ ] Add registry entry to `frontend/lib/integrations.ts`
   (name, description, scopes, `available`, monogram, monogramClass)

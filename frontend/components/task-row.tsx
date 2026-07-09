@@ -93,6 +93,10 @@ export function TaskRow({
 
   return (
     <div
+      data-testid="task-row"
+      data-task-id={task.task_id}
+      data-task-title={task.title}
+      data-task-state={state}
       className={cn(
         "group flex items-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-2.5 py-2 transition-colors sm:gap-4 sm:px-4 sm:py-3",
         selected && "border-signal/40 bg-signal/5",
@@ -182,6 +186,7 @@ export function TaskRow({
         {state === "PLANNED" && (
           <>
             <Button
+              data-testid="task-row-start"
               size="sm"
               variant="secondary"
               onMouseEnter={onStartHover}
@@ -233,6 +238,7 @@ export function TaskRow({
         )}
         {state === "SKIPPED" && canMarkDone && (
           <Button
+            data-testid="task-row-stop"
             size="sm"
             variant="ghost"
             onClick={(e) => { e.stopPropagation(); onDone(task); }}

@@ -4,6 +4,7 @@
  */
 import { api } from "./api";
 import type { Category } from "./categories";
+import type { PauseReason } from "./stopwatch-pause-reasons";
 
 function newIdempotencyKey(scope: string): string {
   const random =
@@ -129,10 +130,17 @@ export async function queryTasks(
  */
 export async function queryTasksRange(
   dateFrom: string,
-  dateTo: string
+  dateTo: string,
+  opts: { includeVoided?: boolean } = {}
 ): Promise<QueryResponse> {
+  const qs = new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+    state: "all",
+  });
+  if (opts.includeVoided) qs.set("include_voided", "true");
   return api<QueryResponse>(
-    `/v1/tasks/query?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&state=all`
+    `/v1/tasks/query?${qs.toString()}`
   );
 }
 
@@ -161,6 +169,7 @@ export interface CreateTaskInput {
   // present, backend computes dwell_seconds = decision_time - viewed_at
   // for the ReflectionViewLog row.
   nudge_viewed_at?: string;
+  idempotencyKey?: string;
 }
 
 export interface ConflictSummary {
@@ -198,6 +207,7 @@ export interface CreateTaskResponse {
 export function createTask(input: CreateTaskInput) {
   return api<CreateTaskResponse>("/v1/create", {
     method: "POST",
+    headers: idempotencyHeaders("task-create", input.idempotencyKey),
     body: JSON.stringify({
       title: input.title,
       start: input.start,
@@ -408,7 +418,7 @@ export function stopStopwatch(
   });
 }
 
-export function pauseStopwatch(reason?: string, idempotencyKey?: string) {
+export function pauseStopwatch(reason?: PauseReason, idempotencyKey?: string) {
   return api<unknown>("/v1/stopwatch/pause", {
     method: "POST",
     headers: idempotencyHeaders("stopwatch-pause", idempotencyKey),
@@ -728,6 +738,7 @@ export interface InsightsResponse {
   sessions_analyzed: number;
   history_events_analyzed?: number;
   min_sessions_required: number;
+  unlocked?: boolean;
   ready: boolean;
   surface_id?: string;
   truth_class?: "trace" | "metric" | "interpretation" | "intervention" | "diagnostic_only";
@@ -742,16 +753,47 @@ export interface InsightsResponse {
   render_id?: string | null;
   suppressed_generators?: SuppressedInsightGenerator[];
   message?: string;
+  reopen_after_clean_sessions?: number;
+  new_clean_sessions_since_hold?: number;
+  clean_sessions_until_reopen?: number;
 }
 
 export function getInsights() {
   return api<InsightsResponse>("/v1/analytics/insights");
 }
 
-export function lookupBiasFactor(category: string, tod: string, plannedMinutes: number = 30) {
-  return api<BiasLookupResponse>(
-    `/v1/analytics/bias_factor/lookup?category=${encodeURIComponent(category)}&tod=${encodeURIComponent(tod)}&planned_minutes=${plannedMinutes}`
+const BIAS_LOOKUP_CACHE_TTL_MS = 30_000;
+const biasLookupCache = new Map<
+  string,
+  { storedAt: number; promise: Promise<BiasLookupResponse> }
+>();
+
+export function lookupBiasFactor(
+  category: string,
+  tod: string,
+  plannedMinutes: number = 30,
+  options?: { fast?: boolean; exposureId?: string | null }
+) {
+  const fast = Boolean(options?.fast);
+  const exposureId = options?.exposureId ?? "";
+  const key = `${category}\u0000${tod}\u0000${plannedMinutes}\u0000${fast ? "fast" : "full"}\u0000${exposureId}`;
+  const cached = biasLookupCache.get(key);
+  if (cached && Date.now() - cached.storedAt < BIAS_LOOKUP_CACHE_TTL_MS) {
+    return cached.promise;
+  }
+  const exposureParam = exposureId
+    ? `&exposure_id=${encodeURIComponent(exposureId)}`
+    : "";
+  const promise = api<BiasLookupResponse>(
+    `/v1/analytics/bias_factor/lookup?category=${encodeURIComponent(category)}&tod=${encodeURIComponent(tod)}&planned_minutes=${plannedMinutes}${fast ? "&fast=true" : ""}${exposureParam}`
   );
+  biasLookupCache.set(key, { storedAt: Date.now(), promise });
+  promise.catch(() => {
+    if (biasLookupCache.get(key)?.promise === promise) {
+      biasLookupCache.delete(key);
+    }
+  });
+  return promise;
 }
 
 // ─── User categories ──────────────────────────────────────────────────

@@ -37,6 +37,7 @@ USER_OWNED_TABLES = {
 
 ALLOWLIST = {
     # Environment probes only; they do not read/write user-owned tables.
+    ("main.py", "SELECT 1"),
     ("api/v1/endpoints/health.py", "SELECT now() AT TIME ZONE 'UTC'"),
     ("api/v1/endpoints/health.py", "information_schema.columns"),
 }

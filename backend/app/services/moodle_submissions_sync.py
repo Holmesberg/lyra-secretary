@@ -1,13 +1,13 @@
 """Moodle Web Services submission detection (Phase B 2026-05-01).
 
-Auto-marks Lyra deadlines complete when Moodle confirms the user
-submitted the corresponding assignment. Solves operator's complaint:
-"the overdue task from moodle still hasn't synced up, still shows
-overdue even though I submitted it on moodle." iCal feeds carry due
-dates ONLY — Web Services is the only path to submission status.
+Records provider completion candidates when Moodle confirms the user submitted
+or was graded on the corresponding assignment. Moodle evidence does not
+silently complete Barzakh deadlines; the user remains author of canonical
+deadline truth. iCal feeds carry due dates ONLY - Web Services is the only
+path to submission status.
 
 ARCHITECTURE — course-code matching (operator decision 2026-05-01):
-  Lyra deadline matches a Moodle assignment ONLY when they share the
+  Barzakh deadline matches a Moodle assignment ONLY when they share the
   same course (deadline.category_hint == course_short, or both
   contain the same course code like "CSE281"). Title fuzzy-match +
   due-date proximity then breaks ties WITHIN that course's
@@ -35,9 +35,9 @@ DECISION RULE — what counts as "submitted":
   - status == 'draft' / 'new' / None  → leave alone
 
 MATCHING:
-  Lyra deadline title + due_at_utc → best Moodle assignment via
+  Barzakh deadline title + due_at_utc → best Moodle assignment via
   (title_similarity + due_proximity) score. Each Moodle assignment
-  binds to AT MOST ONE Lyra deadline (greedy first-served by score).
+  binds to AT MOST ONE Barzakh deadline (greedy first-served by score).
   Min score 0.30; high-confidence + due-date proximity protects
   against false matches even at the broader threshold (operator's
   "subject-aware" filter is the primary noise gate).
@@ -59,13 +59,18 @@ from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Optional
 from urllib.parse import urlparse
-from uuid import uuid4
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.db.models import Deadline, User
-from app.services.deadline_manager import record_deadline_completion_event
+from app.services.deadline_manager import (
+    DeadlineManager,
+    find_existing_provider_completion_event,
+    record_deadline_completion_event,
+)
+from app.utils.encryption import decrypt_secret, encrypt_secret, is_encrypted_secret
+from app.utils.provider_url_safety import ProviderUrlSafetyError, safe_provider_get
 from app.utils.time_utils import now_utc
 
 logger = logging.getLogger(__name__)
@@ -77,8 +82,8 @@ MEDIUM_DELTA_HOURS = 168  # 7d
 PENALTY_DELTA_HOURS = 720  # 30d
 
 # Backfill window for assignments that exist on Moodle but not in
-# Lyra's deadline table (operator request 2026-05-01 — "submitted
-# tasks should pop up", "could Lyra pick up unsubmitted as overdue").
+# Barzakh's deadline table (operator request 2026-05-01 — "submitted
+# tasks should pop up", "could Barzakh pick up unsubmitted as overdue").
 # Looking too far back drags in last semester's noise; the operator
 # typically cares about the current term + a 90d safety margin.
 BACKFILL_PAST_DAYS = 90
@@ -91,13 +96,16 @@ class SubmissionSyncResult:
     """Returned per-user from sync_user(). Counts + list for telegram."""
     matched: int = 0
     marked_complete: int = 0
+    completion_candidates: int = 0
     skipped_unbound: int = 0
     skipped_no_match: int = 0
     skipped_not_submitted: int = 0
     backfilled_completed: int = 0
+    backfilled_completion_candidates: int = 0
     backfilled_planned: int = 0
     backfilled_missed: int = 0
     marked_titles: list[str] = field(default_factory=list)
+    completion_candidate_titles: list[str] = field(default_factory=list)
     backfilled_titles: list[str] = field(default_factory=list)
     error: Optional[str] = None
 
@@ -173,7 +181,7 @@ def _has_existing_deadline(
     due_window_hours: float,
 ) -> bool:
     """True when `ma` (a Moodle assignment) is already represented in
-    Lyra's deadline table.
+    Barzakh's deadline table.
 
     Three-tier check (any hit short-circuits):
       1. Exact key — if external_source='moodle_ws_backfill' AND
@@ -242,7 +250,7 @@ def is_submitted(status_resp: dict) -> tuple[bool, str]:
 def submission_completed_at(status_resp: dict) -> Optional[datetime]:
     """Best external submission timestamp from Moodle, if one is present.
 
-    This is a Moodle submission trace, not evidence of Lyra task execution.
+    This is a Moodle submission trace, not evidence of Barzakh task execution.
     Moodle does not always expose the exact human completion moment; when it
     does not, callers should record sync-time provenance explicitly.
     """
@@ -279,9 +287,8 @@ class _MoodleWS:
             **{str(k): v for k, v in params.items()},
         }
         try:
-            with httpx.Client(timeout=WS_HTTP_TIMEOUT, follow_redirects=True) as client:
-                r = client.get(self.endpoint, params=q)
-                r.raise_for_status()
+            r = safe_provider_get(self.endpoint, params=q, timeout=WS_HTTP_TIMEOUT)
+            r.raise_for_status()
         except httpx.HTTPStatusError as e:
             status_code = e.response.status_code if e.response is not None else None
             if status_code is not None and 400 <= status_code < 500:
@@ -289,6 +296,8 @@ class _MoodleWS:
             raise _WSRequestError(fn, status_code, type(e).__name__) from None
         except httpx.RequestError as e:
             raise _WSRequestError(fn, None, type(e).__name__) from None
+        except ProviderUrlSafetyError as e:
+            raise _WSRequestError(fn, None, e.code) from None
         body = r.json()
         if isinstance(body, dict) and body.get("exception"):
             err = body.get("errorcode", "")
@@ -329,7 +338,8 @@ def resolve_base_url(user: User, fallback: str = "") -> str:
     if user.moodle_base_url:
         return user.moodle_base_url.strip()
     if user.moodle_ics_url:
-        parsed = urlparse(user.moodle_ics_url)
+        ics_url = decrypt_secret(user.moodle_ics_url)
+        parsed = urlparse(ics_url or "")
         if parsed.scheme and parsed.netloc:
             return f"{parsed.scheme}://{parsed.netloc}"
     return fallback.strip()
@@ -401,7 +411,7 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
     in the session and updates user.moodle_ws_last_synced_at).
 
     Architectural note (operator decision 2026-05-01): only deadlines
-    with at least one BOUND (non-voided) Lyra task are synced. Unbound
+    with at least one BOUND (non-voided) Barzakh task are synced. Unbound
     deadlines = noise the user didn't engage with; skipped silently.
     """
     result = SubmissionSyncResult()
@@ -432,12 +442,13 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
     # Decrypt token (returns raw if legacy plaintext, decrypts if
     # `fernet:`-prefixed). None on decrypt failure → treat as needs
     # reconnect.
-    from app.utils.encryption import decrypt_secret
     token_plain = decrypt_secret(user.moodle_ws_token)
     if not token_plain:
         user.moodle_ws_disconnect_reason = "token_decrypt_failed"
         result.error = "token_decrypt_failed"
         return result
+    if not is_encrypted_secret(user.moodle_ws_token):
+        user.moodle_ws_token = encrypt_secret(token_plain)
     base_url = base_url.rstrip("/")
     if base_url and not user.moodle_base_url:
         user.moodle_base_url = base_url
@@ -514,7 +525,7 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
     # is the primary noise filter (operator's subject-aware fix), the
     # title + due-date scoring is the within-course tie-breaker.
     # `used_assign_ids` so the same Moodle assignment doesn't bind to
-    # two Lyra deadlines.
+    # two Barzakh deadlines.
     matched_pairs: list[tuple[Deadline, dict, float]] = []
     used_assign_ids: set[int] = set()
     for d in candidate_deadlines:
@@ -573,8 +584,13 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
             if completed_at is None:
                 completed_at = now
                 time_provenance = "external_import_sync_time"
-            d.state = "completed"
-            d.completed_at = completed_at
+            existing_event = find_existing_provider_completion_event(
+                db,
+                d,
+                completion_source="moodle_submission",
+                completed_at_utc=completed_at,
+                time_provenance=time_provenance,
+            )
             record_deadline_completion_event(
                 db,
                 d,
@@ -583,25 +599,31 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
                 recorded_at_utc=now,
                 time_provenance=time_provenance,
             )
-            result.marked_complete += 1
-            result.marked_titles.append(d.title)
-            logger.info(
-                "moodle_ws: marked deadline=%s ('%s') complete — %s",
-                d.deadline_id, d.title, reason,
-            )
+            if existing_event is None:
+                result.completion_candidates += 1
+                result.completion_candidate_titles.append(d.title)
+                logger.info(
+                    "moodle_ws: recorded completion candidate for deadline=%s ('%s') - %s",
+                    d.deadline_id, d.title, reason,
+                )
+            else:
+                logger.info(
+                    "moodle_ws: completion candidate already recorded for deadline=%s ('%s')",
+                    d.deadline_id, d.title,
+                )
         else:
             result.skipped_not_submitted += 1
 
     # ---------------------------------------------------------------
     # Backfill — for any Moodle assignment we DIDN'T match to an
-    # existing Lyra deadline, create one. Operator request 2026-05-01:
-    # "submitted tasks should pop up in deadlines" + "could Lyra pick
+    # existing Barzakh deadline, create one. Operator request 2026-05-01:
+    # "submitted tasks should pop up in deadlines" + "could Barzakh pick
     # up other unsubmitted as overdue".
     #
     # Why: Moodle's iCal "Recent and upcoming" filter drops past
     # assignments + items the school disabled in the calendar export.
     # Operator ended up with 11+ submitted CSE assignments on Moodle
-    # but only 4 deadlines in Lyra. This backfills from WS so the
+    # but only 4 deadlines in Barzakh. This backfills from WS so the
     # timeline reflects the real workload.
     #
     # Research-integrity (per VT-29 / H1): backfilled rows carry
@@ -609,18 +631,17 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
     # filtering `WHERE external_source IS NULL` still exclude them.
     # ---------------------------------------------------------------
     cutoff = now - timedelta(days=BACKFILL_PAST_DAYS)
-    # Pull EVERY Moodle deadline including voided ones — the unique
-    # constraint `uq_deadline_external` covers voided rows too, AND we
-    # want to honor an explicit user void as "don't resurrect" (mirrors
-    # DeadlineManager.upsert_external_deadline's 'skipped_voided' rule).
+    # Pull every non-voided deadline, native or imported. Native/imported
+    # duplicates inflate pressure even when external IDs differ.
     all_moodle_deadlines = (
         db.query(Deadline)
         .filter(
             Deadline.user_id == user.user_id,
-            Deadline.external_source.in_(("moodle_ics", "moodle_ws_backfill")),
+            Deadline.voided_at.is_(None),
         )
         .all()
     )
+    deadline_manager = DeadlineManager(db)
     for ma in moodle_assigns:
         if ma["assign_id"] in used_assign_ids:
             continue
@@ -664,28 +685,33 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
                 time_provenance = "external_import_sync_time"
             else:
                 time_provenance = "external_import"
-            state = "completed"
-            result.backfilled_completed += 1
+            state = "missed" if ma_due < now else "planned"
         elif ma_due < now:
             state = "missed"
-            result.backfilled_missed += 1
         else:
             state = "planned"
-            result.backfilled_planned += 1
-        new_deadline = Deadline(
-            deadline_id=str(uuid4()),
-            user_id=user.user_id,
-            title=ma["name"] or f"Moodle assignment {ma['assign_id']}",
+        title = ma["name"] or f"Moodle assignment {ma['assign_id']}"
+        op, new_deadline = deadline_manager.stage_provider_backfill_deadline(
+            external_source="moodle_ws_backfill",
+            external_id=str(ma["assign_id"]),
+            title=title,
             due_at_utc=ma_due,
             category_hint=_extract_course_code(ma["course_short"]) or ma["course_short"],
             state=state,
-            external_source="moodle_ws_backfill",
-            external_id=str(ma["assign_id"]),
-            created_at=now,
-            imported_at=now,
-            completed_at=completed_at,
+            imported_at_utc=now,
         )
-        db.add(new_deadline)
+        if op != "created" or new_deadline is None:
+            logger.info(
+                "moodle_ws: backfill skipped for assign=%s op=%s",
+                ma["assign_id"], op,
+            )
+            continue
+        if submitted:
+            result.backfilled_completion_candidates += 1
+        elif ma_due < now:
+            result.backfilled_missed += 1
+        else:
+            result.backfilled_planned += 1
         if submitted and completed_at is not None and time_provenance is not None:
             record_deadline_completion_event(
                 db,
@@ -696,10 +722,10 @@ def sync_user(user: User, base_url: str, db: Session) -> SubmissionSyncResult:
                 time_provenance=time_provenance,
             )
         all_moodle_deadlines.append(new_deadline)  # so subsequent iterations dedup
-        result.backfilled_titles.append(ma["name"] or f"#{ma['assign_id']}")
+        result.backfilled_titles.append(title)
         logger.info(
             "moodle_ws: backfilled deadline ('%s', state=%s, due=%s)",
-            ma["name"], state, ma_due,
+            title, state, ma_due,
         )
 
     # Stamp success — also clears any prior disconnect reason.

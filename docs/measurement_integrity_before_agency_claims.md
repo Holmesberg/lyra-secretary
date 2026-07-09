@@ -26,6 +26,16 @@ The proposed paper direction is:
 Measurement Integrity Before Agency Claims
 ```
 
+Internal implementation shorthand:
+
+```text
+Agency Claim Gate
+```
+
+The paper title should stay outward-facing. Inside LyraOS, the implementation
+language should stay boring: claim gates, clean profiles, provenance, exposure,
+and promotion rules.
+
 The argument is methodological, not mystical:
 
 Before any productivity, AI-assistant, personal-informatics, or learning system
@@ -61,6 +71,31 @@ events
 
 No Level 3 agency claim should be made directly from Level 0/1 traces.
 
+This ladder is necessary but not sufficient. A second axis runs through every
+level:
+
+```text
+             provenance
+                 ^
+                 |
+events -> metrics -> constructs -> agency claims
+```
+
+An event is already different before it becomes a metric depending on whether
+it was:
+
+- directly observed by Lyra;
+- self-reported;
+- provider-derived;
+- AI-generated or AI-enriched;
+- retroactively repaired;
+- imported from another system;
+- produced after a user-facing exposure;
+- operator/test/synthetic.
+
+Provenance is not metadata decoration. It changes what the system is allowed to
+compute, compare, publish, and learn from.
+
 | Level | Examples | Failure mode |
 | --- | --- | --- |
 | Level 0 - Events | clicks, tasks, timestamps, sessions, provider rows | treating logs as behavior |
@@ -76,6 +111,108 @@ No construct defense without clean-data profile.
 No clean-data profile without exposure accounting.
 No exposure accounting without asking whether Lyra changed the behavior.
 ```
+
+This is the central claim-promotion rule.
+
+## Four Invalid-Claim Cases
+
+The paper should be concrete. Its strongest form is not:
+
+```text
+here is LyraOS's philosophy
+```
+
+It is:
+
+```text
+here are cases where ordinary systems would make invalid agency claims,
+and here is how LyraOS withholds or weakens the claim.
+```
+
+### Case 1 - Delay Is Not Procrastination
+
+Naive system:
+
+```text
+task delayed
+-> procrastination
+```
+
+LyraOS:
+
+```text
+task delayed
+-> provider imported late
+-> execution may have happened outside the planning layer
+-> claim withheld
+```
+
+The system may show a recoverable scheduling fact, but it may not infer
+avoidance, discipline, motivation, or procrastination.
+
+### Case 2 - Pauses Are Not Distraction
+
+Naive system:
+
+```text
+repeated pauses
+-> distracted user
+```
+
+LyraOS:
+
+```text
+repeated pauses
+-> notification or nudge exposure occurred
+-> later traces may be contaminated by the system's own intervention
+-> claim withheld or exposure-stratified
+```
+
+The system may preserve the pause topology and recovery outcome. It may not
+turn pause frequency into an identity or attention claim.
+
+### Case 3 - Finals Usage Is Not Simple Retention
+
+Naive system:
+
+```text
+more app usage during finals
+-> retention increased
+```
+
+LyraOS:
+
+```text
+more app usage during finals
+-> pressure-triggered return hypothesis
+-> longitudinal validation required
+```
+
+The safe interpretation is that the instrument may become more valuable under
+pressure. That is not yet proof of habit, product-market fit, improved agency,
+or behavioral change.
+
+### Case 4 - Completion Is Not Productivity
+
+Naive system:
+
+```text
+completed 90%
+-> highly productive
+```
+
+LyraOS:
+
+```text
+provider-only rows
+-> retroactive repair
+-> dirty trace
+-> no productivity claim
+```
+
+The system may report a bounded completion or repair fact. It may not claim
+productivity, competence, focus, or improvement from dirty or provider-only
+rows.
 
 ## Why LyraOS Points At This
 
@@ -112,6 +249,53 @@ Can this metric survive slicing?
 ```
 
 That shift is the paper's methodological center.
+
+In the final paper, this section should move from narrative to observation.
+Target empirical shape:
+
+```text
+Observation O1:
+X% of execution occurred outside accepted plans.
+
+Observation O2:
+Y% of rows required retroactive repair or dirty-state exclusion.
+
+Observation O3:
+Pressure windows changed usage frequency.
+
+Observation O4:
+Exposure to Lyra outputs changed subsequent trace interpretation.
+```
+
+Those observations should motivate the architecture more strongly than prose
+alone. Until cohort data is stable, these remain placeholders, not claims.
+
+## ClaimCompiler As Operational Method
+
+The contribution is not only conceptual. LyraOS attempts to operationalize the
+paper through a claim gate:
+
+```text
+admitted evidence
+-> EvidencePacket
+-> ClaimCompiler
+-> registered output surface
+-> exposure lifecycle
+```
+
+ClaimCompiler is interesting because it makes the methodology executable. It
+does not merely say "be careful with validity." It refuses to emit stronger
+claims than the evidence, provenance, clean profile, sample size, and exposure
+state allow.
+
+The important architectural claim:
+
+```text
+bounded claim emission is a system behavior, not a writing style.
+```
+
+If the evidence cannot support a construct, the system should suppress,
+weaken, or reframe the output before it reaches the user.
 
 ## Agency Is Not Visible In Completion Alone
 

@@ -1,5 +1,19 @@
 # Agent handoff — Lyra Secretary
 
+> Historical handoff note. This document may help explain older design intent,
+> but it cannot authorize runtime behavior, JARVIS work, AI synthesis, provider
+> adapters, passive tracking, new insight surfaces, or behavior-transition
+> equations. Current authority lives in `docs/AUTHORITY.md`,
+> `docs/current_transition_state.md`,
+> `docs/architecture_freeze_priority_hold_2026_05_20.md`,
+> `docs/openclaw_orchestration_contract_v0.md`, and
+> `docs/claim_compiler_and_synthesis_boundary.md`.
+>
+> R5a extraction rule: JARVIS, inference-engine, phase, reflection-surface,
+> telemetry, and agent-action guidance below is historical onboarding context.
+> It is not permission to re-enable deleted/parked tools, add runtime AI,
+> create user-facing insights, or perform autonomous product mutation.
+
 **Purpose:** Onboarding for any autonomous or agentic AI (editor agent, Copilot, agent runtime, etc.). Read this **before** editing code or docs. Cross-check claims against the repo; docs sometimes lag.
 
 **Last updated:** 2026-05-03 — gates mirrored in **`agent bootstrap doc` → System transition — rigorous gates** (replace date when you materially change reality).
@@ -59,6 +73,14 @@ Check these **facts** on checkout:
 ---
 
 ## 5. What to do next (ordered)
+
+> Historical handoff sequence. Do not follow this section as current work
+> order. During the freeze-closure refactor, current authority lives in
+> `docs/current_transition_state.md`, `docs/AUTHORITY.md`, and
+> `docs/runbooks/post_wave_dogfood_loop.md`. The JARVIS/Phase 2/Phase 3 steps
+> below are preserved for lineage only and do not authorize JARVIS runtime work,
+> inference expansion, analytics endpoints, new surfaces, provider adapters,
+> passive tracking, or AI synthesis.
 
 ### A. Documentation hygiene (high leverage, low risk)
 

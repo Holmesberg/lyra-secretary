@@ -97,6 +97,57 @@ RESEARCH_PRIOR_DEFAULT = {
 }
 
 
+def research_prior_projection(category: str, tod: str, planned_minutes: int) -> dict:
+    """Latency-safe research-prior projection with no DB reads."""
+
+    prior = RESEARCH_PRIORS.get(category, RESEARCH_PRIOR_DEFAULT)
+    factor = float(prior["bias_factor"])
+    execution_suggested = max(5, round((planned_minutes * factor) / 5) * 5)
+    occupancy_factor = (
+        round(execution_suggested / planned_minutes, 3)
+        if planned_minutes > 0
+        else None
+    )
+    return {
+        "cell": {
+            "bias_factor": factor,
+            "bias_factor_mean": factor,
+            "sessions": 0,
+            "confidence": "research",
+            "interpretation": "underestimates",
+            "category": category,
+            "time_of_day": tod,
+            "citation": prior["citation"],
+        },
+        "sessions": 0,
+        "min_sessions": 3,
+        "source": "research",
+        "signal_level": "research",
+        "signals": [
+            {
+                "level": "research",
+                "label": prior["citation"],
+                "bias_factor": factor,
+                "sessions": 0,
+            }
+        ],
+        "bias_factor_final": round(factor, 3),
+        "personal_weight": 0.0,
+        "prior_weight": 1.0,
+        "archetype_id": DIFFUSE_AVERAGE_ID,
+        "archetype_prior_bias_factor": _ARCHETYPE_SCALING_ANCHOR,
+        "archetype_prior_for_cell": round(factor, 3),
+        "archetype_scaling": 1.0,
+        "archetype_prior_citation": prior["citation"],
+        "execution_suggested_minutes": execution_suggested,
+        "pause_overhead_minutes": 0,
+        "pause_overhead_sample_size": 0,
+        "occupancy_suggested_minutes": execution_suggested,
+        "occupancy_strategy": "execution_only_research_prior",
+        "occupancy_factor": occupancy_factor,
+    }
+
+
 def _time_of_day(local_dt) -> str:
     """Bucket a local datetime into morning/afternoon/evening/night.
 
@@ -307,15 +358,21 @@ def blend(
     has a completed=False skip-defaulted assignment, archetype_id on
     User.archetype_id was also set to diffuse_average; same behavior.
     """
-    clean_ids = baseline_clean_task_ids(
-        db,
-        tasks=tasks,
-        signal_targets=["planning_estimate", "duration_behavior"],
-    )
-    clean_tasks = [
-        t for t in tasks
-        if t.task_id in clean_ids and not getattr(t, "is_anchor", False)
-    ]
+    if len(tasks) < 3:
+        # A personal cascade cannot win below the minimum cell size. Skip
+        # exposure/provenance scans on this hot path and fall back to the
+        # conservative research-prior branch with zero clean personal rows.
+        clean_tasks: list[Task] = []
+    else:
+        clean_ids = baseline_clean_task_ids(
+            db,
+            tasks=tasks,
+            signal_targets=["planning_estimate", "duration_behavior"],
+        )
+        clean_tasks = [
+            t for t in tasks
+            if t.task_id in clean_ids and not getattr(t, "is_anchor", False)
+        ]
 
     personal = _adaptive_calibration(clean_tasks, category, tod, planned_minutes)
 

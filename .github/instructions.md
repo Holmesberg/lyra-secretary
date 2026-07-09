@@ -83,6 +83,14 @@ Do not assume an older phase doc is current if the May 2 docs or code say otherw
   retention risk, clean-data impact, burden offset, and sunset criteria.
 - Optimize for information gain per unit user friction; passive/internal signal
   expansion is preferred over expanding the user input surface.
+- Do not continue opportunistic refactors just because surface area can be
+  reduced. If three consecutive seams are cosmetic-only and do not improve a
+  gate, proof, owner boundary, rollback boundary, issue state, or runtime
+  observability, stop refactoring and move to public proof, users, or S1c
+  hardening.
+- Treat hosted-public mutable dogfood as high-care and optional. Prefer
+  local-current mutable proof plus hosted-public read-only proof unless the
+  public test-account cleanup path is already proven safe.
 - Prepare completed repository changes as structured commit buckets, then ask
   the operator for explicit confirmation before any commit, push, pull, merge,
   rebase, stash, or branch switch.
@@ -137,6 +145,14 @@ Before any commit or push:
 After any push:
 
 - Check the PR checks in GitHub.
+- On wave branches without automatic CI, manually dispatch the CI workflow or
+  record `no_workflow_ran`/`no_matching_run_for_head` with
+  `scripts/collect_github_ci_cd_proof.ps1`.
+- Capture the full pushed head SHA with `(git rev-parse HEAD).Trim()` and pass
+  that full value to `collect_github_ci_cd_proof.ps1 -HeadSha`. Do not pass the
+  seven-character display SHA; GitHub Actions reports full `headSha` values and
+  short SHAs can create false `no_matching_run_for_head` proof artifacts.
+- Treat `no_pr` as an explicit CI/CD state, not as proof failure by itself.
 - Report actual CI status; do not infer success from local tests.
 - If CI fails, inspect the failing job log and fix the contract failure before
   proceeding.

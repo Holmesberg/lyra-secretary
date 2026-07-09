@@ -80,16 +80,16 @@ export function SiteNav() {
           style={{ top: LINE_Y, left: TAB_W + SLOPE_W }}
         />
 
-        {/* Tab content: logo + LyraOS wordmark */}
+        {/* Tab content: logo + Barzakh wordmark */}
         <a
           href="#top"
           className="group absolute left-0 top-0 flex items-center gap-5 pl-9 pr-4 lg:pl-12 lg:pr-6"
           style={{ height: TAB_H, width: TAB_W }}
-          aria-label="LyraOS — the instrument"
+          aria-label="Barzakh — the instrument"
         >
           <span className="relative flex h-[124px] w-[124px] shrink-0 items-center justify-center">
             <Image
-              src="/lyraos-logo.png"
+              src="/barzakh-logo.png"
               alt=""
               width={124}
               height={124}
@@ -100,7 +100,7 @@ export function SiteNav() {
             />
           </span>
           <span className="font-display text-[2rem] font-medium leading-none tracking-tight text-parchment lg:text-[2.25rem]">
-            LyraOS
+            Barzakh
           </span>
         </a>
 

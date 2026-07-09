@@ -77,13 +77,46 @@ ask not only "can this compute?" but "what human trajectory does this steer?"
 | --- | --- | --- |
 | Inbound API | Is this payload legitimate to receive? | Semantic interpretation. |
 | Provider adapter | What provider-blind fact did this provider event mean? | Claim publication or clean-data admission. |
-| Analytics | What pattern exists in admitted data? | Public truth or mutation. |
-| EvidencePacket | Is this evidence admissible for a bounded claim? | Provider DTO, output grammar, or synthesis container. |
+| Analytics endpoints | Which compiled analytics product should be exposed? | Clean filters, metric definitions, confidence semantics, claim authority, or mutation. |
+| Cortex / registered computation modules | What admitted pattern exists under a declared clean profile? | Publication authority or mutation. |
+| Admission / Coverage Gate | Is this row eligible for a claim computation? | Claim packaging, language generation, or publication. |
+| EvidencePacket | How should eligible evidence be packaged for a bounded claim? | Row admission, provider DTO authority, output grammar, or claim emission. |
 | ClaimCompiler | Can this deterministic claim safely emit? | New meanings, AI synthesis, or adaptive intervention. |
 | Output surface translator | What may this user-facing surface publish? | Evidence eligibility. |
 | Pressure Map | Where should repair attention go? | Automatic task/calendar mutation or student-risk scoring. |
 | Exposure Ledger | What behavior-shaping output was shown or suppressed? | Universal behavioral memory. |
-| Agent council / JARVIS / OpenClaw | What should a human consider? | Silent doctrine, code, or runtime mutation. |
+| Agent council / parked JARVIS / OpenClaw | What should a human consider? | Silent doctrine, code, or runtime mutation. |
+
+`docs/single_authority_contract.md` adds the stricter cross-surface rule:
+one owner per truth class, many producers, many views, one mutation path, and
+one claim path. If future AI synthesis is reopened, OpenClaw/GPT is the
+preferred reasoning host, but it remains downstream of Admission/Coverage,
+EvidencePacket packaging, ClaimCompiler, and output-surface policy. This
+identifies preferred future ownership only. It does not authorize runtime AI
+synthesis, model integration, prompt execution, user-facing draft generation,
+or OpenClaw-to-product wiring. OpenClaw/GPT is not a mutation owner.
+
+The current refactor-risk snapshot is recorded in
+`docs/audits/refactor_spaghetti_audit_2026_06_29.md`. That audit is
+documentation-only and should be used to order stabilization work, not to
+authorize a rewrite.
+
+The S1a safety-rail registries are:
+
+- `docs/registries/mutation_surface_authority_registry.json`
+- `docs/registries/runtime_topology_ownership_manifest.json`
+- `docs/registries/user_data_ownership_manifest.json`
+- `docs/registries/clean_data_provenance_registry.json`
+- `docs/registries/identity_scoping_ownership.md`
+- `docs/registries/refactor_stabilization_ledger.md`
+
+`scripts/scan_authority_surfaces.py` is report-only until S1c explicitly
+promotes selected findings into hard gates.
+
+The parked uncertainty-reduction council synthesis is recorded in
+`docs/parked/uncertainty_reduction_computation_council_2026_06_29.md`. It may
+inform operator diagnostics and post-freeze planning only; it does not authorize
+runtime computation, AI synthesis, or user-facing insights.
 
 ---
 
@@ -129,4 +162,7 @@ If the answer is unclear, the change is not ready.
 Every stabilization wave must also leave a deletion and parking ledger. The
 ledger must say what was removed from runtime, what was moved to another layer,
 what stayed parked, and the exact condition that would justify reintroducing
-it. Silent cuts are not allowed.
+it. It must also record the browser/API/export proof used for the wave, the
+CI/CD proof state after push, whether proof was local-current or hosted-public,
+and any deployment/build lag that changes what the proof demonstrates. Silent
+cuts and silent verification gaps are not allowed.

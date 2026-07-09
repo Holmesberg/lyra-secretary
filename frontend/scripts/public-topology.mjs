@@ -41,11 +41,13 @@ const env = {
   NEXTAUTH_URL: "https://lyraos.org",
   NEXT_PUBLIC_API_URL: "https://api.lyraos.org",
   NEXT_PUBLIC_BUILD_ID: process.env.NEXT_PUBLIC_BUILD_ID || gitShortSha(),
+  NEXT_DIST_DIR: process.env.NEXT_DIST_DIR || ".next-public",
 };
 
 console.log("[public-topology] NEXTAUTH_URL=https://lyraos.org");
 console.log("[public-topology] NEXT_PUBLIC_API_URL=https://api.lyraos.org");
 console.log(`[public-topology] NEXT_PUBLIC_BUILD_ID=${env.NEXT_PUBLIC_BUILD_ID}`);
+console.log(`[public-topology] NEXT_DIST_DIR=${env.NEXT_DIST_DIR}`);
 
 const child = spawn(
   process.execPath,

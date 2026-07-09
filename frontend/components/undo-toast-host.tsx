@@ -9,6 +9,7 @@ import {
   undoLastAction,
   type UndoAvailableDetail,
 } from "@/lib/undo";
+import { queryKeys } from "@/lib/query-keys";
 
 const UNDO_WINDOW_MS = 30_000;
 
@@ -22,13 +23,13 @@ interface UndoToastState {
 
 function invalidateAfterUndo(qc: ReturnType<typeof useQueryClient>) {
   const keys = [
-    ["tasks"],
-    ["tasks-range"],
-    ["tasks-evidence"],
-    ["stopwatch-status"],
-    ["deadlines"],
+    queryKeys.tasks,
+    queryKeys.tasksRange,
+    queryKeys.tasksEvidence,
+    queryKeys.stopwatchStatus,
+    queryKeys.deadlines,
     ["operator-dashboard"],
-    ["me"],
+    queryKeys.me,
   ];
   for (const queryKey of keys) {
     qc.invalidateQueries({ queryKey });

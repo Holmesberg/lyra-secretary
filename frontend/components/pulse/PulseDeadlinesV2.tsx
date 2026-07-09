@@ -114,7 +114,7 @@ export function PulseDeadlinesV2({ deadlines }: PulseDeadlinesV2Props) {
                       {fmtDelta(d.due_at_utc, nowMs)} · {fmtDue(d.due_at_utc)}
                     </div>
                   </div>
-                  {d.external_source === "moodle_ics" && (
+                  {d.external_source?.startsWith("moodle") && (
                     <span className="shrink-0 rounded border border-ember/30 px-1.5 py-px text-[8px] uppercase tracking-widest text-ember/85">
                       Moodle
                     </span>
@@ -162,7 +162,7 @@ export function PulseDeadlinesV2({ deadlines }: PulseDeadlinesV2Props) {
                     {fmtDue(d.due_at_utc)}
                   </div>
                 </div>
-                {d.external_source === "moodle_ics" && (
+                {d.external_source?.startsWith("moodle") && (
                   <span className="shrink-0 rounded border border-signal/25 px-1.5 py-px text-[8px] uppercase tracking-widest text-signal/75">
                     Moodle
                   </span>

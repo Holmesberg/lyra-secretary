@@ -2,7 +2,7 @@
 
 Mirrors the read-only integration pattern of `services/calendar_sync.py`
 (Path B Apr 21) but with ONE crucial divergence: imported events are
-*persisted* as Lyra `Deadline` rows (with `external_source='moodle_ics'`
+*persisted* as Barzakh `Deadline` rows (with `external_source='moodle_ics'`
 flagged), not held ephemeral in Redis. This is because Moodle assignments
 ARE the deadlines a student wants to organize their semester around —
 they're the wedge, not ambient context.
@@ -37,9 +37,11 @@ from __future__ import annotations
 
 import logging
 import re
+import ipaddress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterator, Optional
+from urllib.parse import urlparse
 
 import httpx
 from icalendar import Calendar
@@ -47,6 +49,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Deadline, User
 from app.db.scoping import get_current_user_id, set_current_user_id
+from app.utils.encryption import decrypt_secret, encrypt_secret, is_encrypted_secret
+from app.utils.provider_url_safety import ProviderUrlSafetyError, safe_provider_get
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +83,7 @@ class ParsedEvent:
 class SyncResult:
     """Per-user sync summary. Returned by sync_user() and the preview
     endpoint. Counts sum: fetched == created + updated + unchanged +
-    skipped_voided + skipped_unparseable."""
+    skipped_voided + skipped_unparseable + duplicate_existing."""
 
     fetched: int
     created: int
@@ -88,6 +92,7 @@ class SyncResult:
     skipped_voided: int
     skipped_unparseable: int
     error: Optional[str]
+    duplicate_existing: int = 0
 
 
 def _redact_url(url: str) -> str:
@@ -101,7 +106,7 @@ def _widen_time_window(url: str) -> str:
     Why: Moodle's calendar exporter defaults to preset_time=recentupcoming
     which clips events to roughly [now-14d, now+60d]. Assignments due
     earlier than 14 days ago drop out of the feed entirely, so any
-    overdue work the user wants to triage is silently invisible to Lyra.
+    overdue work the user wants to triage is silently invisible to Barzakh.
 
     Operator complaint 2026-05-01 morning: 'overdue tasks were submitted
     yesterday and they weren't synced.' Root cause was this filter, not
@@ -150,9 +155,11 @@ def fetch_ics(url: str) -> bytes:
     events instead of Moodle's default narrow window. Operator URL stays
     unchanged in the DB — the rewrite is per-request only.
     """
-    with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS, follow_redirects=True) as client:
-        response = client.get(_widen_time_window(url))
-        response.raise_for_status()
+    response = safe_provider_get(
+        _widen_time_window(url),
+        timeout=HTTP_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
     return response.content
 
 
@@ -272,6 +279,8 @@ def preview(url: str) -> tuple[list[ParsedEvent], Optional[str]]:
         return [], f"http_{e.response.status_code}"
     except httpx.RequestError:
         return [], "fetch_failed"
+    except ProviderUrlSafetyError as e:
+        return [], e.code
     except Exception:
         return [], "fetch_unknown"
     try:
@@ -295,10 +304,19 @@ def sync_user(user_id: int, db: Session) -> SyncResult:
     if not user.moodle_ics_url:
         return SyncResult(0, 0, 0, 0, 0, 0, "no_url_stored")
 
-    redacted = _redact_url(user.moodle_ics_url)
+    url_plain = decrypt_secret(user.moodle_ics_url)
+    if not url_plain:
+        user.moodle_disconnect_reason = "url_decrypt_failed"
+        db.commit()
+        return SyncResult(0, 0, 0, 0, 0, 0, "url_decrypt_failed")
+    if not is_encrypted_secret(user.moodle_ics_url):
+        user.moodle_ics_url = encrypt_secret(url_plain)
+        db.commit()
+
+    redacted = _redact_url(url_plain)
 
     try:
-        body = fetch_ics(user.moodle_ics_url)
+        body = fetch_ics(url_plain)
     except httpx.HTTPStatusError as e:
         status = e.response.status_code
         if 400 <= status < 500:
@@ -321,6 +339,12 @@ def sync_user(user_id: int, db: Session) -> SyncResult:
             user_id, redacted, e.__class__.__name__,
         )
         return SyncResult(0, 0, 0, 0, 0, 0, "fetch_failed")
+    except ProviderUrlSafetyError as e:
+        logger.warning(
+            "moodle: rejected unsafe URL for user %s (%s): %s",
+            user_id, redacted, e.code,
+        )
+        return SyncResult(0, 0, 0, 0, 0, 0, e.code)
     except Exception as e:
         logger.warning(
             "moodle: unexpected fetch error for user %s (%s): %s",
@@ -342,7 +366,13 @@ def sync_user(user_id: int, db: Session) -> SyncResult:
     from app.services.deadline_manager import DeadlineManager
 
     manager = DeadlineManager(db)
-    counts = {"created": 0, "updated": 0, "unchanged": 0, "skipped_voided": 0}
+    counts = {
+        "created": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "skipped_voided": 0,
+        "duplicate_existing": 0,
+    }
     skipped_unparseable = 0
 
     # DeadlineManager.upsert_external_deadline reads current_user_id
@@ -386,6 +416,7 @@ def sync_user(user_id: int, db: Session) -> SyncResult:
         skipped_voided=counts["skipped_voided"],
         skipped_unparseable=skipped_unparseable,
         error=None,
+        duplicate_existing=counts["duplicate_existing"],
     )
 
 
@@ -403,6 +434,23 @@ def validate_url_shape(url: str) -> Optional[str]:
         return "url_too_long"
     if not url.startswith(("http://", "https://")):
         return "url_not_http"
+    parsed = urlparse(url)
+    if parsed.username or parsed.password:
+        return "url_userinfo_forbidden"
+    if parsed.hostname:
+        try:
+            ip = ipaddress.ip_address(parsed.hostname)
+        except ValueError:
+            ip = None
+        if ip is not None and (
+            ip.is_loopback
+            or ip.is_private
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            return "url_private_network"
     if "/calendar/export_execute.php" not in url:
         return "url_not_moodle_export"
     if "authtoken=" not in url:

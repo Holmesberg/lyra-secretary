@@ -1,9 +1,40 @@
 ---
 name: lyra-secretary
-description: Manage tasks, schedule, and stopwatch via the Lyra Secretary backend API at http://backend:8000. Use for any task creation, rescheduling, deletion, timer start/stop/pause/resume, readiness/reflection logging, retroactive logging, analytics, or "ping"/"status" requests.
+description: Historical Lyra Secretary backend-control skill. During the architecture freeze, do not use this skill for live product mutations unless a current authenticated/audited command path is explicitly reauthorized. Direct http://backend:8000 reachability is not authorization.
 ---
 
-## Preamble Rules (NEVER violate)
+## Freeze Boundary
+
+This skill is retained as compatibility/reference material for the old
+OpenClaw command shell. It does not authorize live task creation,
+rescheduling, deletion, timer start/stop/pause/resume, readiness/reflection
+logging, retroactive logging, analytics mutation, or product wiring during the
+current freeze.
+
+Current authority lives in:
+
+- `docs/openclaw_orchestration_contract_v0.md`
+- `docs/AUTHORITY.md`
+- `docs/current_transition_state.md`
+- `docs/single_authority_contract.md`
+
+Direct Docker-network access to `http://backend:8000` describes reachability,
+not identity, scope, audit, or mutation authority. Any future OpenClaw-to-Lyra
+command path must use a current authenticated/audited canonical command path
+and must be reauthorized before this skill can be used for live mutations.
+
+The endpoint and workflow sections below are historical compatibility notes.
+They may help audit old behavior, but they must not override the freeze
+boundary above.
+
+## Historical Runtime Guard
+
+The rules below describe the old pre-freeze command protocol. During the
+current freeze, they are audit/reference material only. Do not execute these
+HTTP calls against live Lyra product state unless a current authenticated,
+audited canonical command path is explicitly reauthorized.
+
+## Preamble Rules (historical; not current runtime permission)
 1. NEVER CONFIRM WITHOUT A BACKEND RESPONSE (task_id or session_id required)
 2. USE HTTP TOOL FOR ALL BACKEND CALLS. If HTTP tool unavailable, curl is allowed. NEVER use grep, bash pipelines, or python3.
 3. ALWAYS ASK READINESS BEFORE START — send "Rate readiness (1-5):" WAIT for reply
@@ -11,14 +42,15 @@ description: Manage tasks, schedule, and stopwatch via the Lyra Secretary backen
 5. NEVER ASSUME USER INPUT — never default readiness or reflection to any value
 6. STOPWATCH USES TASK_ID ONLY — never title
 7. NEVER say "undo window expired" for readiness correction during active session — call POST /v1/stopwatch/correct-readiness (no time limit)
-8. NEVER USE OPENCLAW NATIVE TOOLS (cron, tasks, reminders) — ALL scheduling/timer actions go through HTTP to http://backend:8000 only
+8. NEVER USE OPENCLAW NATIVE TOOLS (cron, tasks, reminders) — historical note: old scheduling/timer actions used HTTP to http://backend:8000; this reachability is not current mutation authority.
 9. ALWAYS ASK PAUSE QUESTIONS BEFORE PAUSE — send "Self or external? (self/external)" WAIT → then "1.Fatigue 2.Distraction 3.Difficulty 4.External 5.Break 6.Prayer 7.Switch" WAIT → then POST /v1/stopwatch/pause with both fields
 
-You are connected to a live FastAPI backend at http://backend:8000
-Every scheduling, timer, or task action MUST call an endpoint and receive a
-response before confirming to the user.
-If any endpoint returns an error, tell the user exactly what failed.
-Test connectivity: GET http://backend:8000/v1/health must return {"status":"ok"}
+Historical compatibility note: this skill was written for a live FastAPI
+backend reachable at http://backend:8000. That reachability is not current
+mutation authorization. During the freeze, do not perform scheduling, timer,
+or task mutations through this skill.
+Historical connectivity check: GET http://backend:8000/v1/health returned
+{"status":"ok"} when the old command shell was active.
 TIMEZONE RULE: Always pass times exactly as the user states them in Cairo local time.
 Never add or subtract hours. Never convert to UTC yourself.
 If user says "10 AM", send "2026-04-04T10:00:00" — the backend handles all timezone conversion.
@@ -145,13 +177,5 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - If user replies with a percentage (e.g. "80%"): POST /v1/stopwatch/update-completion with `task_completion_percentage` → "Noted, {pct}% — timer still running."
 - If user replies "done"/"stop": follow normal Stop timer flow. NEVER call mark-abandoned on a percentage reply.
 
-**Notifications:** Poll GET /v1/notifications/pending every 30s. Dispatch on `type`: `timer_overflow` → see overflow flow above. `pause_prediction` → relay "Pause predicted in ~{lead_minutes} min ({mechanism}) — reply pause, dismiss, or snooze" → WAIT → POST /v1/pause_predictions/{firing_id}/respond with `user_response` (pause_now|dismiss|snooze). If `pause_now`: follow Pause flow. NEVER infer from silence.
-<!-- Excluded (operator/web-UI, not agent): /v1/users/me +{/export,/data-summary,/consent,DELETE}, /v1/analytics/{bias_factor,insights,discrepancy}. Do not add without operator approval — 150-line total is a HARD GATE. -->
- 
-**Current notification dispatch override:** Poll GET /v1/notifications/pending every 30s. Dispatch on `type`:
-- `operator_alert` -> relay `message` exactly to the operator. Do not call any Lyra mutation endpoint.
-- `reminder` -> relay `message` exactly. If the user says start, follow the normal Start timer flow.
-- `timer_overflow` -> see overflow flow above.
-- `pause_prediction` -> relay "Pause predicted in ~{lead_minutes} min ({mechanism}) - reply pause, dismiss, or snooze" -> WAIT -> POST /v1/pause_predictions/{firing_id}/respond with `user_response` (pause_now|dismiss|snooze). If `pause_now`: follow Pause flow. NEVER infer from silence.
-- `resume_prediction` -> relay `message` if present, otherwise "You left a task paused. Pick it back up?" If user agrees, follow the normal Resume flow. NEVER auto-resume.
-- unknown type with `message` -> relay `message` exactly and do not mutate state.
+**Notifications:** Poll GET /v1/notifications/openclaw/pending every 30s. Dispatch on `type`: `operator_alert` -> relay `message` exactly to the operator, no Lyra mutation. `reminder` -> relay `message`; if user says start, follow Start timer flow. `timer_overflow` -> see overflow flow above. `pause_prediction` -> relay "Pause predicted in ~{lead_minutes} min ({mechanism}) - reply pause, dismiss, or snooze" -> WAIT -> POST /v1/pause_predictions/{firing_id}/respond. If `pause_now`: follow Pause flow. `resume_prediction` -> relay `message` or "You left a task paused. Pick it back up?" If user agrees, follow Resume flow. Unknown type with `message` -> relay exactly and do not mutate. NEVER infer from silence.
+<!-- Excluded (operator/web-UI, not agent): /v1/users/me +{/export,/data-summary,/consent,DELETE}, /v1/analytics/{bias_factor,insights,discrepancy}. Do not add without operator approval - 150-line total is a HARD GATE. -->

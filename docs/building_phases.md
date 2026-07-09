@@ -1,6 +1,22 @@
 # Building Phases
 
-Forward-looking canonical document. What remains to be built, organized by phase. Updated at phase boundaries.
+> Historical phase map. This document preserves pre-freeze planning context, but
+> it is not current implementation authority during the architecture freeze. Do
+> not use it to authorize runtime features, roadmap scope, cohort expansion,
+> AI synthesis, passive tracking, or new provider adapters. Current authority
+> lives in `docs/AUTHORITY.md`, `docs/current_transition_state.md`, and
+> `docs/architecture_freeze_priority_hold_2026_05_20.md`.
+
+> R5a extraction rule: every active-sounding word below, including `SHIP`,
+> `IN_PROGRESS`, `APPROVED`, `must`, `allowed`, `build`, `self-activate`,
+> `/insights`, schema/table additions, OpenClaw/LLM task creation, passive
+> tracking, archetype revelation, prediction, and readiness scoring language,
+> is historical/parked unless a current authority document explicitly promotes
+> it. Do not extract runtime work from this file during freeze closure.
+
+Historical phase map. This preserves April planning context and shipped/parked
+intent, but it is not a forward-looking source of truth during the current
+freeze-closure refactor.
 
 **Last updated:** April 14, 2026 (Phase 4.5 active)
 
@@ -8,7 +24,11 @@ Forward-looking canonical document. What remains to be built, organized by phase
 
 ## Canonical Update Rule
 
-This document is the single source of truth for forward-looking phase planning. Updated at every phase boundary (when a phase closes or opens). `dogfood_findings_living.md` is the fast-moving tactical doc; this document is the slow-moving strategic one. Items from dogfood graduate here when they solidify into phase-level commitments. Items here don't duplicate dogfood — they reference it.
+Historical rule preserved for context only: this file used to act as the
+slow-moving phase plan. During the architecture freeze, do not use this section
+to authorize code or runtime behavior. Current authority lives in
+`docs/AUTHORITY.md`, `docs/current_transition_state.md`,
+`docs/operator_dashboard_contract.md`, and the refactor stabilization ledger.
 
 When a phase ships, its section collapses to a summary line referencing `project_history.md` and any items that slipped forward move to the next phase.
 
@@ -101,6 +121,11 @@ The feedback/output surfaces that make Lyra feel like a mirror rather than a log
   2. *Computation-correctness tests* — the actual values of `bias_factor`, `calibration_nudge`, `micro_mirror`, and any insight the UI surfaces are correct on known fixture data. Required by `MANIFESTO.md §Scope of the retention-before-polish principle` (added April 14, 2026): the retention-before-polish ordering does **not** apply to insight correctness, because wrong insights in a self-tracking context produce trust collapse (Li 2010, Epstein 2015) that bugs do not. These tests must land **before** any of the surfacing items above ships, not in parallel.
 
 #### Tier 1.5 — Experimental retention mechanisms (ship during trusted-user window with kill criteria)
+
+> Current freeze supersession: this tier is historical/parked. It does not
+> authorize pause prediction, passive tracking, notification intervention,
+> schema work, OpenClaw/Jarvis runtime work, or new retention mechanisms during
+> the current freeze.
 
 User-facing retention features that are NOT blockers for the April 18 trusted-user launch but SHIP before the May 1 alpha. Each item lands with a pre-registered kill criterion and a VT candidate. Per-user threshold, 7-day review window — if the kill threshold trips, the feature is pulled before alpha; if the ship threshold holds, it graduates. This tier is distinguished from Tier 1 by *falsifiability at launch* — Tier 1 items are architectural commitments; Tier 1.5 items are hypotheses about what helps retention.
 
@@ -254,6 +279,11 @@ The system must not push non-planners toward planning (that's intervention, not 
 ---
 
 ## Phase 6 — Calibration + Feature Surfaces (post-retention validation)
+
+> Current freeze supersession: this phase is a parked roadmap summary only. It
+> cannot authorize passive tracking, behavior typologies/equations, new insight
+> surfaces, schema additions, LLM/OpenClaw task creation, AI synthesis, or
+> user-facing intervention work during the current freeze.
 
 **Goal:** Deploy the error-rate gradual exposure calibration architecture. Full spec in `docs/phase_6_architecture_backlog.md` — this section is a summary, not a duplicate.
 

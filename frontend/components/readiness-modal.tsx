@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// Source of truth: openclaw/skills/lyra-secretary/SKILL.md. The behavioral
+// Source of truth: openclaw/skills/Barzakh-secretary/SKILL.md. The behavioral
 // anchors are deliberate — purely numeric labels collapsed onto "3" and
 // destroyed the readiness signal. Do not replace with "1=bad / 5=sharp".
 const ANCHORS = [

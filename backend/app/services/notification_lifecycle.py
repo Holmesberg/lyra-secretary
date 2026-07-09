@@ -53,6 +53,17 @@ def payload_hash(payload: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+def _bounded_lifecycle_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) <= 36:
+        return text
+    return f"hash:{sha256(text.encode('utf-8')).hexdigest()[:16]}"
+
+
 def notification_type(payload: dict[str, Any]) -> str:
     raw = payload.get("type") or "unknown"
     return str(raw)[:80]
@@ -127,9 +138,9 @@ def ensure_notification_queued(
             content_snapshot=content_snapshot or notification_content_snapshot(payload),
             surface_id=surface_id or payload.get("surface_id"),
             exposure_id=exposure_id or payload.get("exposure_id"),
-            task_id=payload.get("task_id"),
-            session_id=payload.get("session_id"),
-            firing_id=payload.get("firing_id"),
+            task_id=_bounded_lifecycle_id(payload.get("task_id")),
+            session_id=_bounded_lifecycle_id(payload.get("session_id")),
+            firing_id=_bounded_lifecycle_id(payload.get("firing_id")),
             queued_at=queued_at,
             last_transition_at=queued_at,
             created_at=queued_at,
@@ -144,9 +155,9 @@ def ensure_notification_queued(
     row.content_snapshot = row.content_snapshot or content_snapshot or notification_content_snapshot(payload)
     row.surface_id = row.surface_id or surface_id or payload.get("surface_id")
     row.exposure_id = row.exposure_id or exposure_id or payload.get("exposure_id")
-    row.task_id = row.task_id or payload.get("task_id")
-    row.session_id = row.session_id or payload.get("session_id")
-    row.firing_id = row.firing_id or payload.get("firing_id")
+    row.task_id = row.task_id or _bounded_lifecycle_id(payload.get("task_id"))
+    row.session_id = row.session_id or _bounded_lifecycle_id(payload.get("session_id"))
+    row.firing_id = row.firing_id or _bounded_lifecycle_id(payload.get("firing_id"))
     db.flush()
     return row
 

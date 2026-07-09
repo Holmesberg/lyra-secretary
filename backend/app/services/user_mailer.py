@@ -27,17 +27,17 @@ class ActivationEmailResult:
 
 def activation_email_text(*, frontend_url: str) -> str:
     """Plaintext activation email body with no behavioral content."""
-    sign_in_url = frontend_url.rstrip("/") or "https://lyraos.org"
+    sign_in_url = frontend_url.rstrip("/") or "https://barzakh.app"
     return "\n".join(
         [
-            "Welcome to LyraOS.",
+            "Welcome to Barzakh.",
             "",
             "Your account is active. Sign in here:",
             sign_in_url,
             "",
             "From Settings, you can export your account data or delete your account.",
             "",
-            "LyraOS",
+            "Barzakh",
         ]
     )
 
@@ -51,10 +51,10 @@ def send_activation_email(user: User) -> ActivationEmailResult:
     if not getattr(settings, "USER_EMAIL_ENABLED", False):
         return ActivationEmailResult(status="skipped_disabled", sent=False)
 
-    frontend_url = getattr(settings, "FRONTEND_URL", "") or "https://lyraos.org"
+    frontend_url = getattr(settings, "FRONTEND_URL", "") or "https://barzakh.app"
     result: EmailSendResult = send_resend_email(
         to=user.email,
-        subject="Welcome to LyraOS",
+        subject="Welcome to Barzakh",
         text=activation_email_text(frontend_url=frontend_url),
     )
     return ActivationEmailResult(

@@ -53,6 +53,8 @@ import {
 } from "@/lib/tasks";
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
 import { announceUndoAvailable } from "@/lib/undo";
+import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
+import { QUICK_PAUSE_REASON } from "@/lib/stopwatch-pause-reasons";
 
 type Mode = "idle" | "reflection" | "next-prompt";
 
@@ -88,7 +90,7 @@ const SCOPE_OPTIONS: { value: ScopeOutcome; label: string }[] = [
 export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const qc = useQueryClient();
   const statusQ = useQuery<StopwatchStatus>({
-    queryKey: ["stopwatch-status"],
+    queryKey: queryKeys.stopwatchStatus,
     queryFn: getStopwatchStatus,
     refetchInterval: 5_000,
     refetchOnWindowFocus: true,
@@ -133,12 +135,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
   const refreshTimerSurfaces = () => {
-    qc.invalidateQueries({ queryKey: ["stopwatch-status"] });
-    qc.invalidateQueries({ queryKey: ["tasks"] });
-    qc.invalidateQueries({ queryKey: ["tasks-range"] });
-    qc.invalidateQueries({ queryKey: ["tasks-evidence"] });
-    qc.invalidateQueries({ queryKey: ["pressure-map"] });
-    qc.invalidateQueries({ queryKey: ["me"] });
+    void invalidateTimerCommandSurfaces(qc);
   };
 
   function beginReflection() {
@@ -204,7 +201,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   });
 
   const pauseM = useMutation<unknown, Error, void>({
-    mutationFn: () => pauseStopwatch("intentional_break"),
+    mutationFn: () => pauseStopwatch(QUICK_PAUSE_REASON),
     onSuccess: () => refreshTimerSurfaces(),
     onError: (e) => setErrorMsg(e.message ?? "Failed to pause"),
   });
@@ -291,7 +288,10 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
           : "Ready when you are";
 
   return (
-    <div className="terminal-panel relative flex flex-col items-center overflow-hidden px-5 py-6 sm:px-6 sm:py-7">
+    <div
+      data-testid="pulse-focus-card"
+      className="terminal-panel relative flex flex-col items-center overflow-hidden px-5 py-6 sm:px-6 sm:py-7"
+    >
       {/* Eyebrow */}
       <div className="mb-3 font-display text-[10px] font-medium uppercase tracking-macro text-dust">
         <span className="opacity-50">[ </span>
@@ -333,6 +333,9 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               return (
                 <li key={t.task_id}>
                   <button
+                    data-testid="focus-task-option"
+                    data-task-id={t.task_id}
+                    data-task-title={t.title}
                     type="button"
                     onClick={() => setSelectedTaskId(t.task_id)}
                     className={`flex min-h-[40px] w-full items-center gap-2.5 rounded-sm px-2.5 py-1.5 text-left transition-colors ${
@@ -374,7 +377,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               step={1}
               value={readiness}
               onChange={(e) => setReadiness(Number(e.target.value))}
-              className="lyra-range h-2 flex-1"
+              className="barzakh-range h-2 flex-1"
               aria-label="Pre-task readiness 1 to 5"
             />
             <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
@@ -383,6 +386,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
           </div>
 
           <button
+            data-testid="focus-start-session"
             type="button"
             onClick={() =>
               selectedTaskId && startM.mutate({ taskId: selectedTaskId, readiness })
@@ -412,6 +416,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       {showRunning && (
         <div className="mt-5 flex w-full max-w-md items-center justify-center gap-3 px-1">
           <button
+            data-testid="focus-pause"
             type="button"
             onClick={() => pauseM.mutate()}
             disabled={pauseM.isPending}
@@ -425,6 +430,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
             Pause
           </button>
           <button
+            data-testid="focus-stop"
             type="button"
             onClick={beginReflection}
             className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon"
@@ -439,6 +445,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       {showPaused && (
         <div className="mt-5 flex w-full max-w-md items-center justify-center gap-3 px-1">
           <button
+            data-testid="focus-resume"
             type="button"
             onClick={() => resumeM.mutate()}
             disabled={resumeM.isPending}
@@ -452,6 +459,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
             Resume
           </button>
           <button
+            data-testid="focus-stop"
             type="button"
             onClick={beginReflection}
             className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-dust transition-colors hover:border-signal/40 hover:text-parchment"
@@ -476,7 +484,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               step={1}
               value={reflection ?? 3}
               onChange={(e) => setReflection(Number(e.target.value))}
-              className="lyra-range h-2 flex-1"
+              className="barzakh-range h-2 flex-1"
               aria-label="Post-task reflection 1 to 5"
             />
             <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
@@ -489,6 +497,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
                 Done %
               </span>
               <input
+                data-testid="focus-completion"
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -512,6 +521,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
                 {SCOPE_OPTIONS.map((option) => (
                   <button
+                    data-testid={`focus-scope-${option.value}`}
                     key={option.value}
                     type="button"
                     onClick={() =>
@@ -533,6 +543,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
           </div>
           <div className="flex items-center justify-center gap-3">
             <button
+              data-testid="focus-cancel-reflection"
               type="button"
               onClick={() => {
                 setMode("idle");
@@ -547,6 +558,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               Cancel
             </button>
             <button
+              data-testid="focus-finish"
               type="button"
               onClick={() =>
                 reflection !== null &&

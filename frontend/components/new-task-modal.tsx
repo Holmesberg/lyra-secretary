@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -15,104 +14,135 @@ import { Label } from "@/components/ui/label";
 import { CATEGORIES } from "@/lib/categories";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import {
-  createTask,
   rescheduleTask,
   lookupBiasFactor,
   type TaskRow,
-  type BiasFactorCell,
+  type BiasLookupResponse,
 } from "@/lib/tasks";
-import { ackExposureRender } from "@/lib/api";
 import {
-  listDeadlines,
+  addMinutes,
+  defaultStart,
+  defaultStartForDate,
+  diffMinutes,
+  formatLocal,
+  roundTo5,
+  suggestAmPmSwap as getAmPmSwapSuggestion,
+  suggestPushStartToFuture as getPushStartToFutureSuggestion,
+  timeOfDay,
+} from "@/lib/task-time";
+import { ackExposureRender, ackExposureSuppression } from "@/lib/api";
+import {
   previewDeadlineBinding,
-  sortDeadlinesActiveFirst,
-  type DeadlineResponse,
   type DeadlinePreviewResponse,
 } from "@/lib/deadlines";
 import { CategorySelect } from "@/components/category-select";
+import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
+import {
+  CalibrationNudgeCard,
+  type CalibrationNudge,
+} from "@/components/calibration-nudge-card";
+import {
+  localResearchNudge,
+  nudgeDecisionFromCalibration,
+  type NudgeDecisionData,
+} from "@/lib/creation-nudge";
+import {
+  useNewTaskSubmitController,
+  type NewTaskSubmitDraft,
+  type PausedConflict,
+  type SoftConflict,
+} from "@/components/use-new-task-submit-controller";
 
-function formatLocal(d: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
+const BIAS_LOOKUP_DEBOUNCE_MS = 120;
+const pendingCreationNudgeRenderAcks = new Set<string>();
+const ackedCreationNudgeRenders = new Set<string>();
+const pendingCreationNudgeSuppressions = new Set<string>();
+const suppressedCreationNudgeExposures = new Set<string>();
+const CREATION_NUDGE_RENDER_ACK_RETRY_MS = [250, 750, 1500, 3000, 6000];
+const CREATION_NUDGE_SUPPRESSION_RETRY_MS = [500, 1500, 3000];
+const CREATION_NUDGE_EXPOSURE_TTL_MS = 30_000;
+const creationNudgeExposureIds = new Map<string, { exposureId: string; expiresAt: number }>();
+
+function newExposureId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-/** Round up to the next 5-minute boundary. 2:06 → 2:10; 2:58 → 3:00. */
-function defaultStart(from: Date = new Date()) {
-  const d = new Date(from);
-  const mins = d.getMinutes();
-  const next5 = Math.ceil(mins / 5) * 5;
-  if (next5 >= 60) {
-    d.setHours(d.getHours() + 1, 0, 0, 0);
-  } else {
-    d.setMinutes(next5, 0, 0);
+function exposureIdForCreationNudge(category: string, tod: string, planned: number): string {
+  const key = `${category}\u0000${tod}\u0000${planned}`;
+  const now = Date.now();
+  const cached = creationNudgeExposureIds.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.exposureId;
   }
-  return formatLocal(d);
+  const exposureId = newExposureId();
+  creationNudgeExposureIds.set(key, {
+    exposureId,
+    expiresAt: now + CREATION_NUDGE_EXPOSURE_TTL_MS,
+  });
+  return exposureId;
 }
 
-/**
- * Default start for a specific target date — preserves the user's current
- * clock time (rounded up to next 5 min) but swaps the calendar day to the
- * `targetDateStr` (YYYY-MM-DD). Used when the operator clicks "+ New task"
- * while viewing a future day in /today — the start defaults to that day
- * at "now"-ish rather than literal today.
- */
-function defaultStartForDate(targetDateStr: string, now: Date = new Date()) {
-  const [y, m, d] = targetDateStr.split("-").map(Number);
-  const base = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), 0, 0);
-  const mins = base.getMinutes();
-  const next5 = Math.ceil(mins / 5) * 5;
-  if (next5 >= 60) {
-    base.setHours(base.getHours() + 1, 0, 0, 0);
-  } else {
-    base.setMinutes(next5, 0, 0);
+function ackCreationNudgeRender(
+  exposureId: string,
+  contentSnapshot: Record<string, unknown>,
+  attempt = 0
+) {
+  if (
+    pendingCreationNudgeRenderAcks.has(exposureId) ||
+    ackedCreationNudgeRenders.has(exposureId)
+  ) {
+    return;
   }
-  return formatLocal(base);
+  pendingCreationNudgeRenderAcks.add(exposureId);
+  void ackExposureRender(exposureId, {
+    surfaceId: "task.creation_nudge",
+    clientEventId: `task.creation_nudge:${exposureId}`,
+    contentSnapshot,
+  })
+    .then((ok) => {
+      if (ok) {
+        ackedCreationNudgeRenders.add(exposureId);
+        return;
+      }
+      const retryDelay = CREATION_NUDGE_RENDER_ACK_RETRY_MS[attempt];
+      if (retryDelay !== undefined) {
+        globalThis.setTimeout(() => {
+          ackCreationNudgeRender(exposureId, contentSnapshot, attempt + 1);
+        }, retryDelay);
+      }
+    })
+    .finally(() => {
+      pendingCreationNudgeRenderAcks.delete(exposureId);
+    });
 }
 
-function addMinutes(localStr: string, mins: number): string {
-  const d = new Date(localStr);
-  d.setMinutes(d.getMinutes() + mins);
-  return formatLocal(d);
-}
-
-function diffMinutes(startStr: string, endStr: string): number {
-  return Math.round((new Date(endStr).getTime() - new Date(startStr).getTime()) / 60_000);
-}
-
-function timeOfDay(localStr: string): string {
-  const h = new Date(localStr).getHours();
-  if (h >= 5 && h < 12) return "morning";
-  if (h >= 12 && h < 17) return "afternoon";
-  if (h >= 17 && h < 21) return "evening";
-  return "night";
-}
-
-function roundTo5(n: number): number {
-  return Math.round(n / 5) * 5 || 5;
-}
-
-function formatPlanDeltaFromFactor(factor: number | null | undefined): string {
-  if (factor === null || factor === undefined || Number.isNaN(factor)) {
-    return "unknown";
+function suppressCreationNudgeExposure(exposureId: string, attempt = 0) {
+  if (
+    pendingCreationNudgeSuppressions.has(exposureId) ||
+    suppressedCreationNudgeExposures.has(exposureId) ||
+    ackedCreationNudgeRenders.has(exposureId)
+  ) {
+    return;
   }
-  const pct = Math.round((factor - 1) * 100);
-  if (pct === 0) return "on plan";
-  return `${Math.abs(pct)}% ${pct > 0 ? "over" : "under"} plan`;
-}
-
-interface PausedConflict {
-  taskId: string;
-  title: string;
-  blockingTitles: string[];
-}
-
-interface SoftConflict {
-  reasons: string[];
-  overlapTitles: string[];
-  executingTitles: string[];
-  duplicateTitle: string | null;
+  pendingCreationNudgeSuppressions.add(exposureId);
+  void ackExposureSuppression(exposureId, {
+    suppressionReason: "client_discarded_before_render",
+  })
+    .then((ok) => {
+      if (ok) {
+        suppressedCreationNudgeExposures.add(exposureId);
+        return;
+      }
+      const retryDelay = CREATION_NUDGE_SUPPRESSION_RETRY_MS[attempt];
+      if (retryDelay !== undefined) {
+        globalThis.setTimeout(() => {
+          suppressCreationNudgeExposure(exposureId, attempt + 1);
+        }, retryDelay);
+      }
+    })
+    .finally(() => {
+      pendingCreationNudgeSuppressions.delete(exposureId);
+    });
 }
 
 interface Props {
@@ -156,28 +186,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [description, setDescription] = useState("");
   const [showDescription, setShowDescription] = useState(false);
   const [nudgeSource, setNudgeSource] = useState<"personal" | "research" | null>(null);
-  const [calibrationNudge, setCalibrationNudge] = useState<{
-    cell: BiasFactorCell;
-    factor: number;
-    personalFactor?: number | null;
-    blendFactor?: number | null;
-    personalWeight?: number | null;
-    priorWeight?: number | null;
-    priorFactor?: number | null;
-    priorCitation?: string | null;
-    suggestedMin: number;
-    executionSuggestedMin: number;
-    pauseOverheadMin: number;
-    pauseOverheadSampleSize: number;
-    occupancySuggestedMin: number;
-    occupancyStrategy?: string | null;
-    // ISO timestamp captured at the moment the nudge first appeared in
-    // the UI. Sent as `nudge_viewed_at` with the createTask payload so
-    // backend can compute dwell_seconds for the V3 ReflectionViewLog
-    // row (Phase 6 prerequisite per phase_6_architecture_backlog.md:227).
-    firedAt: string;
-    exposureId?: string | null;
-  } | null>(null);
+  const [calibrationNudge, setCalibrationNudge] =
+    useState<CalibrationNudge | null>(null);
+  const creationNudgeExposureRef = useRef<string | null>(null);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
   // rest of this modal session. Prevents the re-suggestion loop the
@@ -191,16 +202,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // the four numeric inputs that produced the suggestion. Travels with
   // the createTask payload so the backend writes a calibration_nudge_event
   // row in the same transaction. Null when no nudge fired this session.
-  const [nudgeDecisionData, setNudgeDecisionData] = useState<{
-    decision: "accepted" | "dismissed";
-    suggested_minutes: number;
-    bias_factor: number;
-    sample_size: number;
-    // Phase 6 V3 — fire-time of the modal nudge. Sent as
-    // nudge_viewed_at; backend computes dwell_seconds = decision_time
-    // − fire_time for the ReflectionViewLog row.
-    viewed_at: string;
-  } | null>(null);
+  const [nudgeDecisionData, setNudgeDecisionData] =
+    useState<NudgeDecisionData | null>(null);
   const [editScheduleTouched, setEditScheduleTouched] = useState(false);
 
   // Loop 11 Phase K — deadline picker. `deadlineId` carries the user's
@@ -239,61 +242,170 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       return;
     }
     const tod = timeOfDay(start);
+    const firedAt = new Date().toISOString();
+    const exposureId = exposureIdForCreationNudge(category, tod, planned);
+    const provisional = localResearchNudge(category, tod, planned, firedAt, exposureId);
+    if (provisional.factor >= 1.2) {
+      setCalibrationNudge(provisional);
+      setNudgeSource("research");
+    } else {
+      setCalibrationNudge(null);
+      setNudgeSource(null);
+    }
     const abortCtl = new AbortController();
+    const applyLookupResponse = (res: BiasLookupResponse) => {
+      const isResearch = res.source === "research";
+      const threshold = isResearch ? 1.20 : 1.25;
+      // Rule-13 canonical magnitude (MANIFESTO v1.10): prefer the
+      // shrinkage-blended `bias_factor_final` when present. Keep the
+      // raw cell.bias_factor separate so the UI does not relabel a
+      // prior-blended estimate as pure "early data".
+      const magnitude = res.bias_factor_final ?? res.cell?.bias_factor ?? null;
+      const executionSuggestedMin =
+        res.execution_suggested_minutes ?? (magnitude !== null ? roundTo5(planned * magnitude) : planned);
+      const pauseOverheadMin = res.pause_overhead_minutes ?? 0;
+      const pauseOverheadSampleSize = res.pause_overhead_sample_size ?? 0;
+      const occupancySuggestedMin = res.occupancy_suggested_minutes ?? executionSuggestedMin;
+      const occupancyFactor = res.occupancy_factor ?? (planned > 0 ? occupancySuggestedMin / planned : null);
+      const executionTriggered = magnitude !== null && magnitude >= threshold;
+      const occupancyTriggered =
+        occupancyFactor !== null && occupancyFactor >= threshold && pauseOverheadSampleSize >= 3;
+      if (!res.cell || magnitude === null || (!executionTriggered && !occupancyTriggered)) {
+        if (res.exposure_id && !res.suppressed_reason) {
+          suppressCreationNudgeExposure(res.exposure_id);
+        }
+        if (!abortCtl.signal.aborted) {
+          setCalibrationNudge(null);
+          setNudgeSource(null);
+        }
+        return false;
+      }
+
+      const backendExposureId = res.exposure_id ?? exposureId;
+      const contentSnapshot = {
+        template: "task_creation_nudge_lookup",
+        category: res.cell.category,
+        time_of_day: res.cell.time_of_day,
+        source: isResearch ? "research" : "personal",
+        suggested_minutes: occupancySuggestedMin,
+        execution_suggested_minutes: executionSuggestedMin,
+        pause_overhead_minutes: pauseOverheadMin,
+        pause_overhead_sample_size: pauseOverheadSampleSize,
+        occupancy_suggested_minutes: occupancySuggestedMin,
+        occupancy_strategy: res.occupancy_strategy ?? null,
+        planned_minutes: planned,
+      };
+      if (abortCtl.signal.aborted) {
+        suppressCreationNudgeExposure(backendExposureId);
+        return true;
+      }
+      setCalibrationNudge({
+        cell: res.cell,
+        factor: magnitude,
+        personalFactor: isResearch ? null : res.cell.bias_factor,
+        blendFactor: res.bias_factor_final ?? null,
+        personalWeight: res.personal_weight ?? null,
+        priorWeight: res.prior_weight ?? null,
+        priorFactor: res.archetype_prior_for_cell ?? null,
+        priorCitation: res.archetype_prior_citation ?? res.cell.citation ?? null,
+        suggestedMin: occupancySuggestedMin,
+        executionSuggestedMin,
+        pauseOverheadMin,
+        pauseOverheadSampleSize,
+        occupancySuggestedMin,
+        occupancyStrategy: res.occupancy_strategy ?? null,
+        firedAt,
+        exposureId: backendExposureId,
+        backendReady: true,
+      });
+      setNudgeSource(isResearch ? "research" : "personal");
+      return true;
+    };
     const timer = setTimeout(() => {
-      lookupBiasFactor(category, tod, planned)
+      lookupBiasFactor(category, tod, planned, { fast: true, exposureId })
         .then((res) => {
-          if (abortCtl.signal.aborted) return;
-          const isResearch = res.source === "research";
-          const threshold = isResearch ? 1.20 : 1.25;
-          // Rule-13 canonical magnitude (MANIFESTO v1.10): prefer the
-          // shrinkage-blended `bias_factor_final` when present. Keep the
-          // raw cell.bias_factor separate so the UI does not relabel a
-          // prior-blended estimate as pure "early data".
-          const magnitude = res.bias_factor_final ?? res.cell?.bias_factor ?? null;
-          const executionSuggestedMin =
-            res.execution_suggested_minutes ?? (magnitude !== null ? roundTo5(planned * magnitude) : planned);
-          const pauseOverheadMin = res.pause_overhead_minutes ?? 0;
-          const pauseOverheadSampleSize = res.pause_overhead_sample_size ?? 0;
-          const occupancySuggestedMin = res.occupancy_suggested_minutes ?? executionSuggestedMin;
-          const occupancyFactor = res.occupancy_factor ?? (planned > 0 ? occupancySuggestedMin / planned : null);
-          const executionTriggered = magnitude !== null && magnitude >= threshold;
-          const occupancyTriggered =
-            occupancyFactor !== null && occupancyFactor >= threshold && pauseOverheadSampleSize >= 3;
-          if (res.cell && magnitude !== null && (executionTriggered || occupancyTriggered)) {
-            setCalibrationNudge({
-              cell: res.cell,
-              factor: magnitude,
-              personalFactor: isResearch ? null : res.cell.bias_factor,
-              blendFactor: res.bias_factor_final ?? null,
-              personalWeight: res.personal_weight ?? null,
-              priorWeight: res.prior_weight ?? null,
-              priorFactor: res.archetype_prior_for_cell ?? null,
-              priorCitation: res.archetype_prior_citation ?? res.cell.citation ?? null,
-              suggestedMin: occupancySuggestedMin,
-              executionSuggestedMin,
-              pauseOverheadMin,
-              pauseOverheadSampleSize,
-              occupancySuggestedMin,
-              occupancyStrategy: res.occupancy_strategy ?? null,
-              firedAt: new Date().toISOString(),
-              exposureId: res.exposure_id,
+          const shouldHydrate = applyLookupResponse(res);
+          if (!shouldHydrate) return;
+          void lookupBiasFactor(category, tod, planned, { exposureId: res.exposure_id ?? exposureId })
+            .then(applyLookupResponse)
+            .catch(() => {
+              // Keep the instant research-backed card if the personal
+              // hydration path misses; the fast path already registered
+              // the visible surface for exposure accounting.
             });
-            setNudgeSource(isResearch ? "research" : "personal");
-          } else {
-            setCalibrationNudge(null);
-            setNudgeSource(null);
-          }
         })
         .catch(() => { if (!abortCtl.signal.aborted) { setCalibrationNudge(null); setNudgeSource(null); } });
-    }, 400);
+    }, BIAS_LOOKUP_DEBOUNCE_MS);
     return () => { clearTimeout(timer); abortCtl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, category, start, end, durHours, durMinutes, isEdit, editScheduleTouched, nudgeDecisionMade]);
 
+  const creationNudgeRenderSnapshot = () => {
+    if (!calibrationNudge) {
+      return null;
+    }
+    return {
+      template: "task_creation_nudge_lookup",
+      category: calibrationNudge.cell.category,
+      time_of_day: calibrationNudge.cell.time_of_day,
+      source: nudgeSource,
+      suggested_minutes: calibrationNudge.suggestedMin,
+      execution_suggested_minutes: calibrationNudge.executionSuggestedMin,
+      pause_overhead_minutes: calibrationNudge.pauseOverheadMin,
+      pause_overhead_sample_size: calibrationNudge.pauseOverheadSampleSize,
+      occupancy_suggested_minutes: calibrationNudge.occupancySuggestedMin,
+      occupancy_strategy: calibrationNudge.occupancyStrategy,
+      planned_minutes: durHours * 60 + durMinutes,
+    };
+  };
+
+  const ackVisibleCreationNudge = () => {
+    const exposureId = calibrationNudge?.exposureId;
+    const contentSnapshot = creationNudgeRenderSnapshot();
+    if (!exposureId || !contentSnapshot) {
+      return;
+    }
+    ackCreationNudgeRender(exposureId, contentSnapshot);
+  };
+
   useEffect(() => {
-    void ackExposureRender(calibrationNudge?.exposureId);
-  }, [calibrationNudge?.exposureId]);
+    if (!calibrationNudge?.exposureId || !calibrationNudge.backendReady) {
+      return;
+    }
+    ackVisibleCreationNudge();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calibrationNudge, durHours, durMinutes, nudgeSource]);
+
+  useEffect(() => {
+    const currentExposureId =
+      calibrationNudge?.backendReady && calibrationNudge.exposureId
+        ? calibrationNudge.exposureId
+        : null;
+    const previousExposureId = creationNudgeExposureRef.current;
+    if (
+      previousExposureId &&
+      previousExposureId !== currentExposureId &&
+      !pendingCreationNudgeRenderAcks.has(previousExposureId) &&
+      !ackedCreationNudgeRenders.has(previousExposureId)
+    ) {
+      suppressCreationNudgeExposure(previousExposureId);
+    }
+    creationNudgeExposureRef.current = currentExposureId;
+  }, [calibrationNudge?.backendReady, calibrationNudge?.exposureId]);
+
+  useEffect(() => {
+    return () => {
+      const previousExposureId = creationNudgeExposureRef.current;
+      if (
+        previousExposureId &&
+        !pendingCreationNudgeRenderAcks.has(previousExposureId) &&
+        !ackedCreationNudgeRenders.has(previousExposureId)
+      ) {
+        suppressCreationNudgeExposure(previousExposureId);
+      }
+      creationNudgeExposureRef.current = null;
+    };
+  }, []);
 
   // Loop 11 Phase K — Pass 2 deadline-binding preview.
   //
@@ -350,27 +462,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // NEXT day's 9:25 AM, and the time-only display hid the date change.
   // Same-day check on the shifted result catches any cross-midnight
   // shift defensively.
-  const suggestAmPmSwap = (() => {
-    if (!endBeforeStart) return null;
-    const sDate = new Date(start);
-    const eDate = new Date(end);
-    if (Number.isNaN(sDate.getTime()) || Number.isNaN(eDate.getTime())) return null;
-    if (sDate.toDateString() !== eDate.toDateString()) return null;
-    const negDiffMin = diffMinutes(start, end);
-    if (negDiffMin >= 0 || negDiffMin <= -12 * 60) return null;
-    const shifted = addMinutes(end, 12 * 60);
-    const shiftedDate = new Date(shifted);
-    if (Number.isNaN(shiftedDate.getTime())) return null;
-    // The +12h shift must stay on the start's calendar day. Otherwise
-    // the suggestion is nonsense (time-only display formatting hides the
-    // date change from the user) and should not render.
-    if (shiftedDate.toDateString() !== sDate.toDateString()) return null;
-    // Defensive: shifted must now be strictly after start. If the
-    // hour math still produces end <= start, something's off — don't
-    // suggest.
-    if (diffMinutes(start, shifted) <= 0) return null;
-    return shifted;
-  })();
+  const suggestAmPmSwap = endBeforeStart ? getAmPmSwapSuggestion(start, end) : null;
   function applyAmPmSwap() {
     if (!suggestAmPmSwap) return;
     handleEndChange(suggestAmPmSwap);
@@ -386,24 +478,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // the past; the 60s useCurrentTime tick means the suggestion
   // naturally appears after the user lingers past the original
   // round-up mark.
-  const suggestPushStartToFuture = (() => {
-    if (!start) return null;
-    const sDate = new Date(start);
-    if (Number.isNaN(sDate.getTime())) return null;
-    if (sDate.getTime() >= now.getTime()) return null;
-    const next = new Date(now);
-    const mins = next.getMinutes();
-    const next5 = Math.ceil(mins / 5) * 5;
-    if (next5 >= 60) next.setHours(next.getHours() + 1, 0, 0, 0);
-    else next.setMinutes(next5, 0, 0);
-    next.setSeconds(0, 0);
-    // Ensure strictly after `now` — if current minute is a 5-mark
-    // already, Math.ceil returns the same minute. Advance by 5.
-    if (next.getTime() <= now.getTime()) {
-      next.setMinutes(next.getMinutes() + 5);
-    }
-    return formatLocal(next);
-  })();
+  const suggestPushStartToFuture = getPushStartToFutureSuggestion(start, now);
   function applyPushStartToFuture() {
     if (!suggestPushStartToFuture) return;
     handleStartChange(suggestPushStartToFuture);
@@ -507,6 +582,24 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setLastEditId(null);
   }
 
+  const createDraft = (): NewTaskSubmitDraft => ({
+    title,
+    start,
+    end,
+    category,
+    description,
+    deadlineId,
+    nudgeDecisionData,
+  });
+
+  const submitController = useNewTaskSubmitController({
+    open,
+    onReset: resetForm,
+    onCreated,
+    onClose,
+    onInterruptionCreated,
+  });
+
   // --- Bidirectional binding helpers ---
 
   function markEditScheduleChanged() {
@@ -591,77 +684,27 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         return;
       }
 
-      const res = await createTask({
-        title: title.trim(),
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-        category,
-        description: description.trim() || undefined,
-        deadline_id: deadlineId ?? undefined,
-        ...(nudgeDecisionData
-          ? {
-              nudge_decision: nudgeDecisionData.decision,
-              nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
-              nudge_bias_factor: nudgeDecisionData.bias_factor,
-              nudge_sample_size: nudgeDecisionData.sample_size,
-              nudge_viewed_at: nudgeDecisionData.viewed_at,
-            }
-          : {}),
-      });
+      const res = await submitController.submit(createDraft());
       // Debug aid (Apr 16): dogfood diagnostic for severity-render
       // bug. If operator sees the wrong UI (red when expecting yellow
       // or vice versa), the response shape is logged so we can
       // verify severity + gate_ids match expectations.
-      if (!res.created) {
+      if (res.kind !== "created") {
         // eslint-disable-next-line no-console
         console.debug("[create] conflict response:", res);
       }
-      if (!res.created) {
-        if (res.conflicts.length > 0) {
-          const paused = res.conflicts.filter((c) => c.state === "PAUSED");
-          const startingSoon = new Date(start).getTime() - Date.now() < 5 * 60_000;
-          if (paused.length > 0 && onInterruptionCreated && startingSoon) {
-            setPausedConflict({
-              taskId: paused[0].task_id,
-              title: paused[0].title,
-              blockingTitles: res.conflicts
-                .filter((c) => c.state !== "PAUSED")
-                .map((c) => c.title),
-            });
-            return;
-          }
-          if (res.severity === "soft" || res.severity === "hard") {
-            const executing = res.conflicts
-              .filter((c) => c.gate_id === "executing_overlap" || c.gate_id === "active_overlap")
-              .map((c) => c.title);
-            const overlaps = res.conflicts
-              .filter((c) => c.gate_id === "planned_overlap")
-              .map((c) => c.title);
-            const dups = res.conflicts
-              .filter((c) => c.gate_id === "duplicate_title")
-              .map((c) => c.title);
-            setSoftConflict({
-              reasons: res.soft_reasons ?? [],
-              overlapTitles: overlaps,
-              executingTitles: executing,
-              duplicateTitle: dups[0] ?? null,
-            });
-            return;
-          }
-          // Fallback for older backends without severity field.
-          setError(
-            `Conflicts with: ${res.conflicts
-              .map((c) => c.title)
-              .join(", ")}. Adjust the time and try again.`
-          );
-          return;
-        }
-        setError("Task was not created.");
+      if (res.kind === "pausedConflict") {
+        setPausedConflict(res.conflict);
         return;
       }
-      resetForm();
-      onCreated();
-      onClose();
+      if (res.kind === "softConflict") {
+        setSoftConflict(res.conflict);
+        return;
+      }
+      if (res.kind === "error") {
+        setError(res.message);
+        return;
+      }
     } catch (e: any) {
       setError(e?.message ?? "Failed to create task");
     } finally {
@@ -673,40 +716,15 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     // Path A: soft-conflict override. Calls /v1/create with force=true.
     // Backend rejects HARD conflicts even with force, so a 200 with
     // created=false here means the conflict tightened mid-flight (e.g.,
-    // a task transitioned to EXECUTING) — surface as a fresh warning.
+    // a task transitioned to EXECUTING) - surface as a fresh warning.
     setError(null);
     setSubmitting(true);
     try {
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-      const res = await createTask({
-        title: title.trim(),
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-        category,
-        force: true,
-        deadline_id: deadlineId ?? undefined,
-        ...(nudgeDecisionData
-          ? {
-              nudge_decision: nudgeDecisionData.decision,
-              nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
-              nudge_bias_factor: nudgeDecisionData.bias_factor,
-              nudge_sample_size: nudgeDecisionData.sample_size,
-              nudge_viewed_at: nudgeDecisionData.viewed_at,
-            }
-          : {}),
-      });
-      if (!res.created) {
-        setError(
-          res.severity === "hard"
-            ? "Override rejected — an active timer now overlaps. Stop it first."
-            : "Override failed."
-        );
+      const res = await submitController.submitWithForce(createDraft());
+      if (res.kind === "error") {
+        setError(res.message);
         return;
       }
-      resetForm();
-      onCreated();
-      onClose();
     } catch (e: any) {
       setError(e?.message ?? "Failed to create task");
     } finally {
@@ -718,34 +736,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setError(null);
     setSubmitting(true);
     try {
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-      const res = await createTask({
-        title: title.trim(),
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-        category,
-        force: true,
-        deadline_id: deadlineId ?? undefined,
-        ...(nudgeDecisionData
-          ? {
-              nudge_decision: nudgeDecisionData.decision,
-              nudge_suggested_duration_minutes: nudgeDecisionData.suggested_minutes,
-              nudge_bias_factor: nudgeDecisionData.bias_factor,
-              nudge_sample_size: nudgeDecisionData.sample_size,
-              nudge_viewed_at: nudgeDecisionData.viewed_at,
-            }
-          : {}),
-      });
-      if (!res.created || !res.task_id) {
-        setError("Failed to create interruption task.");
+      const res = await submitController.submitAsInterruption(createDraft());
+      if (res.kind === "error") {
+        setError(res.message);
         return;
       }
-      const createdTitle = title.trim();
-      const createdId = res.task_id;
-      resetForm();
-      onClose();
-      onInterruptionCreated?.(createdId, createdTitle);
     } catch (e: any) {
       setError(e?.message ?? "Failed to create interruption task");
     } finally {
@@ -756,6 +751,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { resetForm(); onClose(); } }}>
       <DialogContent
+        data-testid="new-task-modal"
         onKeyDown={(e) => {
           if (e.key !== "Enter") return;
           if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -792,6 +788,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="title">Title</Label>
             <Input
+              data-testid="new-task-title"
               id="title"
               ref={titleInputRef}
               value={title}
@@ -806,6 +803,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="start">Start</Label>
               <Input
+                data-testid="new-task-start"
                 id="start"
                 type="datetime-local"
                 value={start}
@@ -832,6 +830,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="end">End</Label>
               <Input
+                data-testid="new-task-end"
                 id="end"
                 type="datetime-local"
                 value={end}
@@ -844,6 +843,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             <Label className="text-xs text-dust">Duration</Label>
             <div className="flex items-center gap-2">
               <Input
+                data-testid="new-task-duration-hours"
                 type="number"
                 min={0}
                 value={durHours}
@@ -852,6 +852,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               />
               <span className="text-xs text-dust-deep">h</span>
               <Input
+                data-testid="new-task-duration-minutes"
                 type="number"
                 min={0}
                 value={durMinutes}
@@ -879,6 +880,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             ) : (
               <div className="flex items-center gap-2">
                 <Input
+                  data-testid="new-task-category-custom"
                   id="category"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -887,6 +889,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   autoFocus
                 />
                 <button
+                  data-testid="new-task-category-back"
                   type="button"
                   className="whitespace-nowrap text-xs text-dust transition-colors hover:text-parchment"
                   onClick={() => {
@@ -924,6 +927,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               <>
                 <Label htmlFor="description">What does this involve? <span className="text-dust-deep font-normal">(optional)</span></Label>
                 <textarea
+                  data-testid="new-task-description"
                   id="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -1060,102 +1064,31 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           )}
 
           {calibrationNudge && !softConflict && !pausedConflict && !error && (
-            <div className="rounded-sm border border-signal/40 bg-signal/5 p-3 text-xs text-signal">
-              <div>
-                {nudgeSource === "research" ? (
-                  <>
-                    Research prior for <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
-                    sizes this about <span className="font-medium text-parchment">{formatPlanDeltaFromFactor(calibrationNudge.factor)}</span>.
-                    {" "}Your estimate: {durHours * 60 + durMinutes} min.
-                    {calibrationNudge.cell.citation && (
-                      <span className="block mt-0.5 text-[10px] text-signal/60">{calibrationNudge.cell.citation}</span>
-                    )}
-                  </>
-                ) : calibrationNudge.priorWeight !== null &&
-                  calibrationNudge.priorWeight !== undefined &&
-                  calibrationNudge.priorWeight > 0.05 &&
-                  calibrationNudge.personalWeight !== null &&
-                  calibrationNudge.personalWeight !== undefined ? (
-                  <>
-                    {calibrationNudge.cell.sessions < 10 ? "Low-confidence blend" : "Blended estimate"}
-                    {" "}({calibrationNudge.cell.sessions} sessions + prior): <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
-                    {calibrationNudge.cell.time_of_day !== "all" && (
-                      <> in the <span className="font-medium text-parchment">{calibrationNudge.cell.time_of_day}</span></>
-                    )}
-                    {" "}are sized <span className="font-medium text-parchment">{formatPlanDeltaFromFactor(calibrationNudge.factor)}</span>.
-                    <span className="block mt-0.5 text-[10px] text-signal/70">
-                      Raw session average: {formatPlanDeltaFromFactor(calibrationNudge.personalFactor ?? calibrationNudge.factor)};
-                      {" "}personal weight {Math.round(calibrationNudge.personalWeight * 100)}%,
-                      prior weight {Math.round(calibrationNudge.priorWeight * 100)}%.
-                      {calibrationNudge.priorCitation ? ` ${calibrationNudge.priorCitation}` : ""}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    {calibrationNudge.cell.sessions < 10 ? "Early data" : "Your data"}
-                    {" "}({calibrationNudge.cell.sessions} sessions): <span className="font-medium text-parchment">{calibrationNudge.cell.category}</span> tasks
-                    {calibrationNudge.cell.time_of_day !== "all" && (
-                      <> in the <span className="font-medium text-parchment">{calibrationNudge.cell.time_of_day}</span></>
-                    )}
-                    {" "}run <span className="font-medium text-parchment">{formatPlanDeltaFromFactor(calibrationNudge.factor)}</span>.
-                  </>
-                )}
-              </div>
-              <div className="mt-2 grid gap-1 rounded-sm border border-signal/15 bg-void/30 p-2 text-[11px] text-dust">
-                <div className="flex items-center justify-between gap-3">
-                  <span>Execution Time</span>
-                  <span className="font-medium text-parchment">{calibrationNudge.executionSuggestedMin} min</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Pause Overhead</span>
-                  <span className="font-medium text-parchment">+{calibrationNudge.pauseOverheadMin} min</span>
-                </div>
-                <div className="flex items-center justify-between gap-3 border-t border-signal/10 pt-1 text-signal">
-                  <span>Occupancy Time</span>
-                  <span className="font-medium text-parchment">{calibrationNudge.occupancySuggestedMin} min</span>
-                </div>
-              </div>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30"
-                  onClick={() => {
-                    const newMin = calibrationNudge.suggestedMin;
-                    setNudgeDecisionData({
-                      decision: "accepted",
-                      suggested_minutes: calibrationNudge.suggestedMin,
-                      bias_factor: calibrationNudge.factor,
-                      sample_size: calibrationNudge.cell.sessions,
-                      viewed_at: calibrationNudge.firedAt,
-                    });
-                    setDurHours(Math.floor(newMin / 60));
-                    setDurMinutes(newMin % 60);
-                    setEnd(addMinutes(start, newMin));
-                    setCalibrationNudge(null);
-                    setNudgeDecisionMade(true);
-                  }}
-                >
-                  Use {calibrationNudge.suggestedMin} min
-                </button>
-                <button
-                  type="button"
-                  className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment"
-                  onClick={() => {
-                    setNudgeDecisionData({
-                      decision: "dismissed",
-                      suggested_minutes: calibrationNudge.suggestedMin,
-                      bias_factor: calibrationNudge.factor,
-                      sample_size: calibrationNudge.cell.sessions,
-                      viewed_at: calibrationNudge.firedAt,
-                    });
-                    setCalibrationNudge(null);
-                    setNudgeDecisionMade(true);
-                  }}
-                >
-                  Keep {durHours * 60 + durMinutes} min
-                </button>
-              </div>
-            </div>
+            <CalibrationNudgeCard
+              nudge={calibrationNudge}
+              source={nudgeSource}
+              plannedMinutes={durHours * 60 + durMinutes}
+              onUseSuggested={() => {
+                const newMin = calibrationNudge.suggestedMin;
+                ackVisibleCreationNudge();
+                setNudgeDecisionData(
+                  nudgeDecisionFromCalibration(calibrationNudge, "accepted"),
+                );
+                setDurHours(Math.floor(newMin / 60));
+                setDurMinutes(newMin % 60);
+                setEnd(addMinutes(start, newMin));
+                setCalibrationNudge(null);
+                setNudgeDecisionMade(true);
+              }}
+              onKeepEstimate={() => {
+                ackVisibleCreationNudge();
+                setNudgeDecisionData(
+                  nudgeDecisionFromCalibration(calibrationNudge, "dismissed"),
+                );
+                setCalibrationNudge(null);
+                setNudgeDecisionMade(true);
+              }}
+            />
           )}
 
           {error && (
@@ -1171,17 +1104,23 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           </Button>
           {pausedConflict ? (
             <Button
+              data-testid="new-task-start-as-interruption"
               onClick={submitAsInterruption}
               disabled={submitting || pausedConflict.blockingTitles.length > 0}
             >
               Start as interruption
             </Button>
           ) : softConflict ? (
-            <Button onClick={submitWithForce} disabled={submitting}>
+            <Button
+              data-testid="new-task-create-anyway"
+              onClick={submitWithForce}
+              disabled={submitting}
+            >
               Create anyway
             </Button>
           ) : (
             <Button
+              data-testid={isEdit ? "new-task-save" : "new-task-create"}
               onClick={submit}
               disabled={!canSubmit}
             >
@@ -1191,156 +1130,5 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-interface DeadlinePickerSlotProps {
-  deadlineId: string | null;
-  suggestion: DeadlinePreviewResponse | null;
-  showPicker: boolean;
-  onConfirmSuggestion: () => void;
-  onDismissSuggestion: () => void;
-  onClearBinding: () => void;
-  onTogglePicker: () => void;
-  onPick: (deadlineId: string) => void;
-}
-
-function DeadlinePickerSlot({
-  deadlineId,
-  suggestion,
-  showPicker,
-  onConfirmSuggestion,
-  onDismissSuggestion,
-  onClearBinding,
-  onTogglePicker,
-  onPick,
-}: DeadlinePickerSlotProps) {
-  // Bindable deadlines = state ∈ {planned, active}, voided_at IS NULL.
-  // Backend's list endpoint already filters voided by default; we filter
-  // state client-side because the list endpoint accepts only one state
-  // at a time and we want both planned and active.
-  const { data, isLoading } = useQuery({
-    queryKey: ["deadlines", "bindable"],
-    queryFn: () => listDeadlines(),
-    enabled: showPicker,
-  });
-  const bindable = sortDeadlinesActiveFirst(
-    (data?.deadlines ?? []).filter(
-      (d) => d.state === "planned" || d.state === "active"
-    )
-  );
-
-  const boundDeadline = bindable.find((d) => d.deadline_id === deadlineId);
-
-  if (deadlineId) {
-    return (
-      <div className="rounded-sm border border-signal/40 bg-signal/5 p-3 text-xs text-signal">
-        <div className="flex items-center justify-between gap-2">
-          <span>
-            Bound to{" "}
-            <span className="font-medium text-parchment">
-              {boundDeadline?.title ?? "deadline"}
-            </span>
-          </span>
-          <button
-            type="button"
-            onClick={onClearBinding}
-            className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust hover:text-parchment"
-          >
-            Clear
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (suggestion?.deadline_id && !showPicker) {
-    const conf = suggestion.deadline_match_confidence ?? 0;
-    return (
-      <div className="rounded-sm border border-hairline-signal/40 bg-void-2/40 p-3 text-xs text-dust">
-        <div>
-          Lyra thinks this binds to{" "}
-          <span className="font-medium text-parchment">
-            {suggestion.deadline_title}
-          </span>
-          {" "}— {Math.round(conf * 100)}% match
-        </div>
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            onClick={onConfirmSuggestion}
-            className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30"
-          >
-            Confirm
-          </button>
-          <button
-            type="button"
-            onClick={onTogglePicker}
-            className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment"
-          >
-            Pick another
-          </button>
-          <button
-            type="button"
-            onClick={onDismissSuggestion}
-            className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust-deep transition-colors hover:text-dust"
-          >
-            No deadline
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (showPicker) {
-    return (
-      <div className="rounded-sm border border-hairline bg-void-2/40 p-3 text-xs text-dust">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-            Pick a deadline
-          </span>
-          <button
-            type="button"
-            onClick={onTogglePicker}
-            className="text-[11px] text-dust-deep hover:text-dust"
-          >
-            Cancel
-          </button>
-        </div>
-        {isLoading ? (
-          <div className="text-[11px] text-dust-deep">Loading…</div>
-        ) : bindable.length === 0 ? (
-          <div className="text-[11px] text-dust-deep">
-            No active deadlines. Create one from /deadlines first.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
-            {bindable.map((d) => (
-              <button
-                key={d.deadline_id}
-                type="button"
-                onClick={() => onPick(d.deadline_id)}
-                className="flex items-center justify-between gap-2 rounded-sm border border-hairline bg-void-2 px-2 py-1 text-left text-[11px] text-dust transition-colors hover:border-signal/40 hover:text-parchment"
-              >
-                <span className="truncate">{d.title}</span>
-                <span className="shrink-0 text-dust-deep">
-                  {new Date(d.due_at_utc).toLocaleDateString()}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={onTogglePicker}
-      className="self-start rounded-sm text-[11px] text-dust-deep transition-colors hover:text-dust"
-    >
-      + Bind to a deadline
-    </button>
   );
 }

@@ -4,7 +4,7 @@ Path B read-only integration — imports the user's primary Google
 Calendar events as ambient scheduling context. Events are NEVER
 persisted to the `task` table; they're fetched on demand via Redis
 cache. The /calendar UI renders them as read-only grey background
-blocks alongside Lyra tasks.
+blocks alongside Barzakh tasks.
 
 Research-integrity note: imported events must NOT enter the H1 test
 set. The separation is natural-by-design: events live only in the
@@ -42,6 +42,7 @@ from app.services.operator_notifier import (
     notify_operator,
     redacted_user_ref,
 )
+from app.utils.encryption import decrypt_secret, encrypt_secret, is_encrypted_secret
 from app.utils.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 # How long the Redis-cached event list stays fresh per (user, window).
 # Operator's spec framed GCal as "instant" — 60s is the practical
 # compromise: the user doesn't hit Google's API on every /calendar
-# mount, but a new event added to GCal appears in Lyra within a minute.
+# mount, but a new event added to GCal appears in Barzakh within a minute.
 CACHE_TTL_SECONDS = 60
 # How long a refreshed Google access_token stays cached in Redis. Google
 # tokens expire at 60 min; we cache for 45 to avoid the expiry edge.
@@ -98,7 +99,7 @@ def _cairo_local_iso(dt: datetime) -> str:
     return dt.astimezone(tz).replace(tzinfo=None).isoformat(timespec="seconds")
 
 
-def _get_credentials(user: User) -> Optional[Credentials]:
+def _get_credentials(user: User, db=None) -> Optional[Credentials]:
     """Build google.oauth2.credentials.Credentials from the user's row.
 
     Returns None if the user has no refresh_token (hasn't granted
@@ -107,6 +108,12 @@ def _get_credentials(user: User) -> Optional[Credentials]:
     """
     if not user.google_refresh_token:
         return None
+    refresh_token = decrypt_secret(user.google_refresh_token)
+    if not refresh_token:
+        return None
+    if db is not None and not is_encrypted_secret(user.google_refresh_token):
+        user.google_refresh_token = encrypt_secret(refresh_token)
+        db.commit()
 
     # Try cached access_token first to avoid a refresh round-trip on
     # every /calendar/events call.
@@ -116,7 +123,7 @@ def _get_credentials(user: User) -> Optional[Credentials]:
 
     creds = Credentials(
         token=access_token,
-        refresh_token=user.google_refresh_token,
+        refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=settings.GOOGLE_CLIENT_ID,
         client_secret=settings.GOOGLE_CLIENT_SECRET,
@@ -143,7 +150,7 @@ def _get_credentials(user: User) -> Optional[Credentials]:
                         scope=redacted_user_ref(user.user_id),
                         retry=(
                             "Calendar context returns empty for this request; "
-                            "Lyra retries when calendar context is requested again."
+                            "Barzakh retries when calendar context is requested again."
                         ),
                         user_action=(
                             "Reconnect Calendar only if the failure persists."
@@ -194,7 +201,7 @@ def fetch_google_events(
         user = db.query(User).filter(User.user_id == user_id).first()
         if user is None:
             return []
-        creds = _get_credentials(user)
+        creds = _get_credentials(user, db)
         if creds is None:
             return []
 
@@ -228,7 +235,7 @@ def fetch_google_events(
                 db.commit()
                 if user.is_operator:
                     notify_operator(
-                        "Google Calendar returned 401, so Lyra cleared the "
+                        "Google Calendar returned 401, so Barzakh cleared the "
                         "stored refresh token. Reconnect Calendar in Settings.\n\n"
                         + format_alert_context(
                             affected="Google Calendar / availability read",
@@ -259,7 +266,7 @@ def fetch_google_events(
                             scope=redacted_user_ref(user_id),
                             retry=(
                                 "Calendar context returns empty for this "
-                                "request; Lyra retries when calendar context "
+                                "request; Barzakh retries when calendar context "
                                 "is requested again."
                             ),
                             user_action=(
@@ -288,7 +295,7 @@ def fetch_google_events(
                         scope=redacted_user_ref(user_id),
                         retry=(
                             "Calendar context returns empty for this request; "
-                            "Lyra retries when calendar context is requested again."
+                            "Barzakh retries when calendar context is requested again."
                         ),
                         user_action=(
                             "No user action unless the provider failure persists."
@@ -356,15 +363,15 @@ def store_refresh_token(user_id: int, refresh_token: str) -> None:
 
     Called by POST /v1/users/me/google-refresh-token (the NextAuth
     server-side API route forwards the token on first sign-in with
-    calendar scope). Plain text storage in v1; Fernet encryption is
-    a Phase 6+ security-debt item.
+    calendar scope). Credential-class storage is Fernet-prefixed; legacy
+    plaintext rows are rewritten by _get_credentials().
     """
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.user_id == user_id).first()
         if user is None:
             raise ValueError(f"user {user_id} not found")
-        user.google_refresh_token = refresh_token
+        user.google_refresh_token = encrypt_secret(refresh_token)
         db.commit()
         # Invalidate any stale cached access_token from a previous
         # refresh_token — next fetch will refresh cleanly.

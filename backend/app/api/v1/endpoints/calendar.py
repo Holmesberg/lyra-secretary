@@ -9,13 +9,13 @@ note.
 
 Graceful degradation: any user without a stored refresh_token (hasn't
 granted calendar scope OR revoked access) gets an empty event list.
-This is not an error — the /calendar UI simply shows Lyra tasks
+This is not an error — the /calendar UI simply shows Barzakh tasks
 without external events.
 
 Attendance endpoint (POST /v1/calendar/attendance): the "Did you
 attend?" yes/no on /today cards writes to ExternalEventOutcome. Not
 a Task row — keeps research integrity (H1 test set stays
-Lyra-native). Same-day GET /v1/calendar/events response joins the
+Barzakh-native). Same-day GET /v1/calendar/events response joins the
 outcome per event so the UI knows which button state to render.
 """
 from datetime import datetime, timedelta
@@ -125,7 +125,7 @@ def post_attendance(body: AttendanceIn, db: Session = Depends(get_db)):
     start/end at mark time so the signal stays interpretable even if
     the user later edits the event in Google Calendar.
 
-    Never creates a Task row. The `task` table stays Lyra-native
+    Never creates a Task row. The `task` table stays Barzakh-native
     (H1 research-integrity constraint pre-registered in
     docs/strategic_decisions_april_21.md §6 + VT-23).
     """

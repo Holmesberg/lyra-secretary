@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { signOutAndClear } from "@/lib/sign-out-and-clear";
 import { IntegrationsSection } from "@/components/integrations-section";
 import { ArchetypeSurvey } from "@/components/archetype-survey";
@@ -50,7 +51,7 @@ export default function SettingsPage() {
   // Cache key ["me"] still shared with (app)/layout.tsx and the
   // /insights archetype card so the retake-button render is instant.
   const meQ = useQuery<MeArchetype>({
-    queryKey: ["me"],
+    queryKey: queryKeys.me,
     queryFn: () => api<MeArchetype>("/v1/users/me"),
     refetchOnWindowFocus: false,
     refetchInterval: false,
@@ -59,7 +60,7 @@ export default function SettingsPage() {
   const archetypeMe = meQ.data ?? null;
   const qc = useQueryClient();
   function refreshArchetypeMe() {
-    qc.invalidateQueries({ queryKey: ["me"] });
+    qc.invalidateQueries({ queryKey: queryKeys.me });
   }
   const [surveyOpen, setSurveyOpen] = useState(false);
   // Button label — never-completed users see "Take", returning users
@@ -82,7 +83,7 @@ export default function SettingsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `lyra-export-${format(new Date(), "yyyy-MM-dd")}.json`;
+      a.download = `Barzakh-export-${format(new Date(), "yyyy-MM-dd")}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e: any) {
@@ -170,8 +171,8 @@ export default function SettingsPage() {
           <CardContent className="flex items-center justify-between gap-4">
             <p className="text-sm text-dust">
               {archetypeMe.archetype_assignment_completed
-                ? "A fresh survey re-anchors Lyra's starting point. Your dynamic profile on /insights still updates from your behavior either way."
-                : "A 4-minute survey gives Lyra a head start. You can take it anytime."}
+                ? "A fresh survey re-anchors Barzakh's starting point. Your dynamic profile on /insights still updates from your behavior either way."
+                : "A 4-minute survey gives Barzakh a head start. You can take it anytime."}
             </p>
             <Button
               variant="outline"
@@ -199,8 +200,9 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="flex items-center justify-between gap-4">
           <p className="text-sm text-dust">
-            Download every task, session, and reflection tied to your account as
-            a single JSON file.
+            Download a secret-redacted JSON file with your tasks, deadlines,
+            sessions, reflections, feedback, notification and exposure logs,
+            integration state, and other user-owned records.
           </p>
           <Button
             variant="outline"
@@ -215,7 +217,7 @@ export default function SettingsPage() {
         )}
       </Card>
 
-      {/* "Help improve Lyra" card removed 2026-04-29 — feedback now
+      {/* "Help improve Barzakh" card removed 2026-04-29 — feedback now
           lives on the right edge of every page's nav strip via
           FeedbackLink in app-shell.tsx, so the duplicate settings
           card was just redundant. */}
@@ -227,8 +229,9 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="flex items-center justify-between gap-4">
           <p className="text-sm text-dust">
-            Permanently delete your account and all associated data. Export your
-            data first if you want to keep a record.
+            Delete your account. You can hard-delete user-owned product rows or
+            allow anonymized task/session timing rows to be retained for product
+            quality research.
           </p>
           <Button variant="destructive" onClick={openDeleteModal}>
             Delete account
@@ -299,7 +302,7 @@ export default function SettingsPage() {
                       </li>
                     )}
                     <li>Account login and preferences</li>
-                    <li>Backup snapshots from the last 30 days will be purged within 24 hours</li>
+                    <li>Runtime cache and queue state will be purged where technically available</li>
                   </ul>
                 ) : (
                   <p className="text-dust-deep italic">Loading data summary...</p>
@@ -308,7 +311,7 @@ export default function SettingsPage() {
                 {/* Warning block */}
                 <div className="rounded border border-ember/40 bg-ember/5 px-3 py-2">
                   <p className="text-ember text-sm">
-                    This cannot be undone. Lyra does not retain copies of deleted
+                    This cannot be undone. Barzakh does not retain copies of deleted
                     accounts. Export your data first if you want to keep a record.
                   </p>
                 </div>
@@ -326,7 +329,7 @@ export default function SettingsPage() {
                 {/* Research retention section */}
                 <div className="rounded border border-hairline bg-void-2/60 px-3 py-2 space-y-2">
                   <p className="text-xs font-medium uppercase tracking-wide text-dust">
-                    Help us improve Lyra
+                    Help us improve Barzakh
                   </p>
                   <label className="flex items-start gap-2 cursor-pointer">
                     <input
@@ -336,17 +339,17 @@ export default function SettingsPage() {
                       className="mt-0.5 h-4 w-4 rounded border-hairline-signal/40 bg-transparent accent-[#4dd4e8]"
                     />
                     <span className="text-sm text-parchment leading-tight">
-                      Allow Lyra to retain my anonymized behavioral data to
+                      Allow Barzakh to retain my anonymized behavioral data to
                       understand how people leave the system and improve the product
                     </span>
                   </label>
                   <p className="text-xs text-dust-deep leading-relaxed">
-                    Without data from people who stop using Lyra, we can&apos;t
+                    Without data from people who stop using Barzakh, we can&apos;t
                     understand what makes the system fail for them. Retained data
-                    has no identifying information and cannot be linked back to
-                    you. It is used only to improve Lyra, not for external
-                    publication. Uncheck this box if you want all data
-                    permanently purged.
+                    removes direct account identity and task text fields, but
+                    behavioral traces can still be sensitive. It is used only to
+                    improve Barzakh, not for external publication. Uncheck this box
+                    if you want user-owned product rows hard-deleted instead.
                   </p>
                 </div>
 

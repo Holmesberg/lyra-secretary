@@ -292,15 +292,15 @@ def start_scheduler():
     # Moodle Web Services submission detection (alembic 043, 2026-05-01).
     # For each user with moodle_ws_token set, queries
     # mod_assign_get_submission_status for matched assignments and
-    # auto-marks Lyra deadlines complete when Moodle confirms.
-    # Solves operator complaint: "I submitted in Moodle but Lyra
-    # still shows overdue." 6h cadence matches the iCal sync so the
+    # records provider completion candidates when Moodle confirms.
+    # Preserves the provider-truth boundary: user confirmation owns
+    # canonical deadline completion. 6h cadence matches the iCal sync so the
     # operator-Telegram thread carries both updates together.
     scheduler.add_job(
         run_moodle_submissions_sync,
         trigger=IntervalTrigger(hours=6),
         id="moodle_submissions_sync",
-        name="Moodle LMS — auto-mark deadlines complete on submission",
+        name="Moodle LMS - record submission evidence",
         replace_existing=True,
         max_instances=1,
     )
@@ -309,7 +309,7 @@ def start_scheduler():
     scheduler.start()
     logger.info("APScheduler started")
     notify_operator(
-        "APScheduler started with Lyra background jobs loaded.",
+        "APScheduler started with Barzakh background jobs loaded.",
         source="scheduler.health",
         severity="info",
         dedupe_key="scheduler-started",

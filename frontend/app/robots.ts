@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+const PUBLIC_SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL || "https://barzakh.app";
+
 /**
  * Marketing surfaces (/, /privacy, /terms) are fair game for crawlers.
  * Authenticated app routes and the API are useless to bots (session-gated
@@ -11,7 +13,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/privacy", "/terms", "/llms.txt", "/lyraos.md"],
+        allow: ["/", "/privacy", "/terms", "/llms.txt", "/barzakh.md"],
         disallow: [
           "/today",
           "/calendar",
@@ -24,7 +26,7 @@ export default function robots(): MetadataRoute.Robots {
         ],
       },
     ],
-    sitemap: "https://lyraos.org/sitemap.xml",
-    host: "https://lyraos.org",
+    sitemap: `${PUBLIC_SITE_ORIGIN}/sitemap.xml`,
+    host: PUBLIC_SITE_ORIGIN,
   };
 }

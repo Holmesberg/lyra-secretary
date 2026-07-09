@@ -1,8 +1,12 @@
 """Analytics endpoints — discrepancy experiment measurement layer."""
 import json
+import copy
+import logging
+from time import monotonic
 from datetime import date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from collections import defaultdict
 
@@ -13,6 +17,7 @@ from app.db.models import (
     ArchetypeAssignment,
     Deadline,
     DeadlineCompletionEvent,
+    ExposureDecisionEvent,
     PausePredictionLog,
     StopwatchSession,
     Task,
@@ -29,14 +34,20 @@ from app.schemas.insights import (
 )
 from app.services.exposure_ledger import baseline_clean_task_ids
 from app.services.interruption_metrics import task_interruption_metrics_from_sessions
-from app.services.cortex import planning_calibration_baseline_tasks
+from app.services.cortex import (
+    planning_calibration_query,
+)
 from app.services.claim_compiler import (
     PRIMARY_SYNTHESIS_ID,
     PRIMARY_SYNTHESIS_SURFACE_ID,
     compile_primary_synthesis,
 )
 from app.services.output_surfaces import (
+    RULE11_ACTIVE_ARM,
+    RULE11_CONTROL_ARM,
+    RULE11_POLICY_VERSION,
     RULE11_SUPPRESSION_REASON,
+    create_output_surface_decision,
     emit_surface_render,
     emit_surface_suppression,
     get_output_surface_spec,
@@ -47,6 +58,67 @@ from app.utils.time_utils import to_local, now_utc, strip_tz
 from app.utils.redis_client import RedisClient
 
 router = APIRouter()
+
+ANALYTICS_INSIGHTS_SURFACE_ID = "analytics.insights"
+ANALYTICS_INSIGHTS_TEMPLATE_ID = "analytics_insights"
+_BIAS_LOOKUP_CACHE_TTL_SECONDS = 30.0
+_bias_lookup_cache: dict[tuple[int, str, str, int, int, str], tuple[float, dict]] = {}
+_bias_lookup_perf_logger = logging.getLogger("barzakh.perf.bias_lookup")
+
+
+def _cached_bias_lookup_response(
+    key: tuple[int, str, str, int, int, str],
+) -> Optional[dict]:
+    cached = _bias_lookup_cache.get(key)
+    if cached is None:
+        return None
+    stored_at, payload = cached
+    if monotonic() - stored_at > _BIAS_LOOKUP_CACHE_TTL_SECONDS:
+        _bias_lookup_cache.pop(key, None)
+        return None
+    return copy.deepcopy(payload)
+
+
+def _store_bias_lookup_response(
+    key: tuple[int, str, str, int, int, str],
+    payload: dict,
+) -> dict:
+    _bias_lookup_cache[key] = (monotonic(), copy.deepcopy(payload))
+    return payload
+
+
+def _log_slow_bias_lookup(
+    *,
+    user_id: int,
+    category: str,
+    tod: str,
+    planned_minutes: int,
+    tasks_ms: float,
+    blend_ms: float,
+    exposure_ms: float,
+    total_ms: float,
+    source: Optional[str],
+    sessions: Optional[int],
+) -> None:
+    if total_ms < 250:
+        return
+    _bias_lookup_perf_logger.info(
+        (
+            "user=%s category=%s tod=%s planned=%s tasks_ms=%.0f "
+            "blend_ms=%.0f exposure_ms=%.0f total_ms=%.0f source=%s sessions=%s"
+        ),
+        user_id,
+        category,
+        tod,
+        planned_minutes,
+        tasks_ms,
+        blend_ms,
+        exposure_ms,
+        total_ms,
+        source,
+        sessions,
+    )
+INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS = 3
 
 INSIGHT_TITLES = {
     "primary_synthesis": "Primary pattern",
@@ -468,34 +540,150 @@ def _surface_metadata(
     }
 
 
-def _eligible_tasks_for_surface(db: Session, tasks: list, surface_id: str) -> list:
+def _insights_rule11_reopen_gate(
+    db: Session,
+    *,
+    user_id: int,
+    delta_sessions: list[Task],
+    eligible_at,
+) -> dict:
+    """Return the concrete evidence gate for an active Rule 11 insights hold.
+
+    Rule 11 can decide that an eligible insights card should be withheld. For
+    `/insights`, that hold must not become a purely calendar-periodic surface.
+    Once the user sees a hold, reopening is based on new clean stopped sessions
+    completed after the first unresolved hold since the last rendered Insights
+    card. Repeated refreshes append suppression rows, but must not reset this
+    threshold.
+    """
+    latest_rendered_at = (
+        db.query(func.max(ExposureDecisionEvent.eligible_at))
+        .filter(
+            ExposureDecisionEvent.user_id == user_id,
+            ExposureDecisionEvent.trigger_source == ANALYTICS_INSIGHTS_SURFACE_ID,
+            ExposureDecisionEvent.content_template_id == ANALYTICS_INSIGHTS_TEMPLATE_ID,
+            ExposureDecisionEvent.decision_status == "rendered",
+        )
+        .scalar()
+    )
+
+    hold_query = (
+        db.query(func.min(ExposureDecisionEvent.eligible_at))
+        .filter(
+            ExposureDecisionEvent.user_id == user_id,
+            ExposureDecisionEvent.trigger_source == ANALYTICS_INSIGHTS_SURFACE_ID,
+            ExposureDecisionEvent.content_template_id == ANALYTICS_INSIGHTS_TEMPLATE_ID,
+            ExposureDecisionEvent.decision_status == "suppressed",
+            ExposureDecisionEvent.randomization_arm == RULE11_CONTROL_ARM,
+            ExposureDecisionEvent.randomization_policy_version == RULE11_POLICY_VERSION,
+        )
+    )
+    if latest_rendered_at is not None:
+        hold_query = hold_query.filter(
+            ExposureDecisionEvent.eligible_at > latest_rendered_at
+        )
+    hold_started_at = hold_query.scalar()
+    threshold_start = strip_tz(hold_started_at or eligible_at)
+
+    new_clean_sessions = 0
+    for task in delta_sessions:
+        completed_at = getattr(task, "effective_executed_end_utc", None) or getattr(
+            task,
+            "executed_end_utc",
+            None,
+        )
+        if completed_at is None:
+            continue
+        if strip_tz(completed_at) > threshold_start:
+            new_clean_sessions += 1
+
+    remaining = max(
+        0,
+        INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS - new_clean_sessions,
+    )
+    return {
+        "hold_started_at": threshold_start,
+        "reopen_after_clean_sessions": INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS,
+        "new_clean_sessions_since_hold": new_clean_sessions,
+        "clean_sessions_until_reopen": remaining,
+        "should_hold": remaining > 0,
+    }
+
+
+def _insights_rule11_hold_message(remaining: int) -> str:
+    noun = "session" if remaining == 1 else "sessions"
+    return (
+        "Insights are unlocked. Barzakh is holding these cards until there is "
+        "new clean evidence after this hold. Complete "
+        f"{remaining} more cleanly stopped {noun} to reopen this surface."
+    )
+
+
+def _eligible_tasks_for_surface(
+    db: Session,
+    tasks: list,
+    surface_id: str,
+    eligibility_cache: Optional[dict[tuple, set[str]]] = None,
+) -> list:
     spec = get_output_surface_spec(surface_id)
     if spec.clean_profile == "descriptive_history":
         return tasks
+    eligibility_cache = eligibility_cache if eligibility_cache is not None else {}
     if spec.clean_profile == "planning_calibration":
         if not tasks:
             return []
         user_id = getattr(tasks[0], "user_id", None)
         if user_id is None:
             return []
-        clean_ids = {
-            task.task_id
-            for task in planning_calibration_baseline_tasks(db, user_id=int(user_id))
-        }
+        cache_key = ("planning_calibration", int(user_id))
+        if cache_key not in eligibility_cache:
+            candidates = planning_calibration_query(db, user_id=int(user_id)).all()
+            eligibility_cache[cache_key] = baseline_clean_task_ids(
+                db,
+                tasks=candidates,
+                signal_targets=["planning_estimate", "duration_behavior"],
+            )
+        clean_ids = eligibility_cache[cache_key]
         return [
             task
             for task in tasks
             if task.task_id in clean_ids and not getattr(task, "is_anchor", False)
         ]
-    clean_ids = baseline_clean_task_ids(
-        db,
-        tasks=tasks,
-        signal_targets=list(spec.signal_targets),
+    cache_key = (
+        "surface",
+        spec.clean_profile,
+        tuple(sorted(spec.signal_targets)),
+        tuple(task.task_id for task in tasks if task.task_id),
     )
+    if cache_key not in eligibility_cache:
+        eligibility_cache[cache_key] = baseline_clean_task_ids(
+            db,
+            tasks=tasks,
+            signal_targets=list(spec.signal_targets),
+        )
+    clean_ids = eligibility_cache[cache_key]
     return [
         task for task in tasks
         if task.task_id in clean_ids and not getattr(task, "is_anchor", False)
     ]
+
+
+def _eligible_tasks_for_surface_cached(
+    db: Session,
+    tasks: list,
+    surface_id: str,
+    eligibility_cache: dict[tuple, set[str]],
+) -> list:
+    """Call the eligibility filter with a shared request cache.
+
+    Some endpoint tests monkeypatch ``_eligible_tasks_for_surface`` with the
+    historical 3-argument shape. Keep that seam intact while letting production
+    calls pass the cache.
+    """
+    code = getattr(_eligible_tasks_for_surface, "__code__", None)
+    if code is not None and code.co_argcount < 4:
+        return _eligible_tasks_for_surface(db, tasks, surface_id)
+    return _eligible_tasks_for_surface(db, tasks, surface_id, eligibility_cache)
 
 
 def _median(vals: list[float]) -> float:
@@ -650,7 +838,7 @@ def _insight_readiness_time_of_day(tasks: list) -> Optional[dict]:
     """Self-reported readiness as context for time-window planning fit.
 
     This deliberately avoids "best brain time" or cognitive-capacity copy.
-    The user reported readiness; Lyra observed planning error by time window.
+    The user reported readiness; Barzakh observed planning error by time window.
     The output is a low-authority placement/recovery hypothesis only.
     """
     buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
@@ -1300,7 +1488,7 @@ def get_insights(
     sessions; planning-history insights may render from descriptive history.
     Pass ?auto_mark=true to suppress already-shown insights (24h cooldown per insight_id).
     """
-    surface_id = "analytics.insights"
+    surface_id = ANALYTICS_INSIGHTS_SURFACE_ID
     parent_spec = get_output_surface_spec(surface_id)
     MIN_SESSIONS = parent_spec.min_n
     uid = get_current_user_id()
@@ -1317,7 +1505,13 @@ def get_insights(
         .order_by(Task.planned_start_utc)
         .all()
     )
-    clean_tasks = _eligible_tasks_for_surface(db, all_tasks, surface_id)
+    eligibility_cache: dict[tuple, set[str]] = {}
+    clean_tasks = _eligible_tasks_for_surface_cached(
+        db,
+        all_tasks,
+        surface_id,
+        eligibility_cache,
+    )
 
     # Gate check: need at least MIN_SESSIONS executed tasks with delta data
     delta_sessions = [
@@ -1325,6 +1519,7 @@ def get_insights(
         if t.state == TaskState.EXECUTED and t.duration_delta_minutes is not None
     ]
     sessions_analyzed = len(delta_sessions)
+    unlocked = sessions_analyzed >= MIN_SESSIONS
     history_events_analyzed = len(
         [
             t for t in all_tasks
@@ -1347,7 +1542,12 @@ def get_insights(
 
     candidates = []
     for insight_surface_id, gen in CONTRACT_SAFE_INSIGHT_GENERATORS:
-        generator_tasks = _eligible_tasks_for_surface(db, all_tasks, insight_surface_id)
+        generator_tasks = _eligible_tasks_for_surface_cached(
+            db,
+            all_tasks,
+            insight_surface_id,
+            eligibility_cache,
+        )
         result = gen(generator_tasks)
         if result is not None:
             result.update(
@@ -1368,7 +1568,12 @@ def get_insights(
             .first()
         )
     for insight_surface_id, gen in PROFILE_AWARE_INSIGHT_GENERATORS:
-        generator_tasks = _eligible_tasks_for_surface(db, all_tasks, insight_surface_id)
+        generator_tasks = _eligible_tasks_for_surface_cached(
+            db,
+            all_tasks,
+            insight_surface_id,
+            eligibility_cache,
+        )
         result = gen(generator_tasks, archetype)
         if result is not None:
             result.update(
@@ -1419,6 +1624,7 @@ def get_insights(
             "sessions_analyzed": sessions_analyzed,
             "history_events_analyzed": history_events_analyzed,
             "min_sessions_required": MIN_SESSIONS,
+            "unlocked": False,
             "ready": False,
             "message": f"Log {remaining} more executed session{'s' if remaining != 1 else ''} to unlock execution insights.",
             "suppressed_generators": suppressed_generators,
@@ -1451,6 +1657,7 @@ def get_insights(
         "sessions_analyzed": sessions_analyzed,
         "history_events_analyzed": history_events_analyzed,
         "min_sessions_required": MIN_SESSIONS,
+        "unlocked": unlocked or bool(candidates),
         "ready": True,
         "suppressed_generators": suppressed_generators,
     }
@@ -1460,9 +1667,20 @@ def get_insights(
             arm, policy = rule11_randomization_fields(
                 db, user_id=uid, surface_id=surface_id, eligible_at=eligible_at
             )
-            if rule11_no_nudge_control_active(
+            rule11_control_active = rule11_no_nudge_control_active(
                 db, user_id=uid, surface_id=surface_id, eligible_at=eligible_at
-            ):
+            )
+            reopen_gate = (
+                _insights_rule11_reopen_gate(
+                    db,
+                    user_id=uid,
+                    delta_sessions=delta_sessions,
+                    eligible_at=eligible_at,
+                )
+                if rule11_control_active
+                else None
+            )
+            if rule11_control_active and reopen_gate and reopen_gate["should_hold"]:
                 emit_surface_suppression(
                     db,
                     surface_id=surface_id,
@@ -1470,8 +1688,8 @@ def get_insights(
                     suppression_reason=RULE11_SUPPRESSION_REASON,
                     eligible_at=eligible_at,
                     suppressed_at=eligible_at,
-                    content_template_id="analytics_insights",
-                    trigger_source="analytics.insights",
+                    content_template_id=ANALYTICS_INSIGHTS_TEMPLATE_ID,
+                    trigger_source=ANALYTICS_INSIGHTS_SURFACE_ID,
                     randomization_arm=arm,
                     randomization_policy_version=policy,
                 )
@@ -1484,7 +1702,26 @@ def get_insights(
                 )
                 response_payload["insights"] = []
                 response_payload["ready"] = False
+                response_payload["unlocked"] = True
+                response_payload.update(
+                    {
+                        "reopen_after_clean_sessions": reopen_gate[
+                            "reopen_after_clean_sessions"
+                        ],
+                        "new_clean_sessions_since_hold": reopen_gate[
+                            "new_clean_sessions_since_hold"
+                        ],
+                        "clean_sessions_until_reopen": reopen_gate[
+                            "clean_sessions_until_reopen"
+                        ],
+                        "message": _insights_rule11_hold_message(
+                            int(reopen_gate["clean_sessions_until_reopen"])
+                        ),
+                    }
+                )
             else:
+                if rule11_control_active and reopen_gate:
+                    arm = RULE11_ACTIVE_ARM
                 emitted = emit_surface_render(
                     db,
                     surface_id=surface_id,
@@ -1495,8 +1732,8 @@ def get_insights(
                     ),
                     eligible_at=eligible_at,
                     rendered_at=eligible_at,
-                    content_template_id="analytics_insights",
-                    trigger_source="analytics.insights",
+                    content_template_id=ANALYTICS_INSIGHTS_TEMPLATE_ID,
+                    trigger_source=ANALYTICS_INSIGHTS_SURFACE_ID,
                     randomization_arm=arm,
                     randomization_policy_version=policy,
                 )
@@ -1508,8 +1745,8 @@ def get_insights(
                 surface_id=surface_id,
                 user_id=uid,
                 suppression_reason="no_contract_safe_insights",
-                content_template_id="analytics_insights",
-                trigger_source="analytics.insights",
+                content_template_id=ANALYTICS_INSIGHTS_TEMPLATE_ID,
+                trigger_source=ANALYTICS_INSIGHTS_SURFACE_ID,
             )
         db.commit()
     except Exception:
@@ -1526,6 +1763,7 @@ def get_insights(
                 "sessions_analyzed": sessions_analyzed,
                 "history_events_analyzed": history_events_analyzed,
                 "min_sessions_required": MIN_SESSIONS,
+                "unlocked": unlocked,
                 "ready": False,
                 "message": "Insights are temporarily unavailable while exposure logging catches up.",
                 "suppressed_generators": suppressed_generators,
@@ -1985,6 +2223,12 @@ def bias_factor_lookup(
     category: str = Query(..., description="Task category"),
     tod: str = Query(..., description="Time-of-day bucket (morning/afternoon/evening/night)"),
     planned_minutes: int = Query(30, ge=1, description="Planned duration for duration-bucket signal"),
+    fast: bool = Query(False, description="Use research-prior fast path for latency-sensitive UI"),
+    exposure_id: Optional[str] = Query(
+        None,
+        max_length=64,
+        description="Optional client-minted exposure ID for optimistic render reconciliation",
+    ),
     db: Session = Depends(get_db),
 ) -> dict:
     """Canonical calibration lookup per MANIFESTO Rule 13.
@@ -2009,6 +2253,14 @@ def bias_factor_lookup(
     uid = get_current_user_id()
     if uid is None:
         raise HTTPException(status_code=401, detail="not authenticated")
+    cache_key = (uid, category, tod, planned_minutes, int(fast), exposure_id or "")
+    cached = _cached_bias_lookup_response(cache_key)
+    if cached is not None:
+        return cached
+    lookup_started = monotonic()
+    tasks_ms = 0.0
+    blend_ms = 0.0
+    exposure_ms = 0.0
     # Rule 13 operational definition of n_sessions_in_cell (MANIFESTO
     # v1.10 §13): planned_duration_minutes >= 5. The 5-minute floor
     # matches the H1 exclusion threshold (Rule 4) — sub-5-minute tasks
@@ -2016,9 +2268,27 @@ def bias_factor_lookup(
     #
     # VT-29 filter (added 2026-04-30): exclude tasks bound to externally-
     # imported deadlines. Same rationale as the bias_factor surface above.
-    tasks = planning_calibration_baseline_tasks(db, user_id=uid)
-    from app.services.bias_factor_service import blend
-    result = blend(db, uid, tasks, category, tod, planned_minutes)
+    from app.services.bias_factor_service import blend, research_prior_projection
+    if fast:
+        tasks = []
+    else:
+        candidate_query = planning_calibration_query(db, user_id=uid)
+        if category == "uncategorized":
+            candidate_query = candidate_query.filter(
+                or_(Task.category.is_(None), Task.category == category)
+            )
+        else:
+            candidate_query = candidate_query.filter(Task.category == category)
+        phase_started = monotonic()
+        tasks = candidate_query.all()
+        tasks_ms = (monotonic() - phase_started) * 1000
+    phase_started = monotonic()
+    result = (
+        research_prior_projection(category, tod, planned_minutes)
+        if fast
+        else blend(db, uid, tasks, category, tod, planned_minutes)
+    )
+    blend_ms = (monotonic() - phase_started) * 1000
     cell = result.get("cell")
     magnitude = result.get("bias_factor_final")
     if magnitude is None and cell is not None:
@@ -2033,6 +2303,7 @@ def bias_factor_lookup(
         and pause_sample_size >= 3
     )
     if cell is not None and (execution_triggered or occupancy_triggered):
+        exposure_started = monotonic()
         suggested_minutes = (
             result.get("occupancy_suggested_minutes")
             or result.get("execution_suggested_minutes")
@@ -2061,7 +2332,21 @@ def bias_factor_lookup(
                     randomization_policy_version=policy,
                 )
                 db.commit()
-                return {
+                exposure_ms = (monotonic() - exposure_started) * 1000
+                total_ms = (monotonic() - lookup_started) * 1000
+                _log_slow_bias_lookup(
+                    user_id=uid,
+                    category=category,
+                    tod=tod,
+                    planned_minutes=planned_minutes,
+                    tasks_ms=tasks_ms,
+                    blend_ms=blend_ms,
+                    exposure_ms=exposure_ms,
+                    total_ms=total_ms,
+                    source=result.get("source"),
+                    sessions=result.get("sessions"),
+                )
+                return _store_bias_lookup_response(cache_key, {
                     "cell": None,
                     "sessions": result.get("sessions", 0),
                     "min_sessions": result.get("min_sessions", 3),
@@ -2080,60 +2365,54 @@ def bias_factor_lookup(
                     "fallback_mode": emitted["fallback_mode"],
                     "exposure_id": emitted["exposure_id"],
                     "suppression_id": emitted["suppression_id"],
-                }
-            emitted = emit_surface_render(
+                })
+            spec = get_output_surface_spec(surface_id)
+            authority = authority_for_surface(spec).as_dict()
+            decision = create_output_surface_decision(
                 db,
                 surface_id=surface_id,
                 user_id=uid,
-                content_snapshot={
-                    "copy": (
-                        f"Suggested window is {suggested_minutes} min "
-                        f"for {category} / {tod}: execution "
-                        f"{result.get('execution_suggested_minutes')} min + "
-                        f"pause overhead {result.get('pause_overhead_minutes')} min."
-                    ),
-                    "category": category,
-                    "time_of_day": tod,
-                    "planned_minutes": planned_minutes,
-                    "suggested_minutes": suggested_minutes,
-                    "execution_suggested_minutes": result.get("execution_suggested_minutes"),
-                    "pause_overhead_minutes": result.get("pause_overhead_minutes"),
-                    "pause_overhead_sample_size": result.get("pause_overhead_sample_size"),
-                    "occupancy_suggested_minutes": result.get("occupancy_suggested_minutes"),
-                    "occupancy_strategy": result.get("occupancy_strategy"),
-                    "occupancy_factor": result.get("occupancy_factor"),
-                    "bias_factor": round(magnitude, 3),
-                    "personal_bias_factor": cell.get("bias_factor"),
-                    "personal_weight": result.get("personal_weight"),
-                    "prior_weight": result.get("prior_weight"),
-                    "archetype_prior_for_cell": result.get("archetype_prior_for_cell"),
-                    "archetype_prior_citation": result.get("archetype_prior_citation"),
-                    "sample_size": cell.get("sessions"),
-                    "source": result.get("source"),
-                },
+                decision_status="delivered",
                 eligible_at=eligible_at,
-                rendered_at=eligible_at,
                 content_template_id="task_creation_nudge_lookup",
                 initiative="system",
                 trigger_source="analytics.bias_factor.lookup",
+                delivered_at=eligible_at,
                 randomization_arm=arm,
                 randomization_policy_version=policy,
+                exposure_id=exposure_id,
             )
             db.commit()
+            exposure_ms = (monotonic() - exposure_started) * 1000
             result.update(
                 {
-                    "surface_id": emitted["surface_id"],
-                    "truth_class": emitted["truth_class"],
-                    "signal_targets": emitted["signal_targets"],
-                    "clean_profile": emitted["clean_profile"],
-                    "fallback_mode": emitted["fallback_mode"],
-                    "exposure_id": emitted["exposure_id"],
-                    "render_id": emitted["render_id"],
+                    "surface_id": surface_id,
+                    "truth_class": spec.truth_class,
+                    "signal_targets": list(spec.signal_targets),
+                    "clean_profile": spec.clean_profile,
+                    "fallback_mode": spec.fallback_mode,
+                    "exposure_id": decision.exposure_id,
+                    "render_id": None,
+                    **authority,
                 }
             )
         except Exception:
             db.rollback()
-            return {
+            exposure_ms = (monotonic() - exposure_started) * 1000
+            total_ms = (monotonic() - lookup_started) * 1000
+            _log_slow_bias_lookup(
+                user_id=uid,
+                category=category,
+                tod=tod,
+                planned_minutes=planned_minutes,
+                tasks_ms=tasks_ms,
+                blend_ms=blend_ms,
+                exposure_ms=exposure_ms,
+                total_ms=total_ms,
+                source=result.get("source"),
+                sessions=result.get("sessions"),
+            )
+            return _store_bias_lookup_response(cache_key, {
                 "cell": None,
                 "sessions": result.get("sessions", 0),
                 "min_sessions": result.get("min_sessions", 3),
@@ -2150,8 +2429,21 @@ def bias_factor_lookup(
                 "signal_targets": ["planning_estimate", "pause_behavior"],
                 "clean_profile": "planning_calibration",
                 "fallback_mode": "suppress",
-            }
-    return result
+            })
+    total_ms = (monotonic() - lookup_started) * 1000
+    _log_slow_bias_lookup(
+        user_id=uid,
+        category=category,
+        tod=tod,
+        planned_minutes=planned_minutes,
+        tasks_ms=tasks_ms,
+        blend_ms=blend_ms,
+        exposure_ms=exposure_ms,
+        total_ms=total_ms,
+        source=result.get("source"),
+        sessions=result.get("sessions"),
+    )
+    return _store_bias_lookup_response(cache_key, result)
 
 
 @router.get("/analytics/pause_prediction")
@@ -2463,7 +2755,7 @@ def get_deadline_shape(
         ]
         planned_minutes = [t.planned_duration_minutes for t in group_tasks if t.planned_duration_minutes]
         # bias_factor_observed: mean(signed delta) / mean(planned_minutes).
-        # Note sign: in Lyra duration_delta = planned - executed, so negative
+        # Note sign: in Barzakh duration_delta = planned - executed, so negative
         # means overran. bias_factor in canonical form is executed/planned;
         # for Rule 15 we report the signed-delta-based ratio per the spec.
         bias_factor_observed = (

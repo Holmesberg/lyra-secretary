@@ -14,6 +14,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { StopwatchStatus } from "@/lib/tasks";
+import { getElapsedSeconds } from "@/lib/stopwatch-time";
 
 export interface RadialFocusTimerProps {
   status: StopwatchStatus | undefined;
@@ -51,7 +52,7 @@ export function RadialFocusTimer({ status, size = 280 }: RadialFocusTimerProps) 
 
   useEffect(() => {
     if (!status?.active || status.paused) return;
-    baseSecondsRef.current = status.elapsed_seconds ?? 0;
+    baseSecondsRef.current = getElapsedSeconds(status);
     baseAtRef.current = Date.now();
     const id = setInterval(() => forceTick((n) => n + 1), 1000);
     return () => clearInterval(id);
@@ -63,7 +64,7 @@ export function RadialFocusTimer({ status, size = 280 }: RadialFocusTimerProps) 
     isActive && !isPaused
       ? baseSecondsRef.current +
         Math.floor((Date.now() - baseAtRef.current) / 1000)
-      : (status?.elapsed_seconds ?? 0);
+      : getElapsedSeconds(status);
   const planned = (status?.planned_duration_minutes ?? 0) * 60;
   const overflow = isActive && planned > 0 ? Math.max(0, liveSeconds - planned) : 0;
   const isOverflow = overflow > 0;

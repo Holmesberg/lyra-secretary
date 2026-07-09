@@ -35,6 +35,17 @@ from app.utils.time_utils import strip_tz
 DEFAULT_HORIZON_POLICY_VERSION = "exposure_horizon_v0"
 
 ExposureState = Literal["NONE", "EXPOSED", "INTERVENTION", "UNKNOWN"]
+ExposureTerminalState = Literal[
+    "rendered",
+    "suppressed",
+    "queued_without_render",
+    "non_actionable_without_render",
+    "actionable_missing_render",
+]
+
+NON_ACTIONABLE_MISSING_RENDER_STATUSES = frozenset(
+    {"suppressed", "delayed", "failed", "queued"}
+)
 
 SIGNAL_TARGETS = {
     "duration_behavior",
@@ -71,6 +82,55 @@ class ExposureContaminationResult:
     def baseline_clean(self) -> bool:
         """True only when exposure context was evaluated and returned NONE."""
         return self.state == "NONE"
+
+
+@dataclass(frozen=True)
+class ExposureTerminalClassification:
+    state: ExposureTerminalState
+    has_terminal_event: bool
+    is_actionable_missing_render: bool
+
+
+def classify_exposure_terminal_state(
+    *,
+    decision_status: str | None,
+    has_render: bool,
+    has_suppression: bool,
+) -> ExposureTerminalClassification:
+    """Classify decision/render/suppression evidence without changing it.
+
+    This is a diagnostics primitive only. It does not decide exposure
+    contamination, infer attention, or authorize a user-facing claim.
+    """
+    if has_render:
+        return ExposureTerminalClassification(
+            state="rendered",
+            has_terminal_event=True,
+            is_actionable_missing_render=False,
+        )
+    if has_suppression or decision_status == "suppressed":
+        return ExposureTerminalClassification(
+            state="suppressed",
+            has_terminal_event=has_suppression,
+            is_actionable_missing_render=False,
+        )
+    if decision_status == "queued":
+        return ExposureTerminalClassification(
+            state="queued_without_render",
+            has_terminal_event=False,
+            is_actionable_missing_render=False,
+        )
+    if decision_status in NON_ACTIONABLE_MISSING_RENDER_STATUSES:
+        return ExposureTerminalClassification(
+            state="non_actionable_without_render",
+            has_terminal_event=False,
+            is_actionable_missing_render=False,
+        )
+    return ExposureTerminalClassification(
+        state="actionable_missing_render",
+        has_terminal_event=False,
+        is_actionable_missing_render=True,
+    )
 
 
 def content_hash(content_snapshot: str) -> str:

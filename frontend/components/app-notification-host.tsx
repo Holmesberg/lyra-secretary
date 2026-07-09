@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   ackPendingNotifications,
@@ -70,7 +71,7 @@ function toUserToast(notification: Record<string, unknown>): Omit<ToastEntry, "i
   if (type === "reminder") {
     return {
       dedupeKey: "reminder",
-      message: "A planned task is coming up. Open Lyra to check the next block.",
+      message: "A planned task is coming up. Open Barzakh to check the next block.",
       lifespan: "auto",
       detailHref: "/pulse",
       priority: 3,
@@ -106,19 +107,26 @@ export function AppNotificationHost() {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const surfaced = useRef<Set<string>>(new Set());
   const acknowledged = useRef<Set<string>>(new Set());
+  const pathname = usePathname();
 
   const notificationsQ = useQuery({
     queryKey: ["notifications-web-pending"],
     queryFn: getPendingNotifications,
-    staleTime: 10_000,
-    refetchInterval: 30_000,
+    staleTime: 0,
+    refetchInterval: 5_000,
+    refetchOnMount: "always",
     refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   const notifications = useMemo(
     () => notificationsQ.data?.notifications ?? [],
     [notificationsQ.data?.notifications]
   );
+
+  useEffect(() => {
+    void notificationsQ.refetch();
+  }, [pathname, notificationsQ.refetch]);
 
   useEffect(() => {
     if (notifications.length === 0) return;

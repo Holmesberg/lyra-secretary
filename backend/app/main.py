@@ -17,8 +17,44 @@ install_scoping(Base)
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.concurrency import run_in_threadpool
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from app.db.scoping import set_current_user_id
+
+
+def _warm_database_pool() -> None:
+    """Pre-open DB pool connections and warm the calibration query shape."""
+
+    from app.db.session import SessionLocal, engine
+    from app.db.models import Task
+    from app.services.cortex import planning_calibration_query
+
+    connections = []
+    sessions = []
+    try:
+        # Hold several connections open at once so QueuePool actually creates
+        # them. Public pages fan out multiple reads on mount; warming only one
+        # connection still leaves the modal's calibration lookup paying the
+        # cold remote-Postgres query cost.
+        for _ in range(6):
+            conn = engine.connect()
+            conn.execute(text("SELECT 1"))
+            connections.append(conn)
+
+        for _ in range(6):
+            session = SessionLocal()
+            sessions.append(session)
+            (
+                planning_calibration_query(session, user_id=-1)
+                .filter(Task.category == "__startup_warmup__")
+                .limit(1)
+                .all()
+            )
+    finally:
+        for session in sessions:
+            session.close()
+        for conn in connections:
+            conn.close()
 
 
 class UserScopeMiddleware(BaseHTTPMiddleware):
@@ -155,13 +191,20 @@ async def lifespan(app: FastAPI):
     from app.core.security import validate_runtime_jwt_secret
 
     validate_runtime_jwt_secret()
+    try:
+        await run_in_threadpool(_warm_database_pool)
+        logging.getLogger("lyra.startup").info("database pool warmed")
+    except Exception as exc:
+        logging.getLogger("lyra.startup").warning(
+            "database pool warmup failed: %s", type(exc).__name__
+        )
     start_scheduler()
     yield
     # Shutdown
     shutdown_scheduler()
 
 app = FastAPI(
-    title="Lyra Secretary API",
+    title="Barzakh API",
     version="1.1",
     description="Adaptive scheduler and personal cognitive operating system",
     lifespan=lifespan
@@ -205,4 +248,4 @@ app.include_router(api_router, prefix="/v1")
 
 @app.get("/")
 def root():
-    return {"message": "Lyra Secretary API is running"}
+    return {"message": "Barzakh API is running"}

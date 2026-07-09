@@ -1,9 +1,32 @@
 # Deadline Mechanism — Design Note
 
-**Status:** APPROVED for Option B build (2026-04-25, post-midterms start). Locked
-by operator decision. See "Operator decision (Apr 25)" section below for the
-justification chain. This doc is the implementation reference; do not depart from
-the schema, parser, or pre-registration plan without an explicit re-review.
+> Freeze boundary: this document is reference material for existing deadline
+> mechanism intent and invariants. It does not authorize new deadline features,
+> new provider adapters, passive tracking, behavior-transition equations,
+> runtime AI synthesis, new user-facing insights, schema migrations, or
+> automatic interventions during the architecture freeze.
+>
+> R5a extraction rule: all `Approved`, `locked`, `build`, migration, parser,
+> warning, dashboard, insight, schema, and provider-completion language below
+> is historical/parked unless promoted by the active authority chain. Existing
+> deadline behavior may be characterized and verified; new deadline runtime
+> work is not authorized by this note.
+
+**Status:** Historical design note for the April deadline mechanism. The
+operator decision and implementation plan below are preserved as provenance,
+not current authorization.
+
+Current freeze-closure interpretation:
+
+- deadline inference is a suggestion/preview surface until the user explicitly
+  accepts or selects a binding;
+- canonical binding and provider/deadline mutations must flow through current
+  task/deadline services;
+- `parser_auto`, soft-warning RCT, per-deadline `bias_factor`, and deadline
+  progress-dashboard language below are historical/parked unless promoted by
+  current authority docs;
+- provider submissions remain evidence/candidates, not canonical completion
+  truth without explicit user confirmation.
 
 **Created:** 2026-04-25, midterm halt window.
 **Approved:** 2026-04-25 by operator. Build starts post-midterms (≥ Apr 27).
@@ -14,6 +37,12 @@ conflicts with H1 measurement" section below for the surfaced trade.
 ---
 
 ## Operator decision (Apr 25)
+
+> Current freeze supersession: the Apr 25 operator decision below is preserved
+> as provenance only. It does not authorize schema work, parser inference,
+> soft-warning UX, background deadline transitions, provider-derived completion
+> truth, or new deadline behavior during the current freeze. Current mutation
+> authority remains with the active task/deadline/provider contracts.
 
 **Choice:** Option B — build deadline mechanism mid-alpha, before the Jun 18-25
 retention checkpoint and before H1 reaches an explicit decision.

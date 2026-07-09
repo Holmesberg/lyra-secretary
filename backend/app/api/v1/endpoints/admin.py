@@ -15,6 +15,7 @@ per-user stats into a single grouped SQL query.
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -36,6 +37,10 @@ from app.db.scoping import get_current_user_id, set_current_user_id
 from app.utils.time_utils import now_utc
 
 router = APIRouter()
+
+
+def _email_hash(email: str | None) -> str:
+    return hashlib.sha256((email or "").encode("utf-8")).hexdigest()[:12]
 
 
 def _require_operator(db: Session, request: Request) -> User:
@@ -173,7 +178,9 @@ def operator_dashboard(
             rows.append(
                 {
                     "user_id": u.user_id,
-                    "email": u.email,
+                    "email": _email_hash(u.email),
+                    "email_hash": _email_hash(u.email),
+                    "user_ref": f"#{u.user_id} / {_email_hash(u.email)}",
                     "is_operator": u.is_operator,
                     "signed_up_at": u.created_at.isoformat(),
                     "onboarded_at": u.onboarding_completed_at.isoformat()
@@ -280,6 +287,15 @@ def operator_dashboard(
 
         return {
             "calculated_at": now.isoformat(),
+            "authority_status": {
+                "status": "historical_read_only",
+                "subordinate_to": "/operator",
+                "read_only": True,
+                "note": (
+                    "/admin/dashboard is retained for legacy funnel coverage. "
+                    "/operator is the cohort-readiness decision authority."
+                ),
+            },
             "totals": {
                 "users_all": len(users),
                 "users_non_operator": len(non_op_rows),

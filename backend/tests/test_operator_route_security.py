@@ -54,11 +54,38 @@ def test_operator_can_reach_core_operator_get_surfaces(client, db, monkeypatch):
 
     for path in (
         "/v1/admin/alpha_funnel",
-        "/v1/jarvis/health",
         "/v1/analytics/output_surfaces/diagnostics",
     ):
         response = client.get(path, headers=auth_headers(operator.user_id))
         assert response.status_code == 200, f"{path}: {response.status_code} {response.text}"
+
+
+def test_operator_jarvis_health_is_parked(client, db):
+    operator = _make_user(db, is_operator=True)
+
+    response = client.get("/v1/jarvis/health", headers=auth_headers(operator.user_id))
+
+    assert response.status_code == 410, response.text
+    assert response.json()["detail"]["error"] == "jarvis_disabled"
+
+
+def test_admin_dashboard_is_subordinate_and_content_minimized(client, db):
+    operator = _make_user(db, is_operator=True)
+    user = _make_user(db, is_operator=False)
+
+    response = client.get("/v1/admin/dashboard", headers=auth_headers(operator.user_id))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["authority_status"]["status"] == "historical_read_only"
+    assert body["authority_status"]["subordinate_to"] == "/operator"
+    assert body["authority_status"]["read_only"] is True
+    rows = {row["user_id"]: row for row in body["users"]}
+    assert user.user_id in rows
+    assert rows[user.user_id]["email"] != user.email
+    assert user.email not in response.text
+    assert rows[user.user_id]["email_hash"]
+    assert rows[user.user_id]["user_ref"].startswith(f"#{user.user_id} / ")
 
 
 def test_unauthenticated_operator_surfaces_fail_closed_runtime():

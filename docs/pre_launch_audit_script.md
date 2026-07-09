@@ -1,5 +1,12 @@
 # Lyra Secretary — Unified Pre-Launch Audit Script
 
+> Historical audit template. This file is subordinate to
+> `docs/current_transition_state.md`, `docs/AUTHORITY.md`, and
+> `docs/runbooks/post_wave_dogfood_loop.md`. It does not authorize schema
+> changes, provider expansion, passive tracking, new insights, OpenClaw/GPT
+> wiring, behavior-transition equations, or cohort expansion during the
+> freeze-closure refactor.
+
 **Purpose:** a single re-runnable sweep covering safety + alignment + operational + cross-cutting concerns. Combines the two prompts the operator ran on 2026-04-30 (safety + alignment) plus the gaps both missed.
 
 **When to run:**
@@ -366,7 +373,7 @@ silently coercing malformed model output into task facts.
 **Output: morning recovery checklist for operator:**
 ```bash
 # 1. Backend + Redis up?
-docker-compose ps
+docker compose ps
 # Expected: both Up
 
 # 2. Backend health?
@@ -374,7 +381,7 @@ curl http://localhost:8000/v1/health/env-invariants
 # Expected: {"all_ok": true, ...}
 
 # 3. Stale jobs caught up? (see logs)
-docker-compose logs --tail=50 backend | grep -E "stale_session|orphan_task|moodle_ics_sync"
+docker compose logs --tail=50 backend | grep -E "stale_session|orphan_task|moodle_ics_sync"
 
 # 4. Frontend running?
 curl -o /dev/null -w "%{http_code}" http://localhost:3000/

@@ -1,4 +1,4 @@
-"""SQLAlchemy models for Lyra Secretary."""
+"""SQLAlchemy models for Barzakh."""
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -807,10 +807,10 @@ class User(Base):
     # silently failing. Cleared when user reconnects.
     moodle_disconnect_reason: Mapped[Optional[str]] = mapped_column(String(64))
     # Moodle Web Services token (alembic 043, 2026-05-01). Powers
-    # automatic submission detection — when set, the
+    # automatic submission detection - when set, the
     # moodle_submissions_sync job queries WS for each task-bound
-    # imported deadline and auto-marks completed when Moodle confirms
-    # submission/grading. Encrypted-at-rest via Fernet from alembic 044
+    # imported deadline and records completion candidate evidence when
+    # Moodle confirms submission/grading. Encrypted-at-rest via Fernet from alembic 044
     # — see utils/encryption.py. Stored format: `"fernet:" + base64`
     # for new connections; legacy operator row may be raw plaintext
     # (the prefix-sniffing decryptor handles both transparently).
@@ -1078,7 +1078,7 @@ class ResumePredictionLog(Base):
     Cold-start: when fewer than 5 samples exist for the cell OR the
     user has <7 days of pause history, mechanism='cold_start_synthetic'
     and the trigger is a flat 30-min cap with observational copy
-    "Lyra hasn't seen enough yet — picking it up?".
+    "Barzakh hasn't seen enough yet — picking it up?".
 
     Pre-registered footprint: VT-17 sibling (instrument-intervention
     threats apply symmetrically — anchor drift + induced-resume risk).
@@ -1164,7 +1164,7 @@ class CalibrationNudgeEvent(Base):
     task_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("task.task_id"), nullable=False
     )
-    # What Lyra suggested at nudge-fire time.
+    # What Barzakh suggested at nudge-fire time.
     suggested_duration_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False
     )

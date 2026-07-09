@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import func, text
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import authenticated_user_from_scope, get_db
@@ -27,7 +27,14 @@ from app.services.archetype_service import (
 )
 from app.services.calendar_sync import store_refresh_token
 from app.services.security_audit import audit_user_target, write_security_audit_event
+from app.services.user_data_registry import (
+    anonymize_retained_task_session_rows,
+    export_user_data,
+    hard_delete_retained_rows,
+    purge_user_auxiliary_rows,
+)
 from app.utils.me_cache import get_cached_me, invalidate_me, set_cached_me
+from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, strip_tz
 
 # Phase D archetype-survey eligibility gate. Users created on or after
@@ -287,7 +294,7 @@ def delete_google_refresh_token(
 
     Does NOT revoke the token with Google; user must also visit
     myaccount.google.com/permissions to fully revoke. This endpoint
-    just clears Lyra's copy so the sync stops.
+    just clears Barzakh's copy so the sync stops.
     """
     user = _current_user(db)
     user.google_refresh_token = None
@@ -553,13 +560,7 @@ def post_consent(body: ConsentIn, db: Session = Depends(get_db)):
 def export_my_data(request: Request, db: Session = Depends(get_db)):
     """Full JSON dump of the requesting user's data. GDPR-style export."""
     user = _current_user(db)
-    tasks = db.query(Task).all()  # auto-scoped
-    sessions = db.query(StopwatchSession).all()  # auto-scoped
-    assignments = (
-        db.query(ArchetypeAssignment)
-        .filter(ArchetypeAssignment.user_id == user.user_id)
-        .all()
-    )
+    payload = export_user_data(db, user)
     write_security_audit_event(
         db=db,
         actor_user_id=user.user_id,
@@ -571,29 +572,7 @@ def export_my_data(request: Request, db: Session = Depends(get_db)):
         status="success",
         request=request,
     )
-    return {
-        "user": {
-            "user_id": user.user_id,
-            "email": user.email,
-            "timezone": user.timezone,
-            "archetype_id": user.archetype_id,
-            "terms_accepted_at": user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
-            "research_consent_at": user.research_consent_at.isoformat() if user.research_consent_at else None,
-            "created_at": user.created_at.isoformat(),
-        },
-        "tasks": [
-            {c.name: getattr(t, c.name) for c in Task.__table__.columns}
-            for t in tasks
-        ],
-        "stopwatch_sessions": [
-            {c.name: getattr(s, c.name) for c in StopwatchSession.__table__.columns}
-            for s in sessions
-        ],
-        "archetype_assignments": [
-            {c.name: getattr(a, c.name) for c in ArchetypeAssignment.__table__.columns}
-            for a in assignments
-        ],
-    }
+    return payload
 
 
 @router.get("/users/me/data-summary")
@@ -643,81 +622,6 @@ class DeleteIn(BaseModel):
 _HASH_SALT = "lyra-anonymized-retention-2026"
 
 
-def _purge_user_auxiliary_rows(db: Session, uid: int) -> None:
-    """Delete user-owned rows that are not part of anonymized retention."""
-    exposure_filter = (
-        "SELECT exposure_id FROM exposure_decision_event WHERE user_id = :u"
-    )
-
-    db.execute(
-        text(
-            f"""
-            DELETE FROM exposure_ack_event
-            WHERE user_id = :u OR exposure_id IN ({exposure_filter})
-            """
-        ),
-        {"u": uid},
-    )
-    db.execute(
-        text(
-            f"""
-            DELETE FROM suppression_event
-            WHERE exposure_id IN ({exposure_filter})
-            """
-        ),
-        {"u": uid},
-    )
-    db.execute(
-        text(
-            f"""
-            DELETE FROM exposure_render_event
-            WHERE exposure_id IN ({exposure_filter})
-            """
-        ),
-        {"u": uid},
-    )
-    db.execute(text("DELETE FROM exposure_decision_event WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM exposure_policy_effect_log WHERE user_id = :u"), {"u": uid})
-
-    db.execute(text("DELETE FROM feedback WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM jarvis_invocation WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM external_event_outcome WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM archetype_assignment WHERE user_id = :u"), {"u": uid})
-
-    db.execute(text("DELETE FROM calibration_nudge_event WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM reflection_view_log WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM pause_event WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM pause_prediction_log WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM resume_prediction_log WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM task_execution_correction WHERE user_id = :u"), {"u": uid})
-    db.execute(text("DELETE FROM task_deadline_outcome WHERE user_id = :u"), {"u": uid})
-
-    db.execute(
-        text(
-            """
-            DELETE FROM deadline_completion_event
-            WHERE user_id = :u
-               OR deadline_id IN (
-                    SELECT deadline_id FROM deadline WHERE user_id = :u
-               )
-            """
-        ),
-        {"u": uid},
-    )
-    db.execute(
-        text(
-            """
-            UPDATE task
-            SET deadline_id = NULL,
-                llm_inferred_deadline_id = NULL
-            WHERE user_id = :u
-            """
-        ),
-        {"u": uid},
-    )
-    db.execute(text("DELETE FROM deadline WHERE user_id = :u"), {"u": uid})
-
-
 @router.delete("/users/me")
 def delete_my_account(
     body: DeleteIn,
@@ -756,54 +660,43 @@ def delete_my_account(
     # Drop scope so the cascade DELETEs/UPDATEs can run unfiltered.
     set_current_user_id(None)
     try:
-        _purge_user_auxiliary_rows(db, uid)
+        purge_user_auxiliary_rows(db, uid)
 
         if body.retain_for_research:
             # One-way hash for grouping this user's retained rows in research queries
             uid_hash = hashlib.sha256(f"{uid}:{_HASH_SALT}".encode()).hexdigest()
 
-            # Anonymize tasks: clear identifying fields, keep behavioral data
-            db.execute(
-                text("""
-                    UPDATE task SET
-                        title = '[anonymized]',
-                        notes = NULL,
-                        description = NULL,
-                        notion_page_id = NULL,
-                        llm_deadline_candidates = NULL,
-                        llm_sub_items = NULL,
-                        llm_alternative_suggestion = NULL,
-                        post_deletion_retained_at = :now,
-                        original_user_id_hash = :hash
-                    WHERE user_id = :u
-                """),
-                {"now": now, "hash": uid_hash, "u": uid},
+            anonymize_retained_task_session_rows(
+                db,
+                user_id=uid,
+                retained_at=now,
+                original_user_id_hash=uid_hash,
             )
 
-            # Anonymize sessions: keep timing/behavioral data
-            db.execute(
-                text("""
-                    UPDATE stopwatch_session SET
-                        post_deletion_retained_at = :now,
-                        original_user_id_hash = :hash
-                    WHERE user_id = :u
-                """),
-                {"now": now, "hash": uid_hash, "u": uid},
+            db.query(User).filter(User.user_id == uid).delete(
+                synchronize_session=False
             )
-
-            db.execute(text('DELETE FROM "user" WHERE user_id = :u'), {"u": uid})
             db.commit()
         else:
             # Hard delete — all data permanently removed.
-            db.execute(text("DELETE FROM stopwatch_session WHERE user_id = :u"), {"u": uid})
-            db.execute(text("DELETE FROM task WHERE user_id = :u"), {"u": uid})
-            db.execute(text('DELETE FROM "user" WHERE user_id = :u'), {"u": uid})
+            hard_delete_retained_rows(db, uid)
+            db.query(User).filter(User.user_id == uid).delete(
+                synchronize_session=False
+            )
             db.commit()
     finally:
         set_current_user_id(uid)
+
+    runtime_purged = False
+    try:
+        RedisClient().purge_user_runtime_state(uid)
+        runtime_purged = True
+    except Exception as exc:  # noqa: BLE001 - DB deletion must remain durable
+        logger.warning("delete_my_account: Redis runtime purge failed for user %s: %s", uid, exc)
 
     return {
         "ok": True,
         "deleted_user_id": uid,
         "data_retained_for_research": body.retain_for_research,
+        "runtime_state_purged": runtime_purged,
     }

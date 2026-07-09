@@ -25,12 +25,12 @@ def test_shared_resend_sender_is_hello(monkeypatch):
 
     assert result.sent is True
     payload = calls[0]["json"]
-    assert payload["from"] == "LyraOS <hello@lyraos.org>"
+    assert payload["from"] == "Barzakh <hello@barzakh.app>"
     assert payload["to"] == ["user@example.test"]
     assert payload["html"] == "<p>HTML</p>"
     assert payload["scheduled_at"] == "2026-06-03T17:00:00Z"
     assert calls[0]["headers"]["Idempotency-Key"] == "test-key"
-    assert calls[0]["headers"]["User-Agent"] == "lyraos-email/1.0"
+    assert calls[0]["headers"]["User-Agent"] == "barzakh-email/1.0"
 
 
 def test_shared_resend_error_keeps_safe_provider_message(monkeypatch):
@@ -42,7 +42,7 @@ def test_shared_resend_error_keeps_safe_provider_message(monkeypatch):
             text="",
             json=lambda: {
                 "message": (
-                    "The lyraos.org domain is not verified. Please, add and "
+                    "The barzakh.app domain is not verified. Please, add and "
                     "verify your domain."
                 )
             },
@@ -58,6 +58,6 @@ def test_shared_resend_error_keeps_safe_provider_message(monkeypatch):
 
     assert result.sent is False
     assert result.error == (
-        "http_403:The lyraos.org domain is not verified. Please, add and "
+        "http_403:The barzakh.app domain is not verified. Please, add and "
         "verify your domain."
     )
