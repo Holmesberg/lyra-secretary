@@ -11299,3 +11299,77 @@ Rollback note:
   `frontend/lib/tasks.ts`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-10 - Frontend Stopwatch Client Extraction
+
+Seam:
+
+- `frontend-stopwatch-client-extraction`
+
+Changed authority:
+
+- No stopwatch lifecycle authority, task lifecycle authority, backend endpoint
+  behavior, schema, hosted-public deployment state, or user-visible UI behavior
+  changed.
+- Timer command idempotency scopes remain unchanged:
+  `stopwatch-start:{task_id}`, `stopwatch-stop:initial|confirmed`,
+  `stopwatch-pause`, and `stopwatch-resume`.
+
+Removed paths:
+
+- Removed inline stopwatch client types/wrappers and inline idempotency helper
+  from `frontend/lib/tasks.ts`.
+
+Parked paths:
+
+- Task CRUD/client extraction remains parked.
+- Stopwatch backend store/lifecycle/finalizer/effects splits remain parked.
+- Stale-pause backend semantics and task lifecycle writer seams remain parked.
+
+Moved authority:
+
+- `frontend/lib/tasks/stopwatch.ts` now owns frontend stopwatch status,
+  stale-pause resolution, switch, start, stop, pause, and resume client wrappers.
+- `frontend/lib/tasks/idempotency.ts` now owns the shared frontend idempotency
+  header helper.
+- `frontend/lib/tasks.ts` remains the compatibility re-export surface for
+  existing `@/lib/tasks` imports.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 frontend behavior-preserving
+  extraction.
+- Hosted-public topology proof remains blocked by GitHub issue #187 and was not
+  treated as proof for this local-current seam.
+
+Tests and verification:
+
+- `git diff --check`; passed with the existing PowerShell/Git line-ending warning
+  for touched frontend files.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- Holmesberg local-current mutable product-loop proof:
+  `tmp/browser-product-loop/2026-07-09T22-20-22-816Z/result.json`; passed with
+  `116` checks, zero failures, timer start/pause/navigation/resume/stop proof,
+  cleanup leaving no active timer, and no unrendered synthetic creation-nudge
+  exposures.
+- Operator read-only local-current proof after the mutable pass:
+  `tmp/operator-readonly-stress-2026-07-09T22-26-43-226Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29054629721` passed for
+  `a2ce89396816e4e47cc99fa5dc56948e4e26a596`.
+
+Behavior parity statement:
+
+- No intentional endpoint, payload, idempotency-header, import-path, or UI
+  behavior change.
+- Existing Today/Pulse/timer imports continue resolving through `@/lib/tasks`.
+
+Rollback note:
+
+- Revert this seam commit to restore stopwatch client wrappers and idempotency
+  helper inline in `frontend/lib/tasks.ts`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
