@@ -87,6 +87,7 @@ $browserArgs = @("scripts/browser_stress_operator_readonly.mjs")
 if ($useProxyApi) {
   $browserArgs += @("--proxy-api", "true")
 }
+$browserArgs += @("--expect-readiness-split", "true")
 
 Invoke-NodeChecked `
   -Name "operator read-only browser stress" `

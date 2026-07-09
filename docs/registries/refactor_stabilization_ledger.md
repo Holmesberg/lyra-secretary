@@ -8946,3 +8946,67 @@ Rollback note:
   deadline-suggestion test id and polling wait.
 - No production data, schema, Redis, cookie, backend, hosted-public deploy, or
   user cleanup rollback is required.
+
+## 2026-07-09 - Operator Readiness Split Wrapper Gate
+
+Wave:
+
+- Branch: `refactor/operator-s1c-hardening`.
+- Previous checkpoint PR #180 merged at `3cfb9308d08fbae3b465271d940e474b8a646e57`.
+- Seam: verifier-only operator cockpit gate hardening.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- The PowerShell operator read-only wrapper now requires the existing browser
+  verifier to assert implementation/cohort readiness split labels on `/operator`.
+
+Removed paths:
+
+- Removed the path where wrapper-driven operator browser proof could pass
+  without exercising the existing readiness-split label assertion.
+
+Parked paths:
+
+- No backend extraction, frontend extraction, schema work, rebrand/domain
+  migration, public deploy/restart, or hosted-public mutable dogfood happened
+  in this seam.
+
+Moved authority:
+
+- No mutation, exposure, provider, clean-data, notification, task, timer,
+  schema, deployment, or ClaimCompiler authority moved.
+
+Issues and classification:
+
+- GitHub issue #176 is closed by commit
+  `2f50aed5c37afb2f8074a050415b01e8eb98c3f2`; classification:
+  measurement/verifier boundary bug.
+- GitHub issue #179 is closed as a topology/deployment recovery with explicit
+  hosted build lag; no code change was required.
+- This seam did not create a new GitHub issue because it is proactive verifier
+  hardening, not a discovered product or harness bug.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -AssumeLocalFrontendReady -ProxyApi`;
+  passed with `expect_readiness_split=true`, zero count diffs,
+  `implementation_green=true`, and `exposure_without_render_count=0`.
+- Artifact:
+  `tmp\operator-readonly-stress-2026-07-09T13-48-49-250Z\result.json`.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- No backend API behavior, frontend UI behavior, DB schema, production data,
+  Redis state, hosted-public artifact, or public runtime changed.
+- Intended behavior change is verifier-only: wrapper calls to operator
+  read-only stress now fail if `/operator` drops the readiness split labels.
+
+Rollback note:
+
+- Revert commit `088178d` to remove the wrapper-level
+  `--expect-readiness-split true` argument.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
