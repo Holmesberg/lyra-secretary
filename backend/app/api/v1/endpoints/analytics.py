@@ -17,7 +17,6 @@ from app.db.models import (
     ArchetypeAssignment,
     Deadline,
     ExposureDecisionEvent,
-    PausePredictionLog,
     StopwatchSession,
     Task,
     TaskExecutionCorrection,
@@ -38,6 +37,7 @@ from app.services.cortex import (
 from app.services.calibration_nudge_analytics_service import calibration_nudge_snapshot
 from app.services.deadline_completion_analytics_service import deadline_completion_snapshot
 from app.services.deadline_shape_service import deadline_shape_snapshot
+from app.services.pause_prediction_analytics_service import pause_prediction_snapshot
 from app.services.claim_compiler import (
     PRIMARY_SYNTHESIS_ID,
     PRIMARY_SYNTHESIS_SURFACE_ID,
@@ -2471,51 +2471,7 @@ def get_pause_prediction(db: Session = Depends(get_db)) -> dict:
     without field-name gymnastics; any change to shape is a breaking
     change because cells VT-17a/b/c read specific keys.
     """
-    all_rows = db.query(PausePredictionLog).all()
-
-    # Snooze re-fires are excluded from denominator per pre-registration.
-    primary = [r for r in all_rows if r.parent_firing_id is None]
-    reconciled = [r for r in primary if r.user_response is not None]
-    unreconciled = [r for r in primary if r.user_response is None]
-    accepted = [r for r in reconciled if r.user_response == "pause_now"]
-    no_response = [r for r in reconciled if r.user_response == "no_response"]
-    dismissed = [r for r in reconciled if r.user_response == "dismiss"]
-
-    def _rate(num: list, denom: list) -> float:
-        return round(len(num) / len(denom), 3) if denom else 0.0
-
-    summary = {
-        "total_fires": len(primary),
-        "total_reconciled": len(reconciled),
-        "total_unreconciled": len(unreconciled),
-        "accepted": len(accepted),
-        "no_response": len(no_response),
-        "dismissed": len(dismissed),
-        # Denominator is reconciled-only so an open window doesn't drag
-        # the rate toward zero. Kill criterion is pre-registered against
-        # this number (MANIFESTO §VT-17).
-        "acceptance_rate": _rate(accepted, reconciled),
-        "snooze_refires_excluded": len(all_rows) - len(primary),
-    }
-
-    by_mechanism = []
-    for mechanism in ("clock_anchor", "work_rhythm"):
-        mech_rows = [r for r in primary if r.mechanism == mechanism]
-        mech_reconciled = [r for r in mech_rows if r.user_response is not None]
-        mech_accepted = [r for r in mech_reconciled if r.user_response == "pause_now"]
-        by_mechanism.append({
-            "mechanism": mechanism,
-            "fires": len(mech_rows),
-            "reconciled": len(mech_reconciled),
-            "accepted": len(mech_accepted),
-            "acceptance_rate": _rate(mech_accepted, mech_reconciled),
-        })
-
-    return {
-        "summary": summary,
-        "by_mechanism": by_mechanism,
-        "primary_metric": "acceptance_rate (MANIFESTO §VT-17, pre-registered)",
-    }
+    return pause_prediction_snapshot(db)
 
 
 @router.get("/analytics/deadline-shape")
