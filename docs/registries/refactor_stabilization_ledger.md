@@ -11742,3 +11742,79 @@ Rollback note:
   logic inline in `backend/app/services/operator_dashboard_metrics.py`.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Post-Wave Evidence Manifest Summary
+
+Seam:
+
+- `post-wave-evidence-manifest-summary`
+
+Changed authority:
+
+- No product/runtime behavior, schema, hosted-public deployment state,
+  mutation authority, exposure authority, cohort denominator, or readiness
+  threshold changed.
+- The post-wave wrapper remains verifier/orchestration authority only.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Hosted-public mutable dogfood remains approval-gated.
+- Full hermetic manifest fixture tests remain a future S1c hardening seam.
+- Broader whole-wrapper count attribution remains parked unless a within-run
+  count diff appears.
+
+Moved authority:
+
+- `scripts/run_post_wave_dogfood_loop.ps1` now surfaces a richer top-level
+  `summary.json.evidence_manifest` proof index: topology class, build IDs,
+  origins, readiness split, exposure-without-render count, browser
+  issues/warnings, count diffs, cleanup status, gated paths, and CI/CD proof.
+- `scripts/collect_github_ci_cd_proof.ps1` now accepts both repo-relative and
+  absolute `-OutFile` paths. Relative paths remain repo-rooted; rooted paths
+  are used directly.
+
+Issues and classification:
+
+- GitHub issue #188 (`CI/CD proof collection rejects absolute outfile paths`)
+  was created and closed.
+- Classification: CI/CD operations bug / verifier wrapper bug.
+- The bug was discovered when the public quick post-wave proof reached CI/CD
+  proof collection and failed after browser/topology/operator proof had passed.
+
+Tests and verification:
+
+- PowerShell parser checks for `scripts/run_post_wave_dogfood_loop.ps1` and
+  `scripts/collect_github_ci_cd_proof.ps1`; passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings.
+- Relative CI/CD outfile proof:
+  `tmp/ci-cd-proof/relative-outfile-proof.json`; passed with `ok=true` and
+  `status=ci_success`.
+- Absolute CI/CD outfile proof:
+  `tmp/ci-cd-proof/absolute-outfile-proof.json`; passed with `ok=true` and
+  `status=ci_success`.
+- Public quick post-wave proof:
+  `tmp/post-wave-dogfood/20260710-023245-evidence-manifest-summary-quick-public/summary.json`;
+  passed with `ok=true`, `classification=standard_wave_proof_passed`,
+  `topology_class=public`, frontend build `bbd168c`, backend build `dev`,
+  `implementation_green=true`, `cohort_status=yellow`,
+  `exposure_without_render_count=0`, `count_diff_count=0`, and CI run
+  `29057234237` represented in the manifest.
+- CI proof: GitHub Actions run `29057862778` passed for
+  `2c4b63f2c63236fe2e8291d5b9dd7ff2dcbe7041`.
+
+Behavior parity statement:
+
+- No browser product flow, API payload, readiness semantic, exposure lifecycle
+  rule, cleanup requirement, or pass/fail classifier changed.
+- The manifest change is additive and makes existing proof easier to audit.
+
+Rollback note:
+
+- Revert commit `2c4b63f` to remove the richer manifest fields and restore the
+  old repo-relative-only CI/CD proof output behavior.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.

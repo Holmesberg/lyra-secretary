@@ -97,6 +97,12 @@ The script records:
   `holmesberg-product-loop` directory when `-IncludeProductLoop` is used.
 - `ci_cd_proof.json` when `-IncludeCiCdProof` is used.
 
+`summary.json.evidence_manifest` is the top-level proof index. It must surface
+the topology class, frontend/backend build IDs, frontend/API origins,
+implementation/cohort readiness split, `exposure_without_render_count`, browser
+issues/warnings, count diffs, cleanup proof status, gated paths, and CI/CD proof
+location/status when collected.
+
 ## Modes
 
 `quick`
