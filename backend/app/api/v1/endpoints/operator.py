@@ -11,13 +11,11 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, operator_user_from_scope
 from app.db.models import (
-    Deadline,
-    DeadlineCompletionEvent,
     ExposureDecisionEvent,
     Feedback,
     StopwatchSession,
@@ -44,7 +42,7 @@ from app.services.operator_dashboard_metrics import (
     pct as _pct,
     privacy_boundary_snapshot as _privacy_boundary_snapshot,
     product_loop_funnel_snapshot as _product_loop_funnel_snapshot,
-    provider_integrity_snapshot as _provider_integrity_snapshot,
+    provider_integrity_query_snapshot as _provider_integrity_query_snapshot,
     redis_notification_snapshot as _redis_notification_snapshot_impl,
     state_invariants_snapshot as _state_invariants_snapshot,
     user_last_activity_maps as _user_last_activity_maps,
@@ -319,89 +317,12 @@ def operator_dashboard_v12(
             redis_snapshot=redis_snapshot,
         )
 
-        provider_rows_total = int(provider_only) + (
-            db.query(func.count(DeadlineCompletionEvent.event_id))
-            .filter(DeadlineCompletionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
-            .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
-            .scalar()
-            or 0
-        )
-        provider_rows_missing_provenance = (
-            db.query(func.count(Deadline.deadline_id))
-            .filter(Deadline.user_id.in_(non_op_ids) if non_op_ids else False)
-            .filter(Deadline.external_source.isnot(None))
-            .filter(
-                or_(
-                    Deadline.external_id.is_(None),
-                    Deadline.imported_at.is_(None),
-                )
-            )
-            .scalar()
-            or 0
-        )
-        provider_completion_candidates = (
-            db.query(func.count(DeadlineCompletionEvent.event_id))
-            .filter(DeadlineCompletionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
-            .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
-            .scalar()
-            or 0
-        )
-        user_confirmed_deadline_ids = (
-            db.query(DeadlineCompletionEvent.deadline_id)
-            .filter(DeadlineCompletionEvent.user_id.in_(non_op_ids) if non_op_ids else False)
-            .filter(
-                DeadlineCompletionEvent.completion_source.in_(
-                    ("user_deadline_done", "task_retroactive_done")
-                )
-            )
-            .subquery()
-        )
-        provider_truth_violations = (
-            db.query(func.count(func.distinct(Deadline.deadline_id)))
-            .join(
-                DeadlineCompletionEvent,
-                DeadlineCompletionEvent.deadline_id == Deadline.deadline_id,
-            )
-            .filter(Deadline.user_id.in_(non_op_ids) if non_op_ids else False)
-            .filter(Deadline.external_source.ilike("moodle%"))
-            .filter(Deadline.state == "completed")
-            .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
-            .filter(Deadline.deadline_id.notin_(user_confirmed_deadline_ids))
-            .scalar()
-            or 0
-        )
-        duplicate_import_candidates = 0
-        import_groups = (
-            db.query(
-                Deadline.user_id,
-                Deadline.external_source,
-                Deadline.external_id,
-                func.count(Deadline.deadline_id).label("count"),
-            )
-            .filter(Deadline.external_source.isnot(None))
-            .filter(Deadline.external_id.isnot(None))
-            .filter(Deadline.voided_at.is_(None))
-            .filter(Deadline.user_id.in_(non_op_ids) if non_op_ids else False)
-            .group_by(Deadline.user_id, Deadline.external_source, Deadline.external_id)
-            .all()
-        )
-        duplicate_import_candidates = sum(max(0, int(row.count) - 1) for row in import_groups)
-        sync_failures = sum(
-            1
-            for u in non_operator_users
-            if u.moodle_disconnect_reason or u.moodle_ws_disconnect_reason
-        )
-
-        provider_integrity = _provider_integrity_snapshot(
-            provider_rows_total=provider_rows_total,
-            provider_rows_missing_provenance=provider_rows_missing_provenance,
-            provider_completion_candidates=provider_completion_candidates,
-            provider_truth_violations=provider_truth_violations,
-            duplicate_import_candidates=duplicate_import_candidates,
-            sync_failures_24h=sync_failures,
-            user_visible_provider_errors_24h=notification_counts[
-                "internal_copy_leak_count"
-            ],
+        provider_integrity = _provider_integrity_query_snapshot(
+            db,
+            user_ids=non_op_ids,
+            users=non_operator_users,
+            provider_only_rows=int(provider_only),
+            notification_counts=notification_counts,
         )
 
         feedback_bug_24h = (

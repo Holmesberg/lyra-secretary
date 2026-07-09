@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     Deadline,
+    DeadlineCompletionEvent,
     ExposureAckEvent,
     ExposureDecisionEvent,
     ExposureRenderEvent,
@@ -1320,6 +1321,100 @@ def provider_integrity_snapshot(
         "sync_failures_24h": int(sync_failures_24h),
         "user_visible_provider_errors_24h": int(user_visible_provider_errors_24h),
     }
+
+
+def provider_integrity_query_snapshot(
+    db: Session,
+    *,
+    user_ids: list[int],
+    users: Iterable[User],
+    provider_only_rows: int,
+    notification_counts: dict[str, Any],
+) -> dict[str, Any]:
+    """Read-only provider provenance queries for the operator cockpit."""
+    provider_rows_total = int(provider_only_rows) + (
+        db.query(func.count(DeadlineCompletionEvent.event_id))
+        .filter(DeadlineCompletionEvent.user_id.in_(user_ids) if user_ids else False)
+        .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
+        .scalar()
+        or 0
+    )
+    provider_rows_missing_provenance = (
+        db.query(func.count(Deadline.deadline_id))
+        .filter(Deadline.user_id.in_(user_ids) if user_ids else False)
+        .filter(Deadline.external_source.isnot(None))
+        .filter(
+            or_(
+                Deadline.external_id.is_(None),
+                Deadline.imported_at.is_(None),
+            )
+        )
+        .scalar()
+        or 0
+    )
+    provider_completion_candidates = (
+        db.query(func.count(DeadlineCompletionEvent.event_id))
+        .filter(DeadlineCompletionEvent.user_id.in_(user_ids) if user_ids else False)
+        .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
+        .scalar()
+        or 0
+    )
+    user_confirmed_deadline_ids = (
+        db.query(DeadlineCompletionEvent.deadline_id)
+        .filter(DeadlineCompletionEvent.user_id.in_(user_ids) if user_ids else False)
+        .filter(
+            DeadlineCompletionEvent.completion_source.in_(
+                ("user_deadline_done", "task_retroactive_done")
+            )
+        )
+        .subquery()
+    )
+    provider_truth_violations = (
+        db.query(func.count(func.distinct(Deadline.deadline_id)))
+        .join(
+            DeadlineCompletionEvent,
+            DeadlineCompletionEvent.deadline_id == Deadline.deadline_id,
+        )
+        .filter(Deadline.user_id.in_(user_ids) if user_ids else False)
+        .filter(Deadline.external_source.ilike("moodle%"))
+        .filter(Deadline.state == "completed")
+        .filter(DeadlineCompletionEvent.completion_source.ilike("moodle%"))
+        .filter(Deadline.deadline_id.notin_(user_confirmed_deadline_ids))
+        .scalar()
+        or 0
+    )
+    import_groups = (
+        db.query(
+            Deadline.user_id,
+            Deadline.external_source,
+            Deadline.external_id,
+            func.count(Deadline.deadline_id).label("count"),
+        )
+        .filter(Deadline.external_source.isnot(None))
+        .filter(Deadline.external_id.isnot(None))
+        .filter(Deadline.voided_at.is_(None))
+        .filter(Deadline.user_id.in_(user_ids) if user_ids else False)
+        .group_by(Deadline.user_id, Deadline.external_source, Deadline.external_id)
+        .all()
+    )
+    duplicate_import_candidates = sum(
+        max(0, int(row.count) - 1) for row in import_groups
+    )
+    sync_failures = sum(
+        1 for user in users if user.moodle_disconnect_reason or user.moodle_ws_disconnect_reason
+    )
+
+    return provider_integrity_snapshot(
+        provider_rows_total=provider_rows_total,
+        provider_rows_missing_provenance=provider_rows_missing_provenance,
+        provider_completion_candidates=provider_completion_candidates,
+        provider_truth_violations=provider_truth_violations,
+        duplicate_import_candidates=duplicate_import_candidates,
+        sync_failures_24h=sync_failures,
+        user_visible_provider_errors_24h=notification_counts[
+            "internal_copy_leak_count"
+        ],
+    )
 
 
 def privacy_boundary_snapshot() -> dict[str, Any]:

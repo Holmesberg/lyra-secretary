@@ -10684,3 +10684,74 @@ Rollback note:
 - Revert this seam commit to restore the guarded inline render branch.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Operator Provider Integrity Query Extraction
+
+Seam:
+
+- `operator-provider-integrity-query-extraction`
+
+Changed authority:
+
+- No provider fact authority, deadline authority, cohort-readiness denominator,
+  notification lifecycle rule, schema, Redis behavior, hosted-public deployment
+  state, or user-visible product behavior changed.
+- `/operator` remains the read-only stop/go cockpit.
+
+Removed paths:
+
+- Removed duplicated provider-integrity SQL assembly from
+  `backend/app/api/v1/endpoints/operator.py`.
+
+Parked paths:
+
+- Provider connection model remains parked.
+- Provider sync/idempotency writer extraction remains parked.
+- Full operator payload-builder extraction remains parked until additional
+  read-only query seams prove stable.
+
+Moved authority:
+
+- `backend/app/services/operator_dashboard_metrics.py` now owns
+  `provider_integrity_query_snapshot(...)`, the read-only query bundle that
+  feeds the existing provider-integrity projection.
+- The existing `provider_integrity_snapshot(...)` projection still defines the
+  dashboard payload shape.
+
+Issues and classification:
+
+- Opened #186 for an order-dependent operator-dashboard test-harness artifact:
+  running the provider-integrity test before the uninstrumented-metrics test
+  leaves provider fixture rows outside the latter test's cleanup range.
+- Classification: verifier/test-harness bug, not a product/runtime regression.
+  File-order operator dashboard tests pass and were used as the seam proof.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\api\v1\endpoints\operator.py backend\app\services\operator_dashboard_metrics.py`;
+  passed.
+- `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py -q`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T19-34-11-773Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional endpoint response change.
+- Provider rows still remain provenance/candidates, missing provenance still
+  reports as a warning, and provider-native completion still blocks as a truth
+  violation when it completes canonical deadlines without user confirmation.
+
+Rollback note:
+
+- Revert this seam commit to restore provider-integrity SQL assembly inline in
+  `operator.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
