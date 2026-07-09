@@ -34,10 +34,12 @@ from app.services.operator_dashboard_metrics import (
     privacy_boundary_snapshot as _privacy_boundary_snapshot,
     product_loop_funnel_query_snapshot as _product_loop_funnel_query_snapshot,
     provider_integrity_query_snapshot as _provider_integrity_query_snapshot,
-    redis_notification_snapshot as _redis_notification_snapshot_impl,
     state_invariants_snapshot as _state_invariants_snapshot,
     task_session_state_query_snapshot as _task_session_state_query_snapshot,
     user_last_activity_maps as _user_last_activity_maps,
+)
+from app.services.operator_notification_snapshot import (
+    redis_notification_snapshot as _redis_notification_snapshot_impl,
 )
 from app.services.operator_readiness import (
     bug_watchlist_snapshot as _bug_watchlist_snapshot,
