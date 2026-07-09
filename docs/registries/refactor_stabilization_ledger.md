@@ -11012,3 +11012,71 @@ Rollback note:
   `operator.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Analytics Discrepancy Snapshot Extraction
+
+Seam:
+
+- `analytics-discrepancy-snapshot-extraction`
+
+Changed authority:
+
+- No analytics claim authority, exposure authority, Redis behavior, schema,
+  hosted-public deployment state, or user-visible behavior changed.
+- `/analytics/discrepancy` remains a read-only route returning the same
+  research/product layer payload.
+
+Removed paths:
+
+- Removed discrepancy measurement query/projection body from
+  `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- `/analytics/insights` exposure/write routing remains parked for a later seam.
+- Bias-factor lookup exposure write routing remains parked.
+- ClaimCompiler, Cortex, and output-surface writer splits remain parked.
+
+Moved authority:
+
+- `backend/app/services/discrepancy_analytics_service.py` now owns
+  `discrepancy_snapshot(...)`, the read-only discrepancy measurement query and
+  summary projection.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 backend read-only extraction.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\api\v1\endpoints\analytics.py backend\app\services\discrepancy_analytics_service.py`;
+  passed.
+- `cd backend; ..\.venv311\Scripts\python.exe -m pytest tests\test_unplanned_rate.py tests\test_insights.py tests\test_multiuser_isolation_adversarial.py::test_analytics_discrepancy_scoped -q`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T20-12-45-203Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+  Warning: desktop `/operator` exceeded the 12000ms latency budget at 12306ms;
+  classified as non-blocking for this read-only analytics extraction because no
+  operator code path changed and the proof had no issues or state diffs.
+- CI proof: pending.
+
+Behavior parity statement:
+
+- No intentional endpoint response change.
+- Research-layer sessions/summary, product-layer sessions/summary,
+  `unplanned_execution_rate`, pause-pattern fields, and voided-count behavior
+  remain the same.
+
+Rollback note:
+
+- Revert this seam commit to restore `/analytics/discrepancy` computation inline
+  in `analytics.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.

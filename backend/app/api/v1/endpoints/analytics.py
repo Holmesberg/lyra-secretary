@@ -15,7 +15,6 @@ from app.db.models import (
     ArchetypeAssignment,
     Deadline,
     ExposureDecisionEvent,
-    StopwatchSession,
     Task,
     TaskExecutionCorrection,
     TaskState,
@@ -51,6 +50,7 @@ from app.services.analytics_insight_helpers import (
 from app.services.deadline_completion_analytics_service import deadline_completion_snapshot
 from app.services.deadline_shape_service import deadline_shape_snapshot
 from app.services.pause_prediction_analytics_service import pause_prediction_snapshot
+from app.services.discrepancy_analytics_service import discrepancy_snapshot
 from app.services.claim_compiler import (
     PRIMARY_SYNTHESIS_ID,
     PRIMARY_SYNTHESIS_SURFACE_ID,
@@ -116,203 +116,8 @@ AUTHORITY_LABELS = {
 
 @router.get("/analytics/discrepancy")
 def get_discrepancy(db: Session = Depends(get_db)) -> dict:
-    """
-    Return discrepancy measurement data in two separate layers:
-
-    - research_layer: time/behavioral signals (delta, initiation, abandonment)
-    - product_layer: cognitive signals (readiness shift, depletion rate)
-
-    Metric semantics (per product_sessions entry):
-      - ``discrepancy_score`` = ``abs(pre_task_readiness - post_task_reflection)``
-        — unsigned magnitude of the metacognitive gap. Bigger = worse calibration
-        regardless of direction. This is the field the falsification engine
-        correlates against ``duration_delta_minutes`` for H1.
-      - ``signed_discrepancy`` = ``post_task_reflection - pre_task_readiness``
-        — direction of the miss. Positive = felt better than expected;
-        negative = felt worse. Used for typology classification (Phase 6),
-        NOT for H1 (abs magnitude is the pre-registered predictor).
-
-    VT-29 note (2026-04-30): this query does NOT yet filter tasks bound
-    to imported deadlines (Moodle .ics, future LMS sources). VT-29's
-    literal text protects H2 (deadline-distance hypothesis), not H1
-    directly — and the H1 contamination question is whether the user's
-    PLANNING affordance differs for imported-deadline-bound tasks
-    (it might: LMS sets the time, user can't shift it). Operator
-    decision pending: should H1 also exclude tasks where
-    `deadline_id IS NOT NULL AND deadline.external_source IS NOT NULL`?
-    Defaulting to no filter today; revisit before first H1 publication
-    once trusted users have populated meaningful imported-deadline data.
-    """
-    tasks = (
-        db.query(Task)
-        .filter(
-            (Task.state == TaskState.EXECUTED) |
-            (Task.initiation_status.in_(["initiated", "abandoned"]))
-        )
-        .filter(Task.initiation_status != "system_error", Task.voided_at.is_(None))
-        .order_by(Task.planned_start_utc)
-        .all()
-    )
-
-    research_sessions = []
-    product_sessions = []
-
-    for t in tasks:
-        local_start = to_local(t.planned_start_utc)
-        d = local_start.date()
-        # Read the immutable stored index (alembic 012). Fallback to 0 only
-        # if the column is null, which should not happen post-backfill.
-        session_idx = t.session_index_in_day if t.session_index_in_day is not None else 0
-
-        # Shared identity fields
-        common = {
-            "task_id": t.task_id,
-            "title": t.title,
-            "date": d.isoformat(),
-            "category": t.category,
-            "time_of_day": _time_of_day(local_start),
-            "session_index_in_day": session_idx,
-        }
-
-        # Sum paused minutes across all stopwatch sessions for this task
-        sessions_for_task = (
-            db.query(StopwatchSession)
-            .filter(StopwatchSession.task_id == t.task_id)
-            .all()
-        )
-        total_paused = sum(s.total_paused_minutes for s in sessions_for_task)
-
-        # Build pause pattern
-        pause_reasons = [s.pause_reason for s in sessions_for_task if s.pause_reason]
-        pause_initiators = [s.pause_initiator for s in sessions_for_task if s.pause_initiator]
-        first_pause_minute = None
-        for s in sessions_for_task:
-            if s.paused_at_utc and s.start_time_utc:
-                mins = int((s.paused_at_utc - s.start_time_utc).total_seconds() / 60)
-                if first_pause_minute is None or mins < first_pause_minute:
-                    first_pause_minute = mins
-
-        research_sessions.append({
-            **common,
-            "planned_duration_minutes": t.planned_duration_minutes,
-            "executed_duration_minutes": t.executed_duration_minutes,
-            "delta_minutes": t.duration_delta_minutes,
-            "initiation_status": t.initiation_status,
-            "initiation_delay_minutes": t.initiation_delay_minutes,
-            "pause_count": t.pause_count,
-            "total_paused_minutes": total_paused,
-            "pause_pattern": {
-                "pause_count": t.pause_count or 0,
-                "total_paused_minutes": total_paused,
-                "first_pause_at_minute": first_pause_minute,
-                "pause_reasons": pause_reasons,
-                "pause_initiators": pause_initiators,
-            },
-            "parent_task_id": t.parent_task_id,
-            "interruption_type": t.interruption_type,
-            "replaces_task_id": t.replaces_task_id,
-        })
-
-        product_sessions.append({
-            **common,
-            "pre_task_readiness": t.pre_task_readiness,
-            "post_task_reflection": t.post_task_reflection,
-            "discrepancy_score": t.discrepancy_score,      # abs(pre - post): magnitude
-            "signed_discrepancy": t.signed_discrepancy,    # post - pre: direction
-        })
-
-    # --- Research layer summary ---
-    # B-13 fix (2026-04-26): added explicit voided_at IS NOT NULL filter
-    # to honor the voided_at_guard discipline. Previously filtered only
-    # on initiation_status='system_error', which leaks any non-voided
-    # row that happened to have that status. In practice voiding always
-    # stamps initiation_status='system_error' so the count is the same,
-    # but the discipline rule is "every Task query checks voided_at."
-    voided_count = (
-        db.query(Task)
-        .filter(
-            Task.voided_at.is_not(None),
-            Task.initiation_status == "system_error",
-        )
-        .count()
-    )
-    total = len(research_sessions)
-    initiated = [s for s in research_sessions if s["initiation_status"] == "initiated"]
-    abandoned = [s for s in research_sessions if s["initiation_status"] == "abandoned"]
-    retroactive = [s for s in research_sessions if s["initiation_status"] == "retroactive"]
-    delta_vals = [s["delta_minutes"] for s in research_sessions if s["delta_minutes"] is not None]
-    delay_vals = [s["initiation_delay_minutes"] for s in research_sessions if s["initiation_delay_minutes"] is not None]
-
-    interrupted = [s for s in research_sessions if s.get("parent_task_id")]
-    substituted = [s for s in research_sessions if s.get("replaces_task_id")]
-
-    # Unplanned reason breakdown
-    reason_counts: dict[str, int] = defaultdict(int)
-    for t in tasks:
-        if t.initiation_status == "retroactive" and t.unplanned_reason:
-            reason_counts[t.unplanned_reason] += 1
-
-    # Self-consistency score: per category+time_of_day, variance of discrepancy_score
-    consistency_buckets: dict[str, list[int]] = defaultdict(list)
-    for t in tasks:
-        if t.discrepancy_score is not None and t.category:
-            tod = _time_of_day(to_local(t.planned_start_utc))
-            key = f"{t.category}_{tod}"
-            consistency_buckets[key].append(t.discrepancy_score)
-
-    self_consistency = []
-    for key, scores in consistency_buckets.items():
-        if len(scores) < 2:
-            continue
-        mean = sum(scores) / len(scores)
-        variance = round(sum((s - mean) ** 2 for s in scores) / len(scores), 2)
-        cat, tod = key.rsplit("_", 1)
-        self_consistency.append({
-            "category": cat,
-            "time_of_day": tod,
-            "variance": variance,
-            "sessions": len(scores),
-        })
-
-    research_summary = {
-        "total_sessions": total,
-        "initiated_count": len(initiated),
-        "abandoned_count": len(abandoned),
-        "abandoned_rate": round(len(abandoned) / total, 3) if total else 0.0,
-        "retroactive_count": len(retroactive),
-        "unplanned_execution_rate": round(len(retroactive) / total, 3) if total else 0.0,
-        "unplanned_reason_breakdown": dict(reason_counts),
-        "avg_delta_minutes": _avg(delta_vals),
-        "avg_initiation_delay_minutes": _avg(delay_vals),
-        "interruption_rate": round(len(interrupted) / total, 3) if total else 0.0,
-        "substitution_rate": round(len(substituted) / total, 3) if total else 0.0,
-        "self_consistency_scores": self_consistency,
-        "voided_count": voided_count,
-    }
-
-    # --- Product layer summary ---
-    disc_vals = [s["discrepancy_score"] for s in product_sessions if s["discrepancy_score"] is not None]
-    signed_vals = [s["signed_discrepancy"] for s in product_sessions if s["signed_discrepancy"] is not None]
-    depleting = [v for v in signed_vals if v < 0]
-
-    product_summary = {
-        "total_sessions_with_scores": len(disc_vals),
-        "avg_discrepancy": _avg(disc_vals),
-        "avg_signed_discrepancy": _avg(signed_vals),
-        "depletion_rate": round(len(depleting) / len(signed_vals), 3) if signed_vals else 0.0,
-    }
-
-    return {
-        "research_layer": {
-            "sessions": research_sessions,
-            "summary": research_summary,
-        },
-        "product_layer": {
-            "sessions": product_sessions,
-            "summary": product_summary,
-        },
-    }
-
+    """Return discrepancy measurement data in research and product layers."""
+    return discrepancy_snapshot(db)
 
 def _public_insight(result: dict) -> dict:
     """Translate an internal insight candidate into an explicit public card."""
