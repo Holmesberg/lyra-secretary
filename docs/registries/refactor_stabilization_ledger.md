@@ -9159,3 +9159,71 @@ Rollback note:
   inline operator endpoint dynamic issue construction.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Broad Refactor Branch CI Trigger
+
+Wave:
+
+- Branch: `refactor/freeze-closure`.
+- Seam: CI/CD proof-loop hardening for the broad freeze-closure refactor branch.
+- Commit: `ae190761569bf6b97a53155798fb712f63731269`.
+
+Changed authority:
+
+- No product/runtime authority changed.
+- GitHub Actions CI now auto-runs on pushes to the active
+  `refactor/freeze-closure` branch, matching the user-approved broad-branch
+  refactor workflow.
+
+Removed paths:
+
+- Removed the need to manually run `workflow_dispatch` after every pushed seam
+  on this branch to obtain hosted CI proof.
+
+Parked paths:
+
+- Broad trigger expansion to all `refactor/**` branches remains parked to avoid
+  unnecessary CI cost/noise.
+- PR merge, release, public deploy/restart, public mutable dogfood, schema
+  migration, and rebrand/domain migration remain blocked without approval.
+
+Moved authority:
+
+- CI proof authority for this branch moved from manual operator dispatch to the
+  workflow push trigger.
+- No mutation, exposure, provider, clean-data, notification, task, timer,
+  schema, Redis, deployment, or ClaimCompiler authority moved.
+
+Issues and classification:
+
+- GitHub issue #182 tracks this CI/CD operations policy gap.
+- Classification: CI/CD operations gap.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- Push to `refactor/freeze-closure` automatically created GitHub Actions CI run
+  `29026954028` with event `push` for exact head
+  `ae190761569bf6b97a53155798fb712f63731269`.
+- CI run `29026954028` passed:
+  - backend tests;
+  - frontend lint/typecheck and production build;
+  - topology contract;
+  - S1c static gates, including authority surface scan, refactor contract scan,
+    OpenClaw relay hermetic test, and Alembic fresh database smoke.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- No backend API behavior, frontend app behavior, DB schema, production data,
+  Redis state, hosted-public artifact, or public runtime changed.
+- Intended behavior change is CI/CD only: future pushes to the active broad
+  refactor branch produce automatic hosted CI proof.
+
+Rollback note:
+
+- Revert commit `ae190761569bf6b97a53155798fb712f63731269` to remove the
+  `refactor/freeze-closure` push trigger and return this branch to manual
+  `workflow_dispatch` CI proof.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
