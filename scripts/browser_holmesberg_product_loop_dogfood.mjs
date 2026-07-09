@@ -2050,6 +2050,36 @@ async function runAnalyticsAndExposureChecks(page, token, beforeExport) {
 }
 
 async function runNotificationPath(page, token, task) {
+  const terminalTimestampByStatus = {
+    rendered: "rendered_at",
+    acted: "acted_at",
+    dismissed: "dismissed_at",
+    expired: "expired_at",
+    lost_unrendered: "lost_unrendered_at",
+  };
+
+  function terminalLifecycleEvidence(row) {
+    if (!row) return null;
+    const timestampField = terminalTimestampByStatus[row.status];
+    if (!timestampField || !row[timestampField]) return null;
+    return {
+      status: row.status,
+      timestamp_field: timestampField,
+      timestamp: row[timestampField],
+      rendered_at: row.rendered_at || null,
+    };
+  }
+
+  async function lifecycleTerminalRow(notificationId, description) {
+    return pollFor(token, description, async () => {
+      const exported = await apiFetch(token, "/v1/users/me/export");
+      const row = rows(exported, "notification_lifecycle_events").find((candidate) => (
+        candidate.notification_id === notificationId
+      ));
+      return terminalLifecycleEvidence(row) ? row : null;
+    }, 25_000, 1_000);
+  }
+
   async function lifecycleRow(notificationId, expectedStatus, description) {
     return pollFor(token, description, async () => {
       const exported = await apiFetch(token, "/v1/users/me/export");
@@ -2110,6 +2140,13 @@ async function runNotificationPath(page, token, task) {
       }),
     });
   }
+  const terminalLifecycleRow = (toastRendered || !stillPendingAfterBrowser || lostCleanupAck.acknowledged > 0)
+    ? await lifecycleTerminalRow(
+        notificationId,
+        "notification terminal lifecycle row after browser handling"
+      )
+    : null;
+  const terminalEvidence = terminalLifecycleEvidence(terminalLifecycleRow);
   const browserRemovedPending = toastRendered
     ? await pollFor(token, "notification absent from web pending after browser render/dismiss", async () => {
         const body = await apiFetch(token, "/v1/notifications/web/pending");
@@ -2119,12 +2156,28 @@ async function runNotificationPath(page, token, task) {
         );
       }, 10_000, 500)
     : false;
-  addCheck("notification render lifecycle reached browser and removed pending item", (
-    toastRendered && browserRemovedPending
+  addCheck("notification pending removal has terminal lifecycle evidence", (
+    (
+      toastRendered
+      && browserRemovedPending
+      && Boolean(terminalLifecycleRow?.rendered_at)
+    )
+    || (
+      !toastRendered
+      && !stillPendingAfterBrowser
+      && Boolean(terminalEvidence)
+    )
+    || (
+      !toastRendered
+      && lostCleanupAck.acknowledged > 0
+      && terminalEvidence?.status === "lost_unrendered"
+    )
   ), {
     toast_rendered: toastRendered,
     still_pending_after_browser: stillPendingAfterBrowser,
     lost_cleanup_ack: lostCleanupAck,
+    terminal_lifecycle: terminalLifecycleRow,
+    terminal_evidence: terminalEvidence,
   });
   const afterRenderPending = await apiFetch(token, "/v1/notifications/web/pending");
   addCheck("notification is absent from web pending after render handling", !(
