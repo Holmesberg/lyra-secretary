@@ -380,10 +380,10 @@ function TodayInner() {
     }
   }
 
-  // Unified /today feed — Barzakh tasks + external GCal events interleaved
-  // by time while preserving Barzakh's existing two-bucket rhythm:
-  //   top  — PLANNED Barzakh tasks + FUTURE/ongoing GCal events, asc by start
-  //   bottom — non-PLANNED Barzakh tasks + PAST GCal events, desc by end
+  // Unified /today feed — LyraOS tasks + external GCal events interleaved
+  // by time while preserving LyraOS's existing two-bucket rhythm:
+  //   top  — PLANNED LyraOS tasks + FUTURE/ongoing GCal events, asc by start
+  //   bottom — non-PLANNED LyraOS tasks + PAST GCal events, desc by end
   //
   // Past-end GCal events sit alongside EXECUTED/SKIPPED so the operator
   // finds attendance controls where they expect "what-happened" items

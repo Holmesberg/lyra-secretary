@@ -1,6 +1,6 @@
 """NVIDIA NIM client — OpenAI-compatible wrapper over build.nvidia.com.
 
-Surfaces two methods used across the Barzakh LLM stack:
+Surfaces two methods used across the LyraOS LLM stack:
   - chat_completion()         — single-shot, returns full response dict
   - chat_completion_stream()  — SSE token stream (for the JARVIS chat UI)
 

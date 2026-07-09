@@ -24,7 +24,7 @@ def _operator_error_message(error: str) -> tuple[str, str, str, str, str]:
         if 400 <= status < 500:
             return (
                 f"Moodle sync failed: `{error}`. Moodle rejected the calendar "
-                "URL, so Barzakh disconnected it. Reconnect Moodle in /settings.",
+                "URL, so LyraOS disconnected it. Reconnect Moodle in /settings.",
                 "warn",
                 "No retry until the user reconnects the Moodle calendar.",
                 "Yes - reconnect Moodle in Settings.",
@@ -33,27 +33,27 @@ def _operator_error_message(error: str) -> tuple[str, str, str, str, str]:
         if 500 <= status < 600:
             return (
                 f"Moodle sync failed: `{error}`. Moodle is temporarily "
-                "unavailable or rate-limiting; Barzakh kept the connection and "
+                "unavailable or rate-limiting; LyraOS kept the connection and "
                 "will retry on the next cycle.",
                 "warn",
-                "Barzakh kept the connection and will retry on the next cycle.",
+                "LyraOS kept the connection and will retry on the next cycle.",
                 "No user action unless the outage persists.",
                 "No mutation beyond retaining existing imported deadlines.",
             )
     if error in {"fetch_failed", "fetch_unknown"}:
         return (
-            f"Moodle sync failed: `{error}`. Barzakh kept the connection and "
+            f"Moodle sync failed: `{error}`. LyraOS kept the connection and "
             "will retry on the next cycle.",
             "warn",
-            "Barzakh kept the connection and will retry on the next cycle.",
+            "LyraOS kept the connection and will retry on the next cycle.",
             "No user action unless the outage persists.",
             "No mutation beyond retaining existing imported deadlines.",
         )
     return (
-        f"Moodle sync failed: `{error}`. Barzakh kept the connection unless "
+        f"Moodle sync failed: `{error}`. LyraOS kept the connection unless "
         "Settings shows reconnect needed.",
         "warn",
-        "Barzakh will retry on the next cycle if the connection remains present.",
+        "LyraOS will retry on the next cycle if the connection remains present.",
         "Check Settings only if reconnect is shown.",
         "No completion inference or deadline deletion from this failure.",
     )

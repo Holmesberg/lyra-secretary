@@ -1,7 +1,7 @@
 """Academic pressure map service.
 
 V1 deliberately avoids new persistence. It reads existing deadlines,
-planned Barzakh tasks, and read-only calendar context to produce a bounded,
+planned LyraOS tasks, and read-only calendar context to produce a bounded,
 transparent workload-pressure snapshot. It does not claim behavioral
 personalization and does not feed clean learning paths.
 """
@@ -109,7 +109,7 @@ _TYPE_PRIORS: dict[str, _TypePrior] = {
 
 
 def is_academic_pressure_task_category(category: str | None) -> bool:
-    """True for Barzakh task categories that belong on the academic map.
+    """True for LyraOS task categories that belong on the academic map.
 
     Governance distinction:
       - academic = institutional/prescheduled academic obligations
@@ -273,7 +273,7 @@ def _estimate(deadline: Deadline) -> AcademicPressureEstimate:
     if deadline.external_source:
         assumptions.append("external obligation metadata; provider source remains canonical")
     else:
-        assumptions.append("manually/native Barzakh deadline; coverage needs user confirmation")
+        assumptions.append("manually/native LyraOS deadline; coverage needs user confirmation")
     return AcademicPressureEstimate(
         low_minutes=low,
         high_minutes=max(high, low + 30),
@@ -300,7 +300,7 @@ def _task_estimate(task: Task) -> AcademicPressureEstimate:
         confidence = "medium"
     else:
         assumptions = [
-            "prescheduled academic task in Barzakh",
+            "prescheduled academic task in LyraOS",
             "planned duration is visible schedule structure",
             "coverage/source still needs confirmation before auto-plan generation",
         ]
@@ -403,7 +403,7 @@ def _pressure_summary(
     if high_pressure:
         return f"This week looks compressed: {high_pressure} pressure points and {load_phrase}."
     if planned_minutes or calendar_busy:
-        source = "calendar and Barzakh tasks" if gcal_connected else "Barzakh tasks"
+        source = "calendar and LyraOS tasks" if gcal_connected else "LyraOS tasks"
         return f"{load_phrase} sits beside known scheduled load from {source}."
     return f"{load_phrase}; confirm coverage before turning it into a plan."
 
@@ -438,7 +438,7 @@ def _compression_points(
                 kind="overdue",
                 title="Overdue academic pressure",
                 detail=(
-                    f"{len(overdue)} item(s) are overdue. Barzakh does not infer completion "
+                    f"{len(overdue)} item(s) are overdue. LyraOS does not infer completion "
                     "from silence; confirm, reschedule, or clear them."
                 ),
                 obligation_ids=[item.obligation_id for item in overdue],
@@ -538,7 +538,7 @@ def _recovery_options(
             AcademicRecoveryOption(
                 action="confirm_coverage",
                 label="Confirm coverage",
-                detail="Lock what these deadlines actually cover before Barzakh turns them into study blocks.",
+                detail="Lock what these deadlines actually cover before LyraOS turns them into study blocks.",
                 obligation_ids=[q.obligation_id for q in coverage_questions],
             )
         )
@@ -565,7 +565,7 @@ def _recovery_options(
             AcademicRecoveryOption(
                 action="review_calendar",
                 label="Review schedule context",
-                detail="Calendar is not connected, so Barzakh can show academic load but not true free-time mismatch.",
+                detail="Calendar is not connected, so LyraOS can show academic load but not true free-time mismatch.",
                 obligation_ids=[],
             )
         )
@@ -581,12 +581,12 @@ def _capacity_context(
 ) -> AcademicCapacityContext:
     if gcal_connected:
         caveat = (
-            "Known busy time comes from connected Google Calendar and planned Barzakh tasks; "
+            "Known busy time comes from connected Google Calendar and planned LyraOS tasks; "
             "unscheduled real-life constraints may still be missing."
         )
     else:
         caveat = (
-            "Calendar is not connected, so Barzakh shows visible academic pressure and planned Barzakh load, "
+            "Calendar is not connected, so LyraOS shows visible academic pressure and planned LyraOS load, "
             "not true free time."
         )
     return AcademicCapacityContext(

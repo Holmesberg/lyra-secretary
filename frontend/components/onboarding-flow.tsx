@@ -30,25 +30,16 @@
  * onboarding_completed_at as a binary signal regardless of which path
  * stamped it.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BrainDumpBindingSuggestion,
-  BrainDumpFailedItem,
-  BrainDumpParsedItem,
-  commitBrainDump,
-  parseBrainDump,
 } from "@/lib/brain-dump";
 import {
   bindingKey,
-  buildBrainDumpCommitBindings,
-  buildBrainDumpCommitItems,
-  chooseBrainDumpBinding,
   failureCopy,
-  initialBindingChoices,
-  localIsoNow,
-  type BrainDumpBindingChoice,
 } from "@/lib/brain-dump-ui";
 import { api } from "@/lib/api";
+import { useBrainDumpFlow } from "@/lib/hooks/use-brain-dump-flow";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -56,8 +47,6 @@ interface Props {
   onCompleted: () => void;
   onSkipped: () => void;
 }
-
-type Step = "dump" | "confirm" | "review_failures";
 
 /** Onboarding-specific retry hints; shared failure wording lives in brain-dump-ui. */
 function retryCopy(hint: string | null): string {
@@ -93,115 +82,38 @@ function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
 }
 
 export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
-  const [step, setStep] = useState<Step>("dump");
-  const [rawText, setRawText] = useState("");
-  const [items, setItems] = useState<BrainDumpParsedItem[]>([]);
-  const [bindings, setBindings] = useState<BrainDumpBindingSuggestion[]>(
-    [],
-  );
-  // task_item_id → "yes" | "no" | null (null = not answered yet).
-  // Pre-populated from parser tier: tier1_auto starts "yes",
-  // tier2_ask starts unanswered (block requires resolution).
-  const [bindingChoices, setBindingChoices] = useState<
-    Record<string, BrainDumpBindingChoice>
-  >({});
-  const [parsing, setParsing] = useState(false);
-  const [committing, setCommitting] = useState(false);
   const [skipping, setSkipping] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // LYR-114 fix 2026-04-30: failures from /commit surface so the
-  // user knows which items didn't land before exiting onboarding.
-  const [failures, setFailures] = useState<BrainDumpFailedItem[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const commitInFlightRef = useRef(false);
+  const {
+    step,
+    setStep,
+    rawText,
+    setRawText,
+    items,
+    bindingChoices,
+    failures,
+    parsing,
+    committing,
+    error,
+    setError,
+    handleParse,
+    handleCommit,
+    setBindingChoice,
+    clearFailures,
+    bindingsForTask,
+    tier2Unanswered,
+  } = useBrainDumpFlow({
+    emptyTextError: "Type something first — at least one task or deadline.",
+    emptyResultError:
+      "Couldn't pull anything out of that. Try one item per line: 'submit assignment Friday', 'read chapter 3 tomorrow', etc.",
+    parseError: "Parse failed. Try again.",
+    commitError: "Couldn't save your plan.",
+    onCleanCommit: () => onCompleted(),
+  });
 
   useEffect(() => {
     if (step === "dump") textareaRef.current?.focus();
   }, [step]);
-
-  // Bindings grouped by task_item_id for fast lookup in the preview.
-  const bindingsForTask = useMemo(() => {
-    const map: Record<string, BrainDumpBindingSuggestion[]> = {};
-    for (const b of bindings) {
-      (map[b.task_item_id] ||= []).push(b);
-    }
-    return map;
-  }, [bindings]);
-
-  const tier2Unanswered = useMemo(
-    () =>
-      bindings.some(
-        (b) => b.tier === "tier2_ask" && !bindingChoices[bindingKey(b)],
-      ),
-    [bindings, bindingChoices],
-  );
-
-  async function handleParse() {
-    if (parsing) return;
-    setError(null);
-    if (!rawText.trim()) {
-      setError("Type something first — at least one task or deadline.");
-      return;
-    }
-    setParsing(true);
-    try {
-      const res = await parseBrainDump(rawText, localIsoNow());
-      setItems(res.items);
-      setBindings(res.bindings);
-
-      // Tier 1 auto-bindings start pre-checked "yes". Tier 2 asks
-      // start unanswered — user must explicitly tap.
-      setBindingChoices(initialBindingChoices(res.bindings));
-
-      if (res.items.length === 0) {
-        setError(
-          "Couldn't pull anything out of that. Try one item per line: " +
-            "'submit assignment Friday', 'read chapter 3 tomorrow', etc.",
-        );
-        setParsing(false);
-        return;
-      }
-      setStep("confirm");
-    } catch (e: unknown) {
-      setError(
-        e instanceof Error ? e.message : "Parse failed. Try again.",
-      );
-    } finally {
-      setParsing(false);
-    }
-  }
-
-  async function handleCommit() {
-    if (committing || commitInFlightRef.current) return;
-    commitInFlightRef.current = true;
-    setError(null);
-    setCommitting(true);
-    try {
-      const commitItems = buildBrainDumpCommitItems(items);
-      const commitBindings = buildBrainDumpCommitBindings(
-        bindings,
-        bindingChoices,
-      );
-      const res = await commitBrainDump(commitItems, commitBindings);
-      // LYR-114 fix: pause exit on failures so the user actually
-      // sees which items didn't land. If everything committed
-      // cleanly, exit onboarding as before.
-      if (res.failed_items && res.failed_items.length > 0) {
-        setFailures(res.failed_items);
-        setStep("review_failures");
-        commitInFlightRef.current = false;
-        setCommitting(false);
-        return;
-      }
-      onCompleted();
-    } catch (e: unknown) {
-      commitInFlightRef.current = false;
-      setError(
-        e instanceof Error ? e.message : "Couldn't save your plan.",
-      );
-      setCommitting(false);
-    }
-  }
 
   async function handleSkip() {
     if (parsing || committing || skipping) return;
@@ -209,15 +121,6 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
     setSkipping(true);
     onSkipped();
     void api("/v1/users/me/skip-onboarding", { method: "POST" });
-  }
-
-  function setBindingChoice(
-    binding: BrainDumpBindingSuggestion,
-    choice: "yes" | "no",
-  ) {
-    setBindingChoices((s) =>
-      chooseBrainDumpBinding(s, bindings, binding, choice),
-    );
   }
 
   return (
@@ -229,7 +132,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
           </p>
           <h1 className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-parchment md:text-4xl">
             {step === "dump"
-              ? "Barzakh starts learning from the first plan you write."
+              ? "LyraOS starts learning from the first plan you write."
               : "Look right? Lock it in."}
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-dust md:text-base">
@@ -238,7 +141,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 "deadlines, half-thoughts. Times and dates inside the " +
                 "text get parsed automatically. You'll review before " +
                 "anything saves."
-              : "Barzakh split your dump into tasks and deadlines. " +
+              : "LyraOS split your dump into tasks and deadlines. " +
                 "Confirm any links between them, then save."}
           </p>
         </div>
@@ -480,12 +383,12 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
             <div className="flex justify-end pt-1">
               <button
                 onClick={() => {
-                  setFailures([]);
+                  clearFailures();
                   onCompleted();
                 }}
                 className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
-                Continue to Barzakh
+                Continue to LyraOS
               </button>
             </div>
           </div>

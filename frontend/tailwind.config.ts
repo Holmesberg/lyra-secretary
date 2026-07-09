@@ -26,7 +26,7 @@ const config: Config = {
         border: "hsl(var(--border))",
         primary: "hsl(var(--primary))",
         "primary-foreground": "hsl(var(--primary-foreground))",
-        // Barzakh Neural Noir palette
+        // LyraOS Neural Noir palette
         void: "#05070C",
         "void-2": "#0A0E18",
         ink: "#141B2A",

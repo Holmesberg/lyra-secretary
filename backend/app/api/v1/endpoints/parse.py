@@ -124,7 +124,7 @@ def deadline_preview(
             user_id=uid,
             content_snapshot={
                 "copy": (
-                    f"Barzakh thinks this binds to {top.title} - "
+                    f"LyraOS thinks this binds to {top.title} - "
                     f"{round(top.score * 100)}% match"
                 ),
                 "deadline_id": top.deadline_id,

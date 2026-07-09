@@ -100,7 +100,7 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
   }, [resolved]);
   const [error, setError] = useState<string | null>(null);
 
-  // ── Pending state with no candidate data → "Barzakh is reading…"
+  // ── Pending state with no candidate data → "LyraOS is reading…"
   // When pending but heuristic has pre-populated candidates (operator's
   // 2026-04-28 instant-tier directive), fall through to render the
   // chip immediately. The async LLM may refresh candidates later.
@@ -109,7 +109,7 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
   if (task.llm_parse_status === "pending" && !hasCandidateData) {
     return (
       <div className="text-[10px] text-dust-deep italic">
-        Barzakh is reading this…
+        LyraOS is reading this…
       </div>
     );
   }

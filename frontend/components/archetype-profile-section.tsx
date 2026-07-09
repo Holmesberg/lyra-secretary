@@ -9,7 +9,7 @@
  *
  * 2026-04-26 (LYR-112): the label is now session-gated. The survey
  * captures a single moment of the user (could be finals stress, sleep
- * deprivation, etc.) — naming an archetype before Barzakh has watched the
+ * deprivation, etc.) — naming an archetype before LyraOS has watched the
  * user actually work overfits transient state into something that reads
  * as identity. MANIFESTO §VT-25 + docs/building_phases.md:167 specify
  * sessions 5-7 as the reveal threshold; below that we show "settling
@@ -19,15 +19,15 @@
  * States handled (in priority order):
  *
  *   1. NO ASSIGNMENT
- *      → "Help Barzakh start with a sense of how you work — 4-min survey"
+ *      → "Help LyraOS start with a sense of how you work — 4-min survey"
  *      → Primary [Take survey]
  *
  *   2. SKIPPED (completed=False, defaulted to Diffuse Average)
- *      → "Barzakh's using a generic starting point until you take it"
+ *      → "LyraOS's using a generic starting point until you take it"
  *      → Primary [Take survey]
  *
  *   3. CALIBRATING (assigned, but executed_session_count < 5)
- *      → "Settling in. After ~N more sessions Barzakh will share a profile
+ *      → "Settling in. After ~N more sessions LyraOS will share a profile
  *         that reflects how you actually work."
  *      → Secondary [Retake survey]
  *      → Label hidden (this is the LYR-112 gate; applies even to users
@@ -130,9 +130,9 @@ export function ArchetypeProfileSection({
             <StatePanel
               emphasis="primary"
               heading="No profile yet"
-              body="A 4-minute survey gives Barzakh a head start — morning
+              body="A 4-minute survey gives LyraOS a head start — morning
                 vs evening person, how you tend to approach things.
-                After a few sessions together, Barzakh refines this from
+                After a few sessions together, LyraOS refines this from
                 how you actually move through your day."
               buttonLabel="Take the survey"
               onClick={() => setSurveyOpen(true)}
@@ -145,8 +145,8 @@ export function ArchetypeProfileSection({
               heading="No survey yet"
               body={
                 daysSince !== null
-                  ? `You skipped the survey ${friendlyTime(daysSince)} ago — totally fine. Barzakh's using a generic starting point until you take it. Time estimates personalize either way as you log sessions; the survey just gives Barzakh a head start.`
-                  : "Barzakh's using a generic starting point until you take the survey. Time estimates personalize either way as you log sessions; the survey just gives Barzakh a head start."
+                  ? `You skipped the survey ${friendlyTime(daysSince)} ago — totally fine. LyraOS's using a generic starting point until you take it. Time estimates personalize either way as you log sessions; the survey just gives LyraOS a head start.`
+                  : "LyraOS's using a generic starting point until you take the survey. Time estimates personalize either way as you log sessions; the survey just gives LyraOS a head start."
               }
               buttonLabel="Take the survey"
               onClick={() => setSurveyOpen(true)}
@@ -159,8 +159,8 @@ export function ArchetypeProfileSection({
               heading="Settling in"
               body={
                 sessionsToReveal === 1
-                  ? "After one more session — start, work, finish — Barzakh will share a profile here that reflects how you actually work, not just how the survey read you. Time estimates are already personalizing in the background."
-                  : `After about ${sessionsToReveal} more sessions — start, work, finish — Barzakh will share a profile here that reflects how you actually work, not just how the survey read you. Time estimates are already personalizing in the background.`
+                  ? "After one more session — start, work, finish — LyraOS will share a profile here that reflects how you actually work, not just how the survey read you. Time estimates are already personalizing in the background."
+                  : `After about ${sessionsToReveal} more sessions — start, work, finish — LyraOS will share a profile here that reflects how you actually work, not just how the survey read you. Time estimates are already personalizing in the background.`
               }
               buttonLabel="Retake survey"
               onClick={() => setSurveyOpen(true)}
@@ -258,7 +258,7 @@ function DynamicProfilePanel({
         )}
         {!isLoading && sparseRecent && (
           <p className="text-sm leading-relaxed text-dust">
-            Barzakh needs a few more recent sessions to show your current
+            LyraOS needs a few more recent sessions to show your current
             pattern. Your starting point was{" "}
             <span className="text-parchment">{startingLabel}</span>.
           </p>
@@ -331,7 +331,7 @@ function classifyState(
   if (latestAssignmentAt === null) return "no_assignment";
   if (!completed) return "skipped";
   // LYR-112: completed surveys with too few EXECUTED sessions stay in
-  // calibrating — the label is hidden until Barzakh has watched the user
+  // calibrating — the label is hidden until LyraOS has watched the user
   // work enough to validate it against actual behavior.
   if (executedSessionCount < ARCHETYPE_REVEAL_MIN_SESSIONS) {
     return "calibrating";

@@ -70,7 +70,7 @@ export function PulseQuickCaptureV2() {
           placeholder={
             compact
               ? "Capture a thought without breaking the session."
-              : "Brain dump anything - Barzakh parses, sorts, and binds it."
+              : "Brain dump anything - LyraOS parses, sorts, and binds it."
           }
           className={`min-w-[200px] flex-1 border-0 bg-transparent px-2 text-parchment placeholder:text-dust-deep focus:outline-none focus:ring-0 ${
             compact ? "py-0.5 text-xs" : "py-1 text-sm"

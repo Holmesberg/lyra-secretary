@@ -83,7 +83,7 @@ export default function SettingsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Barzakh-export-${format(new Date(), "yyyy-MM-dd")}.json`;
+      a.download = `LyraOS-export-${format(new Date(), "yyyy-MM-dd")}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e: any) {
@@ -171,8 +171,8 @@ export default function SettingsPage() {
           <CardContent className="flex items-center justify-between gap-4">
             <p className="text-sm text-dust">
               {archetypeMe.archetype_assignment_completed
-                ? "A fresh survey re-anchors Barzakh's starting point. Your dynamic profile on /insights still updates from your behavior either way."
-                : "A 4-minute survey gives Barzakh a head start. You can take it anytime."}
+                ? "A fresh survey re-anchors LyraOS's starting point. Your dynamic profile on /insights still updates from your behavior either way."
+                : "A 4-minute survey gives LyraOS a head start. You can take it anytime."}
             </p>
             <Button
               variant="outline"
@@ -217,7 +217,7 @@ export default function SettingsPage() {
         )}
       </Card>
 
-      {/* "Help improve Barzakh" card removed 2026-04-29 — feedback now
+      {/* "Help improve LyraOS" card removed 2026-04-29 — feedback now
           lives on the right edge of every page's nav strip via
           FeedbackLink in app-shell.tsx, so the duplicate settings
           card was just redundant. */}
@@ -311,7 +311,7 @@ export default function SettingsPage() {
                 {/* Warning block */}
                 <div className="rounded border border-ember/40 bg-ember/5 px-3 py-2">
                   <p className="text-ember text-sm">
-                    This cannot be undone. Barzakh does not retain copies of deleted
+                    This cannot be undone. LyraOS does not retain copies of deleted
                     accounts. Export your data first if you want to keep a record.
                   </p>
                 </div>
@@ -329,7 +329,7 @@ export default function SettingsPage() {
                 {/* Research retention section */}
                 <div className="rounded border border-hairline bg-void-2/60 px-3 py-2 space-y-2">
                   <p className="text-xs font-medium uppercase tracking-wide text-dust">
-                    Help us improve Barzakh
+                    Help us improve LyraOS
                   </p>
                   <label className="flex items-start gap-2 cursor-pointer">
                     <input
@@ -339,16 +339,16 @@ export default function SettingsPage() {
                       className="mt-0.5 h-4 w-4 rounded border-hairline-signal/40 bg-transparent accent-[#4dd4e8]"
                     />
                     <span className="text-sm text-parchment leading-tight">
-                      Allow Barzakh to retain my anonymized behavioral data to
+                      Allow LyraOS to retain my anonymized behavioral data to
                       understand how people leave the system and improve the product
                     </span>
                   </label>
                   <p className="text-xs text-dust-deep leading-relaxed">
-                    Without data from people who stop using Barzakh, we can&apos;t
+                    Without data from people who stop using LyraOS, we can&apos;t
                     understand what makes the system fail for them. Retained data
                     removes direct account identity and task text fields, but
                     behavioral traces can still be sensitive. It is used only to
-                    improve Barzakh, not for external publication. Uncheck this box
+                    improve LyraOS, not for external publication. Uncheck this box
                     if you want user-owned product rows hard-deleted instead.
                   </p>
                 </div>

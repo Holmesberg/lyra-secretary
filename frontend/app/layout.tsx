@@ -14,11 +14,11 @@ const chakra = Chakra_Petch({
   weight: ["300", "400", "500", "600", "700"],
 });
 
-const PUBLIC_SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL || "https://barzakh.app";
+const PUBLIC_SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL || "https://lyraos.org";
 
 export const metadata: Metadata = {
   metadataBase: new URL(PUBLIC_SITE_ORIGIN),
-  title: "Barzakh — Your Cognitive Operating System",
+  title: "LyraOS — Your Cognitive Operating System",
   description:
     "An AI-native productivity system that treats task estimates as hypotheses and work sessions as evidence — then shows you the pattern.",
   keywords: [
@@ -41,25 +41,25 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "Barzakh — Your Cognitive Operating System",
+    title: "LyraOS — Your Cognitive Operating System",
     description:
       "An AI-native productivity system that learns the gap between your plans and reality.",
     type: "website",
     url: PUBLIC_SITE_ORIGIN,
-    siteName: "Barzakh",
+    siteName: "LyraOS",
     locale: "en_US",
     images: [
       {
         url: "/insights-v2.png",
         width: 875,
         height: 780,
-        alt: "Barzakh insights dashboard with a primary synthesis card and supporting confidence-ranked behavioral evidence.",
+        alt: "LyraOS insights dashboard with a primary synthesis card and supporting confidence-ranked behavioral evidence.",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Barzakh — Your Cognitive Operating System",
+    title: "LyraOS — Your Cognitive Operating System",
     description:
       "AI-native productivity system for planning accuracy, adaptive scheduling, and behavioral feedback.",
     images: ["/insights-v2.png"],
@@ -82,7 +82,7 @@ const jsonLd = {
     {
       "@type": "WebApplication",
       "@id": `${PUBLIC_SITE_ORIGIN}/#app`,
-      name: "Barzakh",
+      name: "LyraOS",
       url: PUBLIC_SITE_ORIGIN,
       description:
         "AI-native productivity system and behavior-aware scheduler. Treats task estimates as hypotheses and work sessions as evidence, then uses planned-vs-executed traces to reveal behavioral patterns.",
@@ -109,7 +109,7 @@ const jsonLd = {
     {
       "@type": "Organization",
       "@id": `${PUBLIC_SITE_ORIGIN}/#org`,
-      name: "Barzakh",
+      name: "LyraOS",
       url: PUBLIC_SITE_ORIGIN,
       description:
         "Independent AI-native productivity system with behavioral instrumentation for measuring how humans estimate vs execute. Pre-alpha, built in public in Cairo.",
@@ -118,7 +118,7 @@ const jsonLd = {
       "@type": "WebSite",
       "@id": `${PUBLIC_SITE_ORIGIN}/#site`,
       url: PUBLIC_SITE_ORIGIN,
-      name: "Barzakh",
+      name: "LyraOS",
       description:
         "Are humans wrong about themselves in a structured way that predicts failure?",
       inLanguage: "en",

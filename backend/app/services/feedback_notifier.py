@@ -7,7 +7,7 @@ Either failure is non-fatal - the feedback row commits regardless.
 Configuration:
   RESEND_API_KEY       - Resend API key. If absent, email is skipped.
   OPERATOR_EMAIL       - recipient for feedback emails.
-  FEEDBACK_FROM_EMAIL  - sender address. Defaults to hello@barzakh.app.
+  FEEDBACK_FROM_EMAIL  - sender address. Defaults to hello@lyraos.org.
 """
 import logging
 from typing import Optional
@@ -29,12 +29,12 @@ def _format_text(
     error_context: Optional[list],
 ) -> tuple[str, str]:
     """Build (subject, plaintext_body) for the operator notification."""
-    subject = f"[Barzakh feedback - {kind}] {body[:60].strip()}"
+    subject = f"[LyraOS feedback - {kind}] {body[:60].strip()}"
     if len(body) > 60:
         subject = subject[:75] + "..."
 
     lines = [
-        f"New {kind} from Barzakh alpha:",
+        f"New {kind} from LyraOS alpha:",
         "",
         body,
         "",
@@ -48,7 +48,7 @@ def _format_text(
         for e in (error_context or [])[:5]:
             lines.append(f"  - {str(e)[:300]}")
     lines.append("")
-    lines.append("Triage at: https://api.barzakh.app/v1/admin/feedback")
+    lines.append("Triage at: https://api.lyraos.org/v1/admin/feedback")
     return subject, "\n".join(lines)
 
 

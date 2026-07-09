@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     USER_ID: str = "user_primary"
 
     # OpenClaw notification bridge. Telegram delivery belongs to OpenClaw's
-    # existing bot; Barzakh only queues operator alerts into the same
+    # existing bot; LyraOS only queues operator alerts into the same
     # notifications:pending user queue that OpenClaw polls.
     OPENCLAW_OPERATOR_USER_ID: int = Field(1, env="OPENCLAW_OPERATOR_USER_ID")
     OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED: bool = Field(
@@ -49,12 +49,12 @@ class Settings(BaseSettings):
     RESEND_API_KEY: Optional[str] = Field(None, env="RESEND_API_KEY")
     OPERATOR_EMAIL: Optional[str] = Field(None, env="OPERATOR_EMAIL")
     FEEDBACK_FROM_EMAIL: str = Field(
-        "hello@barzakh.app", env="FEEDBACK_FROM_EMAIL"
+        "hello@lyraos.org", env="FEEDBACK_FROM_EMAIL"
     )
     USER_EMAIL_ENABLED: bool = Field(False, env="USER_EMAIL_ENABLED")
-    USER_EMAIL_FROM: str = Field("hello@barzakh.app", env="USER_EMAIL_FROM")
+    USER_EMAIL_FROM: str = Field("hello@lyraos.org", env="USER_EMAIL_FROM")
     EMAIL_TRACKING_BASE_URL: str = Field(
-        "https://api.barzakh.app", env="EMAIL_TRACKING_BASE_URL"
+        "https://api.lyraos.org", env="EMAIL_TRACKING_BASE_URL"
     )
 
     # Local LLM enrichment (Workstream 1, magic-for-alpha 2026-04-28).
@@ -117,7 +117,7 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     CORS_ALLOWED_ORIGINS: str = ""
 
-    # Pre-scale containment switches (BarzakhSim/Baseet 2026-05-22).
+    # Pre-scale containment switches (LyraOSSim/Baseet 2026-05-22).
     # Defaults preserve current behavior. Operators can disable risky paths
     # without a deploy if a Baseet-scale inference pattern misbehaves.
     LYRA_SAFE_MODE: str = Field("", env="LYRA_SAFE_MODE")
@@ -138,7 +138,7 @@ class Settings(BaseSettings):
             self.FRONTEND_URL,
             "http://localhost:3000",
             "http://127.0.0.1:3000",
-            "https://barzakh.app",
+            "https://lyraos.org",
             "https://lyraos.org",
         ]
         configured = [

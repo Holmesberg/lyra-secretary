@@ -57,7 +57,7 @@ PROVIDER_COMPLETION_SOURCES = {
 # task auto-transitions planned → active per the existing path.
 USER_TRANSITIONS_FROM: dict[str, set[str]] = {
     # `planned → completed` allowed for the no-bind path (operator
-    # finished a deadline manually without ever binding a Barzakh task).
+    # finished a deadline manually without ever binding a LyraOS task).
     # Apr 27 dogfood: operator caught this on first try after the
     # auto-save fix. Without it, the user has to click "Reopen → Save"
     # → reopen modal → "Active" wait, you can't even set active
@@ -66,7 +66,7 @@ USER_TRANSITIONS_FROM: dict[str, set[str]] = {
     "planned": {"active", "completed", "skipped"},
     "active": {"completed", "skipped"},
     # Reopen paths from terminal states. `missed -> completed` preserves the
-    # one-click offline/late completion path after the sweeper runs. Barzakh still
+    # one-click offline/late completion path after the sweeper runs. LyraOS still
     # does NOT distinguish "freshly created" from "reopened" in the schema —
     # analytics that care about completion fidelity should look at completed_at /
     # task_deadline_outcome, not at the current state alone.
@@ -328,7 +328,7 @@ class DeadlineManager:
         """Create-or-update a deadline imported from a third-party source.
 
         Used by the LMS sync job (alembic 041, 2026-04-29) to ingest
-        Moodle iCal events as Barzakh deadlines. Keyed on
+        Moodle iCal events as LyraOS deadlines. Keyed on
         (user_id, external_source, external_id) — the partial unique
         index `uq_deadline_external` is the DB-level guarantee.
 

@@ -15,7 +15,7 @@
  *
  * 2026-05-01 addition: inline "Mark done" button on non-terminal
  * deadlines. Operator pain point with Moodle-imported overdue
- * items — they complete in Moodle but Barzakh has no way to know
+ * items — they complete in Moodle but LyraOS has no way to know
  * (iCal feeds carry due dates, not submission status). Inline
  * one-click finish replaces the previous 4-click path through the
  * edit modal. Click bubbling stopped so it doesn't open the modal.
@@ -143,7 +143,7 @@ export function DeadlineRow({ deadline, overdue, onEdit, onChanged }: Props) {
       {/* Inline mark-done. Surfaces on planned/active/missed deadlines so
           the operator can one-click finish a Moodle assignment they
           submitted out-of-band. (Moodle iCal feeds carry due dates,
-          NOT submission status — Barzakh has no other way to know.) */}
+          NOT submission status — LyraOS has no other way to know.) */}
       {canMarkDone && (
         <button
           type="button"

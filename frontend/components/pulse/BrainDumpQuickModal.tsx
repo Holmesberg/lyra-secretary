@@ -19,7 +19,7 @@
  * invalidating ['tasks', today] / ['deadlines'] / ['me']. We invalidate
  * inside the modal too as a belt-and-braces measure.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Sparkles } from "lucide-react";
 import {
@@ -29,26 +29,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  parseBrainDump,
-  commitBrainDump,
   type BrainDumpBindingSuggestion,
-  type BrainDumpFailedItem,
-  type BrainDumpParsedItem,
 } from "@/lib/brain-dump";
 import {
   bindingKey,
-  buildBrainDumpCommitBindings,
-  buildBrainDumpCommitItems,
-  chooseBrainDumpBinding,
   failureCopy,
-  initialBindingChoices,
-  localIsoNow,
   pad2,
-  type BrainDumpBindingChoice,
 } from "@/lib/brain-dump-ui";
+import { useBrainDumpFlow } from "@/lib/hooks/use-brain-dump-flow";
 import { invalidateBrainDumpCommitCaches } from "@/lib/query-keys";
-
-type Step = "dump" | "confirm" | "review_failures";
 
 /** Pulse-specific retry hints; shared failure wording lives in brain-dump-ui. */
 function retryCopy(hint: string | null): string {
@@ -66,13 +55,6 @@ function retryCopy(hint: string | null): string {
   }
 }
 
-function newCommitKey(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `brain-dump-${crypto.randomUUID()}`;
-  }
-  return `brain-dump-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 function toDateTimeInput(iso: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
@@ -80,17 +62,6 @@ function toDateTimeInput(iso: string | null): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
     date.getDate()
   )}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
-}
-
-function moveLocalInputByDays(value: string | null, days: number): string | null {
-  const base = value ? new Date(value) : new Date();
-  if (Number.isNaN(base.getTime())) return value;
-  base.setDate(base.getDate() + days);
-  return `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(
-    base.getDate()
-  )}T${pad2(base.getHours())}:${pad2(base.getMinutes())}:${pad2(
-    base.getSeconds()
-  )}`;
 }
 
 function fmtWhen(iso: string | null): string {
@@ -137,212 +108,58 @@ export function BrainDumpQuickModal({
   onCompleted,
 }: BrainDumpQuickModalProps) {
   const qc = useQueryClient();
-  const [step, setStep] = useState<Step>("dump");
-  // LYR-114 fix 2026-04-30: failures from /commit surface here so the
-  // user sees what didn't land instead of the modal silently closing
-  // with a partial commit.
-  const [failures, setFailures] = useState<BrainDumpFailedItem[]>([]);
-  const [committedSummary, setCommittedSummary] = useState<{
-    tasks: number;
-    deadlines: number;
-    bindings: number;
-  } | null>(null);
-  const [rawText, setRawText] = useState(seedText);
-  const [items, setItems] = useState<BrainDumpParsedItem[]>([]);
-  const [bindings, setBindings] = useState<BrainDumpBindingSuggestion[]>([]);
-  const [bindingChoices, setBindingChoices] = useState<
-    Record<string, BrainDumpBindingChoice>
-  >({});
-  const [parsing, setParsing] = useState(false);
-  const [committing, setCommitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const commitKeyRef = useRef<string | null>(null);
-  const commitInFlightRef = useRef(false);
-
-  // Sync the textarea + step when the modal opens / seed changes.
-  useEffect(() => {
-    if (open) {
-      setStep("dump");
-      setRawText(seedText);
-      setItems([]);
-      setBindings([]);
-      setBindingChoices({});
-      setFailures([]);
-      setCommittedSummary(null);
-      setError(null);
-      commitKeyRef.current = null;
-      commitInFlightRef.current = false;
-      // Focus the textarea on next tick so the autofocus lands after
-      // the dialog's mount animation.
-      setTimeout(() => textareaRef.current?.focus(), 50);
-    }
-  }, [open, seedText]);
-
-  async function handleParse() {
-    if (parsing) return;
-    setError(null);
-    if (!rawText.trim()) {
-      setError("Type something first — at least one task or deadline.");
-      return;
-    }
-    setParsing(true);
-    try {
-      const res = await parseBrainDump(rawText, localIsoNow());
-      setItems(res.items);
-      setBindings(res.bindings);
-      setFailures([]);
-      setCommittedSummary(null);
-      commitKeyRef.current = newCommitKey();
-      // Tier 1 auto-bindings start pre-checked yes.
-      setBindingChoices(initialBindingChoices(res.bindings));
-      if (res.items.length === 0) {
-        setError(
-          "Couldn't pull anything out. Try one item per line — 'submit assignment Friday', 'read chapter 3 tomorrow'."
-        );
-        setParsing(false);
-        return;
-      }
-      setStep("confirm");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Parse failed. Try again.");
-    } finally {
-      setParsing(false);
-    }
-  }
-
-  async function handleCommit() {
-    if (committing || commitInFlightRef.current) return;
-    commitInFlightRef.current = true;
-    setError(null);
-    setCommitting(true);
-    try {
-      const commitItems = buildBrainDumpCommitItems(items);
-      const commitBindings = buildBrainDumpCommitBindings(
-        bindings,
-        bindingChoices,
-      );
-      if (!commitKeyRef.current) {
-        commitKeyRef.current = newCommitKey();
-      }
-      const res = await commitBrainDump(
-        commitItems,
-        commitBindings,
-        commitKeyRef.current,
-      );
-      // Invalidate every cache key the dashboard depends on so the
-      // moment the modal closes (or the review_failures step lands)
-      // the new rows are visible behind the modal.
+  const {
+    step,
+    setStep,
+    rawText,
+    setRawText,
+    items,
+    bindingChoices,
+    failures,
+    committedSummary,
+    parsing,
+    committing,
+    error,
+    reset,
+    handleParse,
+    handleCommit,
+    setBindingChoice,
+    updateItem,
+    removeItem,
+    retryFailedItems,
+    tasksParsed,
+    deadlinesParsed,
+    bindingsForTask,
+    tier2Unanswered,
+    canMoveFailedToTomorrow,
+  } = useBrainDumpFlow({
+    emptyTextError: "Type something first — at least one task or deadline.",
+    emptyResultError:
+      "Couldn't pull anything out. Try one item per line — 'submit assignment Friday', 'read chapter 3 tomorrow'.",
+    parseError: "Parse failed. Try again.",
+    commitError: "Couldn't save. Try again.",
+    useStableCommitKey: true,
+    onCommitResult: (res) => {
       void invalidateBrainDumpCommitCaches(qc);
       onCompleted?.({
         tasks: res.tasks_created,
         deadlines: res.deadlines_created,
         bindings: res.bindings_applied,
       });
-      // LYR-114 fix: pause close on failures so the user actually
-      // sees what didn't land. If everything committed cleanly,
-      // close as before.
-      if (res.failed_items && res.failed_items.length > 0) {
-        setFailures(res.failed_items);
-        setCommittedSummary({
-          tasks: res.tasks_created,
-          deadlines: res.deadlines_created,
-          bindings: res.bindings_applied,
-        });
-        setStep("review_failures");
-        commitInFlightRef.current = false;
-        setCommitting(false);
-        return;
-      }
-      onOpenChange(false);
-    } catch (e: unknown) {
-      commitInFlightRef.current = false;
-      setError(e instanceof Error ? e.message : "Couldn't save. Try again.");
-      setCommitting(false);
+    },
+    onCleanCommit: () => onOpenChange(false),
+  });
+
+  // Sync the textarea + step when the modal opens / seed changes.
+  useEffect(() => {
+    if (open) {
+      reset(seedText);
+      // Focus the textarea on next tick so the autofocus lands after
+      // the dialog's mount animation.
+      setTimeout(() => textareaRef.current?.focus(), 50);
     }
-  }
-
-  function setBindingChoice(
-    binding: BrainDumpBindingSuggestion,
-    choice: "yes" | "no",
-  ) {
-    setBindingChoices((s) =>
-      chooseBrainDumpBinding(s, bindings, binding, choice),
-    );
-  }
-
-  function updateItem(
-    itemId: string,
-    patch: Partial<Pick<BrainDumpParsedItem, "title" | "when_local" | "duration_minutes">>,
-  ) {
-    setItems((current) =>
-      current.map((item) =>
-        item.item_id === itemId ? { ...item, ...patch } : item,
-      ),
-    );
-    commitKeyRef.current = newCommitKey();
-  }
-
-  function removeItem(itemId: string) {
-    const nextBindings = bindings.filter(
-      (binding) =>
-        binding.task_item_id !== itemId && binding.deadline_item_id !== itemId,
-    );
-    setItems((current) => current.filter((item) => item.item_id !== itemId));
-    setBindings(nextBindings);
-    setBindingChoices(initialBindingChoices(nextBindings));
-    commitKeyRef.current = newCommitKey();
-  }
-
-  function retryFailedItems(options?: { movePastToTomorrow?: boolean }) {
-    const failedIds = new Set(failures.map((failure) => failure.item_id));
-    const failedById = new Map(
-      failures.map((failure) => [failure.item_id, failure]),
-    );
-    const nextItems = items
-      .filter((item) => failedIds.has(item.item_id))
-      .map((item) => {
-        const failure = failedById.get(item.item_id);
-        if (
-          options?.movePastToTomorrow &&
-          failure?.retry_hint === "schedule_tomorrow_same_time"
-        ) {
-          return {
-            ...item,
-            when_local: moveLocalInputByDays(item.when_local, 1),
-          };
-        }
-        return item;
-      });
-    const nextBindings = bindings.filter(
-      (binding) =>
-        failedIds.has(binding.task_item_id) ||
-        (binding.deadline_item_id !== null &&
-          failedIds.has(binding.deadline_item_id)),
-    );
-
-    setItems(nextItems);
-    setBindings(nextBindings);
-    setBindingChoices(initialBindingChoices(nextBindings));
-    setFailures([]);
-    setCommittedSummary(null);
-    setError(null);
-    commitKeyRef.current = newCommitKey();
-    setStep("confirm");
-  }
-
-  const tasksParsed = items.filter((i) => i.kind === "task");
-  const deadlinesParsed = items.filter((i) => i.kind === "deadline");
-  const bindingsForTask: Record<string, BrainDumpBindingSuggestion[]> = {};
-  for (const b of bindings) {
-    (bindingsForTask[b.task_item_id] ||= []).push(b);
-  }
-  const tier2Unanswered = bindings.some(
-    (b) => b.tier === "tier2_ask" && !bindingChoices[bindingKey(b)]
-  );
-  const canMoveFailedToTomorrow = failures.some(
-    (failure) => failure.retry_hint === "schedule_tomorrow_same_time",
-  );
+  }, [open, reset, seedText]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -361,7 +178,7 @@ export function BrainDumpQuickModal({
           <div className="flex flex-col gap-3">
             <p className="text-xs text-dust">
               Type whatever's in your head — one item per line works best.
-              Barzakh parses titles, dates, and durations. Examples: "submit
+              LyraOS parses titles, dates, and durations. Examples: "submit
               lab 8 friday 11pm", "read chapter 3 tomorrow 30min".
             </p>
             <textarea
@@ -404,7 +221,7 @@ gym sat morning"
         {step === "confirm" && (
           <div className="flex flex-col gap-4">
             <p className="text-xs text-dust">
-              Barzakh found{" "}
+              LyraOS found{" "}
               <span className="font-display text-signal">
                 {tasksParsed.length}
               </span>{" "}

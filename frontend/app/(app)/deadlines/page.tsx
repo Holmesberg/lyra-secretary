@@ -133,7 +133,7 @@ function DeadlineRow({ deadline, onEdit, onVoid, onChanged }: DeadlineRowProps) 
       <div className="flex shrink-0 flex-col gap-1">
         {/* One-click mark-done — operator pain point 2026-05-01 with
             Moodle-imported overdue items they completed out-of-
-            band but Barzakh had no way to know about (iCal carries due
+            band but LyraOS had no way to know about (iCal carries due
             dates, NOT submission status). Surfaced on planned/active
             plus missed deadlines, because missed only means the sweeper
             passed the due time; it does not prove the user failed to
@@ -382,7 +382,7 @@ export default function DeadlinesPage() {
 
       {!isLoading && deadlines.length === 0 && (
         <p className="text-sm text-dust">
-          Add a deadline to anchor your tasks. Barzakh binds tasks automatically
+          Add a deadline to anchor your tasks. LyraOS binds tasks automatically
           when titles match — or you can pick one explicitly when creating a
           task.
         </p>

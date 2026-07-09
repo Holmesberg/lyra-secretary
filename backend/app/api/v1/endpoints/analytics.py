@@ -519,7 +519,7 @@ def _insights_rule11_reopen_gate(
 def _insights_rule11_hold_message(remaining: int) -> str:
     noun = "session" if remaining == 1 else "sessions"
     return (
-        "Insights are unlocked. Barzakh is holding these cards until there is "
+        "Insights are unlocked. LyraOS is holding these cards until there is "
         "new clean evidence after this hold. Complete "
         f"{remaining} more cleanly stopped {noun} to reopen this surface."
     )
@@ -702,7 +702,7 @@ def _insight_readiness_time_of_day(tasks: list) -> Optional[dict]:
     """Self-reported readiness as context for time-window planning fit.
 
     This deliberately avoids "best brain time" or cognitive-capacity copy.
-    The user reported readiness; Barzakh observed planning error by time window.
+    The user reported readiness; LyraOS observed planning error by time window.
     The output is a low-authority placement/recovery hypothesis only.
     """
     buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)

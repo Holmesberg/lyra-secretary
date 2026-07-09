@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const PUBLIC_SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL || "https://barzakh.app";
+const PUBLIC_SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL || "https://lyraos.org";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
@@ -30,7 +30,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.7,
     },
     {
-      url: `${PUBLIC_SITE_ORIGIN}/barzakh.md`,
+      url: `${PUBLIC_SITE_ORIGIN}/lyraos.md`,
       lastModified: now,
       changeFrequency: "monthly",
       priority: 0.8,

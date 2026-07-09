@@ -294,7 +294,7 @@ def delete_google_refresh_token(
 
     Does NOT revoke the token with Google; user must also visit
     myaccount.google.com/permissions to fully revoke. This endpoint
-    just clears Barzakh's copy so the sync stops.
+    just clears LyraOS's copy so the sync stops.
     """
     user = _current_user(db)
     user.google_refresh_token = None

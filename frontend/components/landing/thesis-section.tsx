@@ -23,7 +23,7 @@ export function ThesisSection() {
             Plans fail in patterns, but those patterns are usually invisible.
             <br />
             <span className="text-parchment">
-              Barzakh turns the trace into cautious, inspectable hypotheses.
+              LyraOS turns the trace into cautious, inspectable hypotheses.
             </span>
           </p>
         </div>

@@ -1,4 +1,4 @@
-# Barzakh — Frontend (Phase 2 scaffold)
+# LyraOS — Frontend (Phase 2 scaffold)
 
 Next.js 14 (App Router) + shadcn/ui + Tailwind + next-auth + TanStack Query.
 

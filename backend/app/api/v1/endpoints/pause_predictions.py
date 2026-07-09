@@ -9,7 +9,7 @@ Three surfaces:
   2. POST /pause_predictions/{firing_id}/confirm — retroactive
      confirmation (yes | no). Only valid after reconciliation stamped
      user_response='no_response'. Closes the "operator paused for
-     food but forgot to log it in Barzakh" gap. On 'yes', creates a
+     food but forgot to log it in LyraOS" gap. On 'yes', creates a
      pause_event with self_reported_retroactively=true (alembic 030).
      See MANIFESTO v1.9 §VT-17d for the stratified-analysis
      pre-registration.

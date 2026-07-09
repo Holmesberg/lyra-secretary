@@ -115,7 +115,7 @@ export function Providers({
   );
 
   // Persister — synchronous localStorage adapter. Per-tab storage; if
-  // the user opens the same Barzakh account in two tabs, each maintains
+  // the user opens the same LyraOS account in two tabs, each maintains
   // its own cache (last-writer wins on dehydrate). For our scale this
   // is fine; if it ever bites we can switch to indexedDB.
   const [persister] = useState(() => {

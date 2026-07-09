@@ -827,7 +827,7 @@ class TaskManager:
         Mark an overdue PLANNED/SKIPPED task as done without reopening it.
 
         This is an explicit retrospective reconciliation path for the product
-        affordance "I did this, but Barzakh auto-skipped or left it overdue." It
+        affordance "I did this, but LyraOS auto-skipped or left it overdue." It
         intentionally bypasses the normal stopwatch state-machine path because
         no measured execution trace exists. To protect research metrics, the
         row is stamped initiation_status='retroactive' so Cortex

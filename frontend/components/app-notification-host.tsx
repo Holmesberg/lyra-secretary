@@ -71,7 +71,7 @@ function toUserToast(notification: Record<string, unknown>): Omit<ToastEntry, "i
   if (type === "reminder") {
     return {
       dedupeKey: "reminder",
-      message: "A planned task is coming up. Open Barzakh to check the next block.",
+      message: "A planned task is coming up. Open LyraOS to check the next block.",
       lifespan: "auto",
       detailHref: "/pulse",
       priority: 3,

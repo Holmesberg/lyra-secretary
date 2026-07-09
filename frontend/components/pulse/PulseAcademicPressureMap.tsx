@@ -103,7 +103,7 @@ function PlanPreviewDialog({
 
         {rows.length === 0 ? (
           <div className="rounded-sm border border-hairline bg-void-2/40 px-3 py-4 text-sm text-dust">
-            This option is diagnostic only right now. The selected pressure points are already planned tasks or need coverage confirmation before Barzakh creates blocks.
+            This option is diagnostic only right now. The selected pressure points are already planned tasks or need coverage confirmation before LyraOS creates blocks.
           </div>
         ) : (
           <div className="flex flex-col gap-3">

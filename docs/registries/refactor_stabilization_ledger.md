@@ -6979,14 +6979,14 @@ Rollback note:
   row, provider row, Redis key, user content, or browser verifier is touched by
   rollback.
 
-## App-Facing Rebrand - Barzakh
+## App-Facing Rebrand - LyraOS
 
-Commit: this commit (`rebrand app-facing surfaces to Barzakh`).
+Commit: this commit (`rebrand app-facing surfaces to LyraOS`).
 
 Changed authority:
 
 - Product brand authority moves from visible `Lyra` / `LyraOS` copy to
-  `Barzakh` across app shell, landing page, onboarding, settings, integration
+  `LyraOS` across app shell, landing page, onboarding, settings, integration
   copy, public policy pages, public AI-readable files, notification copy,
   email copy, and browser-verifier selectors.
 - Runtime topology, current public host compatibility, lower-case data
@@ -7000,9 +7000,9 @@ Removed paths:
   `frontend/public/lyraos-logo-mark.png`, and
   `frontend/public/lyraos.md`.
 - Added replacement public assets/brief:
-  `frontend/public/barzakh-logo.png`,
-  `frontend/public/barzakh-logo-mark.png`, and
-  `frontend/public/barzakh.md`.
+  `frontend/public/lyraos-logo.png`,
+  `frontend/public/lyraos-logo-mark.png`, and
+  `frontend/public/lyraos.md`.
 
 Parked paths:
 
@@ -7019,10 +7019,10 @@ Parked paths:
 Moved authority:
 
 - Public AI-readable product description moved from `/lyraos.md` to
-  `/barzakh.md`.
+  `/lyraos.md`.
 - Public crawler references in `llms.txt`, `robots.txt`, sitemap metadata,
-  OpenGraph/Twitter metadata, and JSON-LD now present the Barzakh brand.
-- Browser verification selectors now look for Barzakh-visible strings.
+  OpenGraph/Twitter metadata, and JSON-LD now present the LyraOS brand.
+- Browser verification selectors now look for LyraOS-visible strings.
 
 Issue and classification:
 
@@ -7050,11 +7050,11 @@ Tests and verification:
 - OpenClaw relay unit:
   `node scripts\test_openclaw_operator_relay.mjs` passed.
 - Reusable post-wave dogfood loop:
-  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local -Mode standard -WaveName barzakh-app-facing-rebrand -IncludeProductLoop`
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local -Mode standard -WaveName lyraos-app-facing-rebrand -IncludeProductLoop`
   passed. Summary:
-  `tmp/post-wave-dogfood/20260707-155759-barzakh-app-facing-rebrand-standard-local/summary.json`.
+  `tmp/post-wave-dogfood/20260707-155759-lyraos-app-facing-rebrand-standard-local/summary.json`.
 - Holmesberg mutable product-loop proof:
-  `tmp/post-wave-dogfood/20260707-155759-barzakh-app-facing-rebrand-standard-local/holmesberg-product-loop/result.json`
+  `tmp/post-wave-dogfood/20260707-155759-lyraos-app-facing-rebrand-standard-local/holmesberg-product-loop/result.json`
   passed with 105 checks, 0 failed checks, cleanup IDs for 8 tasks,
   7 deadlines, and 3 notifications. Non-fatal notes were onboarding gate open,
   one suggestion fallback, parser title normalization, and pressure recovery
@@ -7065,14 +7065,14 @@ Tests and verification:
   snapshot diffs, `implementation_green=true`, and
   `exposure_without_render_count=0`.
 - Explicit public brand browser smoke:
-  `tmp/rebrand-proof/barzakh-brand-smoke-20260707-161215.json`
-  passed for `/`, `/privacy`, `/terms`, `/llms.txt`, `/barzakh.md`; old public
+  `tmp/rebrand-proof/lyraos-brand-smoke-20260707-161215.json`
+  passed for `/`, `/privacy`, `/terms`, `/llms.txt`, `/lyraos.md`; old public
   paths `/lyraos.md`, `/lyraos-logo.png`, and `/lyraos-logo-mark.png` returned
   404.
 
 Behavior parity statement:
 
-- User-facing brand copy changes to Barzakh.
+- User-facing brand copy changes to LyraOS.
 - Task, timer, deadline, exposure, notification, provider, clean-data,
   ClaimCompiler, schema, and Redis behavior should remain unchanged except for
   generated display text and email/public-copy branding.
@@ -7080,7 +7080,7 @@ Behavior parity statement:
 
 Rollback note:
 
-- Revert the Barzakh rebrand commit only. This restores visible Lyra/LyraOS
+- Revert the LyraOS rebrand commit only. This restores visible Lyra/LyraOS
   copy and old public asset paths. No schema migration, production repair,
   exposure row mutation, provider row mutation, Redis purge, or domain
   migration is part of this seam.
@@ -8131,7 +8131,7 @@ Tests and verification:
 - Local service proof:
   rebuilt backend with `docker compose up -d --build backend`, ran
   `docker compose exec -T backend alembic upgrade head`, and verified
-  `http://localhost:8000/v1/health` returned `{"status":"ok","service":"barzakh-api"}`.
+  `http://localhost:8000/v1/health` returned `{"status":"ok","service":"lyraos-api"}`.
 - Initial operator proof exposed a topology/verifier failure before product
   behavior was reached: local `/api/topology` returned `500` from stale Next dev
   cache artifacts. Recovery used the existing `frontend` `npm run dev:clean`
@@ -10080,7 +10080,7 @@ Behavior parity statement:
 
 - No intentional API behavior changed.
 - Cached responses are still deep-copied on read/write, still expire after 30
-  seconds, and slow-query logging still uses `barzakh.perf.bias_lookup`.
+  seconds, and slow-query logging still uses `lyraos.perf.bias_lookup`.
 - Creation-nudge exposure decision/suppression and commit behavior remained in
   the route and stayed covered by output-surface tests.
 
@@ -10370,5 +10370,96 @@ Rollback note:
 
 - Revert the operator measurement-integrity snapshot builder commit to restore
   the denominator and dirty-reason computation inline in `operator.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
+
+## 2026-07-09 - LyraOS Naming Rollback And Brain Dump Flow Hook
+
+Seam:
+
+- `lyraos-branding-rollback`
+- `frontend-brain-dump-flow-hook`
+
+Changed authority:
+
+- No mutation authority, exposure authority, provider authority, claim
+  authority, schema, Redis behavior, hosted-public deployment state, or
+  readiness denominator changed.
+- Public product naming returned to LyraOS/lyraos.org after the alternate-name
+  direction was explicitly abandoned.
+- Brain-dump parse/commit UI state remains owned by the Pulse and onboarding
+  product surfaces; the shared hook only centralizes duplicated controller
+  state.
+
+Removed paths:
+
+- Removed active app/source/script/public references to the abandoned alternate
+  name.
+- Renamed public AI-readable and logo asset paths back to `lyraos*`.
+
+Parked paths:
+
+- Full product/domain rebrand remains parked.
+- Deeper frontend extraction of task modal, timer, pressure-map, and query-key
+  contracts remains parked for later seams.
+- Backend writer-path extraction remains parked.
+
+Moved authority:
+
+- `frontend/lib/hooks/use-brain-dump-flow.ts` now owns shared brain-dump
+  browser controller state for parse, binding choice resolution, commit,
+  partial failure review, and double-submit prevention.
+- `frontend/components/pulse/BrainDumpQuickModal.tsx` and
+  `frontend/components/onboarding-flow.tsx` now consume the shared hook while
+  preserving their distinct UI copy and exit behavior.
+
+Issues and classification:
+
+- No GitHub issue was opened; the naming rollback was user-directed product
+  copy/runtime-host correction before any later rebrand branch.
+- The seam is mixed because the user-directed naming rollback overlapped with
+  the already-active brain-dump extraction in `onboarding-flow.tsx`. The mix is
+  limited to visible copy in the same file; no data/write behavior changed.
+
+Tests and verification:
+
+- Active repo absence checks for abandoned-name tokens, abandoned-domain tokens,
+  abandoned public routes, and abandoned logo paths; passed outside ignored
+  generated paths.
+- `git diff --check`; passed.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `..\.venv311\Scripts\python.exe -m pytest tests/test_email_delivery.py tests/test_email_engagement.py tests/test_user_activation_email.py tests/test_reactivation_email_script.py`;
+  passed, 19 tests.
+- `..\.venv311\Scripts\python.exe -m pytest tests/test_brain_dump_parser.py tests/test_brain_dump_parser_stress.py tests/test_brain_dump_endpoint.py`;
+  passed, 76 tests and 1 expected xfail.
+- Holmesberg product-loop proof:
+  `tmp/browser-product-loop/brain-dump-flow-hook/result.json`; passed with
+  `ok=true`, 115 checks, no warnings, and no gated cleanup gaps.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T18-45-39-999Z/result.json`;
+  passed with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional brain-dump behavior changed. Pulse quick capture and
+  onboarding still parse raw text, require tier-2 binding decisions, commit
+  tasks/deadlines/bindings through the same APIs, show partial commit failures,
+  and preserve existing exit behavior.
+- No intentional data or email behavior changed beyond restoring LyraOS name,
+  lyraos.org URLs, and LyraOS sender constants after the abandoned alternate
+  naming pass.
+
+Rollback note:
+
+- Revert the checkpoint commit to restore the prior duplicated brain-dump UI
+  state and abandoned alternate naming. If only the hook extraction needs
+  rollback, move parse/commit state back into the two consuming components and
+  keep the LyraOS naming changes.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.

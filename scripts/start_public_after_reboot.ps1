@@ -166,4 +166,4 @@ if (-not $SkipPublicCheck) {
 }
 
 Write-Host ""
-Write-Host "Barzakh public stack is up."
+Write-Host "LyraOS public stack is up."

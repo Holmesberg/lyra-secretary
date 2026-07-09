@@ -250,7 +250,7 @@ async function goto(page, pathname, name) {
   });
   await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
   const body = await page.locator("body").innerText({ timeout: 10_000 });
-  if (/ONBOARDING|Barzakh starts learning from the first plan/i.test(body)) {
+  if (/ONBOARDING|LyraOS starts learning from the first plan/i.test(body)) {
     throw Object.assign(new Error(`${name}: onboarding gate blocked route proof`), {
       detail: { pathname },
     });

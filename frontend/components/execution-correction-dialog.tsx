@@ -167,7 +167,7 @@ export function ExecutionCorrectionDialog({ task, onClose, onSaved }: Props) {
             />
           </label>
           <p className="text-xs text-dust-deep">
-            Barzakh will derive the active duration
+            LyraOS will derive the active duration
             {correctedActiveMinutes != null && correctedActiveMinutes > 0
               ? `: ${Math.round(correctedActiveMinutes)} min`
               : " from start -> end"}

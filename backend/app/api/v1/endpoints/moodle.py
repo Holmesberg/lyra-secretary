@@ -55,7 +55,7 @@ class MoodlePreviewIn(BaseModel):
 
 class MoodleDisconnectIn(BaseModel):
     # If True, also void all currently-imported deadlines for this user.
-    # Default False — user keeps the imported deadlines as Barzakh-owned
+    # Default False — user keeps the imported deadlines as LyraOS-owned
     # rows; only the URL link is severed. This matches "I'm done with
     # auto-sync but I want to keep the deadlines I already have."
     void_imported: bool = False

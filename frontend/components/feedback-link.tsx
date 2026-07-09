@@ -7,7 +7,7 @@
  * (manages its own modal state).
  *
  * Operator request 2026-04-28: "tiny 'report bug' or 'feedback to
- * improve Barzakh' in grey beneath the email address."
+ * improve LyraOS' in grey beneath the email address."
  */
 import { useState } from "react";
 import { FeedbackModal } from "./feedback-modal";

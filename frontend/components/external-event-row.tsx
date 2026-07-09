@@ -4,7 +4,7 @@
  *
  * Option 3 from the 2026-04-21 /today-integration design (see
  * docs/strategic_decisions_april_21.md §6): render Google Calendar
- * events as read-only, time-neutral ambient context alongside Barzakh
+ * events as read-only, time-neutral ambient context alongside LyraOS
  * tasks. External badge replaces the usual state badge (no PLANNED/
  * EXECUTED fiction — we don't know what happened).
  *
@@ -83,13 +83,13 @@ export function ExternalEventRow({ event, now, onMutated }: Props) {
     <div
       className={cn(
         "group flex items-center gap-4 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 transition-colors",
-        // Subtle muted treatment vs Barzakh task rows — this is CONTEXT,
+        // Subtle muted treatment vs LyraOS task rows — this is CONTEXT,
         // not a task the user is tracking. Border stays hairline so
         // the layout rhythm matches; the interior tilts toward dust.
         "opacity-80 hover:opacity-100"
       )}
     >
-      {/* Time range — same column as Barzakh task rows for alignment. */}
+      {/* Time range — same column as LyraOS task rows for alignment. */}
       <div className="w-28 font-mono text-xs text-dust">
         {format(startDate, "h:mm a")}–{format(endDate, "h:mm a")}
       </div>
@@ -100,7 +100,7 @@ export function ExternalEventRow({ event, now, onMutated }: Props) {
       </div>
 
       {/* External source badge — time-neutral, no state claim. Color
-         picked to be distinct from every Barzakh state badge (dust-deep
+         picked to be distinct from every LyraOS state badge (dust-deep
          on void-2 — readable but quiet). */}
       <span className="rounded-sm border border-hairline bg-void-2 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
         GCAL

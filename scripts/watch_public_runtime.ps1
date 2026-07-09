@@ -110,7 +110,7 @@ Start-Transcript -Path $transcriptPath -Append | Out-Null
 
 try {
     Set-Location $repoRoot
-    Write-Host "Barzakh public runtime watchdog"
+    Write-Host "LyraOS public runtime watchdog"
     Write-Host "Started: $(Get-Date -Format o)"
     Write-Host "Repo: $repoRoot"
     Write-Host "Log: $transcriptPath"

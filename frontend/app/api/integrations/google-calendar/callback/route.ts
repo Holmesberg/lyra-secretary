@@ -14,7 +14,7 @@
  *      signed-in user's email (prevents "alice signed in, bob's
  *      calendar connected" drift when a user has multiple Google
  *      accounts).
- *   6. Forward the refresh_token to the Barzakh backend via the existing
+ *   6. Forward the refresh_token to the LyraOS backend via the existing
  *      POST /v1/users/me/google-refresh-token endpoint.
  *   7. Redirect back to /settings with success or error flag.
  *
@@ -216,7 +216,7 @@ export async function GET(request: Request) {
   // authenticated Google account's email. If the user swapped
   // accounts on Google's side mid-flow (e.g., "Use another account"
   // link), we must not silently bind bob@gmail's calendar to
-  // alice's Barzakh account. Compare case-insensitively; Google emails
+  // alice's LyraOS account. Compare case-insensitively; Google emails
   // are canonical-lowercased but defense in depth.
   const consentEmail = tokenResponse.id_token
     ? decodeIdTokenEmail(tokenResponse.id_token)

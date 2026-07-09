@@ -250,7 +250,7 @@ def test_strong_keyword_match_returns_binding(db):
     assert decision.exposure_category == "scheduling_suggestion"
     assert decision.trigger_source == "parse.deadline_preview"
     assert render.surface == "task.deadline_binding_suggestion"
-    assert "Barzakh thinks this binds to BCI Hackathon" in render.content_snapshot
+    assert "LyraOS thinks this binds to BCI Hackathon" in render.content_snapshot
 
 
 def test_binding_suggestion_suppresses_if_exposure_logging_fails(db, monkeypatch):

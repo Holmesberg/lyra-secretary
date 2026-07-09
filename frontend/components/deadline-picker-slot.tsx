@@ -77,7 +77,7 @@ export function DeadlinePickerSlot({
         className="rounded-sm border border-hairline-signal/40 bg-void-2/40 p-3 text-xs text-dust"
       >
         <div>
-          Barzakh thinks this binds to{" "}
+          LyraOS thinks this binds to{" "}
           <span className="font-medium text-parchment">
             {suggestion.deadline_title}
           </span>

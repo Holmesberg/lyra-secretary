@@ -67,7 +67,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     id: "google_calendar",
     name: "Google Calendar",
     description:
-      "See your external commitments alongside planned Barzakh tasks.",
+      "See your external commitments alongside planned LyraOS tasks.",
     capabilityLine:
       "Read-only — your events appear on /today and /calendar as grey background blocks. Past events carry an optional \"Did you attend?\" self-report.",
     scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
@@ -83,7 +83,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // Moodle LMS — shipped 2026-04-29 (alembic 041) as the LMS-wedge
     // headline integration. Paste a private .ics subscription URL from
     // Moodle's "Export calendar" page; backend syncs every 6h and
-    // upserts assignment due dates as Barzakh deadlines flagged with
+    // upserts assignment due dates as LyraOS deadlines flagged with
     // external_source='moodle_ics'. Tested against ASU Engineering
     // Moodle (lms.eng.asu.edu.eg, Moodle 3.7).
     id: "moodle",
@@ -91,7 +91,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     description:
       "Pull course deadlines straight from your school's Moodle.",
     capabilityLine:
-      "Read-only — assignments and quiz due dates appear as Barzakh deadlines. We won't create posts or modify your courses.",
+      "Read-only — assignments and quiz due dates appear as LyraOS deadlines. We won't create posts or modify your courses.",
     scopes: [],
     authShape: "url_subscription",
     available: true,
@@ -105,7 +105,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     description:
       "Import tasks from a Notion database; outbound sync already runs for operators.",
     capabilityLine:
-      "Column-mapping UI lets you pick which properties become Barzakh's title, date, category. Webhooks + bi-directional sync in v2.",
+      "Column-mapping UI lets you pick which properties become LyraOS's title, date, category. Webhooks + bi-directional sync in v2.",
     scopes: ["pages:read", "databases:read"],
     authShape: "oauth",
     available: false,
@@ -120,7 +120,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     description:
       "Drop in any .ics file or subscription URL — Apple, Outlook, Fastmail, or Google export.",
     capabilityLine:
-      "Local parse, no third-party auth. Universal fallback for calendars Barzakh doesn't natively integrate with yet.",
+      "Local parse, no third-party auth. Universal fallback for calendars LyraOS doesn't natively integrate with yet.",
     scopes: [],
     authShape: "file",
     available: false,

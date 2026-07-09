@@ -32,14 +32,14 @@ def test_public_click_endpoint_records_event_and_redirects(client, db, monkeypat
         campaign_version="unit-campaign",
         recipient_key="abc123",
         user_id=user.user_id,
-        target_url="https://barzakh.app",
+        target_url="https://lyraos.org",
     )
-    path = url.replace("https://api.barzakh.app", "")
+    path = url.replace("https://api.lyraos.org", "")
 
     response = client.get(path, follow_redirects=False)
 
     assert response.status_code == 302
-    assert response.headers["location"] == "https://barzakh.app"
+    assert response.headers["location"] == "https://lyraos.org"
     event = (
         db.query(EmailEngagementEvent)
         .filter(EmailEngagementEvent.campaign_version == "unit-campaign")
@@ -48,7 +48,7 @@ def test_public_click_endpoint_records_event_and_redirects(client, db, monkeypat
     assert event.event_type == "click"
     assert event.user_id == user.user_id
     assert event.recipient_key == "abc123"
-    assert event.target_url == "https://barzakh.app"
+    assert event.target_url == "https://lyraos.org"
 
 
 def test_invalid_email_tracking_token_does_not_record(client, db, monkeypatch):
@@ -65,7 +65,7 @@ def test_invalid_email_tracking_token_does_not_record(client, db, monkeypatch):
     )
 
     assert response.status_code == 302
-    assert response.headers["location"] == "https://barzakh.app"
+    assert response.headers["location"] == "https://lyraos.org"
     assert db.query(EmailEngagementEvent).count() == 0
 
 
@@ -93,7 +93,7 @@ def test_operator_email_engagement_summary_counts_distinct_recipients(client, db
                 campaign_version="unit-summary",
                 event_type="click",
                 recipient_key="r1",
-                target_url="https://barzakh.app",
+                target_url="https://lyraos.org",
             ),
         ]
     )

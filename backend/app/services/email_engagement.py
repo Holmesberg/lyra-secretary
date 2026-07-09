@@ -48,7 +48,7 @@ def _safe_target_url(target_url: str | None) -> str | None:
     parsed = urlparse(target_url)
     if parsed.scheme != "https":
         return None
-    allowed_hosts = {"barzakh.app", "www.barzakh.app", "lyraos.org", "www.lyraos.org"}
+    allowed_hosts = {"lyraos.org", "www.lyraos.org", "lyraos.org", "www.lyraos.org"}
     frontend_host = urlparse(settings.FRONTEND_URL).hostname
     if frontend_host:
         allowed_hosts.add(frontend_host)

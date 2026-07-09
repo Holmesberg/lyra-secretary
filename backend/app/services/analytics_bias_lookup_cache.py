@@ -12,7 +12,7 @@ BiasLookupCacheKey = tuple[int, str, str, int, int, str]
 
 _BIAS_LOOKUP_CACHE_TTL_SECONDS = 30.0
 _bias_lookup_cache: dict[BiasLookupCacheKey, tuple[float, dict[str, Any]]] = {}
-_bias_lookup_perf_logger = logging.getLogger("barzakh.perf.bias_lookup")
+_bias_lookup_perf_logger = logging.getLogger("lyraos.perf.bias_lookup")
 
 
 def cached_bias_lookup_response(

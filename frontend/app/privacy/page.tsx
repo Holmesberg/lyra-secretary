@@ -1,33 +1,33 @@
 const sections = [
   {
-    title: "What Barzakh Collects",
+    title: "What LyraOS Collects",
     body: [
       "Account data, such as your email address, Google account identifier, Google profile name when available, timezone, consent timestamps, onboarding state, and account settings.",
       "Planning and execution data, such as tasks, deadlines, task notes or descriptions you enter, categories, planned and executed times, timer sessions, pause and resume events, corrections, readiness ratings, completion percentages, reflection responses, and scope outcomes.",
       "Integration data, such as connected-provider state, imported calendar or Moodle deadline facts, external attendance or completion candidates, provider provenance, sync timestamps, and disconnect or sync-failure state.",
-      "Product telemetry needed to make Barzakh reliable, such as notification lifecycle events, exposure decisions, renders, acknowledgements, suppressions, email engagement events, feedback rows, error context that you choose to include, and security or governance audit records.",
+      "Product telemetry needed to make LyraOS reliable, such as notification lifecycle events, exposure decisions, renders, acknowledgements, suppressions, email engagement events, feedback rows, error context that you choose to include, and security or governance audit records.",
     ],
   },
   {
-    title: "How Barzakh Uses Data",
+    title: "How LyraOS Uses Data",
     body: [
-      "Barzakh uses your data to run the product: create and schedule tasks, operate timers, recover from interruptions, sync connected integrations, display reminders and insights, export or delete your account, debug reliability issues, and measure whether the product is safe to expand to more users.",
-      "Barzakh may analyze product traces to improve planning, recovery, and measurement quality. These analyses are treated as bounded product hypotheses, not diagnoses, identity labels, professional advice, or claims about your motivation, discipline, focus, agency, or competence.",
-      "Barzakh does not sell your data and does not share it for advertising.",
+      "LyraOS uses your data to run the product: create and schedule tasks, operate timers, recover from interruptions, sync connected integrations, display reminders and insights, export or delete your account, debug reliability issues, and measure whether the product is safe to expand to more users.",
+      "LyraOS may analyze product traces to improve planning, recovery, and measurement quality. These analyses are treated as bounded product hypotheses, not diagnoses, identity labels, professional advice, or claims about your motivation, discipline, focus, agency, or competence.",
+      "LyraOS does not sell your data and does not share it for advertising.",
     ],
   },
   {
     title: "Integrations And Service Providers",
     body: [
-      "Barzakh relies on service providers such as Cloudflare, Supabase, Google sign-in, Google Calendar when connected, Moodle when connected, Notion sync plumbing where enabled, Resend for email, and OpenClaw or Telegram for operator notification delivery when configured.",
-      "Google Calendar refresh tokens, Moodle tokens, and private Moodle calendar URLs are treated as credential-class secrets. Barzakh stores them so server-side sync can work, redacts them from exports, and encrypts credential fields where the current runtime supports it.",
+      "LyraOS relies on service providers such as Cloudflare, Supabase, Google sign-in, Google Calendar when connected, Moodle when connected, Notion sync plumbing where enabled, Resend for email, and OpenClaw or Telegram for operator notification delivery when configured.",
+      "Google Calendar refresh tokens, Moodle tokens, and private Moodle calendar URLs are treated as credential-class secrets. LyraOS stores them so server-side sync can work, redacts them from exports, and encrypts credential fields where the current runtime supports it.",
       "Imported provider facts are treated as provider evidence or candidates unless the product explicitly asks you to confirm them.",
     ],
   },
   {
     title: "Operator And Admin Access",
     body: [
-      "Barzakh is currently pre-alpha software operated as a small trusted-user system. Authorized operators may access internal dashboards, admin tools, feedback queues, logs, and database-backed diagnostics to keep the service running, investigate bugs, verify data-sovereignty behavior, and decide whether the cohort is ready to expand.",
+      "LyraOS is currently pre-alpha software operated as a small trusted-user system. Authorized operators may access internal dashboards, admin tools, feedback queues, logs, and database-backed diagnostics to keep the service running, investigate bugs, verify data-sovereignty behavior, and decide whether the cohort is ready to expand.",
       "The main operator cockpit is designed to be content-minimized: it avoids raw task titles, raw emails, provider tokens, and raw provider URLs by default. Some older or narrower admin surfaces can expose raw account emails, user IDs, feedback text, page URLs, user agents, error context, and operational timestamps.",
       "Normal user-notification mirrors to the operator channel are redacted to metadata where possible. User-submitted feedback and operator-owned system alerts may be delivered as full text to operator email, OpenClaw, or Telegram so they can be triaged.",
     ],
@@ -36,7 +36,7 @@ const sections = [
     title: "AI, Insights, And Future Features",
     body: [
       "Current user-facing insights are intended to be deterministic and evidence-bounded. The former in-app JARVIS assistant is parked; operator reasoning and notifications may use OpenClaw or Telegram when configured.",
-      "AI synthesis, behavior-transition equations, adaptive scheduling authority, new provider adapters, and new insight types are not automatically authorized by this policy. If Barzakh ships those features later, the policy and consent surface must be updated before they become user-facing runtime behavior.",
+      "AI synthesis, behavior-transition equations, adaptive scheduling authority, new provider adapters, and new insight types are not automatically authorized by this policy. If LyraOS ships those features later, the policy and consent surface must be updated before they become user-facing runtime behavior.",
       "Future AI or equation-based features must remain downstream of explicit evidence, uncertainty, privacy boundaries, and user-facing explanation. They must not create hidden identity labels or stronger claims than the underlying data supports.",
     ],
   },
@@ -44,30 +44,30 @@ const sections = [
     title: "Export, Deletion, And Retention",
     body: [
       "You can export a secret-redacted JSON copy of your account data from Settings. Provider credentials, tokens, and private provider URLs are not included in raw form.",
-      "When deleting your account, Barzakh may offer two paths: hard deletion of user-owned product rows, or deletion of your account with anonymized retention of task and stopwatch-session timing rows for product-quality research. The retention path removes direct account identity and task text fields, but behavioral traces can still be sensitive and are not promised to be anonymous under every possible future linkage scenario.",
+      "When deleting your account, LyraOS may offer two paths: hard deletion of user-owned product rows, or deletion of your account with anonymized retention of task and stopwatch-session timing rows for product-quality research. The retention path removes direct account identity and task text fields, but behavioral traces can still be sensitive and are not promised to be anonymous under every possible future linkage scenario.",
       "Security, abuse-prevention, and governance audit records may be retained separately from behavioral export/delete flows. Runtime cache and queue state is purged as part of the account deletion process where technically available.",
     ],
   },
   {
     title: "Surveys And External Research Forms",
     body: [
-      "Barzakh may also use separate voluntary surveys, including Google Forms linked to Google Sheets, to validate whether the problem is real and whether the product is useful. Those survey responses are outside the in-app Barzakh runtime and are stored by the survey provider.",
+      "LyraOS may also use separate voluntary surveys, including Google Forms linked to Google Sheets, to validate whether the problem is real and whether the product is useful. Those survey responses are outside the in-app LyraOS runtime and are stored by the survey provider.",
       "Survey answers may include free text and optional contact information if you provide it. Do not include sensitive personal information in survey responses unless you are comfortable with it being reviewed for product research.",
     ],
   },
   {
     title: "Security Limits",
     body: [
-      "Barzakh uses authentication, operator-only route gates, credential redaction, credential encryption where implemented, audit logs, and data-minimizing dashboards to reduce risk.",
-      "Barzakh is not end-to-end encrypted. Authorized operators, infrastructure providers, and systems with database or runtime access may be able to access stored data as needed to operate and secure the service.",
-      "No internet service can guarantee perfect security. Barzakh should not be used for safety-critical, medical, legal, financial, or legally binding scheduling.",
+      "LyraOS uses authentication, operator-only route gates, credential redaction, credential encryption where implemented, audit logs, and data-minimizing dashboards to reduce risk.",
+      "LyraOS is not end-to-end encrypted. Authorized operators, infrastructure providers, and systems with database or runtime access may be able to access stored data as needed to operate and secure the service.",
+      "No internet service can guarantee perfect security. LyraOS should not be used for safety-critical, medical, legal, financial, or legally binding scheduling.",
     ],
   },
   {
     title: "Children, Changes, And Contact",
     body: [
-      "Barzakh is not intended for children under 13.",
-      "This policy may change as Barzakh moves from pre-alpha toward a broader release. Material changes should be reflected here before the related behavior is exposed to users.",
+      "LyraOS is not intended for children under 13.",
+      "This policy may change as LyraOS moves from pre-alpha toward a broader release. Material changes should be reflected here before the related behavior is exposed to users.",
       "For privacy requests, use the in-app feedback link or the support/contact channel provided by the operator.",
     ],
   },
@@ -80,7 +80,7 @@ export default function PrivacyPage() {
         <h1 className="text-3xl font-semibold tracking-tight">Privacy Policy</h1>
         <p className="text-sm text-dust">Last updated: June 24, 2026.</p>
         <p className="text-dust">
-          Barzakh is pre-alpha personal planning and execution-tracking software.
+          LyraOS is pre-alpha personal planning and execution-tracking software.
           This policy describes current runtime behavior and the boundaries for
           future features.
         </p>

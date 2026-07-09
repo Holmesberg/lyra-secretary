@@ -3,7 +3,7 @@
  *
  * Events are transient context, not persisted tasks. The `/calendar`
  * view merges them into Schedule-X with a distinct calendarId so
- * they render as read-only grey blocks alongside Barzakh tasks.
+ * they render as read-only grey blocks alongside LyraOS tasks.
  *
  * See backend/app/services/calendar_sync.py for the server side and
  * docs/strategic_decisions_april_21.md §6 for the research-integrity
@@ -64,7 +64,7 @@ export async function disconnectCalendar(): Promise<{ ok: boolean }> {
 /**
  * Mark attendance on an external calendar event. `outcome="unknown"`
  * clears any prior answer (revert to unset). Persists to
- * external_event_outcome — never creates a Barzakh Task row.
+ * external_event_outcome — never creates a LyraOS Task row.
  */
 export async function markEventAttendance(body: {
   external_id: string;

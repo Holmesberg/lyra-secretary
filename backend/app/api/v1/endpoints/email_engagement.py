@@ -27,7 +27,7 @@ _TRANSPARENT_GIF = (
     b"\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00"
     b"\x00\x02\x02D\x01\x00;"
 )
-_DEFAULT_REDIRECT = "https://barzakh.app"
+_DEFAULT_REDIRECT = "https://lyraos.org"
 
 
 def _request_metadata(request: Request) -> dict[str, str | None]:
