@@ -9953,3 +9953,76 @@ Rollback note:
   root docs lane and reset active pointers.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - New Task Creation-Nudge Exposure Hook
+
+Seam:
+
+- `new-task-creation-nudge-exposure-hook`
+
+Changed authority:
+
+- No backend, schema, provider, clean-data, or public claim authority changed.
+- Frontend `task.creation_nudge` exposure render/suppression lifecycle moved
+  from `NewTaskModal` into a dedicated hook.
+
+Removed paths:
+
+- Removed inline creation-nudge exposure ID caching, render-ack retry,
+  suppression retry, previous-exposure cleanup, and unmount cleanup from
+  `frontend/components/new-task-modal.tsx`.
+
+Parked paths:
+
+- Deeper `NewTaskModal` draft-state and JSX extraction remains parked until
+  the next behavior-preserving seam has coverage.
+- Hosted-public mutable dogfood remains approval-gated.
+
+Moved authority:
+
+- `frontend/lib/hooks/use-creation-nudge-exposure.ts` now owns
+  creation-nudge exposure IDs, render acks, suppression acks, previous-exposure
+  suppression, and unmount suppression.
+- `NewTaskModal` still owns when the nudge is eligible, visible, accepted, or
+  dismissed, and `frontend/lib/creation-nudge.ts` still owns pure payload
+  shaping.
+
+Issues and classification:
+
+- No GitHub issue was created; this was planned R3 frontend extraction with
+  exposure-lifecycle characterization.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- Holmesberg local-current product-loop proof:
+  `tmp/browser-product-loop/new-task-creation-nudge-exposure-hook/result.json`
+  passed with 115 checks.
+- Product-loop creation-nudge checks proved bounded authority lookup,
+  idempotent render ack, export decision rows, export render/ack rows, and no
+  unrendered synthetic creation-nudge exposure residue after cleanup.
+- Operator read-only proof after mutable pass:
+  `tmp/operator-readonly-stress-2026-07-09T16-58-03-492Z/result.json`
+  passed with zero count diffs, `implementation_green=true`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional user-visible behavior changed.
+- The nudge still renders, can be accepted or dismissed, writes the same
+  decision payload on create, records render truth, suppresses discarded
+  backend-ready exposures, and avoids repeat suggestions after a user decision.
+- The dogfood run ended with no active Holmesberg timer and no unrendered
+  synthetic creation-nudge exposures.
+
+Rollback note:
+
+- Revert commit `a1a1842` to restore creation-nudge exposure lifecycle logic
+  inline in `NewTaskModal`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
