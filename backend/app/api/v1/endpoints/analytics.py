@@ -1,7 +1,5 @@
 """Analytics endpoints — discrepancy experiment measurement layer."""
 import json
-import copy
-import logging
 from time import monotonic
 from datetime import date, timedelta
 from typing import Optional
@@ -35,6 +33,11 @@ from app.services.cortex import (
     planning_calibration_query,
 )
 from app.services.calibration_nudge_analytics_service import calibration_nudge_snapshot
+from app.services.analytics_bias_lookup_cache import (
+    cached_bias_lookup_response,
+    log_slow_bias_lookup,
+    store_bias_lookup_response,
+)
 from app.services.deadline_completion_analytics_service import deadline_completion_snapshot
 from app.services.deadline_shape_service import deadline_shape_snapshot
 from app.services.pause_prediction_analytics_service import pause_prediction_snapshot
@@ -62,63 +65,6 @@ router = APIRouter()
 
 ANALYTICS_INSIGHTS_SURFACE_ID = "analytics.insights"
 ANALYTICS_INSIGHTS_TEMPLATE_ID = "analytics_insights"
-_BIAS_LOOKUP_CACHE_TTL_SECONDS = 30.0
-_bias_lookup_cache: dict[tuple[int, str, str, int, int, str], tuple[float, dict]] = {}
-_bias_lookup_perf_logger = logging.getLogger("barzakh.perf.bias_lookup")
-
-
-def _cached_bias_lookup_response(
-    key: tuple[int, str, str, int, int, str],
-) -> Optional[dict]:
-    cached = _bias_lookup_cache.get(key)
-    if cached is None:
-        return None
-    stored_at, payload = cached
-    if monotonic() - stored_at > _BIAS_LOOKUP_CACHE_TTL_SECONDS:
-        _bias_lookup_cache.pop(key, None)
-        return None
-    return copy.deepcopy(payload)
-
-
-def _store_bias_lookup_response(
-    key: tuple[int, str, str, int, int, str],
-    payload: dict,
-) -> dict:
-    _bias_lookup_cache[key] = (monotonic(), copy.deepcopy(payload))
-    return payload
-
-
-def _log_slow_bias_lookup(
-    *,
-    user_id: int,
-    category: str,
-    tod: str,
-    planned_minutes: int,
-    tasks_ms: float,
-    blend_ms: float,
-    exposure_ms: float,
-    total_ms: float,
-    source: Optional[str],
-    sessions: Optional[int],
-) -> None:
-    if total_ms < 250:
-        return
-    _bias_lookup_perf_logger.info(
-        (
-            "user=%s category=%s tod=%s planned=%s tasks_ms=%.0f "
-            "blend_ms=%.0f exposure_ms=%.0f total_ms=%.0f source=%s sessions=%s"
-        ),
-        user_id,
-        category,
-        tod,
-        planned_minutes,
-        tasks_ms,
-        blend_ms,
-        exposure_ms,
-        total_ms,
-        source,
-        sessions,
-    )
 INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS = 3
 
 INSIGHT_TITLES = {
@@ -2255,7 +2201,7 @@ def bias_factor_lookup(
     if uid is None:
         raise HTTPException(status_code=401, detail="not authenticated")
     cache_key = (uid, category, tod, planned_minutes, int(fast), exposure_id or "")
-    cached = _cached_bias_lookup_response(cache_key)
+    cached = cached_bias_lookup_response(cache_key)
     if cached is not None:
         return cached
     lookup_started = monotonic()
@@ -2335,7 +2281,7 @@ def bias_factor_lookup(
                 db.commit()
                 exposure_ms = (monotonic() - exposure_started) * 1000
                 total_ms = (monotonic() - lookup_started) * 1000
-                _log_slow_bias_lookup(
+                log_slow_bias_lookup(
                     user_id=uid,
                     category=category,
                     tod=tod,
@@ -2347,7 +2293,7 @@ def bias_factor_lookup(
                     source=result.get("source"),
                     sessions=result.get("sessions"),
                 )
-                return _store_bias_lookup_response(cache_key, {
+                return store_bias_lookup_response(cache_key, {
                     "cell": None,
                     "sessions": result.get("sessions", 0),
                     "min_sessions": result.get("min_sessions", 3),
@@ -2401,7 +2347,7 @@ def bias_factor_lookup(
             db.rollback()
             exposure_ms = (monotonic() - exposure_started) * 1000
             total_ms = (monotonic() - lookup_started) * 1000
-            _log_slow_bias_lookup(
+            log_slow_bias_lookup(
                 user_id=uid,
                 category=category,
                 tod=tod,
@@ -2413,7 +2359,7 @@ def bias_factor_lookup(
                 source=result.get("source"),
                 sessions=result.get("sessions"),
             )
-            return _store_bias_lookup_response(cache_key, {
+            return store_bias_lookup_response(cache_key, {
                 "cell": None,
                 "sessions": result.get("sessions", 0),
                 "min_sessions": result.get("min_sessions", 3),
@@ -2432,7 +2378,7 @@ def bias_factor_lookup(
                 "fallback_mode": "suppress",
             })
     total_ms = (monotonic() - lookup_started) * 1000
-    _log_slow_bias_lookup(
+    log_slow_bias_lookup(
         user_id=uid,
         category=category,
         tod=tod,
@@ -2444,7 +2390,7 @@ def bias_factor_lookup(
         source=result.get("source"),
         sessions=result.get("sessions"),
     )
-    return _store_bias_lookup_response(cache_key, result)
+    return store_bias_lookup_response(cache_key, result)
 
 
 @router.get("/analytics/pause_prediction")
