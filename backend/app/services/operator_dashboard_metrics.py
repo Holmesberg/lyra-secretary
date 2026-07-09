@@ -1354,6 +1354,119 @@ def product_loop_funnel_query_snapshot(
     }
 
 
+def task_session_state_query_snapshot(
+    db: Session,
+    *,
+    user_ids: list[int],
+    stale_pause_cutoff: datetime,
+) -> dict[str, Any]:
+    """Read-only task/session coherence queries for the operator cockpit."""
+    open_sessions = (
+        db.query(StopwatchSession, Task)
+        .join(Task, Task.task_id == StopwatchSession.task_id)
+        .filter(StopwatchSession.end_time_utc.is_(None))
+        .filter(StopwatchSession.user_id.in_(user_ids) if user_ids else False)
+        .all()
+    )
+    open_by_task = Counter(session.task_id for session, _task in open_sessions)
+    tasks_by_id = {
+        task.task_id: task
+        for task in (
+            db.query(Task)
+            .filter(Task.user_id.in_(user_ids) if user_ids else False)
+            .filter(Task.voided_at.is_(None))
+            .all()
+        )
+    }
+    open_session_task_ids = {session.task_id for session, _task in open_sessions}
+
+    duplicate_open_sessions = sum(1 for count in open_by_task.values() if count > 1)
+    executing_without_open = sum(
+        1
+        for task in tasks_by_id.values()
+        if task.state == TaskState.EXECUTING
+        and task.task_id not in open_session_task_ids
+    )
+    paused_without_open = sum(
+        1
+        for task in tasks_by_id.values()
+        if task.state == TaskState.PAUSED
+        and task.task_id not in open_session_task_ids
+    )
+    executed_missing = sum(
+        1
+        for task in tasks_by_id.values()
+        if task.state == TaskState.EXECUTED
+        and (
+            task.executed_start_utc is None
+            or task.executed_end_utc is None
+            or task.executed_duration_minutes is None
+        )
+    )
+    open_for_executed = sum(
+        1
+        for session, task in open_sessions
+        if task.state == TaskState.EXECUTED and session.end_time_utc is None
+    )
+    stale_reentry_candidates = sum(
+        1
+        for session, _task in open_sessions
+        if session.paused_at_utc is not None
+        and session.paused_at_utc <= stale_pause_cutoff
+    )
+
+    task_counts_by_user = {
+        int(row.user_id): int(row.count)
+        for row in (
+            db.query(Task.user_id, func.count(Task.task_id).label("count"))
+            .filter(Task.voided_at.is_(None))
+            .group_by(Task.user_id)
+            .all()
+        )
+    }
+    executed_counts_by_user = {
+        int(row.user_id): int(row.count)
+        for row in (
+            db.query(Task.user_id, func.count(Task.task_id).label("count"))
+            .filter(Task.voided_at.is_(None), Task.state == TaskState.EXECUTED)
+            .group_by(Task.user_id)
+            .all()
+        )
+    }
+    sessions_by_user = {
+        int(row.user_id): int(row.count)
+        for row in (
+            db.query(
+                StopwatchSession.user_id,
+                func.count(StopwatchSession.session_id).label("count"),
+            )
+            .group_by(StopwatchSession.user_id)
+            .all()
+        )
+    }
+
+    stale_open_by_user = Counter()
+    open_timer_by_user = Counter()
+    for session, _task in open_sessions:
+        open_timer_by_user[int(session.user_id)] += 1
+        if session.paused_at_utc and session.paused_at_utc <= stale_pause_cutoff:
+            stale_open_by_user[int(session.user_id)] += 1
+
+    return {
+        "duplicate_open_sessions": int(duplicate_open_sessions),
+        "executing_without_open": int(executing_without_open),
+        "paused_without_open": int(paused_without_open),
+        "executed_missing": int(executed_missing),
+        "open_for_executed": int(open_for_executed),
+        "stale_reentry_candidates": int(stale_reentry_candidates),
+        "task_counts_by_user": task_counts_by_user,
+        "executed_counts_by_user": executed_counts_by_user,
+        "sessions_by_user": sessions_by_user,
+        "stale_open_by_user": stale_open_by_user,
+        "open_timer_by_user": open_timer_by_user,
+    }
+
+
 def cohort_activity_query_snapshot(
     db: Session,
     *,

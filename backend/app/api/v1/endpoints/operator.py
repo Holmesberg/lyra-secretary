@@ -16,9 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, operator_user_from_scope
 from app.db.models import (
-    StopwatchSession,
     Task,
-    TaskState,
     User,
 )
 from app.db.scoping import get_current_user_id, set_current_user_id
@@ -42,6 +40,7 @@ from app.services.operator_dashboard_metrics import (
     provider_integrity_query_snapshot as _provider_integrity_query_snapshot,
     redis_notification_snapshot as _redis_notification_snapshot_impl,
     state_invariants_snapshot as _state_invariants_snapshot,
+    task_session_state_query_snapshot as _task_session_state_query_snapshot,
     user_last_activity_maps as _user_last_activity_maps,
 )
 from app.utils.redis_client import RedisClient
@@ -135,93 +134,22 @@ def operator_dashboard_v12(
             measurement_snapshot["clean_sessions_by_user"]
         )
 
-        open_sessions = (
-            db.query(StopwatchSession, Task)
-            .join(Task, Task.task_id == StopwatchSession.task_id)
-            .filter(StopwatchSession.end_time_utc.is_(None))
-            .filter(StopwatchSession.user_id.in_(non_op_ids) if non_op_ids else False)
-            .all()
+        task_session_state = _task_session_state_query_snapshot(
+            db,
+            user_ids=non_op_ids,
+            stale_pause_cutoff=stale_pause_cutoff,
         )
-        open_by_task = Counter(session.task_id for session, _task in open_sessions)
-        tasks_by_id = {
-            task.task_id: task
-            for task in (
-                db.query(Task)
-                .filter(Task.user_id.in_(non_op_ids) if non_op_ids else False)
-                .filter(Task.voided_at.is_(None))
-                .all()
-            )
-        }
-        open_session_task_ids = {session.task_id for session, _task in open_sessions}
-        duplicate_open_sessions = sum(1 for count in open_by_task.values() if count > 1)
-        executing_without_open = sum(
-            1
-            for task in tasks_by_id.values()
-            if task.state == TaskState.EXECUTING and task.task_id not in open_session_task_ids
-        )
-        paused_without_open = sum(
-            1
-            for task in tasks_by_id.values()
-            if task.state == TaskState.PAUSED and task.task_id not in open_session_task_ids
-        )
-        executed_missing = sum(
-            1
-            for task in tasks_by_id.values()
-            if task.state == TaskState.EXECUTED
-            and (
-                task.executed_start_utc is None
-                or task.executed_end_utc is None
-                or task.executed_duration_minutes is None
-            )
-        )
-        open_for_executed = sum(
-            1
-            for session, task in open_sessions
-            if task.state == TaskState.EXECUTED and session.end_time_utc is None
-        )
-        stale_reentry_candidates = sum(
-            1
-            for session, _task in open_sessions
-            if session.paused_at_utc is not None
-            and session.paused_at_utc <= stale_pause_cutoff
-        )
-
-        task_counts_by_user = {
-            row.user_id: row.count
-            for row in (
-                db.query(Task.user_id, func.count(Task.task_id).label("count"))
-                .filter(Task.voided_at.is_(None))
-                .group_by(Task.user_id)
-                .all()
-            )
-        }
-        executed_counts_by_user = {
-            row.user_id: row.count
-            for row in (
-                db.query(Task.user_id, func.count(Task.task_id).label("count"))
-                .filter(Task.voided_at.is_(None), Task.state == TaskState.EXECUTED)
-                .group_by(Task.user_id)
-                .all()
-            )
-        }
-        sessions_by_user = {
-            row.user_id: row.count
-            for row in (
-                db.query(
-                    StopwatchSession.user_id,
-                    func.count(StopwatchSession.session_id).label("count"),
-                )
-                .group_by(StopwatchSession.user_id)
-                .all()
-            )
-        }
-
-        stale_open_by_user = Counter()
-        open_timer_by_user = Counter()
-        for session, _task in open_sessions:
-            open_timer_by_user[int(session.user_id)] += 1
-            if session.paused_at_utc and session.paused_at_utc <= stale_pause_cutoff:
-                stale_open_by_user[int(session.user_id)] += 1
+        duplicate_open_sessions = task_session_state["duplicate_open_sessions"]
+        executing_without_open = task_session_state["executing_without_open"]
+        paused_without_open = task_session_state["paused_without_open"]
+        executed_missing = task_session_state["executed_missing"]
+        open_for_executed = task_session_state["open_for_executed"]
+        stale_reentry_candidates = task_session_state["stale_reentry_candidates"]
+        task_counts_by_user = task_session_state["task_counts_by_user"]
+        executed_counts_by_user = task_session_state["executed_counts_by_user"]
+        sessions_by_user = task_session_state["sessions_by_user"]
+        stale_open_by_user = task_session_state["stale_open_by_user"]
+        open_timer_by_user = task_session_state["open_timer_by_user"]
 
         product_loop_snapshot = _product_loop_funnel_query_snapshot(
             db,
