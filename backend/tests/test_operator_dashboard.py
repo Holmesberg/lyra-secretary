@@ -635,6 +635,60 @@ def test_operator_dashboard_exposure_contamination_is_task_window_scoped(client,
     assert "operator_user_sessions" in body["measurement_integrity"]["clean_trace_ratio_basis"]["excluded_from_denominator"]
 
 
+def test_operator_dashboard_unknown_exposure_stays_dirty_denominator(client, db):
+    ids = list(range(9101, 9180))
+    _clear_ids(db, ids)
+    db.add(_user(9161, operator=True))
+    db.add(_user(9162, operator=False))
+
+    task = _task(9162, "unknown-exposure-task", state=TaskState.EXECUTED)
+    task.created_at = datetime.utcnow() - timedelta(hours=3)
+    task.planned_start_utc = task.created_at
+    task.planned_end_utc = task.planned_start_utc + timedelta(minutes=60)
+    task.executed_start_utc = task.planned_start_utc
+    task.executed_end_utc = task.planned_start_utc + timedelta(minutes=45)
+    task.executed_duration_minutes = 45
+    db.add(task)
+    db.add(
+        StopwatchSession(
+            session_id="unknown-exposure-session",
+            task_id="unknown-exposure-task",
+            user_id=9162,
+            start_time_utc=task.executed_start_utc,
+            end_time_utc=task.executed_end_utc,
+            total_paused_minutes=0.0,
+            auto_closed=False,
+        )
+    )
+    db.flush()
+
+    record_decision(
+        db,
+        user_id=9162,
+        eligible_at=task.executed_start_utc - timedelta(minutes=5),
+        delivered_at=task.executed_start_utc - timedelta(minutes=5),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="analytics_insights",
+        initiative="system",
+        trigger_source="test",
+    )
+    db.commit()
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9161))
+    assert res.status_code == 200
+    body = res.json()
+    basis = body["measurement_integrity"]["clean_trace_ratio_basis"]
+    assert basis["denominator"] == 1
+    assert basis["numerator"] == 0
+    assert body["measurement_integrity"]["clean_trace_ratio"] == 0.0
+    assert body["measurement_integrity"]["dirty_trace_count"] == 1
+    assert body["measurement_integrity"]["dirty_reasons"]["unknown_exposure"] == 1
+    assert body["measurement_integrity"]["dirty_reason_distribution"]["unknown_exposure"] == 1
+    assert body["measurement_integrity"]["dirty_reasons"]["exposure_contaminated"] == 0
+    assert body["notification_lifecycle"]["exposure_without_render_count"] >= 1
+
+
 def test_operator_dashboard_read_is_side_effect_free(client, db):
     ids = list(range(9101, 9150))
     _clear_ids(db, ids)
