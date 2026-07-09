@@ -10996,7 +10996,8 @@ Tests and verification:
   with zero count diffs, zero dashboard snapshot diffs,
   `implementation_green=true`, `cohort_status=yellow`, and
   `exposure_without_render_count=0`.
-- CI proof: pending.
+- CI proof: GitHub Actions run `29046560424` passed for
+  `9c047b0e28c926db4892c5969a444fd9f7fd391e`.
 
 Behavior parity statement:
 
