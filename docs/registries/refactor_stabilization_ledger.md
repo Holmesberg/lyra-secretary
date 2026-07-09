@@ -10026,3 +10026,67 @@ Rollback note:
   inline in `NewTaskModal`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Analytics Bias Lookup Cache Helper
+
+Seam:
+
+- `analytics-bias-lookup-cache-helper`
+
+Changed authority:
+
+- No runtime authority, exposure authority, clean-data semantics, schema, or
+  user-facing response shape changed.
+- In-memory bias lookup cache and slow-query logging moved from the analytics
+  route module into a backend service helper.
+
+Removed paths:
+
+- Removed cache storage, cache TTL handling, deep-copy return protection, and
+  slow-query logger setup from
+  `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- Analytics route thinning remains incremental.
+- Exposure emission, clean-data filters, ClaimCompiler boundaries, insight
+  translators, and analytics writer paths remain in place for later seams.
+
+Moved authority:
+
+- `backend/app/services/analytics_bias_lookup_cache.py` now owns the
+  read-only cache/logging helper for `/analytics/bias_factor/lookup`.
+- `analytics.py` still owns request validation, task eligibility query,
+  output-surface decision/suppression, response payload shape, and DB commits.
+
+Issues and classification:
+
+- No GitHub issue was created; this was planned backend read-only extraction.
+- A bare `python -m pytest backend\tests\test_output_surfaces.py -q` attempt
+  failed because the shell default Python lacked backend dependencies
+  (`fastapi`). This was classified as runner selection, and the repo pytest
+  wrapper was used for the valid proof.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_output_surfaces.py -q`;
+  passed, 29 tests.
+
+Behavior parity statement:
+
+- No intentional API behavior changed.
+- Cached responses are still deep-copied on read/write, still expire after 30
+  seconds, and slow-query logging still uses `barzakh.perf.bias_lookup`.
+- Creation-nudge exposure decision/suppression and commit behavior remained in
+  the route and stayed covered by output-surface tests.
+
+Rollback note:
+
+- Revert commit `b5dd292` to put the cache/logging helpers back in
+  `analytics.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
