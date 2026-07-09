@@ -23,17 +23,13 @@ from app.db.scoping import get_current_user_id, set_current_user_id
 from app.services.operator_dashboard_metrics import (
     STALE_PAUSE_HOURS,
     activity_dates_by_user as _activity_dates_by_user,
-    bug_watchlist_snapshot as _bug_watchlist_snapshot,
     cohort_activity_query_snapshot as _cohort_activity_query_snapshot,
-    cohort_readiness_snapshot as _cohort_readiness_snapshot,
     data_freshness_snapshot as _data_freshness_snapshot,
     is_test_or_synthetic_user as _is_test_or_synthetic_user,
     meaningful_activity_definition_snapshot as _meaningful_activity_definition_snapshot,
     measurement_integrity_snapshot as _measurement_integrity_snapshot,
     metric_confidence_snapshot as _metric_confidence_snapshot,
     notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
-    operator_recommendations_snapshot as _operator_recommendations_snapshot,
-    operator_dynamic_issues_snapshot as _operator_dynamic_issues_snapshot,
     operator_user_rows_snapshot as _operator_user_rows_snapshot,
     privacy_boundary_snapshot as _privacy_boundary_snapshot,
     product_loop_funnel_query_snapshot as _product_loop_funnel_query_snapshot,
@@ -42,6 +38,12 @@ from app.services.operator_dashboard_metrics import (
     state_invariants_snapshot as _state_invariants_snapshot,
     task_session_state_query_snapshot as _task_session_state_query_snapshot,
     user_last_activity_maps as _user_last_activity_maps,
+)
+from app.services.operator_readiness import (
+    bug_watchlist_snapshot as _bug_watchlist_snapshot,
+    cohort_readiness_snapshot as _cohort_readiness_snapshot,
+    operator_dynamic_issues_snapshot as _operator_dynamic_issues_snapshot,
+    operator_recommendations_snapshot as _operator_recommendations_snapshot,
 )
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
