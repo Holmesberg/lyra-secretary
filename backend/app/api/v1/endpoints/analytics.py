@@ -38,6 +38,16 @@ from app.services.analytics_bias_lookup_cache import (
     log_slow_bias_lookup,
     store_bias_lookup_response,
 )
+from app.services.analytics_insight_helpers import (
+    abs_minutes as _abs_minutes,
+    average as _avg,
+    build_insight_candidate as _insight,
+    category_for_insight as _category_for_insight,
+    is_historical_task as _is_historical_task,
+    median as _median,
+    not_started as _not_started,
+    time_of_day as _time_of_day,
+)
 from app.services.deadline_completion_analytics_service import deadline_completion_snapshot
 from app.services.deadline_shape_service import deadline_shape_snapshot
 from app.services.pause_prediction_analytics_service import pause_prediction_snapshot
@@ -102,22 +112,6 @@ AUTHORITY_LABELS = {
     "mutation": "Mutation",
     "operator_only_action": "Operator-only action",
 }
-
-
-def _time_of_day(local_dt) -> str:
-    h = local_dt.hour
-    if 5 <= h < 12:
-        return "morning"
-    elif 12 <= h < 17:
-        return "afternoon"
-    elif 17 <= h < 21:
-        return "evening"
-    else:
-        return "night"
-
-
-def _avg(vals: list) -> float:
-    return round(sum(vals) / len(vals), 2) if vals else 0.0
 
 
 @router.get("/analytics/discrepancy")
@@ -318,41 +312,6 @@ def get_discrepancy(db: Session = Depends(get_db)) -> dict:
             "summary": product_summary,
         },
     }
-
-
-# ---------------------------------------------------------------------------
-# Helpers shared by insights
-# ---------------------------------------------------------------------------
-
-def _confidence(n: int) -> str:
-    if n >= 11:
-        return "high"
-    if n >= 6:
-        return "medium"
-    return "low"
-
-
-def _insight(
-    id: str,
-    observation: str,
-    data_points: int,
-    strength: float = 0.0,
-    *,
-    facts: Optional[dict] = None,
-    evidence: Optional[list[dict]] = None,
-) -> dict:
-    result = {
-        "id": id,
-        "observation": observation,
-        "data_points": data_points,
-        "confidence": _confidence(data_points),
-        "strength": round(strength, 3),
-    }
-    if facts:
-        result["_facts"] = facts
-    if evidence:
-        result["evidence"] = evidence
-    return result
 
 
 def _public_insight(result: dict) -> dict:
@@ -631,48 +590,6 @@ def _eligible_tasks_for_surface_cached(
     if code is not None and code.co_argcount < 4:
         return _eligible_tasks_for_surface(db, tasks, surface_id)
     return _eligible_tasks_for_surface(db, tasks, surface_id, eligibility_cache)
-
-
-def _median(vals: list[float]) -> float:
-    if not vals:
-        return 0.0
-    s = sorted(vals)
-    n = len(s)
-    mid = n // 2
-    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2
-
-
-def _abs_minutes(value: float) -> int:
-    return int(round(abs(value)))
-
-
-def _is_historical_task(task: Task) -> bool:
-    return strip_tz(task.planned_start_utc) <= strip_tz(now_utc())
-
-
-LEGACY_CATEGORY_INSIGHT_QUARANTINE = {"work"}
-
-
-def _category_for_insight(task: Task) -> Optional[str]:
-    """Return a category only when it is safe for category-level claims.
-
-    `work` was an early default/fallback bucket used by frontend modals and
-    keyword mappings before category provenance existed. Until category
-    provenance is stored, it is too contaminated to support "best/worst
-    category" or profile-divergence claims.
-    """
-    category = (task.category or "").strip()
-    if not category:
-        return None
-    if category.lower() in LEGACY_CATEGORY_INSIGHT_QUARANTINE:
-        return None
-    if category.lower() == "uncategorized":
-        return None
-    return category
-
-
-def _not_started(task: Task) -> bool:
-    return task.state == TaskState.SKIPPED or task.initiation_status == "abandoned"
 
 
 # ---------------------------------------------------------------------------
