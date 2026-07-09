@@ -10,12 +10,18 @@ param(
 
   [switch]$CleanupOnly,
 
+  [switch]$AssumeLocalFrontendReady,
+
+  [switch]$AllowPublicFrontendArtifactMutation,
+
   [int]$LocalCurrentPort = 3013,
 
   [switch]$ProxyApi
 )
 
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "local_frontend_topology.ps1")
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Push-Location $repoRoot
@@ -52,6 +58,21 @@ try {
     $env:LYRA_API_ORIGIN = "http://localhost:8000"
   }
 
+  Write-Host "Holmesberg product-loop dogfood"
+  Write-Host "Topology: $Topology"
+  Write-Host "Frontend: $env:LYRA_FRONTEND_ORIGIN"
+  Write-Host "API: $env:LYRA_API_ORIGIN"
+  Write-Host "Proxy API: $useProxyApi"
+  Write-Host ""
+
+  if (($Topology -eq "local" -or $Topology -eq "local-current") -and -not $AssumeLocalFrontendReady) {
+    $port = if ($Topology -eq "local-current") { $LocalCurrentPort } else { 3000 }
+    Ensure-LocalFrontendDev `
+      -Reason "Holmesberg product-loop local topology proof" `
+      -Port $port `
+      -AllowPublicFrontendArtifactMutation:$AllowPublicFrontendArtifactMutation
+  }
+
   & powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_browser_cookie_env.ps1 -Account holmesberg
   if ($LASTEXITCODE -ne 0) {
     throw "Holmesberg cookie check failed."
@@ -59,6 +80,27 @@ try {
   & powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_browser_cookie_env.ps1 -Account alinassersabry
   if ($LASTEXITCODE -ne 0) {
     throw "Operator cookie check failed."
+  }
+
+  node scripts\test_browser_auth_helpers.mjs
+  if ($LASTEXITCODE -ne 0) {
+    throw "browser auth helper self-test failed with exit code $LASTEXITCODE."
+  }
+
+  $topologyArgs = @("scripts\verify_runtime_topology.mjs", "--topology", $Topology)
+  if ($Topology -eq "local-current") {
+    $topologyArgs += @(
+      "--frontend", $env:LYRA_FRONTEND_ORIGIN,
+      "--api", $env:LYRA_API_ORIGIN,
+      "--nextauth", $env:LYRA_FRONTEND_ORIGIN
+    )
+    if ($useProxyApi) {
+      $topologyArgs += "--proxy-api"
+    }
+  }
+  node @topologyArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "runtime topology verifier failed with exit code $LASTEXITCODE."
   }
 
   $args = @(
