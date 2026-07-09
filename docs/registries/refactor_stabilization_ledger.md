@@ -9593,3 +9593,69 @@ Rollback note:
   deadline-preview effect inline in `NewTaskModal`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Backend Pytest Wrapper Harness Hardening
+
+Wave:
+
+- Branch: `refactor/freeze-closure`.
+- Seam: S1c verifier/harness hardening.
+- Commit: `4ba2cf7058bfb99d9e0d09dff974ffad5680f46f`
+  (`scripts: add backend pytest wrapper`).
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Local backend test invocation now has an explicit repo-environment wrapper:
+  `scripts/run_backend_pytest.ps1`.
+
+Removed paths:
+
+- No runtime path removed.
+- The unsafe habit of relying on ambient `pytest` resolution is deprecated for
+  local proof commands.
+
+Parked paths:
+
+- CI backend test semantics remain unchanged in this seam.
+- Full post-wave wrapper, hosted-public proof, public deploy/restart, schema
+  changes, and runtime behavior remain untouched.
+
+Moved authority:
+
+- No app, mutation, exposure, clean-data, provider, task, timer, schema, Redis,
+  or deployment authority moved.
+- Harness interpreter selection is now owned by a small wrapper that prefers
+  `.venv311\Scripts\python.exe` and sets `PYTHONPATH` to `backend`.
+
+Issues and classification:
+
+- GitHub issue: #183, `Verifier: local backend pytest can use wrong Python`.
+- Classification: verifier/harness bug.
+- Trigger: bare `pytest` resolved to a non-repo Python without FastAPI during
+  the deadline-preview hook seam; the same targeted suite passed through the
+  repo venv.
+
+Tests and verification:
+
+- PowerShell parser check for `scripts/run_backend_pytest.ps1`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_parse_deadline_preview.py -q`;
+  passed, 13 tests.
+- `git diff --check`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- No DB write, schema migration, Redis state, production data repair,
+  hosted-public artifact mutation, public deploy/restart, or operator-account
+  product mutation occurred.
+
+Rollback note:
+
+- Revert commit `4ba2cf7058bfb99d9e0d09dff974ffad5680f46f` to remove the local
+  backend pytest wrapper.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
