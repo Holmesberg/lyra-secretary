@@ -41,8 +41,11 @@ import {
   type IntegrationStatus,
 } from "@/lib/integrations";
 import {
-  invalidateCalendarEventQueries,
-  invalidateDeadlineQueries,
+  invalidateIntegrationAccountCaches,
+  invalidateIntegrationDisconnectCaches,
+  invalidateIntegrationStatusCaches,
+  invalidateMoodleConnectCaches,
+  invalidateMoodleFeedSyncCaches,
   queryKeys,
 } from "@/lib/query-keys";
 
@@ -95,8 +98,7 @@ export function IntegrationsSection() {
         kind: "success",
         title: `${humanName(connected)} connected.`,
       });
-      qc.invalidateQueries({ queryKey: queryKeys.integrations });
-      qc.invalidateQueries({ queryKey: queryKeys.me });
+      void invalidateIntegrationAccountCaches(qc);
       cleanQueryParams();
     } else if (errored) {
       const text = ERROR_COPY[reason] || "Something went wrong connecting.";
@@ -131,9 +133,7 @@ export function IntegrationsSection() {
     setCardErrors((e) => ({ ...e, [id]: undefined }));
     try {
       await disconnectIntegration(id);
-      qc.invalidateQueries({ queryKey: queryKeys.integrations });
-      qc.invalidateQueries({ queryKey: queryKeys.me });
-      invalidateCalendarEventQueries(qc);
+      void invalidateIntegrationDisconnectCaches(qc);
       setBanner({
         kind: "success",
         title: `${humanName(id)} disconnected.`,
@@ -230,10 +230,7 @@ export function IntegrationsSection() {
                     setIcalSyncBusy(true);
                     try {
                       const res = await syncMoodleNow();
-                      qc.invalidateQueries({
-                        queryKey: queryKeys.integrations,
-                      });
-                      qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+                      void invalidateMoodleFeedSyncCaches(qc);
                       const created = res.created ?? 0;
                       const updated = res.updated ?? 0;
                       const parts: string[] = [];
@@ -261,10 +258,7 @@ export function IntegrationsSection() {
                     setWsSyncBusy(true);
                     try {
                       const res = await syncMoodleWSNow();
-                      qc.invalidateQueries({
-                        queryKey: queryKeys.integrations,
-                      });
-                      qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+                      void invalidateMoodleFeedSyncCaches(qc);
                       const backfilled =
                         res.backfilled_completed +
                         (res.backfilled_completion_candidates ?? 0) +
@@ -307,9 +301,7 @@ export function IntegrationsSection() {
                     setWsDisconnectBusy(true);
                     try {
                       await disconnectMoodleWS();
-                      qc.invalidateQueries({
-                        queryKey: queryKeys.integrations,
-                      });
+                      void invalidateIntegrationStatusCaches(qc);
                       setBanner({
                         kind: "success",
                         title: "Submission auto-detect disconnected.",
@@ -338,9 +330,7 @@ export function IntegrationsSection() {
           }
           existingWSConnected={!!stateById.get("moodle")?.ws_connected}
           onConnected={(result) => {
-            qc.invalidateQueries({ queryKey: queryKeys.integrations });
-            qc.invalidateQueries({ queryKey: queryKeys.deadlines });
-            invalidateDeadlineQueries(qc);
+            void invalidateMoodleConnectCaches(qc);
             const ical = result?.ical ?? null;
             const wsOn = !!result?.ws;
             const parts: string[] = [];

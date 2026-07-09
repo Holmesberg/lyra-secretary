@@ -136,3 +136,35 @@ export function invalidatePressureRecoveryCommitCaches(queryClient: QueryClient)
     queryKeys.deadlines,
   ]);
 }
+
+export function invalidateIntegrationAccountCaches(queryClient: QueryClient) {
+  return invalidateKeys(queryClient, [
+    queryKeys.integrations,
+    queryKeys.me,
+  ]);
+}
+
+export function invalidateIntegrationStatusCaches(queryClient: QueryClient) {
+  return invalidateKeys(queryClient, [queryKeys.integrations]);
+}
+
+export function invalidateIntegrationDisconnectCaches(queryClient: QueryClient) {
+  return Promise.all([
+    invalidateIntegrationAccountCaches(queryClient),
+    invalidateCalendarEventQueries(queryClient),
+  ]);
+}
+
+export function invalidateMoodleFeedSyncCaches(queryClient: QueryClient) {
+  return invalidateKeys(queryClient, [
+    queryKeys.integrations,
+    queryKeys.deadlines,
+  ]);
+}
+
+export function invalidateMoodleConnectCaches(queryClient: QueryClient) {
+  return Promise.all([
+    invalidateMoodleFeedSyncCaches(queryClient),
+    invalidateDeadlineQueries(queryClient),
+  ]);
+}

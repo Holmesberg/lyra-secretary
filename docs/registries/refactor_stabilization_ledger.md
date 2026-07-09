@@ -10541,3 +10541,73 @@ Rollback note:
   `ActiveTimerBanner` again.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Integrations Cache Invalidation Contract
+
+Seam:
+
+- `integrations-cache-invalidation-contract`
+
+Changed authority:
+
+- No provider credential authority, provider sync authority, task/deadline
+  authority, schema, Redis behavior, hosted-public deployment state, or
+  readiness denominator changed.
+- Settings Integrations remains the user-facing connection/sync surface.
+
+Removed paths:
+
+- Removed repeated inline integrations/deadlines/user/cache invalidation calls
+  from `frontend/components/integrations-section.tsx`.
+
+Parked paths:
+
+- Provider connection model remains parked.
+- Disposable provider-credential browser mutation proof remains gated.
+- Backend provider sync/idempotency extraction remains parked.
+
+Moved authority:
+
+- `frontend/lib/query-keys.ts` now owns named cache invalidation contracts for:
+  - integration account cache refresh after OAuth redirect;
+  - integration disconnect cache refresh including calendar-event queries;
+  - Moodle feed sync cache refresh;
+  - Moodle connect cache refresh including deadline predicate invalidation;
+  - integration status-only refresh for Moodle WS disconnect.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned frontend behavior-preserving
+  extraction for the explicitly carried integrations cache-invalidation
+  surface.
+- Mutable provider credential dogfood was not run because disposable
+  Moodle/Google credentials remain gated by the verification plan.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- Operator read-only local-current proof:
+  `tmp/operator-readonly-stress-2026-07-09T19-11-58-426Z/result.json`; passed
+  with zero count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`, and
+  `exposure_without_render_count=0`.
+
+Behavior parity statement:
+
+- No intentional user-visible or data-write behavior changed.
+- Each integration action invalidates the same cache families as before:
+  OAuth callback refreshes integrations and current-user state; disconnect
+  refreshes integrations/current-user plus calendar events; Moodle iCal/WS sync
+  refreshes integrations and deadlines; Moodle connect refreshes integrations,
+  deadlines, and deadline predicate queries; Moodle WS disconnect refreshes
+  integrations only.
+
+Rollback note:
+
+- Revert the integrations cache invalidation commit to inline the invalidation
+  calls in `IntegrationsSection` again.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
