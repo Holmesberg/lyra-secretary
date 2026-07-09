@@ -10090,3 +10090,66 @@ Rollback note:
   `analytics.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Analytics Insight Helper Extraction
+
+Seam:
+
+- `analytics-insight-helper-extraction`
+
+Changed authority:
+
+- No runtime authority, exposure lifecycle authority, clean-data semantics,
+  schema, Redis behavior, or user-facing response shape changed.
+- Pure insight-generator helper mechanics moved out of the analytics route.
+
+Removed paths:
+
+- Removed local helper definitions for time-of-day bucketing, averages,
+  confidence labels, insight candidate construction, median/absolute-minute
+  formatting, historical-task checks, safe category eligibility, and
+  not-started checks from `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- Public insight translation, exposure render snapshots, Rule 11 hold/reopen
+  logic, eligibility filtering, output-surface decisions, suppression writes,
+  and DB commit boundaries remain in `analytics.py`.
+- Deeper analytics route thinning remains parked until a future declared seam.
+
+Moved authority:
+
+- `backend/app/services/analytics_insight_helpers.py` now owns the pure helper
+  functions used by analytics insight generators.
+- `analytics.py` keeps the private alias names so existing tests and endpoint
+  generator behavior remain stable.
+
+Issues and classification:
+
+- No GitHub issue was created; this was planned backend read-only extraction.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_insights.py -q`;
+  passed, 19 tests.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_output_surfaces.py -q`;
+  passed, 29 tests.
+
+Behavior parity statement:
+
+- No intentional API or user-visible behavior changed.
+- Insight generator candidate structure, confidence labels, category
+  quarantine for legacy `work`, historical-task checks, not-started checks,
+  public insight translation, and output-surface exposure behavior remain
+  covered by existing tests.
+
+Rollback note:
+
+- Revert commit `c113ea6` to restore the pure helper definitions inline in
+  `analytics.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
