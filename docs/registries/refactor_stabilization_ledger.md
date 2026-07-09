@@ -9829,3 +9829,69 @@ Rollback note:
   elapsed-clock state/effects inline in `ActiveTimerBanner`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Product Loop Local-Current Readiness Gate
+
+Seam:
+
+- `product-loop-local-current-readiness`
+
+Changed authority:
+
+- No product/runtime, mutation, exposure, provider, clean-data, schema, or
+  user-facing authority changed.
+- The Holmesberg product-loop wrapper now owns local-current readiness checks
+  before it delegates to the mutable browser script.
+
+Removed paths:
+
+- Removed the wrapper's ability to enter the browser product loop on
+  `local-current` without first proving browser auth helpers and runtime
+  topology.
+
+Parked paths:
+
+- Full product-loop execution remains proportional to user-facing seams.
+- Hosted-public mutable dogfood remains approval-gated.
+
+Moved authority:
+
+- Local-current frontend startup/readiness remains in
+  `scripts/local_frontend_topology.ps1`.
+- `scripts/run_holmesberg_product_loop_dogfood.ps1` now calls that helper, the
+  browser auth helper self-test, and the runtime topology verifier before
+  running the browser loop.
+
+Issues and classification:
+
+- Fixed GitHub issue #184.
+- Classification: verifier/harness plus topology trust.
+- Root cause: the product-loop wrapper could trust a stale or non-current local
+  frontend and then fail inside the browser path instead of failing closed as a
+  topology/verifier issue before mutation.
+
+Tests and verification:
+
+- PowerShell parser check for
+  `scripts/run_holmesberg_product_loop_dogfood.ps1`; passed.
+- `git diff --check`; passed.
+- Negative topology proof:
+  `tmp/negative-product-loop-local-current-topology.json` failed closed for a
+  `local-current` proof pointed at `https://lyraos.org`.
+- Cleanup-only Holmesberg local-current wrapper proof:
+  `tmp/browser-product-loop/product-loop-local-current-readiness-cleanup/result.json`
+  passed with real Holmesberg and operator cookies, auth helper self-test,
+  runtime topology verifier, browser cleanup path, and no active timer residue.
+
+Behavior parity statement:
+
+- No intentional app behavior changed.
+- The mutable product-loop browser script is unchanged; only the wrapper's
+  preflight trust checks changed.
+- Cleanup-only proof created no new synthetic product rows.
+
+Rollback note:
+
+- Revert commit `2be9779` to remove the wrapper preflight checks.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
