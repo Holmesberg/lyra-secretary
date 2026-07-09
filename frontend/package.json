@@ -9,7 +9,7 @@
     "build:public": "node scripts/public-topology.mjs build",
     "start": "node --dns-result-order=ipv4first --no-network-family-autoselection node_modules/next/dist/bin/next start",
     "start:public": "node scripts/public-topology.mjs start",
-    "typecheck": "tsc --noEmit --pretty false",
+    "typecheck": "node scripts/typecheck.mjs",
     "lint": "npm run typecheck"
   },
   "dependencies": {
