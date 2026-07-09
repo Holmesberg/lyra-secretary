@@ -9895,3 +9895,61 @@ Rollback note:
 - Revert commit `2be9779` to remove the wrapper preflight checks.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - R5a Archived Historical Agent Handoff
+
+Seam:
+
+- `r5a-archive-agent-handoff`
+
+Changed authority:
+
+- No runtime, product, mutation, exposure, provider, clean-data, schema, or
+  user-facing authority changed.
+- The stale agent handoff document moved out of the active docs root into
+  `docs/archive/`.
+
+Removed paths:
+
+- Removed `docs/AGENT_HANDOFF.md` from the default active docs lane.
+
+Parked paths:
+
+- Broader repo reorganization remains parked.
+- Other stale docs remain bannered and scanner-gated until a small archive move
+  is justified.
+
+Moved authority:
+
+- `docs/archive/AGENT_HANDOFF.md` remains historical onboarding context only.
+- `docs/current_transition_state.md` and `scripts/scan_refactor_contracts.py`
+  now point at the archived path.
+
+Issues and classification:
+
+- No GitHub issue was created; this was planned R5a docs/authority cleanup.
+- Historical audit and ledger references to `docs/AGENT_HANDOFF.md` were left
+  intact as historical records, not active pointers.
+
+Tests and verification:
+
+- `python scripts/scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `git diff --check`; passed.
+- Active reference audit:
+  `rg -n "docs/AGENT_HANDOFF\\.md" docs scripts README.md MANIFESTO.md -g "!docs/audits/**" -g "!docs/registries/refactor_stabilization_ledger.md"`;
+  returned no matches.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- No runtime docs were promoted.
+- The scanner continues to require the handoff's freeze/subordination banner at
+  its archived path.
+
+Rollback note:
+
+- Revert commits `fa145f1` and `5e4c981` to restore the handoff file in the
+  root docs lane and reset active pointers.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
