@@ -36,13 +36,13 @@ from app.services.operator_dashboard_metrics import (
     bug_watchlist_snapshot as _bug_watchlist_snapshot,
     cohort_readiness_snapshot as _cohort_readiness_snapshot,
     data_freshness_snapshot as _data_freshness_snapshot,
-    dynamic_issue as _dynamic_issue,
     is_test_or_synthetic_user as _is_test_or_synthetic_user,
     meaningful_activity_definition_snapshot as _meaningful_activity_definition_snapshot,
     metric_confidence_snapshot as _metric_confidence_snapshot,
     metric_meta as _metric_meta,
     notification_lifecycle_snapshot as _notification_lifecycle_snapshot,
     operator_recommendations_snapshot as _operator_recommendations_snapshot,
+    operator_dynamic_issues_snapshot as _operator_dynamic_issues_snapshot,
     operator_user_rows_snapshot as _operator_user_rows_snapshot,
     pct as _pct,
     privacy_boundary_snapshot as _privacy_boundary_snapshot,
@@ -695,225 +695,22 @@ def operator_dashboard_v12(
 
         metric_confidence = _metric_confidence_snapshot()
 
-        dynamic_issues: list[dict[str, Any]] = []
-
-        if any(
-            bool(privacy_boundary[key])
-            for key in (
-                "raw_task_titles_exposed",
-                "raw_emails_exposed",
-                "provider_tokens_exposed",
-                "raw_provider_urls_exposed",
-                "user_debug_mode_enabled",
-            )
-        ):
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="privacy_boundary_violation",
-                severity="critical",
-                message="Privacy boundary violation detected.",
-                suggested_action="Remove the leaking field before cohort expansion.",
-                related_section="privacy_boundary",
-                blocks_cohort_expansion=True,
-            ))
-        if notification_counts["internal_copy_leak_count"] > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="operator_or_internal_copy_visible_to_users",
-                severity="critical",
-                message="Operator or internal diagnostic copy is visible in the web queue.",
-                suggested_action="Split or filter notification channels before inviting users.",
-                related_section="notification_lifecycle",
-                blocks_cohort_expansion=True,
-                tags=["K01"],
-            ))
-        duplicate_type_counts = notification_lifecycle["duplicate_prompt_type_counts"]
-        timer_overflow_duplicate_count = int(duplicate_type_counts.get("timer_overflow", 0))
-        non_timer_duplicate_count = (
-            int(notification_lifecycle["duplicate_prompt_count"])
-            - timer_overflow_duplicate_count
+        dynamic_issues = _operator_dynamic_issues_snapshot(
+            privacy_boundary=privacy_boundary,
+            notification_counts=notification_counts,
+            notification_lifecycle=notification_lifecycle,
+            duplicate_open_sessions=duplicate_open_sessions,
+            executing_without_open=executing_without_open,
+            paused_without_open=paused_without_open,
+            executed_missing=executed_missing,
+            open_for_executed=open_for_executed,
+            stale_reentry_candidates=stale_reentry_candidates,
+            clean_trace_ratio=clean_trace_ratio,
+            data_freshness=data_freshness,
+            state_invariants=state_invariants,
+            product_loop_funnel=product_loop_funnel,
+            provider_integrity=provider_integrity,
         )
-        if timer_overflow_duplicate_count > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="duplicate_timer_overflow_prompt",
-                severity="critical",
-                message=(
-                    f"Duplicate timer overflow prompts were detected ({timer_overflow_duplicate_count})."
-                ),
-                suggested_action="Fix timer overflow dedupe and lifecycle accounting.",
-                related_section="notification_lifecycle",
-                blocks_cohort_expansion=True,
-                tags=["K02"],
-            ))
-        if non_timer_duplicate_count > 0:
-            non_timer_types = {
-                key: value
-                for key, value in duplicate_type_counts.items()
-                if key != "timer_overflow" and value
-            }
-            top_type = next(iter(non_timer_types), "notification")
-            dynamic_issues.append(_dynamic_issue(
-                issue_id=f"duplicate_pending_{top_type}_prompt",
-                severity="critical",
-                message=(
-                    f"Duplicate pending {top_type} prompts were detected ({non_timer_duplicate_count})."
-                ),
-                suggested_action=(
-                    "Fix source dedupe metadata or clear stale pending prompts after verification."
-                ),
-                related_section="notification_lifecycle",
-                blocks_cohort_expansion=True,
-            ))
-        if notification_lifecycle["exposure_without_render_count"] > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="exposure_records_without_render_evidence",
-                severity="critical",
-                message=(
-                    f"Exposure ledger contains {notification_lifecycle['exposure_without_render_count']} actionable exposure records without render or suppression evidence."
-                ),
-                suggested_action=(
-                    "Do not treat exposure-influenced metrics as valid until render linkage is reconciled."
-                ),
-                related_section="notification_lifecycle",
-                blocks_cohort_expansion=True,
-            ))
-        if duplicate_open_sessions > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="duplicate_open_sessions",
-                severity="critical",
-                message="A task has more than one open stopwatch session.",
-                suggested_action="Repair the state transition path that created duplicate sessions.",
-                related_section="state_invariants",
-                blocks_cohort_expansion=True,
-            ))
-        if executing_without_open > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="executing_tasks_without_open_session",
-                severity="critical",
-                message="Executing tasks exist without an open stopwatch session.",
-                suggested_action="Repair task/session state coherence before cohort expansion.",
-                related_section="state_invariants",
-                blocks_cohort_expansion=True,
-            ))
-        if paused_without_open > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="paused_tasks_without_open_session",
-                severity="critical",
-                message="Paused tasks exist without an open stopwatch session.",
-                suggested_action="Repair task/session state coherence before cohort expansion.",
-                related_section="state_invariants",
-                blocks_cohort_expansion=True,
-            ))
-        if executed_missing > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="executed_tasks_missing_execution_interval",
-                severity="critical",
-                message="Executed tasks are missing start, end, or duration fields.",
-                suggested_action="Backfill or repair execution intervals before using the data.",
-                related_section="state_invariants",
-                blocks_cohort_expansion=True,
-            ))
-        if open_for_executed > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="open_sessions_for_executed_tasks",
-                severity="critical",
-                message="Executed tasks still have open stopwatch sessions.",
-                suggested_action="Close or repair the orphaned sessions before cohort expansion.",
-                related_section="state_invariants",
-                blocks_cohort_expansion=True,
-            ))
-        if stale_reentry_candidates > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="stale_paused_sessions_need_resolution",
-                severity="critical",
-                message="Stale paused sessions need an explicit user resolution path.",
-                suggested_action="Route stale pauses through reflection resolution.",
-                related_section="state_invariants",
-                blocks_cohort_expansion=True,
-                tags=["K04"],
-            ))
-        if clean_trace_ratio is None:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="no_closed_sessions_for_trace_ratio",
-                severity="warning",
-                message="Clean trace ratio is not available because there are no eligible closed sessions.",
-                suggested_action="Treat cohort readiness as dogfood-only until closed-session evidence exists.",
-                related_section="measurement_integrity",
-                blocks_cohort_expansion=False,
-            ))
-        elif clean_trace_ratio < READINESS_RED_TRACE_RATIO:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="clean_trace_ratio_below_60_percent",
-                severity="critical",
-                message="Clean trace ratio is below 60 percent.",
-                suggested_action="Fix the largest dirty reason bucket before cohort expansion.",
-                related_section="measurement_integrity",
-                blocks_cohort_expansion=True,
-            ))
-        elif clean_trace_ratio < READINESS_GREEN_TRACE_RATIO:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="clean_trace_ratio_between_60_and_80_percent",
-                severity="warning",
-                message="Clean trace ratio is between 60 and 80 percent.",
-                suggested_action="Dogfood only until clean trace ratio reaches the green threshold.",
-                related_section="measurement_integrity",
-                blocks_cohort_expansion=False,
-            ))
-        if notification_lifecycle["not_instrumented_fields"]:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="notification_lifecycle_partially_not_instrumented",
-                severity="warning",
-                message="Notification lifecycle has fields that are not instrumented.",
-                suggested_action="Do not infer safety from missing lifecycle fields.",
-                related_section="notification_lifecycle",
-                blocks_cohort_expansion=False,
-            ))
-        if "notifications_last_seen_at" in data_freshness["stale_sources"]:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="notification_source_freshness_not_instrumented",
-                severity="warning",
-                message="Notification lifecycle freshness is not instrumented.",
-                suggested_action=(
-                    "Treat notification lifecycle counts as incomplete until notification source freshness is recorded."
-                ),
-                related_section="data_freshness",
-                blocks_cohort_expansion=False,
-            ))
-        if state_invariants["invalid_recovery_actions_seen"] is None:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="invalid_recovery_actions_not_instrumented",
-                severity="warning",
-                message="Invalid recovery actions are not instrumented.",
-                suggested_action="Keep K03 as unknown until invalid recovery attempts are counted.",
-                related_section="state_invariants",
-                blocks_cohort_expansion=False,
-                tags=["K03"],
-            ))
-        if product_loop_funnel["dropoff_points"]:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="product_loop_dropoff_detected",
-                severity="warning",
-                message="Product loop has a major funnel dropoff.",
-                suggested_action="Inspect the dropoff before reading loop metrics as healthy.",
-                related_section="product_loop_funnel",
-                blocks_cohort_expansion=False,
-            ))
-        if provider_integrity["provider_rows_missing_provenance"] > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="provider_rows_missing_provenance",
-                severity="warning",
-                message="Provider rows are missing provenance.",
-                suggested_action="Fix provider provenance before relying on provider-derived metrics.",
-                related_section="provider_integrity",
-                blocks_cohort_expansion=False,
-            ))
-        if provider_integrity["provider_truth_violations"] > 0:
-            dynamic_issues.append(_dynamic_issue(
-                issue_id="provider_truth_violation",
-                severity="critical",
-                message="Provider evidence appears to have completed canonical deadlines.",
-                suggested_action="Reconcile provider completion rows as candidates or add explicit user confirmation evidence.",
-                related_section="provider_integrity",
-                blocks_cohort_expansion=True,
-            ))
 
         bug_watchlist = _bug_watchlist_snapshot(dynamic_issues)
 
