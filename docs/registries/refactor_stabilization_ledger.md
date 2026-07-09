@@ -9296,3 +9296,75 @@ Rollback note:
   inline deadline-shape computation in `analytics.py`.
 - No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
   required.
+
+## 2026-07-09 - Deadline Completion Read-Only Service Extraction
+
+Wave:
+
+- Branch: `refactor/freeze-closure`.
+- Seam: backend read-only analytics helper extraction.
+- Commit: `3cdbf88f618c2906cbe7d97be37a8a6b23d7b9e7`.
+
+Changed authority:
+
+- No product mutation authority changed.
+- `/v1/analytics/deadline-completions` remains the public API surface and
+  still owns request scoping through `get_current_user_id()`.
+- Deadline completion event aggregation moved behind
+  `deadline_completion_analytics_service.deadline_completion_snapshot`.
+
+Removed paths:
+
+- Removed inline deadline-completion query/projection code from
+  `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- Deadline authority remains with `DeadlineManager` and provider-aware deadline
+  normalizers.
+- Deadline completion events remain append-only completion/submission traces,
+  not stopwatch execution truth.
+- Writer extraction, schema changes, production repair, hosted mutable dogfood,
+  public deploy/restart, and rebrand/domain migration remain blocked without
+  approval.
+
+Moved authority:
+
+- Pure read-only deadline completion aggregation moved from the route body into
+  `backend/app/services/deadline_completion_analytics_service.py`.
+- No mutation, exposure, provider, clean-data, notification, task, timer,
+  schema, Redis, deployment, or ClaimCompiler authority moved.
+
+Issues and classification:
+
+- No GitHub issue was created because this was proactive backend extraction,
+  not a discovered bug.
+- Classification: product/runtime read-only refactor.
+
+Tests and verification:
+
+- `git diff --check`; passed.
+- `python -m py_compile backend/app/api/v1/endpoints/analytics.py backend/app/services/deadline_completion_analytics_service.py`;
+  passed.
+- `PYTHONPATH=backend pytest backend/tests/test_deadline_completion_events.py -q`;
+  passed, 5 tests.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `python scripts/scan_refactor_contracts.py --fail-on-errors`; passed.
+
+Behavior parity statement:
+
+- No user-facing product behavior intentionally changed.
+- `/v1/analytics/deadline-completions` path, parameters, response shape, user
+  scoping, voided-row filtering, external-source default, behavior-count versus
+  distinct-deadline split, and completion-trace-not-execution-truth semantics
+  are preserved.
+- No DB write, schema, production data, Redis state, hosted-public artifact, or
+  public runtime changed.
+
+Rollback note:
+
+- Revert commit `3cdbf88f618c2906cbe7d97be37a8a6b23d7b9e7` to restore the
+  inline deadline completion aggregation in `analytics.py`.
+- No data, schema, Redis, hosted-public deploy, or user cleanup rollback is
+  required.
