@@ -141,6 +141,40 @@ Baseet and Moodle are provider edges. They may preserve local vocabulary for UI,
 but Cortex, clean-data admission, ClaimCompiler, and adaptive logic must consume
 provider-blind primitives.
 
+### Standing Freeze Doctrine
+
+These rules apply to every freeze-closure seam, even when a seam-specific plan
+does not repeat them:
+
+- Freeze remains active. Do not add runtime AI synthesis,
+  OpenClaw-to-product GPT wiring, new user-facing insight types,
+  behavior-transition equations, causal pressure-return claims,
+  productivity/focus/motivation/avoidance scores, passive tracking, new
+  provider adapters, schema migrations, or new public behavioral claims without
+  explicit user approval and a new plan.
+- Exposure doctrine is global. Queue insertion is not exposure. Delivery is not
+  exposure. Browser render creates render truth. Dismissal, acknowledgement,
+  action, expiry, suppression, or `lost_unrendered` create terminal
+  lifecycle/outcome truth. No seam may treat queued, delivered, or pending
+  disappearance as render proof.
+- Verification account roles are fixed. `LYRA_COOKIE_ALINASSERSABRY` is the
+  legacy env name for the operator account and must remain read-only. It may
+  verify `/operator`, topology, privacy, and readiness only. It must never
+  create/edit/delete tasks, start timers, acknowledge notifications, dismiss
+  user-facing surfaces, or mutate product state.
+- `LYRA_COOKIE_HOLMESBERG` is the legacy env name for the mutable chaos/dogfood
+  account. It may create tasks, deadlines, timers, brain dumps, pressure-map
+  previews, and other synthetic rows only with unique prefixes and
+  cleanup/void proof.
+- Browser verification must use real account cookies unless a test is
+  explicitly labeled fixture-only. Mocked auth, API interception, seeded
+  fixtures, and local-current proxying may support proof, but they must be
+  labeled and may not be cited as hosted-public user proof.
+- Cleanup is part of verification, not cleanup after verification. A mutable
+  browser run is incomplete until synthetic rows, timers, Redis/runtime residue,
+  and gated cleanup gaps are recorded as cleaned, voided, or explicitly
+  harmless.
+
 ---
 
 ## 5. Review Rule

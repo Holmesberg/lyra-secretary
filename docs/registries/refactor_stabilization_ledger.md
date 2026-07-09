@@ -11881,3 +11881,58 @@ Rollback note:
 - Revert commit `66d4238` to remove the static manifest contract gate from CI.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Canonical Standing Freeze Doctrine
+
+Seam:
+
+- `canonical-standing-freeze-doctrine`
+
+Changed authority:
+
+- `docs/AUTHORITY.md` now explicitly carries the standing freeze doctrine that
+  was previously distributed across plans, runbooks, and ledger history.
+- No runtime behavior, schema, deployment state, product copy, account cookie
+  name, or domain changed.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Rebrand/domain migration remains parked.
+- Runtime AI synthesis, OpenClaw-to-product GPT wiring, new user-facing
+  insights, behavior-transition equations, causal pressure-return claims,
+  productivity/focus/motivation/avoidance scores, passive tracking, new
+  provider adapters, schema migrations, and new public behavioral claims remain
+  forbidden without explicit approval and a new plan.
+
+Moved authority:
+
+- The global exposure doctrine, operator/Holmesberg account-role split, real
+  cookie requirement, and cleanup-as-verification rule are now canonical in
+  `docs/AUTHORITY.md`.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R5a docs/authority cleanup.
+- Classification: documentation/authority hardening.
+
+Tests and verification:
+
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors`; passed.
+- `rg -n -i "barzakh" .`; returned no repo matches.
+
+Behavior parity statement:
+
+- No app behavior, browser route, API behavior, proof wrapper behavior, runtime
+  host, env var, or public deployment changed.
+
+Rollback note:
+
+- Revert this docs-only seam to remove the canonical standing doctrine block
+  from `docs/AUTHORITY.md`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
