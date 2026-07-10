@@ -15982,3 +15982,70 @@ Rollback note:
 - Revert commit `0a447a6` to remove the delete-confirmation contract gate.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - OpenClaw Response Confirmation And Intent Contract Gate
+
+Seam:
+
+- `openclaw-response-confirmation-intent-contract`
+
+Changed authority:
+
+- No live OpenClaw runtime authority was added.
+- Added a CI-enforced contract proving the historical OpenClaw skill must not
+  confirm scheduling or timer success without backend response evidence.
+- The contract preserves the routing distinction between scheduling
+  (`POST /v1/create` returning `task_id`) and timer start
+  (`POST /v1/stopwatch/start` returning `session_id`/`task_id`).
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- OpenClaw direct product mutation remains parked.
+- Model-switch/rate-limit runtime recovery remains parked until a live
+  authenticated/audited OpenClaw command path is explicitly reauthorized.
+- OpenClaw-to-product runtime wiring remains parked.
+
+Moved authority:
+
+- No authority moved.
+- Backend API responses remain the evidence source for user-facing success
+  confirmation; model text or memory does not become product truth.
+
+Issues and classification:
+
+- Fixed GitHub issue #106:
+  `https://github.com/Holmesberg/lyra-secretary/issues/106`.
+- Fixed GitHub issue #105:
+  `https://github.com/Holmesberg/lyra-secretary/issues/105`.
+- Classification: verifier/CI guard for old agent-originated false-success
+  and wrong-intent-routing bug classes.
+
+Tests and verification:
+
+- `node scripts\test_openclaw_response_confirmation_contract.mjs`; passed.
+- `node scripts\test_openclaw_response_confirmation_contract.mjs --self-test-negative`;
+  passed by failing the broken fixture as expected.
+- Adjacent OpenClaw gates also passed locally:
+  `test_openclaw_conflict_force_contract.mjs`,
+  `test_openclaw_stopwatch_task_id_contract.mjs`, and
+  `test_openclaw_freeze_boundary_contract.mjs`.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29087418235` passed for
+  `c45b7df110a2d5214444205050c688ffce56ca88`.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public
+  deployment behavior, rebrand/domain state, or user-facing copy changed.
+- The seam only makes existing historical OpenClaw response-evidence and
+  intent-routing guardrails mechanically observable in CI.
+
+Rollback note:
+
+- Revert commit `c45b7df` to remove the response-confirmation contract gate.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
