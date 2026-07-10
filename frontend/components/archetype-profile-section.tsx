@@ -11,7 +11,7 @@
  * captures a single moment of the user (could be finals stress, sleep
  * deprivation, etc.) — naming an archetype before LyraOS has watched the
  * user actually work overfits transient state into something that reads
- * as identity. MANIFESTO §VT-25 + docs/building_phases.md:167 specify
+ * as identity. MANIFESTO §VT-25 + docs/archive/legacy/planning/building_phases.md:167 specify
  * sessions 5-7 as the reveal threshold; below that we show "settling
  * in" copy and hide the label entirely. The bias_factor blend still
  * uses the prior internally — we just don't surface the name.

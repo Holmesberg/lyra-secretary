@@ -12,7 +12,7 @@ current architecture.
 For the academic-provider version of this doctrine, including Baseet/LMS
 adapter boundaries, passive activity traces, and the rule that planning
 calibration requires accepted intention, see
-`docs/academic_execution_substrate.md`.
+`docs/archive/legacy/provider_academic/academic_execution_substrate.md`.
 
 ---
 

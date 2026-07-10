@@ -70,7 +70,7 @@ Examples:
 
 - `docs/single_authority_contract.md`
 - `docs/operator_dashboard_contract.md`
-- `docs/provider_adapter_contract.md` as a boundary document only; it does not
+- `docs/archive/legacy/provider_academic/provider_adapter_contract.md` as a historical boundary document only; it does not
   authorize new adapters during freeze
 - `docs/academic_pressure_map_contract.md`
 - `docs/stale_session_recovery_policy.md`
@@ -82,7 +82,7 @@ These can guide current work only when subordinate to the active authority
 chain:
 
 - `docs/runbooks/post_wave_dogfood_loop.md`
-- `docs/core_product_loop_wave_plan.md` as historical/subordinate context
+- `docs/archive/legacy/planning/core_product_loop_wave_plan.md` as historical/subordinate context
 - `docs/architecture_freeze_priority_hold_2026_05_20.md`
 - `docs/audits/refactor_spaghetti_audit_2026_06_29.md` as ordering input only
 
@@ -91,13 +91,13 @@ chain:
 These preserve project memory but cannot authorize runtime work by themselves:
 
 - `docs/archive/AGENT_HANDOFF.md`
-- `docs/building_phases.md`
-- `docs/project_history.md`
-- `docs/LyraOS_evolution.md`
-- `docs/phase_6_architecture_backlog.md`
-- `docs/deadline_mechanism_design.md`
-- `docs/academic_execution_substrate.md`
-- `docs/academic_asset_velocity_and_evidence_fusion_plan.md`
+- `docs/archive/legacy/planning/building_phases.md`
+- `docs/archive/legacy/history/project_history.md`
+- `docs/archive/legacy/history/LyraOS_evolution.md`
+- `docs/archive/legacy/planning/phase_6_architecture_backlog.md`
+- `docs/archive/legacy/provider_academic/deadline_mechanism_design.md`
+- `docs/archive/legacy/provider_academic/academic_execution_substrate.md`
+- `docs/archive/legacy/provider_academic/academic_asset_velocity_and_evidence_fusion_plan.md`
 - `docs/parked_ideas.md`
 - `docs/parked/`
 - `archive/`

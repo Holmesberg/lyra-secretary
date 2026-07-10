@@ -22,7 +22,7 @@ def test_scalability_risk_priorities_are_named_in_executable_contracts():
 
 
 def test_provider_adapter_contract_freezes_core_leakage_boundary():
-    text = _read(DOCS / "provider_adapter_contract.md")
+    text = _read(DOCS / "archive" / "legacy" / "provider_academic" / "provider_adapter_contract.md")
 
     required = [
         "Adapters translate local dialects.",
@@ -72,7 +72,7 @@ def test_manifesto_links_new_scalability_and_methodology_docs():
 
     required = [
         "Friction-Tested Instrument Methodology",
-        "docs/provider_adapter_contract.md",
+        "docs/archive/legacy/provider_academic/provider_adapter_contract.md",
         "docs/drift_rollup_contract.md",
         "docs/research_optionality_and_friction_methodology.md",
         "reality collision",

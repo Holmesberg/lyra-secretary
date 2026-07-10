@@ -327,7 +327,7 @@ def extract_scope_bullets(description: Optional[str]) -> Optional[int]:
 # title+description.
 #
 # This is Pass 2 of the binding strategy from
-# `docs/deadline_mechanism_design.md §"Inference mechanism"`. Pass 3
+# `docs/archive/legacy/provider_academic/deadline_mechanism_design.md §"Inference mechanism"`. Pass 3
 # (semantic similarity) is deferred to a later commit.
 #
 # Threshold: overlap_ratio ≥ 0.5 AND ≥ 1 non-stoplist token shared.

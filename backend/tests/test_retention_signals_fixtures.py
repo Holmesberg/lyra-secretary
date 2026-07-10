@@ -6,7 +6,7 @@ Validates the computation of:
   - calibration_nudge     (stopwatch_manager._compute_calibration_nudge)
   - bias_factor cell      (analytics._bias_cell)
 
-Precondition for any UI surfacing per `docs/building_phases.md` §Phase 4.5
+Precondition for any UI surfacing per `docs/archive/legacy/planning/building_phases.md` §Phase 4.5
 Tier 1 "Fixture tests for retention signals" and `MANIFESTO.md` §Shipping
 Philosophy — Scope of the retention-before-polish principle: insight
 correctness does not defer to retention polish (Li 2010, Epstein 2015).

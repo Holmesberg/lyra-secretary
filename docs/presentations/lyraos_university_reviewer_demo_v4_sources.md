@@ -11,10 +11,10 @@ backup slides.
 - Slide 1: Core promise grounded in `README.md`,
   `docs/academic_pressure_map_contract.md`, and Lyra logo assets.
 - Slide 2: Student journey derived from the planning/recovery loop in
-  `docs/academic_execution_substrate.md`, task/session services, and recovery
+  `docs/archive/legacy/provider_academic/academic_execution_substrate.md`, task/session services, and recovery
   policy docs.
 - Slide 3: Missing Layer framing grounded in
-  `docs/provider_adapter_contract.md` and `docs/academic_execution_substrate.md`.
+  `docs/archive/legacy/provider_academic/provider_adapter_contract.md` and `docs/archive/legacy/provider_academic/academic_execution_substrate.md`.
 - Slide 4: First value moment grounded in `backend/app/services/brain_dump.py`,
   Moodle/Calendar context, and provider adapter contracts.
 - Slide 5: Pressure Map claims grounded in
@@ -27,11 +27,11 @@ backup slides.
   `frontend/app/(app)/insights/page.tsx`, `backend/app/services/claim_compiler.py`,
   and `docs/insights-v2.png`.
 - Slide 8: Baseet/provider module framing grounded in
-  `docs/academic_execution_substrate.md` and `docs/provider_adapter_contract.md`.
+  `docs/archive/legacy/provider_academic/academic_execution_substrate.md` and `docs/archive/legacy/provider_academic/provider_adapter_contract.md`.
 - Slide 9: Compounding-value framing grounded in research contracts, confirmed
   use, exposure awareness, and clean-data rules.
 - Slide 10: Reality-contact narrative grounded in Aly's dogfooding timeline,
-  `MANIFESTO.md`, and `docs/academic_execution_substrate.md`.
+  `MANIFESTO.md`, and `docs/archive/legacy/provider_academic/academic_execution_substrate.md`.
 - Slide 11: Aggregate university learning grounded in research mapping,
   pressure-map contracts, and access-boundary docs.
 - Slide 12: Survey-first success metrics grounded in pilot/research framing and

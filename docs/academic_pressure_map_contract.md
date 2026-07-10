@@ -12,7 +12,7 @@ preview, assumption-correction, or recalibration work must check:
 - `MANIFESTO.md`, especially "Manifesto Governance Rule", "Substrate Kill
   Criterion", and "Academic Execution Substrate Governance". The manifesto is
   the highest-authority research/product boundary document.
-- `docs/academic_execution_substrate.md` for academic evidence boundaries,
+- `docs/archive/legacy/provider_academic/academic_execution_substrate.md` for academic evidence boundaries,
   passive activity limits, exposure contamination, and provider leakage rules.
 - `docs/research_mapping.md` for measurement-validity threats and uncertainty
   language.
@@ -22,7 +22,7 @@ preview, assumption-correction, or recalibration work must check:
   user-visible suggestion that may affect later behavior.
 - `LyraOS/03_Concepts/Clean Data Profile.md` before admitting any academic
   event into calibration or baseline inference.
-- `docs/academic_asset_velocity_and_evidence_fusion_plan.md` before adding
+- `docs/archive/legacy/provider_academic/academic_asset_velocity_and_evidence_fusion_plan.md` before adding
   asset-level duration priors, cohort workload estimates, passive activity
   signals, evidence tiers, or contradiction scoring.
 

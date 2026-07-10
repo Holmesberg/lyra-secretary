@@ -342,7 +342,7 @@ valuable lineage before it disappears.
 
 | Recovered idea | Where it was already present | Current action |
 | --- | --- | --- |
-| Execution substrate before middleware language | `archive/hackathon_video_script_v1.md`; `archive/docs_history/complexity_stress_test_2026_05_01.md`; `docs/LyraOS_evolution.md` | Treat as lineage for the current execution-reality middleware framing. |
+| Execution substrate before middleware language | `archive/hackathon_video_script_v1.md`; `archive/docs_history/complexity_stress_test_2026_05_01.md`; `docs/archive/legacy/history/LyraOS_evolution.md` | Treat as lineage for the current execution-reality middleware framing. |
 | Exposure Ledger as causal firewall | `archive/prompts/lyraos_complexity_check_prompt.md`; `archive/appstore/summary_of_app.md` | Keep in current Cortex/product-research doctrine; do not leave only in archive. |
 | Cascade interrupt prevention | `archive/FEATURES.md` captured first-skip/cascade metrics and skip-confirm warnings. | Reframe as Cascade Intercept / Sequence Disruption Circuit Breaker, not only morning-skip VT-32. |
 | JARVIS/operator synthesis | `archive/docs_history/data_utilization_inventory_2026_05_02.md` and `docs/parked_ideas.md` | Keep as hypothesis discovery and operator-only synthesis until evidence packets mature. |
@@ -401,8 +401,8 @@ Archive warnings:
 | Nonjudgmental interface prior art | Low-authority doctrine exists, but DIS 2024 paper is not cited. | `docs/research_mapping.md`. |
 | Reflection vs rumination | Psychological safety doctrine exists, but rumination risk is not named. | `docs/product_research_assumption_register.md` or copy review docs. |
 | Control-system terminology guard | "Execution physics" is strong, but formal control terms are not yet bounded. | `docs/behavioral_instrumentation_doctrine.md` if control terms enter product/research prose. |
-| EdTech/learning analytics boundary | Academic substrate exists but learning/mastery/institutional-risk vocabulary is thin. | `docs/academic_execution_substrate.md`. |
-| Digital phenotyping/passive sensing boundary | Provider/passive doctrine exists but the neighboring risk domain is not named. | `docs/provider_adapter_contract.md`. |
+| EdTech/learning analytics boundary | Academic substrate exists but learning/mastery/institutional-risk vocabulary is thin. | `docs/archive/legacy/provider_academic/academic_execution_substrate.md`. |
+| Digital phenotyping/passive sensing boundary | Provider/passive doctrine exists but the neighboring risk domain is not named. | `docs/archive/legacy/provider_academic/provider_adapter_contract.md`. |
 
 ---
 

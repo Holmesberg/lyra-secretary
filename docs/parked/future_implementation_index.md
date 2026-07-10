@@ -29,10 +29,10 @@ Three doc-review agents independently converged on these invariants:
 | Invariant | Classification | Current Authority | Notes |
 | --- | --- | --- | --- |
 | Capability is not authority. A component may compute richly, but may only publish, mutate, infer, prescribe, or govern through an explicit authority boundary. | active doctrine | `docs/AUTHORITY.md`, `docs/parked_governance_specs.md` | This constrains all future PARKED promotion. |
-| Lyra is an execution-state instrument, not an AI planner. | active doctrine | `docs/behavioral_instrumentation_doctrine.md`, `docs/core_product_loop_wave_plan.md` | AI can assist parsing/enrichment/operator review but does not become truth authority. |
+| Lyra is an execution-state instrument, not an AI planner. | active doctrine | `docs/behavioral_instrumentation_doctrine.md`, `docs/archive/legacy/planning/core_product_loop_wave_plan.md` | AI can assist parsing/enrichment/operator review but does not become truth authority. |
 | Truth is layered: observed, self-reported, derived, inferred, latent, repaired, external, and unknown must stay distinct. | active doctrine | `docs/cortex_contract_v0.md`, tightened registries | Cortex is read-time canonicalization, not mutation. |
 | Every mirror is also an intervention. | active doctrine | `MANIFESTO.md`, `docs/tightened_docs/12_intervention_exposure_risks.md` | Exposure-aware behavior is required before later learning consumes post-surface traces. |
-| Product value comes from recoverable execution, not "more tasks." | active doctrine | `docs/core_product_loop_wave_plan.md` | The loop is capture/import -> confirmation -> execution tracking -> recovery. |
+| Product value comes from recoverable execution, not "more tasks." | active doctrine | `docs/archive/legacy/planning/core_product_loop_wave_plan.md` | The loop is capture/import -> confirmation -> execution tracking -> recovery. |
 | Brain dump, pressure map, timers, resume banners, email delivery, and some exposure/event logs exist. | already implemented | runtime code + current docs | Implementation status must still be browser-verified per wave gates. |
 | Unknown stays unknown. | active doctrine | `docs/cortex_contract_v0.md` | Unknown must not silently become zero, neutral, average, clean, or no-exposure. |
 | Provider data is structure until confirmed. | active doctrine | provider/pressure docs | Calendar/LMS/email/browser traces can provide context; they are not execution truth without user confirmation and provenance. |
@@ -92,7 +92,7 @@ Every future implementation doc promoted from PARKED must answer:
 - `docs/behavioral_instrumentation_doctrine.md`
 - `docs/cortex_contract_v0.md`
 - `docs/cortex_product_research_contract_v0.md`
-- `docs/core_product_loop_wave_plan.md`
+- `docs/archive/legacy/planning/core_product_loop_wave_plan.md`
 - `docs/product_research_assumption_register.md`
 - `docs/tightened_docs/05_metric_registry.md`
 - `docs/tightened_docs/06_inference_registry.md`

@@ -1,6 +1,6 @@
 """Pause prediction service — VT-17 research instrument.
 
-Two mechanisms (see MANIFESTO.md §VT-17 and docs/building_phases.md Tier 1.5):
+Two mechanisms (see MANIFESTO.md §VT-17 and docs/archive/legacy/planning/building_phases.md Tier 1.5):
 
   1. clock_anchor — hour-of-day × weekday-bucket median minute-of-hour. When
      historical pauses cluster near the same clock time, predict a pause will
@@ -147,7 +147,7 @@ class PausePredictor:
         # model from tracking drift in the operator's actual pause
         # timing. Retroactive rows stay in pause_event for VT-17d
         # stratified acceptance-rate analysis but are excluded from
-        # training. See docs/feedback_loops_closure_plan.md §Loop 9
+        # training. See docs/archive/legacy/planning/feedback_loops_closure_plan.md §Loop 9
         # closure and MANIFESTO v1.9 §VT-17d.
         rows = (
             self.db.query(PauseEvent.paused_at_utc)

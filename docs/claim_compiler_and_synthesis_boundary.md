@@ -110,7 +110,7 @@ Read this note with:
 
 - `docs/architecture_freeze_priority_hold_2026_05_20.md`;
 - `docs/single_authority_contract.md`;
-- `docs/openclaw_orchestration_contract_v0.md`;
+- `docs/archive/legacy/ai/openclaw_orchestration_contract_v0.md`;
 - `docs/parked/behavior_transition_equation_stack.md`;
 - `docs/parked/uncertainty_reduction_computation_council_2026_06_29.md`;
 - `docs/operator_dashboard_contract.md`.

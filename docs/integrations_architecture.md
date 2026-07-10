@@ -235,7 +235,7 @@ no objective off-ramp.
 3. **Plaintext in v1, Fernet at Phase 6+.** Current refresh tokens
    live plaintext in `user.google_refresh_token`. Blast radius is
    read-only calendar access per user. Fernet-at-rest encryption is
-   tracked in `docs/building_phases.md` as a Phase 6+ security debt
+   tracked in `docs/archive/legacy/planning/building_phases.md` as a Phase 6+ security debt
    item; the refactor will add a key-rotation path at the same time
    (single-key encryption is only marginally better than plaintext).
 4. **401 → clear local copy.** If the provider returns 401, clear
@@ -301,7 +301,7 @@ the callback route can emit.
   equivalent) for the new callback
 - [ ] Document in `docs/strategic_decisions_<date>.md` with kill
   criterion
-- [ ] Append entry to `docs/project_history.md`
+- [ ] Append entry to `docs/archive/legacy/history/project_history.md`
 - [ ] If integration participates in research, add `researchNote`
   and tie to a VT-NN in `MANIFESTO.md`
 - [ ] Ensure external data stays out of `task` unless marked with

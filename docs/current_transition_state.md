@@ -94,7 +94,7 @@ Use these documents as the current authority chain:
    `docs/tightened_docs/17_immediate_freeze_targets.md` - semantic-entropy and
    freeze-gate constraints.
 
-`docs/building_phases.md` remains useful historical/product roadmap context,
+`docs/archive/legacy/planning/building_phases.md` remains useful historical/product roadmap context,
 but it is stale April phase planning and is not current implementation
 authority.
 
@@ -109,14 +109,14 @@ including "ship", "allowed", "approved", schema sketches, passive tracking,
 AI/synthesis, provider adapters, insight surfaces, or behavior equations,
 cannot authorize runtime work unless promoted by the authority chain above:
 
-- `docs/building_phases.md`
-- `docs/phase_6_architecture_backlog.md`
-- `docs/deadline_mechanism_design.md`
-- `docs/academic_execution_substrate.md`
-- `docs/academic_asset_velocity_and_evidence_fusion_plan.md`
-- `docs/core_product_loop_wave_plan.md`
+- `docs/archive/legacy/planning/building_phases.md`
+- `docs/archive/legacy/planning/phase_6_architecture_backlog.md`
+- `docs/archive/legacy/provider_academic/deadline_mechanism_design.md`
+- `docs/archive/legacy/provider_academic/academic_execution_substrate.md`
+- `docs/archive/legacy/provider_academic/academic_asset_velocity_and_evidence_fusion_plan.md`
+- `docs/archive/legacy/planning/core_product_loop_wave_plan.md`
 - `docs/archive/AGENT_HANDOFF.md`
-- `docs/provider_adapter_contract.md`
+- `docs/archive/legacy/provider_academic/provider_adapter_contract.md`
 
 ---
 

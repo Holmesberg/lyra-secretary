@@ -53,7 +53,6 @@
       "stopwatch:active:{user_id}",
       "stopwatch:paused:{user_id}",
       "notifications:pending:{user_id}",
-      "notion:sync_queue:{user_id}",
       "last_operated_task:{user_id}",
       "gcal:access_token:{user_id}"
     ],

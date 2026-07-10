@@ -10,7 +10,7 @@ pilot ask and moves technical depth into backup slides after the ask.
 - Slide 1: Core promise grounded in `README.md`,
   `docs/academic_pressure_map_contract.md`, and Lyra logo assets.
 - Slide 2: Student journey derived from the planning/recovery loop in
-  `docs/academic_execution_substrate.md` and task/session services.
+  `docs/archive/legacy/provider_academic/academic_execution_substrate.md` and task/session services.
 - Slide 3: First value moment grounded in `backend/app/services/brain_dump.py`,
   Moodle/Calendar integration paths, and the provider adapter contract.
 - Slide 4: Pressure Map claims grounded in
@@ -25,11 +25,11 @@ pilot ask and moves technical depth into backup slides after the ask.
   `frontend/app/(app)/insights/page.tsx`, `backend/app/services/claim_compiler.py`,
   and `docs/insights-v2.png`.
 - Slide 8: Baseet/module framing grounded in
-  `docs/academic_execution_substrate.md` and `docs/provider_adapter_contract.md`.
+  `docs/archive/legacy/provider_academic/academic_execution_substrate.md` and `docs/archive/legacy/provider_academic/provider_adapter_contract.md`.
 - Slide 9: Aggregate pilot learning grounded in research mapping, provider
   contracts, and access-boundary docs.
 - Slide 10: Build narrative grounded in Aly's rapid academic-pressure iteration
-  timeline, `MANIFESTO.md`, and `docs/academic_execution_substrate.md`.
+  timeline, `MANIFESTO.md`, and `docs/archive/legacy/provider_academic/academic_execution_substrate.md`.
 - Slide 11: Survey-first pilot metrics grounded in the pilot/research framing
   from `docs/research_mapping.md` and current product surfaces.
 - Slide 12: Pilot ask synthesized from the current Baseet-oriented roadmap and
@@ -40,7 +40,7 @@ pilot ask and moves technical depth into backup slides after the ask.
 - Slide 13: Data Access Model grounded in security/scoping docs, admin/operator
   boundaries, and multi-user isolation tests.
 - Slide 14: Human-level architecture grounded in
-  `docs/provider_adapter_contract.md`, `backend/app/core/research_contracts.py`,
+  `docs/archive/legacy/provider_academic/provider_adapter_contract.md`, `backend/app/core/research_contracts.py`,
   and output-surface boundaries.
 - Slide 15: Research rigor grounded in `docs/research_mapping.md`, executable
   research contract tests, clean-data rules, and exposure awareness.

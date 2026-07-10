@@ -100,7 +100,7 @@ Use this order until the repo explicitly updates its authority index:
    - `docs/product_research_assumption_register.md`
    - H8/context-switching docs.
 7. Product-maintenance guidance:
-   - `docs/core_product_loop_wave_plan.md`
+   - `docs/archive/legacy/planning/core_product_loop_wave_plan.md`
    - only where consistent with items 1-6.
 8. External/reviewer docs:
    - context only, unless explicitly listed by authority docs.
@@ -167,7 +167,7 @@ Action:
 
 ### 5. Passive/Hidden Measurement Language
 
-`docs/academic_execution_substrate.md` says Lyra can become the "hidden
+`docs/archive/legacy/provider_academic/academic_execution_substrate.md` says Lyra can become the "hidden
 measurement layer" and includes tab/activity examples. This conflicts with the
 current no-surveillance constraint.
 
@@ -199,7 +199,7 @@ Action:
 
 ### 8. Roadmap Staleness
 
-`docs/building_phases.md` still calls itself the forward-looking phase source
+`docs/archive/legacy/planning/building_phases.md` still calls itself the forward-looking phase source
 while later docs call it stale April planning.
 
 Action:
@@ -433,7 +433,7 @@ One provider primitive registry.
    docs.
 3. Add `docs/README.md` as the canonical docs map with active, external,
    parked, and historical lanes.
-4. Mark `docs/building_phases.md` historical or refresh it as non-authorizing.
+4. Mark `docs/archive/legacy/planning/building_phases.md` historical or refresh it as non-authorizing.
 5. Rewrite public AI-readable docs around execution-state middleware, not
    behavioral analytics.
 6. Fix provider truth wording in Moodle/import docs.

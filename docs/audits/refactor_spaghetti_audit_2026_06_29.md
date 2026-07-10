@@ -52,7 +52,7 @@ Read this audit with:
 - `docs/single_authority_contract.md`;
 - `docs/architecture_freeze_priority_hold_2026_05_20.md`;
 - `docs/claim_compiler_and_synthesis_boundary.md`;
-- `docs/openclaw_orchestration_contract_v0.md`.
+- `docs/archive/legacy/ai/openclaw_orchestration_contract_v0.md`.
 
 ## Audit Method
 
@@ -660,7 +660,7 @@ Files:
 
 - `docs/AUTHORITY.md`;
 - `docs/current_transition_state.md`;
-- `docs/building_phases.md`;
+- `docs/archive/legacy/planning/building_phases.md`;
 - `docs/AGENT_HANDOFF.md`;
 - `docs/audits/doc_alignment_findings_2026_06_04.csv`.
 
@@ -698,10 +698,10 @@ Direction:
 
 Files:
 
-- `docs/deadline_mechanism_design.md`;
-- `docs/academic_execution_substrate.md`;
-- `docs/academic_asset_velocity_and_evidence_fusion_plan.md`;
-- `docs/provider_adapter_contract.md`.
+- `docs/archive/legacy/provider_academic/deadline_mechanism_design.md`;
+- `docs/archive/legacy/provider_academic/academic_execution_substrate.md`;
+- `docs/archive/legacy/provider_academic/academic_asset_velocity_and_evidence_fusion_plan.md`;
+- `docs/archive/legacy/provider_academic/provider_adapter_contract.md`.
 
 Risk:
 

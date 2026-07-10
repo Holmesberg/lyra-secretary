@@ -144,7 +144,7 @@ The Apr 22 calendar-OAuth refactor cost ~1 day of work to undo a misplaced bet (
 
 - `MANIFESTO.md §Shipping Philosophy — Retention Mechanism First` (Apr 14, 2026)
 - `MANIFESTO.md §Anonymized Retention Policy` (Apr 14, 2026)
-- `docs/building_phases.md §Phase 4.5 Tier structure`
+- `docs/archive/legacy/planning/building_phases.md §Phase 4.5 Tier structure`
 - `docs/dogfood_findings_living.md:190` — post-novelty week-6-8 metric (this is the load-bearing citation for the whole sequence)
 - `docs/dogfood_findings_living.md:192` — middle-phase retention mechanism candidates (used in Stage 2 YELLOW fork)
 - `docs/dogfood_findings_living.md:271` — alpha launch + BCI October timeline

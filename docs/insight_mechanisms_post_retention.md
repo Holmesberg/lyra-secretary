@@ -289,7 +289,7 @@ The Apr 25 logging-friction analysis (operator-confessed: even after 3 weeks of 
 
 Why: MANIFESTO Rule 13 already excludes retroactive tasks from `bias_factor` calculation precisely because they have no real planned-vs-executed delta (the user is back-filling history, not making a forecast). Retroactive sweeps fix the *volume* of logged data and the *timeline*, but the planning self never made a forecast for those entries — so the delta is meaningless and pulls bias_factor toward zero if mixed in.
 
-This is also a prerequisite for the deadline mechanism (`docs/deadline_mechanism_design.md`): deadline-bound tasks where the user retroactively logged execution should still bind to the deadline (for completion tracking) but be excluded from per-deadline bias_factor (for measurement integrity).
+This is also a prerequisite for the deadline mechanism (`docs/archive/legacy/provider_academic/deadline_mechanism_design.md`): deadline-bound tasks where the user retroactively logged execution should still bind to the deadline (for completion tracking) but be excluded from per-deadline bias_factor (for measurement integrity).
 
 Operator decision: any new retroactive-capture surface must pass through `services/task_manager.py` with `initiation_status='retroactive'` enforced at the entry point, never as a downstream filter.
 

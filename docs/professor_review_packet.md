@@ -167,7 +167,7 @@ Recommended order for review:
 6. `archive/appstore/summary_of_app.md`
 7. `docs/adaptive_scheduling_progressive_inference.md`
 8. `docs/deployment_architecture.md`
-9. `docs/openclaw_orchestration_contract_v0.md`
+9. `docs/archive/legacy/ai/openclaw_orchestration_contract_v0.md`
 
 Historical/design-only docs are useful for provenance, but they should not be
 treated as current authority when they conflict with the list above.

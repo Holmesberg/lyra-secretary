@@ -153,7 +153,7 @@ class Task(Base):
     # Unplanned execution tracking
     unplanned_reason: Mapped[Optional[str]] = mapped_column(String(30))
 
-    # Notion sync
+    # Legacy external-sync columns retained until an approved schema migration.
     notion_page_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
 
     # Multi-user ownership (alembic 014)
@@ -172,8 +172,8 @@ class Task(Base):
 
     # Loop 11 — deadline mechanism foundation (alembic 033, 2026-04-26).
     # Pre-registered MANIFESTO Rules 14, 15, 16 + Rule 12 amendment.
-    # See `docs/feedback_loops_closure_plan.md §Loop 11` and
-    # `docs/deadline_mechanism_design.md`.
+    # See `docs/archive/legacy/planning/feedback_loops_closure_plan.md §Loop 11` and
+    # `docs/archive/legacy/provider_academic/deadline_mechanism_design.md`.
     deadline_id: Mapped[Optional[str]] = mapped_column(
         String(36),
         ForeignKey("deadline.deadline_id"),
@@ -1124,7 +1124,7 @@ class ResumePredictionLog(Base):
 class CalibrationNudgeEvent(Base):
     """Per-fire calibration nudge event + decision + outcome (Loop 1).
 
-    Pre-registered in `docs/feedback_loops_closure_plan.md §Loop 1`. Captures
+    Pre-registered in `docs/archive/legacy/planning/feedback_loops_closure_plan.md §Loop 1`. Captures
     every NewTaskModal nudge fire + user decision (accepted | dismissed) +
     the executed_duration_minutes outcome once the bound task transitions
     to EXECUTED. Enables the "did the nudge improve calibration?" research
@@ -1244,7 +1244,7 @@ class ReflectionViewLog(Base):
     dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     dwell_seconds: Mapped[Optional[int]] = mapped_column(Integer)
     # Decision outcome on decisional surfaces. Per Phase 6 V3 spec
-    # (`docs/phase_6_architecture_backlog.md:227`): for creation_nudge
+    # (`docs/archive/legacy/planning/phase_6_architecture_backlog.md:227`): for creation_nudge
     # this carries 'kept' / 'adjusted' / 'dismissed'. NULL on
     # informational surfaces (micro_mirror, banner). Added in alembic 035.
     outcome: Mapped[Optional[str]] = mapped_column(String(20))

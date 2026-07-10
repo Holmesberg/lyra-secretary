@@ -243,7 +243,7 @@ actually change behavior" question orthogonally. VT-23 (GCal
 attendance) remains pre-registered but deprioritized — attendance
 binaries don't carry scope depth.
 
-See `docs/feedback_loops_closure_plan.md` for the concrete closure
+See `docs/archive/legacy/planning/feedback_loops_closure_plan.md` for the concrete closure
 specs on each loop. Loop 11 (deadline + scope-bullet instrument) is
 the single schema commit that unblocks thesis-level testing and is
 flagged P0 there.

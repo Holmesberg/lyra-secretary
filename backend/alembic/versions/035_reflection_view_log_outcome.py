@@ -5,7 +5,7 @@ Revises: 034
 Create Date: 2026-04-27
 
 Closes the V3 logging-spec gap caught in the Apr 27 drift audit
-(`docs/phase_6_architecture_backlog.md:227`): the canonical V3 spec
+(`docs/archive/legacy/planning/phase_6_architecture_backlog.md:227`): the canonical V3 spec
 for the `creation_nudge` reflection_type calls for `outcome (kept /
 adjusted / dismissed)` per surface fire, but the existing
 `reflection_view_log` schema lacked the column. Without it, the

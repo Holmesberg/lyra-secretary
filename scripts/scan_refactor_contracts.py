@@ -175,32 +175,32 @@ def frontend_behavioral_claim_review_findings() -> list[Finding]:
 
 
 STALE_DOC_AUTHORITY_REQUIREMENTS: dict[str, tuple[str, ...]] = {
-    "docs/building_phases.md": (
+    "docs/archive/legacy/planning/building_phases.md": (
         "R5a extraction rule:",
         "historical/parked",
         "Do not extract runtime work",
     ),
-    "docs/phase_6_architecture_backlog.md": (
+    "docs/archive/legacy/planning/phase_6_architecture_backlog.md": (
         "R5a extraction rule:",
         "parked design history",
         "not current implementation permission",
     ),
-    "docs/deadline_mechanism_design.md": (
+    "docs/archive/legacy/provider_academic/deadline_mechanism_design.md": (
         "R5a extraction rule:",
         "historical/parked",
         "work is not authorized",
     ),
-    "docs/academic_execution_substrate.md": (
+    "docs/archive/legacy/provider_academic/academic_execution_substrate.md": (
         "R5a extraction rule:",
         "parked architecture notes",
         "must not be extracted into runtime code",
     ),
-    "docs/academic_asset_velocity_and_evidence_fusion_plan.md": (
+    "docs/archive/legacy/provider_academic/academic_asset_velocity_and_evidence_fusion_plan.md": (
         "R5a extraction rule:",
         "research/planning backlog only",
         "do not authorize runtime",
     ),
-    "docs/core_product_loop_wave_plan.md": (
+    "docs/archive/legacy/planning/core_product_loop_wave_plan.md": (
         "R5a extraction rule:",
         "historical/subordinate",
         "Use this file for context only",
@@ -210,7 +210,7 @@ STALE_DOC_AUTHORITY_REQUIREMENTS: dict[str, tuple[str, ...]] = {
         "historical onboarding context",
         "not permission",
     ),
-    "docs/provider_adapter_contract.md": (
+    "docs/archive/legacy/provider_academic/provider_adapter_contract.md": (
         "R5a extraction rule:",
         "future explicitly approved adapter",
         "does not authorize new provider-native UI",

@@ -52,12 +52,12 @@ Each index should answer:
 
 Add frontmatter or top banners to high-confusion docs:
 
-- `docs/building_phases.md`
+- `docs/archive/legacy/planning/building_phases.md`
 - `docs/AGENT_HANDOFF.md`
 - `docs/parked_ideas.md`
-- `docs/deadline_mechanism_design.md`
-- `docs/academic_execution_substrate.md`
-- `docs/academic_asset_velocity_and_evidence_fusion_plan.md`
+- `docs/archive/legacy/provider_academic/deadline_mechanism_design.md`
+- `docs/archive/legacy/provider_academic/academic_execution_substrate.md`
+- `docs/archive/legacy/provider_academic/academic_asset_velocity_and_evidence_fusion_plan.md`
 - `archive/appstore/summary_of_app.md`
 - `frontend/public/lyraos.md`
 - `frontend/public/llms.txt`
@@ -144,13 +144,13 @@ Actions:
 
 | Item | Recommendation | Rationale |
 |---|---|---|
-| `docs/building_phases.md` | historical banner | stale roadmap with active-sounding language |
+| `docs/archive/legacy/planning/building_phases.md` | historical banner | stale roadmap with active-sounding language |
 | `docs/AGENT_HANDOFF.md` | revise or subordinate | stale agent instructions |
 | `archive/appstore/summary_of_app.md` | promote as dated snapshot or demote all citations | archive/current contradiction |
 | `frontend/public/lyraos.md` and `llms.txt` | derivative external orientation | public copy must not outrun product truth |
 | `docs/academic_pressure_map_contract.md` | keep active but domain-specific | academic module, not global product frame |
-| `docs/academic_execution_substrate.md` | rewrite or constrain | hidden/passive measurement language |
-| `docs/import_integrations_capability_map.md` | historical/superseded for truth semantics | VEVENT 1:1 task mapping conflicts with current boundary |
+| `docs/archive/legacy/provider_academic/academic_execution_substrate.md` | rewrite or constrain | hidden/passive measurement language |
+| `docs/archive/legacy/provider_academic/import_integrations_capability_map.md` | historical/superseded for truth semantics | VEVENT 1:1 task mapping conflicts with current boundary |
 | `docs/moodle_lms_integration.md` | revise provider truth wording | Moodle status must be candidate evidence |
 | `docs/parked_ideas.md` | move/replace with pointers | parked file leaks active intent |
 | ignored `LyraOS/` vault | declare external/local | avoid shadow authority |

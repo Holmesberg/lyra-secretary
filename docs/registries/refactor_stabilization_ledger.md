@@ -2150,9 +2150,9 @@ Changed authority:
 
 - `docs/AGENT_HANDOFF.md` is explicitly marked as historical handoff context,
   not current implementation authority.
-- `docs/building_phases.md` is explicitly marked as a historical phase map
+- `docs/archive/legacy/planning/building_phases.md` is explicitly marked as a historical phase map
   during the architecture freeze, not current roadmap authority.
-- `docs/jarvis_hypothesis_log.md` is explicitly marked as a historical JARVIS
+- `docs/archive/legacy/ai/jarvis_hypothesis_log.md` is explicitly marked as a historical JARVIS
   research log. It cannot authorize runtime JARVIS work or future synthesis.
 - Deadline, academic, and provider design docs now carry an explicit freeze
   boundary forbidding new runtime features, passive tracking, runtime AI
@@ -3171,13 +3171,13 @@ Changed authority:
 - `docs/current_transition_state.md` now reflects the active
   `wave-5-sovereignty-integrity-cycle` freeze-closure frame instead of the old
   evidence-packet branch.
-- `docs/building_phases.md` no longer claims to be the forward-looking source
+- `docs/archive/legacy/planning/building_phases.md` no longer claims to be the forward-looking source
   of truth during the architecture freeze.
 - `docs/testing_patterns.md` now distinguishes production fail-closed identity
   from the test harness default identity.
-- `docs/import_integrations_capability_map.md` now marks provider mappings as
+- `docs/archive/legacy/provider_academic/import_integrations_capability_map.md` now marks provider mappings as
   historical capability hypotheses, not provider truth or adapter authority.
-- `docs/deadline_mechanism_design.md` now marks old `APPROVED`,
+- `docs/archive/legacy/provider_academic/deadline_mechanism_design.md` now marks old `APPROVED`,
   `parser_auto`, soft-warning RCT, and per-deadline `bias_factor` wording as
   historical/parked unless promoted by current authority.
 - `openclaw/skills/lyra-secretary/SKILL.md` now states that the old direct
@@ -7313,10 +7313,10 @@ Changed authority:
 - `docs/moodle_lms_integration.md` now clarifies that the existing Moodle path
   may be maintained only through canonical provider, deadline, and user-data
   authorities.
-- `docs/deadline_mechanism_design.md` now marks the Apr 25 deadline decision as
+- `docs/archive/legacy/provider_academic/deadline_mechanism_design.md` now marks the Apr 25 deadline decision as
   provenance, not current permission for schema work, parser inference,
   soft-warning UX, background transitions, or provider-derived completion truth.
-- `docs/building_phases.md` now marks Tier 1.5 and Phase 6 as
+- `docs/archive/legacy/planning/building_phases.md` now marks Tier 1.5 and Phase 6 as
   historical/parked roadmap material during freeze.
 - `docs/architecture.md` now marks the OpenClaw Docker networking section as
   historical reachability documentation, not permission for OpenClaw product
@@ -16166,3 +16166,76 @@ Rollback note:
 - Revert commit `43769b0` to remove the reminder characterization test.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Legacy Notion/Admin/Jarvis/OpenClaw Direct-Control Removal
+
+Seam:
+
+- `legacy-runtime-surface-removal-and-doc-archive`
+
+Changed authority:
+
+- Removed active Notion client/worker/queue/UI integration authority.
+- Removed legacy `/admin/dashboard`, `/admin/alpha_funnel`, and `/v1/jarvis/*`
+  runtime route authority.
+- Kept historical `JarvisInvocation` and legacy Notion schema columns as
+  retained data/export surfaces until an explicit schema migration is approved.
+- Kept OpenClaw operator-alert relay authority; removed direct product-control
+  skill/contract gates.
+
+Removed paths:
+
+- `backend/app/services/notion_client.py`
+- `backend/app/workers/jobs/notion_sync.py`
+- `backend/app/api/v1/endpoints/admin.py`
+- `backend/app/api/v1/endpoints/jarvis.py`
+- `backend/app/services/jarvis_agent.py`
+- `frontend/app/(app)/admin/dashboard/page.tsx`
+- Notion UI/type fields and direct OpenClaw product-control contract scripts.
+
+Parked paths:
+
+- Schema migration for `notion_*` columns and `JarvisInvocation` remains parked.
+- Full extraction of the legacy internal aggregation helper in
+  `backend/app/services/jarvis_tools.py` remains parked for R4.
+- Hosted-public rebuild/restart remains approval-gated.
+
+Moved authority:
+
+- Legacy active-looking docs moved under `docs/archive/legacy/...`.
+- Active operator stop/go authority remains `/operator`.
+- OpenClaw remains transport-only for operator alerts.
+
+Tests and verification:
+
+- `python -m py_compile` on touched backend modules and scanners; passed.
+- `node --check scripts/browser_smoke_two_users.mjs`; passed.
+- `node --check scripts/browser_holmesberg_product_loop_dogfood.mjs`; passed.
+- `node scripts/test_openclaw_operator_relay.mjs`; passed.
+- `node scripts/test_public_frontend_restart_contract.mjs`; passed.
+- `node scripts/test_public_runtime_watchdog_contract.mjs`; passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_route_security.py tests\test_security_audit.py tests\test_redis_state_contract.py tests\test_state_consistency.py tests\test_idempotency_user_scope.py tests\test_wave2_state_freshness.py tests\test_jobs_skip_voided_tasks.py tests\test_scalability_research_docs_contract.py -q`;
+  passed, 37 tests.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `cd frontend && npm run typecheck`; passed.
+- `cd frontend && npm run build`; passed.
+
+Behavior parity statement:
+
+- User-facing task, timer, calendar, table, Pulse, settings, privacy, Moodle,
+  Google Calendar, export/delete, and operator cockpit behavior is preserved.
+- Removed behavior is explicitly legacy/redundant: Notion sync, legacy admin
+  dashboard, Jarvis runtime routes, and direct OpenClaw product-control gates.
+- No schema migration, production repair, public deploy, public restart,
+  rebrand/domain change, or LyraSim change was performed.
+
+Rollback note:
+
+- Revert this seam to restore legacy runtime surfaces and root-level legacy
+  docs.
+- No production data, Redis, hosted-public artifact, or schema rollback is
+  required because no migration, production repair, public deploy, or public
+  restart occurred.

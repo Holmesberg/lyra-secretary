@@ -343,7 +343,7 @@ def test_creation_nudge_writes_reflection_view_log(db):
     """Apr 27 drift fix — every creation-nudge fire writes a
     ReflectionViewLog row alongside the CalibrationNudgeEvent so the
     Phase 6 response-type classifier has V3 signal data when it
-    activates. Per `docs/phase_6_architecture_backlog.md:227`.
+    activates. Per `docs/archive/legacy/planning/phase_6_architecture_backlog.md:227`.
     """
     user = _make_user(db)
     set_current_user_id(user.user_id)

@@ -3,7 +3,7 @@
 **Status:** Completed Wave -1 scan artifact.
 **Authority:** Repo scan and implementation guidance. Does not authorize Wave 1+
 work by itself.
-**Related plan:** `docs/core_product_loop_wave_plan.md`.
+**Related plan:** `docs/archive/legacy/planning/core_product_loop_wave_plan.md`.
 
 ## Scope
 

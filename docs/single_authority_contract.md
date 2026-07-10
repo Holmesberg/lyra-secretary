@@ -65,7 +65,7 @@ quietly acting like truth owners.
 
 | Fracture | Current risk | Direction |
 |---|---|---|
-| Jarvis vs OpenClaw | Two assistant/control planes can create divergent task, deadline, timer, or hypothesis histories. | OpenClaw is the operator reasoning shell. Jarvis active runtime is parked; `/v1/jarvis/*` may exist only as disabled compatibility endpoints unless explicitly reauthorized. |
+| Jarvis vs OpenClaw | Two assistant/control planes can create divergent task, deadline, timer, or hypothesis histories. | OpenClaw is the operator-alert relay/reasoning shell. Jarvis active runtime routes are removed; historical data-model/export support may remain until an approved schema migration. |
 | Parser vs brain dump vs LLM enrichment | Multiple systems parse, bind, and enrich user text with different confidence semantics. | Deterministic extraction and `deadline_heuristic.score_deadlines()` own candidate scoring; LLM enrichment may annotate only. |
 | Notifications vs exposure vs relay | Queue insertion can be mistaken for user-visible exposure, and acknowledgement can be confused with render. | Queue insertion is not exposure. Delivery is not exposure. Browser render may create exposure-render truth. Acknowledgement, dismissal, or action may create interaction-outcome truth. |
 | Analytics vs Cortex vs ClaimCompiler | Multiple modules compute behavior meaning with different clean filters, signs, buckets, and confidence terms. | Cortex owns clean read-time projection; ClaimCompiler owns bounded claim emission. |
