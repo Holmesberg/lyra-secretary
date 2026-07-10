@@ -15791,3 +15791,64 @@ Rollback note:
 - Revert this ledger entry only; no runtime code changed.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Operator Read-Only Count Breadth Characterization
+
+Seam:
+
+- `operator-readonly-count-breadth-characterization`
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Broadened the backend operator dashboard read-only characterization so it
+  now asserts count stability across users, tasks, stopwatch sessions,
+  deadlines, provider completion events, notification lifecycle rows, exposure
+  decisions, renders, and acknowledgements.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- Browser read-only stress remains the broader runtime proof for API/Redis and
+  route-level diffs.
+- Production row attribution and repair remain approval-gated.
+
+Moved authority:
+
+- No authority moved.
+- `/operator` remains a read-only cockpit; provider completion rows remain
+  provenance/candidate evidence, not clean execution truth.
+
+Issues and classification:
+
+- No GitHub issue was created because this was planned S1c hardening, not a
+  discovered product bug.
+- The first targeted run failed because the new test fixture omitted required
+  `DeadlineCompletionEvent.delay_minutes` and `time_provenance`; classification:
+  test-fixture contract miss. The fixture was corrected before commit.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py::test_operator_dashboard_read_is_side_effect_free -q`;
+  passed, 1 test.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py -q`;
+  passed, 12 tests.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29086247055` passed for
+  `ea2cc80e53d4f88c0dc22fc7c9b1608113170935`.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public
+  deployment behavior, rebrand/domain state, or user-facing copy changed.
+- The seam makes the existing operator read-only invariant observable across
+  more of the same state surfaces already covered by browser stress.
+
+Rollback note:
+
+- Revert commit `ea2cc80` to remove the broadened backend characterization.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
