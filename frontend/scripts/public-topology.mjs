@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(__dirname, "..", "..");
+const distDir = process.env.NEXT_DIST_DIR || ".next-public";
+const publicBuildIdPath = path.join(frontendRoot, distDir, "LYRA_PUBLIC_BUILD_ID");
 
 const command = process.argv[2];
 const validCommands = new Set(["build", "start"]);
@@ -17,13 +22,42 @@ if (!validCommands.has(command)) {
 function gitShortSha() {
   try {
     return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-      cwd: path.resolve(__dirname, "..", ".."),
+      cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   } catch {
     return "dev";
   }
+}
+
+function readArtifactBuildId() {
+  try {
+    const value = fs.readFileSync(publicBuildIdPath, "utf8").trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+function resolvePublicBuildId() {
+  if (process.env.NEXT_PUBLIC_BUILD_ID) {
+    return process.env.NEXT_PUBLIC_BUILD_ID;
+  }
+  if (command === "start") {
+    const artifactBuildId = readArtifactBuildId();
+    if (artifactBuildId) {
+      return artifactBuildId;
+    }
+    console.error(
+      `[public-topology] missing artifact build id metadata: ${publicBuildIdPath}`
+    );
+    console.error(
+      "[public-topology] run `npm run build:public` before `npm run start:public`."
+    );
+    process.exit(2);
+  }
+  return gitShortSha();
 }
 
 const nextBin = path.resolve(
@@ -40,8 +74,8 @@ const env = {
   ...process.env,
   NEXTAUTH_URL: "https://lyraos.org",
   NEXT_PUBLIC_API_URL: "https://api.lyraos.org",
-  NEXT_PUBLIC_BUILD_ID: process.env.NEXT_PUBLIC_BUILD_ID || gitShortSha(),
-  NEXT_DIST_DIR: process.env.NEXT_DIST_DIR || ".next-public",
+  NEXT_PUBLIC_BUILD_ID: resolvePublicBuildId(),
+  NEXT_DIST_DIR: distDir,
 };
 
 console.log("[public-topology] NEXTAUTH_URL=https://lyraos.org");
@@ -70,5 +104,10 @@ child.on("exit", (code, signal) => {
     console.error(`[public-topology] next ${command} exited via ${signal}`);
     process.exit(1);
   }
-  process.exit(code ?? 0);
+  const exitCode = code ?? 0;
+  if (exitCode === 0 && command === "build") {
+    fs.writeFileSync(publicBuildIdPath, `${env.NEXT_PUBLIC_BUILD_ID}\n`);
+    console.log(`[public-topology] wrote artifact build id ${publicBuildIdPath}`);
+  }
+  process.exit(exitCode);
 });

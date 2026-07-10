@@ -94,8 +94,14 @@ if [ ! -s "`$PUBLIC_NEXT_DIR/BUILD_ID" ]; then
   echo "ERROR: `$PUBLIC_NEXT_DIR/BUILD_ID is missing. Refusing to start incomplete production artifact." >&2
   exit 42
 fi
+if [ ! -s "`$PUBLIC_NEXT_DIR/LYRA_PUBLIC_BUILD_ID" ]; then
+  echo "ERROR: `$PUBLIC_NEXT_DIR/LYRA_PUBLIC_BUILD_ID is missing. Refusing to start unverifiable production artifact." >&2
+  exit 46
+fi
 
 echo "build_id=`$(cat "`$PUBLIC_NEXT_DIR/BUILD_ID")"
+EXPECTED_PUBLIC_BUILD_ID="`$(cat "`$PUBLIC_NEXT_DIR/LYRA_PUBLIC_BUILD_ID")"
+echo "public_build_id=`$EXPECTED_PUBLIC_BUILD_ID"
 
 cat > "`$START_SCRIPT" <<'EOS'
 #!/usr/bin/env bash
@@ -149,8 +155,9 @@ if [ "`$SKIP_PUBLIC_CHECK" != '1' ]; then
   echo '== public health =='
   curl -s -o /dev/null -w 'lyraos_org:%{http_code},time=%{time_total}\n' --max-time 20 https://lyraos.org/
   echo '== public topology =='
-  python3 - <<'PY'
+  EXPECTED_PUBLIC_BUILD_ID="`$EXPECTED_PUBLIC_BUILD_ID" python3 - <<'PY'
 import json
+import os
 import sys
 import urllib.request
 
@@ -172,6 +179,15 @@ for key, value in expected.items():
     if topology.get(key) != value:
         print(f"ERROR: public topology mismatch for {key}: {topology.get(key)!r}", file=sys.stderr)
         sys.exit(43)
+
+expected_build_id = os.environ["EXPECTED_PUBLIC_BUILD_ID"]
+if topology.get("build_id") != expected_build_id:
+    print(
+        "ERROR: public topology build_id mismatch: "
+        f"{topology.get('build_id')!r} != {expected_build_id!r}",
+        file=sys.stderr,
+    )
+    sys.exit(47)
 PY
 fi
 "@
