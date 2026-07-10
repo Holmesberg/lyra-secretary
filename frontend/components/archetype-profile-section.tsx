@@ -59,6 +59,7 @@ import {
   getArchetypeProximity,
   getArchetypeProximityTrend,
 } from "@/lib/archetype";
+import { queryKeys } from "@/lib/query-keys";
 import {
   ArchetypeProximityRows,
   ArchetypeSaturationNote,
@@ -219,12 +220,12 @@ function DynamicProfilePanel({
   onRetake: () => void;
 }) {
   const proximityQ = useQuery({
-    queryKey: ["proximity", 14],
+    queryKey: queryKeys.archetypeProximity(14),
     queryFn: () => getArchetypeProximity(14),
     staleTime: 60_000,
   });
   const trendQ = useQuery({
-    queryKey: ["proximity-trend", 14, 14],
+    queryKey: queryKeys.archetypeProximityTrend(14, 14),
     queryFn: () => getArchetypeProximityTrend(14, 14),
     staleTime: 60_000,
   });

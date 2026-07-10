@@ -4,6 +4,12 @@ export const queryKeys = {
   adminDashboard: ["admin-dashboard"] as const,
   adminEmailEngagement: (campaignVersion: string, sinceDays: number) =>
     ["admin-email-engagement", campaignVersion, sinceDays] as const,
+  archetypeProximity: (days: number) => ["proximity", days] as const,
+  archetypeProximityTrend: (currentDays: number, priorDays: number) =>
+    ["proximity-trend", currentDays, priorDays] as const,
+  biasFactor: ["bias_factor"] as const,
+  biasFactorLookup: (category: string, tod: string, plannedMinutes: number) =>
+    ["bias_factor", category, tod, plannedMinutes] as const,
   calendarEvents: ["calendar-events"] as const,
   calendarEventsToday: (date: string) => ["calendar-events-today", date] as const,
   calendarEventsWindow: (dateFrom: string, dateTo: string) =>
@@ -15,6 +21,7 @@ export const queryKeys = {
   insights: ["insights"] as const,
   integrations: ["integrations"] as const,
   me: ["me"] as const,
+  notificationsWebPending: ["notifications-web-pending"] as const,
   operatorDashboard: ["operator-dashboard-v12"] as const,
   pausePredictionsPendingConfirmation: [
     "pause-predictions-pending-confirmation",
@@ -36,6 +43,7 @@ export const queryKeys = {
       dateTo,
       includeVoided ? "include-voided" : "active",
     ] as const,
+  userCategories: ["user-categories"] as const,
 } satisfies Record<string, QueryKey | ((...args: never[]) => QueryKey)>;
 
 const domainKeys = {
@@ -73,6 +81,17 @@ export function isTaskQueryKey(queryKey: QueryKey) {
   );
 }
 
+export function isBiasFactorQueryKey(queryKey: QueryKey) {
+  return queryKey[0] === queryKeys.biasFactor[0];
+}
+
+export function isArchetypeProximityQueryKey(queryKey: QueryKey) {
+  return (
+    queryKey[0] === queryKeys.archetypeProximity(14)[0] ||
+    queryKey[0] === queryKeys.archetypeProximityTrend(14, 14)[0]
+  );
+}
+
 export function invalidateCalendarEventQueries(queryClient: QueryClient) {
   return queryClient.invalidateQueries({
     predicate: (query) => isCalendarEventsQueryKey(query.queryKey),
@@ -89,6 +108,26 @@ export function invalidateTaskQueries(queryClient: QueryClient) {
   return queryClient.invalidateQueries({
     predicate: (query) => isTaskQueryKey(query.queryKey),
   });
+}
+
+export function invalidateBiasFactorQueries(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => isBiasFactorQueryKey(query.queryKey),
+  });
+}
+
+export function invalidateArchetypeProximityQueries(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => isArchetypeProximityQueryKey(query.queryKey),
+  });
+}
+
+export function invalidateArchetypeDependentQueries(queryClient: QueryClient) {
+  return Promise.all([
+    invalidateKeys(queryClient, [queryKeys.insights, queryKeys.me]),
+    invalidateBiasFactorQueries(queryClient),
+    invalidateArchetypeProximityQueries(queryClient),
+  ]);
 }
 
 export function invalidateDomain(

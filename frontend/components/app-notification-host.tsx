@@ -7,6 +7,7 @@ import {
   ackPendingNotifications,
   getPendingNotifications,
 } from "@/lib/tasks";
+import { queryKeys } from "@/lib/query-keys";
 import { Toast } from "@/components/toast";
 
 interface ToastEntry {
@@ -110,7 +111,7 @@ export function AppNotificationHost() {
   const pathname = usePathname();
 
   const notificationsQ = useQuery({
-    queryKey: ["notifications-web-pending"],
+    queryKey: queryKeys.notificationsWebPending,
     queryFn: getPendingNotifications,
     staleTime: 0,
     refetchInterval: 5_000,

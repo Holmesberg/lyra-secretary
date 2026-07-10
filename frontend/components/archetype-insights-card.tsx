@@ -84,7 +84,11 @@ export function ArchetypeInsightsCard({
   });
 
   const blendQ = useQuery({
-    queryKey: ["bias_factor", SAMPLE_CATEGORY, SAMPLE_TOD, SAMPLE_MINUTES],
+    queryKey: queryKeys.biasFactorLookup(
+      SAMPLE_CATEGORY,
+      SAMPLE_TOD,
+      SAMPLE_MINUTES
+    ),
     queryFn: () =>
       api<BiasBlendSample>(
         `/v1/analytics/bias_factor/lookup?category=${SAMPLE_CATEGORY}&tod=${SAMPLE_TOD}&planned_minutes=${SAMPLE_MINUTES}`
@@ -145,12 +149,12 @@ function DynamicProximityCard({
   blendData?: BiasBlendSample;
 }) {
   const proximityQ = useQuery({
-    queryKey: ["proximity", 14],
+    queryKey: queryKeys.archetypeProximity(14),
     queryFn: () => getArchetypeProximity(14),
     staleTime: 60_000,
   });
   const trendQ = useQuery({
-    queryKey: ["proximity-trend", 14, 14],
+    queryKey: queryKeys.archetypeProximityTrend(14, 14),
     queryFn: () => getArchetypeProximityTrend(14, 14),
     staleTime: 60_000,
     enabled: proximityQ.data?.ready === true,

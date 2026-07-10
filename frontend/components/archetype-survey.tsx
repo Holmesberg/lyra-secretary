@@ -45,7 +45,7 @@ import {
   submitArchetypeSurvey,
   type SurveyItem,
 } from "@/lib/archetype";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidateArchetypeDependentQueries } from "@/lib/query-keys";
 
 type InstrumentSection = {
   key: "meq" | "bfi_c" | "bscs" | "gp";
@@ -106,16 +106,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
   // operator asked for 2026-04-23.
   const qc = useQueryClient();
   function invalidateArchetypeDependent() {
-    qc.invalidateQueries({ queryKey: queryKeys.insights });
-    qc.invalidateQueries({ queryKey: queryKeys.me });
-    // Bias-factor lookups are per (category, tod, planned) — we don't
-    // know every key variant open tabs might have cached. Broad match
-    // on the first key segment so every cached lookup invalidates.
-    qc.invalidateQueries({
-      predicate: (q) =>
-        typeof q.queryKey[0] === "string" &&
-        (q.queryKey[0] as string).startsWith("bias_factor"),
-    });
+    void invalidateArchetypeDependentQueries(qc);
   }
 
   const section = SECTIONS[sectionIdx];
