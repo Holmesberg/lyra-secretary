@@ -17790,3 +17790,88 @@ Rollback note:
   `analytics.py` and remove the dedicated router include. No schema, data,
   Redis migration, hosted-public deploy, public restart, production repair, or
   rebrand/domain rollback is required.
+
+## 2026-07-10 - Behavioral Signature Aggregate Extraction
+
+Seam:
+
+- `behavioral-signature-aggregate-extraction`
+
+Changed authority:
+
+- Moved the read-only operator behavioral signature aggregate implementation
+  from the parked Jarvis tool island into
+  `backend/app/services/behavioral_signature_aggregate.py`.
+- `backend/app/services/behavioral_signature_service.py` now calls the
+  dedicated aggregate module directly instead of importing `jarvis_tools`.
+- `backend/app/services/jarvis_tools.py` keeps compatibility aliases for the
+  historical tool registry and tests.
+
+Removed paths:
+
+- Non-Jarvis service dependency on `jarvis_tools._exec_analyze_behavioral_signature`.
+
+Parked paths:
+
+- `query_dark_columns`, `propose_pattern_hypothesis`, historical
+  `JarvisInvocation` rows, Jarvis write-tool compatibility, schema cleanup,
+  hosted-public deploy/restart, public mutable dogfood, production repair,
+  and rebrand/domain migration remain parked.
+
+Moved authority:
+
+- No mutation, exposure lifecycle, notification lifecycle, provider, task,
+  stopwatch, clean-data denominator, ClaimCompiler, hosted-public, production
+  data, schema, or rebrand authority moved.
+- The behavioral signature aggregate remains operator-only and read-only.
+
+Tests and verification:
+
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\services\behavioral_signature_aggregate.py backend\app\services\behavioral_signature_service.py backend\app\services\jarvis_tools.py`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_analytics_behavioral_signature.py backend\tests\test_jarvis_phase2_discovery_tools.py -q`;
+  passed with 27 tests.
+- Negative proof: `test_behavioral_signature_403_non_operator` kept
+  non-operator access forbidden.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `a90fda5` passed: run `29121156676`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29121156676`).
+- Standard local-current post-wave proof command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName behavioral-signature-aggregate-extraction -IncludeCiCdProof -CiCdRunId 29121156676 -CiCdFailOnUnsuccessful`;
+  passed.
+- Evidence manifest:
+  `tmp\post-wave-dogfood\20260710-232400-behavioral-signature-aggregate-extraction-standard-local-current\summary.json`.
+- Classification: `standard_wave_proof_passed`.
+- Topology: `local-current`, frontend `http://localhost:3013`, API
+  `http://localhost:8000`, frontend build id `local-current`, backend build
+  id `dev`.
+- Cleanup proof: not required; this was a read-only operator aggregate seam.
+- Operator proof: implementation green, cohort yellow, safe-to-invite false,
+  exposure-without-render count `0`, and no count diffs.
+- CI/CD proof in manifest: run `29121156676` for
+  `a90fda5ae1297361e538b6b33d6a98780c7e72f9` passed.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200` until public deployment
+  state is updated; no public restart/deploy was performed in this seam.
+- Standard mode skipped mutable browser proof and full backend suite by design.
+
+Behavior parity statement:
+
+- `/v1/analytics/behavioral_signature` payload shape, operator-only access,
+  legacy Jarvis compatibility imports, confidence tiers, coverage labels, and
+  read-only aggregate behavior are unchanged. The seam only moved the aggregate
+  implementation to a non-Jarvis service module.
+
+Rollback note:
+
+- Revert `a90fda5` to restore the historical aggregate body inside
+  `jarvis_tools.py` and return `behavioral_signature_service.py` to the
+  previous strangler import. No schema, data, Redis migration, hosted-public
+  deploy, public restart, production repair, or rebrand/domain rollback is
+  required.
