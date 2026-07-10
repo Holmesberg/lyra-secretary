@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 CORTEX_PATHS = (
     "backend/app/services/cortex.py",
+    "backend/app/services/cortex_clean_profiles.py",
     "backend/app/services/cortex",
 )
 
