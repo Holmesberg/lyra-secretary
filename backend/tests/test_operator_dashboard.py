@@ -706,6 +706,49 @@ def test_operator_dashboard_read_is_side_effect_free(client, db):
     _clear_ids(db, ids)
     db.add(_user(9141, operator=True))
     db.add(_user(9142, operator=False))
+    now = datetime.utcnow()
+    task = _task(9142, "operator-readonly-task", state=TaskState.EXECUTED)
+    task.executed_start_utc = now - timedelta(hours=2)
+    task.executed_end_utc = now - timedelta(hours=1)
+    task.executed_duration_minutes = 60
+    db.add(task)
+    db.add(
+        StopwatchSession(
+            session_id="operator-readonly-session",
+            task_id=task.task_id,
+            user_id=9142,
+            start_time_utc=task.executed_start_utc,
+            end_time_utc=task.executed_end_utc,
+            total_paused_minutes=0.0,
+            auto_closed=False,
+        )
+    )
+    deadline = Deadline(
+        deadline_id="operator-readonly-provider-deadline",
+        user_id=9142,
+        title="Operator readonly provider deadline",
+        due_at_utc=now + timedelta(days=1),
+        state="active",
+        external_source="moodle_ws",
+        external_id="operator-readonly-provider-deadline",
+        imported_at=now,
+    )
+    db.add(deadline)
+    db.add(
+        DeadlineCompletionEvent(
+            event_id="operator-readonly-provider-completion",
+            deadline_id=deadline.deadline_id,
+            user_id=9142,
+            task_id=None,
+            completion_source="moodle_submission",
+            completed_at_utc=now,
+            recorded_at_utc=now,
+            due_at_utc_at_event=deadline.due_at_utc,
+            completed_after_due=False,
+            delay_minutes=0,
+            time_provenance="external_import",
+        )
+    )
     event = NotificationLifecycleEvent(
         event_id="operator-readonly-lifecycle",
         user_id=9142,
@@ -713,14 +756,19 @@ def test_operator_dashboard_read_is_side_effect_free(client, db):
         channel="web",
         notification_type="timer_overflow",
         status="queued",
-        queued_at=datetime.utcnow(),
-        last_transition_at=datetime.utcnow(),
-        created_at=datetime.utcnow(),
+        queued_at=now,
+        last_transition_at=now,
+        created_at=now,
     )
     db.add(event)
     db.commit()
 
     before = {
+        "users": db.query(User).count(),
+        "tasks": db.query(Task).count(),
+        "sessions": db.query(StopwatchSession).count(),
+        "deadlines": db.query(Deadline).count(),
+        "deadline_completion_events": db.query(DeadlineCompletionEvent).count(),
         "notifications": db.query(NotificationLifecycleEvent).count(),
         "decisions": db.query(ExposureDecisionEvent).count(),
         "renders": db.query(ExposureRenderEvent).count(),
@@ -737,6 +785,11 @@ def test_operator_dashboard_read_is_side_effect_free(client, db):
     issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
     assert "notification_source_freshness_not_instrumented" not in issue_ids
     after = {
+        "users": db.query(User).count(),
+        "tasks": db.query(Task).count(),
+        "sessions": db.query(StopwatchSession).count(),
+        "deadlines": db.query(Deadline).count(),
+        "deadline_completion_events": db.query(DeadlineCompletionEvent).count(),
         "notifications": db.query(NotificationLifecycleEvent).count(),
         "decisions": db.query(ExposureDecisionEvent).count(),
         "renders": db.query(ExposureRenderEvent).count(),
