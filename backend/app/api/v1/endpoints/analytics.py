@@ -6,17 +6,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from collections import defaultdict
 
 from app.api.deps import get_db, operator_user_from_scope
 from app.core.authority import authority_for_surface
 from app.db.models import (
     Archetype,
     ArchetypeAssignment,
-    Deadline,
     ExposureDecisionEvent,
     Task,
-    TaskExecutionCorrection,
     TaskState,
     User,
 )
@@ -81,7 +78,7 @@ from app.services.output_surfaces import (
     rule11_no_nudge_control_active,
     rule11_randomization_fields,
 )
-from app.utils.time_utils import to_local, now_utc
+from app.utils.time_utils import now_utc
 from app.utils.redis_client import RedisClient
 
 router = APIRouter()
@@ -577,6 +574,7 @@ from app.services.bias_factor_service import (
     RESEARCH_PRIORS as _SVC_RESEARCH_PRIORS,
     _adaptive_calibration as _svc_adaptive_calibration,
     _bias_cell as _svc_bias_cell,
+    bias_factor_snapshot,
 )
 
 _bias_cell = _svc_bias_cell
@@ -610,79 +608,7 @@ def get_bias_factor(
     user-planning alone. Tasks with no deadline binding stay in (they
     can never be external by construction).
     """
-    tasks = (
-        db.query(Task)
-        .outerjoin(Deadline, Task.deadline_id == Deadline.deadline_id)
-        .filter(
-            Task.state == TaskState.EXECUTED,
-            Task.initiation_status != "system_error",
-            Task.voided_at.is_(None),
-            Task.is_anchor.is_(False),
-            Task.initiation_status != "retroactive",
-            Task.executed_duration_minutes != None,
-            Task.planned_duration_minutes > 0,
-            ~db.query(TaskExecutionCorrection.correction_id)
-            .filter(TaskExecutionCorrection.task_id == Task.task_id)
-            .exists(),
-            # VT-29: exclude tasks bound to imported deadlines.
-            (Task.deadline_id.is_(None)) | (Deadline.external_source.is_(None)),
-        )
-        .all()
-    )
-
-    cell_buckets: dict[tuple[str, str], list[tuple[int, int]]] = defaultdict(list)
-    cat_buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
-    tod_buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
-    global_rows: list[tuple[int, int]] = []
-
-    for t in tasks:
-        cat = t.category or "uncategorized"
-        tod = _time_of_day(to_local(t.planned_start_utc))
-        pair = (t.planned_duration_minutes, t.executed_duration_minutes)
-        cell_buckets[(cat, tod)].append(pair)
-        cat_buckets[cat].append(pair)
-        tod_buckets[tod].append(pair)
-        global_rows.append(pair)
-
-    cells = []
-    insufficient = []
-    for (cat, tod), rows in sorted(cell_buckets.items()):
-        cell = _bias_cell(rows, min_sessions)
-        if cell is None:
-            insufficient.append({"category": cat, "time_of_day": tod, "sessions": len(rows)})
-            continue
-        cell["category"] = cat
-        cell["time_of_day"] = tod
-        cells.append(cell)
-
-    category_only = []
-    for cat, rows in sorted(cat_buckets.items()):
-        cell = _bias_cell(rows, min_sessions)
-        if cell is None:
-            continue
-        cell["category"] = cat
-        category_only.append(cell)
-
-    time_of_day_only = []
-    for tod, rows in sorted(tod_buckets.items()):
-        cell = _bias_cell(rows, min_sessions)
-        if cell is None:
-            continue
-        cell["time_of_day"] = tod
-        time_of_day_only.append(cell)
-
-    global_cell = _bias_cell(global_rows, min_sessions)
-
-    return {
-        "cells": cells,
-        "category_only": category_only,
-        "time_of_day_only": time_of_day_only,
-        "global": global_cell,
-        "insufficient_cells": insufficient,
-        "min_sessions": min_sessions,
-        "total_executed": len(tasks),
-        "primary_metric": "bias_factor (sum-ratio)",
-    }
+    return bias_factor_snapshot(db, min_sessions=min_sessions)
 
 
 # RESEARCH_PRIORS + RESEARCH_PRIOR_DEFAULT extracted to

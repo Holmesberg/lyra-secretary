@@ -20,11 +20,19 @@ existing call sites continue to work without edit.
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Archetype, Task, User
+from app.db.models import (
+    Archetype,
+    Deadline,
+    Task,
+    TaskExecutionCorrection,
+    TaskState,
+    User,
+)
 from app.services.archetype_service import DIFFUSE_AVERAGE_ID
 from app.services.exposure_ledger import baseline_clean_task_ids
 from app.services.interruption_metrics import occupancy_projection
@@ -78,6 +86,84 @@ def _bias_cell(rows: list[tuple[int, int]], min_n: int) -> Optional[dict]:
             else "underestimates" if sum_ratio > 1.1
             else "overestimates"
         ),
+    }
+
+
+def bias_factor_snapshot(db: Session, *, min_sessions: int = 3) -> dict:
+    """Return endpoint-compatible Rule 13 bias-factor bucket snapshots."""
+
+    tasks = (
+        db.query(Task)
+        .outerjoin(Deadline, Task.deadline_id == Deadline.deadline_id)
+        .filter(
+            Task.state == TaskState.EXECUTED,
+            Task.initiation_status != "system_error",
+            Task.voided_at.is_(None),
+            Task.is_anchor.is_(False),
+            Task.initiation_status != "retroactive",
+            Task.executed_duration_minutes != None,
+            Task.planned_duration_minutes > 0,
+            ~db.query(TaskExecutionCorrection.correction_id)
+            .filter(TaskExecutionCorrection.task_id == Task.task_id)
+            .exists(),
+            # VT-29: exclude tasks bound to imported deadlines.
+            (Task.deadline_id.is_(None)) | (Deadline.external_source.is_(None)),
+        )
+        .all()
+    )
+
+    cell_buckets: dict[tuple[str, str], list[tuple[int, int]]] = defaultdict(list)
+    cat_buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    tod_buckets: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    global_rows: list[tuple[int, int]] = []
+
+    for task in tasks:
+        cat = task.category or "uncategorized"
+        tod = _time_of_day(to_local(task.planned_start_utc))
+        pair = (task.planned_duration_minutes, task.executed_duration_minutes)
+        cell_buckets[(cat, tod)].append(pair)
+        cat_buckets[cat].append(pair)
+        tod_buckets[tod].append(pair)
+        global_rows.append(pair)
+
+    cells = []
+    insufficient = []
+    for (cat, tod), rows in sorted(cell_buckets.items()):
+        cell = _bias_cell(rows, min_sessions)
+        if cell is None:
+            insufficient.append(
+                {"category": cat, "time_of_day": tod, "sessions": len(rows)}
+            )
+            continue
+        cell["category"] = cat
+        cell["time_of_day"] = tod
+        cells.append(cell)
+
+    category_only = []
+    for cat, rows in sorted(cat_buckets.items()):
+        cell = _bias_cell(rows, min_sessions)
+        if cell is None:
+            continue
+        cell["category"] = cat
+        category_only.append(cell)
+
+    time_of_day_only = []
+    for tod, rows in sorted(tod_buckets.items()):
+        cell = _bias_cell(rows, min_sessions)
+        if cell is None:
+            continue
+        cell["time_of_day"] = tod
+        time_of_day_only.append(cell)
+
+    return {
+        "cells": cells,
+        "category_only": category_only,
+        "time_of_day_only": time_of_day_only,
+        "global": _bias_cell(global_rows, min_sessions),
+        "insufficient_cells": insufficient,
+        "min_sessions": min_sessions,
+        "total_executed": len(tasks),
+        "primary_metric": "bias_factor (sum-ratio)",
     }
 
 
