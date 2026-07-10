@@ -126,6 +126,9 @@ jobs:
     - name: Run NewTaskModal fresh-default contract gate
       run: node scripts/test_new_task_modal_contract.mjs
 
+    - name: Run undo invalidation contract gate
+      run: node scripts/test_undo_invalidation_contract.mjs
+
     - name: Run public runtime watchdog contract gate
       run: node scripts/test_public_runtime_watchdog_contract.mjs
 
