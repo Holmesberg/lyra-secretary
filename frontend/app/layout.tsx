@@ -18,22 +18,17 @@ const PUBLIC_SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL || "https://lyraos.o
 
 export const metadata: Metadata = {
   metadataBase: new URL(PUBLIC_SITE_ORIGIN),
-  title: "LyraOS — Your Cognitive Operating System",
+  title: "LyraOS - Planning Evidence And Recovery",
   description:
-    "An AI-native productivity system that treats task estimates as hypotheses and work sessions as evidence — then shows you the pattern.",
+    "A pre-alpha planning and execution instrument that treats task estimates as hypotheses and work sessions as evidence.",
   keywords: [
-    "AI productivity system",
-    "AI-native productivity",
-    "adaptive productivity platform",
-    "adaptive scheduling",
-    "cognitive workflow platform",
-    "cognitive operating system",
-    "behavior-aware scheduler",
+    "planning evidence",
+    "planning accuracy",
+    "execution tracking",
+    "clean data",
+    "behavioral instrumentation",
     "human-AI collaboration",
     "metacognitive measurement",
-    "planning accuracy",
-    "planning accuracy app",
-    "neuroadaptive systems",
     "time estimation research",
     "productivity research instrument",
   ],
@@ -41,9 +36,9 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "LyraOS — Your Cognitive Operating System",
+    title: "LyraOS - Planning Evidence And Recovery",
     description:
-      "An AI-native productivity system that learns the gap between your plans and reality.",
+      "A pre-alpha planning and execution instrument for comparing plans with clean execution evidence.",
     type: "website",
     url: PUBLIC_SITE_ORIGIN,
     siteName: "LyraOS",
@@ -53,15 +48,15 @@ export const metadata: Metadata = {
         url: "/insights-v2.png",
         width: 875,
         height: 780,
-        alt: "LyraOS insights dashboard with a primary synthesis card and supporting confidence-ranked behavioral evidence.",
+        alt: "LyraOS evidence dashboard with bounded planning and execution summaries.",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "LyraOS — Your Cognitive Operating System",
+    title: "LyraOS - Planning Evidence And Recovery",
     description:
-      "AI-native productivity system for planning accuracy, adaptive scheduling, and behavioral feedback.",
+      "Pre-alpha planning evidence, timers, and bounded execution summaries.",
     images: ["/insights-v2.png"],
   },
   robots: {
@@ -85,7 +80,7 @@ const jsonLd = {
       name: "LyraOS",
       url: PUBLIC_SITE_ORIGIN,
       description:
-        "AI-native productivity system and behavior-aware scheduler. Treats task estimates as hypotheses and work sessions as evidence, then uses planned-vs-executed traces to reveal behavioral patterns.",
+        "Pre-alpha planning and execution instrument. It treats task estimates as hypotheses, records work sessions as evidence, and keeps behavioral claims bounded by data quality.",
       applicationCategory: "ProductivityApplication",
       operatingSystem: "Web",
       offers: {
@@ -99,11 +94,9 @@ const jsonLd = {
         "Stopwatch timing with pause/resume",
         "Pre- and post-task readiness capture",
         "Planning accuracy measurement",
-        "Adaptive behavioral feedback",
-        "Personal bias factor calibration",
-        "Archetype-prior shrinkage predictions",
+        "Clean-data and provenance-aware evidence summaries",
         "Google Calendar integration",
-        "Pause pattern prediction",
+        "Operator readiness diagnostics",
       ],
     },
     {
@@ -112,7 +105,7 @@ const jsonLd = {
       name: "LyraOS",
       url: PUBLIC_SITE_ORIGIN,
       description:
-        "Independent AI-native productivity system with behavioral instrumentation for measuring how humans estimate vs execute. Pre-alpha, built in public in Cairo.",
+        "Independent pre-alpha planning and execution research instrument built in public in Cairo.",
     },
     {
       "@type": "WebSite",
@@ -120,7 +113,7 @@ const jsonLd = {
       url: PUBLIC_SITE_ORIGIN,
       name: "LyraOS",
       description:
-        "Are humans wrong about themselves in a structured way that predicts failure?",
+        "Planning estimates, execution traces, and bounded evidence about the gap between plans and reality.",
       inLanguage: "en",
       publisher: { "@id": `${PUBLIC_SITE_ORIGIN}/#org` },
     },
@@ -136,7 +129,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       className={`dark ${chakra.variable} ${GeistSans.variable} ${GeistMono.variable}`}
     >
       <head>
-        {/* Schema.org JSON-LD — rendered server-side so crawlers see it
+        {/* Schema.org JSON-LD - rendered server-side so crawlers see it
             without executing JS. Next.js auto-hydrates; no runtime cost. */}
         <script
           type="application/ld+json"
