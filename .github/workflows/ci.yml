@@ -115,6 +115,7 @@ jobs:
         python scripts/scan_refactor_contracts.py --self-test-jarvis-import-boundary
         python scripts/scan_refactor_contracts.py --self-test-no-rebrand
         python scripts/scan_refactor_contracts.py --self-test-removed-surface-docs
+        python scripts/scan_refactor_contracts.py --self-test-legacy-notification-pending
         python scripts/scan_refactor_contracts.py --fail-on-errors
 
     - name: Run post-wave evidence manifest contract gate

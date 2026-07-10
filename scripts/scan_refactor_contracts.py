@@ -284,6 +284,69 @@ JARVIS_TOOLS_IMPORT_ALLOWED_PATHS = {
     "backend/app/services/jarvis_tools.py",
 }
 
+LEGACY_NOTIFICATION_PENDING_PATTERN = re.compile(
+    r"/v1/notifications/pending(?:\?channel=|['\"\s])|notifications/pending\?channel="
+)
+
+LEGACY_NOTIFICATION_PENDING_ALLOWED_PATHS = {
+    "backend/app/api/v1/endpoints/notifications.py",
+    "scripts/scan_refactor_contracts.py",
+}
+
+
+def legacy_notification_pending_callsite_findings(
+    extra_files: dict[str, str] | None = None,
+) -> list[Finding]:
+    """Keep callers on explicit web/openclaw notification endpoints.
+
+    The compatibility route remains mounted for now, but new runtime/browser
+    code must call /web/pending, /web/ack, or /openclaw/pending so delivery
+    authority stays visible and the old channel footgun cannot re-enter.
+    """
+    files: list[Path] = []
+    for root in (
+        REPO_ROOT / "frontend",
+        REPO_ROOT / "scripts",
+        REPO_ROOT / "backend" / "app",
+    ):
+        files.extend(iter_files(root, {".py", ".js", ".jsx", ".mjs", ".ts", ".tsx"}))
+    findings = scan_lines(
+        rule_id="runtime_must_not_call_legacy_notification_pending_bridge",
+        severity="error",
+        files=files,
+        pattern=LEGACY_NOTIFICATION_PENDING_PATTERN,
+        allowed_paths=LEGACY_NOTIFICATION_PENDING_ALLOWED_PATHS,
+    )
+    if extra_files:
+        for doc_path, text in extra_files.items():
+            if doc_path in LEGACY_NOTIFICATION_PENDING_ALLOWED_PATHS:
+                continue
+            for index, line in enumerate(text.splitlines(), start=1):
+                if LEGACY_NOTIFICATION_PENDING_PATTERN.search(line):
+                    findings.append(
+                        Finding(
+                            rule_id="runtime_must_not_call_legacy_notification_pending_bridge",
+                            severity="error",
+                            path=doc_path,
+                            line=index,
+                            excerpt=line.strip()[:220],
+                        )
+                    )
+    return findings
+
+
+def legacy_notification_pending_callsite_self_test_findings() -> list[Finding]:
+    return legacy_notification_pending_callsite_findings(
+        {
+            "frontend/lib/notifications.ts": (
+                "return fetch('/v1/notifications/pending?channel=web');"
+            ),
+            "scripts/old_openclaw_poll.mjs": (
+                "await apiFetch('/v1/notifications/pending?channel=openclaw');"
+            ),
+        }
+    )
+
 
 def stale_doc_authority_banner_findings() -> list[Finding]:
     findings: list[Finding] = []
@@ -456,8 +519,21 @@ def main() -> int:
     parser.add_argument("--self-test-removed-surface-docs", action="store_true")
     parser.add_argument("--self-test-no-rebrand", action="store_true")
     parser.add_argument("--self-test-jarvis-import-boundary", action="store_true")
+    parser.add_argument("--self-test-legacy-notification-pending", action="store_true")
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
+
+    if args.self_test_legacy_notification_pending:
+        findings = legacy_notification_pending_callsite_self_test_findings()
+        output = {
+            "ok": len(findings) >= 2,
+            "mode": "self_test_legacy_notification_pending",
+            "expected_minimum_findings": 2,
+            "finding_count": len(findings),
+            "findings": [finding.__dict__ for finding in findings],
+        }
+        print(json.dumps(output, indent=2 if args.pretty else None, sort_keys=True))
+        return 0 if output["ok"] else 1
 
     if args.self_test_jarvis_import_boundary:
         findings = non_owner_jarvis_tools_import_self_test_findings()
@@ -506,6 +582,7 @@ def main() -> int:
     findings.extend(stale_doc_authority_banner_findings())
     findings.extend(removed_surface_active_doc_findings())
     findings.extend(no_unapproved_rebrand_findings())
+    findings.extend(legacy_notification_pending_callsite_findings())
     if args.include_review:
         findings.extend(frontend_behavioral_claim_review_findings())
 
