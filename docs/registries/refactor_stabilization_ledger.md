@@ -12328,3 +12328,91 @@ Rollback note:
   `operator_dashboard_metrics.py`.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Operator User Projection Extraction
+
+Seam:
+
+- `r4-operator-user-projection-extraction`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- The operator user-row projection, email hash helper, percentage helper, and
+  test/synthetic-user classifier moved into a dedicated read-only projection
+  module.
+
+Removed paths:
+
+- Removed inline user projection and helper implementations from
+  `backend/app/services/operator_dashboard_metrics.py`.
+- Removed duplicate local helper implementations from
+  `backend/app/services/operator_measurement_integrity.py`.
+
+Parked paths:
+
+- Writer splits remain parked: output render/suppress, stopwatch stop, task
+  lifecycle, auth/scoping, provider connection model, and `models.py`.
+- Hosted-public mutable dogfood remains approval-gated.
+
+Moved authority:
+
+- `backend/app/services/operator_user_projection.py` now owns read-only
+  operator user rows, redacted email hashes, percentage calculation, and
+  test/synthetic-user classification.
+- `operator_dashboard_metrics.py` keeps compatibility imports so existing
+  operator endpoint imports do not change.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 read-only backend extraction,
+  not a product bug.
+- Classification: backend behavior-preserving extraction / cohort projection
+  and measurement denominator helper split.
+- During local proof, the first operator dashboard test run caught a seam-local
+  regression: `operator_measurement_integrity.py` still queried `User` after
+  the import was removed. Classified as product/runtime import regression
+  caught pre-commit; fixed by restoring the `User` import before commit.
+
+Tests and verification:
+
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\services\operator_dashboard_metrics.py backend\app\services\operator_measurement_integrity.py backend\app\services\operator_user_projection.py backend\app\api\v1\endpoints\operator.py`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py -q`;
+  passed, 12 tests after the import fix.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_route_security.py -q`;
+  passed, 6 tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending
+  warnings.
+- Local-current operator read-only browser proof:
+  `tmp/operator-readonly-stress-2026-07-10T00-44-52-969Z/result.json`; passed.
+- The operator read-only artifact reported verified `local-current` topology,
+  frontend/backend build IDs `local-current`/`dev`, zero count diffs, zero route
+  count diffs, zero dashboard snapshot diffs, no browser issues or warnings,
+  `implementation_green=true`, cohort yellow for real data gaps, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29060781862` passed for
+  `ab513fd6096973e8590b21b249a6e1e73ac2e1ba`.
+
+Behavior parity statement:
+
+- Operator dashboard payload shape remains unchanged.
+- Cohort admission, test/synthetic-user exclusion, email redaction,
+  per-user clean-trace ratios, and measurement denominator exclusions did not
+  change.
+- No writes, migrations, hosted-public deploys, public restarts, or synthetic
+  browser rows were introduced.
+
+Rollback note:
+
+- Revert commit `ab513fd` to move the projection helpers back into
+  `operator_dashboard_metrics.py` and restore the measurement-local helper
+  copies.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
