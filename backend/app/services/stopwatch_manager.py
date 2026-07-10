@@ -1129,7 +1129,7 @@ class StopwatchManager:
             self.db.refresh(session)
             self.db.refresh(task)
             self.redis.clear_active_stopwatch(user_id)
-
+            return session, task, is_early_stop, False, None, None, None, pre_existing_pct
 
         session.end_time_utc = stop_time
         # LYR-105: same invariant on the normal stop path. Helper is
