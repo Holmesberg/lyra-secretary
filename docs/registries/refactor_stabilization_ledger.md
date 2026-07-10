@@ -14973,3 +14973,79 @@ Rollback note:
 - Revert commit `2d3b105` to remove the characterization test.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Public Frontend Atomic Build/Swap Contract
+
+Seam:
+
+- `public-frontend-atomic-build-swap-contract`
+
+Changed authority:
+
+- No product/runtime behavior, data, schema, exposure authority, provider
+  authority, clean-data authority, env var, domain, or rebrand authority
+  changed.
+- The authoritative public frontend restart helper now builds public topology
+  into a staging artifact and swaps it into `.next-public` only after staged
+  `BUILD_ID` validation.
+- S1c CI now gates against returning to public frontend build-in-place.
+
+Removed paths:
+
+- Removed the deployment footgun where `scripts/restart_frontend_wsl.ps1`
+  deleted `.next-public` before `npm run build:public`, allowing an interrupted
+  or failed build to leave hosted-public artifacts incomplete.
+
+Parked paths:
+
+- Public deploy/restart, hosted-public mutable dogfood, domain/rebrand
+  migration, schema migrations, and rollout/release decisions remain
+  approval-gated and were not performed.
+
+Moved authority:
+
+- No runtime ownership moved.
+- Public artifact safety is now enforced by
+  `scripts/test_public_frontend_restart_contract.mjs` in the S1c static gates.
+
+Issues and classification:
+
+- Fixed GitHub issue #196:
+  `https://github.com/Holmesberg/lyra-secretary/issues/196`.
+- Classification: topology/deployment helper bug plus CI/CD verifier gate.
+
+Tests and verification:
+
+- PowerShell parser check for `scripts\restart_frontend_wsl.ps1`; passed.
+- `node scripts/test_public_frontend_restart_contract.mjs`; passed.
+- `node scripts/test_public_runtime_watchdog_contract.mjs`; passed.
+- `node scripts/test_runtime_topology_contract.mjs`; passed.
+- `git diff --check -- scripts\restart_frontend_wsl.ps1 scripts\test_public_frontend_restart_contract.mjs .github\workflows\ci.yml`;
+  passed with existing CRLF warnings only.
+- Read-only public pre-proof:
+  `node scripts/verify_runtime_topology.mjs --topology public --skip-browser --out-file tmp/public-topology-readonly-2026-07-10T08-39-31-974Z.json`;
+  passed with public frontend build `bbd168c` and backend build `dev`.
+- Read-only watchdog pre-proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\watch_public_runtime.ps1 -ReadOnly -TimeoutSeconds 10 -LogDir tmp\runtime-watchdog-readonly-latest`;
+  passed, artifact
+  `tmp/runtime-watchdog-readonly-latest/watchdog-20260710-113932.log`.
+- The watchdog artifact reported public frontend/API healthy, topology
+  verified, public static asset graph healthy, and `Relay start skipped by
+  -ReadOnly/-SkipRelay`.
+- CI proof: GitHub Actions run `29080668301` passed for
+  `9f19c0329ad5478c2260edd36649141be392f693`.
+
+Behavior parity statement:
+
+- No public restart or deploy was performed in this seam.
+- Future approved runs of `scripts\restart_frontend_wsl.ps1` preserve the same
+  public topology and `next start` behavior, but build into
+  `.next-public.staging.$$`, validate staged `BUILD_ID`, move the previous
+  artifact aside, and restore it if the swap fails.
+
+Rollback note:
+
+- Revert commit `9f19c03` to restore the prior restart helper and remove the
+  static CI contract.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
