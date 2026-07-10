@@ -14358,3 +14358,70 @@ Rollback note:
   `PulseAcademicPressureMap` again.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Backend Pytest Wrapper CI-Parity Fix
+
+Seam:
+
+- `s1c-pressure-map-local-test-parity`
+
+Changed authority:
+
+- No product/runtime behavior, backend pressure-map authority, task mutation
+  authority, exposure authority, schema, deployment state, env var, domain, or
+  cohort denominator changed.
+- Local backend test execution now mirrors the CI working directory contract.
+
+Removed paths:
+
+- The local wrapper no longer runs pytest from the repository root with
+  `backend\tests` paths.
+
+Parked paths:
+
+- Backend pressure-map product changes, recovery-option policy changes,
+  public hosted mutable dogfood, hosted-public deploy/restart, schema
+  migrations, and rebrand/domain migration remain separate or approval-gated
+  seams.
+
+Moved authority:
+
+- No product authority moved.
+- Harness responsibility moved into `scripts/run_backend_pytest.ps1`:
+  repo-root test paths such as `backend\tests\...` are normalized to
+  CI-style `tests\...`, then pytest runs from `./backend`.
+
+Issues and classification:
+
+- GitHub issue `#193` was closed.
+- Classification: verifier/harness bug. The pressure-map endpoint and tests
+  were not changed; the local wrapper imported/routed tests differently from
+  CI and produced a false backend characterization failure.
+
+Tests and verification:
+
+- `git diff --check -- scripts\run_backend_pytest.ps1`; passed with existing
+  CRLF warning only.
+- Exact repro now passes:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_academic_pressure_map.py::test_pressure_map_marks_overdue_without_inferring_completion -q`.
+- Full pressure-map backend characterization now passes:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_academic_pressure_map.py -q`;
+  passed, `11` tests.
+- Negative proof: `backend\tests\test_academic_pressure_map.py::does_not_exist`
+  still fails closed with pytest reporting the missing test node.
+- CI proof: GitHub Actions run `29076123500` passed for
+  `2d2892a1a0b317bd677f60988c46f02764af1f27`.
+
+Behavior parity statement:
+
+- Backend/product behavior is unchanged. This only makes local backend proof
+  use the same import root and path style as CI.
+- Existing callers may still pass repo-root paths like `backend\tests\...`;
+  the wrapper converts them before invoking pytest from `./backend`.
+
+Rollback note:
+
+- Revert commit `2d2892a` to restore the previous root-working-directory
+  wrapper behavior.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
