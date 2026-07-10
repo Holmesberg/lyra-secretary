@@ -12754,3 +12754,78 @@ Rollback note:
   `backend/app/api/v1/endpoints/analytics.py`.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Analytics Rule 11 Reopen Gate Extraction
+
+Seam:
+
+- `r4-analytics-rule11-reopen-gate-extraction`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- The analytics route no longer owns the read-only Rule 11 Insights reopen
+  calculation or hold-message construction.
+
+Removed paths:
+
+- Removed inline `_insights_rule11_reopen_gate`,
+  `_insights_rule11_hold_message`, and local Insights Rule 11 constants from
+  `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- `/analytics/insights` exposure write routing, output-surface render/suppress
+  writer extraction, ClaimCompiler/Cortex routing, task lifecycle writer
+  splits, schema migrations, hosted-public deploy/restart, hosted-public
+  mutable dogfood, rebrand/domain migration, and cohort expansion remain
+  approval-gated.
+
+Moved authority:
+
+- `backend/app/services/analytics_insight_rule11.py` now owns the read-only
+  evidence gate for reopening Insights after a no-nudge control hold.
+- `backend/app/api/v1/endpoints/analytics.py` re-exports the same compatibility
+  names for existing endpoint tests and callers.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 backend read-only extraction,
+  not a product bug.
+- Classification: backend behavior-preserving extraction / measurement gate
+  route-thinning.
+
+Tests and verification:
+
+- Added `backend/app/services/analytics_insight_rule11.py`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_insights.py -q`;
+  passed, 19 tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- Browser dogfood was not run because this seam moved a read-only backend
+  reopen calculation and changed no frontend surface, user-visible flow, write
+  path, auth path, or hosted topology.
+- CI proof: GitHub Actions run `29062678956` passed for
+  `bc91dcda7654c7e3deba28e28ff702c315aced39`.
+
+Behavior parity statement:
+
+- `/v1/analytics/insights` still holds Rule 11 no-nudge control cards without
+  treating refreshes as reopening evidence.
+- Existing tests still prove the surface remains unlocked-but-held, counts only
+  new clean sessions after the hold, reopens after the threshold, and preserves
+  the Rule 11 suppression reason.
+- No writes, migrations, hosted-public deploys, public restarts, synthetic
+  browser rows, or production repairs were introduced.
+
+Rollback note:
+
+- Revert commit `bc91dcd` to restore the Rule 11 reopen calculation inline in
+  `backend/app/api/v1/endpoints/analytics.py`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
