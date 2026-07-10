@@ -218,6 +218,32 @@ STALE_DOC_AUTHORITY_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 }
 
 
+ACTIVE_DOC_REMOVED_SURFACE_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "docs/deployment_architecture.md": (
+        re.compile(r"\bNotion sync\b"),
+        re.compile(r"\bNotion retry queue\b"),
+    ),
+    "docs/architecture.md": (
+        re.compile(r"\boperator-only JARVIS/OpenClaw\b"),
+        re.compile(r"\bPer-user Notion config\b"),
+        re.compile(r"\bNotion sync format\b"),
+    ),
+    "docs/runbooks/post_wave_dogfood_loop.md": (
+        re.compile(r"\bactive Jarvis\b", re.IGNORECASE),
+    ),
+    "docs/prodblueprint_security.md": (
+        re.compile(r"\badmin dashboards\b"),
+        re.compile(r"\balpha funnel\b"),
+        re.compile(r"\bdegrade Notion sync\b"),
+        re.compile(r"\bNotion unavailable\b"),
+    ),
+    "docs/integrations_architecture.md": (
+        re.compile(r"\bnotion_connect\b"),
+        re.compile(r"\bnotion_enabled\`\) is appropriate\b"),
+    ),
+}
+
+
 def stale_doc_authority_banner_findings() -> list[Finding]:
     findings: list[Finding] = []
     for doc_path, snippets in STALE_DOC_AUTHORITY_REQUIREMENTS.items():
@@ -249,12 +275,70 @@ def stale_doc_authority_banner_findings() -> list[Finding]:
     return findings
 
 
+def removed_surface_active_doc_findings(
+    extra_docs: dict[str, str] | None = None,
+) -> list[Finding]:
+    findings: list[Finding] = []
+    docs: dict[str, str] = {}
+    for doc_path in ACTIVE_DOC_REMOVED_SURFACE_PATTERNS:
+        path = REPO_ROOT / doc_path
+        try:
+            docs[doc_path] = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+    if extra_docs:
+        docs.update(extra_docs)
+
+    for doc_path, text in docs.items():
+        patterns = ACTIVE_DOC_REMOVED_SURFACE_PATTERNS.get(doc_path, ())
+        lines = text.splitlines()
+        for pattern in patterns:
+            for index, line in enumerate(lines, start=1):
+                if pattern.search(line):
+                    findings.append(
+                        Finding(
+                            rule_id="active_docs_must_not_reauthorize_removed_surfaces",
+                            severity="error",
+                            path=doc_path,
+                            line=index,
+                            excerpt=line.strip()[:220],
+                        )
+                    )
+                    break
+    return findings
+
+
+def removed_surface_active_doc_self_test_findings() -> list[Finding]:
+    return removed_surface_active_doc_findings(
+        {
+            "docs/deployment_architecture.md": "Backend owns Notion sync and Notion retry queue.",
+            "docs/architecture.md": "Current stack includes operator-only JARVIS/OpenClaw and Per-user Notion config.",
+            "docs/runbooks/post_wave_dogfood_loop.md": "The runbook proves active Jarvis.",
+            "docs/prodblueprint_security.md": "admin dashboards, alpha funnel, and degrade Notion sync on Notion unavailable.",
+            "docs/integrations_architecture.md": "Use future notion_connect because notion_enabled`) is appropriate.",
+        }
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fail-on-errors", action="store_true")
     parser.add_argument("--include-review", action="store_true")
+    parser.add_argument("--self-test-removed-surface-docs", action="store_true")
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
+
+    if args.self_test_removed_surface_docs:
+        findings = removed_surface_active_doc_self_test_findings()
+        output = {
+            "ok": len(findings) >= len(ACTIVE_DOC_REMOVED_SURFACE_PATTERNS),
+            "mode": "self_test_removed_surface_docs",
+            "expected_minimum_findings": len(ACTIVE_DOC_REMOVED_SURFACE_PATTERNS),
+            "finding_count": len(findings),
+            "findings": [finding.__dict__ for finding in findings],
+        }
+        print(json.dumps(output, indent=2 if args.pretty else None, sort_keys=True))
+        return 0 if output["ok"] else 1
 
     findings: list[Finding] = []
     findings.extend(worker_render_truth_findings())
@@ -264,6 +348,7 @@ def main() -> int:
     findings.extend(app_direct_legacy_reflection_row_findings())
     findings.extend(frontend_jarvis_findings())
     findings.extend(stale_doc_authority_banner_findings())
+    findings.extend(removed_surface_active_doc_findings())
     if args.include_review:
         findings.extend(frontend_behavioral_claim_review_findings())
 

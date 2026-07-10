@@ -16291,3 +16291,53 @@ Rollback note:
 - Revert this docs-only seam to restore the previous active-doc wording.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - S1c Removed Legacy Surface Active-Doc Gate
+
+Seam:
+
+- `removed-legacy-surface-active-doc-hard-gate`
+
+Changed authority:
+
+- `scripts/scan_refactor_contracts.py` now hard-fails if selected active docs
+  reintroduce exact active-authorizing phrases for removed Notion sync, active
+  JARVIS runtime, legacy admin dashboard, or stale Notion OAuth state claims.
+- CI now runs the gate's negative self-test before the normal refactor contract
+  gate, proving the classifier fails closed on synthetic stale wording.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Broader natural-language stale-doc review remains human/report-only. The new
+  gate is intentionally narrow to avoid ceremony and false-positive drift.
+
+Moved authority:
+
+- No runtime authority moved. S1c now owns a small docs-authority regression
+  check for the legacy surfaces removed in the previous seam.
+
+Tests and verification:
+
+- `python -m py_compile scripts\scan_refactor_contracts.py`; passed.
+- `python scripts\scan_refactor_contracts.py --self-test-removed-surface-docs --pretty`;
+  passed and produced synthetic findings.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public deploy,
+  public restart, user-facing product copy, or rebrand/domain state changed.
+- The seam only makes legacy-surface documentation drift observable in the
+  standard S1c gate.
+
+Rollback note:
+
+- Revert this S1c gate commit to remove the new scanner rule and CI self-test.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.

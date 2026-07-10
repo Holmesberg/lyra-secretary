@@ -112,6 +112,7 @@ jobs:
     - name: Run refactor contract gate
       run: |
         python -m py_compile scripts/scan_refactor_contracts.py
+        python scripts/scan_refactor_contracts.py --self-test-removed-surface-docs
         python scripts/scan_refactor_contracts.py --fail-on-errors
 
     - name: Run post-wave evidence manifest contract gate
