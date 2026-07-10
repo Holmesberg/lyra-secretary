@@ -17026,3 +17026,63 @@ Rollback note:
   direct characterization test.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Backend Read-Only Classifier Seam Post-Wave Proof
+
+Seam:
+
+- `backend-readonly-classifier-seams`
+
+Changed authority:
+
+- No new code authority changed in this checkpoint. This entry records the
+  post-wave proof for the read-only backend classifier seams at branch head
+  `58935a8`.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Mutable Holmesberg product-loop proof was not requested because the covered
+  seams changed read-only operator/measurement classifiers only.
+- Hosted-public proof remains separate from `local-current` proof and was not
+  substituted here.
+
+Moved authority:
+
+- None. No runtime, write, schema, Redis, provider, exposure, hosted-public,
+  public deploy, public restart, production data, or rebrand/domain authority
+  moved.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName backend-readonly-classifier-seams -NoMutable -IncludeCiCdProof -CiCdFailOnUnsuccessful`;
+  passed.
+- Artifact:
+  `tmp\post-wave-dogfood\20260710-192348-backend-readonly-classifier-seams-standard-local-current\summary.json`.
+- Evidence manifest classification: `standard_wave_proof_passed`.
+- Topology: `local-current`, frontend `http://localhost:3013`, API
+  `http://localhost:8000`, proxy API enabled, frontend build id
+  `local-current`, backend build id `dev`.
+- Operator read-only stress artifact:
+  `tmp\operator-readonly-stress-2026-07-10T16-28-33-010Z\result.json`.
+- Operator proof: implementation green, cohort yellow, exposure-without-render
+  count `0`, no browser issues, no browser warnings, no count diffs, and no
+  dashboard snapshot diffs.
+- Cleanup proof: mutable cleanup not required; Holmesberg mutable/product-loop
+  paths were gated as not requested.
+- CI/CD proof: run `29107094597` for
+  `58935a8e5db4d02ada0f829f236c0cde536f2b02` passed.
+
+Behavior parity statement:
+
+- The current branch head preserves operator read-only behavior under the
+  standard local-current verification loop. Cohort readiness remains yellow for
+  cohort/data reasons, not implementation blockers.
+
+Rollback note:
+
+- No rollback is attached to this proof-only ledger entry. If the proof becomes
+  stale, rerun the post-wave loop for the current branch head.
