@@ -12181,3 +12181,63 @@ Rollback note:
 - Revert commit `859caff` to restore the two local label helpers.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Insights Query Key Centralization
+
+Seam:
+
+- `r3-insights-query-key-centralization`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- The Insights page and archetype survey invalidation now use
+  `queryKeys.insights` instead of a handwritten `["insights"]` query key.
+
+Removed paths:
+
+- Removed two handwritten Insights React Query key literals from active
+  frontend call sites:
+  - `frontend/app/(app)/insights/page.tsx`
+  - `frontend/components/archetype-survey.tsx`
+
+Parked paths:
+
+- Broader cache-root and persistence allowlist normalization remains parked.
+  The persistence roots in `frontend/components/providers.tsx` are storage
+  allowlist roots, not query call sites, and were intentionally left unchanged.
+- Hosted-public mutable dogfood remains approval-gated.
+
+Moved authority:
+
+- The canonical Insights query key now lives in `frontend/lib/query-keys.ts`
+  with the other active frontend query keys.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 behavior-preserving frontend
+  extraction, not a product bug.
+- Classification: frontend behavior-preserving extraction / query-key
+  contract cleanup.
+
+Tests and verification:
+
+- `npm run lint` from `frontend/`; passed.
+- `npm run build` from `frontend/`; passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings.
+- CI proof: GitHub Actions run `29059766849` passed for
+  `b141ae4f14a5987d3f2a5d61fc7e1a98c88d132c`.
+
+Behavior parity statement:
+
+- The query key value remains exactly `["insights"]`.
+- Insights loading, archetype survey submit/skip invalidation, exposure render
+  acknowledgement, and persisted cache behavior did not change.
+
+Rollback note:
+
+- Revert commit `b141ae4` to restore the two handwritten query key literals.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
