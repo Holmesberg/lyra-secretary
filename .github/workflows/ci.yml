@@ -132,6 +132,9 @@ jobs:
     - name: Run OpenClaw stopwatch task-id contract gate
       run: node scripts/test_openclaw_stopwatch_task_id_contract.mjs
 
+    - name: Run OpenClaw response-confirmation contract gate
+      run: node scripts/test_openclaw_response_confirmation_contract.mjs
+
     - name: Run OpenClaw early-stop contract gate
       run: node scripts/test_openclaw_early_stop_contract.mjs
 
