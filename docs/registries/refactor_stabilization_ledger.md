@@ -14261,3 +14261,100 @@ Rollback note:
   checklist estimate logic again.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Pressure Map Option Selection Helper
+
+Seam:
+
+- `r3-pressure-map-option-selection-helper`
+
+Changed authority:
+
+- No backend academic pressure authority, task mutation authority, exposure
+  authority, clean-data authority, schema, deployment state, env var, domain,
+  or cohort denominator changed.
+- Pulse remains the pressure-map presentation surface; the browser commit path
+  still routes through the existing pressure-map preview and task creation
+  authority.
+
+Removed paths:
+
+- Inline pressure-map plan-option selection was removed from
+  `frontend/components/pulse/PulseAcademicPressureMap.tsx`.
+
+Parked paths:
+
+- Backend pressure-map recovery-option behavior, public hosted mutable dogfood,
+  hosted-public deploy/restart, schema migrations, pressure-map claim changes,
+  and rebrand/domain migration remain separate or approval-gated seams.
+
+Moved authority:
+
+- Pure frontend recovery-option selection moved to
+  `frontend/lib/pressure-map-options.ts`.
+- The helper selects `create_plan` before `split_into_blocks`, determines
+  whether a browser preview is possible, and preserves the existing split
+  between a primary recovery option and a separate planning option.
+- Backend pressure-map generation and task creation authority did not move.
+
+Issues and classification:
+
+- GitHub issue `#193` was opened for separate backend pressure-map
+  test/behavior drift discovered during verification: local backend
+  characterization tests expected recovery options, but the current endpoint
+  returned an empty `recovery_options` list.
+- Classification for `#193`: product/test-contract drift outside this
+  frontend extraction. It was not fixed inside this seam because the frontend
+  helper extraction did not touch backend pressure-map generation.
+
+Tests and verification:
+
+- `git diff --check -- frontend\components\pulse\PulseAcademicPressureMap.tsx frontend\lib\pressure-map-options.ts`;
+  passed with existing CRLF warning only.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_academic_pressure_map.py -q`;
+  failed before/after classification with recovery-option expectation drift,
+  tracked as `#193`.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed but gated the pressure-map commit path because backend recovery nudges
+  are currently gated.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T06-52-28-009Z/result.json`.
+- Direct local-current Holmesberg rerun with
+  `--force-pressure-recovery true` passed and exercised the pressure-map
+  preview/dismiss/commit path against the browser fixture.
+- Forced pressure-map artifact:
+  `tmp/browser-product-loop/2026-07-10T06-59-19-085Z/result.json`.
+- The forced artifact reported `ok=true`, `143` checks, `0` failed checks,
+  `3` non-fatal issues, `5` gated paths, and `8` pressure-map checks. Cleanup
+  metadata recorded `15` synthetic task ids, `8` deadline ids, `3`
+  notification ids, and `1` exposure suppression id.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T07-06-02-891Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, and zero dashboard snapshot diffs.
+- CI proof: GitHub Actions run `29075752087` passed for
+  `7161028b2af27d494c0c94e270771c0b03f72fdd`.
+
+Behavior parity statement:
+
+- Pressure-map recovery presentation is unchanged: if the primary recovery
+  option is a plan option and rows are previewable, the primary option renders
+  the Preview action; if the first recovery option is diagnostic and a planning
+  option exists, the separate Planning option block renders Preview instead.
+- Preview is still limited to `create_plan` and `split_into_blocks`, and
+  diagnostic-only or empty planning rows still do not create tasks.
+
+Rollback note:
+
+- Revert commit `7161028` to inline pressure-map option selection inside
+  `PulseAcademicPressureMap` again.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
