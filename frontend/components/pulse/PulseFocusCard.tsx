@@ -37,27 +37,20 @@
  *      reflection AND no in-flight stop mutation.
  */
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Loader2, Pause, Play, Square } from "lucide-react";
 import {
   getStopwatchStatus,
-  pauseStopwatch,
-  resumeStopwatch,
-  startStopwatch,
-  stopStopwatch,
   type ScopeOutcome,
-  type StartStopwatchResponse,
-  type StopResponse,
   type StopwatchStatus,
   type TaskRow,
 } from "@/lib/tasks";
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
-import { announceUndoAvailable } from "@/lib/undo";
 import { queryKeys } from "@/lib/query-keys";
-import { QUICK_PAUSE_REASON } from "@/lib/stopwatch-pause-reasons";
-import { useTimerCommandInvalidation } from "@/lib/hooks/use-timer-command-invalidation";
-
-type Mode = "idle" | "reflection" | "next-prompt";
+import {
+  usePulseFocusStopwatchCommands,
+  type PulseFocusMode,
+} from "@/lib/hooks/use-pulse-focus-stopwatch-commands";
 
 export interface PulseFocusCardProps {
   todaysTasks: TaskRow[];
@@ -100,7 +93,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const isActive = !!status?.active;
   const isPaused = !!status?.paused;
 
-  const [mode, setMode] = useState<Mode>("idle");
+  const [mode, setMode] = useState<PulseFocusMode>("idle");
   // Typed flag for the early-stop confirmation gate. Replaces the
   // fragile `errorMsg.includes("early")` heuristic in A1's first cut.
   const [requiresConfirm, setRequiresConfirm] = useState(false);
@@ -134,8 +127,6 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
-  const refreshTimerSurfaces = useTimerCommandInvalidation();
-
   function beginReflection() {
     setCompletionPct("");
     setScopeOutcome(null);
@@ -149,113 +140,31 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     return Math.max(0, Math.min(100, Math.round(parsed)));
   }
 
+  const { startM, pauseM, resumeM, stopM, stopPendingRef } =
+    usePulseFocusStopwatchCommands({
+      setMode,
+      setRequiresConfirm,
+      setReadiness,
+      setReflection,
+      setCompletionPct,
+      setScopeOutcome,
+      setStoppedSummary,
+      setErrorMsg,
+      setInfoMsg,
+      lastStoppedTaskIdRef,
+    });
+
   // Bug fix #2 (ultrathink): if status flips inactive while we're
   // in reflection mode (e.g. another tab stopped the session), reset
   // local mode so Finish doesn't 4xx on a non-existent session.
   useEffect(() => {
-    if (mode === "reflection" && !isActive && !stopM_isPendingRef.current) {
+    if (mode === "reflection" && !isActive && !stopPendingRef.current) {
       setMode("idle");
       setRequiresConfirm(false);
       setErrorMsg(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, mode]);
-
-  // Mutations
-  const startM = useMutation<StartStopwatchResponse, Error, { taskId: string; readiness: number }>({
-    mutationFn: ({ taskId, readiness }) => startStopwatch(taskId, readiness),
-    onSuccess: (res) => {
-      setMode("idle");
-      setErrorMsg(null);
-      setReadiness(3);
-      announceUndoAvailable("Timer started.");
-      if (res.is_future_task && res.planned_start) {
-        try {
-          const planned = new Date(res.planned_start);
-          const minutesEarly = Math.max(
-            0,
-            Math.round((planned.getTime() - Date.now()) / 60000)
-          );
-          const timeLabel = planned.toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit",
-          });
-          const msg = `Heads up: this was scheduled for ${timeLabel}; you started ${minutesEarly} min early. The session will record from now.`;
-          setInfoMsg(msg);
-          setTimeout(() => {
-            setInfoMsg((prev) => (prev === msg ? null : prev));
-          }, 5000);
-        } catch {
-          setInfoMsg(
-            "Heads up: this was scheduled later. The session will record from now."
-          );
-        }
-      } else {
-        setInfoMsg(null);
-      }
-      refreshTimerSurfaces();
-    },
-    onError: (e) => setErrorMsg(e.message ?? "Failed to start"),
-  });
-
-  const pauseM = useMutation<unknown, Error, void>({
-    mutationFn: () => pauseStopwatch(QUICK_PAUSE_REASON),
-    onSuccess: () => refreshTimerSurfaces(),
-    onError: (e) => setErrorMsg(e.message ?? "Failed to pause"),
-  });
-
-  const resumeM = useMutation<unknown, Error, void>({
-    mutationFn: () => resumeStopwatch(),
-    onSuccess: () => refreshTimerSurfaces(),
-    onError: (e) => setErrorMsg(e.message ?? "Failed to resume"),
-  });
-
-  const stopM = useMutation<
-    StopResponse,
-    Error,
-    {
-      reflection: number;
-      confirmed?: boolean;
-      completionPct?: number;
-      scopeOutcome?: ScopeOutcome;
-    }
-  >({
-    mutationFn: ({ reflection, confirmed, completionPct, scopeOutcome }) =>
-      stopStopwatch(reflection, {
-        confirmed,
-        task_completion_percentage: completionPct,
-        scope_outcome: scopeOutcome,
-      }),
-    onSuccess: (res) => {
-      if (res.requires_confirmation) {
-        // Bug fix #1 (ultrathink): typed flag, not string match.
-        setRequiresConfirm(true);
-        setErrorMsg(res.confirmation_message ?? "Stopping early — finish anyway?");
-        return;
-      }
-      lastStoppedTaskIdRef.current = res.task_id;
-      setStoppedSummary({
-        minutes: Math.round(res.duration_minutes),
-        delta: res.delta_minutes ?? null,
-      });
-      setMode("next-prompt");
-      setRequiresConfirm(false);
-      setErrorMsg(null);
-      setInfoMsg(null);
-      setReflection(null);
-      setCompletionPct("");
-      setScopeOutcome(null);
-      refreshTimerSurfaces();
-    },
-    onError: (e) => setErrorMsg(e.message ?? "Failed to stop"),
-  });
-
-  // Pending-ref so the orphan-reflection useEffect can read the latest
-  // mutation state without re-subscribing every render.
-  const stopM_isPendingRef = useRef(stopM.isPending);
-  useEffect(() => {
-    stopM_isPendingRef.current = stopM.isPending;
-  }, [stopM.isPending]);
 
   // Render branches
   const showRunning = isActive && !isPaused && mode !== "reflection";
