@@ -46,6 +46,12 @@ import {
   invalidateTodayTaskCommandSurfaces,
   queryKeys,
 } from "@/lib/query-keys";
+import {
+  buildTodayDueDeadlines,
+  buildTodayFeed,
+  localDateKey,
+  parseDateKey,
+} from "@/lib/today-feed";
 import type { PauseReason } from "@/lib/stopwatch-pause-reasons";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,16 +69,6 @@ interface ToastEntry {
   viewId: string | null;
   lifespan: "auto" | "pin";
   detailHref?: string;
-}
-
-function localDateKey(d: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function parseDate(s: string): Date {
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d);
 }
 
 function InterruptionStartDialog({
@@ -123,9 +119,9 @@ function TodayInner() {
   // Viewed date: from URL ?date= or default to today
   const dateParam = searchParams.get("date");
   const viewedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today;
-  const viewedDateObj = parseDate(viewedDate);
+  const viewedDateObj = parseDateKey(viewedDate);
   const isToday = viewedDate === today;
-  const isPast = viewedDateObj < parseDate(today) && !isToday;
+  const isPast = viewedDateObj < parseDateKey(today) && !isToday;
 
   function navigateTo(dateStr: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -370,25 +366,6 @@ function TodayInner() {
     setReadinessInterruptionType(null);
   }
 
-  function sortKey(t: TaskRowType): number {
-    const parse = (s: string | null) => (s ? new Date(s).getTime() : null);
-    const pStart = parse(t.start);
-    const eStart = parse(t.executed_start);
-    const eEnd = parse(t.executed_end);
-    switch (t.state) {
-      case "EXECUTED":
-        return eEnd ?? eStart ?? pStart ?? 0;
-      case "SKIPPED":
-        return eEnd ?? pStart ?? 0;
-      case "EXECUTING":
-      case "PAUSED":
-        return eStart ?? pStart ?? 0;
-      case "PLANNED":
-      default:
-        return pStart ?? 0;
-    }
-  }
-
   // Unified /today feed — LyraOS tasks + external GCal events interleaved
   // by time while preserving LyraOS's existing two-bucket rhythm:
   //   top  — PLANNED LyraOS tasks + FUTURE/ongoing GCal events, asc by start
@@ -402,11 +379,6 @@ function TodayInner() {
   // The sort produces a union-typed list the renderer branches on
   // (TaskRow vs ExternalEventRow) — keeps the two row types visually
   // distinct without duplicating the feed.
-  type FeedItem =
-    | { kind: "task"; task: TaskRowType }
-    | { kind: "external"; event: ExternalCalendarEvent }
-    | { kind: "deadline"; deadline: DeadlineResponse; overdue: boolean };
-
   const nowMs = now.getTime();
   const gcalEventsAll: ExternalCalendarEvent[] = calEventsQ.data?.events ?? [];
 
@@ -416,51 +388,19 @@ function TodayInner() {
   // Voided deadlines are always excluded; state-based exclusion is left
   // to the badge rendering (so completed deadlines on a past day still
   // show with a "COMPLETED" pill for historical reference).
-  const isViewingToday = viewedDate === today;
-  const dueDeadlines = ((): { deadline: DeadlineResponse; overdue: boolean }[] => {
-    const all = deadlinesQ.data?.deadlines ?? [];
-    return all.flatMap((d) => {
-      if (d.voided_at) return [];
-      const due = new Date(d.due_at_utc);
-      const dueLocalKey = format(due, "yyyy-MM-dd");
-      // OVERDUE definition unifies two paths:
-      //   (a) post-sweep: sweep_missed_deadlines transitioned the row to
-      //       state='missed' (every 1h job in workers/scheduler.py).
-      //   (b) pre-sweep: state still 'planned'/'active' but due_at has
-      //       passed — the sweep just hasn't run yet (up to ~1h window).
-      // Both paths render the loud OVERDUE pill + pin to /today until
-      // the user explicitly handles them. Operator-flagged 2026-04-29:
-      // missed imported deadlines are high-signal recovery candidates
-      // data point and must be impossible to miss in the UI.
-      const isOverdue =
-        d.state === "missed" ||
-        ((d.state === "planned" || d.state === "active") &&
-          due.getTime() < nowMs);
-      // Show on the deadline's actual due day (any past/future day the
-      // operator views). The OVERDUE pill only fires on today-view —
-      // browsing a past day where a deadline missed should show the
-      // historical "MISSED" state, not the action-prompt "OVERDUE"
-      // (which implies "act now" — false on a past-day view).
-      if (dueLocalKey === viewedDate) {
-        return [{ deadline: d, overdue: isViewingToday && isOverdue }];
-      }
-      // Pin overdue items to today so they stay visible until resolved.
-      // Covers both the pre-sweep (planned/active+past) and post-sweep
-      // (missed) cases — without this, a deadline that misses by >1h
-      // (when sweep flips it to missed) silently disappears from /today.
-      if (isViewingToday && isOverdue) {
-        return [{ deadline: d, overdue: true }];
-      }
-      return [];
-    });
-  })();
+  const dueDeadlines = buildTodayDueDeadlines({
+    deadlines: deadlinesQ.data?.deadlines,
+    viewedDate,
+    today,
+    nowMs,
+  });
 
   // Overdue aggregate for the top banner. Only surfaces on /today (don't
   // pollute past/future-day views with action prompts about today). LMS
   // breakout shows the connected-source sub-count when imported rows
   // are present, without implying one fixed obligation source.
   // call 2026-04-29 evening.
-  const overdueDeadlines = isViewingToday
+  const overdueDeadlines = isToday
     ? dueDeadlines.filter((x) => x.overdue)
     : [];
   const overdueCount = overdueDeadlines.length;
@@ -468,69 +408,12 @@ function TodayInner() {
     (x) => x.deadline.external_source?.startsWith("moodle")
   ).length;
 
-  const feed = ((): { top: FeedItem[]; bottom: FeedItem[] } => {
-    if (!tasksQ.data) return { top: [], bottom: [] };
-    const visible = tasksQ.data.filter((t) => !t.voided_at);
-    const plannedTasks = visible.filter((t) => t.state === "PLANNED");
-    const restTasks = visible.filter((t) => t.state !== "PLANNED");
-    const gcalFuture = gcalEventsAll.filter(
-      (e) => new Date(e.end).getTime() > nowMs
-    );
-    const gcalPast = gcalEventsAll.filter(
-      (e) => new Date(e.end).getTime() <= nowMs
-    );
-
-    const topItems: FeedItem[] = [
-      ...plannedTasks.map(
-        (t): FeedItem => ({ kind: "task", task: t })
-      ),
-      ...gcalFuture.map(
-        (e): FeedItem => ({ kind: "external", event: e })
-      ),
-      // Deadlines always live in the top bucket — they are pending-action
-      // items even when overdue, never "what already happened."
-      ...dueDeadlines.map(
-        (x): FeedItem => ({ kind: "deadline", deadline: x.deadline, overdue: x.overdue })
-      ),
-    ].sort((a, b) => {
-      const at =
-        a.kind === "task"
-          ? sortKey(a.task)
-          : a.kind === "external"
-            ? new Date(a.event.start).getTime()
-            : new Date(a.deadline.due_at_utc).getTime();
-      const bt =
-        b.kind === "task"
-          ? sortKey(b.task)
-          : b.kind === "external"
-            ? new Date(b.event.start).getTime()
-            : new Date(b.deadline.due_at_utc).getTime();
-      return at - bt;
-    });
-
-    const bottomItems: FeedItem[] = [
-      ...restTasks.map((t): FeedItem => ({ kind: "task", task: t })),
-      ...gcalPast.map(
-        (e): FeedItem => ({ kind: "external", event: e })
-      ),
-    ].sort((a, b) => {
-      const at =
-        a.kind === "task"
-          ? sortKey(a.task)
-          : a.kind === "external"
-            ? new Date(a.event.end).getTime()
-            : new Date(a.deadline.due_at_utc).getTime();
-      const bt =
-        b.kind === "task"
-          ? sortKey(b.task)
-          : b.kind === "external"
-            ? new Date(b.event.end).getTime()
-            : new Date(b.deadline.due_at_utc).getTime();
-      return bt - at;
-    });
-
-    return { top: topItems, bottom: bottomItems };
-  })();
+  const feed = buildTodayFeed({
+    tasks: tasksQ.data,
+    events: gcalEventsAll,
+    dueDeadlines,
+    nowMs,
+  });
 
   function handleInterruptionCreated(taskId: string, taskTitle: string) {
     refresh();
