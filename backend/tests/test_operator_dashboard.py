@@ -14,6 +14,9 @@ from app.db.models import (
 )
 from app.db.scoping import get_current_user_id, set_current_user_id
 from app.services.exposure_ledger import record_decision, record_render, record_suppression
+from app.services.operator_notification_snapshot import (
+    pending_notification_duplicate_identity,
+)
 from app.api.v1.endpoints import operator as operator_endpoint
 from tests.conftest import auth_headers
 
@@ -487,6 +490,50 @@ class _DashboardRedis:
 class _DashboardRedisClient:
     def __init__(self, rows_by_key):
         self.client = _DashboardRedis(rows_by_key)
+
+
+def test_pending_notification_duplicate_identity_prefers_stable_targets():
+    assert pending_notification_duplicate_identity(
+        {"type": "reminder", "dedupe_key": "deadline:abc"}
+    ) == ("reminder", "dedupe", "deadline:abc", "", "")
+
+    assert pending_notification_duplicate_identity(
+        {
+            "type": "timer_overflow",
+            "task_id": "task-1",
+            "session_id": "session-1",
+            "firing_id": "fire-1",
+        }
+    ) == ("timer_overflow", "target", "task-1", "session-1", "fire-1")
+
+    legacy_one = pending_notification_duplicate_identity(
+        {
+            "notification_id": "r-1",
+            "exposure_id": "exp-1",
+            "type": "reminder",
+            "message": "Task A starts soon",
+        }
+    )
+    legacy_same_content = pending_notification_duplicate_identity(
+        {
+            "notification_id": "r-2",
+            "exposure_id": "exp-2",
+            "type": "reminder",
+            "message": "Task A starts soon",
+        }
+    )
+    legacy_different_content = pending_notification_duplicate_identity(
+        {
+            "notification_id": "r-3",
+            "exposure_id": "exp-3",
+            "type": "reminder",
+            "message": "Task B starts soon",
+        }
+    )
+
+    assert legacy_one[1] == "legacy_content"
+    assert legacy_one == legacy_same_content
+    assert legacy_one != legacy_different_content
 
 
 def test_operator_dashboard_reminder_duplicates_do_not_fail_k02(client, db, monkeypatch):

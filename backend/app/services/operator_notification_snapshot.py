@@ -17,10 +17,57 @@ FORBIDDEN_WEB_MARKERS = (
     "operator",
     "openclaw",
 )
+DuplicateIdentity = tuple[str, str, str, str, str]
 
 
 def short_hash(value: str | None) -> str:
     return hashlib.sha256((value or "").encode("utf-8")).hexdigest()[:12]
+
+
+def pending_notification_duplicate_identity(payload: dict[str, Any]) -> DuplicateIdentity:
+    """Privacy-safe identity for detecting repeated pending prompts.
+
+    Canonical notifications should carry a dedupe key or stable target id.
+    Older Redis payloads sometimes have only type/message/notification_id;
+    for those, compare by content fingerprint so distinct legacy reminders
+    do not collapse into one false duplicate bucket.
+    """
+    payload_type = str(payload.get("type") or "unknown")
+    dedupe_key = str(payload.get("dedupe_key") or "")
+    task_id = str(payload.get("task_id") or "")
+    session_id = str(payload.get("session_id") or "")
+    firing_id = str(payload.get("firing_id") or "")
+    if dedupe_key:
+        return (payload_type, "dedupe", dedupe_key, "", "")
+    if task_id or session_id or firing_id:
+        return (
+            payload_type,
+            "target",
+            task_id,
+            session_id,
+            firing_id,
+        )
+
+    content_basis = {
+        "type": payload_type,
+        "message": payload.get("message") or "",
+        "body": payload.get("body") or "",
+        "title": payload.get("title") or "",
+        "description": payload.get("description") or "",
+    }
+    if not any(value for key, value in content_basis.items() if key != "type"):
+        content_basis = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"notification_id", "exposure_id"}
+        }
+    return (
+        payload_type,
+        "legacy_content",
+        short_hash(json.dumps(content_basis, sort_keys=True, default=str)),
+        "",
+        "",
+    )
 
 
 def redis_notification_snapshot(
@@ -39,51 +86,6 @@ def redis_notification_snapshot(
     duplicate_type_counts: Counter[str] = Counter()
     errors: list[str] = []
 
-    def duplicate_identity(payload: dict[str, Any]) -> tuple[str, str, str, str, str]:
-        """Privacy-safe identity for detecting repeated pending prompts.
-
-        Canonical notifications should carry a dedupe key or stable target id.
-        Older Redis payloads sometimes have only type/message/notification_id;
-        for those, compare by content fingerprint so distinct legacy reminders
-        do not collapse into one false duplicate bucket.
-        """
-        payload_type = str(payload.get("type") or "unknown")
-        dedupe_key = str(payload.get("dedupe_key") or "")
-        task_id = str(payload.get("task_id") or "")
-        session_id = str(payload.get("session_id") or "")
-        firing_id = str(payload.get("firing_id") or "")
-        if dedupe_key:
-            return (payload_type, "dedupe", dedupe_key, "", "")
-        if task_id or session_id or firing_id:
-            return (
-                payload_type,
-                "target",
-                task_id,
-                session_id,
-                firing_id,
-            )
-
-        content_basis = {
-            "type": payload_type,
-            "message": payload.get("message") or "",
-            "body": payload.get("body") or "",
-            "title": payload.get("title") or "",
-            "description": payload.get("description") or "",
-        }
-        if not any(value for key, value in content_basis.items() if key != "type"):
-            content_basis = {
-                key: value
-                for key, value in payload.items()
-                if key not in {"notification_id", "exposure_id"}
-            }
-        return (
-            payload_type,
-            "legacy_content",
-            short_hash(json.dumps(content_basis, sort_keys=True, default=str)),
-            "",
-            "",
-        )
-
     try:
         redis = redis_client_factory()
         for user_id in user_ids:
@@ -100,7 +102,7 @@ def redis_notification_snapshot(
                     str(payload.get(k) or "")
                     for k in ("message", "body", "title", "description")
                 ).lower()
-                stable_key = duplicate_identity(payload)
+                stable_key = pending_notification_duplicate_identity(payload)
                 seen[stable_key] += 1
                 if len(examples[stable_key]) < 3:
                     examples[stable_key].append({
