@@ -211,6 +211,47 @@ def test_existing_user_login_does_not_send_activation_email(db, monkeypatch):
     assert resolved.user_id == existing.user_id
 
 
+def test_existing_user_login_replaces_legacy_placeholder_google_id(db, monkeypatch):
+    monkeypatch.setattr(security, "SessionLocal", TestingSession)
+    monkeypatch.setattr(security.settings, "JWT_SECRET", "activation-email-test-secret-at-least-32-bytes")
+    monkeypatch.setattr(security.settings, "JWT_ALGORITHM", "HS256")
+    real_google_id = f"real-google-sub-{uuid4().hex[:8]}"
+    existing = _user()
+    existing.google_id = "simulated-google-sub"
+    db.add(existing)
+    db.commit()
+
+    resolved = security.resolve_user_from_token(
+        _token(existing.email, sub=real_google_id)
+    )
+
+    assert resolved.user_id == existing.user_id
+    db.expire_all()
+    row = db.query(User).filter(User.email == existing.email).one()
+    assert row.google_id == real_google_id
+
+
+def test_existing_user_login_does_not_overwrite_real_google_id(db, monkeypatch):
+    monkeypatch.setattr(security, "SessionLocal", TestingSession)
+    monkeypatch.setattr(security.settings, "JWT_SECRET", "activation-email-test-secret-at-least-32-bytes")
+    monkeypatch.setattr(security.settings, "JWT_ALGORITHM", "HS256")
+    real_google_id = f"real-google-sub-{uuid4().hex[:8]}"
+    different_google_id = f"different-google-sub-{uuid4().hex[:8]}"
+    existing = _user()
+    existing.google_id = real_google_id
+    db.add(existing)
+    db.commit()
+
+    resolved = security.resolve_user_from_token(
+        _token(existing.email, sub=different_google_id)
+    )
+
+    assert resolved.user_id == existing.user_id
+    db.expire_all()
+    row = db.query(User).filter(User.email == existing.email).one()
+    assert row.google_id == real_google_id
+
+
 def test_integrity_error_race_loser_adopts_existing_user_without_email(monkeypatch):
     existing = _user("race@example.test")
     existing.user_id = 123
