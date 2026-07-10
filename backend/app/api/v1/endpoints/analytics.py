@@ -470,7 +470,7 @@ def get_output_surface_diagnostics(
 ) -> dict:
     """Operator-only Wave 4 output-surface enforcement diagnostics."""
     op = _require_operator_analytics(db, request)
-    from app.services.output_surfaces import output_surface_diagnostics
+    from app.services.output_surface_diagnostics import output_surface_diagnostics
     from app.services.runtime_topology import backend_topology_report
 
     payload = output_surface_diagnostics(db, user_id=op.user_id, window_days=window_days)

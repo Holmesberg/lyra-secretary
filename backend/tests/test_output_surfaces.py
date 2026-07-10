@@ -21,6 +21,7 @@ from app.db.models import (
     User,
 )
 from app.main import app
+from app.services import output_surface_diagnostics as output_surface_diagnostics_module
 from app.services import output_surfaces as output_surface_module
 from app.services.output_surfaces import (
     OutputSurfaceSpec,
@@ -1173,7 +1174,7 @@ def test_output_surface_diagnostics_reuses_eligibility_metrics(db, monkeypatch):
         }
 
     monkeypatch.setattr(
-        output_surface_module,
+        output_surface_diagnostics_module,
         "_eligibility_metrics_for_surface_inputs",
         fake_metrics,
     )
