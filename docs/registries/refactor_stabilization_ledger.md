@@ -17355,3 +17355,88 @@ Rollback note:
 - Revert `053b670` to inline Table view helpers back into the page. No schema,
   data, Redis migration, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Deadline View Helper Extraction
+
+Seam:
+
+- `deadlines-view-pure-helper-extraction`
+
+Changed authority:
+
+- `frontend/lib/deadline-view.ts` now owns pure Deadline view helpers for
+  state labels, state tones, relative/absolute date formatting, Moodle
+  provenance detection, mark-done eligibility, and active/overdue/completed/
+  skipped grouping.
+- `frontend/app/(app)/deadlines/page.tsx` delegates those computations to the
+  helper module. Deadlines remains the user-facing deadline triage and
+  mutation surface. No provider, completion, task, exposure, clean-data, or
+  mutation authority moved.
+
+Removed paths:
+
+- Inline Deadline label, tone, date-formatting, Moodle detection, mark-done,
+  and grouping helpers were removed from the page component after extraction
+  into pure helpers.
+
+Parked paths:
+
+- Provider credential mutation, Moodle/provider authority changes, backend
+  deadline writer splits, schema migration, public deploy, public restart,
+  production data repair, and rebrand/domain work remain parked.
+
+Moved authority:
+
+- No mutation, exposure, provider, ClaimCompiler, clean-data, hosted-public,
+  public deploy, public restart, production data, schema, Redis, or rebrand
+  authority moved.
+
+Tests and verification:
+
+- `cd frontend && npm run build`; passed.
+- `cd frontend && npm run lint`; passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `61f0381` passed: run `29114302419`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29114302419`).
+- Standard local-current post-wave proof command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName deadlines-view-helper-extraction -IncludeProductLoop -IncludeCiCdProof -CiCdFailOnUnsuccessful`;
+  passed.
+- Evidence manifest:
+  `tmp\post-wave-dogfood\20260710-212528-deadlines-view-helper-extraction-standard-local-current\summary.json`.
+- Classification: `standard_wave_proof_passed`.
+- Topology: `local-current`, frontend `http://localhost:3013`, API
+  `http://localhost:8000`, frontend build id `local-current`, backend build
+  id `dev`.
+- Cleanup proof: required and passed; Holmesberg cleanup left no active timer
+  and no unrendered synthetic creation-nudge exposures.
+- Operator proof: implementation green, cohort yellow, safe-to-invite false,
+  exposure-without-render count `0`, and no count diffs.
+- CI/CD proof in manifest: run `29114302419` for
+  `61f03818e25d995783a0fcf0c7bb6133d48eea8f` passed.
+
+Known non-blocking browser issues:
+
+- Holmesberg onboarding gate was open and skipped to reach app surfaces.
+- Some branch-created tasks were not visible before branch assertions, while
+  backend binding checks passed.
+- Brain dump deadline title was normalized by the parser.
+- Pressure-map commit path remains gated by backend recovery-nudge safety
+  switches.
+
+Behavior parity statement:
+
+- Deadlines remains behavior-preserving: overdue deadlines remain separated
+  and sorted newest-overdue first, active deadlines keep active-first ordering,
+  completed and skipped buckets keep their prior ordering, Moodle provenance
+  badges remain visible, mark-done eligibility remains active/planned only,
+  and edit/void affordances are unchanged.
+
+Rollback note:
+
+- Revert `61f0381` to inline Deadline view helpers back into the page. No
+  schema, data, Redis migration, hosted-public deploy, public restart,
+  production repair, or rebrand/domain rollback is required.
