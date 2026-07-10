@@ -17086,3 +17086,71 @@ Rollback note:
 
 - No rollback is attached to this proof-only ledger entry. If the proof becomes
   stale, rerun the post-wave loop for the current branch head.
+
+## 2026-07-10 - Public Metadata Freeze Copy Tightening
+
+Seam:
+
+- `public-metadata-freeze-copy-tightening`
+
+Changed authority:
+
+- `frontend/app/layout.tsx` now uses more bounded public metadata copy for the
+  root title, descriptions, OpenGraph/Twitter text, image alt text, and
+  Schema.org JSON-LD feature list.
+- Public metadata remains owned by the frontend app shell. This seam does not
+  change product runtime behavior, insight authority, claim authority, or
+  hosted-public deployment state.
+
+Removed paths:
+
+- Claim-heavy metadata phrases such as "Your Cognitive Operating System",
+  "AI-native productivity", "adaptive scheduling", "behavior-aware scheduler",
+  "adaptive behavioral feedback", "personal bias factor calibration",
+  "archetype-prior shrinkage predictions", and "pause pattern prediction".
+
+Parked paths:
+
+- Full public copy review remains separate from this small metadata seam.
+- Rebrand/domain migration remains parked and explicitly out of scope.
+- Hosted-public deployment remains parked until explicit user approval.
+
+Moved authority:
+
+- No write, mutation, schema, Redis, provider, exposure, ClaimCompiler,
+  clean-data, hosted-public, public deploy, public restart, production data, or
+  rebrand/domain authority moved.
+
+Tests and verification:
+
+- `cd frontend && npm run build`; passed.
+- `cd frontend && npm run lint`; passed on rerun after build.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero errors.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed with zero missing owners and zero worker-write drift.
+- `git diff --check`; passed with existing CRLF warnings only.
+- `rg "â|—|adaptive scheduling|Pause pattern|Archetype-prior|Your Cognitive Operating System|behavior-aware scheduler|AI-native productivity" frontend\app\layout.tsx -n`;
+  returned no matches.
+- GitHub CI for `fc110d9` passed: run `29108148541`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29108148541`).
+
+Verifier note:
+
+- The first local `npm run lint` attempt was run in parallel with `npm run
+  build`, which raced generated `.next/types` and failed with the existing
+  local-type repair message. Sequential rerun after build passed. Classified as
+  local verifier scheduling noise, not a product/runtime failure.
+
+Behavior parity statement:
+
+- No app flow, task behavior, timer behavior, notification lifecycle,
+  readiness denominator, exposure lifecycle semantics, schema, Redis state,
+  hosted-public artifact, public deploy, public restart, production data, or
+  rebrand/domain behavior changed. Only public metadata wording was tightened.
+
+Rollback note:
+
+- Revert `fc110d9` to restore the previous public metadata copy.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
