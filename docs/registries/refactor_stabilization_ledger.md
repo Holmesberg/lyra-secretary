@@ -12681,3 +12681,76 @@ Rollback note:
   invalidation predicate and remove the shared helper exports.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Analytics Insight Public Packaging Extraction
+
+Seam:
+
+- `r4-analytics-insight-public-packaging`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- The analytics route no longer owns public insight-card packaging or redacted
+  render-snapshot construction.
+
+Removed paths:
+
+- Removed inline `INSIGHT_TITLES`, `CONFIDENCE_LABELS`, `AUTHORITY_LABELS`,
+  `_public_insight`, and `_insights_exposure_snapshot` implementations from
+  `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- `/analytics/insights` exposure write routing, Rule 11 reopen-gate extraction,
+  ClaimCompiler/Cortex/output-surface writer splits, task lifecycle writer
+  splits, schema migrations, hosted-public deploy/restart, hosted-public
+  mutable dogfood, rebrand/domain migration, and cohort expansion remain
+  approval-gated.
+
+Moved authority:
+
+- `backend/app/services/analytics_insight_public_packaging.py` now owns pure
+  public-card translation and redacted render-snapshot packaging.
+- Compatibility names remain imported through
+  `backend/app/api/v1/endpoints/analytics.py` for existing tests and callers.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 backend read-only extraction,
+  not a product bug.
+- Classification: backend behavior-preserving extraction / route-thinning.
+
+Tests and verification:
+
+- Added `backend/app/services/analytics_insight_public_packaging.py`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_insights.py -q`;
+  passed, 19 tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- Browser dogfood was not run because this seam moved pure backend packaging
+  helpers only and changed no user-visible flow, write path, auth path, or
+  frontend surface.
+- CI proof: GitHub Actions run `29062414204` passed for
+  `af165b7b0272e3d1efd2bcde8f1a5c8638f34850`.
+
+Behavior parity statement:
+
+- `/v1/analytics/insights` returns the same allowlisted public cards and the
+  same redacted exposure render snapshot structure.
+- Tests still prove internal debug fields, `_facts`, and `_audit` do not leak
+  into public cards or render snapshots.
+- No writes, migrations, hosted-public deploys, public restarts, synthetic
+  browser rows, or production repairs were introduced.
+
+Rollback note:
+
+- Revert commit `af165b7` to restore the public packaging helpers inline in
+  `backend/app/api/v1/endpoints/analytics.py`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
