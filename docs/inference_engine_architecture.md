@@ -20,8 +20,9 @@ It centralizes **classification math** (valence, disagreement, confidence tiers)
 | Module | Responsibility |
 |--------|----------------|
 | `backend/app/services/inference_engine.py` | `classify_task_valence`, `classify_disagreement`, `confidence_tier_from_n`, `SIGNAL_THRESHOLDS`, `behavioral_signature_for_operator` |
-| `backend/app/services/behavioral_signature_service.py` | Named operator behavioral signature service boundary; temporary compatibility seam around the historical aggregate implementation |
-| `backend/app/services/jarvis_tools.py` | Parked JARVIS executors and historical aggregate implementation; non-owner services must not import this module directly |
+| `backend/app/services/behavioral_signature_service.py` | Named operator behavioral signature service boundary |
+| `backend/app/services/behavioral_signature_aggregate.py` | Read-only operator behavioral signature aggregate implementation |
+| `backend/app/services/jarvis_tools.py` | Parked JARVIS executors and compatibility aliases; non-owner services must not import this module directly |
 | `backend/app/api/v1/endpoints/analytics.py` | `GET /v1/analytics/behavioral_signature` — **403** unless `User.is_operator` |
 
 **Rule:** Any new classification that affects user trust must live in `inference_engine.py` (or call it), not only inside JARVIS.
@@ -32,14 +33,14 @@ It centralizes **classification math** (valence, disagreement, confidence tiers)
 
 - **Route:** `GET /v1/analytics/behavioral_signature?window_days=14`  
 - **Auth:** Same as other analytics — scoped user + **`is_operator=True`** or **403**.  
-- **Payload:** Operator behavioral signature aggregate served through `behavioral_signature_service.analyze_behavioral_signature()`. It currently preserves parity with the historical JARVIS aggregate (`_exec_analyze_behavioral_signature`) and includes pause distributions, valence counts, reflection engagement summaries, disagreement events, etc.
+- **Payload:** Operator behavioral signature aggregate served through `behavioral_signature_service.analyze_behavioral_signature()`. It preserves parity with the historical JARVIS aggregate compatibility surface (`_exec_analyze_behavioral_signature`) and includes pause distributions, valence counts, reflection engagement summaries, disagreement events, etc.
 - **R11:** This endpoint is **forbidden** on user-facing first-paint paths. Operators may poll it for dashboards; the Web UI Today/Insights pages must **not** add blocking calls here.
 
 ---
 
 ## 4. Signal registry (aggregate keys)
 
-The behavioral signature dict is the **Phase 2 discovery substrate**; keys are now exposed through `behavioral_signature_service.analyze_behavioral_signature()`, while the large historical implementation body remains parked in `jarvis_tools._exec_analyze_behavioral_signature` until a later R4 extraction. Canonical list is enforced by **`backend/tests/test_jarvis_phase2_discovery_tools.py`** and **`backend/tests/test_analytics_behavioral_signature.py`** (cold start + populated fixtures). At minimum, expect:
+The behavioral signature dict is the **Phase 2 discovery substrate**; keys are exposed through `behavioral_signature_service.analyze_behavioral_signature()`, and the implementation body lives in `behavioral_signature_aggregate.py`. `jarvis_tools._exec_analyze_behavioral_signature` is a compatibility alias only. Canonical list is enforced by **`backend/tests/test_jarvis_phase2_discovery_tools.py`** and **`backend/tests/test_analytics_behavioral_signature.py`** (cold start + populated fixtures). At minimum, expect:
 
 - `window_days`, `n_sessions`, `n_pause_events`  
 - `pause_distribution`, `valence_distribution`, `valence_preconditions`  

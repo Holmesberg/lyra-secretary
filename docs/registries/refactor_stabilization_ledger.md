@@ -17875,3 +17875,61 @@ Rollback note:
   previous strangler import. No schema, data, Redis migration, hosted-public
   deploy, public restart, production repair, or rebrand/domain rollback is
   required.
+
+## 2026-07-10 - Behavioral Signature Authority Doc Alignment
+
+Seam:
+
+- `behavioral-signature-authority-doc-alignment`
+
+Changed authority:
+
+- Active inference/architecture docs now name
+  `behavioral_signature_aggregate.py` as the behavioral signature aggregate
+  implementation owner.
+- The Jarvis compatibility registry now describes `jarvis_tools.py` as parked
+  for compatibility aliases and historical/internal tool executors only.
+
+Removed paths:
+
+- Removed active-doc claims that the large behavioral signature aggregate body
+  still remains parked in `jarvis_tools.py`.
+
+Parked paths:
+
+- Jarvis runtime routes, OpenClaw-to-product GPT wiring, runtime AI synthesis,
+  historical `JarvisInvocation` cleanup, schema migration, hosted-public
+  deploy/restart, production repair, and rebrand/domain migration remain
+  parked.
+
+Moved authority:
+
+- Documentation authority moved to match the previous code seam. No runtime,
+  mutation, exposure, provider, ClaimCompiler, clean-data, schema, production
+  data, hosted-public, or rebrand authority moved.
+
+Tests and verification:
+
+- Stale active-doc grep for the old parked-aggregate claims returned no
+  matches.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200`; no public restart/deploy
+  was performed.
+
+Behavior parity statement:
+
+- Docs now match the implemented authority split. No app behavior, endpoint
+  behavior, data writes, or browser-visible copy changed.
+
+Rollback note:
+
+- Revert this docs-only seam to restore the previous wording. No schema, data,
+  Redis migration, hosted-public deploy, public restart, production repair, or
+  rebrand/domain rollback is required.
