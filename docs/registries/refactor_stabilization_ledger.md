@@ -14559,3 +14559,75 @@ Rollback note:
 - Revert this ledger/doc commit to restore the prior branch-frame text.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Operator Dashboard Snapshot Service Extraction
+
+Seam:
+
+- `r4-operator-dashboard-snapshot-service`
+
+Changed authority:
+
+- No mutation, exposure, provider, clean-data, schema, deployment, env var,
+  domain, or rebrand authority changed.
+- `/v1/operator/dashboard` remains operator-only and read-only; the endpoint
+  now delegates snapshot assembly to a read-only service.
+
+Removed paths:
+
+- The route file no longer owns the full operator dashboard snapshot assembly.
+
+Parked paths:
+
+- Writer splits, exposure lifecycle policy changes, provider connection model,
+  schema migrations, hosted-public deploy/restart, hosted-public mutable
+  dogfood, and rebrand/domain migration remain separate or approval-gated
+  seams.
+
+Moved authority:
+
+- Read-only dashboard assembly moved from
+  `backend/app/api/v1/endpoints/operator.py` to
+  `backend/app/services/operator_dashboard_snapshot.py`.
+- Operator auth remains in the endpoint; route-level Redis factory injection
+  remains compatible with existing fake-Redis tests.
+
+Issues and classification:
+
+- Classification: behavior-preserving backend extraction.
+- No GitHub issue was opened because this seam did not fix a discrete product,
+  verifier, topology, authority, documentation, or measurement bug.
+
+Tests and verification:
+
+- `git diff --check -- backend\app\api\v1\endpoints\operator.py backend\app\services\operator_dashboard_snapshot.py`;
+  passed with existing CRLF warning only.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py backend\tests\test_operator_readiness.py -q`;
+  passed, `16` tests.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_route_security.py backend\tests\test_verifier_contracts.py -q`;
+  passed, `7` tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with `ok=true`, zero findings.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed with `ok=true`, zero missing owners, and zero worker-write drift.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T07-43-01-480Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, and zero dashboard snapshot diffs.
+- CI proof: GitHub Actions run `29077585768` passed for
+  `b9ac24c759d7fea20d8d20f82c132f442f3724a6`.
+
+Behavior parity statement:
+
+- `/v1/operator/dashboard` response shape and read-only behavior are preserved
+  by existing operator dashboard, readiness, route-security, verifier-contract,
+  browser read-only, static authority, and CI proofs.
+- The endpoint still performs operator auth before building the snapshot.
+
+Rollback note:
+
+- Revert commit `b9ac24c` to inline snapshot assembly back into the endpoint.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
