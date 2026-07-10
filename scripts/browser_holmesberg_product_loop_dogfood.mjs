@@ -2109,6 +2109,69 @@ async function runPulseMissedPlanDropPath(page, token) {
   return skipped;
 }
 
+async function runPulseMissedPlanDonePath(page, token) {
+  const title = `${prefix} missed plan done`;
+  const task = await createTaskViaApi(token, {
+    title,
+    startMinutes: 450,
+    durationMinutes: 30,
+    category: "dogfood_reentry",
+  });
+  addCheck("missed-plan done setup creates planned task", Boolean(task?.task_id), task || { title });
+  if (!task?.task_id) return null;
+
+  const pastEnd = new Date(Date.now() - 35 * 60_000);
+  const pastStart = new Date(pastEnd.getTime() - 30 * 60_000);
+  await rescheduleTaskViaApi(token, task.task_id, {
+    start: pastStart,
+    end: pastEnd,
+  });
+
+  await goto(page, "/pulse", "pulse-missed-plan-done-before");
+  const reentryQueue = page.locator('section[aria-label="Re-entry queue"]').first();
+  const missedCard = reentryQueue
+    .locator("div")
+    .filter({ hasText: title })
+    .filter({ hasText: /Missed plan/i })
+    .first();
+  const missedText = await missedCard.innerText({ timeout: 12_000 }).catch(() => "");
+  addCheck("pulse re-entry queue shows overdue planned task with done action", Boolean(
+    missedText.includes(title)
+    && /Missed plan/i.test(missedText)
+    && /\bDone\b/i.test(missedText)
+  ), {
+    title,
+    body_excerpt: missedText.slice(0, 500),
+  });
+  await screenshot(page, "pulse-missed-plan-done-visible");
+
+  await clickAny(page, "pulse missed-plan done", [
+    () => missedCard.getByRole("button", { name: /^Done$/i }).first(),
+    () => reentryQueue.getByRole("button", { name: /^Done$/i }).first(),
+  ], 10_000);
+
+  const executed = await pollFor(token, "missed-plan done marks task retroactive executed", async () => {
+    const next = await findTaskByTitle(token, title);
+    return next?.state === "EXECUTED" ? next : null;
+  }, 15_000, 1_000);
+  addCheck("pulse missed-plan done marks task retroactive executed", Boolean(
+    executed
+    && executed.state === "EXECUTED"
+    && executed.initiation_status === "retroactive"
+    && executed.executed_duration_minutes === executed.planned_duration_minutes
+  ), executed || { title });
+
+  await page.waitForTimeout(800);
+  const afterText = await reentryQueue.innerText({ timeout: 5_000 }).catch(() => "");
+  addCheck("pulse missed-plan done removes item from re-entry queue", !afterText.includes(title), {
+    title,
+    body_excerpt: afterText.slice(0, 500),
+  });
+  await screenshot(page, "pulse-missed-plan-done-after");
+
+  return executed;
+}
+
 async function runTimerSwitchChipPath(page, token) {
   const parentTitle = `${prefix} switch parent`;
   const childTitle = `${prefix} switch child`;
@@ -2782,6 +2845,7 @@ async function main() {
     await runPressureMapPath(page, token);
     const timer = await runTimerPath(page, token, task);
     await runPulseMissedPlanDropPath(page, token);
+    await runPulseMissedPlanDonePath(page, token);
     await runTimerSwitchChipPath(page, token);
     const executedTask = timer.task;
     const exposures = await runAnalyticsAndExposureChecks(page, token, beforeExport);
