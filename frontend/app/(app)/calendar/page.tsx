@@ -51,6 +51,15 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { invalidateTaskQueries, queryKeys } from "@/lib/query-keys";
+import {
+  CALENDAR_TIMEZONE,
+  calendarIdForState,
+  calendarRangeToQueryRange,
+  deadlineToZdt,
+  initialCalendarQueryRange,
+  toZdt,
+  type CalendarQueryRange,
+} from "@/lib/calendar-event-builders";
 
 // TIMEZONE CONTRACT (Apr 11 2026, single-timezone alpha):
 // Backend sends and accepts naked Cairo-local ISO strings
@@ -64,7 +73,7 @@ import { invalidateTaskQueries, queryKeys } from "@/lib/query-keys";
 // wire — backend and frontend must stay symmetric. The refactor is one
 // commit that changes API serializer + frontend parser + user.timezone
 // field together, not a piecemeal edit to this file.
-const TIMEZONE = "Africa/Cairo";
+const TIMEZONE = CALENDAR_TIMEZONE;
 
 // Five state-colored calendars — mapped to the brand palette so calendar
 // blocks and /today's state badges carry the same visual vocabulary:
@@ -152,43 +161,8 @@ const STATE_CALENDARS: Record<string, CalendarType> = {
   },
 };
 
-function calendarIdForState(state: TaskRowType["state"]): string {
-  switch (state) {
-    case "EXECUTING":
-      return "executing";
-    case "PAUSED":
-      return "paused";
-    case "EXECUTED":
-      return "executed";
-    case "SKIPPED":
-      return "skipped";
-    case "PLANNED":
-    default:
-      return "planned";
-  }
-}
-
-// Backend returns Cairo-local naive ISO per project rule ("2026-04-05T06:00:00"
-// — no Z, no offset). Parse as PlainDateTime (wall-clock, zoneless) and
-// attach the Cairo zone to produce a ZonedDateTime. Single-timezone alpha
-// — multi-timezone refactor deferred until post-retention. When that
-// ships, this function changes alongside the API serializer in the same
-// commit. See TIMEZONE CONTRACT above.
-function toZdt(iso: string): Temporal.ZonedDateTime {
-  return Temporal.PlainDateTime.from(iso).toZonedDateTime(TIMEZONE);
-}
-
-// Deadlines deliberately violate the TIMEZONE CONTRACT for tasks: the
-// DeadlineResponse schema serializes due_at_utc with an explicit UTC
-// offset ("2026-05-15T15:00:00+00:00") so the browser-local list view
-// renders correctly. Schedule-X expects a Cairo-zoned time, so convert
-// from Instant → ZonedDateTime in the user's tz here. Do NOT call
-// `toZdt(...)` on a deadline ISO; PlainDateTime.from rejects offsets
-// and throws.
-function deadlineToZdt(iso: string): Temporal.ZonedDateTime {
-  return Temporal.Instant.from(iso).toZonedDateTimeISO(TIMEZONE);
-}
-
+// Date conversion helpers live in lib/calendar-event-builders so task,
+// deadline, and Schedule-X range semantics stay shared and testable.
 function eventDateString(event: CalendarEventExternal): string | null {
   const start = event.start as unknown as {
     toPlainDate?: () => { toString: () => string };
@@ -245,32 +219,6 @@ function scrollCalendarViewportToNow(viewport: HTMLDivElement) {
     top: Math.max(0, targetTop),
     behavior: "auto",
   });
-}
-
-type CalendarQueryRange = {
-  from: string;
-  to: string;
-};
-
-type ScheduleRange = {
-  start: Temporal.ZonedDateTime;
-  end: Temporal.ZonedDateTime;
-};
-
-function initialCalendarQueryRange(): CalendarQueryRange {
-  const today = Temporal.Now.plainDateISO(TIMEZONE);
-  const weekStart = today.subtract({ days: today.dayOfWeek - 1 });
-  return {
-    from: weekStart.toString(),
-    to: weekStart.add({ days: 6 }).toString(),
-  };
-}
-
-function calendarRangeToQueryRange(range: ScheduleRange): CalendarQueryRange {
-  return {
-    from: range.start.toPlainDate().toString(),
-    to: range.end.toPlainDate().toString(),
-  };
 }
 
 function taskToEvent(
