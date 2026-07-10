@@ -17,15 +17,7 @@ import {
   rescheduleTask,
   type TaskRow,
 } from "@/lib/tasks";
-import {
-  addMinutes,
-  defaultStart,
-  defaultStartForDate,
-  diffMinutes,
-  formatLocal,
-  suggestAmPmSwap as getAmPmSwapSuggestion,
-  suggestPushStartToFuture as getPushStartToFutureSuggestion,
-} from "@/lib/task-time";
+import { useNewTaskTimeControls } from "@/lib/hooks/use-new-task-time-controls";
 import { CategorySelect } from "@/components/category-select";
 import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
 import { CalibrationNudgeCard } from "@/components/calibration-nudge-card";
@@ -61,12 +53,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
 
   const [title, setTitle] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const [start, setStart] = useState(() => defaultStart());
-  const [end, setEnd] = useState(() => defaultStart());
   // Default 0h 0m — user must explicitly pick a duration before Create
   // enables (`canSubmit` already requires totalMinutes > 0).
-  const [durHours, setDurHours] = useState(0);
-  const [durMinutes, setDurMinutes] = useState(0);
   // Category: picker mode uses the fixed taxonomy; "custom" mode reveals
   // a text input for a user-created name. The Apr 4–15 experiment window
   // has closed, so operator-created categories are research-safe going
@@ -100,6 +88,30 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     useState<NudgeDecisionData | null>(null);
   const [editScheduleTouched, setEditScheduleTouched] = useState(false);
 
+  const {
+    start,
+    end,
+    durHours,
+    durMinutes,
+    totalMinutes,
+    endBeforeStart,
+    suggestAmPmSwap,
+    suggestPushStartToFuture,
+    resetTimeDefaults,
+    loadTimeRange,
+    handleStartChange,
+    handleEndChange,
+    handleDurHoursChange,
+    handleDurMinutesChange,
+    applyDurationMinutes,
+    applyAmPmSwap,
+    applyPushStartToFuture,
+  } = useNewTaskTimeControls({
+    defaultDate,
+    now,
+    onEditScheduleChanged: markEditScheduleChanged,
+  });
+
   // Loop 11 Phase K — deadline picker. `deadlineId` carries the user's
   // explicit choice (or the confirmed parser suggestion). `parserSuggestion`
   // is the read-only Pass 2 preview surfaced as a soft suggestion above the
@@ -130,9 +142,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     nudgeDecisionMade,
   });
 
-
-  const totalMinutes = durHours * 60 + durMinutes;
-  const endBeforeStart = diffMinutes(start, end) <= 0;
   const canSubmit = !submitting && title.trim().length > 0 && !endBeforeStart && totalMinutes > 0;
   const { ackVisibleCreationNudge } = useCreationNudgeExposure({
     nudge: calibrationNudge,
@@ -154,12 +163,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // NEXT day's 9:25 AM, and the time-only display hid the date change.
   // Same-day check on the shifted result catches any cross-midnight
   // shift defensively.
-  const suggestAmPmSwap = endBeforeStart ? getAmPmSwapSuggestion(start, end) : null;
-  function applyAmPmSwap() {
-    if (!suggestAmPmSwap) return;
-    handleEndChange(suggestAmPmSwap);
-  }
-
   // Past-start recovery. Distinct concern from AM/PM swap: user typed a
   // start time that's already passed (e.g., it's 9:23 PM and they set
   // start to 9:20 PM by accident, or the modal's `defaultStart` round-
@@ -170,23 +173,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // the past; the 60s useCurrentTime tick means the suggestion
   // naturally appears after the user lingers past the original
   // round-up mark.
-  const suggestPushStartToFuture = getPushStartToFutureSuggestion(start, now);
-  function applyPushStartToFuture() {
-    if (!suggestPushStartToFuture) return;
-    handleStartChange(suggestPushStartToFuture);
-  }
-
   // Fresh defaults every time modal opens for a new task.
   // Using `open` as only dep intentionally — the 60s `now` tick must
   // not clobber in-progress typing.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open && !editingTask) {
-      const s = defaultDate ? defaultStartForDate(defaultDate, now) : defaultStart(now);
-      setStart(s);
-      setEnd(s);
-      setDurHours(0);
-      setDurMinutes(0);
+      resetTimeDefaults();
       setTitle("");
       setCategory("work");
       setCategoryMode("picker");
@@ -222,12 +215,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     }
     const startDate = editingTask.start ? new Date(editingTask.start) : new Date();
     const endDate = editingTask.end ? new Date(editingTask.end) : new Date();
-    const dur = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60_000));
     setTitle(editingTask.title);
-    setStart(formatLocal(startDate));
-    setEnd(formatLocal(endDate));
-    setDurHours(Math.floor(dur / 60));
-    setDurMinutes(dur % 60);
+    loadTimeRange(startDate, endDate);
     const editCat = editingTask.category || "work";
     setCategory(editCat);
     // If the editing task has a custom (non-taxonomy) category, open the
@@ -249,15 +238,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setNudgeDecisionData(null);
     setEditScheduleTouched(false);
     setLastEditId(editingTask.task_id);
-  }, [clearCreationNudge, editingTask, lastEditId]);
+  }, [clearCreationNudge, editingTask, lastEditId, loadTimeRange]);
 
   function resetForm() {
-    const s = defaultDate ? defaultStartForDate(defaultDate, now) : defaultStart(now);
+    resetTimeDefaults();
     setTitle("");
-    setStart(s);
-    setEnd(s);
-    setDurHours(0);
-    setDurMinutes(0);
     setCategory("work");
     setCategoryMode("picker");
     setDescription("");
@@ -293,55 +278,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     onInterruptionCreated,
   });
 
-  // --- Bidirectional binding helpers ---
+  // --- Edit schedule touch helper ---
 
   function markEditScheduleChanged() {
     if (!isEdit) return;
     setEditScheduleTouched(true);
     setNudgeDecisionMade(false);
     setNudgeDecisionData(null);
-  }
-
-  function handleStartChange(newStart: string) {
-    markEditScheduleChanged();
-    // Preserve current duration, shift end
-    const dur = durHours * 60 + durMinutes;
-    setStart(newStart);
-    setEnd(addMinutes(newStart, dur));
-  }
-
-  function handleEndChange(newEnd: string) {
-    markEditScheduleChanged();
-    setEnd(newEnd);
-    const mins = diffMinutes(start, newEnd);
-    // Always update duration so the UI stays consistent with start/end.
-    // For negative ranges we zero the duration state, but the
-    // `endBeforeStart` flag drives the error banner + nudge-suppression
-    // so the user gets feedback that the range is invalid (previously
-    // the duration silently stayed at the last good value, producing
-    // "0h 0m / End before start" while the two fields visibly
-    // disagreed — see dogfood 2026-04-21 AM/PM bug report).
-    if (mins > 0) {
-      setDurHours(Math.floor(mins / 60));
-      setDurMinutes(mins % 60);
-    } else {
-      setDurHours(0);
-      setDurMinutes(0);
-    }
-  }
-
-  function handleDurHoursChange(h: number) {
-    markEditScheduleChanged();
-    const clamped = Math.max(0, h);
-    setDurHours(clamped);
-    setEnd(addMinutes(start, clamped * 60 + durMinutes));
-  }
-
-  function handleDurMinutesChange(m: number) {
-    markEditScheduleChanged();
-    const clamped = Math.max(0, m);
-    setDurMinutes(clamped);
-    setEnd(addMinutes(start, durHours * 60 + clamped));
   }
 
   // --- Submit ---
@@ -767,9 +710,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 setNudgeDecisionData(
                   nudgeDecisionFromCalibration(calibrationNudge, "accepted"),
                 );
-                setDurHours(Math.floor(newMin / 60));
-                setDurMinutes(newMin % 60);
-                setEnd(addMinutes(start, newMin));
+                applyDurationMinutes(newMin);
                 clearCreationNudge();
                 setNudgeDecisionMade(true);
               }}
