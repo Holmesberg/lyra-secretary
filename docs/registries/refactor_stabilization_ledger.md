@@ -16105,3 +16105,64 @@ Rollback note:
 - Revert commit `4e055cc` to remove the endpoint characterization test.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Reminder Delivery OpenClaw-Mirror Failure Characterization
+
+Seam:
+
+- `reminder-delivery-openclaw-mirror-failure-characterization`
+
+Changed authority:
+
+- No runtime authority changed.
+- Added reminder-worker characterization proving non-operator reminder delivery
+  remains a backend-owned user notification queue write even when the OpenClaw
+  operator mirror raises during an active/busy relay session.
+- Preserved the exposure doctrine: the durable lifecycle row remains `queued`;
+  the test does not treat queue insertion, delivery attempt, or OpenClaw mirror
+  status as browser render truth.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- Live OpenClaw/Telegram delivery wiring remains parked.
+- Operator-owned direct reminder relay behavior remains unchanged.
+- Production delivery forensics, data repair, and purge remain approval-gated.
+
+Moved authority:
+
+- No authority moved.
+- `scheduler.reminders` remains the reminder worker authority.
+- `notification_queue` remains the user-notification queue/lifecycle boundary.
+- OpenClaw remains an operator relay/mirror, not user-facing render truth.
+
+Issues and classification:
+
+- Fixed GitHub issue #107:
+  `https://github.com/Holmesberg/lyra-secretary/issues/107`.
+- Classification: missing reminder delivery characterization for the historical
+  active-session/OpenClaw mirror failure class.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_reminders_scheduler_contract.py -q`;
+  passed, 5 tests.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29088249000` passed for
+  `43769b0b34be372bf7fcf08545c51fc4f0ce0ce5`.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public
+  deployment behavior, rebrand/domain state, or user-facing copy changed.
+- The seam only proves an already-intended reliability boundary: user reminder
+  queueing is not invalidated by OpenClaw operator-mirror failure.
+
+Rollback note:
+
+- Revert commit `43769b0` to remove the reminder characterization test.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
