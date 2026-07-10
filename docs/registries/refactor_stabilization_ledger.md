@@ -14910,3 +14910,66 @@ Rollback note:
 - Revert commit `348be1a` to remove the CI contract gate.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Five-Minute Timer Overflow Characterization
+
+Seam:
+
+- `s1c-timer-overflow-five-minute-characterization`
+
+Changed authority:
+
+- No product/runtime behavior, schema, mutation authority, exposure authority,
+  provider authority, deployment authority, env var, domain, or rebrand
+  authority changed.
+- S1c backend coverage now explicitly proves the active five-minute planned
+  timer overflow path.
+
+Removed paths:
+
+- Removed the regression gap where timer overflow tests covered longer planned
+  sessions but did not explicitly cover a five-minute planned task still
+  running beyond the overflow grace.
+
+Parked paths:
+
+- Runtime changes to timer overflow thresholds, retroactive notifications for
+  already-stopped sessions, scheduler cadence changes, hosted-public
+  deploy/restart, hosted-public mutable dogfood, schema migrations, and
+  rebrand/domain migration remain parked.
+
+Moved authority:
+
+- No runtime authority moved.
+- Verification authority for archived issue `LYR-060` / GitHub issue #23 is
+  strengthened in `backend/tests/test_timer_overflow_notifications.py`.
+
+Issues and classification:
+
+- GitHub issue #23:
+  `https://github.com/Holmesberg/lyra-secretary/issues/23`.
+- Classification: S1c characterization for an already-supported active timer
+  overflow path. A retroactive prompt after the stopwatch has already stopped
+  would be separate product behavior and is not introduced by this seam.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_timer_overflow_notifications.py -q`;
+  passed, `4` tests.
+- `git diff --check -- backend\tests\test_timer_overflow_notifications.py`;
+  passed with existing CRLF warning only.
+- CI proof: GitHub Actions run `29080109846` passed for
+  `2d3b105c939bde493e1b07793ddb6e425e7c3812`.
+
+Behavior parity statement:
+
+- Timer overflow runtime code was unchanged.
+- The new characterization proves a five-minute planned task that is still
+  actively running at eleven minutes enqueues exactly one timer overflow
+  notification and records the planned/elapsed values in the payload.
+
+Rollback note:
+
+- Revert commit `2d3b105` to remove the characterization test.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
