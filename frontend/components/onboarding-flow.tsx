@@ -32,10 +32,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import {
-  BrainDumpBindingSuggestion,
-} from "@/lib/brain-dump";
-import {
   bindingKey,
+  brainDumpBindingTargetLabel,
   failureCopy,
 } from "@/lib/brain-dump-ui";
 import { api } from "@/lib/api";
@@ -73,12 +71,6 @@ function formatWhen(iso: string | null): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
-  return b.target_kind === "existing_deadline"
-    ? "existing obligation"
-    : "deadline";
 }
 
 export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
@@ -272,7 +264,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                           className="flex items-center justify-between gap-2"
                         >
                           <p className="text-xs text-dust">
-                            Link to {bindingTargetLabel(b)}{" "}
+                            Link to {brainDumpBindingTargetLabel(b, "deadline")}{" "}
                             <span className="text-parchment">
                               &ldquo;{b.deadline_title}&rdquo;
                             </span>

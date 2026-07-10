@@ -29,10 +29,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  type BrainDumpBindingSuggestion,
-} from "@/lib/brain-dump";
-import {
   bindingKey,
+  brainDumpBindingTargetLabel,
   failureCopy,
   pad2,
 } from "@/lib/brain-dump-ui";
@@ -78,12 +76,6 @@ function fmtWhen(iso: string | null): string {
   } catch {
     return iso;
   }
-}
-
-function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
-  return b.target_kind === "existing_deadline"
-    ? "existing obligation"
-    : "same dump";
 }
 
 export interface BrainDumpQuickModalProps {
@@ -347,7 +339,7 @@ gym sat morning"
                               className="flex flex-wrap items-center gap-2 text-[11px]"
                             >
                               <span className="text-dust-deep">
-                                Link to {bindingTargetLabel(b)}{" "}
+                                Link to {brainDumpBindingTargetLabel(b, "same dump")}{" "}
                                 <span className="text-parchment">
                                   {b.deadline_title}
                                 </span>
