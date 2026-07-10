@@ -273,6 +273,17 @@ NO_UNAPPROVED_REBRAND_FILES = (
 
 NO_UNAPPROVED_REBRAND_PATTERN = re.compile(r"\b(?:Barzakh|barzakh)\b")
 
+JARVIS_TOOLS_IMPORT_PATTERN = re.compile(
+    r"(?:from\s+app\.services\.jarvis_tools\s+import|"
+    r"import\s+app\.services\.jarvis_tools|"
+    r"from\s+app\.services\s+import\s+jarvis_tools)"
+)
+
+JARVIS_TOOLS_IMPORT_ALLOWED_PATHS = {
+    "backend/app/services/behavioral_signature_service.py",
+    "backend/app/services/jarvis_tools.py",
+}
+
 
 def stale_doc_authority_banner_findings() -> list[Finding]:
     findings: list[Finding] = []
@@ -303,6 +314,45 @@ def stale_doc_authority_banner_findings() -> list[Finding]:
                     )
                 )
     return findings
+
+
+def non_owner_jarvis_tools_import_findings(
+    extra_files: dict[str, str] | None = None,
+) -> list[Finding]:
+    """Keep removed Jarvis runtime internals behind explicit compatibility seams."""
+    findings = scan_lines(
+        rule_id="non_owner_services_must_not_import_jarvis_tools",
+        severity="error",
+        files=iter_files(REPO_ROOT / "backend" / "app", {".py"}),
+        pattern=JARVIS_TOOLS_IMPORT_PATTERN,
+        allowed_paths=JARVIS_TOOLS_IMPORT_ALLOWED_PATHS,
+    )
+    if extra_files:
+        for doc_path, text in extra_files.items():
+            if doc_path in JARVIS_TOOLS_IMPORT_ALLOWED_PATHS:
+                continue
+            for index, line in enumerate(text.splitlines(), start=1):
+                if JARVIS_TOOLS_IMPORT_PATTERN.search(line):
+                    findings.append(
+                        Finding(
+                            rule_id="non_owner_services_must_not_import_jarvis_tools",
+                            severity="error",
+                            path=doc_path,
+                            line=index,
+                            excerpt=line.strip()[:220],
+                        )
+                    )
+    return findings
+
+
+def non_owner_jarvis_tools_import_self_test_findings() -> list[Finding]:
+    return non_owner_jarvis_tools_import_findings(
+        {
+            "backend/app/services/inference_engine.py": (
+                "from app.services.jarvis_tools import _exec_analyze_behavioral_signature"
+            )
+        }
+    )
 
 
 def no_unapproved_rebrand_findings(
@@ -405,8 +455,21 @@ def main() -> int:
     parser.add_argument("--include-review", action="store_true")
     parser.add_argument("--self-test-removed-surface-docs", action="store_true")
     parser.add_argument("--self-test-no-rebrand", action="store_true")
+    parser.add_argument("--self-test-jarvis-import-boundary", action="store_true")
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
+
+    if args.self_test_jarvis_import_boundary:
+        findings = non_owner_jarvis_tools_import_self_test_findings()
+        output = {
+            "ok": len(findings) >= 1,
+            "mode": "self_test_jarvis_import_boundary",
+            "expected_minimum_findings": 1,
+            "finding_count": len(findings),
+            "findings": [finding.__dict__ for finding in findings],
+        }
+        print(json.dumps(output, indent=2 if args.pretty else None, sort_keys=True))
+        return 0 if output["ok"] else 1
 
     if args.self_test_no_rebrand:
         findings = no_unapproved_rebrand_self_test_findings()
@@ -439,6 +502,7 @@ def main() -> int:
     findings.extend(app_direct_output_surface_helper_findings())
     findings.extend(app_direct_legacy_reflection_row_findings())
     findings.extend(frontend_jarvis_findings())
+    findings.extend(non_owner_jarvis_tools_import_findings())
     findings.extend(stale_doc_authority_banner_findings())
     findings.extend(removed_surface_active_doc_findings())
     findings.extend(no_unapproved_rebrand_findings())

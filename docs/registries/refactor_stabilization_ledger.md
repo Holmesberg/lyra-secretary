@@ -16449,3 +16449,68 @@ Rollback note:
   self-test.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - R4 Behavioral Signature Service Boundary
+
+Seam:
+
+- `behavioral-signature-service-boundary`
+
+Changed authority:
+
+- `backend/app/services/inference_engine.py` no longer imports
+  `jarvis_tools.py` directly for the operator behavioral signature endpoint.
+- `backend/app/services/behavioral_signature_service.py` is now the named
+  compatibility seam for the historical Jarvis aggregate implementation.
+- `scripts/scan_refactor_contracts.py` hard-fails any new non-owner backend app
+  import of `app.services.jarvis_tools`.
+- CI runs a negative self-test proving a synthetic direct import from
+  `inference_engine.py` is rejected.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Moving the large aggregate implementation body out of `jarvis_tools.py`
+  remains parked as a later R4 extraction seam because this seam is intentionally
+  bounded.
+- Historical `JarvisInvocation` model/export/delete support remains parked
+  until schema authority exists.
+
+Moved authority:
+
+- Behavioral signature call-site authority moved from the parked Jarvis module
+  to a named operator behavioral signature service boundary.
+- Runtime behavior remains delegated to the legacy implementation through that
+  boundary for parity.
+
+Tests and verification:
+
+- `python -m py_compile scripts\scan_refactor_contracts.py backend\app\services\behavioral_signature_service.py backend\app\services\inference_engine.py`;
+  passed.
+- `python scripts\scan_refactor_contracts.py --self-test-jarvis-import-boundary --pretty`;
+  passed and produced the expected synthetic direct-import finding.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `cd backend && pytest tests/test_analytics_behavioral_signature.py tests/test_jarvis_phase2_discovery_tools.py`;
+  passed via `..\.venv311\Scripts\python.exe -m pytest` with 27 passed and
+  existing Pydantic deprecation warnings.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+
+Behavior parity statement:
+
+- No endpoint behavior, schema, Redis state, hosted-public artifact, public
+  deploy, public restart, user-facing copy, or data/write behavior changed.
+- The seam only places the legacy Jarvis aggregate behind an explicit service
+  boundary and makes future direct imports observable.
+
+Rollback note:
+
+- Revert this seam commit to restore the direct `inference_engine.py` import
+  from `jarvis_tools.py` and remove the import-boundary scanner rule.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
