@@ -41,6 +41,60 @@ def _metric_meta(
     }
 
 
+def _denominator_exclusion_for(
+    session: StopwatchSession,
+    task: Task,
+    user: User,
+) -> str | None:
+    if user.is_operator:
+        return "operator_user_sessions"
+    if is_test_or_synthetic_user(user):
+        return "test_or_synthetic_user_sessions"
+    if session.post_deletion_retained_at or task.post_deletion_retained_at:
+        return "deleted_retained_sessions"
+    if task.voided_at is not None or task.state == TaskState.DELETED:
+        return "voided_or_deleted_task_sessions"
+    return None
+
+
+def _dirty_reasons_for_session(
+    db: Session,
+    *,
+    session: StopwatchSession,
+    task: Task,
+    corrected_task_ids: set[str],
+) -> set[str]:
+    reasons: set[str] = set()
+    if session.auto_closed:
+        reasons.add("auto_closed")
+    if session.data_quality_flag:
+        reasons.add("stale_recovered")
+    if task.initiation_status == "retroactive":
+        reasons.add("retroactive")
+    if task.task_id in corrected_task_ids:
+        reasons.add("corrected")
+    if task.voided_at is not None:
+        reasons.add("voided")
+    if not session.start_time_utc or not session.end_time_utc:
+        reasons.add("missing_timestamps")
+    if (
+        session.start_time_utc
+        and session.end_time_utc
+        and session.end_time_utc < session.start_time_utc
+    ):
+        reasons.add("impossible_duration")
+    exposure_results = exposure_results_for_task(
+        db,
+        task=task,
+        signal_targets=["planning_estimate", "duration_behavior"],
+    )
+    if any(result.state == "UNKNOWN" for result in exposure_results):
+        reasons.add("unknown_exposure")
+    if any(result.state in {"EXPOSED", "INTERVENTION"} for result in exposure_results):
+        reasons.add("exposure_contaminated")
+    return reasons
+
+
 def measurement_integrity_snapshot(
     db: Session,
     *,
@@ -96,17 +150,9 @@ def measurement_integrity_snapshot(
     )
     eligible_sessions: list[tuple[StopwatchSession, Task]] = []
     for session, task, user in closed_sessions_all:
-        if user.is_operator:
-            denominator_exclusions["operator_user_sessions"] += 1
-            continue
-        if is_test_or_synthetic_user(user):
-            denominator_exclusions["test_or_synthetic_user_sessions"] += 1
-            continue
-        if session.post_deletion_retained_at or task.post_deletion_retained_at:
-            denominator_exclusions["deleted_retained_sessions"] += 1
-            continue
-        if task.voided_at is not None or task.state == TaskState.DELETED:
-            denominator_exclusions["voided_or_deleted_task_sessions"] += 1
+        exclusion = _denominator_exclusion_for(session, task, user)
+        if exclusion:
+            denominator_exclusions[exclusion] += 1
             continue
         eligible_sessions.append((session, task))
 
@@ -139,34 +185,12 @@ def measurement_integrity_snapshot(
     clean_sessions_by_user: Counter[int] = Counter()
     for session, task in eligible_sessions:
         closed_sessions_by_user[int(session.user_id)] += 1
-        reasons: set[str] = set()
-        if session.auto_closed:
-            reasons.add("auto_closed")
-        if session.data_quality_flag:
-            reasons.add("stale_recovered")
-        if task.initiation_status == "retroactive":
-            reasons.add("retroactive")
-        if task.task_id in corrected_task_ids:
-            reasons.add("corrected")
-        if task.voided_at is not None:
-            reasons.add("voided")
-        if not session.start_time_utc or not session.end_time_utc:
-            reasons.add("missing_timestamps")
-        if (
-            session.start_time_utc
-            and session.end_time_utc
-            and session.end_time_utc < session.start_time_utc
-        ):
-            reasons.add("impossible_duration")
-        exposure_results = exposure_results_for_task(
+        reasons = _dirty_reasons_for_session(
             db,
+            session=session,
             task=task,
-            signal_targets=["planning_estimate", "duration_behavior"],
+            corrected_task_ids=corrected_task_ids,
         )
-        if any(result.state == "UNKNOWN" for result in exposure_results):
-            reasons.add("unknown_exposure")
-        if any(result.state in {"EXPOSED", "INTERVENTION"} for result in exposure_results):
-            reasons.add("exposure_contaminated")
         if reasons:
             dirty_reasons.update(reasons)
             dirty_session_reason_map[session.session_id] = sorted(reasons)
