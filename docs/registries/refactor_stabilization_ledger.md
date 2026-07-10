@@ -12886,6 +12886,113 @@ Rollback note:
 - No code rollback is required. Delete or supersede this ledger entry only if a
   newer current-head proof replaces the artifact.
 
+## 2026-07-10 - Creation Nudge Lookup Hook Extraction
+
+Seam:
+
+- `r3-new-task-creation-nudge-lookup-hook`
+
+Changed authority:
+
+- No mutation authority, exposure authority, clean-data authority, schema,
+  deployment state, env var, domain, cohort denominator, or readiness threshold
+  changed.
+- The task creation nudge lookup state machine moved out of
+  `NewTaskModal`; render acknowledgement and suppression authority remain in
+  `useCreationNudgeExposure` and the output-surface lifecycle APIs.
+
+Removed paths:
+
+- Removed the inline `bias_factor/lookup` effect and local nudge/source state
+  from `frontend/components/new-task-modal.tsx`.
+
+Parked paths:
+
+- Writer extraction for output-surface render/suppression, stopwatch stop,
+  task lifecycle, auth/scoping, provider connection state, schema migrations,
+  hosted-public deploy/restart, hosted-public mutable dogfood,
+  rebrand/domain migration, and cohort expansion remain approval-gated.
+- The product-loop artifact still records gated future coverage for pressure-map
+  mutation, provider credential mutation, account hard-delete/Redis purge,
+  calendar drag/resize mutation, and OpenClaw pending drain authority.
+
+Moved authority:
+
+- `frontend/components/use-creation-nudge-lookup.ts` now owns the local
+  creation-nudge lookup state, debounce, provisional research card, backend
+  hydration, and discard-before-render suppression trigger.
+- `frontend/components/new-task-modal.tsx` keeps draft state, decision payload,
+  duration mutation, submit flow, and visible card rendering.
+- `frontend/lib/hooks/use-creation-nudge-exposure.ts` continues to own browser
+  render acknowledgement and cleanup suppression.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 behavior-preserving
+  extraction, not a product bug.
+- Holmesberg product-loop non-fatal issues were classified as pre-existing
+  fixture/coverage state, not regressions from this seam:
+  onboarding gate open for the chaos account, parser-normalized brain-dump
+  deadline title, and pressure-map commit path gated by read-only pressure safe
+  mode.
+- Classification: frontend behavior-preserving extraction / task creation
+  nudge state-machine split.
+
+Tests and verification:
+
+- `git diff --check`; passed with existing CRLF warnings only.
+- `npm run typecheck` from `frontend`; passed.
+- `npm run build` from `frontend`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_output_surfaces.py -q`;
+  passed, 29 tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T02-16-46-765Z/result.json`.
+- Holmesberg artifact reported `ok=true`, `topology=local-current`, 116 checks,
+  zero warnings, cleanup of 10 task IDs, 8 deadline IDs, and 3 notification IDs,
+  and `cleanup leaves no unrendered synthetic creation-nudge exposures=true`.
+- The creation-nudge checks proved the keep branch preserved the original
+  60-minute estimate, lookup returned bounded authority fields, and render ACK
+  was idempotent.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T02-23-36-407Z/result.json`.
+- Operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  pre-dashboard count diffs, zero count diffs, zero route count diffs, zero
+  dashboard snapshot diffs, `implementation_green=true`,
+  `cohort_status=yellow`, `cohort_green=false`, and
+  `safe_to_invite_more_users=false` only for cohort data volume/readiness gaps.
+- CI proof: GitHub Actions run `29064626449` passed for
+  `c0160bcef0073cc7354f007c213842a8a062cd7f`.
+
+Behavior parity statement:
+
+- New task creation still computes and displays the creation nudge from the same
+  category/time/duration inputs.
+- Accepting the nudge still records an accepted decision payload, updates the
+  duration/end time, and prevents the re-suggestion loop for the modal session.
+- Keeping the estimate still records a dismissed decision payload and preserves
+  the user's duration.
+- Render acknowledgement, discard-before-render suppression, backend lookup
+  hydration, idempotent create submission, deadline preview/binding, soft
+  conflict override, edit mode, and cleanup behavior remain unchanged.
+- No writes, migrations, hosted-public deploys, public restarts, production
+  repairs, public mutable hosted dogfood, or rebrand/domain changes were
+  introduced.
+
+Rollback note:
+
+- Revert commit `c0160bc` to restore the creation-nudge lookup state machine
+  inline in `frontend/components/new-task-modal.tsx`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, production repair,
+  or browser artifact rollback is required.
+
 ## 2026-07-10 - Analytics Surface Eligibility Extraction
 
 Seam:
