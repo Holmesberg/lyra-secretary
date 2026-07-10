@@ -17154,3 +17154,123 @@ Rollback note:
 - Revert `fc110d9` to restore the previous public metadata copy.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Today Feed Helper Extraction And Stopwatch Proof Blocker
+
+Seams:
+
+- `today-feed-pure-helper-extraction`
+- `stopwatch-stop-confirmed-500-fix`
+
+Changed authority:
+
+- `frontend/lib/today-feed.ts` now owns pure Today feed ordering helpers for
+  local date keys, due-deadline pinning, external event rows, and feed item
+  sorting.
+- `frontend/app/(app)/today/page.tsx` delegates feed assembly to those helpers.
+  Pulse, Today, Calendar, and Table authority did not move.
+- `backend/app/services/stopwatch_manager.py` now returns immediately from the
+  existing zero-duration terminal `SKIPPED` branch instead of falling through
+  into normal `EXECUTED` completion.
+- Stopwatch session authority remains with `StopwatchManager` and Redis
+  stopwatch state methods. No new write authority was introduced.
+
+Removed paths:
+
+- Inline Today feed/date/deadline assembly code was removed from the page
+  component after being extracted into pure helpers.
+
+Parked paths:
+
+- No backend god-module extraction was started.
+- No writer split, schema migration, provider connection move, public deploy,
+  public restart, production repair, or rebrand/domain work was performed.
+- Hosted-public proof remains separate from `local-current` proof and was not
+  substituted here.
+
+Moved authority:
+
+- No mutation, exposure, provider, ClaimCompiler, clean-data, hosted-public,
+  public deploy, public restart, production data, schema, Redis, or rebrand
+  authority moved.
+
+Bug ledger:
+
+- GitHub issue #199, "Stopwatch confirmed zero-duration stop returns 500",
+  was opened for the local-current Holmesberg product-loop blocker.
+- Root cause: `StopwatchManager.stop()` wrote zero-duration `SKIPPED`, cleared
+  Redis active state, then fell through and attempted `SKIPPED -> EXECUTED`.
+- Fix commit: `e8111f4`.
+
+Tests and verification:
+
+- Frontend/helper seam:
+  - `cd frontend && npm run build`; passed.
+  - `cd frontend && npm run lint`; passed.
+  - `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+    passed.
+  - `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+    passed.
+  - `git diff --check`; passed with existing CRLF warnings only.
+  - GitHub CI for `b46bb0d` passed: run `29109022299`.
+- Stopwatch blocker fix:
+  - New backend characterization:
+    `backend\tests\test_wave2_idempotency.py::test_confirmed_zero_duration_stop_returns_skipped_without_500`.
+  - Red proof before fix: the new test reproduced `500 Internal server error`
+    with `Cannot transition from SKIPPED to EXECUTED`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_wave2_idempotency.py::test_confirmed_zero_duration_stop_returns_skipped_without_500 backend\tests\test_wave2_idempotency.py::test_first_early_stop_call_requires_confirmation_without_closing_session backend\tests\test_wave2_idempotency.py::test_stop_retry_with_same_key_replays_without_second_transition backend\tests\test_state_consistency.py::test_stop_executed_clears_all -q`;
+    passed.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_wave2_idempotency.py backend\tests\test_state_consistency.py backend\tests\test_void_clears_stopwatch.py backend\tests\test_stopwatch_start_errors.py -q`;
+    passed with 19 tests.
+  - `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+    passed.
+  - `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+    passed.
+  - `git diff --check`; passed with existing CRLF warnings only.
+  - GitHub CI for `e8111f4` passed: run `29110450085`
+    (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29110450085`).
+- Browser/product-loop proof:
+  - First local-current product-loop artifact failed at
+    `POST /v1/stopwatch/stop?confirmed=true`:
+    `tmp\post-wave-dogfood\20260710-195535-today-feed-helper-extraction-standard-local-current\holmesberg-product-loop\result.json`.
+  - Rerun command:
+    `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName today-feed-helper-extraction-rerun -IncludeProductLoop -IncludeCiCdProof -CiCdFailOnUnsuccessful`;
+    passed.
+  - Evidence manifest:
+    `tmp\post-wave-dogfood\20260710-201934-today-feed-helper-extraction-rerun-standard-local-current\summary.json`.
+  - Classification: `standard_wave_proof_passed`.
+  - Topology: `local-current`, frontend `http://localhost:3013`, API
+    `http://localhost:8000`, frontend build id `local-current`, backend build
+    id `dev`.
+  - Product-loop result: `ok=true`, 133 checks, 0 failed checks.
+  - Cleanup proof: required and passed; Holmesberg had no active timer after
+    cleanup and no unrendered synthetic creation-nudge exposures.
+  - Operator proof: implementation green, cohort yellow, safe-to-invite false,
+    exposure-without-render count `0`, and no count diffs.
+  - CI/CD proof in manifest: run `29110450085` for
+    `e8111f438e40b120b1bb9840eda5392495c132a1` passed.
+
+Known non-blocking browser issues:
+
+- Holmesberg onboarding gate was open and skipped to reach app surfaces.
+- Some branch-created tasks were not visible before branch assertions, while
+  backend binding checks passed.
+- Brain dump deadline title was normalized by the parser.
+- Pressure-map commit path remains gated by backend recovery-nudge safety
+  switches.
+
+Behavior parity statement:
+
+- Today feed rendering remains behavior-preserving: due deadlines remain pinned
+  according to the documented local-date/overdue rules, task sorting remains
+  unchanged, and no Today write behavior changed.
+- The stopwatch fix preserves the already-documented zero-duration semantics:
+  no active work without a high completion report closes the task as `SKIPPED`
+  and clears runtime stopwatch state.
+
+Rollback note:
+
+- Revert `b46bb0d` to inline Today feed assembly back into the page.
+- Revert `e8111f4` only if necessary, knowing it reintroduces #199. No schema,
+  data, Redis migration, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
