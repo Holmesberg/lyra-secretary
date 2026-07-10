@@ -18266,3 +18266,75 @@ Rollback note:
 - Revert this seam to remove the added Cortex contract assertions and this
   ledger entry. No schema, data, Redis migration, hosted-public deploy, public
   restart, production repair, or rebrand/domain rollback is required.
+
+## 2026-07-11 - Exposure Policy Helper Extraction
+
+Seam:
+
+- `exposure-policy-helper-extraction`
+
+Changed authority:
+
+- Extracted pure exposure-horizon policy loading and category-target lookup from
+  `backend/app/services/exposure_ledger.py` into
+  `backend/app/services/exposure_policy.py`.
+- Kept compatibility imports from `app.services.exposure_ledger` so existing
+  callers and monkeypatch tests keep the same import path.
+- Added the new pure module to the active repo topology doc.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Exposure render/suppression lifecycle writer splits, output-surface writer
+  extraction, production repair tooling, schema migration, hosted-public
+  deploy/restart, and rebrand/domain migration remain parked.
+
+Moved authority:
+
+- Pure policy-config helper ownership moved to `exposure_policy.py`.
+- No exposure-decision write, render truth, suppression truth, contamination
+  decision, clean-data denominator, provider, ClaimCompiler, schema,
+  hosted-public, public deploy, or public restart authority moved.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\services\exposure_policy.py backend\app\services\exposure_ledger.py`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_exposure_ledger_v0.py backend\tests\test_cortex_contract_v0.py -q`;
+  passed, 22 tests.
+- Negative proof: `test_policy_unavailable_fails_closed` still passes through
+  the compatibility import path after extraction.
+- `python scripts\scan_backend_layer_imports.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `python scripts\scan_cortex_readonly.py --fail-on-errors --pretty`; passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub Actions run `29125963173`; passed for commit `965f7da`.
+- Standard local-current post-wave proof passed:
+  `tmp\post-wave-dogfood\20260711-005255-exposure-policy-helper-extraction-standard-local-current\summary.json`.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200`; no public restart/deploy
+  was performed.
+
+Behavior parity statement:
+
+- Runtime behavior is intended to remain unchanged. Exposure Ledger still fails
+  closed for unavailable policy config, incomplete ledgers, unsupported signal
+  targets, and missing event times. Existing imports from
+  `app.services.exposure_ledger` continue to resolve.
+
+Rollback note:
+
+- Revert this seam to inline policy loading and category lookup back into
+  `exposure_ledger.py`, delete `exposure_policy.py`, remove the topology row,
+  and remove this ledger entry. No schema, data, Redis migration, hosted-public
+  deploy, public restart, production repair, or rebrand/domain rollback is
+  required.
