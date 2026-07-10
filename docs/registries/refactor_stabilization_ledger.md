@@ -18002,3 +18002,68 @@ Rollback note:
 - Revert this seam to remove `scan_backend_layer_imports.py` and the CI gate.
   No schema, data, Redis migration, hosted-public deploy, public restart,
   production repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Cortex Read-Only Hard Gate
+
+Seam:
+
+- `cortex-readonly-hard-gate`
+
+Changed authority:
+
+- Added `scripts/scan_cortex_readonly.py` as an S1c hard gate for the Cortex
+  read-only contract.
+- CI now runs the Cortex read-only gate after the backend layer import gate.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Cortex writer extraction, dependency-DAG tightening beyond current clean
+  rules, schema migration, hosted-public deploy/restart, production repair, and
+  rebrand/domain migration remain parked.
+
+Moved authority:
+
+- No product/runtime authority moved. CI now hard-fails if Cortex code calls
+  encoded write primitives or imports known writer/runtime clients.
+
+Tests and verification:
+
+- `python -m py_compile scripts\scan_cortex_readonly.py`; passed.
+- `python scripts\scan_cortex_readonly.py --self-test --pretty`; passed.
+  Negative proof caught synthetic Cortex write calls and writer imports.
+- `python scripts\scan_cortex_readonly.py --fail-on-errors --pretty`; passed
+  with zero live findings after the scanner was narrowed to avoid local
+  collection false positives.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `python scripts\scan_backend_layer_imports.py --fail-on-errors --pretty`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_cortex_contract_v0.py -q`;
+  passed, 7 tests.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub Actions run `29123000933`; passed for commit `55170f6`.
+- Standard local-current post-wave proof passed:
+  `tmp\post-wave-dogfood\20260710-235621-cortex-readonly-hard-gate-standard-local-current\summary.json`.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200`; no public restart/deploy
+  was performed.
+
+Behavior parity statement:
+
+- Runtime behavior is unchanged. This seam only makes the currently-clean
+  Cortex read-only boundary mechanically observable in CI before broader
+  structural refactors continue.
+
+Rollback note:
+
+- Revert this seam to remove `scan_cortex_readonly.py`, the CI step, and this
+  ledger entry. No schema, data, Redis migration, hosted-public deploy, public
+  restart, production repair, or rebrand/domain rollback is required.
