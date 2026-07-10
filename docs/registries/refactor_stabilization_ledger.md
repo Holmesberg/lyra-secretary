@@ -13758,3 +13758,82 @@ Rollback note:
   `PulseReentryQueue`.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Pulse Missed-Plan Drop Browser Proof
+
+Seam:
+
+- `s1c-pulse-reentry-missed-drop-browser-proof`
+
+Changed authority:
+
+- No product/runtime authority, mutation authority, exposure authority,
+  clean-data authority, schema, deployment state, env var, domain, or cohort
+  denominator changed.
+- The Holmesberg product-loop harness now directly covers the documented
+  Pulse Re-entry missed-plan `Drop` branch.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Stale-pause resolve modal browser characterization, missed-plan `Done`
+  browser characterization, frontend/backend writer splits, hosted-public
+  deploy/restart, hosted-public mutable dogfood, schema migrations, and
+  rebrand/domain migration remain future or approval-gated seams.
+
+Moved authority:
+
+- None. This was verifier/harness coverage only.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned S1c characterization coverage
+  for a documented Pulse Re-entry branch after command extraction.
+- Classification: verifier/harness coverage / documented Pulse Re-entry
+  missed-plan drop behavior.
+
+Tests and verification:
+
+- `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs`; passed.
+- `git diff --check -- scripts\browser_holmesberg_product_loop_dogfood.mjs`;
+  passed with existing CRLF warning only.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T04-59-16-894Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `129` checks, `0` failed
+  checks, `3` non-fatal issues, and `5` gated paths. New checks proved that
+  a synthetic planned task can be rescheduled into an overdue window, appears
+  in Pulse Re-entry as a `Missed plan`, `Drop` marks it
+  `SKIPPED/user_skipped`, and the item disappears from the re-entry queue.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T05-07-01-046Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_status=green`,
+  `cohort_status=yellow`, `safe_to_invite_more_users=false`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29070674841` passed for
+  `7ae76f5f6f4a27a9340a4be60d164de30d184dc4`.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- The harness now observes an existing documented user path: overdue planned
+  work appears in Pulse Re-entry and `Drop` transitions it through the normal
+  `mark-abandoned` endpoint into `SKIPPED/user_skipped`.
+- Cleanup remains part of verification: the synthetic task is tracked by the
+  harness cleanup registry and voided during cleanup.
+
+Rollback note:
+
+- Revert commit `7ae76f5` to remove the added Pulse missed-plan drop browser
+  characterization and return the product-loop harness to its previous
+  re-entry coverage.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
