@@ -1960,9 +1960,18 @@ async function runTimerPath(page, token, task) {
     status,
   });
 
-  await clickAny(page, "resume session", [
-    () => focus.getByTestId("focus-resume"),
-    () => focus.getByRole("button", { name: /^Resume$/i }),
+  const reentryQueue = page.locator('section[aria-label="Re-entry queue"]').first();
+  const reentryText = await reentryQueue.innerText({ timeout: 10_000 }).catch(() => "");
+  addCheck("pulse re-entry queue shows paused task", Boolean(
+    reentryText.includes(task.title)
+    && /Pick it back up/i.test(reentryText)
+  ), {
+    task_title: task.title,
+    body_excerpt: reentryText.slice(0, 500),
+  });
+  await clickAny(page, "pulse re-entry pick it back up", [
+    () => reentryQueue.getByRole("button", { name: /Pick it back up/i }).first(),
+    () => page.getByRole("button", { name: /Pick it back up/i }).first(),
   ], 10_000);
   for (let i = 0; i < 6; i += 1) {
     await page.waitForTimeout(1_000);
@@ -1970,8 +1979,9 @@ async function runTimerPath(page, token, task) {
     if (status.active && !status.paused) break;
   }
   if (status.active && status.paused) {
-    await screenshot(page, "timer-resume-still-paused");
+    await screenshot(page, "pulse-reentry-resume-still-paused");
   }
+  addCheck("pulse re-entry pick-up resumes paused session", Boolean(status.active && !status.paused), status);
   addCheck("timer resume clears paused flag", Boolean(status.active && !status.paused), status);
 
   await clickAny(page, "stop session", [
