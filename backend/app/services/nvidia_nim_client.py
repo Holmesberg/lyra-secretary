@@ -176,38 +176,3 @@ def chat_completion(
         return response.json()
     except json.JSONDecodeError as e:
         raise NimUnavailable(f"NIM returned non-JSON body: {e}") from e
-
-
-def health_check() -> dict[str, Any]:
-    """Cheap probe for operator NIM diagnostics.
-
-    Returns:
-      {"available": bool, "model": str, "reason": str|None}
-
-    Sends a 1-token chat completion. The remaining health callers are
-    operator-gated diagnostics; user-facing parser enrichment falls back
-    without needing this probe.
-    """
-    if not is_configured():
-        return {
-            "available": False,
-            "model": settings.NVIDIA_NIM_MODEL,
-            "reason": "NVIDIA_NIM_API_KEY not set",
-        }
-    try:
-        chat_completion(
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=16,
-            temperature=0.0,
-        )
-        return {
-            "available": True,
-            "model": settings.NVIDIA_NIM_MODEL,
-            "reason": None,
-        }
-    except NimError as e:
-        return {
-            "available": False,
-            "model": settings.NVIDIA_NIM_MODEL,
-            "reason": str(e),
-        }

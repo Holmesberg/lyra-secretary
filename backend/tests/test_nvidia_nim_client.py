@@ -102,8 +102,9 @@ def test_chat_completion_accepts_per_call_timeout(monkeypatch):
 
 
 def test_jarvis_streaming_api_stays_removed():
-    """The removed JARVIS chat UI must not keep a streaming NIM API alive."""
+    """Removed JARVIS diagnostics must not keep dead NIM APIs alive."""
     assert not hasattr(nvidia_nim_client, "chat_completion_stream")
+    assert not hasattr(nvidia_nim_client, "health_check")
 
 
 def test_llm_parser_disables_thinking_for_json_contract(monkeypatch):

@@ -44,10 +44,6 @@ def test_non_operator_forbidden_on_operator_get_surfaces(client, db):
 
 def test_operator_can_reach_core_operator_get_surfaces(client, db, monkeypatch):
     operator = _make_user(db, is_operator=True)
-    monkeypatch.setattr(
-        "app.services.nvidia_nim_client.health_check",
-        lambda: {"available": False, "model": "test", "reason": "mocked"},
-    )
 
     for path in (
         "/v1/analytics/output_surfaces/diagnostics",
