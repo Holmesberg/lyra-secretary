@@ -15660,3 +15660,66 @@ Rollback note:
 - Revert commit `8769151` to restore the previous null-only backfill behavior.
 - No schema, data, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Retroactive Explicit End-Time Characterization
+
+Seam:
+
+- `retroactive-explicit-end-time-characterization`
+
+Changed authority:
+
+- Added a backend characterization proving retroactive logging preserves the
+  caller's explicit `end_time` even when `planned_duration_minutes` is also
+  supplied.
+- No product/runtime code changed. Current behavior already keeps executed
+  duration/end time separate from planned duration/planned end.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- Old agent-side natural-language parsing behavior remains parked with the
+  historical OpenClaw command path. Any future agent parser must preserve this
+  endpoint contract before becoming live.
+
+Moved authority:
+
+- No authority moved.
+- Retroactive execution truth remains owned by explicit start/end timestamps;
+  planned duration remains a planning/delta input only.
+
+Issues and classification:
+
+- Fixed GitHub issue #123:
+  `https://github.com/Holmesberg/lyra-secretary/issues/123`.
+- Classification: backend behavior characterization for an old agent-originated
+  scheduling bug.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_retroactive_validation.py -q`;
+  passed, 7 tests.
+- The new test creates a DB-backed retroactive task for
+  `2026-04-07T14:37:00 -> 2026-04-07T16:00:00` with
+  `planned_duration_minutes=54` and asserts duration `83`, delta `-29`, and
+  response `end_time` at `16:00`.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29084964394` passed for
+  `002794e1f633661739315eb74fd66d7a26235e0b`.
+
+Behavior parity statement:
+
+- No runtime code, frontend behavior, schema, data, Redis, hosted-public
+  artifact, public deployment behavior, rebrand/domain state, or user-facing
+  copy changed.
+- The seam makes existing API behavior observable so future parser/refactor
+  work cannot regress it silently.
+
+Rollback note:
+
+- Revert commit `002794e` to remove the characterization test.
+- No schema, data, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
