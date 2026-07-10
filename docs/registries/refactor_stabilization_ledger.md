@@ -14176,3 +14176,88 @@ Rollback note:
   callbacks again.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - NewTaskModal Description Control Extraction
+
+Seam:
+
+- `r3-new-task-description-controls`
+
+Changed authority:
+
+- No backend task mutation authority, deadline authority, exposure authority,
+  clean-data authority, schema, deployment state, env var, domain, or cohort
+  denominator changed.
+- `NewTaskModal` still owns the modal UX and submit orchestration.
+
+Removed paths:
+
+- Inline description/details state and the inline checklist-estimate IIFE were
+  removed from `frontend/components/new-task-modal.tsx`.
+
+Parked paths:
+
+- Creation nudge state extraction, submit flow extraction, backend writer
+  splits, hosted-public deploy/restart, hosted-public mutable dogfood, schema
+  migrations, and rebrand/domain migration remain future or approval-gated
+  seams.
+
+Moved authority:
+
+- Frontend description/details state and checklist estimate derivation moved to
+  `frontend/lib/hooks/use-new-task-description-controls.ts`.
+- Backend task mutation authority did not move.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 behavior-preserving frontend
+  extraction of already-covered task modal description behavior.
+- Classification: product/runtime frontend extraction with no intended
+  user-visible behavior change.
+
+Tests and verification:
+
+- `git diff --check -- frontend\components\new-task-modal.tsx frontend\lib\hooks\use-new-task-description-controls.ts`;
+  passed with existing CRLF warning only.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_create_task_with_deadline.py backend\tests\test_wave2_idempotency.py backend\tests\test_reschedule_description_deadline.py -q`;
+  passed, `22` tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T06-31-27-786Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `134` checks, `0` failed
+  checks, `3` non-fatal issues, and `5` gated paths. Cleanup metadata recorded
+  `14` synthetic task ids, `8` deadline ids, and `3` notification ids.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T06-38-35-912Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_status=green`,
+  `cohort_status=yellow`, `safe_to_invite_more_users=false`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29074452032` passed for
+  `696c3efbc7908a04c3148594a603aabd3347d38e`.
+
+Behavior parity statement:
+
+- Description behavior is unchanged: the details field remains collapsed until
+  opened, edit mode still loads existing descriptions into the modal, reset
+  still clears description state, deadline preview still receives the current
+  description, and create/edit payloads still trim and omit empty descriptions.
+- Checklist estimate behavior is unchanged: two or more bullet/numbered items
+  with positive planned duration render the same per-item estimate.
+
+Rollback note:
+
+- Revert commit `696c3ef` to inline the NewTaskModal description state and
+  checklist estimate logic again.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
