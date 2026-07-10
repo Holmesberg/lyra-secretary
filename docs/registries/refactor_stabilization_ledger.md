@@ -12829,3 +12829,59 @@ Rollback note:
   `backend/app/api/v1/endpoints/analytics.py`.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Operator Read-Only Proof After Analytics Extractions
+
+Seam:
+
+- `r2-current-head-readonly-proof-after-analytics-extractions`
+
+Changed authority:
+
+- None. This was read-only verification after backend analytics route-thinning
+  seams.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Hosted-public deploy/restart, hosted-public mutable dogfood, writer splits,
+  schema migrations, rebrand/domain migration, and cohort expansion remain
+  approval-gated.
+
+Moved authority:
+
+- None.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned operator cockpit proof, not a
+  product bug.
+- Classification: verification baseline / R2 stop-go cockpit proof.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Artifact:
+  `tmp/operator-readonly-stress-2026-07-10T01-39-57-024Z/result.json`.
+- The artifact reported verified `local-current` topology, zero count diffs,
+  zero count-diff attribution rows, zero route count diffs, zero dashboard
+  snapshot diffs, no browser issues or warnings, `implementation_green=true`,
+  `exposure_without_render_count=0`, no provider truth violations, and cohort
+  yellow only for real-data/instrumentation gaps.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- `/operator` remains read-only and implementation-green at current branch head
+  `7e3ffcc3ae87cbe5872fa6c346ac1474f5bd54fe`.
+- No writes, migrations, hosted-public deploys, public restarts, or synthetic
+  browser rows were introduced.
+
+Rollback note:
+
+- No code rollback is required. Delete or supersede this ledger entry only if a
+  newer current-head proof replaces the artifact.
