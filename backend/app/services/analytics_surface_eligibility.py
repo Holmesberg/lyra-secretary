@@ -80,3 +80,22 @@ def eligible_tasks_for_surface(
         for task in tasks
         if task.task_id in clean_ids and not getattr(task, "is_anchor", False)
     ]
+
+
+def eligible_tasks_for_surface_cached(
+    db: Session,
+    tasks: list,
+    surface_id: str,
+    eligibility_cache: dict[tuple, set[str]],
+    *,
+    eligible_tasks_fn=eligible_tasks_for_surface,
+) -> list:
+    """Call the eligibility filter with a shared request cache.
+
+    Some endpoint tests monkeypatch the historical 3-argument helper shape.
+    Keep that seam intact while letting production calls pass the cache.
+    """
+    code = getattr(eligible_tasks_fn, "__code__", None)
+    if code is not None and code.co_argcount < 4:
+        return eligible_tasks_fn(db, tasks, surface_id)
+    return eligible_tasks_fn(db, tasks, surface_id, eligibility_cache)

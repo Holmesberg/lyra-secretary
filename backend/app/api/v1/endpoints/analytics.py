@@ -53,6 +53,7 @@ from app.services.analytics_insight_rule11 import (
     insights_rule11_reopen_gate as _insights_rule11_reopen_gate,
 )
 from app.services.analytics_surface_eligibility import (
+    eligible_tasks_for_surface_cached as _eligible_tasks_for_surface_cached,
     eligible_tasks_for_surface as _eligible_tasks_for_surface,
     surface_metadata as _surface_metadata,
 )
@@ -87,24 +88,6 @@ router = APIRouter()
 def get_discrepancy(db: Session = Depends(get_db)) -> dict:
     """Return discrepancy measurement data in research and product layers."""
     return discrepancy_snapshot(db)
-
-
-def _eligible_tasks_for_surface_cached(
-    db: Session,
-    tasks: list,
-    surface_id: str,
-    eligibility_cache: dict[tuple, set[str]],
-) -> list:
-    """Call the eligibility filter with a shared request cache.
-
-    Some endpoint tests monkeypatch ``_eligible_tasks_for_surface`` with the
-    historical 3-argument shape. Keep that seam intact while letting production
-    calls pass the cache.
-    """
-    code = getattr(_eligible_tasks_for_surface, "__code__", None)
-    if code is not None and code.co_argcount < 4:
-        return _eligible_tasks_for_surface(db, tasks, surface_id)
-    return _eligible_tasks_for_surface(db, tasks, surface_id, eligibility_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +154,7 @@ def get_insights(
         all_tasks,
         surface_id,
         eligibility_cache,
+        eligible_tasks_fn=_eligible_tasks_for_surface,
     )
 
     # Gate check: need at least MIN_SESSIONS executed tasks with delta data
@@ -207,6 +191,7 @@ def get_insights(
             all_tasks,
             insight_surface_id,
             eligibility_cache,
+            eligible_tasks_fn=_eligible_tasks_for_surface,
         )
         result = gen(generator_tasks)
         if result is not None:
@@ -233,6 +218,7 @@ def get_insights(
             all_tasks,
             insight_surface_id,
             eligibility_cache,
+            eligible_tasks_fn=_eligible_tasks_for_surface,
         )
         result = gen(generator_tasks, archetype)
         if result is not None:
