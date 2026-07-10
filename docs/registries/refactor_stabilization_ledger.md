@@ -13670,3 +13670,91 @@ Rollback note:
   path coverage.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Pulse Re-entry Command Extraction
+
+Seam:
+
+- `r3-pulse-reentry-command-hook`
+
+Changed authority:
+
+- No mutation authority, exposure authority, clean-data authority, schema,
+  deployment state, env var, domain, cohort denominator, or release posture
+  changed.
+- Pulse remains the re-entry hub. `PulseReentryQueue` remains the UI/candidate
+  surface. Backend stopwatch and task endpoints remain the mutation truth.
+
+Removed paths:
+
+- Inline Pulse Re-entry resume/switch, stale-pause resolve, missed-plan done,
+  missed-plan drop, local dismiss, error, and refresh command bodies were
+  removed from `PulseReentryQueue`.
+
+Parked paths:
+
+- Deeper stale-pause resolve modal browser characterization, missed-plan
+  done/drop browser characterization, backend writer splits, hosted-public
+  deploy/restart, hosted-public mutable dogfood, schema migrations, and
+  rebrand/domain migration remain future or approval-gated seams.
+
+Moved authority:
+
+- Frontend command orchestration for Pulse Re-entry resume/switch,
+  stale-pause resolution, missed-plan done/drop, local error/dismiss state, and
+  cache refresh moved to `frontend/lib/hooks/use-pulse-reentry-commands.ts`.
+- No backend mutation authority moved.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 behavior-preserving
+  extraction after the Pulse Re-entry pick-up path was characterized.
+- Classification: product/runtime frontend extraction with no intended
+  user-visible or data/write behavior change.
+
+Tests and verification:
+
+- `git diff --check -- frontend\components\pulse\PulseReentryQueue.tsx frontend\lib\hooks\use-pulse-reentry-commands.ts`;
+  passed with existing CRLF warning only.
+- `cd frontend; npm run typecheck`; passed.
+- `cd frontend; npm run build`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_stopwatch_switch.py backend\tests\test_wave2_idempotency.py backend\tests\test_pause_resume_pause_event.py backend\tests\test_recovery_and_negative_pause.py backend\tests\test_output_surfaces.py -q`;
+  passed with `65` tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T04-42-06-710Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `124` checks, `0` failed
+  checks, `4` non-fatal issues, and `5` gated paths. It preserved the
+  Pulse Re-entry queue visibility and `Pick it back up` resume path through
+  real Holmesberg browser state, then stopped and cleaned the timer.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T04-48-46-475Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_status=green`,
+  `cohort_status=yellow`, `safe_to_invite_more_users=false`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29069961445` passed for
+  `e6a9dd277f15db7c422e699e96ee8641dcb4c065`.
+
+Behavior parity statement:
+
+- No intended user-visible behavior changed.
+- Pulse Re-entry still uses the same resume/switch, stale-pause resolve,
+  missed-plan done/drop API calls and payloads.
+- Stale recovery rejection handling, local dismiss/error state, and cache
+  invalidation behavior are preserved.
+
+Rollback note:
+
+- Revert commit `e6a9dd2` to restore Pulse Re-entry command bodies to
+  `PulseReentryQueue`.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
