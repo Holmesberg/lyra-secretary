@@ -9,7 +9,7 @@ import {
   undoLastAction,
   type UndoAvailableDetail,
 } from "@/lib/undo";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidateUndoCaches } from "@/lib/query-keys";
 
 const UNDO_WINDOW_MS = 30_000;
 
@@ -19,21 +19,6 @@ interface UndoToastState {
   expiresAt: number;
   status: "ready" | "working" | "done" | "error";
   detail?: string;
-}
-
-function invalidateAfterUndo(qc: ReturnType<typeof useQueryClient>) {
-  const keys = [
-    queryKeys.tasks,
-    queryKeys.tasksRange,
-    queryKeys.tasksEvidence,
-    queryKeys.stopwatchStatus,
-    queryKeys.deadlines,
-    ["operator-dashboard"],
-    queryKeys.me,
-  ];
-  for (const queryKey of keys) {
-    qc.invalidateQueries({ queryKey });
-  }
 }
 
 export function UndoToastHost() {
@@ -114,7 +99,7 @@ export function UndoToastHost() {
               setToast((prev) => prev && { ...prev, status: "working" });
               try {
                 const result = await undoLastAction();
-                invalidateAfterUndo(qc);
+                void invalidateUndoCaches(qc);
                 setToast((prev) =>
                   prev && {
                     ...prev,

@@ -222,3 +222,16 @@ export function invalidateMoodleConnectCaches(queryClient: QueryClient) {
     invalidateDeadlineQueries(queryClient),
   ]);
 }
+
+export function invalidateUndoCaches(queryClient: QueryClient) {
+  return invalidateKeys(queryClient, [
+    queryKeys.tasks,
+    queryKeys.tasksRange,
+    queryKeys.tasksEvidence,
+    queryKeys.stopwatchStatus,
+    queryKeys.deadlines,
+    queryKeys.operatorDashboard,
+    ["operator-dashboard"],
+    queryKeys.me,
+  ]);
+}
