@@ -12886,6 +12886,118 @@ Rollback note:
 - No code rollback is required. Delete or supersede this ledger entry only if a
   newer current-head proof replaces the artifact.
 
+## 2026-07-10 - Active Timer Banner Command Controller Extraction
+
+Seam:
+
+- `r3-active-timer-banner-command-controller`
+
+Changed authority:
+
+- No mutation authority, exposure authority, clean-data authority, schema,
+  deployment state, env var, domain, cohort denominator, or readiness threshold
+  changed.
+- Frontend command ownership for active timer banner pause/resume/switch moved
+  out of `ActiveTimerBanner`; backend `StopwatchManager` remains the canonical
+  timer truth owner.
+
+Removed paths:
+
+- Removed inline pause/resume/switch API, optimistic cache projection,
+  rollback, and timer invalidation command bodies from
+  `frontend/components/active-timer-banner.tsx`.
+
+Parked paths:
+
+- Today start/stop, Pulse focus timer, output-surface render/suppress writer
+  extraction, stopwatch backend writer splits, task lifecycle writer splits,
+  auth/scoping, provider connection state, schema migrations, hosted-public
+  deploy/restart, hosted-public mutable dogfood, rebrand/domain migration, and
+  cohort expansion remain approval-gated.
+- The product-loop artifact still records gated future coverage for
+  pressure-map mutation, provider credential mutation, account hard-delete/Redis
+  purge, calendar drag/resize mutation, and OpenClaw pending drain authority.
+
+Moved authority:
+
+- `frontend/lib/hooks/use-active-timer-banner-commands.ts` now owns
+  pause/resume/switch optimistic React Query updates, rollback, API calls, error
+  state updates, and timer-surface invalidation for the active timer banner.
+- `frontend/components/active-timer-banner.tsx` keeps rendering, pause reason
+  picker state, local elapsed clock state, quick-pause request handling, and
+  paused-other chip presentation.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 behavior-preserving
+  extraction, not a product bug.
+- Holmesberg product-loop non-fatal issues were classified as pre-existing
+  fixture/coverage state, not regressions from this seam: onboarding gate open
+  for the chaos account, parser-normalized brain-dump deadline title, and
+  pressure-map commit path gated by read-only pressure safe mode.
+- Classification: frontend behavior-preserving extraction / active timer banner
+  command-controller split.
+
+Tests and verification:
+
+- `git diff --check`; passed with existing CRLF warnings only.
+- `npm run typecheck` from `frontend`; passed.
+- `npm run build` from `frontend`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_stopwatch_switch.py backend\tests\test_wave2_idempotency.py backend\tests\test_pause_resume_pause_event.py backend\tests\test_recovery_and_negative_pause.py backend\tests\test_output_surfaces.py -q`;
+  passed, 65 tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T02-44-13-744Z/result.json`.
+- Holmesberg artifact reported `ok=true`, `topology=local-current`, 116 checks,
+  zero failed checks, zero warnings, cleanup of 10 task IDs, 8 deadline IDs, and
+  3 notification IDs.
+- Timer-specific browser proof passed: timer start opened an active session,
+  pause reflected in status, paused session survived Pulse refresh and calendar
+  navigation, Today active timer banner showed the paused session after
+  navigation, pause counter remained anchored, resume cleared the paused flag,
+  stop cleared the active session, stop wrote execution delta fields, export
+  included the dogfood stopwatch session row, export included the dogfood pause
+  event row, and cleanup left Holmesberg with no active timer.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T02-50-58-038Z/result.json`.
+- Operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  pre-dashboard count diffs, zero count diffs, zero route count diffs, zero
+  dashboard snapshot diffs, `implementation_green=true`,
+  `cohort_status=yellow`, `cohort_green=false`, and
+  `safe_to_invite_more_users=false` only for cohort data volume/readiness gaps.
+- CI proof: GitHub Actions run `29065620391` passed for
+  `6dd789b9fe6c09520c69a8627cfefeda6b9cedf8`.
+
+Behavior parity statement:
+
+- Active timer banner pause still requires an explicit pause reason unless a
+  supplied quick-pause reason is present.
+- Click-outside still dismisses the reason picker without silently writing a
+  pause reason.
+- Pause/resume still cancel in-flight status polls, optimistically project
+  stopwatch and task state, roll back on failure, and refresh timer command
+  surfaces after server truth.
+- Switch chips still use server-provided target elapsed/start/paused anchors,
+  move the source task into paused state, roll back on failure, and preserve the
+  paused-open-session affordance.
+- No writes, migrations, hosted-public deploys, public restarts, production
+  repairs, public mutable hosted dogfood, or rebrand/domain changes were
+  introduced.
+
+Rollback note:
+
+- Revert commit `6dd789b` to restore the active timer banner command bodies
+  inline in `frontend/components/active-timer-banner.tsx`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, production repair,
+  or browser artifact rollback is required.
+
 ## 2026-07-10 - Creation Nudge Lookup Hook Extraction
 
 Seam:
