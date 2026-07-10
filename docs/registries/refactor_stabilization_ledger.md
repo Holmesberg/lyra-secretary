@@ -12416,3 +12416,70 @@ Rollback note:
   copies.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Operator User Projection Characterization
+
+Seam:
+
+- `s1c-operator-user-projection-characterization`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- Tests now directly characterize the extracted operator user projection
+  helpers before further backend refactor work.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Writer splits remain parked: output render/suppress, stopwatch stop, task
+  lifecycle, auth/scoping, provider connection model, and `models.py`.
+- Hosted-public mutable dogfood remains approval-gated.
+
+Moved authority:
+
+- None. The seam only added coverage for existing read-only helper authority in
+  `backend/app/services/operator_user_projection.py`.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned S1c hardening, not a product
+  bug.
+- Classification: tests/S1c hardening for operator cohort projection,
+  synthetic-user exclusion, email-hash redaction, stage projection, and ratio
+  formatting.
+
+Tests and verification:
+
+- Added `backend/tests/test_operator_user_projection.py`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_user_projection.py -q`;
+  passed, 4 tests.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py -q`;
+  passed, 12 tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending
+  warnings.
+- CI proof: GitHub Actions run `29061119886` passed for
+  `8d18cba3941a2be55579cfc519d63daf6946f81f`.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- Operator user rows remain email-redacted and continue to expose the same
+  stage, activity, clean-trace, timer, and task-count fields.
+- No writes, migrations, hosted-public deploys, public restarts, or synthetic
+  browser rows were introduced.
+
+Rollback note:
+
+- Revert commit `8d18cba` to remove the characterization test file.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
