@@ -12602,3 +12602,83 @@ Rollback note:
 - Revert commit `219fe73` to remove the characterization test file.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Calendar Task Query Invalidation Contract
+
+Seam:
+
+- `r3-calendar-task-cache-invalidation-contract`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- Calendar task cache invalidation now uses the shared frontend query-key
+  contract instead of a local raw predicate.
+
+Removed paths:
+
+- Removed the inline `tasks` / `tasks-range` query-key predicate from
+  `frontend/app/(app)/calendar/page.tsx`.
+
+Parked paths:
+
+- NewTaskModal deeper extraction, physical Schedule-X drag/resize gesture
+  dogfood, hosted-public deploy/restart, hosted-public mutable dogfood,
+  rebrand/domain migration, writer splits, schema migrations, and cohort
+  expansion remain approval-gated.
+
+Moved authority:
+
+- `frontend/lib/query-keys.ts` now owns `isTaskQueryKey` and
+  `invalidateTaskQueries`.
+
+Issues and classification:
+
+- No new GitHub issue was opened; this was planned R3 frontend
+  behavior-preserving extraction.
+- The first mutable browser proof attempt used `-AssumeLocalFrontendReady` and
+  failed before mutation because `http://localhost:3013/api/topology` returned
+  500. Classification: topology/deployment verifier state, covered by closed
+  issue `#184`. The wrapper-managed rerun re-established local-current
+  readiness and passed.
+
+Tests and verification:
+
+- `npm --prefix frontend run typecheck`; passed.
+- `npm --prefix frontend run build`; passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- Holmesberg mutable calendar/table proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_calendar_table_mutation_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi -RunId codex-query-invalidation-20260710041208 -OutDir tmp\browser-calendar-table-mutation\codex-query-invalidation-20260710041208`;
+  passed.
+- Artifact:
+  `tmp/browser-calendar-table-mutation/codex-query-invalidation-20260710041208/result.json`.
+- The artifact reported verified `local-current` topology, non-operator
+  Holmesberg identity, synthetic planned task creation/query, calendar render,
+  accepted planned-task reschedule, rejected executed-task reschedule,
+  table correction/export/show-voided coverage, no active timer residue, no
+  unrendered synthetic creation-nudge exposures, no non-voided synthetic tasks,
+  and no browser-observed server 500 responses.
+- CI proof: GitHub Actions run `29061929318` passed for
+  `0839700520035b2913ef130e084f24f8b43721b5`.
+
+Behavior parity statement:
+
+- Calendar mutation refresh still invalidates the same task day/range query
+  families.
+- User-visible behavior is unchanged.
+- No writes, migrations, hosted-public deploys, public restarts, or production
+  repairs were introduced beyond the scoped Holmesberg synthetic dogfood rows,
+  which the artifact proves cleaned/voided.
+
+Rollback note:
+
+- Revert commit `0839700` to return the calendar page to its inline
+  invalidation predicate and remove the shared helper exports.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
