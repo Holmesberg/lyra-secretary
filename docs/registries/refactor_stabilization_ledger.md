@@ -16049,3 +16049,59 @@ Rollback note:
 - Revert commit `c45b7df` to remove the response-confirmation contract gate.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Create Endpoint Category Inference Characterization
+
+Seam:
+
+- `create-endpoint-category-inference-characterization`
+
+Changed authority:
+
+- No runtime authority changed.
+- Added endpoint-level characterization proving `/v1/create` uses the
+  existing TaskManager category inference boundary when category is omitted.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- Historical production rows with missing categories remain data-repair gated.
+- Category taxonomy/schema changes remain parked; no schema migration or
+  category merge behavior was introduced.
+
+Moved authority:
+
+- No authority moved.
+- TaskManager remains the single task mutation authority and category
+  inference boundary.
+
+Issues and classification:
+
+- Fixed GitHub issue #22:
+  `https://github.com/Holmesberg/lyra-secretary/issues/22`.
+- Classification: missing endpoint characterization for already-fixed
+  category inference behavior.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_academic_category_inference.py -q`;
+  passed, 3 tests.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29087780039` passed for
+  `4e055cc5721c733e02fe9cacedab41377fafe979`.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public
+  deployment behavior, rebrand/domain state, or user-facing copy changed.
+- The endpoint now has explicit proof for the documented backend category
+  fallback used by no-manual-category task creation.
+
+Rollback note:
+
+- Revert commit `4e055cc` to remove the endpoint characterization test.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
