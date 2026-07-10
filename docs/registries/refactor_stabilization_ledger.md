@@ -15199,3 +15199,68 @@ Rollback note:
   behavior.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Repository Instructions Contract Gate
+
+Seam:
+
+- `repository-instructions-contract-gate`
+
+Changed authority:
+
+- Added a CI hard gate that preserves the active repository instructions and
+  authority doctrine required for freeze-closure seams.
+- The gate asserts that `.github/instructions.md` keeps the uncertainty-first
+  refactor objective, documented-feature preservation rule, standing freeze
+  forbidden list, exposure doctrine, account-role split, stop gates, seam
+  preflight requirement, evidence standard, adjacent-fix boundary, and public
+  artifact safety rule.
+- The gate also asserts that `docs/AUTHORITY.md` continues to carry the
+  standing freeze doctrine, exposure doctrine, real-cookie verification rule,
+  and cleanup-as-verification rule.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- Runtime AI synthesis, OpenClaw-to-product wiring, new insight types,
+  behavior-transition equations, passive tracking, provider adapters, schema
+  migrations, rebrand/domain migration, public deploy/restart, and public
+  mutable hosted dogfood remain approval-gated.
+
+Moved authority:
+
+- No product/runtime authority moved.
+- Repository-level autonomy and freeze-closure doctrine became mechanically
+  guarded by the S1c static gate instead of relying only on prose.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned S1c hardening, not a discovered
+  product, topology, verifier, authority, documentation, or measurement bug.
+- Classification: CI/CD verifier hardening plus docs/authority guardrail.
+
+Tests and verification:
+
+- `node scripts/test_repository_instructions_contract.mjs`; passed.
+- `node scripts/test_browser_account_role_contract.mjs`; passed.
+- `node scripts/test_post_wave_evidence_manifest_contract.mjs`; passed.
+- `node scripts/test_public_frontend_restart_contract.mjs`; passed.
+- `git diff --check -- .github\workflows\ci.yml scripts\test_repository_instructions_contract.mjs`;
+  passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29081930602` passed for
+  `b0849d55f93ffb53d0298d054db0b744176d52d1`.
+
+Behavior parity statement:
+
+- No runtime code or user-visible behavior changed.
+- The seam only makes existing freeze-closure autonomy boundaries observable in
+  CI.
+
+Rollback note:
+
+- Revert commit `b0849d5` to remove the repository instructions static gate.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
