@@ -16850,3 +16850,60 @@ Rollback note:
   conflict JSX back into `NewTaskModal`.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Extract Operator Metric Metadata Helper
+
+Seam:
+
+- `extract-operator-metric-meta`
+
+Changed authority:
+
+- Operator dashboard, readiness, and notification lifecycle services now import
+  shared read-only metric metadata construction from
+  `backend/app/services/operator_metric_meta.py`.
+- Readiness blocker logic, exposure lifecycle counts, dashboard query logic, and
+  API response shape remain owned by their existing operator services.
+
+Removed paths:
+
+- Duplicate local `metric_meta()` helper definitions from:
+  `operator_dashboard_metrics.py`, `operator_notification_lifecycle.py`, and
+  `operator_readiness.py`.
+
+Parked paths:
+
+- Deeper operator dashboard query-package extraction remains parked.
+- Readiness denominator changes and exposure lifecycle semantics remain out of
+  scope for this seam.
+
+Moved authority:
+
+- No write, mutation, schema, Redis, provider, or exposure authority moved.
+  This seam centralizes read-only metadata packet construction only.
+
+Tests and verification:
+
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\services\operator_metric_meta.py backend\app\services\operator_dashboard_metrics.py backend\app\services\operator_notification_lifecycle.py backend\app\services\operator_readiness.py`;
+  passed.
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_readiness.py tests\test_operator_route_security.py`;
+  passed with 21 passed and existing warnings.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed with zero missing owners and zero worker-write drift.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `603b5cb` passed: run `29106086573`.
+
+Behavior parity statement:
+
+- No user-visible behavior, operator readiness denominator, exposure lifecycle
+  count, schema, Redis state, hosted-public artifact, public deploy, public
+  restart, production data, or rebrand/domain behavior changed.
+
+Rollback note:
+
+- Revert the operator metric metadata extraction commit to restore the three
+  local helper definitions.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
