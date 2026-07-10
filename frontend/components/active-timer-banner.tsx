@@ -1,25 +1,17 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Pause, Play, X, ArrowLeftRight } from "lucide-react";
 import {
-  pauseStopwatch,
-  resumeStopwatch,
-  switchStopwatch,
   type StopwatchStatus,
   type PausedOther,
 } from "@/lib/tasks";
 import { Button } from "@/components/ui/button";
 import { useActiveStopwatchElapsedClock } from "@/lib/hooks/use-active-stopwatch-elapsed-clock";
-import { useTimerCommandInvalidation } from "@/lib/hooks/use-timer-command-invalidation";
-import { cn } from "@/lib/utils";
-import { queryKeys } from "@/lib/query-keys";
 import {
-  buildOptimisticSwitchStatus,
-  markStopwatchStatusPaused,
-  markStopwatchStatusResumed,
-  updateTaskStatesInQueryData,
-} from "@/lib/stopwatch-optimistic";
+  useActiveTimerPauseResumeCommands,
+  usePausedOtherSwitchCommands,
+} from "@/lib/hooks/use-active-timer-banner-commands";
+import { cn } from "@/lib/utils";
 import {
   PAUSE_REASON_OPTIONS,
   type PauseReason,
@@ -53,12 +45,10 @@ interface Props {
 }
 
 export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWarning, requestPause, quickPauseReason, onRequestPauseHandled }: Props) {
-  const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showReasonPicker, setShowReasonPicker] = useState(false);
   const pickerRef = useRef<HTMLDivElement | null>(null);
-  const refreshTimerSurfaces = useTimerCommandInvalidation();
 
   // Local pause state, decoupled from React Query poll cycle. Changed
   // ONLY by applyPause/doResume (immediate, no network wait) and on
@@ -79,6 +69,16 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
     busy,
     showReasonPicker,
   });
+  const pauseResumeCommands = useActiveTimerPauseResumeCommands({
+    status,
+    setLocalPaused,
+    setShowReasonPicker,
+    setBusy,
+    setErr,
+    markPauseStarted,
+    markResumeStarted,
+  });
+  const { applyPause, doResume } = pauseResumeCommands;
 
   // Click-outside listener for pause reason picker.
   // MUST be declared before the early return below to satisfy React's
@@ -117,7 +117,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
       }
       onRequestPauseHandled?.();
     }
-    // applyPause is defined below and closes over the latest qc/status;
+    // applyPause closes over the latest status via the command hook;
     // intentionally excluded from deps to avoid a re-run loop when
     // status changes mid-pause.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,85 +141,6 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 
   const paused = localPaused;
 
-  async function applyPause(reason: PauseReason | undefined) {
-    setShowReasonPicker(false);
-    setErr(null);
-    setLocalPaused(true);
-    markPauseStarted();
-    setBusy(true);
-    // Cancel any in-flight stopwatch-status poll so it can't return
-    // stale (pre-pause) data AFTER our optimistic flip and overwrite
-    // it. Without this, the 10 s refetchInterval can fire mid-request
-    // and the response wins the race against our setQueryData,
-    // producing a visible "snap-back to unpaused for ~1 s" flicker.
-    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
-    // Snapshot for rollback before we optimistically mutate.
-    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    qc.setQueryData<StopwatchStatus>(
-      queryKeys.stopwatchStatus,
-      markStopwatchStatusPaused
-    );
-    // Optimistic task-state flip — task card shows PAUSED instantly instead
-    // of waiting for the 10s tasks poll to return the new state.
-    qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-      updateTaskStatesInQueryData(old, [
-        { taskId: status.task_id, state: "PAUSED" },
-      ])
-    );
-    try {
-      await pauseStopwatch(reason);
-      refreshTimerSurfaces();
-    } catch (e) {
-      setLocalPaused(false);
-      if (snapshot !== undefined) {
-        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
-      }
-      qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-        updateTaskStatesInQueryData(old, [
-          { taskId: status.task_id, state: "EXECUTING" },
-        ])
-      );
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doResume() {
-    setErr(null);
-    setLocalPaused(false);
-    markResumeStarted();
-    setBusy(true);
-    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
-    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    qc.setQueryData<StopwatchStatus>(
-      queryKeys.stopwatchStatus,
-      markStopwatchStatusResumed
-    );
-    qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-      updateTaskStatesInQueryData(old, [
-        { taskId: status.task_id, state: "EXECUTING" },
-      ])
-    );
-    try {
-      await resumeStopwatch();
-      refreshTimerSurfaces();
-    } catch (e) {
-      setLocalPaused(true);
-      markPauseStarted();
-      if (snapshot !== undefined) {
-        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
-      }
-      qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-        updateTaskStatesInQueryData(old, [
-          { taskId: status.task_id, state: "PAUSED" },
-        ])
-      );
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function onPauseButtonClick() {
     if (paused) {
@@ -342,72 +263,7 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
 // ---------------------------------------------------------------------------
 
 function PausedOthersChips({ others }: { others: PausedOther[] }) {
-  const qc = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const refreshTimerSurfaces = useTimerCommandInvalidation();
-
-  // Optimistic swap: mirrors the pause/resume optimistic pattern. The
-  // network call to /v1/stopwatch/switch typically takes 300-1000ms (DB
-  // pause source + resume target + Redis swap); without optimistic
-  // updates the UI hangs for that round-trip. With optimistic updates,
-  // the banner flips identity instantly and the refetch reconciles
-  // seconds later. On failure we rollback to the snapshot.
-  async function handleSwitch(target: PausedOther) {
-    setErr(null);
-    setBusy(true);
-
-    // Snapshot for rollback BEFORE we mutate anything.
-    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
-    const statusSnapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    const sourceTaskId = statusSnapshot?.task_id;
-    const sourceTitle = statusSnapshot?.task_title;
-    const sourceSessionId = statusSnapshot?.session_id;
-
-    // Optimistic stopwatch-status: target becomes active, source (if any)
-    // moves to paused_others. Use the target's server-computed elapsed +
-    // start_time + total_paused so the banner anchors at the CORRECT
-    // value instantly. Pre-fix used elapsed=0 + start=now, which made the
-    // timer count up from 0:00 for the entire round-trip duration (the
-    // operator saw 16 seconds of wrong-value over the Cloudflare Tunnel).
-    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, (old) =>
-      buildOptimisticSwitchStatus(old, target, {
-        taskId: sourceTaskId,
-        title: sourceTitle,
-        sessionId: sourceSessionId,
-      })
-    );
-
-    // Optimistic task list: target → EXECUTING, source → PAUSED.
-    qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-      updateTaskStatesInQueryData(old, [
-        { taskId: target.task_id, state: "EXECUTING" },
-        { taskId: sourceTaskId, state: "PAUSED" },
-      ])
-    );
-
-    try {
-      await switchStopwatch(target.task_id);
-      // Reconcile with truth — fast path because we already cancelled
-      // pending queries above; this fires a fresh fetch.
-      refreshTimerSurfaces();
-    } catch (e) {
-      // Rollback the optimistic mutations.
-      if (statusSnapshot !== undefined) {
-        qc.setQueryData(queryKeys.stopwatchStatus, statusSnapshot);
-      }
-      qc.setQueriesData({ queryKey: queryKeys.tasks }, (old: unknown) =>
-        updateTaskStatesInQueryData(old, [
-          { taskId: target.task_id, state: "PAUSED" },
-          { taskId: sourceTaskId, state: "EXECUTING" },
-        ])
-      );
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
+  const { handleSwitch, busy, err } = usePausedOtherSwitchCommands();
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline-signal/40 pt-2">
       <span className="font-mono text-[10px] uppercase tracking-widest text-dust">
