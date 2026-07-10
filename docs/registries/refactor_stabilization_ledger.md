@@ -12885,3 +12885,76 @@ Rollback note:
 
 - No code rollback is required. Delete or supersede this ledger entry only if a
   newer current-head proof replaces the artifact.
+
+## 2026-07-10 - Analytics Surface Eligibility Extraction
+
+Seam:
+
+- `r4-analytics-surface-eligibility-extraction`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- The analytics route no longer owns the clean-task eligibility filter or
+  common output-surface metadata builder.
+
+Removed paths:
+
+- Removed inline `_surface_metadata` and `_eligible_tasks_for_surface` logic
+  from `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- `/analytics/insights` exposure write routing, output-surface render/suppress
+  writer extraction, ClaimCompiler/Cortex routing, task lifecycle writer
+  splits, schema migrations, hosted-public deploy/restart, hosted-public
+  mutable dogfood, rebrand/domain migration, and cohort expansion remain
+  approval-gated.
+
+Moved authority:
+
+- `backend/app/services/analytics_surface_eligibility.py` now owns read-only
+  clean-task eligibility and common surface metadata construction.
+- `backend/app/api/v1/endpoints/analytics.py` preserves compatibility aliases
+  so existing endpoint tests may still monkeypatch `_eligible_tasks_for_surface`.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 backend read-only extraction,
+  not a product bug.
+- Classification: backend behavior-preserving extraction / clean-data
+  eligibility route-thinning.
+
+Tests and verification:
+
+- Added `backend/app/services/analytics_surface_eligibility.py`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_insights.py -q`;
+  passed, 19 tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- Browser dogfood was not run because this seam moved a read-only backend
+  eligibility helper and changed no frontend surface, user-visible flow, write
+  path, auth path, or hosted topology.
+- CI proof: GitHub Actions run `29063135485` passed for
+  `9b86668f5fc14da9419acd0b7dfbe49854a3442f`.
+
+Behavior parity statement:
+
+- `/v1/analytics/insights` and other analytics surfaces still use the same
+  output-surface metadata fields and clean-data eligibility profiles.
+- Existing tests still prove compatibility with the historical
+  `_eligible_tasks_for_surface` monkeypatch seam.
+- No writes, migrations, hosted-public deploys, public restarts, synthetic
+  browser rows, or production repairs were introduced.
+
+Rollback note:
+
+- Revert commit `9b86668` to restore the clean eligibility and surface metadata
+  helpers inline in `backend/app/api/v1/endpoints/analytics.py`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
