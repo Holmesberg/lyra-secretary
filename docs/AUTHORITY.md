@@ -110,8 +110,11 @@ The S1a safety-rail registries are:
 - `docs/registries/identity_scoping_ownership.md`
 - `docs/registries/refactor_stabilization_ledger.md`
 
-`scripts/scan_authority_surfaces.py` is report-only until S1c explicitly
-promotes selected findings into hard gates.
+`scripts/scan_authority_surfaces.py` remains report-only by default, but S1c
+has promoted selected allowlisted modes into CI hard gates. CI currently fails
+on missing mutation-surface owners and worker-job write drift via
+`--fail-on-missing --fail-on-worker-write-drift`. New hard-fail modes require
+explicit owner exceptions or allowlists before promotion.
 
 The parked uncertainty-reduction council synthesis is recorded in
 `docs/parked/uncertainty_reduction_computation_council_2026_06_29.md`. It may

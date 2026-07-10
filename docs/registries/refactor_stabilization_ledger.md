@@ -12068,3 +12068,54 @@ Rollback note:
   and remove `docs/README.md`.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - R5a Authority Scan Gate Status
+
+Seam:
+
+- `r5a-authority-scan-gate-status`
+
+Changed authority:
+
+- `docs/AUTHORITY.md` now distinguishes the default report-only mode of
+  `scripts/scan_authority_surfaces.py` from the selected S1c modes already
+  promoted into CI hard gates.
+- No scanner behavior, CI workflow behavior, product/runtime behavior, schema,
+  deployment state, mutation authority, exposure authority, cohort denominator,
+  or readiness threshold changed.
+
+Removed paths:
+
+- Removed stale wording that implied the authority surface scanner had not yet
+  been promoted into any S1c hard gates.
+
+Parked paths:
+
+- Additional authority-surface hard-fail modes remain parked until owner
+  exceptions or allowlists are encoded.
+
+Moved authority:
+
+- None. This seam aligns documentation to existing CI behavior only.
+
+Issues and classification:
+
+- GitHub issue #191 (`Authority map describes authority scan as report-only
+  after CI hardening`) was opened for this documentation/authority bug.
+- Classification: documentation/authority bug.
+
+Tests and verification:
+
+- `python scripts\scan_refactor_contracts.py --fail-on-errors`; passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings.
+
+Behavior parity statement:
+
+- No app behavior, browser route, API behavior, proof wrapper behavior, runtime
+  host, env var, public deployment, or CI gate behavior changed.
+
+Rollback note:
+
+- Revert this docs-only seam to restore the earlier authority-map wording.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
