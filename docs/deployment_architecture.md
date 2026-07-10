@@ -201,6 +201,13 @@ laptop is asleep, wake/login should run the startup watchdog. If not, run:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\watch_public_runtime.ps1
 ```
 
+For proof-only checks that must not repair services or start runtime helpers,
+use:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\watch_public_runtime.ps1 -ReadOnly
+```
+
 ## Database separation rationale
 
 Supabase holds the data *off* the laptop so:

@@ -14713,3 +14713,73 @@ Rollback note:
   behavior.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Public Watchdog Read-Only Mode
+
+Seam:
+
+- `ops-watchdog-readonly-mode`
+
+Changed authority:
+
+- No product/runtime behavior, schema, exposure, provider, clean-data, env var,
+  domain, rebrand, hosted-public deploy, public restart, or data authority
+  changed.
+- Public runtime proof can now run with an explicit no-repair/no-relay mode.
+
+Removed paths:
+
+- Removed the footgun where a proof-only `watch_public_runtime.ps1 -NoRepair`
+  run could still start the OpenClaw operator relay when public runtime checks
+  were healthy.
+
+Parked paths:
+
+- Public deploy/restart, hosted-public mutable dogfood, OpenClaw-to-product
+  wiring, schema migrations, provider adapter work, and rebrand/domain
+  migration remain approval-gated and were not touched.
+
+Moved authority:
+
+- OpenClaw relay starts inside `scripts/watch_public_runtime.ps1` now pass
+  through `Ensure-OpenClawOperatorRelay`, which honors `-ReadOnly` and
+  `-SkipRelay`.
+- `-ReadOnly` is defined as `-NoRepair` plus `-SkipRelay`.
+
+Issues and classification:
+
+- Fixed GitHub issue #195:
+  `https://github.com/Holmesberg/lyra-secretary/issues/195`.
+- Classification: CI/CD and topology/deployment wrapper bug.
+
+Tests and verification:
+
+- PowerShell parser check for `scripts\watch_public_runtime.ps1`; passed.
+- `node scripts/test_public_runtime_watchdog_contract.mjs`; passed.
+- `node scripts/test_runtime_topology_contract.mjs`; passed.
+- `git diff --check -- scripts\watch_public_runtime.ps1 scripts\test_public_runtime_watchdog_contract.mjs .github\workflows\ci.yml docs\deployment_architecture.md`;
+  passed with existing CRLF warnings only.
+- `node scripts/verify_runtime_topology.mjs --topology public --skip-browser --out-file tmp/public-topology-readonly-2026-07-10T11-11-50-943Z.json`;
+  passed and reported public frontend build `bbd168c` and backend build `dev`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\watch_public_runtime.ps1 -ReadOnly -TimeoutSeconds 10 -LogDir tmp\runtime-watchdog-readonly-proof`;
+  passed.
+- Read-only watchdog artifact:
+  `tmp/runtime-watchdog-readonly-proof/watchdog-20260710-111200.log`.
+- The read-only watchdog artifact reported public frontend/API/topology/static
+  assets healthy and explicitly logged `Relay start skipped by -ReadOnly/-SkipRelay`.
+- CI proof: GitHub Actions run `29079048590` passed for
+  `ed2f0c1c0944e794329e44619683a7aad60ef778`.
+
+Behavior parity statement:
+
+- Normal `scripts\watch_public_runtime.ps1` behavior remains able to repair the
+  public stack and ensure the operator relay.
+- Proof-only public checks can now use `-ReadOnly` without changing runtime
+  process state.
+
+Rollback note:
+
+- Revert commit `ed2f0c1` to restore the prior watchdog behavior and remove
+  the CI guard.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
