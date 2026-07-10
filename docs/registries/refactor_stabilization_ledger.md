@@ -15467,3 +15467,68 @@ Rollback note:
   backend characterization test.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - OpenClaw Measurement-Field No-Default Gate
+
+Seam:
+
+- `openclaw-measurement-field-contract`
+
+Changed authority:
+
+- Added an S1c CI gate asserting the historical OpenClaw skill preserves the
+  explicit-capture rules for readiness, reflection, and completion percentage.
+- The gate also cross-checks `docs/do_not_add.md` so the agent contract stays
+  aligned with the active no-default doctrine for research-relevant fields.
+- No product/runtime authority changed; OpenClaw direct mutation remains
+  freeze-parked.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- Model-specific runtime fixes for Qwen/Haiku/OpenClaw remain parked unless a
+  currently authorized runtime path is reintroduced.
+- Any future agent mutation path must ask for measurement fields explicitly or
+  pass explicit nulls where the canonical runtime allows null.
+
+Moved authority:
+
+- No runtime authority moved.
+- Readiness/reflection no-default discipline is now guarded by CI instead of
+  relying only on the historical skill prose.
+
+Issues and classification:
+
+- Fixed GitHub issue #120:
+  `https://github.com/Holmesberg/lyra-secretary/issues/120`.
+- Fixed GitHub issue #114:
+  `https://github.com/Holmesberg/lyra-secretary/issues/114`.
+- Classification: docs/agent-contract CI hardening.
+
+Tests and verification:
+
+- `node scripts/test_openclaw_measurement_field_contract.mjs`; passed.
+- `node scripts/test_openclaw_measurement_field_contract.mjs --self-test-negative`;
+  passed by failing the broken fixture as expected.
+- `node scripts/test_openclaw_early_stop_contract.mjs`; passed.
+- `node scripts/test_openclaw_stopwatch_task_id_contract.mjs`; passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29083745116` passed for
+  `e2062e51fb30ed7adfa46a96ffcb9b084bb25291`.
+
+Behavior parity statement:
+
+- No app runtime code, user-visible behavior, schema, data, Redis,
+  hosted-public artifact, or public deployment behavior changed.
+- The seam only makes existing measurement-field capture doctrine observable in
+  CI.
+
+Rollback note:
+
+- Revert commit `e2062e5` to remove the OpenClaw measurement-field contract
+  gate.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
