@@ -13044,3 +13044,61 @@ Rollback note:
   characterization test should remain as a guardrail.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Operator Read-Only Proof After Bias-Factor Extraction
+
+Seam:
+
+- `r2-current-head-readonly-proof-after-bias-factor-extraction`
+
+Changed authority:
+
+- None. This was read-only verification after backend analytics
+  route-thinning seams.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Hosted-public deploy/restart, hosted-public mutable dogfood, writer splits,
+  schema migrations, rebrand/domain migration, and cohort expansion remain
+  approval-gated.
+
+Moved authority:
+
+- None.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned operator cockpit proof, not a
+  product bug.
+- Classification: verification baseline / R2 stop-go cockpit proof.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Artifact:
+  `tmp/operator-readonly-stress-2026-07-10T02-03-33-304Z/result.json`.
+- The artifact reported verified `local-current` origins
+  `http://localhost:3013` -> `http://localhost:8000`, `proxy_api=true`,
+  `is_operator=true`, zero pre-dashboard count diffs, zero count diffs, zero
+  route count diffs, zero dashboard snapshot diffs, zero route issues, zero
+  route warnings, `implementation_green=true`, `implementation_status=green`,
+  `cohort_status=yellow`, `cohort_green=false`, and
+  `safe_to_invite_more_users=false` only for real-data/instrumentation gaps.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- `/operator` remains read-only and implementation-green at current branch head
+  `8c34ce30b50b2a238e3907294ffe28227707c561`.
+- No writes, migrations, hosted-public deploys, public restarts, or synthetic
+  browser rows were introduced.
+
+Rollback note:
+
+- No code rollback is required. Delete or supersede this ledger entry only if a
+  newer current-head proof replaces the artifact.
