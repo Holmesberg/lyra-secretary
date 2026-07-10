@@ -4,7 +4,7 @@ from time import monotonic
 from datetime import timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from collections import defaultdict
 
@@ -49,6 +49,13 @@ from app.services.analytics_insight_public_packaging import (
     insights_exposure_snapshot as _insights_exposure_snapshot,
     public_insight_card as _public_insight,
 )
+from app.services.analytics_insight_rule11 import (
+    ANALYTICS_INSIGHTS_SURFACE_ID,
+    ANALYTICS_INSIGHTS_TEMPLATE_ID,
+    INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS,
+    insights_rule11_hold_message as _insights_rule11_hold_message,
+    insights_rule11_reopen_gate as _insights_rule11_reopen_gate,
+)
 from app.services.deadline_completion_analytics_service import deadline_completion_snapshot
 from app.services.deadline_shape_service import deadline_shape_snapshot
 from app.services.pause_prediction_analytics_service import pause_prediction_snapshot
@@ -71,14 +78,10 @@ from app.services.output_surfaces import (
     rule11_no_nudge_control_active,
     rule11_randomization_fields,
 )
-from app.utils.time_utils import to_local, now_utc, strip_tz
+from app.utils.time_utils import to_local, now_utc
 from app.utils.redis_client import RedisClient
 
 router = APIRouter()
-
-ANALYTICS_INSIGHTS_SURFACE_ID = "analytics.insights"
-ANALYTICS_INSIGHTS_TEMPLATE_ID = "analytics_insights"
-INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS = 3
 
 @router.get("/analytics/discrepancy")
 def get_discrepancy(db: Session = Depends(get_db)) -> dict:
@@ -106,85 +109,6 @@ def _surface_metadata(
         "legacy_adapter": spec.legacy_adapter,
         **authority,
     }
-
-
-def _insights_rule11_reopen_gate(
-    db: Session,
-    *,
-    user_id: int,
-    delta_sessions: list[Task],
-    eligible_at,
-) -> dict:
-    """Return the concrete evidence gate for an active Rule 11 insights hold.
-
-    Rule 11 can decide that an eligible insights card should be withheld. For
-    `/insights`, that hold must not become a purely calendar-periodic surface.
-    Once the user sees a hold, reopening is based on new clean stopped sessions
-    completed after the first unresolved hold since the last rendered Insights
-    card. Repeated refreshes append suppression rows, but must not reset this
-    threshold.
-    """
-    latest_rendered_at = (
-        db.query(func.max(ExposureDecisionEvent.eligible_at))
-        .filter(
-            ExposureDecisionEvent.user_id == user_id,
-            ExposureDecisionEvent.trigger_source == ANALYTICS_INSIGHTS_SURFACE_ID,
-            ExposureDecisionEvent.content_template_id == ANALYTICS_INSIGHTS_TEMPLATE_ID,
-            ExposureDecisionEvent.decision_status == "rendered",
-        )
-        .scalar()
-    )
-
-    hold_query = (
-        db.query(func.min(ExposureDecisionEvent.eligible_at))
-        .filter(
-            ExposureDecisionEvent.user_id == user_id,
-            ExposureDecisionEvent.trigger_source == ANALYTICS_INSIGHTS_SURFACE_ID,
-            ExposureDecisionEvent.content_template_id == ANALYTICS_INSIGHTS_TEMPLATE_ID,
-            ExposureDecisionEvent.decision_status == "suppressed",
-            ExposureDecisionEvent.randomization_arm == RULE11_CONTROL_ARM,
-            ExposureDecisionEvent.randomization_policy_version == RULE11_POLICY_VERSION,
-        )
-    )
-    if latest_rendered_at is not None:
-        hold_query = hold_query.filter(
-            ExposureDecisionEvent.eligible_at > latest_rendered_at
-        )
-    hold_started_at = hold_query.scalar()
-    threshold_start = strip_tz(hold_started_at or eligible_at)
-
-    new_clean_sessions = 0
-    for task in delta_sessions:
-        completed_at = getattr(task, "effective_executed_end_utc", None) or getattr(
-            task,
-            "executed_end_utc",
-            None,
-        )
-        if completed_at is None:
-            continue
-        if strip_tz(completed_at) > threshold_start:
-            new_clean_sessions += 1
-
-    remaining = max(
-        0,
-        INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS - new_clean_sessions,
-    )
-    return {
-        "hold_started_at": threshold_start,
-        "reopen_after_clean_sessions": INSIGHTS_RULE11_REOPEN_CLEAN_SESSIONS,
-        "new_clean_sessions_since_hold": new_clean_sessions,
-        "clean_sessions_until_reopen": remaining,
-        "should_hold": remaining > 0,
-    }
-
-
-def _insights_rule11_hold_message(remaining: int) -> str:
-    noun = "session" if remaining == 1 else "sessions"
-    return (
-        "Insights are unlocked. LyraOS is holding these cards until there is "
-        "new clean evidence after this hold. Complete "
-        f"{remaining} more cleanly stopped {noun} to reopen this surface."
-    )
 
 
 def _eligible_tasks_for_surface(
