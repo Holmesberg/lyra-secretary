@@ -170,6 +170,24 @@ async function screenshot(page, name) {
   return file;
 }
 
+async function closeBlockingDialog(page, context) {
+  const dialog = page.getByRole("dialog").first();
+  const visible = await dialog.isVisible({ timeout: 1_000 }).catch(() => false);
+  if (!visible) return { closed: false };
+  const text = (await dialog.innerText().catch(() => "")).slice(0, 300);
+  await page.keyboard.press("Escape").catch(() => {});
+  let stillVisible = await dialog.isVisible({ timeout: 1_500 }).catch(() => false);
+  if (stillVisible) {
+    await dialog.getByRole("button", { name: /^Close$/i }).click({ timeout: 2_000 }).catch(() => {});
+    stillVisible = await dialog.isVisible({ timeout: 1_500 }).catch(() => false);
+  }
+  if (stillVisible) {
+    addCheck("blocking dialog closed before browser action", false, { context, text });
+  }
+  addIssue("blocking dialog closed before browser action", { context, text });
+  return { closed: true, text };
+}
+
 function transientApiStatus(status) {
   return [502, 503, 504, 520, 521, 522, 523, 524].includes(Number(status));
 }
@@ -634,6 +652,35 @@ async function createDeadlineViaApi(token, { title, dueMinutes = 360, state = "p
     return updated;
   }
   return deadline;
+}
+
+async function createTaskViaApi(
+  token,
+  {
+    title,
+    startMinutes = 360,
+    durationMinutes = 30,
+    category = "dogfood_switch",
+  },
+) {
+  const start = futureDate(startMinutes);
+  const end = new Date(start.getTime() + durationMinutes * 60_000);
+  const created = await apiFetch(token, "/v1/create", {
+    method: "POST",
+    headers: {
+      "X-Idempotency-Key": boundedIdentifier(`task-create:${runKey}:${title}`),
+    },
+    body: JSON.stringify({
+      title,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      category,
+      source: "web",
+      force: true,
+    }),
+  }, [200, 201]);
+  if (created?.task_id) cleanup.tasks.add(created.task_id);
+  return created;
 }
 
 async function openNewTaskModal(page, label = "today new task") {
@@ -1977,6 +2024,150 @@ async function runTimerPath(page, token, task) {
   return { task: refreshed, sessionId };
 }
 
+async function runTimerSwitchChipPath(page, token) {
+  const parentTitle = `${prefix} switch parent`;
+  const childTitle = `${prefix} switch child`;
+  const parent = await createTaskViaApi(token, {
+    title: parentTitle,
+    startMinutes: 460,
+    durationMinutes: 45,
+    category: "dogfood_switch",
+  });
+  const child = await createTaskViaApi(token, {
+    title: childTitle,
+    startMinutes: 510,
+    durationMinutes: 30,
+    category: "dogfood_switch",
+  });
+  addCheck("switch chip setup creates parent and child tasks", Boolean(
+    parent?.task_id && child?.task_id,
+  ), {
+    parent,
+    child,
+  });
+  if (!parent?.task_id || !child?.task_id) return null;
+
+  try {
+    await apiFetch(token, "/v1/stopwatch/start", {
+      method: "POST",
+      headers: {
+        "X-Idempotency-Key": boundedIdentifier(`switch-parent-start:${runKey}`),
+      },
+      body: JSON.stringify({
+        task_id: parent.task_id,
+        pre_task_readiness: 3,
+      }),
+    });
+    await apiFetch(token, "/v1/stopwatch/pause", {
+      method: "POST",
+      headers: {
+        "X-Idempotency-Key": boundedIdentifier(`switch-parent-pause:${runKey}`),
+      },
+      body: JSON.stringify({
+        pause_reason: "intentional_break",
+        pause_initiator: "self",
+      }),
+    });
+    await apiFetch(token, "/v1/stopwatch/start", {
+      method: "POST",
+      headers: {
+        "X-Idempotency-Key": boundedIdentifier(`switch-child-start:${runKey}`),
+      },
+      body: JSON.stringify({
+        task_id: child.task_id,
+        pre_task_readiness: 3,
+        interruption_type: "scheduled_override",
+      }),
+    });
+
+    let status = await apiFetch(token, "/v1/stopwatch/status");
+    addCheck("switch chip setup exposes paused parent in status", Boolean(
+      status.active
+      && status.task_id === child.task_id
+      && (status.paused_others || []).some((other) => other.task_id === parent.task_id),
+    ), status);
+
+    await goto(page, "/today", "today-switch-chip-proof");
+    await closeBlockingDialog(page, "today switch chip proof");
+    const chip = page.locator("button").filter({ hasText: parentTitle }).first();
+    const chipVisible = await chip.isVisible({ timeout: 12_000 }).catch(() => false);
+    let bodyExcerpt = "";
+    if (!chipVisible) {
+      bodyExcerpt = (await page.locator("body").innerText().catch(() => "")).slice(0, 800);
+      await screenshot(page, "today-switch-chip-missing");
+    } else {
+      await screenshot(page, "today-switch-chip-visible");
+    }
+    addCheck("today switch chip renders paused parent task", chipVisible, {
+      parent_title: parentTitle,
+      child_title: childTitle,
+      body_excerpt: bodyExcerpt,
+    });
+
+    if (chipVisible) {
+      await chip.scrollIntoViewIfNeeded().catch(() => {});
+      const switchResponsePromise = page.waitForResponse(
+        (response) => response.url().includes(`/v1/stopwatch/switch/${parent.task_id}`),
+        { timeout: 10_000 },
+      ).catch((error) => ({
+        __missing: true,
+        message: String(error?.message || error).split("\n")[0],
+      }));
+      await chip.click();
+      const switchResponse = await switchResponsePromise;
+      let switchResponseBody = null;
+      if (!switchResponse.__missing) {
+        switchResponseBody = await switchResponse.json().catch(async () => (
+          switchResponse.text().catch(() => null)
+        ));
+      }
+      await screenshot(page, "today-switch-chip-after-click");
+      addCheck("today switch chip click sends switch request", Boolean(
+        switchResponse
+        && !switchResponse.__missing
+        && switchResponse.status() < 400
+      ), {
+        url: switchResponse?.__missing ? null : switchResponse.url(),
+        status: switchResponse?.__missing ? null : switchResponse.status(),
+        body: switchResponseBody,
+        error: switchResponse?.__missing ? switchResponse.message : null,
+      });
+      status = await pollFor(token, "switch chip click activates paused parent", async () => {
+        const next = await apiFetch(token, "/v1/stopwatch/status");
+        return next.active && next.task_id === parent.task_id ? next : null;
+      }, 15_000, 1_000);
+      addCheck("today switch chip swaps active timer to parent", Boolean(
+        status?.active
+        && status.task_id === parent.task_id
+        && !status.paused
+        && (status.paused_others || []).some((other) => other.task_id === child.task_id),
+      ), status);
+    }
+
+    return { parent, child };
+  } finally {
+    const status = await apiFetch(token, "/v1/stopwatch/status").catch(() => null);
+    if (status?.active && [parent.task_id, child.task_id].includes(status.task_id)) {
+      await apiFetch(
+        token,
+        "/v1/stopwatch/stop?confirmed=true",
+        {
+          method: "POST",
+          headers: {
+            "X-Idempotency-Key": boundedIdentifier(`switch-proof-stop:${runKey}`),
+          },
+          body: JSON.stringify({
+            post_task_reflection: 3,
+            task_completion_percentage: 0,
+            scope_outcome: "reduced",
+          }),
+        },
+        [200, 409],
+      );
+    }
+  }
+}
+
 async function runAnalyticsAndExposureChecks(page, token, beforeExport) {
   const evidence = {
     exposure_ids: [],
@@ -2505,6 +2696,7 @@ async function main() {
     await runBrainDumpBranchCoverage(page, token);
     await runPressureMapPath(page, token);
     const timer = await runTimerPath(page, token, task);
+    await runTimerSwitchChipPath(page, token);
     const executedTask = timer.task;
     const exposures = await runAnalyticsAndExposureChecks(page, token, beforeExport);
     const notification = await runNotificationPath(page, token, task);
