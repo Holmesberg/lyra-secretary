@@ -316,7 +316,7 @@ the callback route can emit.
 | External event id with `:` crashes Schedule-X | LYR-102 (2026-04-21) | All external ids must match `[a-zA-Z_][a-zA-Z0-9_-]*` |
 | Notion date property double-TZ conversion | LYR-068 (open) | Write dates to Notion without offsets; let Notion render in its own TZ config |
 | Plaintext refresh_token in v1 | migration 026 | Document as Phase 6+ security debt; never log |
-| `google_id` placeholder backfill | LYR-091 | For OAuth integrations that key on `sub`, backfill real value on first real sign-in (Phase 9) |
+| `google_id` placeholder backfill | LYR-091 (fixed 2026-07-10) | `resolve_user_from_token` replaces only the legacy `simulated-google-sub` placeholder on first real sign-in; non-placeholder IDs are not overwritten. |
 | Single-timezone alpha blocks multi-region | TIMEZONE CONTRACT | Naked Cairo-local ISO over the wire today; multi-TZ refactor before second-region import |
 
 ---

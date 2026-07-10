@@ -15598,3 +15598,65 @@ Rollback note:
 - Revert commit `4434362` to remove the OpenClaw conflict-force contract gate.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Legacy Google Identity Placeholder Backfill
+
+Seam:
+
+- `identity-google-placeholder-backfill`
+
+Changed authority:
+
+- Preserved `resolve_user_from_token` as the bearer identity resolver and
+  narrowed an old identity hygiene bug: an existing user whose `google_id` is
+  the legacy `simulated-google-sub` placeholder now backfills the real JWT
+  `sub` claim on first real sign-in.
+- Non-placeholder `google_id` values are not overwritten; this seam does not
+  introduce account merging, provider matching by `sub`, schema changes, or a
+  broader account-linking policy.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- Generic provider connection rows, provider-by-`sub` matching, and broader
+  account-linking semantics remain parked until explicitly planned.
+- No production data repair or bulk placeholder rewrite was performed.
+
+Moved authority:
+
+- No authority owner moved.
+- Identity resolution remains in `resolve_user_from_token`; first-login
+  provisioning remains in the existing resolver flow.
+
+Issues and classification:
+
+- Fixed GitHub issue #25:
+  `https://github.com/Holmesberg/lyra-secretary/issues/25`.
+- Classification: backend identity hygiene with targeted characterization.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_user_activation_email.py backend\tests\test_runtime_identity_authority.py -q`;
+  passed, 19 tests.
+- Initial targeted run exposed a test-fixture uniqueness collision when two
+  tests reused `real-google-sub`; the fixture IDs were made unique and the
+  suite then passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29084575093` passed for
+  `8769151e04c019f755669513f222828a12a1513a`.
+
+Behavior parity statement:
+
+- No frontend behavior, schema, Redis, hosted-public artifact, public
+  deployment behavior, rebrand/domain state, or user-facing copy changed.
+- Existing users with null `google_id` keep the prior backfill behavior.
+- Existing users with a real non-placeholder `google_id` are not rewritten.
+
+Rollback note:
+
+- Revert commit `8769151` to restore the previous null-only backfill behavior.
+- No schema, data, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
