@@ -16,7 +16,9 @@ param(
 
   [int]$LocalCurrentPort = 3013,
 
-  [switch]$ProxyApi
+  [switch]$ProxyApi,
+
+  [switch]$ForcePressureRecovery
 )
 
 $ErrorActionPreference = "Stop"
@@ -123,6 +125,9 @@ try {
   }
   if ([bool]$CleanupOnly) {
     $args += @("--cleanup-only")
+  }
+  if ([bool]$ForcePressureRecovery) {
+    $args += @("--force-pressure-recovery", "true")
   }
 
   node @args
