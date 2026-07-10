@@ -19,7 +19,7 @@ const sections = [
   {
     title: "Integrations And Service Providers",
     body: [
-      "LyraOS relies on service providers such as Cloudflare, Supabase, Google sign-in, Google Calendar when connected, Moodle when connected, Notion sync plumbing where enabled, Resend for email, and OpenClaw or Telegram for operator notification delivery when configured.",
+      "LyraOS relies on service providers such as Cloudflare, Supabase, Google sign-in, Google Calendar when connected, Moodle when connected, Resend for email, and OpenClaw or Telegram for operator notification delivery when configured.",
       "Google Calendar refresh tokens, Moodle tokens, and private Moodle calendar URLs are treated as credential-class secrets. LyraOS stores them so server-side sync can work, redacts them from exports, and encrypts credential fields where the current runtime supports it.",
       "Imported provider facts are treated as provider evidence or candidates unless the product explicitly asks you to confirm them.",
     ],
@@ -35,7 +35,7 @@ const sections = [
   {
     title: "AI, Insights, And Future Features",
     body: [
-      "Current user-facing insights are intended to be deterministic and evidence-bounded. The former in-app JARVIS assistant is parked; operator reasoning and notifications may use OpenClaw or Telegram when configured.",
+      "Current user-facing insights are intended to be deterministic and evidence-bounded. Operator notifications may use the OpenClaw relay or Telegram when configured.",
       "AI synthesis, behavior-transition equations, adaptive scheduling authority, new provider adapters, and new insight types are not automatically authorized by this policy. If LyraOS ships those features later, the policy and consent surface must be updated before they become user-facing runtime behavior.",
       "Future AI or equation-based features must remain downstream of explicit evidence, uncertainty, privacy boundaries, and user-facing explanation. They must not create hidden identity labels or stronger claims than the underlying data supports.",
     ],

@@ -74,7 +74,7 @@ def test_security_audit_hashes_request_client_values(client, db):
     db.commit()
 
     response = client.get(
-        "/v1/jarvis/health",
+        "/v1/analytics/output_surfaces/diagnostics",
         headers={**auth_headers(user.user_id), "user-agent": "raw-test-agent"},
     )
     assert response.status_code == 403

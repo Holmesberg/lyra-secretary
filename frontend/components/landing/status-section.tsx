@@ -24,8 +24,8 @@ const SURFACES = [
     status: "operator-only",
     title: "Internal runtime",
     items: [
-      "admin dashboard",
-      "OpenClaw workflows",
+      "operator cockpit",
+      "OpenClaw operator-alert relay",
       "operator notifications",
       "topology verification",
       "exposure diagnostics",

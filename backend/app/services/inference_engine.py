@@ -1,4 +1,4 @@
-"""Shared inference primitives for JARVIS, analytics, and future user-facing surfaces.
+"""Shared inference primitives for analytics and future evidence-bounded surfaces.
 
 Spec: `docs/calibration_contract.md` (R2 confidence tiers, R9 valence + disagreement).
 Phase 3 extends this module with per-signal writers, retirement counters, and
@@ -134,8 +134,8 @@ def behavioral_signature_for_operator(
 ) -> dict:
     """Aggregated behavioral fingerprint for operator analytics (HTTP + tooling).
 
-    Delegates to JARVIS ``_exec_analyze_behavioral_signature`` — single aggregation
-    implementation. Exposed as ``GET /v1/analytics/behavioral_signature`` (403
+    Delegates to the legacy internal aggregation helper. Exposed as
+    ``GET /v1/analytics/behavioral_signature`` (403
     non-operator) per ``docs/calibration_contract.md`` R11: not used for
     user-facing page render paths.
 

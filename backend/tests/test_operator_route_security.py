@@ -1,4 +1,4 @@
-"""Trusted-alpha operator/admin/JARVIS route gates."""
+"""Trusted-alpha operator route gates."""
 from datetime import datetime
 from uuid import uuid4
 
@@ -25,11 +25,8 @@ def _make_user(db, *, is_operator: bool) -> User:
 
 
 OPERATOR_GET_PATHS = (
-    "/v1/admin/dashboard",
     "/v1/admin/email-engagement",
-    "/v1/admin/alpha_funnel",
     "/v1/admin/feedback",
-    "/v1/jarvis/health",
     "/v1/analytics/behavioral_signature",
     "/v1/analytics/cortex/diagnostics",
     "/v1/analytics/output_surfaces/diagnostics",
@@ -53,39 +50,29 @@ def test_operator_can_reach_core_operator_get_surfaces(client, db, monkeypatch):
     )
 
     for path in (
-        "/v1/admin/alpha_funnel",
         "/v1/analytics/output_surfaces/diagnostics",
     ):
         response = client.get(path, headers=auth_headers(operator.user_id))
         assert response.status_code == 200, f"{path}: {response.status_code} {response.text}"
 
 
-def test_operator_jarvis_health_is_parked(client, db):
-    operator = _make_user(db, is_operator=True)
-
-    response = client.get("/v1/jarvis/health", headers=auth_headers(operator.user_id))
-
-    assert response.status_code == 410, response.text
-    assert response.json()["detail"]["error"] == "jarvis_disabled"
-
-
-def test_admin_dashboard_is_subordinate_and_content_minimized(client, db):
+def test_removed_legacy_operator_routes_stay_unmounted(client, db):
     operator = _make_user(db, is_operator=True)
     user = _make_user(db, is_operator=False)
 
-    response = client.get("/v1/admin/dashboard", headers=auth_headers(operator.user_id))
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["authority_status"]["status"] == "historical_read_only"
-    assert body["authority_status"]["subordinate_to"] == "/operator"
-    assert body["authority_status"]["read_only"] is True
-    rows = {row["user_id"]: row for row in body["users"]}
-    assert user.user_id in rows
-    assert rows[user.user_id]["email"] != user.email
-    assert user.email not in response.text
-    assert rows[user.user_id]["email_hash"]
-    assert rows[user.user_id]["user_ref"].startswith(f"#{user.user_id} / ")
+    for path in (
+        "/v1/admin/dashboard",
+        "/v1/admin/alpha_funnel",
+        "/v1/jarvis/health",
+        "/v1/jarvis/ask",
+        "/v1/jarvis/confirm",
+    ):
+        for actor in (operator, user):
+            response = client.get(path, headers=auth_headers(actor.user_id))
+            assert response.status_code == 404, (
+                f"{path} for user {actor.user_id}: "
+                f"{response.status_code} {response.text}"
+            )
 
 
 def test_unauthenticated_operator_surfaces_fail_closed_runtime():
@@ -94,8 +81,6 @@ def test_unauthenticated_operator_surfaces_fail_closed_runtime():
     try:
         with TestClient(app, raise_server_exceptions=False) as runtime_client:
             for path in (
-                "/v1/admin/alpha_funnel",
-                "/v1/jarvis/health",
                 "/v1/analytics/output_surfaces/diagnostics",
                 "/v1/health/env-invariants",
             ):
@@ -116,7 +101,7 @@ def test_x_user_id_cannot_authenticate_operator_surfaces_outside_test_harness():
     try:
         with TestClient(app, raise_server_exceptions=False) as runtime_client:
             response = runtime_client.get(
-                "/v1/jarvis/health",
+                "/v1/analytics/output_surfaces/diagnostics",
                 headers={"X-User-Id": "1"},
             )
             assert response.status_code == 401

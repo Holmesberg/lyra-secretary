@@ -1889,7 +1889,7 @@ def _exec_propose_pattern_hypothesis(db: Session, user_id: int, args: dict) -> d
 
     Validates required fields + valence_class + generality_tag enum values.
     Returns the invocation_id so the operator can later cite specific
-    hypotheses by ID in the docs/jarvis_hypothesis_log.md when promoting
+    hypotheses by ID in the docs/archive/legacy/ai/jarvis_hypothesis_log.md when promoting
     or rejecting.
     """
     required = [
@@ -1929,8 +1929,7 @@ def _exec_propose_pattern_hypothesis(db: Session, user_id: int, args: dict) -> d
         "valence_class": args["valence_class"],
         "n_at_proposal": args["n_at_proposal"],
         "next_step": (
-            "Operator reviews via JARVIS in /v1/jarvis/ask later or via "
-            "the docs/jarvis_hypothesis_log.md companion doc. Promotion "
+            "Operator reviews via the historical hypothesis log companion doc. Promotion "
             "to Phase 3 inference_engine requires (a) operator validation, "
             "(b) re-derivability via rule-based math, (c) generality_tag "
             "= 'potentially-general' for non-operator user surfaces."
