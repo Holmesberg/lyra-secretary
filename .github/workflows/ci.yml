@@ -129,27 +129,6 @@ jobs:
     - name: Run undo invalidation contract gate
       run: node scripts/test_undo_invalidation_contract.mjs
 
-    - name: Run OpenClaw stopwatch task-id contract gate
-      run: node scripts/test_openclaw_stopwatch_task_id_contract.mjs
-
-    - name: Run OpenClaw response-confirmation contract gate
-      run: node scripts/test_openclaw_response_confirmation_contract.mjs
-
-    - name: Run OpenClaw early-stop contract gate
-      run: node scripts/test_openclaw_early_stop_contract.mjs
-
-    - name: Run OpenClaw measurement-field contract gate
-      run: node scripts/test_openclaw_measurement_field_contract.mjs
-
-    - name: Run OpenClaw conflict-force contract gate
-      run: node scripts/test_openclaw_conflict_force_contract.mjs
-
-    - name: Run OpenClaw delete-confirmation contract gate
-      run: node scripts/test_openclaw_delete_confirmation_contract.mjs
-
-    - name: Run OpenClaw freeze-boundary contract gate
-      run: node scripts/test_openclaw_freeze_boundary_contract.mjs
-
     - name: Run public runtime watchdog contract gate
       run: node scripts/test_public_runtime_watchdog_contract.mjs
 

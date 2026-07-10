@@ -75,6 +75,16 @@ async function assertForbidden(token, path) {
   }
 }
 
+async function assertGoneOrNotFound(token, path) {
+  const result = await apiFetchForConfiguredApi(token, path);
+  if (![404, 410].includes(result.response.status)) {
+    fail(`expected removed legacy route for ${path}`, {
+      status: result.response.status,
+      body: result.body,
+    });
+  }
+}
+
 function assertExportScoped(exportBody, userId) {
   for (const task of exportBody.tasks || []) {
     if (task.user_id !== userId) {
@@ -154,12 +164,14 @@ async function smokeAccount(browser, account) {
 
   if (me.is_operator) {
     await assertOkApiForAccount(account.label, token, "/v1/operator/dashboard");
-    await assertOkApiForAccount(account.label, token, "/v1/admin/dashboard");
+    await assertOkApiForAccount(account.label, token, "/v1/analytics/output_surfaces/diagnostics");
+    await assertGoneOrNotFound(token, "/v1/admin/dashboard");
+    await assertGoneOrNotFound(token, "/v1/jarvis/health");
   } else {
     await assertForbidden(token, "/v1/operator/dashboard");
-    await assertForbidden(token, "/v1/admin/dashboard");
     await assertForbidden(token, "/v1/admin/feedback");
-    await assertForbidden(token, "/v1/jarvis/health");
+    await assertGoneOrNotFound(token, "/v1/admin/dashboard");
+    await assertGoneOrNotFound(token, "/v1/jarvis/health");
   }
 
   await context.close();

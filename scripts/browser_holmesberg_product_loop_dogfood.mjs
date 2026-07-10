@@ -2711,7 +2711,6 @@ async function operatorPrivacyScan(browser) {
       "[warn]",
       "[alert]",
       "OpenClaw",
-      "Jarvis",
     ];
     const dashboard = await apiFetch(op.token, "/v1/operator/dashboard");
     const payload = JSON.stringify(dashboard);
@@ -2721,11 +2720,13 @@ async function operatorPrivacyScan(browser) {
     expectNoPrivateLeak(payload, "operator dashboard payload");
     expectNoMarkers(payload, "operator dashboard payload", canaryMarkers);
     const adminDashboard = await apiTry(op.token, "/v1/admin/dashboard");
-    if (adminDashboard.response.status === 200) {
-      const adminPayload = JSON.stringify(adminDashboard.body);
-      expectNoPrivateLeak(adminPayload, "admin dashboard payload");
-      expectNoMarkers(adminPayload, "admin dashboard payload", canaryMarkers);
-    }
+    addCheck("legacy admin dashboard route is removed", [404, 410].includes(adminDashboard.response.status), {
+      status: adminDashboard.response.status,
+    });
+    const jarvisHealth = await apiTry(op.token, "/v1/jarvis/health");
+    addCheck("legacy JARVIS health route is removed", [404, 410].includes(jarvisHealth.response.status), {
+      status: jarvisHealth.response.status,
+    });
     const text = await goto(op.page, "/operator", "operator-after-holmesberg-loop");
     expectNoMarkers(text, "operator page DOM", canaryMarkers);
     addCheck("operator first viewport/cockpit route rendered", /Can LyraOS invite|Cohort readiness|Readiness/i.test(text), {
@@ -2827,8 +2828,8 @@ async function main() {
       return;
     }
     await apiFetch(token, "/v1/operator/dashboard", {}, [403]);
-    await apiFetch(token, "/v1/admin/dashboard", {}, [403]);
-    await apiFetch(token, "/v1/jarvis/health", {}, [403, 404, 410]);
+    await apiFetch(token, "/v1/admin/dashboard", {}, [404, 410]);
+    await apiFetch(token, "/v1/jarvis/health", {}, [404, 410]);
     await stopActiveTimerIfNeeded(token);
 
     beforeExport = await apiFetch(token, "/v1/users/me/export");

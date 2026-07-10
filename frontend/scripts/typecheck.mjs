@@ -21,15 +21,8 @@ function writeResult(result) {
 
 function hasLocalNextTypesMissingFile(output) {
   return (
-    output.includes("TS6053") &&
-    /[\\/]\.next[\\/]types[\\/]/.test(output)
-  );
-}
-
-function hasPublicNextTypesMissingFile(output) {
-  return (
-    output.includes("TS6053") &&
-    /[\\/]\.next-public[\\/]types[\\/]/.test(output)
+    (output.includes("TS6053") || output.includes("TS2307")) &&
+    /(?:^|[\\/])\.next[\\/]types[\\/]/m.test(output)
   );
 }
 
@@ -40,10 +33,7 @@ if (first.status === 0) {
 }
 
 const firstOutput = `${first.stdout ?? ""}${first.stderr ?? ""}`;
-if (
-  hasLocalNextTypesMissingFile(firstOutput) &&
-  !hasPublicNextTypesMissingFile(firstOutput)
-) {
+if (hasLocalNextTypesMissingFile(firstOutput)) {
   console.warn(
     "Local .next/types appears incomplete; removing generated local route types and rerunning typecheck.",
   );
