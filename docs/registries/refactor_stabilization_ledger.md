@@ -15723,3 +15723,71 @@ Rollback note:
 - Revert commit `002794e` to remove the characterization test.
 - No schema, data, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Calendar/Table Local-Current Proof Refresh
+
+Seam:
+
+- `calendar-table-local-current-wrapper-proof-refresh`
+
+Changed authority:
+
+- No product/runtime authority changed.
+- Refreshed the current-head proof that the existing calendar/table mutation
+  dogfood wrapper runs through explicit `local-current` topology and remains
+  compatible with the standard post-wave evidence manifest.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- Hosted-public mutable calendar/table dogfood remains out of scope without
+  explicit approval.
+- Physical Schedule-X drag/resize gesture synthesis remains gated; the proof
+  exercises canonical reschedule authority and browser rendering rather than
+  low-level DOM drag gestures.
+
+Moved authority:
+
+- No authority moved.
+- Operator account remained read-only; Holmesberg remained the only mutable
+  dogfood identity for the synthetic calendar/table rows.
+
+Issues and classification:
+
+- No GitHub issue was created because this was a current-head S1c proof refresh,
+  not a new product, verifier, topology, authority, documentation, or
+  measurement bug.
+- Classification: verifier/harness proof refresh.
+
+Tests and verification:
+
+- PowerShell parser checks for `scripts/run_calendar_table_mutation_dogfood.ps1`
+  and `scripts/run_post_wave_dogfood_loop.ps1`; passed.
+- `node --check scripts\browser_calendar_table_mutation_dogfood.mjs`; passed.
+- Direct Holmesberg local-current calendar/table proof:
+  `tmp/browser-calendar-table-mutation/2026-07-10T10-09-56-604Z/result.json`;
+  passed with `topology=local-current`, no issues, zero server 500 responses,
+  no active timer after cleanup, no unrendered synthetic creation-nudge
+  exposures, and no non-voided synthetic tasks.
+- Standard post-wave proof with calendar/table mutation:
+  `tmp/post-wave-dogfood/20260710-131131-calendar-table-local-current-wrapper-standard-local-current/summary.json`;
+  passed with `evidence_manifest.ok=true`, `classification=standard_wave_proof_passed`,
+  `implementation_green=true`, `cohort_status=yellow`, `exposure_without_render_count=0`,
+  zero count diffs, zero nested issues/warnings, and `cleanup.ok=true`.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public
+  deployment behavior, rebrand/domain state, or user-facing copy changed.
+- Calendar placement, immutable executed-task reschedule rejection, Table
+  correction/export, voided-row visibility, and cleanup behavior were re-proven
+  through existing dogfood.
+
+Rollback note:
+
+- Revert this ledger entry only; no runtime code changed.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
