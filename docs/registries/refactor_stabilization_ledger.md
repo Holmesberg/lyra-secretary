@@ -17698,3 +17698,95 @@ Rollback note:
 - Revert `787859d` to inline diagnostics assembly back into
   `output_surfaces.py`. No schema, data, Redis migration, hosted-public deploy,
   public restart, production repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Operator Analytics Read Route Split
+
+Seam:
+
+- `operator-analytics-read-route-split`
+
+Changed authority:
+
+- Operator-only read diagnostics routes moved from
+  `backend/app/api/v1/endpoints/analytics.py` to
+  `backend/app/api/v1/endpoints/operator_analytics.py`.
+- Existing paths are preserved:
+  `/v1/analytics/behavioral_signature`,
+  `/v1/analytics/cortex/diagnostics`, and
+  `/v1/analytics/output_surfaces/diagnostics`.
+- `backend/app/api/v1/router.py` now includes the dedicated
+  `operator_analytics` router under the existing analytics tag.
+
+Removed paths:
+
+- Read-only operator route handlers were removed from the mixed
+  user-facing analytics endpoint module.
+
+Parked paths:
+
+- `/v1/analytics/exposure_policy/effect_log` remains in `analytics.py`
+  because it writes operator meta-instrumentation and was intentionally not
+  mixed into this read-only route seam.
+- Hosted-public deploy/restart, production data repair, schema migration,
+  analytics writer extraction, exposure lifecycle authority changes, and
+  rebrand/domain work remain parked.
+
+Moved authority:
+
+- No mutation, exposure lifecycle, provider, task lifecycle, stopwatch,
+  clean-data denominator, ClaimCompiler, hosted-public, public deploy, public
+  restart, production data, schema, or rebrand authority moved.
+- Operator access still resolves through `operator_user_from_scope`.
+
+Tests and verification:
+
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\api\v1\endpoints\analytics.py backend\app\api\v1\endpoints\operator_analytics.py backend\app\api\v1\router.py`;
+  passed.
+- First route test invocation used a nonexistent Cortex test name and failed
+  before execution; classified as a harness invocation mistake, not product
+  failure.
+- Corrected route/security proof:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_route_security.py backend\tests\test_analytics_behavioral_signature.py backend\tests\test_cortex_contract_v0.py::test_cortex_diagnostics_endpoint_is_operator_only backend\tests\test_cortex_contract_v0.py::test_cortex_diagnostics_endpoint_returns_contract_counts backend\tests\test_output_surfaces.py::test_output_surface_diagnostics_endpoint_is_operator_only backend\tests\test_runtime_topology.py::test_topology_signed_diagnostics_remain_operator_only backend\tests\test_security_audit.py -q`;
+  passed with 15 tests.
+- Negative proof: `test_operator_route_security.py` and the endpoint-specific
+  operator-only tests continued to prove non-operator `403` behavior.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `83967d7` passed: run `29120108812`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29120108812`).
+- Standard local-current post-wave proof command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName operator-analytics-read-route-split -IncludeCiCdProof -CiCdRunId 29120108812 -CiCdFailOnUnsuccessful`;
+  passed.
+- Evidence manifest:
+  `tmp\post-wave-dogfood\20260710-230541-operator-analytics-read-route-split-standard-local-current\summary.json`.
+- Classification: `standard_wave_proof_passed`.
+- Topology: `local-current`, frontend `http://localhost:3013`, API
+  `http://localhost:8000`, frontend build id `local-current`, backend build
+  id `dev`.
+- Cleanup proof: not required; this was a read-only operator diagnostics seam.
+- Operator proof: implementation green, cohort yellow, safe-to-invite false,
+  exposure-without-render count `0`, and no count diffs.
+- CI/CD proof in manifest: run `29120108812` for
+  `83967d7a7ba366df2e905737bbf203e93122224e` passed.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200` until public deployment
+  state is updated; no public restart/deploy was performed in this seam.
+- Standard mode skipped mutable browser proof and full backend suite by design.
+
+Behavior parity statement:
+
+- Operator analytics diagnostic paths, payload authorities, topology
+  attachment, and non-operator `403` behavior are unchanged. This seam only
+  moved read-only operator route registration into a dedicated endpoint module.
+
+Rollback note:
+
+- Revert `83967d7` to place the read-only operator analytics handlers back in
+  `analytics.py` and remove the dedicated router include. No schema, data,
+  Redis migration, hosted-public deploy, public restart, production repair, or
+  rebrand/domain rollback is required.
