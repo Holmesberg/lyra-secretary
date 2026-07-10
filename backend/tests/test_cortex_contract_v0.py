@@ -389,6 +389,7 @@ def test_cortex_diagnostics_endpoint_returns_contract_counts(db, client):
     assert response.status_code == 200
     body = response.json()
     assert body["schema_version"] == "cortex_contract_v0"
+    assert body["cortex_schema_version_at_evaluation"] == "cortex_contract_v0"
     assert body["counts"]["tasks_in_window"] == 2
     assert body["counts"]["measured_execution"] == 1
     assert body["exclusions"]["retroactive"] == 1

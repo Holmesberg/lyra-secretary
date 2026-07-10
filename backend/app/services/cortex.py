@@ -89,6 +89,7 @@ LATENT_PAYLOAD_KEYS = {
 }
 
 BIOLOGICAL_CATEGORIES = {"sleep", "meal", "meals", "food", "breakfast", "lunch", "dinner"}
+CORTEX_SCHEMA_VERSION = "cortex_contract_v0"
 
 
 @dataclass(frozen=True)
@@ -340,7 +341,8 @@ def cortex_diagnostics(db: Session, *, user_id: int, window_days: int = 30) -> d
     exposure_policy_effects = _exposure_policy_effect_counts(db, measured_tasks)
 
     return {
-        "schema_version": "cortex_contract_v0",
+        "schema_version": CORTEX_SCHEMA_VERSION,
+        "cortex_schema_version_at_evaluation": CORTEX_SCHEMA_VERSION,
         "window_days": max(1, min(365, int(window_days))),
         "counts": {
             "tasks_in_window": base.count(),
