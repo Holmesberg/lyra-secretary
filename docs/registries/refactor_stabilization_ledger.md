@@ -12958,3 +12958,89 @@ Rollback note:
   helpers inline in `backend/app/api/v1/endpoints/analytics.py`.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Analytics Bias Factor Endpoint Characterization And Extraction
+
+Seams:
+
+- `s1c-bias-factor-endpoint-characterization`
+- `r4-bias-factor-snapshot-extraction`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- The analytics route no longer owns the read-only Rule 13 bias-factor bucket
+  query and aggregation.
+
+Removed paths:
+
+- Removed inline `/analytics/bias_factor` task filtering and bucket aggregation
+  logic from `backend/app/api/v1/endpoints/analytics.py`.
+
+Parked paths:
+
+- `/analytics/bias_factor/lookup` task-creation nudge output-surface writes,
+  output-surface render/suppress writer extraction, task lifecycle writer
+  splits, schema migrations, hosted-public deploy/restart, hosted-public
+  mutable dogfood, rebrand/domain migration, and cohort expansion remain
+  approval-gated.
+
+Moved authority:
+
+- `backend/app/services/bias_factor_service.py` now owns the endpoint-compatible
+  read-only `bias_factor_snapshot` computation.
+- `backend/app/api/v1/endpoints/analytics.py` preserves compatibility
+  re-exports for `_bias_cell`, `_adaptive_calibration`, `RESEARCH_PRIORS`, and
+  `RESEARCH_PRIOR_DEFAULT`.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned S1c characterization followed by
+  R4 backend read-only extraction, not a product bug.
+- Classification: backend behavior-preserving extraction / Rule 13 computation
+  route-thinning.
+
+Tests and verification:
+
+- Added `backend/tests/test_analytics_bias_factor_endpoint.py`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_analytics_bias_factor_endpoint.py -q`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_bias_factor_blend.py backend\tests\test_retention_signals_fixtures.py -q`;
+  passed, 56 tests.
+- After extraction:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_analytics_bias_factor_endpoint.py backend\tests\test_bias_factor_blend.py backend\tests\test_retention_signals_fixtures.py backend\tests\test_insights.py -q`;
+  passed, 76 tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- Browser dogfood was not run because this pair added backend characterization
+  and moved a read-only backend computation with no frontend surface,
+  user-visible flow, write path, auth path, or hosted topology change.
+- CI proof: GitHub Actions run `29063403556` passed for
+  `06a430c6beb66067241197b79067dfa4456ffe67`.
+- CI proof: GitHub Actions run `29063579305` passed for
+  `9dc43f2cebc0cadfa614e46e2d9105eb4d9b3e17`.
+
+Behavior parity statement:
+
+- `/v1/analytics/bias_factor` still returns the same cells, category-only
+  fallback, time-of-day fallback, global cell, insufficient cells, minimum
+  session threshold, total executed count, and primary metric.
+- The new characterization proves clean native execution rows enter the
+  denominator while imported-deadline, corrected, retroactive, system-error,
+  anchor, and voided rows are excluded.
+- No writes, migrations, hosted-public deploys, public restarts, synthetic
+  browser rows, or production repairs were introduced.
+
+Rollback note:
+
+- Revert commit `9dc43f2` to restore the bias-factor snapshot inline in
+  `backend/app/api/v1/endpoints/analytics.py`.
+- Keep or separately revert commit `06a430c` depending on whether the
+  characterization test should remain as a guardrail.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
