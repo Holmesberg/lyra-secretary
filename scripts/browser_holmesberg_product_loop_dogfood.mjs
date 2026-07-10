@@ -683,6 +683,19 @@ async function createTaskViaApi(
   return created;
 }
 
+async function rescheduleTaskViaApi(token, taskId, { start, end, title, category }) {
+  return await apiFetch(token, "/v1/reschedule", {
+    method: "POST",
+    body: JSON.stringify({
+      task_id: taskId,
+      new_start: start.toISOString(),
+      new_end: end.toISOString(),
+      ...(title ? { title } : {}),
+      ...(category ? { category } : {}),
+    }),
+  });
+}
+
 async function openNewTaskModal(page, label = "today new task") {
   await goto(page, "/today", label);
   await clickAny(page, "today new task", [
@@ -2034,6 +2047,68 @@ async function runTimerPath(page, token, task) {
   return { task: refreshed, sessionId };
 }
 
+async function runPulseMissedPlanDropPath(page, token) {
+  const title = `${prefix} missed plan drop`;
+  const task = await createTaskViaApi(token, {
+    title,
+    startMinutes: 420,
+    durationMinutes: 30,
+    category: "dogfood_reentry",
+  });
+  addCheck("missed-plan drop setup creates planned task", Boolean(task?.task_id), task || { title });
+  if (!task?.task_id) return null;
+
+  const pastEnd = new Date(Date.now() - 45 * 60_000);
+  const pastStart = new Date(pastEnd.getTime() - 30 * 60_000);
+  await rescheduleTaskViaApi(token, task.task_id, {
+    start: pastStart,
+    end: pastEnd,
+  });
+
+  await goto(page, "/pulse", "pulse-missed-plan-drop-before");
+  const reentryQueue = page.locator('section[aria-label="Re-entry queue"]').first();
+  const missedCard = reentryQueue
+    .locator("div")
+    .filter({ hasText: title })
+    .filter({ hasText: /Missed plan/i })
+    .first();
+  const missedText = await missedCard.innerText({ timeout: 12_000 }).catch(() => "");
+  addCheck("pulse re-entry queue shows overdue planned task as missed plan", Boolean(
+    missedText.includes(title)
+    && /Missed plan/i.test(missedText)
+    && /Drop/i.test(missedText)
+  ), {
+    title,
+    body_excerpt: missedText.slice(0, 500),
+  });
+  await screenshot(page, "pulse-missed-plan-drop-visible");
+
+  await clickAny(page, "pulse missed-plan drop", [
+    () => missedCard.getByRole("button", { name: /^Drop$/i }).first(),
+    () => reentryQueue.getByRole("button", { name: /^Drop$/i }).first(),
+  ], 10_000);
+
+  const skipped = await pollFor(token, "missed-plan drop marks task skipped", async () => {
+    const next = await findTaskByTitle(token, title);
+    return next?.state === "SKIPPED" ? next : null;
+  }, 15_000, 1_000);
+  addCheck("pulse missed-plan drop marks planned task skipped", Boolean(
+    skipped
+    && skipped.state === "SKIPPED"
+    && skipped.initiation_status === "user_skipped"
+  ), skipped || { title });
+
+  await page.waitForTimeout(800);
+  const afterText = await reentryQueue.innerText({ timeout: 5_000 }).catch(() => "");
+  addCheck("pulse missed-plan drop removes item from re-entry queue", !afterText.includes(title), {
+    title,
+    body_excerpt: afterText.slice(0, 500),
+  });
+  await screenshot(page, "pulse-missed-plan-drop-after");
+
+  return skipped;
+}
+
 async function runTimerSwitchChipPath(page, token) {
   const parentTitle = `${prefix} switch parent`;
   const childTitle = `${prefix} switch child`;
@@ -2706,6 +2781,7 @@ async function main() {
     await runBrainDumpBranchCoverage(page, token);
     await runPressureMapPath(page, token);
     const timer = await runTimerPath(page, token, task);
+    await runPulseMissedPlanDropPath(page, token);
     await runTimerSwitchChipPath(page, token);
     const executedTask = timer.task;
     const exposures = await runAnalyticsAndExposureChecks(page, token, beforeExport);
