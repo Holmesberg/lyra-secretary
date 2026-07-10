@@ -15852,3 +15852,68 @@ Rollback note:
 - Revert commit `ea2cc80` to remove the broadened backend characterization.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - OpenClaw Freeze Boundary Contract Gate
+
+Seam:
+
+- `openclaw-freeze-boundary-contract`
+
+Changed authority:
+
+- No live OpenClaw runtime authority was added.
+- Added a CI-enforced contract proving the historical OpenClaw skill remains
+  compatibility/reference material and does not re-authorize live scheduling,
+  task, timer, readiness/reflection, or retroactive logging mutations during
+  the freeze.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- OpenClaw-to-product runtime wiring remains parked.
+- Any future OpenClaw command path must use a current authenticated/audited
+  canonical command path and be explicitly reauthorized before live mutation.
+
+Moved authority:
+
+- No authority moved.
+- Direct Docker-network reachability to `http://backend:8000` remains
+  explicitly documented as reachability only, not identity, scope, audit, or
+  mutation authority.
+
+Issues and classification:
+
+- Fixed GitHub issue #121:
+  `https://github.com/Holmesberg/lyra-secretary/issues/121`.
+- Classification: verifier/CI guard for an old agent-originated timer/task
+  mutation bug class.
+
+Tests and verification:
+
+- `node scripts\test_openclaw_freeze_boundary_contract.mjs`; passed.
+- `node scripts\test_openclaw_freeze_boundary_contract.mjs --self-test-negative`;
+  passed by failing the broken fixture as expected.
+- Adjacent OpenClaw gates also passed locally:
+  `test_openclaw_early_stop_contract.mjs`,
+  `test_openclaw_measurement_field_contract.mjs`,
+  `test_openclaw_stopwatch_task_id_contract.mjs`, and
+  `test_openclaw_conflict_force_contract.mjs`.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29086608072` passed for
+  `a671b1f01c8d1fd9d17f7ea12dc0df8c8489a63e`.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public
+  deployment behavior, rebrand/domain state, or user-facing copy changed.
+- The historical skill remains readable for audit/compatibility, but the
+  freeze boundary is now mechanically guarded in CI.
+
+Rollback note:
+
+- Revert commit `a671b1f` to remove the freeze-boundary contract gate.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
