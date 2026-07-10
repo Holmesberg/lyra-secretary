@@ -55,6 +55,11 @@ Currently operator-only:
 
 Operator-only means "not safe for non-operator interpretation," not "valid."
 
+Clean-data profile ownership is centralized in
+`backend/app/services/cortex_clean_profiles.py`. Analytics and operator
+diagnostics may consume those helpers, but profile eligibility remains
+read-only Cortex contract logic, not endpoint-owned inference authority.
+
 ## User-Facing Inference
 
 Current user-facing or near-user-facing:

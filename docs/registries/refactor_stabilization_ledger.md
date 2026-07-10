@@ -18067,3 +18067,76 @@ Rollback note:
 - Revert this seam to remove `scan_cortex_readonly.py`, the CI step, and this
   ledger entry. No schema, data, Redis migration, hosted-public deploy, public
   restart, production repair, or rebrand/domain rollback is required.
+
+## 2026-07-11 - Cortex Clean Profile Owner Extraction
+
+Seam:
+
+- `cortex-clean-profile-owner-extraction`
+
+Changed authority:
+
+- Extracted Cortex clean-data profile helpers from
+  `backend/app/services/cortex.py` into
+  `backend/app/services/cortex_clean_profiles.py`.
+- Preserved compatibility imports through `app.services.cortex` for existing
+  callers.
+- Extended `scripts/scan_cortex_readonly.py` to cover the new clean-profile
+  owner.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Cortex writer extraction, unknown-propagation expansion, evaluation-version
+  export broadening, schema migration, hosted-public deploy/restart,
+  production repair, and rebrand/domain migration remain parked.
+
+Moved authority:
+
+- Clean-data profile ownership moved to `cortex_clean_profiles.py`.
+- No mutation, exposure-write, provider, ClaimCompiler, schema, production
+  repair, hosted-public, public deploy, or public restart authority moved.
+
+Tests and verification:
+
+- `python -m py_compile backend\app\services\cortex.py backend\app\services\cortex_clean_profiles.py scripts\scan_cortex_readonly.py`;
+  passed.
+- `python scripts\scan_cortex_readonly.py --self-test --pretty`; passed.
+  Negative proof still catches synthetic Cortex write calls and writer imports.
+- `python scripts\scan_cortex_readonly.py --fail-on-errors --pretty`; passed
+  with zero live findings across `cortex.py` and `cortex_clean_profiles.py`.
+- First targeted route test run caught a 500 from a missing `TaskState` import
+  in `cortex.py`; fixed in-seam before commit.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_cortex_contract_v0.py backend\tests\test_execution_correction.py backend\tests\test_exposure_ledger_v0.py backend\tests\test_stale_pause_resolution.py -q`;
+  passed, 33 tests.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `python scripts\scan_backend_layer_imports.py --fail-on-errors --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub Actions run `29123713649`; passed for commit `1d7f301`.
+- Standard local-current post-wave proof passed:
+  `tmp\post-wave-dogfood\20260711-000919-cortex-clean-profile-owner-extraction-standard-local-current\summary.json`.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200`; no public restart/deploy
+  was performed.
+
+Behavior parity statement:
+
+- Runtime behavior is intended to remain unchanged. Existing import paths from
+  `app.services.cortex` still expose the same clean-profile helper names, and
+  targeted Cortex/profile/exposure/stale-pause tests passed after extraction.
+
+Rollback note:
+
+- Revert this seam to move the clean-profile helpers back into `cortex.py`,
+  remove the scanner path addition, and remove this docs/ledger entry. No
+  schema, data, Redis migration, hosted-public deploy, public restart,
+  production repair, or rebrand/domain rollback is required.
