@@ -422,62 +422,6 @@ def _require_operator_analytics(db: Session, request: Request | None = None) -> 
     return operator_user_from_scope(db, request=request)
 
 
-@router.get("/analytics/behavioral_signature")
-def get_behavioral_signature(
-    request: Request,
-    window_days: int = Query(14, ge=1, le=90, description="Look-back window in days"),
-    db: Session = Depends(get_db),
-) -> dict:
-    """Operator-only aggregated fingerprint (pause mix, valence, reflection dwell, â€¦).
-
-    Same computation as JARVIS ``analyze_behavioral_signature``. Per
-    ``docs/calibration_contract.md`` R11 â€” **not** for Today/Insights rendering;
-    use for operator dashboards, scripts, and JARVIS-equivalent HTTP access.
-    """
-    op = _require_operator_analytics(db, request)
-    from app.services.inference_engine import behavioral_signature_for_operator
-
-    return behavioral_signature_for_operator(
-        db, op.user_id, window_days=window_days
-    )
-
-
-@router.get("/analytics/cortex/diagnostics")
-def get_cortex_diagnostics(
-    request: Request,
-    window_days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
-    db: Session = Depends(get_db),
-) -> dict:
-    """Operator-only Cortex Core v0 contract diagnostics.
-
-    Read-time instrument audit only. This endpoint does not write state, does
-    not infer psychology, and must not be used by user-facing first-paint paths.
-    """
-    op = _require_operator_analytics(db, request)
-    from app.services.cortex import cortex_diagnostics
-    from app.services.runtime_topology import backend_topology_report
-
-    payload = cortex_diagnostics(db, user_id=op.user_id, window_days=window_days)
-    payload["topology"] = backend_topology_report(request)
-    return payload
-
-
-@router.get("/analytics/output_surfaces/diagnostics")
-def get_output_surface_diagnostics(
-    request: Request,
-    window_days: int = Query(30, ge=1, le=365, description="Look-back window in days"),
-    db: Session = Depends(get_db),
-) -> dict:
-    """Operator-only Wave 4 output-surface enforcement diagnostics."""
-    op = _require_operator_analytics(db, request)
-    from app.services.output_surface_diagnostics import output_surface_diagnostics
-    from app.services.runtime_topology import backend_topology_report
-
-    payload = output_surface_diagnostics(db, user_id=op.user_id, window_days=window_days)
-    payload["topology"] = backend_topology_report(request)
-    return payload
-
-
 @router.post("/analytics/exposure_policy/effect_log")
 def record_exposure_policy_effect_log(
     request: Request,
