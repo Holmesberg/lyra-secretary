@@ -14501,3 +14501,61 @@ Rollback note:
   pressure-map proof to direct node invocation.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Current Branch Authority Frame
+
+Seam:
+
+- `r5a-current-branch-authority-frame`
+
+Changed authority:
+
+- Active documentation now names `refactor/freeze-closure` as the current broad
+  freeze-closure branch.
+- No product/runtime behavior, mutation authority, exposure authority, schema,
+  deployment state, env var, domain, or rebrand state changed.
+
+Removed paths:
+
+- The active transition-state entrypoint no longer points future Codex sessions
+  at the historical `wave-5-sovereignty-integrity-cycle` branch.
+
+Parked paths:
+
+- Rebrand/domain/runtime-host migration remains parked.
+- Archive migration for stale docs remains a later docs-quality seam and was
+  not mixed into this branch-frame correction.
+
+Moved authority:
+
+- No runtime authority moved.
+- Branch-frame authority remains in `docs/current_transition_state.md`, now
+  aligned with the actual active branch.
+
+Issues and classification:
+
+- Classification: documentation/authority drift.
+- No GitHub issue was opened because the drift was narrow, found and fixed in
+  the same docs-only seam, and did not affect runtime behavior.
+
+Tests and verification:
+
+- `git diff --check -- docs\current_transition_state.md`; passed with existing
+  CRLF warning only.
+- `rg -n "Barzakh|barzakh" docs .github frontend backend scripts README.md -S`;
+  returned no matches.
+- `rg -n "wave-5-sovereignty-integrity-cycle" docs\current_transition_state.md .github\instructions.md docs\README.md -S`;
+  returned no active-entrypoint matches.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with `ok=true`, zero findings.
+
+Behavior parity statement:
+
+- Runtime behavior is unchanged. This seam only prevents stale branch context
+  from steering future freeze-closure work.
+
+Rollback note:
+
+- Revert this ledger/doc commit to restore the prior branch-frame text.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.

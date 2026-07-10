@@ -1,6 +1,6 @@
 # Current Transition State
 
-**Date:** 2026-07-01
+**Date:** 2026-07-10
 **Status:** Active implementation orientation for the freeze-closure and safe
 refactor cycle.
 
@@ -13,13 +13,14 @@ cohort expansion.
 
 ## Active Branch Frame
 
-The active implementation branch is:
+The active implementation branch is the broad freeze-closure refactor branch:
 
 ```text
-wave-5-sovereignty-integrity-cycle
+refactor/freeze-closure
 ```
 
-The branch scope is freeze-closure only:
+Earlier wave branches remain historical merge context. The branch scope is
+freeze-closure only:
 
 ```text
 measurement forensics -> operator truth -> regression gates -> small safe seams
