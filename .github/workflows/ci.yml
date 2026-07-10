@@ -138,6 +138,9 @@ jobs:
     - name: Run OpenClaw measurement-field contract gate
       run: node scripts/test_openclaw_measurement_field_contract.mjs
 
+    - name: Run OpenClaw conflict-force contract gate
+      run: node scripts/test_openclaw_conflict_force_contract.mjs
+
     - name: Run public runtime watchdog contract gate
       run: node scripts/test_public_runtime_watchdog_contract.mjs
 
