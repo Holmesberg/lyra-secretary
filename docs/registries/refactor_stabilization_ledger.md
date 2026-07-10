@@ -15335,3 +15335,68 @@ Rollback note:
   invalidation list and remove the static contract gate.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - OpenClaw Stopwatch Task-ID Contract Gate
+
+Seam:
+
+- `openclaw-stopwatch-task-id-contract`
+
+Changed authority:
+
+- The historical OpenClaw skill contract now restates in the timer-start
+  workflow that `/v1/stopwatch/start` must be called with `task_id` plus
+  readiness, including the interruption-start path.
+- S1c CI now gates this contract with
+  `scripts/test_openclaw_stopwatch_task_id_contract.mjs`.
+- No product/runtime authority changed. The skill remains freeze-parked
+  compatibility/reference material and does not authorize live OpenClaw product
+  mutation.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- OpenClaw direct product mutation, OpenClaw-to-product GPT wiring, runtime AI
+  synthesis, and live task/timer control through the historical skill remain
+  parked until explicitly reauthorized.
+
+Moved authority:
+
+- No runtime authority moved.
+- Agent-facing stopwatch-start contract drift is now guarded by CI instead of
+  relying only on prose in the historical skill file.
+
+Issues and classification:
+
+- Fixed GitHub issue #109:
+  `https://github.com/Holmesberg/lyra-secretary/issues/109`.
+- Classification: docs/agent-contract drift plus CI verifier hardening.
+
+Tests and verification:
+
+- `node scripts/test_openclaw_stopwatch_task_id_contract.mjs`; passed.
+- `node scripts/test_openclaw_stopwatch_task_id_contract.mjs --self-test-negative`;
+  passed by failing the broken fixture as expected.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_stopwatch_start_errors.py backend\tests\test_wave2_idempotency.py -q`;
+  passed, 5 tests.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29083034817` passed for
+  `e49a570a1b74af9c41ea2b6f3c7c9230173b81f9`.
+
+Behavior parity statement:
+
+- No app runtime code, user-visible behavior, schema, data, Redis, frontend
+  route, hosted-public artifact, or public deployment behavior changed.
+- Backend support for explicit unplanned-title starts remains unchanged; this
+  seam only prevents the historical agent workflow from treating title as the
+  identifier for starting an existing task timer.
+
+Rollback note:
+
+- Revert commit `e49a570` to remove the OpenClaw stopwatch task-id contract
+  gate and restore the previous historical workflow wording.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
