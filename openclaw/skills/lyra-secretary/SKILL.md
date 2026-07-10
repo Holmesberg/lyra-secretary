@@ -127,12 +127,12 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 - GET /v1/stopwatch/status → if active AND paused: use interruption flow below
 - If active AND not paused: report running timer, stop first
 - Send "Rate your readiness (1=exhausted, 3=neutral, 5=sharp):" — WAIT for number
-- POST /v1/stopwatch/start with `pre_task_readiness` → get `session_id`
+- POST /v1/stopwatch/start with `task_id` + `pre_task_readiness` → get `session_id`
 - If `is_future_task: true` → warn → wait for "yes" before proceeding
 
 **Starting while another task is PAUSED (interruption flow):**
 - Say: "[Paused task] is paused. Start [new task] as interruption? You can resume [paused task] after."
-- If yes: POST /v1/stopwatch/start with `pre_task_readiness` + `interruption_type`
+- If yes: POST /v1/stopwatch/start with `task_id` + `pre_task_readiness` + `interruption_type`
 - Backend links via `parent_task_id` automatically
 - NEVER auto-resume the parent task
 
