@@ -15532,3 +15532,69 @@ Rollback note:
   gate.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - OpenClaw Conflict-Force Consent Gate
+
+Seam:
+
+- `openclaw-conflict-force-consent-contract`
+
+Changed authority:
+
+- Clarified the historical OpenClaw scheduling workflow so a
+  `/v1/create` conflict may be retried with `force: true` only after the
+  conflicts are shown and the user gives an explicit "yes".
+- Added an S1c CI gate that preserves this consent boundary with both
+  positive and negative proof.
+- No product/runtime authority changed; OpenClaw direct mutation remains
+  freeze-parked.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- OpenClaw direct scheduling remains parked unless a currently
+  authenticated/audited canonical command path is explicitly reauthorized.
+- Any future agent scheduling path must preserve explicit user consent before
+  conflict override.
+
+Moved authority:
+
+- No runtime authority moved.
+- Conflict-force consent is now guarded by CI instead of relying only on
+  historical skill prose.
+
+Issues and classification:
+
+- Fixed GitHub issue #122:
+  `https://github.com/Holmesberg/lyra-secretary/issues/122`.
+- Classification: docs/agent-contract CI hardening.
+
+Tests and verification:
+
+- `node scripts/test_openclaw_conflict_force_contract.mjs`; passed.
+- `node scripts/test_openclaw_conflict_force_contract.mjs --self-test-negative`;
+  passed by failing the broken fixture as expected.
+- `node scripts/test_openclaw_stopwatch_task_id_contract.mjs`; passed.
+- `node scripts/test_openclaw_early_stop_contract.mjs`; passed.
+- `node scripts/test_openclaw_measurement_field_contract.mjs`; passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29084210839` passed for
+  `443436231fcd405ec813a7d2d7d61d8919f4eb5d`.
+
+Behavior parity statement:
+
+- No app runtime code, user-visible behavior, schema, data, Redis,
+  hosted-public artifact, public deployment behavior, or rebrand/domain state
+  changed.
+- The seam only makes the existing conflict-override consent rule explicit and
+  observable in CI.
+
+Rollback note:
+
+- Revert commit `e760992` to restore the older historical OpenClaw wording.
+- Revert commit `4434362` to remove the OpenClaw conflict-force contract gate.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
