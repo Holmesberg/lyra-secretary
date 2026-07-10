@@ -16794,3 +16794,59 @@ Rollback note:
   inside the calendar page.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Extract NewTaskModal Conflict Panels
+
+Seam:
+
+- `extract-new-task-conflict-panels`
+
+Changed authority:
+
+- `frontend/components/new-task-modal.tsx` now delegates paused-interruption
+  and soft-conflict warning presentation to
+  `frontend/components/new-task-conflict-panels.tsx`.
+- `NewTaskModal` still owns conflict state, Enter-key routing, primary-action
+  selection, submit mode, idempotency controller calls, and deadline/nudge
+  gating.
+
+Removed paths:
+
+- Inline paused-conflict and soft-conflict JSX from
+  `frontend/components/new-task-modal.tsx`.
+
+Parked paths:
+
+- Full `NewTaskModal` draft-state and remaining JSX extraction remain parked
+  for later seams.
+- Conflict classification and backend response semantics remain owned by
+  `use-new-task-submit-controller.ts` and backend task creation.
+
+Moved authority:
+
+- No runtime write authority moved. This seam moves presentation only.
+
+Tests and verification:
+
+- `cd frontend && npm run lint`; passed.
+- `cd frontend && npm run build`; passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `dc78484` passed: run `29105512931`.
+
+Behavior parity statement:
+
+- No user-visible behavior, data/write behavior, schema, Redis state,
+  hosted-public artifact, public deploy, public restart, production data, or
+  rebrand/domain behavior changed.
+- The seam did not run a fresh Holmesberg mutable loop because it changes only
+  presentation structure. Existing NewTaskModal branch coverage remains the
+  browser proof anchor for these conflict paths.
+
+Rollback note:
+
+- Revert the conflict-panel extraction commit to inline the paused and soft
+  conflict JSX back into `NewTaskModal`.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
