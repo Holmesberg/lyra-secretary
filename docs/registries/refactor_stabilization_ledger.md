@@ -17440,3 +17440,90 @@ Rollback note:
 - Revert `61f0381` to inline Deadline view helpers back into the page. No
   schema, data, Redis migration, hosted-public deploy, public restart,
   production repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Stopwatch Reflection Helper Extraction
+
+Seam:
+
+- `stopwatch-reflection-helper-extraction`
+
+Changed authority:
+
+- `backend/app/services/stopwatch_reflections.py` now owns read-only stopwatch
+  reflection helpers for stop-time micro mirrors, calibration nudge text, and
+  current pause-anchor derivation.
+- `backend/app/services/stopwatch_manager.py` remains the stopwatch session,
+  Redis, pause/resume/stop, and task-state mutation authority. Compatibility
+  wrapper names remain in `stopwatch_manager.py` for existing tests/imports.
+
+Removed paths:
+
+- Inline stop-time reflection decision logic and current pause-anchor derivation
+  were removed from `stopwatch_manager.py` after extraction into read-only
+  helpers.
+
+Parked paths:
+
+- Stopwatch writer splits, output-surface render/suppression split, task
+  lifecycle split, schema migration, hosted-public deploy, public restart,
+  production data repair, and rebrand/domain work remain parked.
+
+Moved authority:
+
+- No mutation, exposure emission, provider, task lifecycle, Redis state,
+  ClaimCompiler, clean-data, hosted-public, public deploy, public restart,
+  production data, schema, or rebrand authority moved.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_retention_signals_fixtures.py backend\tests\test_stopwatch_pause_counter_anchor.py backend\tests\test_reflection_view_log_hook.py backend\tests\test_wave2_idempotency.py -q`;
+  passed with 58 tests.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_state_consistency.py backend\tests\test_void_clears_stopwatch.py backend\tests\test_stopwatch_start_errors.py backend\tests\test_stopwatch_switch.py backend\tests\test_stopwatch_recovery.py -q`;
+  passed with 29 tests.
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\services\stopwatch_manager.py backend\app\services\stopwatch_reflections.py`;
+  passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --cached --check`; passed before commit.
+- GitHub CI for `f5ba6db` passed: run `29116056257`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29116056257`).
+- Standard local-current post-wave proof command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName stopwatch-reflection-helper-extraction -IncludeProductLoop -IncludeCiCdProof -CiCdFailOnUnsuccessful`;
+  passed.
+- Evidence manifest:
+  `tmp\post-wave-dogfood\20260710-215410-stopwatch-reflection-helper-extraction-standard-local-current\summary.json`.
+- Classification: `standard_wave_proof_passed`.
+- Topology: `local-current`, frontend `http://localhost:3013`, API
+  `http://localhost:8000`, frontend build id `local-current`, backend build
+  id `dev`.
+- Cleanup proof: required and passed; Holmesberg cleanup left no active timer
+  and no unrendered synthetic creation-nudge exposures.
+- Operator proof: implementation green, cohort yellow, safe-to-invite false,
+  exposure-without-render count `0`, and no count diffs.
+- CI/CD proof in manifest: run `29116056257` for
+  `f5ba6db4e46c9f6494ea9cfa5d12d245198b2adb` passed.
+
+Known non-blocking browser issues:
+
+- Holmesberg onboarding gate was open and skipped to reach app surfaces.
+- Some branch-created tasks were not visible before branch assertions, while
+  backend binding checks passed.
+- Brain dump deadline title was normalized by the parser.
+- Pressure-map commit path remains gated by backend recovery-nudge safety
+  switches.
+
+Behavior parity statement:
+
+- Stopwatch stop-time behavior remains behavior-preserving: micro mirror text,
+  calibration nudge eligibility/text, current pause seconds/start anchor, zero
+  duration stop handling, reflection exposure hook behavior, pause/resume,
+  switch, recovery, and cleanup semantics are unchanged.
+
+Rollback note:
+
+- Revert `f5ba6db` to inline stopwatch reflection helpers back into
+  `stopwatch_manager.py`. No schema, data, Redis migration, hosted-public
+  deploy, public restart, production repair, or rebrand/domain rollback is
+  required.
