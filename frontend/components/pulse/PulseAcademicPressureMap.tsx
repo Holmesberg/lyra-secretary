@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import {
   AlertTriangle,
   CalendarClock,
@@ -29,9 +28,9 @@ import {
   durationFromLocal,
   endLocalFromDuration,
   fmtMinutes,
-  planItemsForOption,
   type PlanRow,
 } from "@/lib/pressure-map-planning";
+import { selectPressurePlanOption } from "@/lib/pressure-map-options";
 import { usePressureMapPlanCommit } from "./use-pressure-map-plan-commit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -258,23 +257,11 @@ export function PulseAcademicPressureMap({
   } = usePressureMapPlanCommit({ pressure, taskEvidence });
   const items = pressure?.items.slice(0, 4) ?? [];
   const hasItems = items.length > 0;
-  const planOption = useMemo(() => {
-    if (!pressure) return null;
-    return (
-      pressure.recovery_options.find((option) => option.action === "create_plan") ??
-      pressure.recovery_options.find((option) => option.action === "split_into_blocks") ??
-      null
-    );
-  }, [pressure]);
-  const canPreviewPlan = useMemo(() => {
-    if (!pressure || !planOption) return false;
-    return planItemsForOption(pressure, planOption).length > 0;
-  }, [pressure, planOption]);
-  const primaryRecoveryOption = pressure?.recovery_options[0] ?? null;
-  const primaryIsPlanOption =
-    primaryRecoveryOption !== null &&
-    planOption !== null &&
-    primaryRecoveryOption.action === planOption.action;
+  const {
+    planOption,
+    canPreviewPlan,
+    primaryIsPlanOption,
+  } = selectPressurePlanOption(pressure);
 
   return (
     <div className="terminal-panel flex h-full flex-col p-5">
