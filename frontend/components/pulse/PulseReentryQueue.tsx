@@ -2,52 +2,24 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Check, Clock, ExternalLink, RotateCcw, X } from "lucide-react";
 import { ReflectionModal } from "@/components/reflection-modal";
 import {
   getStopwatchStatus,
-  markAbandoned,
-  markDone,
-  resolveStalePause,
-  resumeStopwatch,
-  type ScopeOutcome,
-  switchStopwatch,
   type StopwatchStatus,
   type TaskRow,
 } from "@/lib/tasks";
-import { invalidatePulseReentryCaches, queryKeys } from "@/lib/query-keys";
+import { queryKeys } from "@/lib/query-keys";
+import {
+  usePulseReentryCommands,
+  type PulsePausedReentryCandidate,
+  type PulseReentryCandidate,
+} from "@/lib/hooks/use-pulse-reentry-commands";
 
 interface PulseReentryQueueProps {
   tasks: TaskRow[];
 }
-
-type ReentryCandidate =
-  | {
-      kind: "paused";
-      id: string;
-      title: string;
-      detail: string;
-      taskId: string;
-      sessionId: string;
-      activeMinutes: number;
-      plannedMinutes: number | null;
-      pausedMinutes: number;
-      dateHref: string;
-      action: "resume_current" | "switch_paused" | "resolve_stale";
-      priority: number;
-    }
-  | {
-      kind: "missed";
-      id: string;
-      title: string;
-      detail: string;
-      taskId: string;
-      dateHref: string;
-      canMarkDone: boolean;
-      canDrop: boolean;
-      priority: number;
-    };
 
 function localDateKeyFromIso(iso: string | null | undefined): string {
   const d = iso ? new Date(iso) : new Date();
@@ -92,23 +64,13 @@ function missedDetail(task: TaskRow): string {
   return `${planned}${bound} passed without an active session.`;
 }
 
-function looksLikeStaleRecoveryRejection(message: string): boolean {
-  return [
-    "current state:",
-    "already has execution data",
-    "Only overdue tasks",
-    "Cannot mark a voided task done",
-    "Task not found",
-  ].some((needle) => message.includes(needle));
-}
-
 function buildCandidates(
   tasks: TaskRow[],
   status: StopwatchStatus | undefined,
   dismissed: Set<string>
-): ReentryCandidate[] {
+): PulseReentryCandidate[] {
   const now = Date.now();
-  const candidates: ReentryCandidate[] = [];
+  const candidates: PulseReentryCandidate[] = [];
 
   if (status?.active && status.paused && status.task_id && status.task_title) {
     const pausedMinutes = Math.max(0, (status.current_pause_seconds ?? 0) / 60);
@@ -191,11 +153,10 @@ function buildCandidates(
 }
 
 export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
-  const qc = useQueryClient();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [resolving, setResolving] =
-    useState<Extract<ReentryCandidate, { kind: "paused" }> | null>(null);
+    useState<PulsePausedReentryCandidate | null>(null);
 
   const statusQ = useQuery<StopwatchStatus>({
     queryKey: queryKeys.stopwatchStatus,
@@ -209,92 +170,10 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
     [tasks, statusQ.data, dismissed]
   );
 
-  const refresh = () => {
-    void invalidatePulseReentryCaches(qc);
-  };
-
-  const resumeM = useMutation({
-    mutationFn: (candidate: Extract<ReentryCandidate, { kind: "paused" }>) =>
-      candidate.action === "switch_paused"
-        ? switchStopwatch(candidate.taskId)
-        : resumeStopwatch(),
-    onSuccess: () => {
-      setError(null);
-      refresh();
-    },
-    onError: (e: Error) => setError(e.message ?? "Failed to resume"),
-  });
-
-  const resolveM = useMutation({
-    mutationFn: ({
-      candidate,
-      rating,
-      completionPct,
-      scopeOutcome,
-    }: {
-      candidate: Extract<ReentryCandidate, { kind: "paused" }>;
-      rating: number;
-      completionPct: number;
-      scopeOutcome: ScopeOutcome;
-    }) =>
-      resolveStalePause(candidate.sessionId, {
-        post_task_reflection: rating,
-        task_completion_percentage: completionPct,
-        scope_outcome: scopeOutcome,
-      }),
-    onSuccess: (_data, vars) => {
-      setError(null);
-      setResolving(null);
-      setDismissed((prev) => {
-        const next = new Set(prev);
-        next.add(vars.candidate.id);
-        return next;
-      });
-      refresh();
-    },
-    onError: (e: Error) => setError(e.message ?? "Failed to resolve session"),
-  });
-
-  const doneM = useMutation({
-    mutationFn: (taskId: string) => markDone(taskId),
-    onSuccess: (_data, taskId) => {
-      setError(null);
-      setDismissed((prev) => {
-        const next = new Set(prev);
-        next.add(`missed:${taskId}`);
-        return next;
-      });
-      refresh();
-    },
-    onError: (e: Error, taskId) => {
-      const message = e.message ?? "Failed to mark done";
-      if (looksLikeStaleRecoveryRejection(message)) {
-        setDismissed((prev) => {
-          const next = new Set(prev);
-          next.add(`missed:${taskId}`);
-          return next;
-        });
-        setError(null);
-        refresh();
-        return;
-      }
-      setError(message);
-    },
-  });
-
-  const dropM = useMutation({
-    mutationFn: (taskId: string) =>
-      markAbandoned(taskId, "reentry_recovery_drop_from_pulse"),
-    onSuccess: (_data, taskId) => {
-      setError(null);
-      setDismissed((prev) => {
-        const next = new Set(prev);
-        next.add(`missed:${taskId}`);
-        return next;
-      });
-      refresh();
-    },
-    onError: (e: Error) => setError(e.message ?? "Failed to drop from plan"),
+  const { resumeM, resolveM, doneM, dropM } = usePulseReentryCommands({
+    setDismissed,
+    setError,
+    setResolving,
   });
 
   if (candidates.length === 0) {
