@@ -12119,3 +12119,65 @@ Rollback note:
 - Revert this docs-only seam to restore the earlier authority-map wording.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Brain Dump Binding Label Helper Extraction
+
+Seam:
+
+- `r3-brain-dump-binding-label-helper`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- The duplicated brain-dump binding target label helper in onboarding and
+  Pulse now routes through shared `frontend/lib/brain-dump-ui.ts` logic.
+
+Removed paths:
+
+- Removed duplicate local `bindingTargetLabel` helpers from:
+  - `frontend/components/onboarding-flow.tsx`
+  - `frontend/components/pulse/BrainDumpQuickModal.tsx`
+
+Parked paths:
+
+- Larger onboarding/Pulse brain-dump reducer reshaping remains parked until a
+  seam needs deeper state-machine extraction.
+- Hosted-public mutable dogfood remains approval-gated.
+
+Moved authority:
+
+- Brain-dump binding target label formatting now belongs to
+  `frontend/lib/brain-dump-ui.ts` with each surface passing its existing
+  parsed-deadline fallback copy.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 behavior-preserving frontend
+  extraction, not a product bug.
+- Classification: frontend behavior-preserving extraction.
+
+Tests and verification:
+
+- `npm run lint` from `frontend/`; passed.
+- `npm run build` from `frontend/`; passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings.
+- CI proof: GitHub Actions run `29059512582` passed for
+  `859caffca6c832882c4222e2e8f14de829ce62b5`.
+
+Behavior parity statement:
+
+- Onboarding still renders `Link to existing obligation` for existing-deadline
+  bindings and `Link to deadline` for parsed-deadline bindings.
+- Pulse brain dump still renders `Link to existing obligation` for
+  existing-deadline bindings and `Link to same dump` for parsed-deadline
+  bindings.
+- Parse, commit, binding choice, invalidation, and cleanup behavior did not
+  change.
+
+Rollback note:
+
+- Revert commit `859caff` to restore the two local label helpers.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
