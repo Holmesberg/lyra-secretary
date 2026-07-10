@@ -18203,3 +18203,66 @@ Rollback note:
   inline schema-version string, remove the targeted assertion, and remove this
   ledger entry. No schema, data, Redis migration, hosted-public deploy, public
   restart, production repair, or rebrand/domain rollback is required.
+
+## 2026-07-11 - Cortex Unknown Propagation Characterization
+
+Seam:
+
+- `cortex-unknown-propagation-characterization`
+
+Changed authority:
+
+- Added Cortex contract coverage proving `unknown` exposure state survives the
+  event envelope and operator diagnostics aggregation.
+- Characterized the current queued-without-render exposure path as
+  `UNKNOWN` with `ledger_incomplete`, not clean/no-exposure.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Cortex writer extraction, export-surface stamp broadening, schema migration,
+  hosted-public deploy/restart, production repair, and rebrand/domain migration
+  remain parked.
+
+Moved authority:
+
+- None. This is test-only characterization. No runtime, mutation, exposure,
+  provider, ClaimCompiler, clean-data, schema, hosted-public, public deploy, or
+  public restart authority moved.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_cortex_contract_v0.py -q`;
+  passed, 8 tests.
+- `python -m py_compile backend\tests\test_cortex_contract_v0.py`; passed.
+- `python scripts\scan_cortex_readonly.py --fail-on-errors --pretty`; passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `python scripts\scan_backend_layer_imports.py --fail-on-errors --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub Actions run `29125156024`; passed for commit `10b1524`.
+- Standard local-current post-wave proof passed:
+  `tmp\post-wave-dogfood\20260711-003721-cortex-unknown-propagation-characterization-standard-local-current\summary.json`.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200`; no public restart/deploy
+  was performed.
+
+Behavior parity statement:
+
+- Runtime behavior is unchanged. This seam only pins the existing invariant that
+  unknown exposure/provenance is not silently converted into clean, neutral, or
+  no-exposure evidence.
+
+Rollback note:
+
+- Revert this seam to remove the added Cortex contract assertions and this
+  ledger entry. No schema, data, Redis migration, hosted-public deploy, public
+  restart, production repair, or rebrand/domain rollback is required.
