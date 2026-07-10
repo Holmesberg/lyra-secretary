@@ -15049,3 +15049,77 @@ Rollback note:
   static CI contract.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Hosted-Public Operator Read-Only Proof Refresh
+
+Seam:
+
+- `hosted-public-operator-readonly-proof-refresh`
+
+Changed authority:
+
+- No code, runtime config, deployment state, data, schema, env var, domain,
+  rebrand, or product authority changed.
+- This entry records a hosted-public read-only stop/go proof after the public
+  frontend atomic build/swap helper seam.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- Public deploy/restart, hosted-public mutable dogfood, cohort expansion,
+  schema migrations, and rebrand/domain migration remain approval-gated.
+
+Moved authority:
+
+- No authority moved.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned hosted-public operator
+  read-only proof, not a product bug.
+- Classification: runtime proof / operator cockpit trust refresh.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology public`;
+  passed.
+- Artifact:
+  `tmp/operator-readonly-stress-2026-07-10T08-48-55-902Z/result.json`.
+- The artifact reported public topology verified with frontend build `bbd168c`
+  and backend build `dev`.
+- `/operator` desktop and mobile routes returned HTTP `200` with no issues or
+  warnings.
+- Operator read-only proof reported zero DB/API/Redis count diffs, zero route
+  count diffs, and zero dashboard snapshot diffs.
+- Cockpit state:
+  `implementation_green=true`, `implementation_status=green`,
+  `implementation_blockers=[]`, `cohort_status=yellow`,
+  `safe_to_invite_more_users=false`.
+- Notification lifecycle state:
+  `duplicate_prompt_count=0`, `render_without_exposure_count=0`,
+  `exposure_without_render_count=0`, `operator_pending=0`.
+- Provider/state invariant state:
+  zero provider truth violations, zero duplicate import candidates, zero sync
+  failures in 24h, zero duplicate open sessions, zero executing tasks without
+  open session, and zero open sessions for executed tasks.
+- Cohort remains yellow for real data gaps:
+  `no_closed_sessions_last_14d`,
+  `timer_closure_rate_below_green_threshold`,
+  `insufficient_full_loop_users`,
+  `no_closed_sessions_for_trace_ratio`,
+  `invalid_recovery_actions_not_instrumented`, and
+  `product_loop_dropoff_detected`.
+
+Behavior parity statement:
+
+- This proof did not mutate user/product state.
+- The cockpit is implementation-green and red/yellow only for cohort/data
+  evidence gaps, not stale implementation blockers.
+
+Rollback note:
+
+- No code rollback is required. Delete or supersede this ledger entry only if
+  the artifact is later proven invalid.
