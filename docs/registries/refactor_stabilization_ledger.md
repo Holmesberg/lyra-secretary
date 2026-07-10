@@ -13405,3 +13405,95 @@ Rollback note:
   return the product-loop harness to its previous coverage.
 - No data, schema, Redis, hosted-public deploy, public restart, or production
   repair rollback is required.
+
+## 2026-07-10 - Today Stopwatch Command Hook Extraction
+
+Seam:
+
+- `r3-today-stopwatch-command-hook`
+
+Changed authority:
+
+- No mutation authority, exposure authority, clean-data authority, schema,
+  deployment state, env var, domain, or cohort denominator changed.
+- Today remains the user-facing execution surface. Backend stopwatch services
+  remain the source of truth for timer lifecycle, pause state, finalization, and
+  execution deltas.
+
+Removed paths:
+
+- Removed inline Today page start/stop command bodies after preserving behavior
+  in `frontend/lib/hooks/use-today-stopwatch-commands.ts`.
+
+Parked paths:
+
+- Pulse focus timer command extraction, backend stopwatch writer splits,
+  output render/suppression writer splits, auth/provider writer splits,
+  schema migrations, hosted-public deploy/restart, hosted-public mutable
+  dogfood, and rebrand/domain migration remain approval-gated or future seams.
+
+Moved authority:
+
+- Frontend command orchestration for Today timer start/stop optimistic UI,
+  rollback, early-start hinting, early-stop confirmation, paused-parent toast,
+  and micro-mirror/calibration render acknowledgement moved from
+  `frontend/app/(app)/today/page.tsx` into
+  `frontend/lib/hooks/use-today-stopwatch-commands.ts`.
+- No backend authority moved.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was a planned behavior-preserving frontend
+  extraction.
+- Classification: frontend behavior-preserving extraction / Today stopwatch
+  command orchestration.
+
+Tests and verification:
+
+- `npm run typecheck`; passed.
+- `npm run build`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_stopwatch_switch.py backend\tests\test_wave2_idempotency.py backend\tests\test_pause_resume_pause_event.py backend\tests\test_recovery_and_negative_pause.py backend\tests\test_output_surfaces.py -q`;
+  passed with `65` tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T03-49-41-789Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `122` checks, `0` failed
+  checks, `3` non-fatal issues, and `5` gated paths. The timer path proved
+  timer start, pause, paused-session survival across Pulse refresh and Calendar
+  navigation, Today paused banner visibility, pause counter anchoring, resume,
+  stop, execution delta fields, active timer switch-chip HTTP `200`, backend
+  timer swap, and cleanup with no active timer and no unrendered synthetic
+  creation-nudge exposures.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T03-56-12-886Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`,
+  `safe_to_invite_more_users=false` for real-data/instrumentation gaps only,
+  and `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29067977920` passed for
+  `87c24aa5cbb269031d57bfbf92319685de02cc21`.
+
+Behavior parity statement:
+
+- No intended user-visible behavior changed.
+- Today still uses the same stopwatch API payloads, optimistic update shape,
+  rollback semantics, early-start and early-stop flows, paused-parent messaging,
+  exposure render acknowledgement behavior, and timer invalidation paths.
+- The proof preserved documented one-active-timer behavior, paused timer
+  re-entry, stop finalization, export-visible execution deltas, and synthetic
+  cleanup.
+
+Rollback note:
+
+- Revert commit `87c24aa` to restore Today start/stop command bodies to the
+  page component.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
