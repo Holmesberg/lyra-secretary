@@ -14783,3 +14783,69 @@ Rollback note:
   the CI guard.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Analytics Eligibility Cache Helper Extraction
+
+Seam:
+
+- `r4-analytics-eligibility-cache-helper`
+
+Changed authority:
+
+- No mutation, exposure, provider, claim, schema, deployment, env var, domain,
+  rebrand, or data-write authority changed.
+- Analytics clean-task eligibility cache handling now lives with the
+  `analytics_surface_eligibility` service instead of the route file.
+
+Removed paths:
+
+- The `/v1/analytics/insights` route no longer owns the request-level
+  compatibility wrapper for cached clean-task eligibility filtering.
+
+Parked paths:
+
+- Analytics writer splits, exposure lifecycle changes, bias lookup exposure
+  emission, new insights, new claims, schema migrations, hosted-public
+  deploy/restart, hosted-public mutable dogfood, and rebrand/domain migration
+  remain parked.
+
+Moved authority:
+
+- `eligible_tasks_for_surface_cached` moved from
+  `backend/app/api/v1/endpoints/analytics.py` to
+  `backend/app/services/analytics_surface_eligibility.py`.
+- The endpoint keeps the `_eligible_tasks_for_surface` compatibility alias so
+  existing monkeypatch characterization tests continue to prove legacy helper
+  behavior.
+
+Issues and classification:
+
+- Classification: behavior-preserving backend clean-data helper extraction.
+- No GitHub issue was opened because this seam did not fix a discrete product,
+  verifier, topology, authority, documentation, or measurement bug.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_insights.py -q`;
+  passed, `19` tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with `ok=true`, zero findings.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed with `ok=true`, zero missing owners, and zero worker-write drift.
+- `git diff --check -- backend\app\api\v1\endpoints\analytics.py backend\app\services\analytics_surface_eligibility.py`;
+  passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29079373206` passed for
+  `d10d35a3863c87b982a7cdbcc51dba774f3f6819`.
+
+Behavior parity statement:
+
+- `/v1/analytics/insights` response behavior and clean-data filtering are
+  preserved by the existing insights characterization suite and CI.
+- Existing endpoint monkeypatch tests remain valid because the route still
+  passes the compatibility alias into the service wrapper.
+
+Rollback note:
+
+- Revert commit `d10d35a` to move the helper back into the analytics route.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
