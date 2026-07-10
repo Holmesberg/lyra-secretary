@@ -16740,3 +16740,57 @@ Rollback note:
 - Revert this seam commit to remove the static gate and CI self-test.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Extract Calendar Date Helpers
+
+Seam:
+
+- `extract-calendar-date-helpers`
+
+Changed authority:
+
+- `frontend/app/(app)/calendar/page.tsx` now imports Cairo timezone,
+  Schedule-X range conversion, task state calendar mapping, and task/deadline
+  date conversion helpers from `frontend/lib/calendar-event-builders.ts`.
+- Calendar event construction, Schedule-X setup, drag/resize behavior, and
+  mutation authority remain in the calendar page.
+
+Removed paths:
+
+- Duplicate local calendar timezone/range/state/date helper definitions in
+  `frontend/app/(app)/calendar/page.tsx`.
+
+Parked paths:
+
+- Full event-builder extraction remains parked.
+- Calendar drag/resize shims and mutation ownership remain page-owned until a
+  behavior-covered seam explicitly targets them.
+
+Moved authority:
+
+- No runtime, write, schema, Redis, hosted-public, or provider authority moved.
+  This seam extracts pure frontend helper logic only.
+
+Tests and verification:
+
+- `cd frontend && npm run lint`; passed.
+- `cd frontend && npm run build`; passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `git diff --check`; passed.
+- GitHub CI for `08ef26a` passed: run `29104904285`.
+
+Behavior parity statement:
+
+- No user-visible behavior, data/write behavior, schema, Redis state,
+  hosted-public artifact, public deploy, public restart, production data, or
+  rebrand/domain behavior changed.
+- Calendar event IDs/options and task/deadline conversion semantics are
+  preserved.
+
+Rollback note:
+
+- Revert the calendar helper extraction commit to restore the helper functions
+  inside the calendar page.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
