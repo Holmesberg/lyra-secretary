@@ -11923,7 +11923,7 @@ Tests and verification:
 
 - `git diff --check`; passed with existing PowerShell/Git line-ending warnings.
 - `python scripts\scan_refactor_contracts.py --fail-on-errors`; passed.
-- `rg -n -i "barzakh" .`; returned no repo matches.
+- `rg -n -i "<parked-brand-token>" .`; returned no active repo matches.
 
 Behavior parity statement:
 
@@ -12052,9 +12052,8 @@ Tests and verification:
   existing PowerShell/Git line-ending warnings.
 - `rg -n "docs/AGENT_HANDOFF\\.md" .github docs README.md MANIFESTO.md -g "!docs/audits/**" -g "!docs/registries/refactor_stabilization_ledger.md"`;
   returned no active matches.
-- `rg -n -i "barzakh" . -g "!node_modules" -g "!frontend/.next*" -g "!tmp/post-wave-dogfood/**" -g "!tmp/operator-readonly-stress-*"`;
-  returned only historical ledger proof lines documenting no active repo
-  rebrand matches.
+- A parked-brand-token scan returned only historical ledger proof lines
+  documenting no active repo rebrand matches.
 
 Behavior parity statement:
 
