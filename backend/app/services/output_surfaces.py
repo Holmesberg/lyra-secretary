@@ -756,31 +756,80 @@ def _eligibility_audit_for_surface(
     spec: OutputSurfaceSpec,
     user: User,
     cutoff,
+    metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    metrics = metrics or _eligibility_metrics_for_surface_inputs(
+        db,
+        clean_profile=spec.clean_profile,
+        signal_targets=tuple(spec.signal_targets),
+        user_id=user.user_id,
+        cutoff=cutoff,
+    )
+
+    clean_n = int(metrics["clean_n"])
+    missing_projection = metrics.get("missing_projection")
+    if missing_projection:
+        suppression_reason = "missing_projection"
+    elif clean_n < spec.min_n:
+        suppression_reason = "insufficient_clean_samples"
+    else:
+        suppression_reason = None
+
+    return {
+        "surface_id": spec.surface_id,
+        "truth_class": spec.truth_class,
+        "usage_class": spec.usage_class,
+        "clean_profile": spec.clean_profile,
+        "projection_class": metrics.get("projection_class"),
+        "candidate_n": metrics["candidate_n"],
+        "clean_n": clean_n,
+        "contaminated_n": metrics["contaminated_n"],
+        "unknown_n": metrics["unknown_n"],
+        "exposed_n": metrics["exposed_n"],
+        "intervention_n": metrics["intervention_n"],
+        "state_counts": metrics["state_counts"],
+        "min_n_required": spec.min_n,
+        "suppression_reason": suppression_reason,
+        "fallback_mode": spec.fallback_mode,
+        "operator_only_skew": {
+            "current_user_is_operator": bool(user.is_operator),
+            "surface_operator_only": bool(spec.operator_only),
+        },
+    }
+
+
+def _eligibility_metrics_for_surface_inputs(
+    db: Session,
+    *,
+    clean_profile: Optional[str],
+    signal_targets: tuple[str, ...],
+    user_id: int,
+    cutoff,
 ) -> dict[str, Any]:
     projection_class = None
     missing_projection = None
     try:
-        projection_class = projection_class_for_profile(spec.clean_profile)
+        projection_class = projection_class_for_profile(clean_profile)
     except ValueError as exc:
         missing_projection = str(exc)
 
     candidates = _candidate_tasks_for_profile(
         db,
-        user_id=user.user_id,
-        clean_profile=spec.clean_profile,
+        user_id=user_id,
+        clean_profile=clean_profile,
         cutoff=cutoff,
     )
     candidate_count = len(candidates)
 
     if missing_projection:
         clean_ids: set[str] = set()
-    elif spec.clean_profile == "descriptive_history":
+    elif clean_profile == "descriptive_history":
         clean_ids = {task.task_id for task in candidates if task.task_id}
     else:
         clean_ids = baseline_clean_task_ids(
             db,
             tasks=candidates,
-            signal_targets=list(spec.signal_targets),
+            signal_targets=list(signal_targets),
         )
 
     state_counts: Counter[str] = Counter()
@@ -789,7 +838,7 @@ def _eligibility_audit_for_surface(
         results = exposure_results_for_task(
             db,
             task=task,
-            signal_targets=list(spec.signal_targets),
+            signal_targets=list(signal_targets),
         )
         states = {result.state for result in results}
         for result in results:
@@ -804,18 +853,7 @@ def _eligibility_audit_for_surface(
             task_state_counts["none"] += 1
 
     clean_n = len(clean_ids)
-    if missing_projection:
-        suppression_reason = "missing_projection"
-    elif clean_n < spec.min_n:
-        suppression_reason = "insufficient_clean_samples"
-    else:
-        suppression_reason = None
-
     return {
-        "surface_id": spec.surface_id,
-        "truth_class": spec.truth_class,
-        "usage_class": spec.usage_class,
-        "clean_profile": spec.clean_profile,
         "projection_class": projection_class,
         "candidate_n": candidate_count,
         "clean_n": clean_n,
@@ -824,13 +862,7 @@ def _eligibility_audit_for_surface(
         "exposed_n": task_state_counts.get("exposed", 0),
         "intervention_n": task_state_counts.get("intervention", 0),
         "state_counts": dict(sorted(state_counts.items())),
-        "min_n_required": spec.min_n,
-        "suppression_reason": suppression_reason,
-        "fallback_mode": spec.fallback_mode,
-        "operator_only_skew": {
-            "current_user_is_operator": bool(user.is_operator),
-            "surface_operator_only": bool(spec.operator_only),
-        },
+        "missing_projection": missing_projection,
     }
 
 
@@ -915,16 +947,34 @@ def output_surface_diagnostics(
             "parity_delta": legacy_count - v0_activity["renders"],
         })
 
-    current_data_eligibility = [
-        _eligibility_audit_for_surface(
-            db,
-            spec=spec,
-            user=user,
-            cutoff=cutoff,
+    eligibility_metrics_cache: dict[
+        tuple[Optional[str], tuple[str, ...]],
+        dict[str, Any],
+    ] = {}
+    current_data_eligibility = []
+    for spec in registry.values():
+        if spec.truth_class not in {"interpretation", "intervention"}:
+            continue
+        cache_key = (spec.clean_profile, tuple(spec.signal_targets))
+        metrics = eligibility_metrics_cache.get(cache_key)
+        if metrics is None:
+            metrics = _eligibility_metrics_for_surface_inputs(
+                db,
+                clean_profile=spec.clean_profile,
+                signal_targets=tuple(spec.signal_targets),
+                user_id=user.user_id,
+                cutoff=cutoff,
+            )
+            eligibility_metrics_cache[cache_key] = metrics
+        current_data_eligibility.append(
+            _eligibility_audit_for_surface(
+                db,
+                spec=spec,
+                user=user,
+                cutoff=cutoff,
+                metrics=metrics,
+            )
         )
-        for spec in registry.values()
-        if spec.truth_class in {"interpretation", "intervention"}
-    ]
 
     surface_activity = {
         surface_id: _surface_activity_counts(
