@@ -31,7 +31,7 @@ import {
   type PausedConflict,
   type SoftConflict,
 } from "@/components/use-new-task-submit-controller";
-import { useDeadlinePreview } from "@/components/use-deadline-preview";
+import { useNewTaskDeadlineControls } from "@/components/use-new-task-deadline-controls";
 import { useCreationNudgeExposure } from "@/lib/hooks/use-creation-nudge-exposure";
 import { useCreationNudgeLookup } from "@/components/use-creation-nudge-lookup";
 
@@ -118,15 +118,23 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // is the read-only Pass 2 preview surfaced as a soft suggestion above the
   // submit button. They live in separate slices so dismissing the suggestion
   // doesn't clobber an already-confirmed picker choice.
-  const [deadlineId, setDeadlineId] = useState<string | null>(null);
-  const { parserSuggestion, setParserSuggestion } = useDeadlinePreview({
+  const {
+    deadlineId,
+    parserSuggestion,
+    showDeadlinePicker,
+    resetDeadline,
+    loadDeadline,
+    confirmSuggestion,
+    dismissSuggestion,
+    clearBinding,
+    togglePicker,
+    pickDeadline,
+  } = useNewTaskDeadlineControls({
     open,
     isEdit,
     title,
     description,
-    deadlineId,
   });
-  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const {
     calibrationNudge,
     nudgeSource,
@@ -190,9 +198,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       setNudgeDecisionMade(false);
       setNudgeDecisionData(null);
       setEditScheduleTouched(false);
-      setDeadlineId(null);
-      setParserSuggestion(null);
-      setShowDeadlinePicker(false);
+      resetDeadline();
       setLastEditId(null);
     }
   }, [open, editingTask]);
@@ -223,7 +229,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     // wipe both fields — DATA LOSS bug.
     setDescription(editingTask.description ?? "");
     setShowDescription(!!editingTask.description);
-    setDeadlineId(editingTask.deadline_id ?? null);
+    loadDeadline(editingTask.deadline_id);
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
@@ -232,7 +238,14 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setNudgeDecisionData(null);
     setEditScheduleTouched(false);
     setLastEditId(editingTask.task_id);
-  }, [clearCreationNudge, editingTask, lastEditId, loadCategory, loadTimeRange]);
+  }, [
+    clearCreationNudge,
+    editingTask,
+    lastEditId,
+    loadCategory,
+    loadDeadline,
+    loadTimeRange,
+  ]);
 
   function resetForm() {
     resetTimeDefaults();
@@ -247,9 +260,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setNudgeDecisionMade(false);
     setNudgeDecisionData(null);
     setEditScheduleTouched(false);
-    setDeadlineId(null);
-    setParserSuggestion(null);
-    setShowDeadlinePicker(false);
+    resetDeadline();
     setLastEditId(null);
   }
 
@@ -665,20 +676,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               deadlineId={deadlineId}
               suggestion={isEdit ? null : parserSuggestion}
               showPicker={showDeadlinePicker}
-              onConfirmSuggestion={() => {
-                if (parserSuggestion?.deadline_id) {
-                  setDeadlineId(parserSuggestion.deadline_id);
-                  setParserSuggestion(null);
-                }
-              }}
-              onDismissSuggestion={() => setParserSuggestion(null)}
-              onClearBinding={() => setDeadlineId(null)}
-              onTogglePicker={() => setShowDeadlinePicker((s) => !s)}
-              onPick={(id) => {
-                setDeadlineId(id);
-                setShowDeadlinePicker(false);
-                setParserSuggestion(null);
-              }}
+              onConfirmSuggestion={confirmSuggestion}
+              onDismissSuggestion={dismissSuggestion}
+              onClearBinding={clearBinding}
+              onTogglePicker={togglePicker}
+              onPick={pickDeadline}
             />
           )}
 
