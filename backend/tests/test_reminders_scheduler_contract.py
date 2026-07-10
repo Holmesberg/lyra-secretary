@@ -1,12 +1,14 @@
 from datetime import timedelta
+import json
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from app.db.models import Task, TaskState, User
+from app.db.models import NotificationLifecycleEvent, Task, TaskState, User
 from app.db.scoping import set_current_user_id
+from app.services import notification_queue
 from app.utils.time_utils import now_utc
 from app.workers.jobs import reminders
 from app.workers.jobs._scheduler_contract import (
@@ -21,6 +23,10 @@ from tests.conftest import TestingSession
 def _clean_tables(db):
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM exposure_ack_event"))
+    db.execute(text("DELETE FROM exposure_render_event"))
+    db.execute(text("DELETE FROM notification_lifecycle_event"))
+    db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM task"))
     db.execute(text("DELETE FROM user"))
     db.commit()
@@ -196,3 +202,60 @@ def test_reminder_notification_payload_carries_task_dedupe_metadata(db, monkeypa
     decision_kwargs = decisions[0][1]
     assert decision_kwargs["decision_status"] == "queued"
     assert decision_kwargs["delivered_at"] is None
+
+
+def test_reminder_user_queue_survives_openclaw_mirror_failure(db, monkeypatch):
+    _clean_tables(db)
+    user = _make_user(db, 7106)
+    task = _make_task(db, user_id=7106, state=TaskState.PLANNED, starts_in_minutes=10)
+    pushes = []
+    store = {}
+
+    class FakeRedis:
+        def exists(self, key):
+            return key in store
+
+        def setex(self, key, _seconds, value):
+            store[key] = value
+            return True
+
+        def rpush(self, key, value):
+            pushes.append((key, value))
+            return 1
+
+    class FakeRedisClient:
+        client = FakeRedis()
+
+    def fail_notify(*_args, **_kwargs):
+        raise RuntimeError("openclaw active session busy")
+
+    monkeypatch.setattr(reminders, "RedisClient", lambda: FakeRedisClient())
+    monkeypatch.setattr(notification_queue, "RedisClient", lambda: FakeRedisClient())
+    monkeypatch.setattr(
+        notification_queue.settings,
+        "OPENCLAW_MIRROR_USER_NOTIFICATIONS",
+        True,
+    )
+    monkeypatch.setattr(notification_queue.settings, "OPENCLAW_OPERATOR_USER_ID", 1)
+    monkeypatch.setattr(notification_queue, "notify_operator", fail_notify)
+
+    reminders._run_for_one_user(db, user)
+
+    assert len(pushes) == 1
+    key, raw_payload = pushes[0]
+    payload = json.loads(raw_payload)
+    assert key == f"notifications:pending:{user.user_id}"
+    assert payload["type"] == "reminder"
+    assert payload["task_id"] == task.task_id
+    assert payload["surface_id"] == "worker.reminder"
+    assert payload["exposure_id"]
+    assert store[f"reminder_sent:{user.user_id}:{task.task_id}"] == "1"
+
+    lifecycle = (
+        db.query(NotificationLifecycleEvent)
+        .filter(NotificationLifecycleEvent.user_id == user.user_id)
+        .filter(NotificationLifecycleEvent.notification_type == "reminder")
+        .one()
+    )
+    assert lifecycle.status == "queued"
+    assert lifecycle.exposure_id == payload["exposure_id"]
