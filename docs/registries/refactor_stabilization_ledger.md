@@ -17933,3 +17933,61 @@ Rollback note:
 - Revert this docs-only seam to restore the previous wording. No schema, data,
   Redis migration, hosted-public deploy, public restart, production repair, or
   rebrand/domain rollback is required.
+
+## 2026-07-10 - Backend Layer Import Hard Gate
+
+Seam:
+
+- `backend-layer-import-hard-gate`
+
+Changed authority:
+
+- Added `scripts/scan_backend_layer_imports.py` as an S1c hard gate for stable
+  backend dependency-direction rules.
+- CI now runs the layer import gate after the refactor contract gate.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Broad dependency DAG modeling, package reshuffling, writer-path extraction,
+  schema migration, hosted-public deploy/restart, production repair, and
+  rebrand/domain migration remain parked.
+
+Moved authority:
+
+- No product/runtime authority moved. CI now hard-fails if lower layers import
+  upward into API/runtime orchestration layers under the encoded rules.
+
+Tests and verification:
+
+- `python -m py_compile scripts\scan_backend_layer_imports.py`; passed.
+- `python scripts\scan_backend_layer_imports.py --self-test --pretty`; passed.
+  Negative proof caught synthetic `services -> app.api` and
+  `db -> app.services` imports.
+- `python scripts\scan_backend_layer_imports.py --fail-on-errors --pretty`;
+  passed with zero live findings.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200`; no public restart/deploy
+  was performed.
+
+Behavior parity statement:
+
+- Runtime behavior is unchanged. This seam only makes a currently-clean backend
+  dependency direction rule mechanically observable in CI before broader
+  structural refactors continue.
+
+Rollback note:
+
+- Revert this seam to remove `scan_backend_layer_imports.py` and the CI gate.
+  No schema, data, Redis migration, hosted-public deploy, public restart,
+  production repair, or rebrand/domain rollback is required.

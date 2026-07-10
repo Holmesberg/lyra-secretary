@@ -118,6 +118,12 @@ jobs:
         python scripts/scan_refactor_contracts.py --self-test-legacy-notification-pending
         python scripts/scan_refactor_contracts.py --fail-on-errors
 
+    - name: Run backend layer import gate
+      run: |
+        python -m py_compile scripts/scan_backend_layer_imports.py
+        python scripts/scan_backend_layer_imports.py --self-test
+        python scripts/scan_backend_layer_imports.py --fail-on-errors
+
     - name: Run post-wave evidence manifest contract gate
       run: node scripts/test_post_wave_evidence_manifest_contract.mjs
 
