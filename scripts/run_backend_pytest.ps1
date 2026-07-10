@@ -15,11 +15,28 @@ if (Test-Path -LiteralPath $venvPython) {
   $python = $pythonCommand.Source
 }
 
-if (-not $PytestArgs -or $PytestArgs.Count -eq 0) {
-  $PytestArgs = @("backend\tests")
+$backendPath = Join-Path $repoRoot "backend"
+
+function Convert-BackendPytestArg {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Arg
+  )
+
+  # CI runs from ./backend with paths like tests/foo.py. Keep the local wrapper
+  # equivalent even when callers pass repo-root paths such as backend\tests.
+  if ($Arg -match '^(?i)backend[\\/]') {
+    return ($Arg -replace '^(?i)backend[\\/]', '')
+  }
+  return $Arg
 }
 
-$backendPath = Join-Path $repoRoot "backend"
+if (-not $PytestArgs -or $PytestArgs.Count -eq 0) {
+  $PytestArgs = @("tests")
+} else {
+  $PytestArgs = @($PytestArgs | ForEach-Object { Convert-BackendPytestArg $_ })
+}
+
 $pathSeparator = [IO.Path]::PathSeparator
 if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
   $env:PYTHONPATH = $backendPath
@@ -31,7 +48,12 @@ Write-Host "Backend pytest python: $python"
 Write-Host "PYTHONPATH: $env:PYTHONPATH"
 Write-Host "pytest args: $($PytestArgs -join ' ')"
 
-& $python -m pytest @PytestArgs
-if ($LASTEXITCODE -ne 0) {
-  throw "backend pytest failed with exit code $LASTEXITCODE"
+Push-Location $backendPath
+try {
+  & $python -m pytest @PytestArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "backend pytest failed with exit code $LASTEXITCODE"
+  }
+} finally {
+  Pop-Location
 }
