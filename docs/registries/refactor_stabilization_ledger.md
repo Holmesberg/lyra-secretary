@@ -14089,3 +14089,90 @@ Rollback note:
   bodies again.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - NewTaskModal Deadline Control Extraction
+
+Seam:
+
+- `r3-new-task-deadline-controls`
+
+Changed authority:
+
+- No backend task mutation authority, deadline authority, exposure authority,
+  clean-data authority, schema, deployment state, env var, domain, or cohort
+  denominator changed.
+- `NewTaskModal` still owns the modal UX and submit orchestration.
+
+Removed paths:
+
+- Inline deadline picker state and local deadline action callbacks were removed
+  from `frontend/components/new-task-modal.tsx`.
+
+Parked paths:
+
+- Full `NewTaskModal` draft extraction, submit flow extraction, backend writer
+  splits, hosted-public deploy/restart, hosted-public mutable dogfood, schema
+  migrations, and rebrand/domain migration remain future or approval-gated
+  seams.
+
+Moved authority:
+
+- Frontend deadline picker/preview coordination moved to
+  `frontend/components/use-new-task-deadline-controls.ts`.
+- Backend deadline binding and task mutation authority did not move.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 behavior-preserving frontend
+  extraction of already-covered task modal deadline behavior.
+- Classification: product/runtime frontend extraction with no intended
+  user-visible behavior change.
+
+Tests and verification:
+
+- `git diff --check -- frontend\components\new-task-modal.tsx frontend\components\use-new-task-deadline-controls.ts`;
+  passed with existing CRLF warning only.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_create_task_with_deadline.py backend\tests\test_wave2_idempotency.py backend\tests\test_reschedule_description_deadline.py -q`;
+  passed, `22` tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T06-14-15-129Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `134` checks, `0` failed
+  checks, `3` non-fatal issues, and `5` gated paths. Cleanup metadata recorded
+  `14` synthetic task ids, `8` deadline ids, and `3` notification ids.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T06-21-13-177Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_status=green`,
+  `cohort_status=yellow`, `safe_to_invite_more_users=false`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29073676749` passed for
+  `ee5bb95833ebbe24fb6bf3fd65affeda0162e310`.
+
+Behavior parity statement:
+
+- Deadline behavior is unchanged: parser preview remains suppressed in edit
+  mode, confirm suggestion binds its `deadline_id`, dismiss clears the
+  suggestion, manual picker toggle/pick behavior remains the same, clear binding
+  still removes the draft deadline id, and create/edit payloads still carry
+  `deadline_id` or `clear_deadline` as before.
+- Edit-modal deadline parity remains intact: existing task deadline ids are
+  loaded into the modal and clearing an existing deadline still sends
+  `clear_deadline=true`.
+
+Rollback note:
+
+- Revert commit `ee5bb95` to inline the NewTaskModal deadline state and action
+  callbacks again.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
