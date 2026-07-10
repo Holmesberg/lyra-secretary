@@ -16341,3 +16341,57 @@ Rollback note:
 - Revert this S1c gate commit to remove the new scanner rule and CI self-test.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - R3 Frontend Query-Key Legacy Admin Cleanup
+
+Seam:
+
+- `frontend-query-key-legacy-admin-cleanup`
+
+Changed authority:
+
+- Removed unused `adminDashboard` and `adminEmailEngagement` query keys from
+  the frontend query-key authority.
+- Kept `operatorDashboard` as the active cockpit query key.
+- Added an S1c CI contract that prevents the removed admin dashboard query
+  domain from returning.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Remaining `/v1/admin/*` triage endpoints stay backend/operator-only and are
+  not app dashboard authorities.
+- Broad query-domain expansion remains parked until each domain's invalidation
+  behavior is characterized.
+
+Moved authority:
+
+- Frontend dashboard cache authority remains with `/operator` and
+  `queryKeys.operatorDashboard`.
+
+Tests and verification:
+
+- `node scripts\test_frontend_query_keys_contract.mjs`; passed.
+- `cd frontend && npm run typecheck`; passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+
+Behavior parity statement:
+
+- No user-visible behavior, API behavior, schema, Redis state, hosted-public
+  artifact, public deploy, public restart, or rebrand/domain state changed.
+- The removed keys were unused by active frontend code; the seam reduces stale
+  admin-dashboard authority after the runtime dashboard deletion.
+
+Rollback note:
+
+- Revert this seam commit to restore the unused admin query keys and remove the
+  query-key contract gate.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.

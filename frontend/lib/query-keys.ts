@@ -1,9 +1,6 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 export const queryKeys = {
-  adminDashboard: ["admin-dashboard"] as const,
-  adminEmailEngagement: (campaignVersion: string, sinceDays: number) =>
-    ["admin-email-engagement", campaignVersion, sinceDays] as const,
   archetypeProximity: (days: number) => ["proximity", days] as const,
   archetypeProximityTrend: (currentDays: number, priorDays: number) =>
     ["proximity-trend", currentDays, priorDays] as const,
@@ -47,7 +44,6 @@ export const queryKeys = {
 } satisfies Record<string, QueryKey | ((...args: never[]) => QueryKey)>;
 
 const domainKeys = {
-  admin: [queryKeys.adminDashboard],
   operator: [queryKeys.operatorDashboard],
 } satisfies Record<string, QueryKey[]>;
 
