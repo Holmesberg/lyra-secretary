@@ -13837,3 +13837,84 @@ Rollback note:
   re-entry coverage.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Pulse Missed-Plan Done Browser Proof
+
+Seam:
+
+- `s1c-pulse-reentry-missed-done-browser-proof`
+
+Changed authority:
+
+- No product/runtime authority, mutation authority, exposure authority,
+  clean-data authority, schema, deployment state, env var, domain, or cohort
+  denominator changed.
+- The Holmesberg product-loop harness now directly covers the documented
+  Pulse Re-entry missed-plan `Done` branch.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Stale-pause resolve modal browser characterization, frontend/backend writer
+  splits, hosted-public deploy/restart, hosted-public mutable dogfood, schema
+  migrations, and rebrand/domain migration remain future or approval-gated
+  seams.
+
+Moved authority:
+
+- None. This was verifier/harness coverage only.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned S1c characterization coverage
+  for a documented Pulse Re-entry branch after command extraction.
+- Classification: verifier/harness coverage / documented Pulse Re-entry
+  missed-plan done behavior.
+
+Tests and verification:
+
+- `node --check scripts\browser_holmesberg_product_loop_dogfood.mjs`; passed.
+- `git diff --check -- scripts\browser_holmesberg_product_loop_dogfood.mjs`;
+  passed with existing CRLF warning only.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T05-15-09-633Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `134` checks, `0` failed
+  checks, `3` non-fatal issues, and `5` gated paths. New checks proved that
+  a synthetic planned task can be rescheduled into an overdue window, appears
+  in Pulse Re-entry with a `Done` action, `Done` marks it
+  `EXECUTED/retroactive`, and the item disappears from the re-entry queue.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T05-22-15-059Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_status=green`,
+  `cohort_status=yellow`, `safe_to_invite_more_users=false`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29071256571` passed for
+  `bc57145da8a8c438a497746adafcee52136a8670`.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- The harness now observes an existing documented user path: overdue planned
+  work appears in Pulse Re-entry and `Done` transitions it through the normal
+  `mark-done` endpoint into `EXECUTED/retroactive`.
+- This remains user-reported retroactive completion, not stopwatch-measured
+  execution truth.
+- Cleanup remains part of verification: the synthetic task is tracked by the
+  harness cleanup registry and voided during cleanup.
+
+Rollback note:
+
+- Revert commit `bc57145` to remove the added Pulse missed-plan done browser
+  characterization and return the product-loop harness to its previous
+  re-entry coverage.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
