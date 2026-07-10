@@ -16514,3 +16514,58 @@ Rollback note:
   from `jarvis_tools.py` and remove the import-boundary scanner rule.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Behavioral Signature Docs Authority Alignment
+
+Seam:
+
+- `behavioral-signature-doc-authority-alignment`
+
+Changed authority:
+
+- Active inference architecture docs now name
+  `behavioral_signature_service.py` as the operator behavioral signature
+  boundary.
+- The mutation surface authority registry now lists
+  `behavioral_signature_service.py` as the only non-Jarvis compatibility seam
+  allowed to delegate to the parked historical aggregate implementation.
+- Calibration contract wording no longer frames `/v1/analytics/behavioral_signature`
+  as a live JARVIS-owned surface.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Full movement of the large historical aggregate implementation body out of
+  `jarvis_tools.py` remains parked for a later R4 extraction seam.
+
+Moved authority:
+
+- Documentation authority moved from direct `jarvis_tools.py` ownership wording
+  to the service-boundary model already established in code.
+
+Tests and verification:
+
+- `python -m json.tool docs\registries\mutation_surface_authority_registry.json`;
+  passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+
+Behavior parity statement:
+
+- No app behavior, endpoint behavior, schema, Redis state, hosted-public
+  artifact, public deploy, public restart, or user-facing copy changed.
+- The seam only aligns active documentation and registry ownership with the
+  existing behavioral signature service boundary.
+
+Rollback note:
+
+- Revert this docs-only seam to restore the previous direct-Jarvis ownership
+  wording.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.

@@ -127,7 +127,7 @@ Reflection surfaces are quiet observations the user can ignore. They MUST NOT ad
 - Phase 4 reflection surfaces read from **prefetched/cached data**, never from new round-trips. Concrete pattern: extend the `/v1/users/me` response (called once per page load, cached aggressively per `frontend/lib/api.ts`) with the BehavioralSignature subset relevant to the rendering surface. /me is the read-side carrier.
 - For per-task reflection lines on `/today`, extend the `/v1/tasks/query` response (already cached) with per-task derived signals computed in the same join. One round-trip carries both the task list and its reflections.
 - For modal context lines (reflection-modal, new-task-modal calibration basis), the comparative context comes from the `/me` cache or a parent-component prefetch — **the modal opens immediately**, the context line is already present at first paint.
-- The new `/v1/analytics/behavioral_signature` endpoint exists for JARVIS + operator analytics; it is NOT called from user-facing rendering paths.
+- The new `/v1/analytics/behavioral_signature` endpoint exists for operator analytics and parked JARVIS aggregate compatibility through `behavioral_signature_service`; it is NOT called from user-facing rendering paths.
 
 **Write-side rules:**
 

@@ -1,6 +1,6 @@
 # Inference engine architecture (DRAFT)
 
-**Status:** DRAFT — Phase 3 transition doc. Amend via git history; keep aligned with `backend/app/services/inference_engine.py` and `docs/calibration_contract.md`.
+**Status:** DRAFT — Phase 3 transition doc. Amend via git history; keep aligned with `backend/app/services/inference_engine.py`, `backend/app/services/behavioral_signature_service.py`, and `docs/calibration_contract.md`.
 
 ---
 
@@ -8,10 +8,10 @@
 
 The **inference engine** is the shared layer between:
 
-- **Operator discovery** (JARVIS tools, scripts, dashboards), and  
+- **Operator discovery** (operator analytics, scripts, dashboards, and parked JARVIS compatibility), and
 - **Future user-facing calibration** (prefetched payloads on `/v1/users/me` and `/v1/tasks/query` per R11 — **not** implemented in this draft’s scope).
 
-It centralizes **classification math** (valence, disagreement, confidence tiers) so JARVIS aggregations, analytics HTTP surfaces, and later UI carriers do not diverge.
+It centralizes **classification math** (valence, disagreement, confidence tiers) so operator aggregates, analytics HTTP surfaces, and later UI carriers do not diverge.
 
 ---
 
@@ -20,7 +20,8 @@ It centralizes **classification math** (valence, disagreement, confidence tiers)
 | Module | Responsibility |
 |--------|----------------|
 | `backend/app/services/inference_engine.py` | `classify_task_valence`, `classify_disagreement`, `confidence_tier_from_n`, `SIGNAL_THRESHOLDS`, `behavioral_signature_for_operator` |
-| `backend/app/services/jarvis_tools.py` | JARVIS executors; imports inference primitives for valence inside `analyze_behavioral_signature` |
+| `backend/app/services/behavioral_signature_service.py` | Named operator behavioral signature service boundary; temporary compatibility seam around the historical aggregate implementation |
+| `backend/app/services/jarvis_tools.py` | Parked JARVIS executors and historical aggregate implementation; non-owner services must not import this module directly |
 | `backend/app/api/v1/endpoints/analytics.py` | `GET /v1/analytics/behavioral_signature` — **403** unless `User.is_operator` |
 
 **Rule:** Any new classification that affects user trust must live in `inference_engine.py` (or call it), not only inside JARVIS.
@@ -31,14 +32,14 @@ It centralizes **classification math** (valence, disagreement, confidence tiers)
 
 - **Route:** `GET /v1/analytics/behavioral_signature?window_days=14`  
 - **Auth:** Same as other analytics — scoped user + **`is_operator=True`** or **403**.  
-- **Payload:** Identical aggregate dict to JARVIS `analyze_behavioral_signature` (`_exec_analyze_behavioral_signature`). Includes pause distributions, valence counts, reflection engagement summaries, disagreement events, etc.  
+- **Payload:** Operator behavioral signature aggregate served through `behavioral_signature_service.analyze_behavioral_signature()`. It currently preserves parity with the historical JARVIS aggregate (`_exec_analyze_behavioral_signature`) and includes pause distributions, valence counts, reflection engagement summaries, disagreement events, etc.
 - **R11:** This endpoint is **forbidden** on user-facing first-paint paths. Operators may poll it for dashboards; the Web UI Today/Insights pages must **not** add blocking calls here.
 
 ---
 
 ## 4. Signal registry (aggregate keys)
 
-The behavioral signature dict is the **Phase 2 discovery substrate**; keys evolve with `jarvis_tools._exec_analyze_behavioral_signature`. Canonical list is enforced by **`backend/tests/test_jarvis_phase2_discovery_tools.py`** (cold start + populated fixtures). At minimum, expect:
+The behavioral signature dict is the **Phase 2 discovery substrate**; keys are now exposed through `behavioral_signature_service.analyze_behavioral_signature()`, while the large historical implementation body remains parked in `jarvis_tools._exec_analyze_behavioral_signature` until a later R4 extraction. Canonical list is enforced by **`backend/tests/test_jarvis_phase2_discovery_tools.py`** and **`backend/tests/test_analytics_behavioral_signature.py`** (cold start + populated fixtures). At minimum, expect:
 
 - `window_days`, `n_sessions`, `n_pause_events`  
 - `pause_distribution`, `valence_distribution`, `valence_preconditions`  

@@ -279,12 +279,13 @@
       "authority_level": "operator_shell",
       "owner": "Historical Jarvis data/model retention only; runtime endpoint and agent removed",
       "paths": [
+        "backend/app/services/behavioral_signature_service.py",
         "backend/app/services/jarvis_tools.py"
       ],
       "allowed_writes": [
         "none from removed /v1/jarvis/* runtime; historical audit rows only via preserved data model/internal analytics helper"
       ],
-      "notes": "Jarvis is not a second product mind. The active route, agent loop, and OpenClaw direct skill have been removed. backend/app/services/jarvis_tools.py remains only as a legacy internal aggregation dependency until R4 extraction. OpenClaw operator-alert relay remains transport-only; no runtime AI synthesis is authorized."
+      "notes": "Jarvis is not a second product mind. The active route, agent loop, and OpenClaw direct skill have been removed. backend/app/services/behavioral_signature_service.py is the only non-Jarvis compatibility boundary allowed to delegate to the historical aggregate; backend/app/services/jarvis_tools.py remains parked until the large implementation body moves in a later R4 extraction. OpenClaw operator-alert relay remains transport-only; no runtime AI synthesis is authorized."
     },
     {
       "id": "background_worker_orchestration",
