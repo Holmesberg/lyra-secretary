@@ -14425,3 +14425,79 @@ Rollback note:
   wrapper behavior.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Holmesberg Pressure Recovery Wrapper Flag
+
+Seam:
+
+- `s1c-holmesberg-pressure-force-wrapper`
+
+Changed authority:
+
+- No product/runtime behavior, pressure-map policy, task mutation authority,
+  exposure authority, schema, deployment state, env var, domain, or cohort
+  denominator changed.
+- The Holmesberg product-loop wrapper can now pass the existing browser
+  dogfood script's explicit pressure-recovery fixture flag.
+
+Removed paths:
+
+- The forced pressure-map recovery browser proof no longer requires direct
+  `node` invocation outside the reusable PowerShell wrapper.
+
+Parked paths:
+
+- Backend pressure-map product changes, recovery-option policy changes,
+  hosted-public mutable dogfood, hosted-public deploy/restart, schema
+  migrations, and rebrand/domain migration remain separate or approval-gated
+  seams.
+
+Moved authority:
+
+- No product authority moved.
+- Harness responsibility moved into
+  `scripts/run_holmesberg_product_loop_dogfood.ps1`: callers may opt into
+  `-ForcePressureRecovery`, which forwards `--force-pressure-recovery true`
+  to the existing node verifier.
+
+Issues and classification:
+
+- Classification: verifier/harness improvement. No GitHub issue was opened
+  because this did not fix a user-visible bug or failing invariant; it made
+  an already-used pressure-map proof path reusable through the standard
+  wrapper.
+
+Tests and verification:
+
+- `git diff --check -- scripts\run_holmesberg_product_loop_dogfood.ps1`;
+  passed with existing CRLF warning only.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi -ForcePressureRecovery`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T07-20-58-873Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `143` checks, `0` failed
+  checks, `4` non-fatal issues, `5` gated paths, and `8` pressure-map
+  checks. Cleanup metadata recorded `15` synthetic task ids, `8` deadline
+  ids, `3` notification ids, and `1` exposure suppression id.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T07-28-25-237Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, and zero dashboard snapshot diffs.
+- CI proof: GitHub Actions run `29076859267` passed for
+  `58d89acc85b853bbdfe58ad16695e598b912c122`.
+
+Behavior parity statement:
+
+- Default wrapper behavior is unchanged.
+- The browser fixture path is used only when `-ForcePressureRecovery` is
+  explicitly supplied. It does not alter pressure-map runtime behavior or
+  backend recovery-option generation.
+
+Rollback note:
+
+- Revert commit `58d89ac` to remove the wrapper flag and return forced
+  pressure-map proof to direct node invocation.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
