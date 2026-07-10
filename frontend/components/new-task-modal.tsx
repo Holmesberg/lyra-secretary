@@ -21,6 +21,10 @@ import { useNewTaskCategoryControls } from "@/lib/hooks/use-new-task-category-co
 import { useNewTaskDescriptionControls } from "@/lib/hooks/use-new-task-description-controls";
 import { CategorySelect } from "@/components/category-select";
 import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
+import {
+  NewTaskPausedConflictPanel,
+  NewTaskSoftConflictPanel,
+} from "@/components/new-task-conflict-panels";
 import { CalibrationNudgeCard } from "@/components/calibration-nudge-card";
 import {
   nudgeDecisionFromCalibration,
@@ -603,62 +607,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           )}
 
           {pausedConflict && (
-            <>
-              <div className="rounded-md border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
-                <span className="font-medium text-parchment">{pausedConflict.title}</span>{" "}
-                is paused in this window.{" "}
-                {pausedConflict.blockingTitles.length === 0 ? (
-                  <>
-                    Start{" "}
-                    <span className="font-medium text-parchment">{title.trim()}</span>{" "}
-                    as an interruption? It will be linked — you can resume{" "}
-                    <span className="font-medium text-parchment">{pausedConflict.title}</span>{" "}
-                    after.
-                  </>
-                ) : (
-                  <>
-                    To interrupt it, adjust the time to avoid the blocking conflict
-                    {pausedConflict.blockingTitles.length > 1 ? "s" : ""} below.
-                  </>
-                )}
-              </div>
-              {pausedConflict.blockingTitles.length > 0 && (
-                <div className="rounded border border-ember/40 bg-ember/5 p-2 text-xs text-ember">
-                  Also conflicts with: {pausedConflict.blockingTitles.join(", ")}
-                </div>
-              )}
-            </>
+            <NewTaskPausedConflictPanel
+              conflict={pausedConflict}
+              pendingTitle={title.trim()}
+            />
           )}
-
           {softConflict && (
-            <div className="rounded-md border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
-              {softConflict.executingTitles.length > 0 && (
-                <div>
-                  Timer running on{" "}
-                  <span className="font-medium text-parchment">
-                    {softConflict.executingTitles.join(", ")}
-                  </span>
-                  .
-                </div>
-              )}
-              {softConflict.overlapTitles.length > 0 && (
-                <div>
-                  Overlaps with{" "}
-                  <span className="font-medium text-parchment">
-                    {softConflict.overlapTitles.join(", ")}
-                  </span>
-                  .
-                </div>
-              )}
-              {softConflict.reasons.includes("duplicate_title") && softConflict.duplicateTitle && (
-                <div>
-                  Already have{" "}
-                  <span className="font-medium text-parchment">{softConflict.duplicateTitle}</span>{" "}
-                  today.
-                </div>
-              )}
-              <div className="mt-1 text-dust">Create as planned anyway?</div>
-            </div>
+            <NewTaskSoftConflictPanel conflict={softConflict} />
           )}
 
           {/* Loop 11 Phase K — deadline picker.
