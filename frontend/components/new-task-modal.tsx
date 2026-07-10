@@ -15,9 +15,7 @@ import { CATEGORIES } from "@/lib/categories";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import {
   rescheduleTask,
-  lookupBiasFactor,
   type TaskRow,
-  type BiasLookupResponse,
 } from "@/lib/tasks";
 import {
   addMinutes,
@@ -25,19 +23,13 @@ import {
   defaultStartForDate,
   diffMinutes,
   formatLocal,
-  roundTo5,
   suggestAmPmSwap as getAmPmSwapSuggestion,
   suggestPushStartToFuture as getPushStartToFutureSuggestion,
-  timeOfDay,
 } from "@/lib/task-time";
 import { CategorySelect } from "@/components/category-select";
 import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
+import { CalibrationNudgeCard } from "@/components/calibration-nudge-card";
 import {
-  CalibrationNudgeCard,
-  type CalibrationNudge,
-} from "@/components/calibration-nudge-card";
-import {
-  localResearchNudge,
   nudgeDecisionFromCalibration,
   type NudgeDecisionData,
 } from "@/lib/creation-nudge";
@@ -48,13 +40,8 @@ import {
   type SoftConflict,
 } from "@/components/use-new-task-submit-controller";
 import { useDeadlinePreview } from "@/components/use-deadline-preview";
-import {
-  exposureIdForCreationNudge,
-  suppressCreationNudgeExposure,
-  useCreationNudgeExposure,
-} from "@/lib/hooks/use-creation-nudge-exposure";
-
-const BIAS_LOOKUP_DEBOUNCE_MS = 120;
+import { useCreationNudgeExposure } from "@/lib/hooks/use-creation-nudge-exposure";
+import { useCreationNudgeLookup } from "@/components/use-creation-nudge-lookup";
 
 interface Props {
   open: boolean;
@@ -96,9 +83,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [lastEditId, setLastEditId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [showDescription, setShowDescription] = useState(false);
-  const [nudgeSource, setNudgeSource] = useState<"personal" | "research" | null>(null);
-  const [calibrationNudge, setCalibrationNudge] =
-    useState<CalibrationNudge | null>(null);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
   // rest of this modal session. Prevents the re-suggestion loop the
@@ -130,130 +114,22 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     deadlineId,
   });
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
+  const {
+    calibrationNudge,
+    nudgeSource,
+    clearCreationNudge,
+  } = useCreationNudgeLookup({
+    open,
+    category,
+    start,
+    end,
+    durHours,
+    durMinutes,
+    isEdit,
+    editScheduleTouched,
+    nudgeDecisionMade,
+  });
 
-  // Fetch bias_factor when category, start time, or duration changes
-  // (debounced). Create mode remains eligible as soon as the form has a
-  // real duration. Edit mode waits until the operator actually touches
-  // the schedule/duration; opening an existing task should not nag, but
-  // changing the plan should re-run the estimate.
-  // Gated on a valid positive planned duration — a 0-min estimate with
-  // a `|| 30` fallback (prior behavior) fired the "adjust to X min"
-  // popup on an invalid form, visually drowning the end-before-start
-  // error banner. Now the nudge only fires when the user has typed a
-  // real duration AND the range is valid AND the user hasn't already
-  // made a decision on a prior nudge this session.
-  useEffect(() => {
-    const eligible = open && !nudgeDecisionMade && (!isEdit || editScheduleTouched);
-    if (!eligible) {
-      setCalibrationNudge(null);
-      setNudgeSource(null);
-      return;
-    }
-    const planned = durHours * 60 + durMinutes;
-    const rangeValid = diffMinutes(start, end) > 0;
-    if (planned <= 0 || !rangeValid) {
-      setCalibrationNudge(null);
-      setNudgeSource(null);
-      return;
-    }
-    const tod = timeOfDay(start);
-    const firedAt = new Date().toISOString();
-    const exposureId = exposureIdForCreationNudge(category, tod, planned);
-    const provisional = localResearchNudge(category, tod, planned, firedAt, exposureId);
-    if (provisional.factor >= 1.2) {
-      setCalibrationNudge(provisional);
-      setNudgeSource("research");
-    } else {
-      setCalibrationNudge(null);
-      setNudgeSource(null);
-    }
-    const abortCtl = new AbortController();
-    const applyLookupResponse = (res: BiasLookupResponse) => {
-      const isResearch = res.source === "research";
-      const threshold = isResearch ? 1.20 : 1.25;
-      // Rule-13 canonical magnitude (MANIFESTO v1.10): prefer the
-      // shrinkage-blended `bias_factor_final` when present. Keep the
-      // raw cell.bias_factor separate so the UI does not relabel a
-      // prior-blended estimate as pure "early data".
-      const magnitude = res.bias_factor_final ?? res.cell?.bias_factor ?? null;
-      const executionSuggestedMin =
-        res.execution_suggested_minutes ?? (magnitude !== null ? roundTo5(planned * magnitude) : planned);
-      const pauseOverheadMin = res.pause_overhead_minutes ?? 0;
-      const pauseOverheadSampleSize = res.pause_overhead_sample_size ?? 0;
-      const occupancySuggestedMin = res.occupancy_suggested_minutes ?? executionSuggestedMin;
-      const occupancyFactor = res.occupancy_factor ?? (planned > 0 ? occupancySuggestedMin / planned : null);
-      const executionTriggered = magnitude !== null && magnitude >= threshold;
-      const occupancyTriggered =
-        occupancyFactor !== null && occupancyFactor >= threshold && pauseOverheadSampleSize >= 3;
-      if (!res.cell || magnitude === null || (!executionTriggered && !occupancyTriggered)) {
-        if (res.exposure_id && !res.suppressed_reason) {
-          suppressCreationNudgeExposure(res.exposure_id);
-        }
-        if (!abortCtl.signal.aborted) {
-          setCalibrationNudge(null);
-          setNudgeSource(null);
-        }
-        return false;
-      }
-
-      const backendExposureId = res.exposure_id ?? exposureId;
-      const contentSnapshot = {
-        template: "task_creation_nudge_lookup",
-        category: res.cell.category,
-        time_of_day: res.cell.time_of_day,
-        source: isResearch ? "research" : "personal",
-        suggested_minutes: occupancySuggestedMin,
-        execution_suggested_minutes: executionSuggestedMin,
-        pause_overhead_minutes: pauseOverheadMin,
-        pause_overhead_sample_size: pauseOverheadSampleSize,
-        occupancy_suggested_minutes: occupancySuggestedMin,
-        occupancy_strategy: res.occupancy_strategy ?? null,
-        planned_minutes: planned,
-      };
-      if (abortCtl.signal.aborted) {
-        suppressCreationNudgeExposure(backendExposureId);
-        return true;
-      }
-      setCalibrationNudge({
-        cell: res.cell,
-        factor: magnitude,
-        personalFactor: isResearch ? null : res.cell.bias_factor,
-        blendFactor: res.bias_factor_final ?? null,
-        personalWeight: res.personal_weight ?? null,
-        priorWeight: res.prior_weight ?? null,
-        priorFactor: res.archetype_prior_for_cell ?? null,
-        priorCitation: res.archetype_prior_citation ?? res.cell.citation ?? null,
-        suggestedMin: occupancySuggestedMin,
-        executionSuggestedMin,
-        pauseOverheadMin,
-        pauseOverheadSampleSize,
-        occupancySuggestedMin,
-        occupancyStrategy: res.occupancy_strategy ?? null,
-        firedAt,
-        exposureId: backendExposureId,
-        backendReady: true,
-      });
-      setNudgeSource(isResearch ? "research" : "personal");
-      return true;
-    };
-    const timer = setTimeout(() => {
-      lookupBiasFactor(category, tod, planned, { fast: true, exposureId })
-        .then((res) => {
-          const shouldHydrate = applyLookupResponse(res);
-          if (!shouldHydrate) return;
-          void lookupBiasFactor(category, tod, planned, { exposureId: res.exposure_id ?? exposureId })
-            .then(applyLookupResponse)
-            .catch(() => {
-              // Keep the instant research-backed card if the personal
-              // hydration path misses; the fast path already registered
-              // the visible surface for exposure accounting.
-            });
-        })
-        .catch(() => { if (!abortCtl.signal.aborted) { setCalibrationNudge(null); setNudgeSource(null); } });
-    }, BIAS_LOOKUP_DEBOUNCE_MS);
-    return () => { clearTimeout(timer); abortCtl.abort(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, category, start, end, durHours, durMinutes, isEdit, editScheduleTouched, nudgeDecisionMade]);
 
   const totalMinutes = durHours * 60 + durMinutes;
   const endBeforeStart = diffMinutes(start, end) <= 0;
@@ -368,13 +244,12 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
-    setCalibrationNudge(null);
-    setNudgeSource(null);
+    clearCreationNudge();
     setNudgeDecisionMade(false);
     setNudgeDecisionData(null);
     setEditScheduleTouched(false);
     setLastEditId(editingTask.task_id);
-  }, [editingTask, lastEditId]);
+  }, [clearCreationNudge, editingTask, lastEditId]);
 
   function resetForm() {
     const s = defaultDate ? defaultStartForDate(defaultDate, now) : defaultStart(now);
@@ -390,8 +265,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
-    setCalibrationNudge(null);
-    setNudgeSource(null);
+    clearCreationNudge();
     setNudgeDecisionMade(false);
     setNudgeDecisionData(null);
     setEditScheduleTouched(false);
@@ -896,7 +770,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 setDurHours(Math.floor(newMin / 60));
                 setDurMinutes(newMin % 60);
                 setEnd(addMinutes(start, newMin));
-                setCalibrationNudge(null);
+                clearCreationNudge();
                 setNudgeDecisionMade(true);
               }}
               onKeepEstimate={() => {
@@ -904,7 +778,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 setNudgeDecisionData(
                   nudgeDecisionFromCalibration(calibrationNudge, "dismissed"),
                 );
-                setCalibrationNudge(null);
+                clearCreationNudge();
                 setNudgeDecisionMade(true);
               }}
             />
