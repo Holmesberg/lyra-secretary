@@ -16381,6 +16381,17 @@ Tests and verification:
 - `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
   passed.
 - `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `9eecc9f` passed: run `29122191998`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29122191998`).
+- Standard local-current post-wave proof command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName backend-layer-import-hard-gate -IncludeCiCdProof -CiCdRunId 29122191998 -CiCdFailOnUnsuccessful`;
+  passed.
+- Evidence manifest:
+  `tmp\post-wave-dogfood\20260710-234228-backend-layer-import-hard-gate-standard-local-current\summary.json`.
+- Classification: `standard_wave_proof_passed`.
+- Operator proof: implementation green, cohort yellow, exposure-without-render
+  count `0`, and no count diffs.
+- Cleanup proof: not required; this was a read-only CI/static-gate seam.
 
 Behavior parity statement:
 
