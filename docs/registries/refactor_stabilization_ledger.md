@@ -15264,3 +15264,74 @@ Rollback note:
 - Revert commit `b0849d5` to remove the repository instructions static gate.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Undo Cache Invalidation Authority
+
+Seam:
+
+- `undo-cache-invalidation-authority`
+
+Changed authority:
+
+- Undo cache invalidation moved from a local list in
+  `frontend/components/undo-toast-host.tsx` to the shared query-key authority in
+  `frontend/lib/query-keys.ts`.
+- Undo now invalidates the active operator dashboard key
+  `queryKeys.operatorDashboard` as well as the legacy `["operator-dashboard"]`
+  compatibility key.
+- No backend undo semantics, Redis writes, task/timer mutations, or user-facing
+  copy changed.
+
+Removed paths:
+
+- Removed the duplicated local `invalidateAfterUndo` cache list from
+  `UndoToastHost`.
+
+Parked paths:
+
+- Browser-level undo UI dogfood remains available for a future mutable
+  Holmesberg pass, but was not required for this cache-key authority fix.
+- Backend undo writer refactors remain parked.
+
+Moved authority:
+
+- Frontend undo cache invalidation authority moved to `frontend/lib/query-keys.ts`.
+- Backend undo mutation authority remains in `/v1/undo`.
+
+Issues and classification:
+
+- Fixed GitHub issue #198:
+  `https://github.com/Holmesberg/lyra-secretary/issues/198`.
+- Classification: product/runtime frontend cache invalidation bug plus S1c
+  verifier hardening.
+
+Tests and verification:
+
+- `npm run lint` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_last_task_and_undo_scoping.py -q`;
+  passed, 4 tests.
+- `git diff --check -- frontend\lib\query-keys.ts frontend\components\undo-toast-host.tsx`;
+  passed with existing CRLF warnings only.
+- `node scripts/test_undo_invalidation_contract.mjs`; passed.
+- `node scripts/test_repository_instructions_contract.mjs`; passed.
+- `node scripts/test_new_task_modal_contract.mjs`; passed.
+- `node scripts/test_browser_account_role_contract.mjs`; passed.
+- CI proof: GitHub Actions run `29082348621` passed for
+  `87f9fb1e056bd1657c38888bc78080677efe0e6b`.
+- CI proof: GitHub Actions run `29082497121` passed for
+  `25608d89d2635b8e5f872f1e7d7b1b013cc9fb0b`.
+
+Behavior parity statement:
+
+- The visible undo toast, 30-second window, undo API call, and backend undo
+  behavior are unchanged.
+- The intended documented cache invalidation is now preserved centrally and
+  includes the active operator dashboard key.
+
+Rollback note:
+
+- Revert commits `87f9fb1` and `25608d8` to restore the previous local undo
+  invalidation list and remove the static contract gate.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
