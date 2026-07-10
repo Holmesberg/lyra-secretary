@@ -37,11 +37,15 @@ Provider outages must reduce functionality, not security.
 Provider failure must degrade functionality, not weaken authentication or user scoping.
 ```
 
-If Moodle, Google Calendar, Notion, or another provider is unavailable or
+If Moodle, Google Calendar, or another authorized provider is unavailable or
 rejects credentials, Lyra may pause sync, surface reconnect guidance, preserve
 existing connection state where safe, or retry later. It must not bypass bearer
 identity, fall back to operator scope, widen user queries, or accept
 provider-returned identity as a substitute for Lyra user scoping.
+
+Notion sync was removed during freeze-closure. Historical Notion schema columns
+may remain until an approved schema cleanup, but they do not authorize runtime
+sync, reconnect guidance, or provider-completion truth.
 
 Client-side recovery must preserve before interpreting.
 
@@ -80,9 +84,10 @@ ad hoc checks.
 
 Operator-only surfaces include:
 
-- admin dashboards,
-- alpha funnel,
-- JARVIS endpoints,
+- `/operator`,
+- remaining `/v1/admin/*` triage endpoints such as feedback and email
+  engagement summaries,
+- parked/removed JARVIS endpoints, which must remain inaccessible,
 - output-surface diagnostics,
 - Cortex diagnostics,
 - behavioral-signature diagnostics,
@@ -240,7 +245,7 @@ Provider failure classes:
 | Moodle iCal 503/rate limit | retry later, keep connection | preserve user scope |
 | Moodle WS invalid token | stop submission inference, ask reconnect | do not infer completion |
 | Google Calendar auth failure | pause calendar sync, surface reconnect | do not widen calendar reads |
-| Notion unavailable | degrade Notion sync | do not affect task ownership |
+| Parked provider unavailable | no runtime action unless explicitly authorized | do not affect task ownership |
 | Provider timeout | mark sync degraded | do not bypass auth |
 | Lyra DB unavailable during auth | return temporary platform failure | fail closed; do not accept fallback identity |
 
@@ -285,7 +290,8 @@ Required before trusted-alpha expansion:
 
 - bearer/JWT runtime identity works,
 - `X-User-Id` remains test-only,
-- non-operators get 403 on operator/admin/JARVIS surfaces,
+- non-operators get 403 on `/operator` and remaining operator-only `/admin/*`
+  surfaces, and 404/410 on removed JARVIS runtime routes,
 - unauthenticated runtime requests get 401,
 - bearer identity beats `X-User-Id`,
 - raw SQL user-scope scan passes,

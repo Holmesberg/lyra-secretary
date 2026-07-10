@@ -16239,3 +16239,55 @@ Rollback note:
 - No production data, Redis, hosted-public artifact, or schema rollback is
   required because no migration, production repair, public deploy, or public
   restart occurred.
+
+## 2026-07-10 - Active Docs Legacy Surface Authority Cleanup
+
+Seam:
+
+- `active-doc-authority-cleanup-after-legacy-surface-removal`
+
+Changed authority:
+
+- Active deployment/security/integration/runbook docs now describe Notion as
+  removed/parked rather than a live sync path.
+- Active architecture/runbook docs now describe JARVIS runtime routes as
+  removed/parked and OpenClaw as operator-alert relay only.
+- Remaining `/v1/admin/*` references are narrowed to operator-only triage
+  endpoints, not the removed legacy admin dashboard.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Historical Notion schema columns and `JarvisInvocation` rows remain parked
+  until an explicit schema cleanup is approved.
+- Future provider integration docs remain non-authorizing during freeze.
+
+Moved authority:
+
+- No runtime authority moved. This is documentation authority cleanup only.
+
+Tests and verification:
+
+- `git diff --check`; passed with existing CRLF warnings only.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- Targeted active-doc stale-claim grep found only intentional
+  removed/parked-language hits.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public deploy,
+  public restart, user-facing product copy, or rebrand/domain state changed.
+- The seam only reduces documentation drift after the legacy runtime surface
+  removal.
+
+Rollback note:
+
+- Revert this docs-only seam to restore the previous active-doc wording.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.

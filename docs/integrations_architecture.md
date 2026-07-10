@@ -24,8 +24,9 @@ Lyra's sign-in asks Google for **identity only** — `openid email
 profile`. Non-sensitive scopes, zero OAuth verification required, no
 Google Cloud Console Testing-mode friction for new users.
 
-Third-party feature access (Google Calendar, Notion, future Gmail /
-Outlook / Slack / Drive) is acquired **incrementally** — user-triggered
+Third-party feature access (Google Calendar plus any future explicitly
+approved provider such as Gmail / Outlook / Slack / Drive) is acquired
+**incrementally** — user-triggered
 per integration from **Settings → Integrations**. Each integration
 requests its own scopes at its own consent moment. A user who never
 connects Google Calendar never sees a calendar consent screen.
@@ -117,7 +118,7 @@ Every integration must define six things:
 2. Mint short-lived **signed state** (10-min TTL, HS256 with
    `NEXTAUTH_SECRET`) carrying `{purpose, user_sub, email, nonce}`.
    Purpose claim must be unique per integration (`gcal_connect`,
-   future `notion_connect`, etc.) so states can't cross-replay.
+   future provider-specific values, etc.) so states can't cross-replay.
 3. Build provider authorization URL with:
    - `client_id`, `redirect_uri`, `response_type=code`
    - **Only the scopes this integration needs** — no scope-bundling
@@ -160,8 +161,8 @@ validation against the provider's JWKS endpoint.
 
 ### State purpose uniqueness
 States are signed with the same `NEXTAUTH_SECRET` across all
-integrations. The `purpose` claim (`gcal_connect`, `notion_connect`,
-etc.) segregates states so a stolen state for one provider can't be
+integrations. The `purpose` claim (`gcal_connect`, future provider-specific
+values, etc.) segregates states so a stolen state for one provider can't be
 replayed against another. When adding a new OAuth integration, pick a
 purpose string no other route uses and enforce it in the callback.
 
@@ -194,7 +195,7 @@ integration.
 - `external_event_outcome` table (alembic 027) is the template for
   "user-marked outcome on external data." Imported events go there,
   not in Task rows.
-- If a future integration (Notion import, ICS) elects to persist
+- If a future integration (for example ICS) elects to persist
   imported items as Lyra plans, those rows MUST carry a non-null
   `external_source` field and every H1 query MUST filter with
   `WHERE external_source IS NULL`.
@@ -314,7 +315,7 @@ the callback route can emit.
 | Pitfall | Source | Prevention |
 |---|---|---|
 | External event id with `:` crashes Schedule-X | LYR-102 (2026-04-21) | All external ids must match `[a-zA-Z_][a-zA-Z0-9_-]*` |
-| Notion date property double-TZ conversion | LYR-068 (open) | Write dates to Notion without offsets; let Notion render in its own TZ config |
+| Parked Notion date property double-TZ conversion | LYR-068 (obsolete after Notion removal) | Do not revive Notion sync without a new provider plan and timezone contract |
 | Plaintext refresh_token in v1 | migration 026 | Document as Phase 6+ security debt; never log |
 | `google_id` placeholder backfill | LYR-091 (fixed 2026-07-10) | `resolve_user_from_token` replaces only the legacy `simulated-google-sub` placeholder on first real sign-in; non-placeholder IDs are not overwritten. |
 | Single-timezone alpha blocks multi-region | TIMEZONE CONTRACT | Naked Cairo-local ISO over the wire today; multi-TZ refactor before second-region import |
@@ -323,10 +324,10 @@ the callback route can emit.
 
 ## Forward compatibility
 
-Current per-integration storage on `user` table (`google_refresh_token`,
-`notion_enabled`) is appropriate for 2 integrations. When the third
-integration lands (likely ICS in Phase 7), revisit migrating to a
-generic `integration_connection` table:
+Current per-integration storage on `user` table is legacy-fit for the current
+Google/Moodle footprint plus parked historical provider columns. When another
+provider is explicitly approved, revisit migrating to a generic
+`integration_connection` table:
 
 ```sql
 CREATE TABLE integration_connection (

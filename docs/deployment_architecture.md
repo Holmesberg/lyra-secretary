@@ -65,8 +65,8 @@ April notes and should not be used as current production guidance.
 | DNS + Proxy + SSL | Cloudflare (free) | Registrar (lyraos.org), CNAMEs to tunnel UUID, automatic HTTPS |
 | Tunnel | `cloudflared` on operator's laptop | Zero-config ingress without opening any inbound port at home |
 | Frontend | Next.js 15.5.15 | App shell, auth UI, task surfaces, reflection modal, toast stack |
-| Backend | FastAPI + APScheduler in Docker | State machine, scoping, Notion sync, pause prediction, retention signals |
-| Cache / queue | Redis in Docker | Active-stopwatch state, undo cache, idempotency, Notion retry queue |
+| Backend | FastAPI + APScheduler in Docker | State machine, scoping, Moodle/calendar provider evidence, pause prediction, retention signals |
+| Cache / queue | Redis in Docker | Active-stopwatch state, undo cache, idempotency, notification/runtime queues |
 | Primary DB | Supabase Postgres 17.6 (eu-west-1, pooler on :6543, sslmode=require) | Canonical user + task data |
 
 Redis + SQLite fallback both still work — SQLite is kept as `.env.backup-sqlite-2026-04-16` for fast revert if Supabase misbehaves.

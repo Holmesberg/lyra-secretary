@@ -149,7 +149,8 @@ Authentication and scoping:
 
 - operator cookie resolves as operator;
 - Holmesberg resolves as non-operator;
-- non-operator cannot access operator/admin/Jarvis routes;
+- non-operator cannot access `/operator`, remaining operator-only `/admin/*`
+  triage endpoints, or removed/parked JARVIS routes;
 - account export rows are scoped to the authenticated user.
 
 Topology:
@@ -198,7 +199,8 @@ journey through every modal.
 `-IncludeProductLoop` runs
 `scripts/browser_holmesberg_product_loop_dogfood.mjs`, which currently covers:
 
-- non-operator route denial for `/operator`, `/admin`, and parked Jarvis;
+- non-operator route denial for `/operator`, remaining operator-only `/admin/*`
+  triage endpoints, and removed/parked JARVIS routes;
 - read-only route sweep for Pulse, Today, Calendar, Deadlines, Table, Insights,
   and Settings;
 - deadline creation through the browser;
@@ -350,7 +352,7 @@ exists.
 
 | Surface / Flow | Required Proof | Current Status |
 |---|---|---|
-| Auth and scoping | Holmesberg is non-operator; operator is operator; non-operator cannot access `/operator`, `/admin`, or active Jarvis. | browser covered |
+| Auth and scoping | Holmesberg is non-operator; operator is operator; non-operator cannot access `/operator`, remaining operator-only `/admin/*` triage endpoints, or removed/parked JARVIS routes. | browser covered |
 | Operator cockpit | `/operator` and `/v1/operator/dashboard` are read-only, content-minimized, invariant-derived. | browser covered |
 | Pulse hub | Quick capture, re-entry visibility, focus card, pressure map, notifications render without raw internals. | partially browser covered |
 | First-run onboarding | Consent/intro, parse, edit dump, lock-in, skip, empty validation. | targeted/gated |
