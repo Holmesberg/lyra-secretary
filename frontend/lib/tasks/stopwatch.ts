@@ -131,7 +131,6 @@ export interface StopResponse {
   is_early_stop: boolean;
   requires_confirmation?: boolean;
   confirmation_message?: string;
-  notion_synced?: boolean;
   discrepancy_score?: number | null;
   micro_mirror?: string | null;
   micro_mirror_view_id?: string | null;

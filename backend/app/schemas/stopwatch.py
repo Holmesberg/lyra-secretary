@@ -43,7 +43,6 @@ class StopwatchStopResponse(BaseModel):
     delta_minutes: Optional[int]
     executed_at: datetime
     is_early_stop: bool = False
-    notion_synced: bool = True
     requires_confirmation: bool = False
     confirmation_message: Optional[str] = None
     post_task_reflection: Optional[int] = None
@@ -246,4 +245,3 @@ class RetroactiveResponse(BaseModel):
     pre_task_readiness: Optional[int] = None
     post_task_reflection: Optional[int] = None
     discrepancy_score: Optional[int] = None
-    notion_synced: bool = True

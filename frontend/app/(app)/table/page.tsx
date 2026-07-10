@@ -191,7 +191,6 @@ const CSV_COLUMNS = [
   "initiation_status",
   "voided_reason",
   "voided_at",
-  "notion_page_id",
 ] as const;
 
 function taskToCsvRow(t: TaskRow): string {
@@ -219,7 +218,6 @@ function taskToCsvRow(t: TaskRow): string {
     t.initiation_status ?? "",
     t.voided_reason ?? "",
     t.voided_at ?? "",
-    t.notion_page_id ?? "",
   ];
   return vals.join(",");
 }

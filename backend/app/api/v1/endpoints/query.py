@@ -271,7 +271,6 @@ def query_tasks(
                 "pause_count": agg.get("pause_count", 0),
                 "task_completion_percentage": agg.get("task_completion_percentage"),
                 "voided_reason": t.voided_reason,
-                "notion_page_id": t.notion_page_id,
                 # Loop 11 deadline binding fields (alembic 033).
                 "deadline_id": t.deadline_id,
                 "deadline_match_source": t.deadline_match_source,

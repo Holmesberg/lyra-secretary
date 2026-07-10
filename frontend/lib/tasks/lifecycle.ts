@@ -51,7 +51,6 @@ export interface TaskRow {
   pause_count: number;
   task_completion_percentage: number | null;
   voided_reason: string | null;
-  notion_page_id: string | null;
   // Loop 11 deadline binding (alembic 033)
   deadline_id: string | null;
   deadline_match_source: string | null;
@@ -169,7 +168,6 @@ export interface ConflictSummary {
 export interface CreateTaskResponse {
   task_id: string | null;
   created: boolean;
-  notion_synced: boolean;
   // Path A: severity gates whether the modal shows an override button.
   // "hard" → no override (single-mutation authority). "soft" → can force.
   severity?: "hard" | "soft" | null;

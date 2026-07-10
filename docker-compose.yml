@@ -17,8 +17,6 @@ services:
       # 2026-04-16 and restarting backend.
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/lyra.db}
       - REDIS_URL=redis://redis:6379/0
-      - NOTION_API_KEY=${NOTION_API_KEY:-}
-      - NOTION_DATABASE_ID=${NOTION_DATABASE_ID:-}
       - USER_TIMEZONE=Africa/Cairo
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}

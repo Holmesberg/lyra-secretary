@@ -226,7 +226,6 @@ export interface RetroactiveResponse {
   pre_task_readiness: number | null;
   post_task_reflection: number | null;
   discrepancy_score: number | null;
-  notion_synced: boolean;
 }
 
 export function createRetroactive(input: RetroactiveInput) {

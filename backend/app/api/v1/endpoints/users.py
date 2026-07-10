@@ -201,7 +201,6 @@ def get_me(db: Session = Depends(get_db)):
         "google_display_name": user.google_display_name,
         "timezone": user.timezone,
         "is_operator": user.is_operator,
-        "notion_enabled": user.notion_enabled,
         "archetype_id": user.archetype_id,
         "archetype_survey_eligible": archetype_survey_eligible,
         "archetype_assignment_completed": bool(
@@ -608,7 +607,6 @@ def data_summary(db: Session = Depends(get_db)):
         "planned_count": by_state.get(TaskState.PLANNED, 0) + by_state.get("PLANNED", 0),
         "session_count": session_count,
         "reflection_count": reflection_count,
-        "notion_enabled": user.notion_enabled,
     }
 
 
@@ -632,7 +630,7 @@ def delete_my_account(
 
     If retain_for_research=true (default): anonymize task and session rows,
     preserving behavioral measurements for product research. Identifying
-    fields (title, notes, notion_page_id) are cleared. User row is deleted.
+    fields and legacy external-sync identifiers are cleared. User row is deleted.
 
     If retain_for_research=false: hard delete cascade across all tables.
     """

@@ -153,7 +153,6 @@ def test_purge_user_runtime_state_deletes_known_user_scoped_keys():
             "stopwatch:active:7",
             "stopwatch:paused:7",
             "notifications:pending:7",
-            "notion:sync_queue:7",
             "last_operated_task:7",
             "gcal:access_token:7",
             "undo:7:task-1",
@@ -173,7 +172,7 @@ def test_purge_user_runtime_state_deletes_known_user_scoped_keys():
 
     deleted = redis.purge_user_runtime_state("7")
 
-    assert deleted == 14
+    assert deleted == 13
     assert fake.keys == {
         "stopwatch:active:8",
         "notifications:pending:8",

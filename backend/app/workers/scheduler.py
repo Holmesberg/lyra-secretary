@@ -10,7 +10,6 @@ import logging
 
 from app.services.operator_notifier import format_alert_context, notify_operator
 from app.workers.jobs.reminders import check_upcoming_tasks
-from app.workers.jobs.notion_sync import retry_failed_syncs
 from app.workers.jobs.timer_overflow import check_timer_overflow
 from app.workers.jobs.overdue_tasks import detect_and_skip_overdue_tasks
 from app.workers.jobs.stale_session_recovery import run_stale_session_recovery
@@ -29,11 +28,11 @@ logger = logging.getLogger(__name__)
 # APScheduler default misfire_grace_time is 30s — any job that should
 # have fired more than 30s ago is silently dropped. Operator runs the
 # backend on a laptop that sleeps overnight, which means hours of
-# missed jobs (Moodle sync, Notion retry, etc.) get DROPPED on wake
+# missed jobs (Moodle sync, reminder recovery, etc.) get DROPPED on wake
 # instead of replayed. Audit-flagged 2026-04-30. Setting a global
 # 24h grace via job_defaults so misfired jobs catch up on wake. Each
-# job is internally idempotent (Notion retry queue is queue-based,
-# Moodle sync upserts by external_uid, sweep jobs query current state)
+# job is internally idempotent (Moodle sync upserts by external_uid,
+# sweep jobs query current state)
 # so replaying once on wake is harmless.
 scheduler = BackgroundScheduler(
     job_defaults={"misfire_grace_time": 60 * 60 * 24, "coalesce": True}
@@ -148,15 +147,6 @@ def start_scheduler():
         max_instances=1,
     )
     
-    # Notion sync retry (check every 5 minutes)
-    scheduler.add_job(
-        retry_failed_syncs,
-        trigger=IntervalTrigger(minutes=5),
-        id="notion_sync",
-        name="Retry failed Notion syncs",
-        replace_existing=True
-    )
-
     # Timer overflow (check every 2 minutes)
     scheduler.add_job(
         check_timer_overflow,

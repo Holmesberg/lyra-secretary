@@ -22,7 +22,6 @@ import { api } from "./api";
 export type IntegrationId =
   | "google_calendar"
   | "moodle"
-  | "notion"
   | "ics";
 
 export type IntegrationStatus =
@@ -98,21 +97,6 @@ export const INTEGRATIONS: IntegrationDef[] = [
     monogram: "Mo",
     monogramClass:
       "bg-ember/15 text-ember border border-ember/30",
-  },
-  {
-    id: "notion",
-    name: "Notion",
-    description:
-      "Import tasks from a Notion database; outbound sync already runs for operators.",
-    capabilityLine:
-      "Column-mapping UI lets you pick which properties become LyraOS's title, date, category. Webhooks + bi-directional sync in v2.",
-    scopes: ["pages:read", "databases:read"],
-    authShape: "oauth",
-    available: false,
-    comingSoonNote: "Shipping Phase 7 (post-Spring-School).",
-    monogram: "N",
-    monogramClass:
-      "bg-parchment/10 text-parchment border border-parchment/25",
   },
   {
     id: "ics",

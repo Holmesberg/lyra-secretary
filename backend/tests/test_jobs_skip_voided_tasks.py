@@ -1,15 +1,14 @@
 """Regression tests: background jobs must skip voided tasks.
 
-Covers the 5 background job fixes from the voided_at audit (commit 1):
+Covers background job fixes from the voided_at audit:
   - reminders.py: check_upcoming_tasks
   - timer_overflow.py: check_timer_overflow
   - overdue_tasks.py: detect_and_skip_overdue_tasks
   - stale_session_recovery.py: run_stale_session_recovery
-  - notion_sync.py: retry_failed_syncs
 
 Each test creates a voided task in the job's target state and verifies
 the job skips it (no side effects: no notifications, no state changes,
-no Notion calls).
+no external side effects).
 
 These tests call _run_for_one_user directly (not via for_each_user)
 to avoid SessionLocal/scoping indirection. The voided_at filter is
@@ -73,7 +72,7 @@ def user(db):
         user_id=USER_ID,
         email="voided-test@test",
         is_operator=True,
-        notion_enabled=True,
+        notion_enabled=False,
         created_at=NOW,
     )
     db.add(u)
@@ -297,46 +296,3 @@ def test_stale_recovery_skip_voided_task(db, user):
     # Live session should have been auto-closed
     assert live_session.end_time_utc is not None
     assert live_session.auto_closed is True
-
-
-# ---------------------------------------------------------------------------
-# 5. notion_sync — voided task should be dropped from queue, not synced
-# ---------------------------------------------------------------------------
-
-def test_notion_sync_skip_voided_task(db, user):
-    """A voided task in the Notion retry queue must be dropped (not synced)."""
-    from app.workers.jobs.notion_sync import _run_for_one_user
-
-    set_current_user_id(USER_ID)
-
-    voided_task = _make_task(db, state="PLANNED", voided=True)
-    live_task = _make_task(db, state="PLANNED", voided=False)
-
-    fake_queue = [
-        {"task_id": voided_task.task_id},
-        {"task_id": live_task.task_id},
-    ]
-
-    with patch("app.workers.jobs.notion_sync.RedisClient") as MockRedis, \
-         patch("app.workers.jobs.notion_sync.NotionClient") as MockNotion, \
-         patch("app.workers.jobs.notion_sync.settings") as mock_settings:
-        mock_settings.NOTION_API_KEY = "test-notion-key"
-        mock_settings.NOTION_DATABASE_ID = "test-notion-db"
-        mock_rc = MagicMock()
-        mock_rc.get_notion_sync_queue.return_value = fake_queue
-        MockRedis.return_value = mock_rc
-
-        mock_notion = MagicMock()
-        MockNotion.return_value = mock_notion
-
-        _run_for_one_user(db, user)
-
-        # Notion sync should only be called for the live task
-        assert mock_notion.sync_task.call_count == 1
-        synced_task = mock_notion.sync_task.call_args[0][0]
-        assert synced_task.task_id == live_task.task_id
-
-        # Both items consumed from queue (voided = dropped, live = synced)
-        mock_rc.remove_from_notion_queue.assert_called_once_with(
-            user_id=str(USER_ID), count=2
-        )

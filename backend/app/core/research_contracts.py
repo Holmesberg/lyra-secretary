@@ -78,7 +78,6 @@ PROVIDER_SPECIFIC_TERMS: Final[frozenset[str]] = frozenset(
         "google_calendar",
         "jira",
         "moodle",
-        "notion",
     }
 )
 

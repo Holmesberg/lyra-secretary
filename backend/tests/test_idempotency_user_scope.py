@@ -34,9 +34,6 @@ class _FakeRedisClient:
         scoped = (str(user_id) if user_id is not None else None, key)
         return 1 if self.store.pop(scoped, None) is not None else 0
 
-    def queue_notion_sync(self, *args, **kwargs):
-        return None
-
     def cache_undo_action(self, *args, **kwargs):
         return None
 

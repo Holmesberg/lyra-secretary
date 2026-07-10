@@ -58,7 +58,7 @@ class ActiveStopwatchStore:
 
         Used when a task was voided out from under an active session; we just
         want the row marked closed so recover_from_db stops finding it. No
-        duration/delta math, no micro-mirror, no Notion sync.
+        duration/delta math, no micro-mirror, no external sync.
 
         Also closes any open pause_event rows for this session (resumed_at_utc
         IS NULL) so pause-history analytics don't see dangling opens. The

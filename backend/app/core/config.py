@@ -21,10 +21,6 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_PASSWORD: str = ""
 
-    # Notion
-    NOTION_API_KEY: str = ""
-    NOTION_DATABASE_ID: str = ""
-
     # OpenAI
     OPENAI_API_KEY: str = ""
 

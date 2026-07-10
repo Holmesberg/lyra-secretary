@@ -218,7 +218,6 @@ class RedisClient:
             self._active_stopwatch_key(uid),
             self._pause_state_key(uid),
             f"notifications:pending:{uid}",
-            f"notion:sync_queue:{uid}",
             f"last_operated_task:{uid}",
             f"gcal:access_token:{uid}",
         ]
@@ -303,23 +302,6 @@ class RedisClient:
         """Remove a reserved idempotency key after an abandoned write."""
         redis_key = self._idempotency_key(key, user_id=user_id)
         return int(self.client.delete(redis_key) or 0)
-
-    # Notion sync queue
-    def queue_notion_sync(self, task_id: str, task_data: Dict[str, Any], user_id: str = "1"):
-        """Queue task for Notion sync (if API down). Per-user namespaced."""
-        key = f"notion:sync_queue:{user_id}"
-        self.client.rpush(key, json.dumps({"task_id": task_id, "data": task_data}))
-
-    def get_notion_sync_queue(self, user_id: str = "1", limit: int = 10) -> list:
-        """Get pending Notion sync items for a user."""
-        key = f"notion:sync_queue:{user_id}"
-        items = self.client.lrange(key, 0, limit - 1)
-        return [json.loads(item) for item in items]
-
-    def remove_from_notion_queue(self, user_id: str = "1", count: int = 0):
-        """Remove synced items from a user's queue."""
-        key = f"notion:sync_queue:{user_id}"
-        self.client.ltrim(key, count, -1)
 
     # Last-operated task (context for follow-up corrections)
     def set_last_task(self, task_id: str, title: str, state: str, user_id: str = "1", ttl_seconds: int = 3600):

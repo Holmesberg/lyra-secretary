@@ -1,4 +1,4 @@
-"""5-state system consistency checks across Task/Session/Redis/Notion/Scheduler.
+"""5-state system consistency checks across Task/Session/Redis/Scheduler.
 
 Gate #11 in the durable verification suite. Runs after any commit touching
 a state transition path (stop, pause, resume, void, skip, delete, mark_abandoned,
@@ -438,23 +438,22 @@ def test_update_completion_keeps_timer_running(state_env, client):
 # ---------------------------------------------------------------
 
 def test_apscheduler_job_count():
-    """All 14 background jobs must be registered in scheduler.py.
+    """All 13 background jobs must be registered in scheduler.py.
 
     Count (as of 2026-05-01 — Moodle WS submissions sync, alembic 043):
       1. reminders
-      2. notion_sync
-      3. timer_overflow
-      4. overdue_tasks
-      5. stale_session_recovery
-      6. orphan_task_recovery
-      7. pause_prediction
-      8. reconcile_responses
-      9. reconcile_deadline_outcomes  (Loop 11)
-     10. sweep_missed_deadlines        (Loop 11)
-     11. llm_enrichment                 (magic-for-alpha W1)
-     12. resume_prediction              (magic-for-alpha W2)
-     13. moodle_ics_sync                (LMS wedge, alembic 041)
-     14. moodle_submissions_sync        (LMS WS auto-detect, alembic 043)
+      2. timer_overflow
+      3. overdue_tasks
+      4. stale_session_recovery
+      5. orphan_task_recovery
+      6. pause_prediction
+      7. reconcile_responses
+      8. reconcile_deadline_outcomes
+      9. sweep_missed_deadlines
+     10. llm_enrichment
+     11. resume_prediction
+     12. moodle_ics_sync
+     13. moodle_submissions_sync
 
     Update this when adding/removing a job — this is the gate.
     """
@@ -474,8 +473,8 @@ def test_apscheduler_job_count():
         and isinstance(getattr(node, "func", None), ast.Attribute)
         and getattr(node.func, "attr", "") == "add_job"
     )
-    assert add_job_calls == 14, (
-        f"Expected 14 add_job calls in scheduler.py, found {add_job_calls}. "
+    assert add_job_calls == 13, (
+        f"Expected 13 add_job calls in scheduler.py, found {add_job_calls}. "
         f"A background job may have been added or removed without updating "
         f"the state consistency gate."
     )

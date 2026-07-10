@@ -34,7 +34,6 @@ type DataSummary = {
   planned_count: number;
   session_count: number;
   reflection_count: number;
-  notion_enabled: boolean;
 };
 
 export default function SettingsPage() {
@@ -295,12 +294,6 @@ export default function SettingsPage() {
                     <li>
                       {summary.reflection_count} reflection{summary.reflection_count !== 1 && "s"} and readiness rating{summary.reflection_count !== 1 && "s"}
                     </li>
-                    {summary.notion_enabled && (
-                      <li>
-                        All Notion sync state
-                        <span className="text-dust-deep"> (Notion pages will not be deleted from your workspace)</span>
-                      </li>
-                    )}
                     <li>Account login and preferences</li>
                     <li>Runtime cache and queue state will be purged where technically available</li>
                   </ul>

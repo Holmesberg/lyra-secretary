@@ -36,7 +36,6 @@ from app.db.models import Deadline, TaskState
 from app.utils.time_utils import now_utc as _now_utc
 from app.services.task_manager import TaskManager
 from app.services.stopwatch_manager import StopwatchManager, NoActiveStopwatchError
-from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
 from app.core.exceptions import ImmutableTaskError
 from app.db.models import Task
@@ -86,7 +85,7 @@ def create_task(
     Create a new task.
     
     If conflicts detected and force=False, returns conflicts without creating.
-    If force=True or no conflicts, creates task and syncs to Notion.
+    If force=True or no conflicts, creates task.
     
     Optional: Pass X-Idempotency-Key header to prevent duplicate creates
     within a 30-second window.
@@ -126,7 +125,7 @@ def create_task(
 
         manager = TaskManager(db)
         mutation_attempted = True
-        task, result, notion_synced = manager.create_task(
+        task, result, _legacy_external_sync = manager.create_task(
             title=request.title,
             start=request.start,
             end=request.end,
@@ -173,7 +172,6 @@ def create_task(
             response = TaskCreateResponse(
                 task_id=None,
                 created=False,
-                notion_synced=False,
                 conflicts=conflict_info,
                 # HARD never overridable; SOFT is.
                 can_proceed=(severity == "soft"),
@@ -192,7 +190,6 @@ def create_task(
         response = TaskCreateResponse(
             task_id=task.task_id,
             created=True,
-            notion_synced=notion_synced,
             conflicts=[],
             can_proceed=True,
             severity=None,
@@ -622,33 +619,6 @@ def clear_schedule(
         "cleared": True,
         "planned_deleted": len(deleted_ids),
     }
-
-
-@router.post("/tasks/{task_id}/sync")
-def sync_task_to_notion(
-    task_id: str,
-    db: Session = Depends(get_db),
-) -> dict:
-    """
-    Force a Notion sync for a specific task.
-
-    Use to backfill tasks created before the timezone pipeline fix (LYR-015),
-    or to recover tasks that failed to sync due to transient Notion API errors.
-    """
-    task = db.query(Task).filter(Task.task_id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    try:
-        notion = NotionClient()
-        page_id = notion.sync_task(task, db=db)
-        return {
-            "task_id": task_id,
-            "synced": True,
-            "notion_page_id": page_id or task.notion_page_id,
-        }
-    except Exception as e:
-        logger.error(f"Manual Notion sync failed for {task_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Notion sync failed: {e}")
 
 
 @router.post("/tasks/{task_id}/llm-confirm", response_model=LlmConfirmResponse)

@@ -216,7 +216,7 @@ class StopwatchManager:
 
         Used when a task was voided out from under an active session — we
         just want the row marked closed so _recover_from_db stops finding
-        it. No duration/delta math, no micro-mirror, no Notion sync.
+        it. No duration/delta math, no micro-mirror, no external sync.
 
         Also closes any open pause_event rows for this session (resumed_at_utc
         IS NULL) so pause-history analytics don't see dangling opens. The
@@ -603,22 +603,6 @@ class StopwatchManager:
         # write latency on the pause path.
         self.db.commit()
         self._invalidate_task_ranges(user_id)
-
-        # Notion sync queued for the background notion_retry_job (every
-        # 5 min) instead of blocking the request thread — the inline
-        # sync_task() call used to take 1-8 s, which the frontend
-        # awaited before re-enabling the Pause button (perceived as
-        # the "8-10 s state-switch delay" per Apr 16 Investigation 3).
-        # Same retry queue used by create_task / reschedule_task.
-        if task and task.state == TaskState.PAUSED:
-            try:
-                self.redis.queue_notion_sync(
-                    task.task_id, {"action": "sync"},
-                    user_id=user_id,
-                )
-            except Exception as e:
-                logger.error(f"Notion enqueue failed on pause: {e}", exc_info=True)
-
         self.redis.set_pause_state(user_id, session.session_id, now.isoformat())
 
         return {
@@ -705,17 +689,6 @@ class StopwatchManager:
         # Single commit for session + task + pause_event close.
         self.db.commit()
         self._invalidate_task_ranges(user_id)
-
-        # Notion sync queued to background (same reasoning as pause()).
-        if task.state == TaskState.EXECUTING:
-            try:
-                self.redis.queue_notion_sync(
-                    task.task_id, {"action": "sync"},
-                    user_id=user_id,
-                )
-            except Exception as e:
-                logger.error(f"Notion enqueue failed on resume: {e}", exc_info=True)
-
         self.redis.clear_pause_state(user_id)
 
         return {
@@ -926,19 +899,6 @@ class StopwatchManager:
             title=target.title,
             start_time=target_session.start_time_utc.isoformat(),
         )
-
-        # ---- Best-effort Notion sync for both ends ----
-        try:
-            if source_task_id:
-                self.redis.queue_notion_sync(
-                    source_task_id, {"action": "sync"}, user_id=user_id
-                )
-            self.redis.queue_notion_sync(
-                target.task_id, {"action": "sync"}, user_id=user_id
-            )
-        except Exception as e:
-            logger.error(f"Notion enqueue failed on switch: {e}", exc_info=True)
-
         return {
             "switched": True,
             "noop": False,
@@ -1046,7 +1006,7 @@ class StopwatchManager:
         scope_outcome: Optional[str] = None,
     ) -> tuple:
         """
-        Stop active stopwatch. Returns (session, task, is_early_stop, notion_synced,
+        Stop active stopwatch. Returns (session, task, is_early_stop, legacy_external_sync,
         paused_parent, micro_mirror, calibration_nudge, mid_task_completion_pct).
 
         mid_task_completion_pct is the pre-existing completion % on the session
@@ -1169,13 +1129,7 @@ class StopwatchManager:
             self.db.refresh(session)
             self.db.refresh(task)
             self.redis.clear_active_stopwatch(user_id)
-            # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
-            notion_synced_zero = False
-            try:
-                self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=user_id)
-            except Exception as e:
-                logger.error(f"Notion queue failed on zero-duration skip: {e}", exc_info=True)
-            return session, task, True, notion_synced_zero, None, None, None, pre_existing_pct
+
 
         session.end_time_utc = stop_time
         # LYR-105: same invariant on the normal stop path. Helper is
@@ -1184,7 +1138,7 @@ class StopwatchManager:
         self.db.add(session)
 
         # complete_task() sets executed_duration = (end - start).minutes (wall clock)
-        task, notion_synced = self.task_manager.complete_task(
+        task, _legacy_external_sync = self.task_manager.complete_task(
             task_id=task.task_id,
             executed_start=session.start_time_utc,
             executed_end=stop_time,
@@ -1248,7 +1202,7 @@ class StopwatchManager:
                     "paused_minutes": paused_mins,
                 }
 
-        return session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct
+        return session, task, is_early_stop, False, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct
 
     def resolve_stale_pause(
         self,

@@ -183,7 +183,6 @@ class TaskCreateResponse(BaseModel):
     """
     task_id: Optional[str]
     created: bool
-    notion_synced: bool = False
     conflicts: list[ConflictInfo] = Field(default_factory=list)
     can_proceed: bool = True
     severity: Optional[str] = None

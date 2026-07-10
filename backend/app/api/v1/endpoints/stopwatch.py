@@ -299,7 +299,7 @@ def stop_stopwatch(
                 )
             return response
 
-        session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct = manager.stop(
+        session, task, is_early_stop, _legacy_external_sync, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct = manager.stop(
             post_task_reflection=request.post_task_reflection,
             task_completion_percentage=request.task_completion_percentage,
             scope_outcome=request.scope_outcome,
@@ -417,7 +417,6 @@ def stop_stopwatch(
             delta_minutes=task.duration_delta_minutes,
             executed_at=to_local(task.executed_end_utc or datetime.utcnow()),
             is_early_stop=is_early_stop,
-            notion_synced=notion_synced,
             post_task_reflection=task.post_task_reflection,
             discrepancy_score=task.discrepancy_score,
             paused_parent=paused_parent,
@@ -618,7 +617,7 @@ def retroactive_log(
 
     try:
         manager = TaskManager(db)
-        task, notion_synced = manager.create_retroactive_task(
+        task, _legacy_external_sync = manager.create_retroactive_task(
             title=request.title,
             start_time=request.start_time,
             end_time=request.end_time,
@@ -642,7 +641,6 @@ def retroactive_log(
             pre_task_readiness=task.pre_task_readiness,
             post_task_reflection=task.post_task_reflection,
             discrepancy_score=task.discrepancy_score,
-            notion_synced=notion_synced,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

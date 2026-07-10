@@ -259,7 +259,7 @@ def brain_dump_commit(
         deadline_id = binding_for_task.get(item.item_id)
 
         try:
-            task, _conflicts, _notion = task_manager.create_task(
+            task, _conflicts, _legacy_external_sync = task_manager.create_task(
                 title=item.title,
                 start=when_local,
                 end=end_local,

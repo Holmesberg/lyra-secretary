@@ -565,7 +565,6 @@ function TodayInner() {
       pause_count: 0,
       task_completion_percentage: null,
       voided_reason: null,
-      notion_page_id: null,
       description: null,
       deadline_id: null,
       deadline_match_source: null,

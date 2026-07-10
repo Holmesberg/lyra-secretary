@@ -20,7 +20,6 @@ const SOURCE_META: Record<
 > = {
   moodle: { label: "Moodle", monogram: "Mo", color: "ember" },
   google_calendar: { label: "Google Cal", monogram: "GC", color: "signal" },
-  notion: { label: "Notion", monogram: "N", color: "dust" },
   ics: { label: "ICS", monogram: "iC", color: "dust" },
 };
 
@@ -38,8 +37,7 @@ export function PulseIntegrationsV2({ integrations }: PulseIntegrationsV2Props) 
     const order: Record<string, number> = {
       moodle: 0,
       google_calendar: 1,
-      notion: 2,
-      ics: 3,
+      ics: 2,
     };
     return (order[a.id] ?? 99) - (order[b.id] ?? 99);
   });
