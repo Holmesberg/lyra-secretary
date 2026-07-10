@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, subDays, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { Download, ChevronUp, ChevronDown } from "lucide-react";
 import { queryTasksRange, type TaskRow, type QueryResponse } from "@/lib/tasks";
 import { ExecutionCorrectionDialog } from "@/components/execution-correction-dialog";
@@ -14,58 +14,29 @@ import {
   type Category,
 } from "@/lib/categories";
 import { cn } from "@/lib/utils";
+import {
+  buildTableRows,
+  buildTasksCsv,
+  computeDaySummaries,
+  dateRangeWindow,
+  DEFAULT_FILTERS,
+  deltaCls,
+  displayDate,
+  filterTableTasks,
+  fmtDelta,
+  fmtRF,
+  INIT_ABBREV,
+  sortTasks,
+  TASK_STATES,
+  type DateRange,
+  type Filters,
+  type SortColumn,
+  type SortDir,
+} from "@/lib/table-view";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-type DateRange = "7" | "30" | "all";
-type SortColumn =
-  | "date"
-  | "title"
-  | "category"
-  | "state"
-  | "plan"
-  | "exec"
-  | "delta"
-  | "rf"
-  | "init";
-type SortDir = "asc" | "desc";
-
-const TASK_STATES = [
-  "PLANNED",
-  "EXECUTING",
-  "PAUSED",
-  "EXECUTED",
-  "SKIPPED",
-] as const;
-
-const INIT_ABBREV: Record<string, string> = {
-  initiated: "init",
-  not_started: "—",
-  abandoned: "aband",
-  user_skipped: "skip",
-  retroactive: "retro",
-  system_error: "err",
-};
-
 const STORAGE_KEY = "lyra-table-filters";
-
-interface Filters {
-  dateRange: DateRange;
-  categories: string[];
-  states: string[];
-  showVoided: boolean;
-  sortColumn: SortColumn;
-  sortDir: SortDir;
-}
-
-const DEFAULT_FILTERS: Filters = {
-  dateRange: "7",
-  categories: [],
-  states: [],
-  showVoided: false,
-  sortColumn: "date",
-  sortDir: "desc",
-};
 
 function loadFilters(): Filters {
   if (typeof window === "undefined") return DEFAULT_FILTERS;
@@ -86,146 +57,12 @@ function saveFilters(f: Filters) {
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-function dateKey(iso: string | null): string {
-  if (!iso) return "unknown";
-  return format(parseISO(iso), "yyyy-MM-dd");
-}
-
-function displayDate(iso: string | null): string {
-  if (!iso) return "—";
-  return format(parseISO(iso), "MMM d");
-}
-
-function deltaCls(d: number | null): string {
-  // Delta polarity still carries meaning: positive = under-estimate (ember
-  // warning), negative = over-estimate (signal calm), null = no data.
-  if (d == null) return "text-dust-deep";
-  if (d > 0) return "text-ember";
-  if (d < 0) return "text-signal";
-  return "text-dust";
-}
-
-function fmtDelta(d: number | null): string {
-  if (d == null) return "—";
-  if (d === 0) return "±0m";
-  return d > 0 ? `−${d}m` : `+${Math.abs(d)}m`;
-}
-
-function fmtRF(r: number | null, f: number | null): string {
-  if (r == null && f == null) return "—";
-  return `${r ?? "?"}→${f ?? "?"}`;
-}
-
 // ─── Daily Summary ──────────────────────────────────────────────────
-
-interface DaySummary {
-  date: string;
-  planned: number;
-  executed: number;
-  delta: number;
-  executedCount: number;
-  skippedCount: number;
-  avgDiscrepancy: number | null;
-}
-
-function computeDaySummaries(tasks: TaskRow[]): Map<string, DaySummary> {
-  const map = new Map<string, DaySummary>();
-  for (const t of tasks) {
-    const dk = dateKey(t.start);
-    let s = map.get(dk);
-    if (!s) {
-      s = {
-        date: dk,
-        planned: 0,
-        executed: 0,
-        delta: 0,
-        executedCount: 0,
-        skippedCount: 0,
-        avgDiscrepancy: null,
-      };
-      map.set(dk, s);
-    }
-    s.planned += t.planned_duration_minutes ?? 0;
-    s.executed += t.effective_executed_duration_minutes ?? t.executed_duration_minutes ?? 0;
-    s.delta += t.effective_duration_delta_minutes ?? t.duration_delta_minutes ?? 0;
-    if (t.state === "EXECUTED") s.executedCount++;
-    if (t.state === "SKIPPED") s.skippedCount++;
-  }
-  // Avg discrepancy per day
-  for (const [dk, s] of map) {
-    const dayTasks = tasks.filter((t) => dateKey(t.start) === dk);
-    const scores = dayTasks
-      .map((t) => t.discrepancy_score)
-      .filter((v): v is number => v != null);
-    s.avgDiscrepancy =
-      scores.length > 0
-        ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
-        : null;
-  }
-  return map;
-}
 
 // ─── CSV Export ─────────────────────────────────────────────────────
 
-const CSV_COLUMNS = [
-  "task_id",
-  "date",
-  "planned_start",
-  "planned_end",
-  "actual_start",
-  "actual_end",
-  "title",
-  "category",
-  "state",
-  "planned_duration_minutes",
-  "actual_duration_minutes",
-  "duration_delta_minutes",
-  "pre_task_readiness",
-  "post_task_reflection",
-  "discrepancy_score",
-  "signed_discrepancy",
-  "task_completion_percentage",
-  "initiation_delay_minutes",
-  "total_paused_minutes",
-  "pause_count",
-  "initiation_status",
-  "voided_reason",
-  "voided_at",
-] as const;
-
-function taskToCsvRow(t: TaskRow): string {
-  const vals: string[] = [
-    t.task_id,
-    t.start ? format(parseISO(t.start), "yyyy-MM-dd") : "",
-    t.start ?? "",
-    t.end ?? "",
-    t.executed_start ?? "",
-    t.effective_executed_end ?? t.executed_end ?? "",
-    `"${(t.title ?? "").replace(/"/g, '""')}"`,
-    t.category ?? "",
-    t.state,
-    String(t.planned_duration_minutes ?? ""),
-    String(t.effective_executed_duration_minutes ?? t.executed_duration_minutes ?? ""),
-    String(t.effective_duration_delta_minutes ?? t.duration_delta_minutes ?? ""),
-    String(t.pre_task_readiness ?? ""),
-    String(t.post_task_reflection ?? ""),
-    String(t.discrepancy_score ?? ""),
-    String(t.signed_discrepancy ?? ""),
-    String(t.task_completion_percentage ?? ""),
-    String(t.initiation_delay_minutes ?? ""),
-    String(t.total_paused_minutes ?? ""),
-    String(t.pause_count ?? ""),
-    t.initiation_status ?? "",
-    t.voided_reason ?? "",
-    t.voided_at ?? "",
-  ];
-  return vals.join(",");
-}
-
 function downloadCsv(tasks: TaskRow[]) {
-  const header = CSV_COLUMNS.join(",");
-  const rows = tasks.map(taskToCsvRow);
-  const csv = [header, ...rows].join("\n");
+  const csv = buildTasksCsv(tasks);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -236,49 +73,6 @@ function downloadCsv(tasks: TaskRow[]) {
 }
 
 // ─── Sort ───────────────────────────────────────────────────────────
-
-function sortTasks(
-  tasks: TaskRow[],
-  col: SortColumn,
-  dir: SortDir
-): TaskRow[] {
-  const sorted = [...tasks];
-  const m = dir === "asc" ? 1 : -1;
-  sorted.sort((a, b) => {
-    switch (col) {
-      case "date":
-        return m * ((a.start ?? "").localeCompare(b.start ?? ""));
-      case "title":
-        return m * a.title.localeCompare(b.title);
-      case "category":
-        return m * ((a.category ?? "").localeCompare(b.category ?? ""));
-      case "state":
-        return m * a.state.localeCompare(b.state);
-      case "plan":
-        return m * ((a.planned_duration_minutes ?? 0) - (b.planned_duration_minutes ?? 0));
-      case "exec":
-        return m * (
-          ((a.effective_executed_duration_minutes ?? a.executed_duration_minutes) ?? 0) -
-          ((b.effective_executed_duration_minutes ?? b.executed_duration_minutes) ?? 0)
-        );
-      case "delta":
-        return m * (
-          ((a.effective_duration_delta_minutes ?? a.duration_delta_minutes) ?? 0) -
-          ((b.effective_duration_delta_minutes ?? b.duration_delta_minutes) ?? 0)
-        );
-      case "rf": {
-        const aVal = (a.pre_task_readiness ?? 0) * 10 + (a.post_task_reflection ?? 0);
-        const bVal = (b.pre_task_readiness ?? 0) * 10 + (b.post_task_reflection ?? 0);
-        return m * (aVal - bVal);
-      }
-      case "init":
-        return m * ((a.initiation_status ?? "").localeCompare(b.initiation_status ?? ""));
-      default:
-        return 0;
-    }
-  });
-  return sorted;
-}
 
 // ─── Multi-select Dropdown ──────────────────────────────────────────
 
@@ -431,17 +225,10 @@ export default function TablePage() {
   );
 
   // Compute date range from filter
-  const { dateFrom, dateTo } = useMemo(() => {
-    const today = format(new Date(), "yyyy-MM-dd");
-    if (filters.dateRange === "7") {
-      return { dateFrom: format(subDays(new Date(), 7), "yyyy-MM-dd"), dateTo: today };
-    }
-    if (filters.dateRange === "30") {
-      return { dateFrom: format(subDays(new Date(), 30), "yyyy-MM-dd"), dateTo: today };
-    }
-    // "all" — 2 years back is plenty at alpha scale
-    return { dateFrom: "2024-01-01", dateTo: today };
-  }, [filters.dateRange]);
+  const { dateFrom, dateTo } = useMemo(
+    () => dateRangeWindow(filters.dateRange),
+    [filters.dateRange]
+  );
 
   const {
     data: taskData,
@@ -461,22 +248,7 @@ export default function TablePage() {
     void refetchTasks();
   }, [refetchTasks]);
 
-  // Client-side filtering
-  const filtered = useMemo(() => {
-    let result = tasks;
-    // Always hide DELETED from table view
-    result = result.filter((t) => t.state !== "DELETED");
-    if (!filters.showVoided) {
-      result = result.filter((t) => !t.voided_at);
-    }
-    if (filters.categories.length > 0) {
-      result = result.filter((t) => t.category && filters.categories.includes(t.category));
-    }
-    if (filters.states.length > 0) {
-      result = result.filter((t) => filters.states.includes(t.state));
-    }
-    return result;
-  }, [tasks, filters.showVoided, filters.categories, filters.states]);
+  const filtered = useMemo(() => filterTableTasks(tasks, filters), [tasks, filters]);
 
   // Sort
   const sorted = useMemo(
@@ -487,21 +259,7 @@ export default function TablePage() {
   // Group by date for summary rows
   const daySummaries = useMemo(() => computeDaySummaries(filtered), [filtered]);
 
-  // Render rows with date group separators
-  const rows = useMemo(() => {
-    const result: Array<{ type: "summary"; dk: string; summary: DaySummary } | { type: "task"; task: TaskRow }> = [];
-    let lastDk = "";
-    for (const t of sorted) {
-      const dk = dateKey(t.start);
-      if (dk !== lastDk) {
-        const s = daySummaries.get(dk);
-        if (s) result.push({ type: "summary", dk, summary: s });
-        lastDk = dk;
-      }
-      result.push({ type: "task", task: t });
-    }
-    return result;
-  }, [sorted, daySummaries]);
+  const rows = useMemo(() => buildTableRows(sorted, daySummaries), [sorted, daySummaries]);
 
   return (
     <div className="space-y-3">
@@ -617,7 +375,7 @@ export default function TablePage() {
                   return (
                     <tr key={`sum-${row.dk}`} className="border-t border-hairline bg-void-2/30">
                       <td className="px-3 py-1.5 text-[11px] font-medium text-dust">
-                        {row.dk !== "unknown" ? format(parseISO(row.dk), "MMM d") : "—"}
+                        {row.dk !== "unknown" ? displayDate(row.dk) : "—"}
                       </td>
                       <td colSpan={2} className="px-3 py-1.5 text-[11px] text-dust-deep">
                         {s.executedCount} done, {s.skippedCount} skipped
