@@ -124,6 +124,12 @@ jobs:
         python scripts/scan_backend_layer_imports.py --self-test
         python scripts/scan_backend_layer_imports.py --fail-on-errors
 
+    - name: Run Cortex read-only gate
+      run: |
+        python -m py_compile scripts/scan_cortex_readonly.py
+        python scripts/scan_cortex_readonly.py --self-test
+        python scripts/scan_cortex_readonly.py --fail-on-errors
+
     - name: Run post-wave evidence manifest contract gate
       run: node scripts/test_post_wave_evidence_manifest_contract.mjs
 
