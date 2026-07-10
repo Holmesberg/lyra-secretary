@@ -16968,3 +16968,61 @@ Rollback note:
   `measurement_integrity_snapshot`.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Extract Pending Notification Duplicate Identity
+
+Seam:
+
+- `operator-pending-notification-duplicate-identity-extraction`
+
+Changed authority:
+
+- `backend/app/services/operator_notification_snapshot.py` now exposes the
+  read-only pending-notification duplicate identity classifier as
+  `pending_notification_duplicate_identity`.
+- Redis pending snapshot assembly still owns queue reads, count aggregation,
+  duplicate breakdown examples, and internal-copy leak counting.
+
+Removed paths:
+
+- Nested duplicate identity helper from inside `redis_notification_snapshot`.
+
+Parked paths:
+
+- Notification lifecycle terminal-state handling remains owned by the
+  notification lifecycle service and exposure ledger.
+- Redis pending queue retirement or storage changes remain parked.
+
+Moved authority:
+
+- No write, mutation, schema, Redis, exposure, lifecycle, hosted-public, or
+  readiness authority moved. This seam extracts a read-only classifier and adds
+  direct characterization around stable target and legacy-content identity.
+
+Tests and verification:
+
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\services\operator_notification_snapshot.py backend\tests\test_operator_dashboard.py`;
+  passed.
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_readiness.py tests\test_operator_route_security.py`;
+  passed with 22 passed and existing warnings.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed with zero missing owners and zero worker-write drift.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `01ae93f` passed: run `29106923180`.
+
+Behavior parity statement:
+
+- No user-visible behavior, duplicate prompt policy, exposure lifecycle
+  semantics, readiness denominator, schema, Redis state, hosted-public artifact,
+  public deploy, public restart, production data, or rebrand/domain behavior
+  changed.
+
+Rollback note:
+
+- Revert the pending notification duplicate identity extraction commit to move
+  the classifier back inside `redis_notification_snapshot` and remove the
+  direct characterization test.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
