@@ -18140,3 +18140,66 @@ Rollback note:
   remove the scanner path addition, and remove this docs/ledger entry. No
   schema, data, Redis migration, hosted-public deploy, public restart,
   production repair, or rebrand/domain rollback is required.
+
+## 2026-07-11 - Cortex Evaluation Version Stamp
+
+Seam:
+
+- `cortex-evaluation-version-stamp`
+
+Changed authority:
+
+- Added an explicit `cortex_schema_version_at_evaluation` field to the
+  operator-only Cortex diagnostics payload.
+- Kept the existing `schema_version` field for compatibility.
+- Added a named Cortex schema-version constant so diagnostics do not rely on
+  duplicated string literals.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Cortex writer extraction, export-surface stamp broadening, unknown-propagation
+  expansion, schema migration, hosted-public deploy/restart, production repair,
+  and rebrand/domain migration remain parked.
+
+Moved authority:
+
+- None. This seam only made the existing read-only diagnostics version stamp
+  explicit; no mutation, exposure-write, provider, ClaimCompiler, clean-data,
+  schema, hosted-public, public deploy, or public restart authority moved.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_cortex_contract_v0.py -q`;
+  passed, 7 tests.
+- `python -m py_compile backend\app\services\cortex.py`; passed.
+- `python scripts\scan_cortex_readonly.py --fail-on-errors --pretty`; passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub Actions run `29124412062`; passed for commit `c372330`.
+- Standard local-current post-wave proof passed:
+  `tmp\post-wave-dogfood\20260711-002346-cortex-evaluation-version-stamp-standard-local-current\summary.json`.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200`; no public restart/deploy
+  was performed.
+
+Behavior parity statement:
+
+- Runtime behavior is intended to remain unchanged except that the
+  operator-only diagnostics payload now carries the explicit evaluation-version
+  field required by the active Cortex contract.
+
+Rollback note:
+
+- Revert this seam to remove `cortex_schema_version_at_evaluation`, restore the
+  inline schema-version string, remove the targeted assertion, and remove this
+  ledger entry. No schema, data, Redis migration, hosted-public deploy, public
+  restart, production repair, or rebrand/domain rollback is required.
