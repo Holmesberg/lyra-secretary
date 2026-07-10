@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ArchetypeInsightsCard } from "@/components/archetype-insights-card";
 import { ackExposureRender } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 
 // Confidence-tier → brand text token. Replaces the traffic-light
 // (green/yellow/red) palette the page shipped with; brand-unification
@@ -194,7 +195,7 @@ function SuppressedInsightsPanel({
 
 export default function InsightsPage() {
   const { data, isLoading, error } = useQuery({
-    queryKey: ["insights"],
+    queryKey: queryKeys.insights,
     queryFn: getInsights,
     staleTime: 60_000,
   });

@@ -106,7 +106,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
   // operator asked for 2026-04-23.
   const qc = useQueryClient();
   function invalidateArchetypeDependent() {
-    qc.invalidateQueries({ queryKey: ["insights"] });
+    qc.invalidateQueries({ queryKey: queryKeys.insights });
     qc.invalidateQueries({ queryKey: queryKeys.me });
     // Bias-factor lookups are per (category, tod, planned) — we don't
     // know every key variant open tabs might have cached. Broad match

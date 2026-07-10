@@ -12,6 +12,7 @@ export const queryKeys = {
   deadlineBindingCorrection: ["deadlines", "binding-correction"] as const,
   deadlinesBindable: ["deadlines", "bindable"] as const,
   deadlinesAll: ["deadlines", "all"] as const,
+  insights: ["insights"] as const,
   integrations: ["integrations"] as const,
   me: ["me"] as const,
   operatorDashboard: ["operator-dashboard-v12"] as const,
