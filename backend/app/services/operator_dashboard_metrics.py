@@ -22,6 +22,7 @@ from app.db.models import (
     User,
 )
 from app.services.operator_measurement_integrity import measurement_integrity_snapshot
+from app.services.operator_metric_meta import metric_meta
 from app.services.operator_user_projection import (
     is_test_or_synthetic_user,
     operator_user_rows_snapshot,
@@ -58,26 +59,6 @@ MEANINGFUL_EXCLUDED_EVENTS = [
     "settings_view_only",
     "background_sync",
 ]
-
-
-
-def metric_meta(
-    *,
-    basis: str = "derived",
-    confidence: str = "medium",
-    readiness_impact: str = "informational",
-    safe_to_ignore_when: str | None = None,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "basis": basis,
-        "confidence": confidence,
-        "readiness_impact": readiness_impact,
-    }
-    if safe_to_ignore_when:
-        payload["safe_to_ignore_when"] = safe_to_ignore_when
-    return payload
-
-
 def metric_confidence_snapshot() -> dict[str, str]:
     """Static confidence tiers for operator dashboard metric groups."""
     return {

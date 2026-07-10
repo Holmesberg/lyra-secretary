@@ -3,26 +3,11 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from app.services.operator_metric_meta import metric_meta
+
 READINESS_RED_TRACE_RATIO = 0.60
 READINESS_GREEN_TRACE_RATIO = 0.80
 GREEN_TIMER_CLOSURE_RATE = 0.70
-
-
-def metric_meta(
-    *,
-    basis: str = "derived",
-    confidence: str = "medium",
-    readiness_impact: str = "informational",
-    safe_to_ignore_when: str | None = None,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "basis": basis,
-        "confidence": confidence,
-        "readiness_impact": readiness_impact,
-    }
-    if safe_to_ignore_when:
-        payload["safe_to_ignore_when"] = safe_to_ignore_when
-    return payload
 
 
 def dynamic_issue(

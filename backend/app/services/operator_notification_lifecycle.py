@@ -16,23 +16,7 @@ from app.db.models import (
     SuppressionEvent,
 )
 from app.services.exposure_ledger import classify_exposure_terminal_state
-
-
-def metric_meta(
-    *,
-    basis: str = "derived",
-    confidence: str = "medium",
-    readiness_impact: str = "informational",
-    safe_to_ignore_when: str | None = None,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "basis": basis,
-        "confidence": confidence,
-        "readiness_impact": readiness_impact,
-    }
-    if safe_to_ignore_when:
-        payload["safe_to_ignore_when"] = safe_to_ignore_when
-    return payload
+from app.services.operator_metric_meta import metric_meta
 
 
 def short_hash(value: str | None) -> str:
