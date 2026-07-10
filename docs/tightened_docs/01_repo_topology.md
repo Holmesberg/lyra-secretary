@@ -41,6 +41,7 @@ current HEAD.
 | `backend/app/services/stopwatch_manager.py` | Execution engine and timer state | production-grade/high-risk | 1203 lines; owns Redis hot state, pause/resume/stop/switch/recovery |
 | `backend/app/services/cortex.py` | Cortex v0 canonicalization helpers | governance/research-grade | Read-time metrics and diagnostics only; no writes |
 | `backend/app/services/cortex_clean_profiles.py` | Cortex clean-data profile owner | governance/research-grade | Central measured-execution, planning-calibration, baseline, and pause-process row eligibility helpers; read-only |
+| `backend/app/services/exposure_policy.py` | Exposure horizon policy config helper | governance/measurement-grade | Pure versioned policy loading and category horizon lookup; no behavioral row reads or writes |
 | `backend/app/services/inference_engine.py` | Shared valence/disagreement/confidence helpers | research-grade | Uses latent class labels; must stay bounded by contract |
 | `backend/app/services/bias_factor_service.py` | Legacy/adaptive execution multiplier pipeline | research-grade active legacy | Uses `bias_factor` alias and Rule 13 shrinkage |
 | `backend/app/services/pause_predictor.py` | Pause prediction | research-grade intervention | VT-17 predictor, confidence heuristic, logs via worker |
