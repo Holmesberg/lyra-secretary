@@ -13321,3 +13321,87 @@ Rollback note:
 
 - No code rollback is required. Delete or supersede this ledger entry only if a
   newer current-head proof replaces the artifact.
+
+## 2026-07-10 - Holmesberg Switch-Chip Browser Proof
+
+Seam:
+
+- `s1c-holmesberg-switch-chip-browser-proof`
+
+Changed authority:
+
+- No product/runtime authority, mutation authority, exposure authority,
+  clean-data authority, schema, deployment state, env var, domain, or cohort
+  denominator changed.
+- The Holmesberg browser dogfood harness now covers the documented paused-task
+  switch chip path in Today.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Hosted-public mutable dogfood, hosted-public deploy/restart, calendar
+  drag/resize mutation, provider credential mutation, account hard-delete/Redis
+  purge, OpenClaw pending drain, writer splits, schema migrations, and
+  rebrand/domain migration remain approval-gated.
+
+Moved authority:
+
+- None. This was verifier/harness coverage only.
+
+Issues and classification:
+
+- GitHub issue `#192` recorded and closed a verifier bug found during this
+  seam: the first harness draft targeted `parent.title`, but `/v1/create` does
+  not echo task title, so Playwright could select the wrong button. The harness
+  now keeps explicit `parentTitle`/`childTitle` values, proves the browser
+  emitted the switch request, records its response, and verifies the backend
+  active/paused state.
+- Classification: verifier/harness bug plus S1c browser coverage.
+
+Tests and verification:
+
+- `node --check scripts/browser_holmesberg_product_loop_dogfood.mjs`; passed.
+- `git diff --check -- scripts/browser_holmesberg_product_loop_dogfood.mjs`;
+  passed with existing CRLF warning only.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T03-24-43-812Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `122` checks, `0` failed checks,
+  `3` non-fatal issues, and `5` gated paths. The switch-chip checks proved:
+  parent/child setup, paused parent in `paused_others`, visible Today chip,
+  browser request to `/v1/stopwatch/switch/{task_id}` with HTTP `200`, active
+  timer swap to the parent, child parked in `paused_others`, no active timer
+  after cleanup, and no unrendered synthetic creation-nudge exposures after
+  cleanup.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T03-31-15-235Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `cohort_status=yellow`,
+  `safe_to_invite_more_users=false` for real-data/instrumentation gaps only,
+  and `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29067150614` passed for
+  `598dcd94dd0037b75aa45a2811f36e347ae2c7d3`.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- The harness now observes an existing documented user path: switching from an
+  active child timer back to a paused parent through the Today active timer
+  banner chip.
+- Cleanup remains part of verification: synthetic tasks/deadlines/notifications
+  are recorded, timers are stopped, and creation-nudge exposure residue is
+  checked.
+
+Rollback note:
+
+- Revert commit `598dcd9` to remove the added browser switch-chip coverage and
+  return the product-loop harness to its previous coverage.
+- No data, schema, Redis, hosted-public deploy, public restart, or production
+  repair rollback is required.
