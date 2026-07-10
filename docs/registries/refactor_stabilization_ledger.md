@@ -12241,3 +12241,79 @@ Rollback note:
 - Revert commit `b141ae4` to restore the two handwritten query key literals.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Operator Measurement Integrity Extraction
+
+Seam:
+
+- `r4-operator-measurement-integrity-extraction`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- The operator clean-trace measurement snapshot moved from
+  `operator_dashboard_metrics.py` into a dedicated read-only service module.
+
+Removed paths:
+
+- Removed the inline `measurement_integrity_snapshot` implementation from
+  `backend/app/services/operator_dashboard_metrics.py`.
+
+Parked paths:
+
+- Writer splits remain parked: output render/suppress, stopwatch stop, task
+  lifecycle, auth/scoping, provider connection model, and `models.py`.
+- Hosted-public mutable dogfood remains approval-gated.
+
+Moved authority:
+
+- Clean-trace numerator, denominator, exclusions, dirty reason distribution,
+  and analytic blocker computation now live in
+  `backend/app/services/operator_measurement_integrity.py`.
+- `backend/app/services/operator_dashboard_metrics.py` keeps the compatibility
+  import so existing operator endpoint imports do not change.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R4 read-only backend extraction,
+  not a product bug.
+- Classification: backend behavior-preserving extraction / measurement
+  integrity read-only helper split.
+
+Tests and verification:
+
+- Initial bare `python -m pytest ...` used the ambient WindowsApps Python and
+  failed with `ModuleNotFoundError: No module named 'fastapi'`; classified as
+  runner selection, matching the existing backend pytest wrapper contract.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py -q`;
+  passed, 12 tests.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_route_security.py -q`;
+  passed, 6 tests.
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\services\operator_dashboard_metrics.py backend\app\services\operator_measurement_integrity.py backend\app\api\v1\endpoints\operator.py`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed with existing PowerShell/Git line-ending
+  warnings.
+- CI proof: GitHub Actions run `29060146965` passed for
+  `758b5ce44234d7d8761c0d9b01af41a3f017ef18`.
+
+Behavior parity statement:
+
+- Operator dashboard payload shape remains unchanged.
+- Clean-trace ratio, denominator exclusions, dirty reason distribution,
+  unknown exposure handling, exposure contamination handling, and
+  no-closed-sessions blocker behavior did not change.
+- No writes, migrations, hosted-public deploys, public restarts, or synthetic
+  browser rows were introduced.
+
+Rollback note:
+
+- Revert commit `758b5ce` to move `measurement_integrity_snapshot` back into
+  `operator_dashboard_metrics.py`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
