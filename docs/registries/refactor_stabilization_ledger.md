@@ -12483,3 +12483,57 @@ Rollback note:
 - Revert commit `8d18cba` to remove the characterization test file.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Operator Cockpit Current-Head Baseline
+
+Seam:
+
+- `r2-operator-current-head-readonly-baseline`
+
+Changed authority:
+
+- None. This was read-only verification after the operator user projection
+  extraction and characterization seams.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Hosted-public deploy/restart, hosted-public mutable dogfood, writer splits,
+  schema migrations, and cohort expansion remain approval-gated.
+
+Moved authority:
+
+- None.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned operator cockpit trust proof.
+- Classification: verification baseline / R2 stop-go cockpit proof.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -AssumeLocalFrontendReady -ProxyApi`;
+  passed.
+- Artifact:
+  `tmp/operator-readonly-stress-2026-07-10T00-59-41-994Z/result.json`.
+- The artifact reported verified `local-current` topology, frontend/backend
+  build IDs `local-current`/`dev`, zero count diffs, zero route count diffs,
+  zero dashboard snapshot diffs, no browser issues or warnings,
+  `implementation_green=true`, `exposure_without_render_count=0`, and cohort
+  yellow only for real data gaps.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- `/operator` remains read-only and implementation-green at the current branch
+  head.
+- No writes, migrations, hosted-public deploys, public restarts, or synthetic
+  browser rows were introduced.
+
+Rollback note:
+
+- No code rollback is required. Delete this ledger entry only if the artifact is
+  superseded by a newer current-head baseline.
