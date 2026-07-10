@@ -17274,3 +17274,84 @@ Rollback note:
 - Revert `e8111f4` only if necessary, knowing it reintroduces #199. No schema,
   data, Redis migration, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Table View Helper Extraction
+
+Seam:
+
+- `table-view-pure-helper-extraction`
+
+Changed authority:
+
+- `frontend/lib/table-view.ts` now owns pure Table view helpers for filter
+  defaults, date range windows, day summaries, CSV row generation, sorting,
+  client-side filtering, and render-row grouping.
+- `frontend/app/(app)/table/page.tsx` delegates those computations to the
+  helper module. Table remains the audit/history surface. No task, correction,
+  export, exposure, clean-data, provider, or mutation authority moved.
+
+Removed paths:
+
+- Inline Table helper implementations were removed from the page component
+  after extraction into pure helpers.
+
+Parked paths:
+
+- Calendar drag/resize, Table correction/export behavior changes, backend
+  extraction, writer splits, schema migration, public deploy, public restart,
+  production data repair, and rebrand/domain work remain parked.
+
+Moved authority:
+
+- No mutation, exposure, provider, ClaimCompiler, clean-data, hosted-public,
+  public deploy, public restart, production data, schema, Redis, or rebrand
+  authority moved.
+
+Tests and verification:
+
+- `cd frontend && npm run build`; passed.
+- `cd frontend && npm run lint`; passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `053b670` passed: run `29112647810`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29112647810`).
+- Standard local-current post-wave proof command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName table-view-helper-extraction -IncludeProductLoop -IncludeCiCdProof -CiCdFailOnUnsuccessful`;
+  passed.
+- Evidence manifest:
+  `tmp\post-wave-dogfood\20260710-205633-table-view-helper-extraction-standard-local-current\summary.json`.
+- Classification: `standard_wave_proof_passed`.
+- Topology: `local-current`, frontend `http://localhost:3013`, API
+  `http://localhost:8000`, frontend build id `local-current`, backend build
+  id `dev`.
+- Cleanup proof: required and passed; Holmesberg cleanup left no active timer
+  and no unrendered synthetic creation-nudge exposures.
+- Operator proof: implementation green, cohort yellow, safe-to-invite false,
+  exposure-without-render count `0`, and no count diffs.
+- CI/CD proof in manifest: run `29112647810` for
+  `053b670c174e8274e313574921d88649f26743bc` passed.
+
+Known non-blocking browser issues:
+
+- Holmesberg onboarding gate was open and skipped to reach app surfaces.
+- Some branch-created tasks were not visible before branch assertions, while
+  backend binding checks passed.
+- Brain dump deadline title was normalized by the parser.
+- Pressure-map commit path remains gated by backend recovery-nudge safety
+  switches.
+
+Behavior parity statement:
+
+- Table remains behavior-preserving: filtering, hidden deleted rows, Show
+  voided behavior, daily summaries, sorting, readiness/reflection display,
+  initiation labels, discrepancy display, and CSV export semantics are
+  unchanged.
+
+Rollback note:
+
+- Revert `053b670` to inline Table view helpers back into the page. No schema,
+  data, Redis migration, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
