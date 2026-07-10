@@ -17610,3 +17610,91 @@ Rollback note:
 - Revert `1ef9de1` to restore per-surface eligibility recomputation. No
   schema, data, Redis migration, hosted-public deploy, public restart,
   production repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Output Surface Diagnostics Module Split
+
+Seam:
+
+- `output-surface-diagnostics-module-split`
+
+Changed authority:
+
+- Read-only output-surface diagnostics moved from
+  `backend/app/services/output_surfaces.py` to
+  `backend/app/services/output_surface_diagnostics.py`.
+- `backend/app/api/v1/endpoints/analytics.py` now imports the diagnostics
+  builder from the new read-only module.
+- `backend/app/services/output_surfaces.py` keeps a temporary compatibility
+  re-export while callers/tests migrate.
+- Output surface diagnostics remain operator-only meta-instrumentation. They do
+  not render user-facing claims and do not write exposure, task, provider,
+  Redis, clean-data, ClaimCompiler, or production repair state.
+
+Removed paths:
+
+- Diagnostics-specific candidate selection, activity counting, eligibility
+  metric collection, and diagnostics payload assembly were removed from the
+  writer-oriented output surface service module.
+
+Parked paths:
+
+- Hosted-public deploy/restart, production data repair, schema migration,
+  output-surface writer/render/suppression lifecycle splits, exposure lifecycle
+  authority changes, and rebrand/domain work remain parked.
+- GitHub issue `#200` remains open until the optimized diagnostics endpoint is
+  deployed to hosted-public and public read-only proof passes.
+
+Moved authority:
+
+- No mutation, exposure lifecycle, provider, task lifecycle, stopwatch,
+  clean-data denominator, ClaimCompiler, hosted-public, public deploy, public
+  restart, production data, schema, or rebrand authority moved.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_output_surfaces.py backend\tests\test_operator_route_security.py backend\tests\test_runtime_topology.py::test_topology_signed_diagnostics_remain_operator_only -q`;
+  passed with 36 tests.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_analytics_behavioral_signature.py backend\tests\test_operator_route_security.py backend\tests\test_output_surfaces.py -q`;
+  passed with 37 tests.
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\services\output_surfaces.py backend\app\services\output_surface_diagnostics.py backend\app\api\v1\endpoints\analytics.py`;
+  passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `787859d` passed: run `29119219899`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29119219899`).
+- Standard local-current post-wave proof command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName output-surface-diagnostics-module-split -IncludeCiCdProof -CiCdRunId 29119219899 -CiCdFailOnUnsuccessful`;
+  passed.
+- Evidence manifest:
+  `tmp\post-wave-dogfood\20260710-225001-output-surface-diagnostics-module-split-standard-local-current\summary.json`.
+- Classification: `standard_wave_proof_passed`.
+- Topology: `local-current`, frontend `http://localhost:3013`, API
+  `http://localhost:8000`, frontend build id `local-current`, backend build
+  id `dev`.
+- Cleanup proof: not required; this was a read-only operator diagnostics seam.
+- Operator proof: implementation green, cohort yellow, safe-to-invite false,
+  exposure-without-render count `0`, and no count diffs.
+- CI/CD proof in manifest: run `29119219899` for
+  `787859d5dbcf718ae711b29b7439804299bb393c` passed.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200` until public deployment
+  state is updated; no public restart/deploy was performed in this seam.
+- Standard mode skipped mutable browser proof and full backend suite by design.
+
+Behavior parity statement:
+
+- Output-surface diagnostics preserve their existing payload shape,
+  operator-only route behavior, read-only database behavior, and exposure
+  terminal-event accounting. The seam only moved diagnostics assembly into a
+  dedicated read-only service module.
+
+Rollback note:
+
+- Revert `787859d` to inline diagnostics assembly back into
+  `output_surfaces.py`. No schema, data, Redis migration, hosted-public deploy,
+  public restart, production repair, or rebrand/domain rollback is required.
