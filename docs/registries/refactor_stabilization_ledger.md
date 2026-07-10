@@ -13918,3 +13918,88 @@ Rollback note:
   re-entry coverage.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - NewTaskModal Timing Control Extraction
+
+Seam:
+
+- `r3-new-task-modal-time-helpers`
+
+Changed authority:
+
+- No backend task mutation authority, deadline authority, exposure authority,
+  clean-data authority, schema, deployment state, env var, domain, or cohort
+  denominator changed.
+- `NewTaskModal` still owns the modal UX and submit orchestration.
+
+Removed paths:
+
+- Inline start/end/duration state and local timing helper bodies were removed
+  from `frontend/components/new-task-modal.tsx`.
+
+Parked paths:
+
+- Full `NewTaskModal` draft extraction, submit flow extraction, deadline picker
+  extraction, backend writer splits, hosted-public deploy/restart,
+  hosted-public mutable dogfood, schema migrations, and rebrand/domain
+  migration remain future or approval-gated seams.
+
+Moved authority:
+
+- Frontend timing state and coupling moved to
+  `frontend/lib/hooks/use-new-task-time-controls.ts`.
+- Backend mutation authority did not move.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned R3 behavior-preserving frontend
+  extraction of already-covered task modal timing behavior.
+- Classification: product/runtime frontend extraction with no intended
+  user-visible behavior change.
+
+Tests and verification:
+
+- `git diff --check -- frontend\components\new-task-modal.tsx frontend\lib\hooks\use-new-task-time-controls.ts`;
+  passed with existing CRLF warning only.
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_create_task_with_deadline.py backend\tests\test_wave2_idempotency.py backend\tests\test_reschedule_description_deadline.py -q`;
+  passed, `22` tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T05-39-11-511Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `134` checks, `0` failed
+  checks, `3` non-fatal issues, and `5` gated paths. Cleanup metadata recorded
+  the synthetic task, deadline, and notification ids created by the run.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T05-46-40-844Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_status=green`,
+  `cohort_status=yellow`, `safe_to_invite_more_users=false`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29072231854` passed for
+  `e4c921db0ee6d3b18a278abb8cd53c9445f58247`.
+
+Behavior parity statement:
+
+- Timing behavior is unchanged: start edits preserve duration, end edits update
+  duration and invalid ranges remain blocked, duration edits shift end time,
+  AM/PM and past-start recovery still call the same user-facing controls, and
+  accepted creation nudges still update duration and end time.
+- Create, edit, deadline preview, deadline binding, idempotency, and submit
+  payload authority remain unchanged.
+
+Rollback note:
+
+- Revert commit `e4c921d` to inline the NewTaskModal timing state and helper
+  bodies again.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
