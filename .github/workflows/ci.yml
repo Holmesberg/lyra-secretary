@@ -120,6 +120,9 @@ jobs:
     - name: Run browser account role contract gate
       run: node scripts/test_browser_account_role_contract.mjs
 
+    - name: Run NewTaskModal fresh-default contract gate
+      run: node scripts/test_new_task_modal_contract.mjs
+
     - name: Run public runtime watchdog contract gate
       run: node scripts/test_public_runtime_watchdog_contract.mjs
 
