@@ -126,6 +126,9 @@ jobs:
     - name: Run public runtime watchdog contract gate
       run: node scripts/test_public_runtime_watchdog_contract.mjs
 
+    - name: Run public frontend restart contract gate
+      run: node scripts/test_public_frontend_restart_contract.mjs
+
     - name: Run OpenClaw operator relay hermetic test
       run: node scripts/test_openclaw_operator_relay.mjs
 

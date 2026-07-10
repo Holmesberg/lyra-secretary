@@ -25,6 +25,9 @@ SESSION='lyra-frontend'
 START_SCRIPT='/tmp/start_lyra_frontend.sh'
 FRONTEND_LOG='/tmp/frontend.log'
 PUBLIC_NEXT_DIR='.next-public'
+STAGING_NEXT_DIR=".next-public.staging.$$"
+PREVIOUS_NEXT_DIR='.next-public.previous'
+FAILED_NEXT_DIR=".next-public.failed.$$"
 
 source ~/.nvm/nvm.sh
 
@@ -56,9 +59,33 @@ else
 fi
 
 if [ "`$NO_BUILD" != '1' ]; then
-  echo "== rebuilding `$PUBLIC_NEXT_DIR public topology from scratch =="
-  rm -rf "`$PUBLIC_NEXT_DIR"
-  npm run build:public
+  echo "== building public topology into staging artifact `$STAGING_NEXT_DIR =="
+  rm -rf "`$STAGING_NEXT_DIR"
+  NEXT_DIST_DIR="`$STAGING_NEXT_DIR" npm run build:public
+  if [ ! -s "`$STAGING_NEXT_DIR/BUILD_ID" ]; then
+    echo "ERROR: staged `$STAGING_NEXT_DIR/BUILD_ID is missing. Refusing to swap incomplete production artifact." >&2
+    rm -rf "`$STAGING_NEXT_DIR"
+    exit 42
+  fi
+
+  echo "== atomically swapping staged artifact into `$PUBLIC_NEXT_DIR =="
+  rm -rf "`$PREVIOUS_NEXT_DIR"
+  if [ -d "`$PUBLIC_NEXT_DIR" ]; then
+    mv "`$PUBLIC_NEXT_DIR" "`$PREVIOUS_NEXT_DIR"
+  fi
+  if mv "`$STAGING_NEXT_DIR" "`$PUBLIC_NEXT_DIR"; then
+    rm -rf "`$PREVIOUS_NEXT_DIR"
+  else
+    echo "ERROR: staged artifact swap failed; restoring previous public artifact." >&2
+    if [ -e "`$PUBLIC_NEXT_DIR" ]; then
+      mv "`$PUBLIC_NEXT_DIR" "`$FAILED_NEXT_DIR" || true
+    fi
+    if [ -d "`$PREVIOUS_NEXT_DIR" ]; then
+      mv "`$PREVIOUS_NEXT_DIR" "`$PUBLIC_NEXT_DIR"
+    fi
+    rm -rf "`$FAILED_NEXT_DIR"
+    exit 45
+  fi
 else
   echo "== skipping build; validating existing `$PUBLIC_NEXT_DIR =="
 fi
