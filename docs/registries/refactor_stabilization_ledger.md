@@ -14849,3 +14849,64 @@ Rollback note:
 - Revert commit `d10d35a` to move the helper back into the analytics route.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - NewTaskModal Fresh Default Gate
+
+Seam:
+
+- `s1c-new-task-modal-fresh-default-gate`
+
+Changed authority:
+
+- No product/runtime behavior, schema, mutation, exposure, provider,
+  clean-data, deployment, env var, domain, or rebrand authority changed.
+- S1c CI now includes a contract gate for NewTaskModal fresh default-start
+  behavior.
+
+Removed paths:
+
+- Removed the regression gap where NewTaskModal default-start freshness could
+  degrade back to mount-only behavior without CI noticing.
+
+Parked paths:
+
+- New task modal product behavior changes, hosted-public deploy/restart,
+  hosted-public mutable dogfood, schema migrations, and rebrand/domain
+  migration remain parked.
+
+Moved authority:
+
+- No runtime authority moved.
+- Verification authority for the archived stale-start bug is now encoded in
+  `scripts/test_new_task_modal_contract.mjs` and the S1c static gate.
+
+Issues and classification:
+
+- Closed GitHub issue #26:
+  `https://github.com/Holmesberg/lyra-secretary/issues/26`.
+- Classification: verifier/CI hardening for an already-neutralized product
+  bug.
+
+Tests and verification:
+
+- `node scripts/test_new_task_modal_contract.mjs`; passed.
+- `node scripts/test_public_runtime_watchdog_contract.mjs`; passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with `ok=true`, zero findings.
+- `git diff --check -- .github\workflows\ci.yml scripts\test_new_task_modal_contract.mjs`;
+  passed with existing CRLF warning only.
+- CI proof: GitHub Actions run `29079698460` passed for
+  `348be1a1fcad87d459fb79350df05e0d5389f854`.
+
+Behavior parity statement:
+
+- NewTaskModal runtime code was unchanged.
+- The gate proves the modal resets start/end/duration from current
+  `now/defaultDate` on each new-task open instead of relying on mount-only
+  state.
+
+Rollback note:
+
+- Revert commit `348be1a` to remove the CI contract gate.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
