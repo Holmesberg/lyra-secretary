@@ -18,6 +18,7 @@ import {
 } from "@/lib/tasks";
 import { useNewTaskTimeControls } from "@/lib/hooks/use-new-task-time-controls";
 import { useNewTaskCategoryControls } from "@/lib/hooks/use-new-task-category-controls";
+import { useNewTaskDescriptionControls } from "@/lib/hooks/use-new-task-description-controls";
 import { CategorySelect } from "@/components/category-select";
 import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
 import { CalibrationNudgeCard } from "@/components/calibration-nudge-card";
@@ -60,8 +61,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
   const [softConflict, setSoftConflict] = useState<SoftConflict | null>(null);
   const [lastEditId, setLastEditId] = useState<string | null>(null);
-  const [description, setDescription] = useState("");
-  const [showDescription, setShowDescription] = useState(false);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
   // rest of this modal session. Prevents the re-suggestion loop the
@@ -112,6 +111,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     now,
     onEditScheduleChanged: markEditScheduleChanged,
   });
+
+  const {
+    description,
+    showDescription,
+    checklistEstimate,
+    resetDescription,
+    loadDescription,
+    showDescriptionField,
+    handleDescriptionChange,
+  } = useNewTaskDescriptionControls(totalMinutes);
 
   // Loop 11 Phase K — deadline picker. `deadlineId` carries the user's
   // explicit choice (or the confirmed parser suggestion). `parserSuggestion`
@@ -191,8 +200,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
       resetTimeDefaults();
       setTitle("");
       resetCategory();
-      setDescription("");
-      setShowDescription(false);
+      resetDescription();
       setError(null);
       setPausedConflict(null);
       setNudgeDecisionMade(false);
@@ -227,8 +235,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     // Edit-modal parity (2026-04-28): load description + deadline_id
     // from the task. Without this, opening edit + saving would silently
     // wipe both fields — DATA LOSS bug.
-    setDescription(editingTask.description ?? "");
-    setShowDescription(!!editingTask.description);
+    loadDescription(editingTask.description);
     loadDeadline(editingTask.deadline_id);
     setError(null);
     setPausedConflict(null);
@@ -244,6 +251,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     lastEditId,
     loadCategory,
     loadDeadline,
+    loadDescription,
     loadTimeRange,
   ]);
 
@@ -251,8 +259,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     resetTimeDefaults();
     setTitle("");
     resetCategory();
-    setDescription("");
-    setShowDescription(false);
+    resetDescription();
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
@@ -548,7 +555,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               <button
                 type="button"
                 className="flex items-center gap-1 text-xs text-dust-deep transition-colors hover:text-dust"
-                onClick={() => setShowDescription(true)}
+                onClick={showDescriptionField}
               >
                 <span>{isEdit ? "Edit details" : "Add details"}</span>
                 <span className="text-[10px]">▾</span>
@@ -560,24 +567,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   data-testid="new-task-description"
                   id="description"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => handleDescriptionChange(e.target.value)}
                   placeholder="- Step one&#10;- Step two&#10;- Step three"
                   rows={3}
                   className="rounded-sm border border-hairline-signal/30 bg-transparent px-3 py-2 text-sm text-parchment placeholder:text-dust-deep resize-none"
                 />
-                {(() => {
-                  const items = description.split("\n").filter((l) => /^\s*[-*•]\s|^\s*\d+[.)]\s/.test(l));
-                  const planned = durHours * 60 + durMinutes;
-                  if (items.length >= 2 && planned > 0) {
-                    const perItem = Math.round((planned / items.length) * 10) / 10;
-                    return (
-                      <span className="text-[11px] text-dust-deep">
-                        {items.length} items, ~{perItem} min each based on your estimate
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
+                {checklistEstimate && (
+                  <span className="text-[11px] text-dust-deep">
+                    {checklistEstimate.itemCount} items, ~{checklistEstimate.perItemMinutes} min each based on your estimate
+                  </span>
+                )}
               </>
             )}
           </div>
