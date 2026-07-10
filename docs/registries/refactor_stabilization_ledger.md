@@ -16630,3 +16630,61 @@ Rollback note:
   JARVIS token setting.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Remove Unused NIM Health Probe
+
+Seam:
+
+- `remove-unused-nim-health-probe`
+
+Changed authority:
+
+- `backend/app/services/nvidia_nim_client.py` now exposes only the parser
+  enrichment `chat_completion()` API. The unused operator diagnostic
+  `health_check()` probe no longer preserves a legacy JARVIS/NIM diagnostic
+  surface.
+- `backend/tests/test_nvidia_nim_client.py` locks both removed NIM APIs as
+  absent.
+
+Removed paths:
+
+- `nvidia_nim_client.health_check`.
+- The obsolete operator-route test monkeypatch for the removed probe.
+
+Parked paths:
+
+- Hosted NIM parser enrichment remains active through `llm_parser.py`.
+- Operator diagnostics remain available through active operator/cortex/output
+  surface endpoints, not through a NIM probe.
+
+Moved authority:
+
+- No runtime write authority moved. This seam removes an unused read/probe
+  helper only.
+
+Tests and verification:
+
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_nvidia_nim_client.py tests/test_llm_parser_p0_guards.py tests/test_operator_route_security.py`;
+  passed with 18 passed and existing Pydantic deprecation warnings.
+- `python -m py_compile backend\app\services\nvidia_nim_client.py`;
+  passed.
+- `rg -n -F -e 'nvidia_nim_client.health_check' -e 'hasattr(nvidia_nim_client, "health_check")' -e 'NIM health probe' -e 'operator NIM diagnostics' backend\app backend\tests docs\registries\refactor_stabilization_ledger.md`;
+  produced only this ledger entry.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+
+Behavior parity statement:
+
+- No user-facing behavior, schema, Redis state, hosted-public artifact, public
+  deploy, public restart, production data, or parser enrichment behavior
+  changed.
+
+Rollback note:
+
+- Revert this seam commit to restore the NIM health probe and old test
+  monkeypatch.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
