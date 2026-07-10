@@ -65,6 +65,14 @@ export function isDeadlineQueryKey(queryKey: QueryKey) {
   );
 }
 
+export function isTaskQueryKey(queryKey: QueryKey) {
+  return (
+    typeof queryKey[0] === "string" &&
+    (queryKey[0] === queryKeys.tasks[0] ||
+      queryKey[0] === queryKeys.tasksRange[0])
+  );
+}
+
 export function invalidateCalendarEventQueries(queryClient: QueryClient) {
   return queryClient.invalidateQueries({
     predicate: (query) => isCalendarEventsQueryKey(query.queryKey),
@@ -74,6 +82,12 @@ export function invalidateCalendarEventQueries(queryClient: QueryClient) {
 export function invalidateDeadlineQueries(queryClient: QueryClient) {
   return queryClient.invalidateQueries({
     predicate: (query) => isDeadlineQueryKey(query.queryKey),
+  });
+}
+
+export function invalidateTaskQueries(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => isTaskQueryKey(query.queryKey),
   });
 }
 

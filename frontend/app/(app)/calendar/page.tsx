@@ -50,7 +50,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidateTaskQueries, queryKeys } from "@/lib/query-keys";
 
 // TIMEZONE CONTRACT (Apr 11 2026, single-timezone alpha):
 // Backend sends and accepts naked Cairo-local ISO strings
@@ -577,10 +577,7 @@ export default function CalendarPage() {
   // (`["tasks-range", dateFrom, dateTo]`) stay in lock-step without either
   // side knowing about the other's key shape.
   function refreshAll() {
-    qc.invalidateQueries({
-      predicate: (q) =>
-        q.queryKey[0] === "tasks" || q.queryKey[0] === "tasks-range",
-    });
+    void invalidateTaskQueries(qc);
   }
 
   // Toast-style auto-dismiss for the drag/resize rejection banner —
