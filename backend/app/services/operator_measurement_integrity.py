@@ -1,7 +1,6 @@
 """Read-only measurement-integrity snapshot for the operator dashboard."""
 from __future__ import annotations
 
-import hashlib
 from collections import Counter
 from datetime import datetime
 from typing import Any
@@ -22,6 +21,11 @@ from app.services.operator_readiness import (
     READINESS_GREEN_TRACE_RATIO,
     READINESS_RED_TRACE_RATIO,
 )
+from app.services.operator_user_projection import (
+    is_test_or_synthetic_user,
+    pct,
+    short_hash,
+)
 
 
 def _metric_meta(
@@ -35,25 +39,6 @@ def _metric_meta(
         "confidence": confidence,
         "readiness_impact": readiness_impact,
     }
-
-
-def _pct(numerator: int, denominator: int) -> float | None:
-    if denominator <= 0:
-        return None
-    return round(numerator / denominator, 4)
-
-
-def _short_hash(value: str | None) -> str:
-    return hashlib.sha256((value or "").encode("utf-8")).hexdigest()[:12]
-
-
-def _is_test_or_synthetic_user(user: User) -> bool:
-    email = (user.email or "").strip().lower()
-    return (
-        email.endswith(".test")
-        or email.endswith("@example.test")
-        or email.startswith(("test-", "synthetic-", "wave-", "wave1-", "wave2-", "wave3-"))
-    )
 
 
 def measurement_integrity_snapshot(
@@ -114,7 +99,7 @@ def measurement_integrity_snapshot(
         if user.is_operator:
             denominator_exclusions["operator_user_sessions"] += 1
             continue
-        if _is_test_or_synthetic_user(user):
+        if is_test_or_synthetic_user(user):
             denominator_exclusions["test_or_synthetic_user_sessions"] += 1
             continue
         if session.post_deletion_retained_at or task.post_deletion_retained_at:
@@ -192,7 +177,7 @@ def measurement_integrity_snapshot(
     dirty_reasons["provider_only"] = int(provider_only)
 
     closed_count = len(eligible_sessions)
-    clean_trace_ratio = _pct(clean_closed, closed_count) if closed_count else None
+    clean_trace_ratio = pct(clean_closed, closed_count) if closed_count else None
     dirty_trace_count = closed_count - clean_closed
     measurement_integrity = {
         **_metric_meta(basis="derived", confidence="high", readiness_impact="blocker"),
@@ -210,7 +195,7 @@ def measurement_integrity_snapshot(
             },
         },
         "dirty_session_reason_sample": dict(
-            (_short_hash(session_id), reasons)
+            (short_hash(session_id), reasons)
             for session_id, reasons in list(dirty_session_reason_map.items())[:5]
         ),
         "analytic_blockers": [],
