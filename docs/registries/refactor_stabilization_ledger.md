@@ -12001,3 +12001,70 @@ Rollback note:
   and remove the static account-role CI gate.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - R5a Docs Entrypoint Map
+
+Seam:
+
+- `r5a-docs-entrypoint-map`
+
+Changed authority:
+
+- `.github/instructions.md` now routes fresh agents through `docs/README.md`
+  and the active freeze-closure authority chain instead of the archived
+  handoff.
+- `docs/README.md` now provides the default active documentation map, current
+  freeze boundary, documentation lanes, and browser verification account-role
+  split.
+- No product/runtime behavior, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var name,
+  domain, or rebrand state changed.
+
+Removed paths:
+
+- Removed the active entrypoint reference to non-current `docs/AGENT_HANDOFF.md`
+  from `.github/instructions.md`.
+- Removed stale May 2 transition framing from the active GitHub instructions.
+
+Parked paths:
+
+- `docs/archive/AGENT_HANDOFF.md` remains historical onboarding context only.
+- Historical roadmap, provider, academic, project-history, and parked-idea docs
+  remain non-authorizing unless promoted by the active authority chain.
+- Rebrand/domain/runtime-host migration remains parked.
+
+Moved authority:
+
+- The first-read docs map now lives in `docs/README.md`.
+- `.github/instructions.md` is an instruction entrypoint, not an independent
+  source of feature, research, or runtime authority.
+
+Issues and classification:
+
+- GitHub issue #190 (`Docs entrypoint still points agents at archived handoff`)
+  was opened for this documentation/authority bug.
+- Classification: documentation/authority bug.
+
+Tests and verification:
+
+- `python scripts\scan_refactor_contracts.py --fail-on-errors`; passed.
+- `git diff --check -- .github\instructions.md docs\README.md`; passed with
+  existing PowerShell/Git line-ending warnings.
+- `rg -n "docs/AGENT_HANDOFF\\.md" .github docs README.md MANIFESTO.md -g "!docs/audits/**" -g "!docs/registries/refactor_stabilization_ledger.md"`;
+  returned no active matches.
+- `rg -n -i "barzakh" . -g "!node_modules" -g "!frontend/.next*" -g "!tmp/post-wave-dogfood/**" -g "!tmp/operator-readonly-stress-*"`;
+  returned only historical ledger proof lines documenting no active repo
+  rebrand matches.
+
+Behavior parity statement:
+
+- No app behavior, browser route, API behavior, proof wrapper behavior, runtime
+  host, env var, or public deployment changed.
+- The change only reduces stale documentation authority risk for future agents.
+
+Rollback note:
+
+- Revert this docs-only seam to restore the previous `.github/instructions.md`
+  and remove `docs/README.md`.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
