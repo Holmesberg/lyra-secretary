@@ -11,13 +11,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CATEGORIES } from "@/lib/categories";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import {
   rescheduleTask,
   type TaskRow,
 } from "@/lib/tasks";
 import { useNewTaskTimeControls } from "@/lib/hooks/use-new-task-time-controls";
+import { useNewTaskCategoryControls } from "@/lib/hooks/use-new-task-category-controls";
 import { CategorySelect } from "@/components/category-select";
 import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
 import { CalibrationNudgeCard } from "@/components/calibration-nudge-card";
@@ -55,15 +55,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const titleInputRef = useRef<HTMLInputElement>(null);
   // Default 0h 0m — user must explicitly pick a duration before Create
   // enables (`canSubmit` already requires totalMinutes > 0).
-  // Category: picker mode uses the fixed taxonomy; "custom" mode reveals
-  // a text input for a user-created name. The Apr 4–15 experiment window
-  // has closed, so operator-created categories are research-safe going
-  // forward (fresh buckets start at n=0 until data accrues for
-  // bias_factor analysis).
-  const [category, setCategory] = useState<string>("work");
-  const [categoryMode, setCategoryMode] = useState<"picker" | "custom">(
-    "picker"
-  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
@@ -87,6 +78,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   const [nudgeDecisionData, setNudgeDecisionData] =
     useState<NudgeDecisionData | null>(null);
   const [editScheduleTouched, setEditScheduleTouched] = useState(false);
+
+  const {
+    category,
+    categoryMode,
+    resetCategory,
+    loadCategory,
+    handleCategorySelect,
+    handleCustomCategoryChange,
+    returnToCategoryPicker,
+  } = useNewTaskCategoryControls();
 
   const {
     start,
@@ -181,8 +182,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     if (open && !editingTask) {
       resetTimeDefaults();
       setTitle("");
-      setCategory("work");
-      setCategoryMode("picker");
+      resetCategory();
       setDescription("");
       setShowDescription(false);
       setError(null);
@@ -217,13 +217,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     const endDate = editingTask.end ? new Date(editingTask.end) : new Date();
     setTitle(editingTask.title);
     loadTimeRange(startDate, endDate);
-    const editCat = editingTask.category || "work";
-    setCategory(editCat);
-    // If the editing task has a custom (non-taxonomy) category, open the
-    // custom input pre-filled so the operator can edit it directly.
-    setCategoryMode(
-      (CATEGORIES as readonly string[]).includes(editCat) ? "picker" : "custom"
-    );
+    loadCategory(editingTask.category);
     // Edit-modal parity (2026-04-28): load description + deadline_id
     // from the task. Without this, opening edit + saving would silently
     // wipe both fields — DATA LOSS bug.
@@ -238,13 +232,12 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     setNudgeDecisionData(null);
     setEditScheduleTouched(false);
     setLastEditId(editingTask.task_id);
-  }, [clearCreationNudge, editingTask, lastEditId, loadTimeRange]);
+  }, [clearCreationNudge, editingTask, lastEditId, loadCategory, loadTimeRange]);
 
   function resetForm() {
     resetTimeDefaults();
     setTitle("");
-    setCategory("work");
-    setCategoryMode("picker");
+    resetCategory();
     setDescription("");
     setShowDescription(false);
     setError(null);
@@ -504,14 +497,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             {categoryMode === "picker" ? (
               <CategorySelect
                 value={category}
-                onChange={(val) => {
-                  if (val === "__CREATE_NEW__") {
-                    setCategoryMode("custom");
-                    setCategory("");
-                  } else {
-                    setCategory(val);
-                  }
-                }}
+                onChange={handleCategorySelect}
               />
             ) : (
               <div className="flex items-center gap-2">
@@ -519,7 +505,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   data-testid="new-task-category-custom"
                   id="category"
                   value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  onChange={(e) => handleCustomCategoryChange(e.target.value)}
                   placeholder="e.g. research, admin, side_project"
                   autoComplete="off"
                   autoFocus
@@ -528,10 +514,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   data-testid="new-task-category-back"
                   type="button"
                   className="whitespace-nowrap text-xs text-dust transition-colors hover:text-parchment"
-                  onClick={() => {
-                    setCategoryMode("picker");
-                    setCategory("work");
-                  }}
+                  onClick={returnToCategoryPicker}
                 >
                   ← Back
                 </button>
