@@ -16688,3 +16688,55 @@ Rollback note:
   monkeypatch.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Gate Legacy Notification Pending Bridge Call Sites
+
+Seam:
+
+- `gate-legacy-notification-pending-bridge-call-sites`
+
+Changed authority:
+
+- `scripts/scan_refactor_contracts.py` now hard-fails runtime/browser/script
+  callers that use legacy `/v1/notifications/pending?channel=...` instead of
+  explicit `/v1/notifications/web/pending`, `/web/ack`, or
+  `/openclaw/pending` paths.
+- CI now runs the scanner self-test for this contract.
+
+Removed paths:
+
+- None. The compatibility endpoint remains mounted.
+
+Parked paths:
+
+- Legacy `/v1/notifications/pending?channel=...` remains compatibility-only.
+  New runtime/browser/script code must use explicit delivery-authority routes.
+
+Moved authority:
+
+- No runtime authority moved. This seam only makes the existing notification
+  endpoint split mechanically enforceable.
+
+Tests and verification:
+
+- `python -m py_compile scripts\scan_refactor_contracts.py`; passed.
+- `python scripts\scan_refactor_contracts.py --self-test-legacy-notification-pending --pretty`;
+  passed and detected synthetic frontend/OpenClaw legacy bridge calls.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `5bcce67` passed: run `29103970145`.
+
+Behavior parity statement:
+
+- No runtime endpoint, user-facing behavior, schema, Redis state,
+  hosted-public artifact, public deploy, public restart, or production data
+  changed.
+- The seam only prevents future code from reusing a parked compatibility
+  bridge whose channel ambiguity previously caused verifier/product confusion.
+
+Rollback note:
+
+- Revert this seam commit to remove the static gate and CI self-test.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
