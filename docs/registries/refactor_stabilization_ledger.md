@@ -15123,3 +15123,79 @@ Rollback note:
 
 - No code rollback is required. Delete or supersede this ledger entry only if
   the artifact is later proven invalid.
+
+## 2026-07-10 - Public Topology Build ID Artifact Binding
+
+Seam:
+
+- `public-build-id-artifact-provenance`
+
+Changed authority:
+
+- Public topology build identity is now bound to the built public artifact
+  instead of the current checkout at `start:public` time.
+- `frontend/scripts/public-topology.mjs` writes
+  `.next-public*/LYRA_PUBLIC_BUILD_ID` after a successful public build and
+  refuses public start when artifact build metadata is missing.
+- `scripts/restart_frontend_wsl.ps1` refuses unverifiable public artifacts and
+  fails the public topology check when served `build_id` does not match artifact
+  metadata.
+- No product/runtime feature authority changed.
+
+Removed paths:
+
+- Removed the unsafe public-start fallback where public topology could report
+  `git rev-parse --short HEAD` even when the served `.next-public` artifact was
+  older or different.
+
+Parked paths:
+
+- Public deploy/restart remains approval-gated.
+- Hosted-public mutable dogfood remains approval-gated.
+- Rebrand/domain migration remains out of scope.
+
+Moved authority:
+
+- Public served-build identity moved from process-start checkout inference to
+  explicit artifact metadata.
+- No user, provider, notification, exposure, task, timer, claim, or clean-data
+  authority moved.
+
+Issues and classification:
+
+- Fixed GitHub issue #197:
+  `https://github.com/Holmesberg/lyra-secretary/issues/197`.
+- Classification: topology/deployment trust bug plus CI/CD verifier gate.
+
+Tests and verification:
+
+- PowerShell parser check for `scripts\restart_frontend_wsl.ps1`; passed.
+- `node --check frontend\scripts\public-topology.mjs`; passed.
+- `node scripts/test_public_frontend_restart_contract.mjs`; passed.
+- `node scripts/test_runtime_topology_contract.mjs`; passed.
+- `node scripts/test_public_runtime_watchdog_contract.mjs`; passed.
+- `git diff --check -- frontend\scripts\public-topology.mjs scripts\restart_frontend_wsl.ps1 scripts\test_public_frontend_restart_contract.mjs`;
+  passed with existing CRLF warnings only.
+- Negative proof is encoded in
+  `scripts/test_public_frontend_restart_contract.mjs`: public start must read
+  artifact metadata, public start must not mint topology `build_id` from current
+  git when artifact metadata is absent, restart must refuse artifacts without
+  `LYRA_PUBLIC_BUILD_ID`, and restart must fail on served/artifact build-id
+  mismatch.
+- CI proof: GitHub Actions run `29081458398` passed for
+  `39a33ab849ba630625631857806df13988b06cc1`.
+
+Behavior parity statement:
+
+- No public restart or deploy was performed in this seam.
+- No user-visible product behavior changes until a future approved public
+  restart uses the updated helper.
+- Future approved public starts preserve the public topology contract while
+  proving the reported frontend build ID came from the served public artifact.
+
+Rollback note:
+
+- Revert commit `39a33ab` to restore the previous public topology/restart
+  behavior.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
