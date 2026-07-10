@@ -70,22 +70,20 @@ class Settings(BaseSettings):
     # reminders, pause prediction, stale_session_recovery alongside).
     OLLAMA_TIMEOUT_SECONDS: int = Field(10, env="OLLAMA_TIMEOUT_SECONDS")
 
-    # NVIDIA NIM client (JARVIS, 2026-04-30). Hosted free-tier inference
-    # at build.nvidia.com. When NVIDIA_NIM_API_KEY is set, the LLM
-    # enrichment path tries NIM first and falls back to Ollama on
-    # NimUnavailable. JARVIS endpoints (operator-only) require this to be
-    # set - they 503 otherwise. Default model switched 2026-05-09 to
-    # moonshotai/kimi-k2.6 after operator live-model selection; this is
-    # operator-only and does not change any research metric semantics.
+    # NVIDIA NIM client. Hosted inference remains optional for LLM parser
+    # enrichment: when NVIDIA_NIM_API_KEY is set, the enrichment path tries
+    # NIM first and falls back to Ollama on NimUnavailable. Default model
+    # switched 2026-05-09 to moonshotai/kimi-k2.6 after operator live-model
+    # selection; this does not change any research metric semantics.
     NVIDIA_NIM_API_KEY: str = Field("", env="NVIDIA_NIM_API_KEY")
     NVIDIA_NIM_MODEL: str = Field("moonshotai/kimi-k2.6", env="NVIDIA_NIM_MODEL")
     NVIDIA_NIM_BASE_URL: str = Field(
         "https://integrate.api.nvidia.com/v1", env="NVIDIA_NIM_BASE_URL"
     )
-    # JARVIS gets more headroom because it is foreground, operator-only, and
-    # can stream longer reasoning/tool turns. Background enrichment must use
-    # NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS instead so provider slowness
-    # degrades auxiliary parsing rather than pinning the scheduler.
+    # Direct calls keep the long timeout for operator diagnostics/manual probes.
+    # Background enrichment must use NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS so
+    # provider slowness degrades auxiliary parsing rather than pinning the
+    # scheduler.
     NVIDIA_NIM_TIMEOUT_SECONDS: int = Field(120, env="NVIDIA_NIM_TIMEOUT_SECONDS")
     NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS: int = Field(
         15, env="NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS"
@@ -94,9 +92,6 @@ class Settings(BaseSettings):
     # switch. Keep it env-controlled because structured JSON parsing must
     # disable it per call.
     NVIDIA_NIM_ENABLE_THINKING: bool = Field(True, env="NVIDIA_NIM_ENABLE_THINKING")
-    NVIDIA_NIM_JARVIS_MAX_TOKENS: int = Field(
-        16384, env="NVIDIA_NIM_JARVIS_MAX_TOKENS"
-    )
     # Tier thresholds for the LLM deadline-binding chip (operator-locked
     # 2026-04-28). Per stress-test conversation: confidence thresholds
     # are the most important calibration stat. Tunable from .env so we

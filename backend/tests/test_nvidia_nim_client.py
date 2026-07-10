@@ -1,7 +1,8 @@
 """NVIDIA NIM client payload contract tests.
 
 These tests do not hit the network. They pin the Kimi K2.6 payload shape that
-JARVIS relies on while keeping structured parser calls machine-readable.
+hosted parser enrichment relies on while keeping structured parser calls
+machine-readable.
 """
 import json
 
@@ -98,6 +99,11 @@ def test_chat_completion_accepts_per_call_timeout(monkeypatch):
     )
 
     assert captured["timeout"] == 15
+
+
+def test_jarvis_streaming_api_stays_removed():
+    """The removed JARVIS chat UI must not keep a streaming NIM API alive."""
+    assert not hasattr(nvidia_nim_client, "chat_completion_stream")
 
 
 def test_llm_parser_disables_thinking_for_json_contract(monkeypatch):

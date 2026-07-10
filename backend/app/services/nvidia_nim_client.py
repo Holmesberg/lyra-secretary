@@ -1,17 +1,16 @@
 """NVIDIA NIM client — OpenAI-compatible wrapper over build.nvidia.com.
 
-Surfaces two methods used across the LyraOS LLM stack:
+Surfaces one method used across the LyraOS LLM stack:
   - chat_completion()         — single-shot, returns full response dict
-  - chat_completion_stream()  — SSE token stream (for the JARVIS chat UI)
 
-Trust class boundary (operator-locked 2026-04-30, JARVIS plan):
-  - Free tier (40 RPM, 1k credits) is acceptable for operator-only use
+Trust class boundary:
+  - Hosted NIM remains optional and degrades to Ollama on transient failure
   - Privacy: every call sends user task content to NVIDIA. Mom + sister +
-    students stay on the Ollama-only enrichment path; only is_operator=True
-    accounts hit this client via JARVIS endpoints
+    students stay on the Ollama-only enrichment path unless explicitly enabled
+    through the parser enrichment path
   - Default model switched 2026-05-09 to moonshotai/kimi-k2.6 with
-    chat_template_kwargs.thinking enabled for operator JARVIS turns.
-    Structured parser calls disable thinking explicitly to preserve JSON.
+    chat_template_kwargs.thinking enabled by default. Structured parser calls
+    disable thinking explicitly to preserve JSON.
 
 Graceful-degradation contract (matches the existing Ollama contract in
 llm_parser.py so callers can swap with a feature flag):
@@ -20,7 +19,7 @@ llm_parser.py so callers can swap with a feature flag):
   - 4xx (auth, malformed body, model not found) → raises NimConfigError
     Caller logs + surfaces; this is a developer error, not a runtime hiccup
   - 429 (rate limit) → raises NimUnavailable (transient — back off + retry
-    on the next worker cycle, don't crash JARVIS)
+    on the next worker cycle, don't crash parser enrichment)
 
 Why httpx over the openai SDK:
   - httpx already in requirements.txt; openai SDK would add tiktoken + other
@@ -32,7 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Iterator, Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -59,8 +58,8 @@ class NimConfigError(NimError):
     """
 
 
-# Stable JARVIS-related model defaults. Operator can override per env var
-# without touching code.
+# Stable hosted-parser model defaults. Operator can override per env var without
+# touching code.
 DEFAULT_MODEL = "moonshotai/kimi-k2.6"
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -131,8 +130,8 @@ def chat_completion(
 ) -> dict[str, Any]:
     """Single-shot chat completion. Returns the parsed JSON response dict.
 
-    The shape matches OpenAI's chat-completions response — JARVIS agent
-    loop reads choices[0].message.{content, tool_calls}.
+    The shape matches OpenAI's chat-completions response. Parser enrichment
+    reads choices[0].message.content.
 
     Raises NimUnavailable on 5xx/timeout/connection (fallback path).
     Raises NimConfigError on 4xx (developer/operator action needed).
@@ -179,82 +178,15 @@ def chat_completion(
         raise NimUnavailable(f"NIM returned non-JSON body: {e}") from e
 
 
-def chat_completion_stream(
-    messages: list[dict[str, Any]],
-    model: Optional[str] = None,
-    tools: Optional[list[dict[str, Any]]] = None,
-    tool_choice: str | dict[str, Any] = "auto",
-    temperature: float = 0.2,
-    max_tokens: int = 1024,
-    chat_template_kwargs: Optional[dict[str, Any]] = None,
-) -> Iterator[dict[str, Any]]:
-    """Yield OpenAI-style SSE chunks from NIM.
-
-    Each yielded dict is one chat-completion-chunk frame:
-      {"id": ..., "choices": [{"delta": {"content": "..."}, "index": 0, ...}]}
-
-    Tool calls also stream (assembled across multiple deltas). The JARVIS
-    UI accumulates the deltas client-side via fetch + ReadableStream.
-
-    Raises NimUnavailable / NimConfigError before yielding anything if the
-    initial response is bad. Errors mid-stream are logged + the iterator
-    ends gracefully (the UI shows whatever partial content arrived).
-    """
-    if not is_configured():
-        raise NimConfigError("NVIDIA_NIM_API_KEY not set or invalid format")
-
-    model = model or settings.NVIDIA_NIM_MODEL
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": True,
-    }
-    if tools:
-        payload["tools"] = tools
-        payload["tool_choice"] = tool_choice
-    template_kwargs = _effective_chat_template_kwargs(chat_template_kwargs)
-    if template_kwargs:
-        payload["chat_template_kwargs"] = template_kwargs
-
-    url = f"{settings.NVIDIA_NIM_BASE_URL.rstrip('/')}/chat/completions"
-    timeout = settings.NVIDIA_NIM_TIMEOUT_SECONDS
-
-    try:
-        with httpx.Client(timeout=timeout) as client:
-            with client.stream("POST", url, headers=_build_headers(), json=payload) as response:
-                if response.status_code != 200:
-                    body = response.read().decode("utf-8", errors="replace")
-                    raise _classify_http_error(response.status_code, body)
-                for line in response.iter_lines():
-                    if not line or not line.startswith("data:"):
-                        continue
-                    data = line[len("data:"):].strip()
-                    if data == "[DONE]":
-                        return
-                    try:
-                        yield json.loads(data)
-                    except json.JSONDecodeError:
-                        logger.debug("NIM stream: skipping non-JSON chunk: %r", data[:120])
-                        continue
-    except httpx.TimeoutException as e:
-        raise NimUnavailable(f"NIM stream timeout after {timeout}s: {e}") from e
-    except httpx.ConnectError as e:
-        raise NimUnavailable(f"NIM stream connection failed: {e}") from e
-    except httpx.HTTPError as e:
-        raise NimUnavailable(f"NIM stream HTTP error: {e}") from e
-
-
 def health_check() -> dict[str, Any]:
-    """Cheap probe for the JARVIS health endpoint + UI status indicator.
+    """Cheap probe for operator NIM diagnostics.
 
     Returns:
       {"available": bool, "model": str, "reason": str|None}
 
-    Sends a 1-token chat completion. is_operator gate guarantees only the
-    operator hits this — no concern about the 40 RPM free-tier limit being
-    drained by health checks.
+    Sends a 1-token chat completion. The remaining health callers are
+    operator-gated diagnostics; user-facing parser enrichment falls back
+    without needing this probe.
     """
     if not is_configured():
         return {

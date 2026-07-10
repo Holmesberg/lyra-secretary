@@ -16569,3 +16569,64 @@ Rollback note:
   wording.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Remove Legacy NIM Streaming Chat API
+
+Seam:
+
+- `remove-legacy-nim-streaming-chat-api`
+
+Changed authority:
+
+- `backend/app/services/nvidia_nim_client.py` now exposes only the single-shot
+  `chat_completion()` path used by hosted parser enrichment.
+- The removed `chat_completion_stream()` API no longer preserves a dead
+  JARVIS chat UI transport path.
+- `backend/app/core/config.py` no longer declares the unused
+  `NVIDIA_NIM_JARVIS_MAX_TOKENS` setting.
+- `backend/tests/test_nvidia_nim_client.py` now locks the streaming API as
+  absent.
+
+Removed paths:
+
+- `nvidia_nim_client.chat_completion_stream`.
+- `settings.NVIDIA_NIM_JARVIS_MAX_TOKENS`.
+
+Parked paths:
+
+- Hosted NIM single-shot parser enrichment remains active only through
+  `llm_parser.py` and keeps its Ollama fallback behavior.
+- OpenClaw-to-product GPT wiring and runtime AI synthesis remain forbidden.
+
+Moved authority:
+
+- No runtime write authority moved. NIM remains a parser-enrichment dependency,
+  not a JARVIS chat/runtime surface.
+
+Tests and verification:
+
+- `rg -n "chat_completion_stream|NVIDIA_NIM_JARVIS_MAX_TOKENS|JARVIS chat UI|operator JARVIS turns|JARVIS endpoints|don't crash JARVIS" backend\app -S`;
+  produced no active backend app hits.
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests/test_nvidia_nim_client.py tests/test_llm_parser_p0_guards.py`;
+  passed with 13 passed and existing Pydantic deprecation warnings.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `python -m py_compile backend\app\services\nvidia_nim_client.py backend\app\core\config.py`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+
+Behavior parity statement:
+
+- No user-facing behavior, schema, Redis state, hosted-public artifact, public
+  deploy, public restart, or production data changed.
+- The active single-shot NIM parser path is preserved; only the unused removed
+  JARVIS streaming path is deleted.
+
+Rollback note:
+
+- Revert this seam commit to restore the streaming client method and unused
+  JARVIS token setting.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
