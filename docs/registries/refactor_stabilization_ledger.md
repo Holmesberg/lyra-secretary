@@ -16395,3 +16395,57 @@ Rollback note:
   query-key contract gate.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - S1c No-Unapproved-Rebrand Static Gate
+
+Seam:
+
+- `no-unapproved-rebrand-static-gate`
+
+Changed authority:
+
+- `scripts/scan_refactor_contracts.py` now hard-fails if app-facing/runtime
+  paths reintroduce `Barzakh` or `barzakh` during the current no-rebrand
+  cycle.
+- CI runs a negative self-test before the normal refactor contract gate,
+  proving the classifier catches synthetic Barzakh copy in frontend/backend
+  surfaces.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- The Barzakh rename/domain migration remains parked until a fresh branch,
+  explicit user approval, and a dedicated rebrand plan.
+
+Moved authority:
+
+- No product/runtime authority moved. S1c now owns a narrow rebrand-regression
+  guard so user-facing app copy and runtime scripts stay LyraOS during freeze
+  closure.
+
+Tests and verification:
+
+- `python -m py_compile scripts\scan_refactor_contracts.py`; passed.
+- `python scripts\scan_refactor_contracts.py --self-test-no-rebrand --pretty`;
+  passed and produced only the two synthetic frontend/backend findings after
+  the scanner self-fixture allowlist was corrected.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero real findings.
+- `git diff --check`; passed with existing CRLF warnings only.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public deploy,
+  public restart, or user-facing product copy changed.
+- The seam only makes accidental rebrand leakage observable in the standard
+  S1c gate.
+
+Rollback note:
+
+- Revert this S1c gate commit to remove the no-rebrand scanner rule and CI
+  self-test.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.

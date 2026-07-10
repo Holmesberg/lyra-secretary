@@ -243,6 +243,36 @@ ACTIVE_DOC_REMOVED_SURFACE_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
 }
 
+NO_UNAPPROVED_REBRAND_SUFFIXES = {
+    ".css",
+    ".html",
+    ".js",
+    ".json",
+    ".jsx",
+    ".md",
+    ".mjs",
+    ".py",
+    ".ps1",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+
+NO_UNAPPROVED_REBRAND_ROOTS = (
+    REPO_ROOT / "frontend",
+    REPO_ROOT / "backend" / "app",
+    REPO_ROOT / "scripts",
+    REPO_ROOT / ".github",
+)
+
+NO_UNAPPROVED_REBRAND_FILES = (
+    REPO_ROOT / "README.md",
+)
+
+NO_UNAPPROVED_REBRAND_PATTERN = re.compile(r"\b(?:Barzakh|barzakh)\b")
+
 
 def stale_doc_authority_banner_findings() -> list[Finding]:
     findings: list[Finding] = []
@@ -273,6 +303,55 @@ def stale_doc_authority_banner_findings() -> list[Finding]:
                     )
                 )
     return findings
+
+
+def no_unapproved_rebrand_findings(
+    extra_files: dict[str, str] | None = None,
+) -> list[Finding]:
+    """Prevent accidental Barzakh copy during the current no-rebrand cycle.
+
+    This intentionally scans app-facing/runtime/public paths rather than docs
+    history. Planning notes may discuss the deferred rename, but the browser,
+    runtime scripts, metadata, public files, and CI surfaces must stay LyraOS
+    until a fresh rebrand branch is explicitly approved.
+    """
+    findings: list[Finding] = []
+    files: list[Path] = []
+    for root in NO_UNAPPROVED_REBRAND_ROOTS:
+        files.extend(iter_files(root, NO_UNAPPROVED_REBRAND_SUFFIXES))
+    files.extend(path for path in NO_UNAPPROVED_REBRAND_FILES if path.exists())
+    findings.extend(
+        scan_lines(
+            rule_id="no_unapproved_barzakh_rebrand_in_app_surfaces",
+            severity="error",
+            files=files,
+            pattern=NO_UNAPPROVED_REBRAND_PATTERN,
+            allowed_paths={"scripts/scan_refactor_contracts.py"},
+        )
+    )
+    if extra_files:
+        for doc_path, text in extra_files.items():
+            for index, line in enumerate(text.splitlines(), start=1):
+                if NO_UNAPPROVED_REBRAND_PATTERN.search(line):
+                    findings.append(
+                        Finding(
+                            rule_id="no_unapproved_barzakh_rebrand_in_app_surfaces",
+                            severity="error",
+                            path=doc_path,
+                            line=index,
+                            excerpt=line.strip()[:220],
+                        )
+                    )
+    return findings
+
+
+def no_unapproved_rebrand_self_test_findings() -> list[Finding]:
+    return no_unapproved_rebrand_findings(
+        {
+            "frontend/app/page.tsx": "export const metadata = { title: 'Barzakh' };",
+            "backend/app/main.py": "APP_NAME = 'barzakh'",
+        }
+    )
 
 
 def removed_surface_active_doc_findings(
@@ -325,8 +404,21 @@ def main() -> int:
     parser.add_argument("--fail-on-errors", action="store_true")
     parser.add_argument("--include-review", action="store_true")
     parser.add_argument("--self-test-removed-surface-docs", action="store_true")
+    parser.add_argument("--self-test-no-rebrand", action="store_true")
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
+
+    if args.self_test_no_rebrand:
+        findings = no_unapproved_rebrand_self_test_findings()
+        output = {
+            "ok": len(findings) >= 2,
+            "mode": "self_test_no_rebrand",
+            "expected_minimum_findings": 2,
+            "finding_count": len(findings),
+            "findings": [finding.__dict__ for finding in findings],
+        }
+        print(json.dumps(output, indent=2 if args.pretty else None, sort_keys=True))
+        return 0 if output["ok"] else 1
 
     if args.self_test_removed_surface_docs:
         findings = removed_surface_active_doc_self_test_findings()
@@ -349,6 +441,7 @@ def main() -> int:
     findings.extend(frontend_jarvis_findings())
     findings.extend(stale_doc_authority_banner_findings())
     findings.extend(removed_surface_active_doc_findings())
+    findings.extend(no_unapproved_rebrand_findings())
     if args.include_review:
         findings.extend(frontend_behavioral_claim_review_findings())
 
