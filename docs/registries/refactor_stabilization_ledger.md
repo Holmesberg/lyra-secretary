@@ -14631,3 +14631,85 @@ Rollback note:
 - Revert commit `b9ac24c` to inline snapshot assembly back into the endpoint.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Archetype Query Invalidation Contract
+
+Seam:
+
+- `r3-archetype-query-invalidation-contract`
+
+Changed authority:
+
+- No backend mutation, exposure, provider, clean-data, schema, deployment,
+  env var, domain, or rebrand authority changed.
+- Frontend archetype-dependent query invalidation now has a central contract
+  in `frontend/lib/query-keys.ts`.
+
+Removed paths:
+
+- Removed ad hoc query-key arrays from touched archetype, notification, and
+  category surfaces.
+- Removed the survey submit/skip path's narrow bias-only invalidation that
+  left mounted archetype proximity/profile surfaces stale.
+
+Parked paths:
+
+- Runtime AI synthesis, new insight types, passive tracking, causal claims,
+  schema migrations, provider adapter changes, hosted-public deploy/restart,
+  hosted-public mutable dogfood, and rebrand/domain migration remain parked.
+- Analytics writer/exposure paths were not touched.
+
+Moved authority:
+
+- Query-key construction and archetype-dependent invalidation moved into
+  `frontend/lib/query-keys.ts`.
+- `ArchetypeSurvey` now requests the shared archetype-dependent invalidation
+  contract instead of manually selecting individual caches.
+
+Issues and classification:
+
+- Fixed GitHub issue #194:
+  `https://github.com/Holmesberg/lyra-secretary/issues/194`.
+- Classification: product/runtime stale-cache bug in frontend
+  archetype-dependent invalidation.
+
+Tests and verification:
+
+- `npm run typecheck` in `frontend`; passed.
+- `npm run build` in `frontend`; passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with `ok=true`, zero findings.
+- `git diff --check -- frontend\components\app-notification-host.tsx frontend\components\archetype-insights-card.tsx frontend\components\archetype-profile-section.tsx frontend\components\archetype-survey.tsx frontend\components\category-select.tsx frontend\lib\query-keys.ts`;
+  passed with existing CRLF warnings only.
+- `rg -n 'queryKey:\s*\[' frontend\components frontend\app frontend\lib -S`;
+  found no direct query-key arrays in scanned app/component/lib surfaces.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T07-55-13-183Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `134` checks, zero failed
+  checks, and cleanup counts for synthetic tasks, deadlines, and
+  notifications; recorded known gated paths for onboarding skip,
+  brain-dump parser normalization, and pressure-map recovery gating.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T08-02-12-793Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, and zero dashboard snapshot diffs.
+- CI proof: GitHub Actions run `29078571302` passed for
+  `bd8475b9416ef60a579d809f14f52fc8636c00ea`.
+
+Behavior parity statement:
+
+- Visible archetype survey, notification host, category select, dynamic
+  profile, and archetype insight surfaces keep the same user-facing flows.
+- Survey submit/skip now refreshes all documented archetype-dependent caches,
+  including proximity/profile data, without changing backend semantics.
+
+Rollback note:
+
+- Revert commit `bd8475b` to restore the prior local query-key/invalidation
+  behavior.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
