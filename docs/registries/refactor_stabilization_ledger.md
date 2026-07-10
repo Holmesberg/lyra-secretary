@@ -15400,3 +15400,70 @@ Rollback note:
   gate and restore the previous historical workflow wording.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - OpenClaw Early-Stop Confirmation Gate
+
+Seam:
+
+- `openclaw-early-stop-confirmation-contract`
+
+Changed authority:
+
+- Added backend characterization coverage proving the first unconfirmed early
+  stop returns `requires_confirmation=true` without closing the running task or
+  stopwatch session.
+- Added an S1c CI gate for the historical OpenClaw skill's early-stop
+  contract: initial stop call first, explicit user yes/no, then
+  `?confirmed=true` only after confirmation plus reflection.
+- No runtime authority changed. The backend gate behavior was preserved and
+  OpenClaw direct mutation remains freeze-parked.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- OpenClaw direct timer control and OpenClaw-to-product mutation remain parked
+  until explicitly reauthorized.
+- Any future agent/web chat stop-flow must still use the canonical product
+  confirmation path and cannot bypass the early-stop gate.
+
+Moved authority:
+
+- No product authority moved.
+- Early-stop confirmation discipline is now enforced by backend
+  characterization plus a static agent-contract gate.
+
+Issues and classification:
+
+- Fixed GitHub issue #19:
+  `https://github.com/Holmesberg/lyra-secretary/issues/19`.
+- Classification: existing backend invariant plus docs/agent-contract CI
+  hardening.
+
+Tests and verification:
+
+- `node scripts/test_openclaw_early_stop_contract.mjs`; passed.
+- `node scripts/test_openclaw_early_stop_contract.mjs --self-test-negative`;
+  passed by failing the broken fixture as expected.
+- `node scripts/test_openclaw_stopwatch_task_id_contract.mjs`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_wave2_idempotency.py -q`;
+  passed, 5 tests.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29083414126` passed for
+  `8894ba330bb5bd97f8247ff2052dbcaef9085fef`.
+
+Behavior parity statement:
+
+- No user-visible behavior, API semantics, schema, data, Redis, frontend route,
+  hosted-public artifact, or public deployment behavior changed.
+- The seam only makes the documented early-stop flow observable in tests and
+  CI.
+
+Rollback note:
+
+- Revert commit `8894ba3` to remove the OpenClaw early-stop contract gate and
+  backend characterization test.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
