@@ -13497,3 +13497,96 @@ Rollback note:
   page component.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Pulse Focus Stopwatch Command Hook Extraction
+
+Seam:
+
+- `r3-pulse-focus-card-stopwatch-command-hook`
+
+Changed authority:
+
+- No mutation authority, exposure authority, clean-data authority, schema,
+  deployment state, env var, domain, or cohort denominator changed.
+- Pulse remains the hub surface and `PulseFocusCard` remains the visual owner
+  for focus-session UI, task selection, reflection controls, and next-prompt
+  rendering. Backend stopwatch services remain the source of truth for timer
+  lifecycle and execution deltas.
+
+Removed paths:
+
+- Removed inline Pulse focus start, quick-pause, resume, and stop mutation
+  bodies from `frontend/components/pulse/PulseFocusCard.tsx`.
+
+Parked paths:
+
+- Pulse re-entry queue command extraction, backend stopwatch writer splits,
+  output render/suppression writer splits, auth/provider writer splits,
+  schema migrations, hosted-public deploy/restart, hosted-public mutable
+  dogfood, and rebrand/domain migration remain approval-gated or future seams.
+
+Moved authority:
+
+- Frontend command orchestration for Pulse focus start/pause/resume/stop,
+  early-start info, early-stop confirmation, stop summary, reflection cleanup,
+  and timer-surface invalidation moved to
+  `frontend/lib/hooks/use-pulse-focus-stopwatch-commands.ts`.
+- No backend authority moved.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was a planned behavior-preserving frontend
+  extraction.
+- Classification: frontend behavior-preserving extraction / Pulse focus
+  stopwatch command orchestration.
+
+Tests and verification:
+
+- `git diff --check`; passed with existing CRLF warnings only.
+- `npm run typecheck`; passed.
+- `npm run build`; passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_stopwatch_switch.py backend\tests\test_wave2_idempotency.py backend\tests\test_pause_resume_pause_event.py backend\tests\test_recovery_and_negative_pause.py backend\tests\test_output_surfaces.py -q`;
+  passed with `65` tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_holmesberg_product_loop_dogfood.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Holmesberg artifact:
+  `tmp/browser-product-loop/2026-07-10T04-11-16-758Z/result.json`.
+- The Holmesberg artifact reported `ok=true`, `122` checks, `0` failed
+  checks, `3` non-fatal issues, and `5` gated paths. The mutable timer path
+  proved timer start, pause, paused-session survival across Pulse refresh and
+  Calendar navigation, Today paused banner visibility, pause counter anchoring,
+  resume, stop, execution delta fields, switch-chip HTTP `200`, backend timer
+  swap, and cleanup with no active timer and no unrendered synthetic
+  creation-nudge exposures.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_operator_readonly_browser_stress.ps1 -Topology local-current -LocalCurrentPort 3013 -ProxyApi`;
+  passed.
+- Operator artifact:
+  `tmp/operator-readonly-stress-2026-07-10T04-17-40-298Z/result.json`.
+- The operator artifact reported `ok=true`, zero issues, zero warnings, zero
+  count diffs, zero route count diffs, zero dashboard snapshot diffs,
+  `implementation_green=true`, `implementation_status=green`,
+  `cohort_status=yellow`, `safe_to_invite_more_users=false`, and
+  `exposure_without_render_count=0`.
+- CI proof: GitHub Actions run `29068783639` passed for
+  `166ef6c529d46302940b27838d15c484d715c29c`.
+
+Behavior parity statement:
+
+- No intended user-visible behavior changed.
+- Pulse focus still uses the same stopwatch API calls, quick-pause reason,
+  early-start info copy, early-stop confirmation state, reflection payload,
+  stop summary, next-prompt behavior, and timer invalidation paths.
+- The proof preserved documented focus-session start/pause/resume/stop,
+  one-active-timer behavior, paused timer re-entry, stop finalization,
+  export-visible execution deltas, and synthetic cleanup.
+
+Rollback note:
+
+- Revert commit `166ef6c` to restore Pulse focus stopwatch mutation bodies to
+  `PulseFocusCard`.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
