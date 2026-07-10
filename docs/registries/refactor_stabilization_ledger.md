@@ -17527,3 +17527,86 @@ Rollback note:
   `stopwatch_manager.py`. No schema, data, Redis migration, hosted-public
   deploy, public restart, production repair, or rebrand/domain rollback is
   required.
+
+## 2026-07-10 - Output Surface Diagnostics Cache
+
+Seam:
+
+- `output-surface-diagnostics-cache`
+
+Changed authority:
+
+- `backend/app/services/output_surfaces.py` now computes read-only
+  current-data eligibility metrics once per unique clean-profile/signal-target
+  tuple during output-surface diagnostics.
+- Output surface diagnostics remain operator-only meta-instrumentation. They do
+  not render user-facing claims and do not write exposure, task, provider,
+  Redis, clean-data, ClaimCompiler, or production repair state.
+
+Removed paths:
+
+- Repeated per-surface eligibility metric recomputation was removed for
+  registry surfaces sharing identical clean-profile/signal-target inputs.
+
+Parked paths:
+
+- Hosted-public deploy/restart, production data repair, schema migration,
+  output-surface writer split, exposure lifecycle authority changes, and
+  rebrand/domain work remain parked.
+- GitHub issue `#200` remains open until the optimized endpoint is deployed to
+  hosted-public and public read-only proof passes.
+
+Moved authority:
+
+- No mutation, exposure lifecycle, provider, task lifecycle, stopwatch,
+  clean-data denominator, ClaimCompiler, hosted-public, public deploy, public
+  restart, production data, schema, or rebrand authority moved.
+
+Tests and verification:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_output_surfaces.py::test_output_surface_diagnostics_reports_missing_terminal_event backend\tests\test_output_surfaces.py::test_output_surface_diagnostics_reuses_eligibility_metrics backend\tests\test_output_surfaces.py::test_output_surface_diagnostics_endpoint_is_operator_only -q`;
+  passed with 3 tests.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_output_surfaces.py -q`;
+  passed with 30 tests.
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\services\output_surfaces.py`;
+  passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `1ef9de1` passed: run `29118187738`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29118187738`).
+- Standard local-current post-wave proof command:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_post_wave_dogfood_loop.ps1 -Topology local-current -Mode standard -WaveName output-surface-diagnostics-cache -IncludeCiCdProof -CiCdRunId 29118187738 -CiCdFailOnUnsuccessful`;
+  passed.
+- Evidence manifest:
+  `tmp\post-wave-dogfood\20260710-223119-output-surface-diagnostics-cache-standard-local-current\summary.json`.
+- Classification: `standard_wave_proof_passed`.
+- Topology: `local-current`, frontend `http://localhost:3013`, API
+  `http://localhost:8000`, frontend build id `local-current`, backend build
+  id `dev`.
+- Cleanup proof: not required; this was a read-only operator diagnostics seam.
+- Operator proof: implementation green, cohort yellow, safe-to-invite false,
+  exposure-without-render count `0`, and no count diffs.
+- CI/CD proof in manifest: run `29118187738` for
+  `1ef9de1cd6d34d192f1aca40fd495d79780f5ba7` passed.
+
+Known non-blocking issues:
+
+- Hosted-public proof remains blocked by issue `#200` until public deployment
+  state is updated; no public restart/deploy was performed in this seam.
+- Standard mode skipped mutable browser proof and full backend suite by design.
+
+Behavior parity statement:
+
+- Output-surface diagnostics preserve their existing payload shape and
+  operator-only behavior. The only behavior change is reduced duplicate
+  read-side eligibility computation for surfaces with identical
+  clean-profile/signal-target inputs.
+
+Rollback note:
+
+- Revert `1ef9de1` to restore per-surface eligibility recomputation. No
+  schema, data, Redis migration, hosted-public deploy, public restart,
+  production repair, or rebrand/domain rollback is required.
