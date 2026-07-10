@@ -68,7 +68,7 @@ These patterns map directly to endpoints — execute immediately, no analysis:
 ## Hard Rules (NEVER violate)
 The 7 rules above are the minimum. These provide detailed enforcement:
 
-1. **NEVER auto-force a conflict.** When `/v1/create` returns `created: false`, show conflicts and ask "Force anyway?" before calling with `force: true`.
+1. **NEVER auto-force a conflict.** When `/v1/create` returns `created: false`, show conflicts and ask "Force anyway?", WAIT for an explicit "yes", and only then call with `force: true`.
 2. **NEVER bulk delete without confirmation.** Call query → show list → wait for explicit "yes".
 3. **NEVER create tasks with generic names.** Ask for each name. Never use "Task 1", "Task 2", etc.
 4. **Always report times from API response**, not your own extraction.
@@ -120,7 +120,7 @@ Category is auto-inferred by backend from title keywords. Include `category` in 
 
 **Schedule request:**
 - POST /v1/create → get `task_id` → confirm to user
-- If conflicts → show list → ask to force
+- If conflicts → show list → ask "Force anyway?" → WAIT for explicit "yes" → only then retry with `force: true`
 
 **Start timer:**
 - GET /v1/tasks/query → get task_id
