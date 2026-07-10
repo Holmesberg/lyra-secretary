@@ -11936,3 +11936,68 @@ Rollback note:
   from `docs/AUTHORITY.md`.
 - No data, schema, Redis, hosted-public deploy, user cleanup, or production
   repair rollback is required.
+
+## 2026-07-10 - Browser Account Role Contract Gate
+
+Seam:
+
+- `browser-account-role-contract`
+
+Changed authority:
+
+- No product/runtime behavior, schema, hosted-public deployment state,
+  mutation authority, exposure authority, cohort denominator, or readiness
+  threshold changed.
+- The browser verifier harness now fails closed if the Insights forced-state
+  dogfood path lacks the Holmesberg mutable account cookie.
+
+Removed paths:
+
+- Removed the operator-cookie fallback from
+  `scripts/browser_insights_states_dogfood.mjs`.
+
+Parked paths:
+
+- Hosted-public mutable dogfood remains approval-gated.
+- Operator privacy scans may still use `LYRA_COOKIE_ALINASSERSABRY` read-only
+  from explicitly read-only verifier paths.
+
+Moved authority:
+
+- `scripts/test_browser_account_role_contract.mjs` now owns a static CI guard
+  for the operator-read-only vs. Holmesberg-mutable browser verifier split.
+- `.github/workflows/ci.yml` runs that guard inside `s1c-static-gates`.
+
+Issues and classification:
+
+- GitHub issue #189 (`Insights dogfood can fall back to operator cookie`) was
+  created and closed.
+- Classification: verifier/harness bug / account-role authority drift.
+
+Tests and verification:
+
+- `node --check scripts\browser_insights_states_dogfood.mjs`; passed.
+- `node --check scripts\test_browser_account_role_contract.mjs`; passed.
+- `node scripts\test_browser_account_role_contract.mjs`; passed.
+- `node scripts\test_post_wave_evidence_manifest_contract.mjs`; passed.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors`; passed.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed with `missing_owner_count=0` and no worker-write drift.
+- `git diff --check`; passed with existing PowerShell/Git line-ending warnings.
+- CI proof: GitHub Actions run `29058743306` passed for
+  `ec5bc7ef13b5a96decddcd45ced89c401cdc9cef`; the
+  `s1c-static-gates` job ran `Run browser account role contract gate`.
+
+Behavior parity statement:
+
+- No user-facing product behavior changed.
+- Insights forced-state browser dogfood still uses the same mocked Insights API
+  scenarios, but it now requires the mutable Holmesberg cookie and cannot
+  silently use the operator account.
+
+Rollback note:
+
+- Revert commit `ec5bc7e` to restore the old Insights dogfood cookie fallback
+  and remove the static account-role CI gate.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
