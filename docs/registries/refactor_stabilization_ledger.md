@@ -12301,6 +12301,17 @@ Tests and verification:
   warnings.
 - CI proof: GitHub Actions run `29060146965` passed for
   `758b5ce44234d7d8761c0d9b01af41a3f017ef18`.
+- First local-current operator read-only proof attempt used the already-running
+  `localhost:3013` frontend and failed at the topology verifier because
+  `/api/topology` returned HTTP 500. Classified as topology/deployment drift
+  in the stale local frontend, not product/runtime failure.
+- Re-run through `run_operator_readonly_browser_stress.ps1` with wrapper-managed
+  local-current frontend recovered without public deploy/restart:
+  `tmp/operator-readonly-stress-2026-07-10T00-37-22-322Z/result.json`; passed.
+- The operator read-only artifact reported zero count diffs, zero route count
+  diffs, zero dashboard snapshot diffs, no browser issues or warnings,
+  `implementation_green=true`, cohort yellow for real data gaps, and
+  `exposure_without_render_count=0`.
 
 Behavior parity statement:
 
