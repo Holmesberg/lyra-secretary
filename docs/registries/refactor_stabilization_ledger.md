@@ -12537,3 +12537,68 @@ Rollback note:
 
 - No code rollback is required. Delete this ledger entry only if the artifact is
   superseded by a newer current-head baseline.
+
+## 2026-07-10 - Operator Readiness Split Characterization
+
+Seam:
+
+- `s1c-operator-readiness-characterization`
+
+Changed authority:
+
+- No product/runtime authority, schema, deployment state, mutation authority,
+  exposure authority, cohort denominator, readiness threshold, env var, or
+  domain changed.
+- Tests now directly characterize the implementation/cohort readiness split and
+  the controlled evidence-collection alpha gate.
+
+Removed paths:
+
+- None.
+
+Parked paths:
+
+- Hosted-public deploy/restart, hosted-public mutable dogfood, writer splits,
+  schema migrations, and cohort expansion remain approval-gated.
+
+Moved authority:
+
+- None. The seam only added coverage for existing read-only readiness logic in
+  `backend/app/services/operator_readiness.py`.
+
+Issues and classification:
+
+- No GitHub issue was opened; this was planned S1c hardening, not a product
+  bug.
+- Classification: tests/S1c hardening for operator stop/go semantics.
+
+Tests and verification:
+
+- Added `backend/tests/test_operator_readiness.py`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_readiness.py -q`;
+  passed, 4 tests.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_backend_pytest.ps1 backend\tests\test_operator_dashboard.py -q`;
+  passed, 12 tests.
+- `.\.venv311\Scripts\python.exe scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed.
+- `.\.venv311\Scripts\python.exe scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed.
+- `git diff --check`; passed.
+- CI proof: GitHub Actions run `29061543657` passed for
+  `219fe739c78e3b21bc9d1d2dc20a73c6b7e676ea`.
+
+Behavior parity statement:
+
+- No app behavior changed.
+- Readiness remains green only when implementation has no blockers and cohort
+  evidence thresholds are met.
+- Controlled evidence collection remains allowed only when implementation is
+  green and the only blocker is insufficient real data volume.
+- No writes, migrations, hosted-public deploys, public restarts, or synthetic
+  browser rows were introduced.
+
+Rollback note:
+
+- Revert commit `219fe73` to remove the characterization test file.
+- No data, schema, Redis, hosted-public deploy, user cleanup, or production
+  repair rollback is required.
