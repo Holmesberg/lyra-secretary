@@ -16907,3 +16907,64 @@ Rollback note:
   local helper definitions.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - Extract Measurement Integrity Classifiers
+
+Seam:
+
+- `operator-measurement-integrity-classifier-extraction`
+
+Changed authority:
+
+- `backend/app/services/operator_measurement_integrity.py` now names the
+  read-only clean-trace denominator exclusion classifier and dirty-session
+  reason classifier as module helpers.
+- `/operator` still owns measurement-integrity packet construction through the
+  same snapshot service. Query scope, dirty reason semantics, readiness
+  denominator inputs, and exposure contamination checks remain unchanged.
+
+Removed paths:
+
+- Inline denominator exclusion branching and inline dirty-reason branching from
+  the body of `measurement_integrity_snapshot`.
+
+Parked paths:
+
+- Deeper measurement-integrity package extraction remains parked.
+- Any changes to clean-trace denominator policy, exposure doctrine, production
+  repair, schema shape, or ClaimCompiler authority remain out of scope.
+
+Moved authority:
+
+- No write, mutation, schema, Redis, provider, exposure, hosted-public, or
+  readiness authority moved. This seam only extracts read-only classifiers
+  inside the existing measurement-integrity service.
+
+Tests and verification:
+
+- `.\.venv311\Scripts\python.exe -m py_compile backend\app\services\operator_measurement_integrity.py`;
+  passed.
+- `cd backend && ..\.venv311\Scripts\python.exe -m pytest tests\test_operator_dashboard.py tests\test_operator_readiness.py tests\test_operator_route_security.py`;
+  passed with 21 passed and existing warnings.
+- `python scripts\scan_refactor_contracts.py --fail-on-errors --pretty`;
+  passed with zero findings.
+- `python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift --pretty`;
+  passed with zero missing owners and zero worker-write drift.
+- `git diff --check`; passed with existing CRLF warnings only.
+- GitHub CI for `a00c963` passed: run `29106537647`
+  (`https://github.com/Holmesberg/lyra-secretary/actions/runs/29106537647`).
+
+Behavior parity statement:
+
+- No user-visible behavior, operator readiness denominator, clean-trace
+  numerator/denominator semantics, exposure lifecycle semantics, schema, Redis
+  state, hosted-public artifact, public deploy, public restart, production
+  data, or rebrand/domain behavior changed.
+
+Rollback note:
+
+- Revert the measurement-integrity classifier extraction commit to inline the
+  denominator exclusion and dirty-reason branching back into
+  `measurement_integrity_snapshot`.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
