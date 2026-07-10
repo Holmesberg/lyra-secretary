@@ -7,17 +7,18 @@ import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   queryTasks,
   getStopwatchStatus,
-  startStopwatch,
-  stopStopwatch,
   markAbandoned,
   markDone,
   deleteTask,
   voidTask,
   type TaskRow as TaskRowType,
-  type StopResponse,
   type StopwatchStatus,
 } from "@/lib/tasks";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
+import {
+  useTodayStopwatchCommands,
+  type TodayEarlyStopState,
+} from "@/lib/hooks/use-today-stopwatch-commands";
 import { TaskRow } from "@/components/task-row";
 import { ActiveTimerBanner } from "@/components/active-timer-banner";
 import { ReadinessModal } from "@/components/readiness-modal";
@@ -266,11 +267,7 @@ function TodayInner() {
   const [interruptionStartFor, setInterruptionStartFor] = useState<TaskRowType | null>(null);
   const [readinessInterruptionType, setReadinessInterruptionType] = useState<string | null>(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
-  const [earlyStop, setEarlyStop] = useState<{
-    elapsed: number;
-    planned: number;
-    message: string;
-  } | null>(null);
+  const [earlyStop, setEarlyStop] = useState<TodayEarlyStopState | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
@@ -319,6 +316,18 @@ function TodayInner() {
   const refresh = () => {
     void invalidateTodayTaskCommandSurfaces(qc, viewedDate, nextDateStr);
   };
+
+  const { handleStart, handleStop } = useTodayStopwatchCommands({
+    tasksDayKey,
+    refresh,
+    setErrorMsg,
+    setReadinessFor,
+    setReadinessInterruptionType,
+    setReflectionOpen,
+    setEarlyStop,
+    setInfoMsg,
+    pushToast,
+  });
 
   const status = statusQ.data;
   const activeTaskId = status?.active ? status.task_id : undefined;
@@ -522,177 +531,6 @@ function TodayInner() {
 
     return { top: topItems, bottom: bottomItems };
   })();
-
-  async function handleStart(
-    task: TaskRowType,
-    readiness: number,
-    interruptionType?: string | null
-  ) {
-    setErrorMsg(null);
-    // Optimistic flip — the API call is ~1.5s over the Supabase pooler,
-    // so close the readiness modal and flip status immediately. Snapshot
-    // for rollback if the server rejects (e.g., task already EXECUTING
-    // in another tab). Mirrors the cancelQueries pattern in
-    // active-timer-banner.tsx §applyPause.
-    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
-    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    const interruptedTaskId =
-      interruptionType && snapshot?.active ? snapshot.task_id : undefined;
-    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, {
-      active: true,
-      task_id: task.task_id,
-      task_title: task.title,
-      paused: false,
-      start_time: new Date().toISOString(),
-      elapsed_minutes: 0,
-      planned_duration_minutes: task.planned_duration_minutes ?? 0,
-      total_paused_minutes: 0,
-    });
-    // Optimistic task-state flip — the task card flips from "PLANNED" to
-    // "EXECUTING" immediately instead of waiting 1.4 s for refresh().
-    qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-      old?.map((t) => {
-        if (t.task_id === task.task_id) return { ...t, state: "EXECUTING" };
-        if (interruptedTaskId && t.task_id === interruptedTaskId) {
-          return { ...t, state: "PAUSED" };
-        }
-        return t;
-      })
-    );
-    setReadinessFor(null);
-    setReadinessInterruptionType(null);
-    try {
-      const startResp = await startStopwatch(
-        task.task_id,
-        readiness,
-        interruptionType
-      );
-      announceUndoAvailable("Timer started.");
-      // LYR-097 (2026-04-28): surface "started early" hint when backend
-      // flags the task as future. Inline 4s toast — non-blocking,
-      // visible-once acknowledgment so the user knows the session
-      // timestamp diverges from the calendar slot.
-      if (startResp.is_future_task && startResp.planned_start) {
-        try {
-          const planned = new Date(startResp.planned_start);
-          const minutesEarly = Math.max(
-            0,
-            Math.round((planned.getTime() - Date.now()) / 60000)
-          );
-          const timeLabel = planned.toLocaleTimeString([], {
-            hour: "numeric", minute: "2-digit",
-          });
-          setErrorMsg(
-            `Heads up — this was scheduled for ${timeLabel}, you started ${minutesEarly} min early. The session will record from now.`
-          );
-          // Auto-clear so it doesn't hover indefinitely
-          setTimeout(() => setErrorMsg((prev) =>
-            prev?.startsWith("Heads up — this was scheduled") ? null : prev
-          ), 5000);
-        } catch {
-          // Defensive — bad date string shouldn't break the start flow
-        }
-      }
-      refresh();
-    } catch (e: any) {
-      if (snapshot !== undefined) {
-        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
-      }
-      qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-        old?.map((t) => {
-          if (t.task_id === task.task_id) return { ...t, state: "PLANNED" };
-          if (interruptedTaskId && t.task_id === interruptedTaskId) {
-            return { ...t, state: "EXECUTING" };
-          }
-          return t;
-        })
-      );
-      setErrorMsg(e?.message ?? "Failed to start timer");
-    }
-  }
-
-  async function handleStop(
-    reflection: number,
-    opts: { confirmed?: boolean; completionPct?: number; scopeOutcome?: string } = {}
-  ) {
-    setErrorMsg(null);
-    // Optimistic flip — same cancelQueries pattern as handleStart. Clears
-    // the active banner + unlocks Start buttons on sibling tasks instantly.
-    // If the backend responds with requires_confirmation (early-stop gate),
-    // we roll back so the banner stays visible for the confirmation modal.
-    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
-    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    const stoppedTaskId = snapshot?.task_id;
-    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, { active: false });
-    if (stoppedTaskId) {
-      qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-        old?.map((t) =>
-          t.task_id === stoppedTaskId ? { ...t, state: "EXECUTED" } : t
-        )
-      );
-    }
-    try {
-      const res: StopResponse = await stopStopwatch(reflection, {
-        confirmed: opts.confirmed,
-        task_completion_percentage: opts.completionPct,
-        scope_outcome: opts.scopeOutcome,
-      });
-      if (res.requires_confirmation) {
-        if (snapshot !== undefined) {
-          qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
-        }
-        if (stoppedTaskId) {
-          qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-            old?.map((t) =>
-              t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
-            )
-          );
-        }
-        setEarlyStop({
-          elapsed: res.duration_minutes,
-          planned: res.planned_duration_minutes,
-          message: res.confirmation_message ?? "Early stop",
-        });
-        return;
-      }
-      setReflectionOpen(false);
-      setEarlyStop(null);
-      if (res.paused_parent) {
-        setInfoMsg(
-          `${res.paused_parent.title} is still paused (${res.paused_parent.paused_minutes} min). Resume when ready.`
-        );
-      }
-      // LYR-098: surface retention signals as toasts per
-      // notification_patterns.md §Toast. micro_mirror auto-dismisses
-      // in 8s; calibration_nudge is pinned until dismissed since the
-      // reference-class summary needs dwell time to read.
-      // LYR-110: both toasts now carry a "View details →" link to /insights.
-      // micro_mirror had 95% dismissal at ~6s dwell across all users —
-      // adding a deeper-engagement affordance tests whether absence-of-
-      // affordance was the failure vs content-not-valuable.
-      if (res.micro_mirror) {
-        pushToast(res.micro_mirror, res.micro_mirror_view_id ?? null, "auto", "/insights");
-        void ackExposureRender(res.micro_mirror_exposure_id);
-      }
-      if (res.calibration_nudge) {
-        pushToast(res.calibration_nudge, res.calibration_nudge_view_id ?? null, "pin", "/insights");
-        void ackExposureRender(res.calibration_nudge_exposure_id);
-      }
-      refresh();
-    } catch (e: any) {
-      if (snapshot !== undefined) {
-        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
-      }
-      if (stoppedTaskId) {
-        qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-          old?.map((t) =>
-            t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
-          )
-        );
-      }
-      setErrorMsg(e?.message ?? "Failed to stop timer");
-    }
-  }
 
   function handleInterruptionCreated(taskId: string, taskTitle: string) {
     refresh();
