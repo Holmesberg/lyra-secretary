@@ -15917,3 +15917,68 @@ Rollback note:
 - Revert commit `a671b1f` to remove the freeze-boundary contract gate.
 - No data, schema, Redis, hosted-public deploy, public restart, production
   repair, or rebrand/domain rollback is required.
+
+## 2026-07-10 - OpenClaw Delete Confirmation Contract Gate
+
+Seam:
+
+- `openclaw-delete-confirmation-contract`
+
+Changed authority:
+
+- No live OpenClaw runtime authority was added.
+- Added a CI-enforced contract proving the historical OpenClaw skill keeps
+  destructive task deletion behind explicit confirmation, backend identity
+  verification, and planned-task-only semantics.
+- The contract also preserves the executed-task rule: executed tasks are
+  voided with an explicit user-provided reason, not deleted.
+
+Removed paths:
+
+- No paths removed.
+
+Parked paths:
+
+- OpenClaw direct product mutation remains parked.
+- Conflict replacement / "delete then reschedule" flow remains parked as a
+  future feature decision; this seam does not implement issue #119.
+- OpenClaw-to-product runtime wiring remains parked.
+
+Moved authority:
+
+- No authority moved.
+- Task deletion and voiding authority remains with the canonical product API
+  and authenticated/audited runtime paths, not historical OpenClaw reference
+  material.
+
+Issues and classification:
+
+- Fixed GitHub issue #115:
+  `https://github.com/Holmesberg/lyra-secretary/issues/115`.
+- Classification: verifier/CI guard for an old agent-originated destructive
+  task deletion bug class.
+
+Tests and verification:
+
+- `node scripts\test_openclaw_delete_confirmation_contract.mjs`; passed.
+- `node scripts\test_openclaw_delete_confirmation_contract.mjs --self-test-negative`;
+  passed by failing the broken fixture as expected.
+- Adjacent OpenClaw gates also passed locally:
+  `test_openclaw_conflict_force_contract.mjs` and
+  `test_openclaw_freeze_boundary_contract.mjs`.
+- `git diff --check`; passed with existing CRLF warnings only.
+- CI proof: GitHub Actions run `29087021325` passed for
+  `0a447a60f82a229301e45736b1e4e65e15b801ac`.
+
+Behavior parity statement:
+
+- No app behavior, schema, Redis state, hosted-public artifact, public
+  deployment behavior, rebrand/domain state, or user-facing copy changed.
+- The seam only makes the historical destructive-delete guardrail mechanically
+  observable in CI.
+
+Rollback note:
+
+- Revert commit `0a447a6` to remove the delete-confirmation contract gate.
+- No data, schema, Redis, hosted-public deploy, public restart, production
+  repair, or rebrand/domain rollback is required.
