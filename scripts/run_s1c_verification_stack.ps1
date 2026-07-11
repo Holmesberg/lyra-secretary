@@ -64,6 +64,24 @@ try {
     & $python scripts\scan_refactor_contracts.py --fail-on-errors
   }
 
+  Invoke-Step "backend layer import gate" {
+    & $python -m py_compile scripts\scan_backend_layer_imports.py
+    & $python scripts\scan_backend_layer_imports.py --self-test
+    & $python scripts\scan_backend_layer_imports.py --fail-on-errors
+  }
+
+  Invoke-Step "Cortex read-only gate" {
+    & $python -m py_compile scripts\scan_cortex_readonly.py
+    & $python scripts\scan_cortex_readonly.py --self-test
+    & $python scripts\scan_cortex_readonly.py --fail-on-errors
+  }
+
+  Invoke-Step "shipped feature preservation registry gate" {
+    & $python -m py_compile scripts\scan_feature_preservation_registry.py
+    & $python scripts\scan_feature_preservation_registry.py --self-test
+    & $python scripts\scan_feature_preservation_registry.py --fail-on-errors
+  }
+
   Invoke-Step "OpenClaw operator relay hermetic test" {
     node scripts\test_openclaw_operator_relay.mjs
   }

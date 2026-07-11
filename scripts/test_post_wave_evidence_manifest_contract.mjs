@@ -18,6 +18,7 @@ function assert(condition, message) {
 const wrapper = read("scripts/run_post_wave_dogfood_loop.ps1");
 const s1cStack = read("scripts/run_s1c_verification_stack.ps1");
 const ciProof = read("scripts/collect_github_ci_cd_proof.ps1");
+const ciWorkflow = read(".github/workflows/ci.yml");
 const runbook = read("docs/runbooks/post_wave_dogfood_loop.md");
 
 const requiredManifestFields = [
@@ -84,6 +85,25 @@ for (const [name, source] of [
       source.includes("if (-not $stepSucceeded)"),
     `${name} must classify the scriptblock result instead of handled probe exits`
   );
+}
+
+const localGateSource = s1cStack.replaceAll("\\", "/");
+const ciGateSource = ciWorkflow.replaceAll("\\", "/");
+for (const gate of [
+  "scripts/scan_backend_layer_imports.py",
+  "scripts/scan_cortex_readonly.py",
+  "scripts/scan_feature_preservation_registry.py",
+]) {
+  for (const [name, source] of [
+    ["local S1c", localGateSource],
+    ["CI", ciGateSource],
+  ]) {
+    assert(source.includes(`${gate} --self-test`), `${name} is missing ${gate} self-test`);
+    assert(
+      source.includes(`${gate} --fail-on-errors`),
+      `${name} is missing ${gate} hard-fail execution`
+    );
+  }
 }
 
 const runbookRequiredPhrases = [
