@@ -592,7 +592,11 @@ try {
         $frontend = Get-FrontendOriginForTopology
         $api = Get-ApiOriginForTopology
         $env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_HOLMESBERG", "User")
-        node scripts\browser_insights_states_dogfood.mjs --frontend $frontend --api $api
+        $insightsArgs = @("scripts\browser_insights_states_dogfood.mjs", "--frontend", $frontend, "--api", $api)
+        if ($useProxyApi) {
+          $insightsArgs += "--proxy-api"
+        }
+        & node @insightsArgs
       }
     }
   } else {
@@ -626,7 +630,11 @@ try {
         $frontend = Get-FrontendOriginForTopology
         $api = Get-ApiOriginForTopology
         $env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_HOLMESBERG", "User")
-        node scripts\browser_insights_states_dogfood.mjs --frontend $frontend --api $api
+        $insightsArgs = @("scripts\browser_insights_states_dogfood.mjs", "--frontend", $frontend, "--api", $api)
+        if ($useProxyApi) {
+          $insightsArgs += "--proxy-api"
+        }
+        & node @insightsArgs
       }
     }
 

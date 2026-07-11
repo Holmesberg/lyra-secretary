@@ -24,6 +24,8 @@ for (let i = 2; i < process.argv.length; i += 1) {
 
 const frontendOrigin = args.get("frontend") || "https://lyraos.org";
 const apiOrigin = args.get("api") || "https://api.lyraos.org";
+const proxyApi = args.get("proxy-api") === "true";
+const onboardingSkipSessionKey = "lyra:onboarding-skip-this-session";
 const cookie = process.env.LYRA_COOKIE_HOLMESBERG || "";
 if (cookie.length < 100) {
   throw new Error("LYRA_COOKIE_HOLMESBERG is missing or looks truncated.");
@@ -143,6 +145,63 @@ function addCheck(name, ok, detail = null) {
   checks.push({ name, ok: Boolean(ok), detail });
 }
 
+async function installApiProxy(context, insightsRouteHandler) {
+  const apiPattern = `${apiOrigin.replace(/\/$/, "")}/**`;
+  await context.route(apiPattern, async (route) => {
+    const request = route.request();
+    if (new URL(request.url()).pathname === "/v1/analytics/insights") {
+      await insightsRouteHandler(route);
+      return;
+    }
+    const requestHeaders = request.headers();
+    const corsHeaders = {
+      "access-control-allow-origin": frontendOrigin,
+      "access-control-allow-credentials": "true",
+      "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      "access-control-allow-headers": requestHeaders["access-control-request-headers"]
+        || "authorization,content-type,x-idempotency-key",
+      vary: "Origin",
+    };
+    if (request.method().toUpperCase() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: corsHeaders, body: "" });
+      return;
+    }
+
+    const headers = { ...requestHeaders };
+    for (const header of [
+      "host",
+      "origin",
+      "referer",
+      "sec-fetch-dest",
+      "sec-fetch-mode",
+      "sec-fetch-site",
+    ]) {
+      delete headers[header];
+    }
+
+    try {
+      const data = request.postDataBuffer();
+      const response = await context.request.fetch(request.url(), {
+        method: request.method(),
+        headers,
+        data: data && data.length > 0 ? data : undefined,
+        timeout: 45_000,
+        failOnStatusCode: false,
+      });
+      await route.fulfill({
+        status: response.status(),
+        headers: { ...response.headers(), ...corsHeaders },
+        body: await response.body(),
+      });
+    } catch (error) {
+      if (/Target page, context or browser has been closed/i.test(String(error?.message || error))) {
+        return;
+      }
+      await route.abort("failed").catch(() => {});
+    }
+  });
+}
+
 async function screenshot(page, name) {
   const file = path.join(outDir, `${name}.png`);
   await page.screenshot({ path: file, fullPage: true });
@@ -156,6 +215,12 @@ function textHasForbiddenClaim(text) {
 
 async function newPage(browser, scenarioName, routeHandler) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  await context.addInitScript((key) => {
+    window.sessionStorage.setItem(key, "1");
+  }, onboardingSkipSessionKey);
+  if (proxyApi) {
+    await installApiProxy(context, routeHandler);
+  }
   await context.addCookies(parseAndExpandCookies(cookie, frontendOrigin));
   const consoleErrors = [];
   const page = await context.newPage();
@@ -167,7 +232,9 @@ async function newPage(browser, scenarioName, routeHandler) {
   page.on("pageerror", (error) => {
     consoleErrors.push(`pageerror: ${error.message}`);
   });
-  await page.route(`${apiOrigin}/v1/analytics/insights**`, routeHandler);
+  if (!proxyApi) {
+    await page.route(`${apiOrigin}/v1/analytics/insights**`, routeHandler);
+  }
   return { context, page, consoleErrors, scenarioName };
 }
 
@@ -298,6 +365,9 @@ try {
     ok: checks.every((check) => check.ok),
     frontend_origin: frontendOrigin,
     api_origin: apiOrigin,
+    proxy_api: proxyApi,
+    fixture_only: true,
+    fixture_overrides: ["session_only_onboarding_skip", "forced_insights_payload"],
     output_dir: outDir,
     checks,
     issues,
@@ -307,6 +377,9 @@ try {
     ok: false,
     frontend_origin: frontendOrigin,
     api_origin: apiOrigin,
+    proxy_api: proxyApi,
+    fixture_only: true,
+    fixture_overrides: ["session_only_onboarding_skip", "forced_insights_payload"],
     output_dir: outDir,
     error: error instanceof Error ? error.message : String(error),
     checks,

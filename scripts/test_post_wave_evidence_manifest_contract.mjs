@@ -20,6 +20,7 @@ const s1cStack = read("scripts/run_s1c_verification_stack.ps1");
 const ciProof = read("scripts/collect_github_ci_cd_proof.ps1");
 const ciWorkflow = read(".github/workflows/ci.yml");
 const runbook = read("docs/runbooks/post_wave_dogfood_loop.md");
+const insightsDogfood = read("scripts/browser_insights_states_dogfood.mjs");
 
 const requiredManifestFields = [
   "topology_class",
@@ -105,6 +106,22 @@ for (const gate of [
     );
   }
 }
+
+assert(
+  insightsDogfood.includes('args.get("proxy-api") === "true"') &&
+    insightsDogfood.includes("installApiProxy(context, routeHandler)"),
+  "Insights dogfood must make local-current API proxying explicit"
+);
+assert(
+  insightsDogfood.includes('fixture_only: true') &&
+    insightsDogfood.includes('"session_only_onboarding_skip"') &&
+    insightsDogfood.includes('"forced_insights_payload"'),
+  "Insights forced-state dogfood must label its fixture-only overrides"
+);
+assert(
+  wrapper.includes('$insightsArgs += "--proxy-api"'),
+  "post-wave wrapper must pass the explicit API proxy flag to Insights dogfood"
+);
 
 const runbookRequiredPhrases = [
   "summary.json.evidence_manifest",
