@@ -89,8 +89,8 @@ remains semantically loaded.
 
 - `PauseEvent.self_reported_retroactively` separates retroactive confirmation.
 - `ReflectionViewLog.event_class` separates impression vs telemetry.
-- `llm_parser.py` stores LLM suggestions separately from canonical deadline
-  binding.
+- Retained `llm_*` rows keep former model suggestions separate from canonical
+  deadline bindings; the direct model parser is retired.
 - Cortex v0 forbids latent persistence.
 
 ## Required Review Question

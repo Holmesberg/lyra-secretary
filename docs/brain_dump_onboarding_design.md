@@ -18,7 +18,7 @@ Direct quotes from the conversation that pinned the shape of this surface:
 - *"remove the time completely from the brain dump, multiple timings should be parsed."*
 
 Locked invariants:
-1. Heuristic-only on the synchronous critical path. **No LLM dependency.** The existing async `llm_enrichment` worker still fires per-task afterward and may post a "Possible better match" chip via the trust-not-rewrite contract, but onboarding never blocks on Ollama.
+1. Heuristic-only on the synchronous critical path. **No model dependency.** Deterministic deadline suggestions may appear after task creation and require explicit user confirmation.
 2. **No meta-task** created. The brain-dump items themselves are the user's first plan.
 3. Form has **only the textarea**. No title field, no start/end pickers, no category dropdown — all of it parsed from the text.
 4. Two-step flow: dump → confirmation block (kind/title/when cards + one-tap binding pills) → commit.
@@ -32,12 +32,18 @@ frontend/components/onboarding-flow.tsx (rewritten)
   ↓ Step 1 — textarea + "Parse my plan" button
   POST /v1/brain-dump/parse  ── pure function, no DB writes
   ↓ Step 2 — preview cards + binding pills + "Lock in"
-  POST /v1/brain-dump/commit ── single transaction:
-    1. deadlines first (DeadlineManager.create_deadline)
-    2. tasks next, force_conflicts=True (TaskManager.create_task,
-       passes deadline_id when binding pre-confirmed)
-    3. onboarding_completed_at stamp (idempotent fallback for
-       deadline-only / empty-commit cases)
+  POST /v1/brain-dump/commit ── intentional partial-success orchestration:
+    1. deadlines first through DeadlineManager.create_deadline
+    2. tasks next through TaskManager.create_task, force_conflicts=True,
+       passing deadline_id when binding was confirmed
+    3. report created, reused, rejected, and failed items explicitly
+    4. stamp onboarding_completed_at through the idempotent fallback for
+       deadline-only or empty-commit cases
+
+The managers currently commit canonical items independently. The endpoint must
+never claim all-or-nothing atomicity until transaction ownership is explicitly
+refactored and failure-injected. Partial success is user-visible behavior and
+requires direct retry/navigation rather than hidden repair.
 
 backend/app/services/brain_dump_parser.py    ── pure heuristic
 backend/app/api/v1/endpoints/brain_dump.py   ── /parse + /commit
@@ -154,12 +160,12 @@ score >= 0.85 → tier1_auto    (UI pre-checks the binding pill)
 3 of 15 cases produced auto-bindings end-to-end:
 - `"midterm Wednesday\nstudy for midterm tomorrow"` → tier1_auto 1.00
 - `"BCI paper due Friday\nread BCI paper tomorrow"` → tier1_auto 1.00 (after title-strip dropped "due")
-- The 5-item operator screenshot dump → 0 bindings (heuristic doesn't catch "CO Lec 4 → CO final" without shared distinctive tokens; this is by design, async LLM enrichment will catch it later)
+- The 5-item operator screenshot dump → 0 bindings when no distinctive token is shared. The UI must make manual binding easy; no model fallback is assumed.
 
 ### Known limitations (accepted for alpha)
 
-- **Foreign-language input**: DATE_HINTS regex is English-only. Arabic dumps fall through to default-when. The async LLM enrichment path can extract dates from non-English text post-commit; for the synchronous critical path, English is the floor.
-- **Semantic similarity**: heuristic is token-overlap based. "prepare slides" doesn't bind to "presentation" deadline because they share zero meaningful tokens. Async LLM enrichment is the recovery path; for the synchronous moment, the user can confirm a binding manually on /today via the chip if the LLM picks it up later.
+- **Foreign-language input**: DATE_HINTS regex is English-only. Arabic dumps fall through to default-when; the limitation must be explicit until a researched parser path is approved.
+- **Semantic similarity**: heuristic is token-overlap based. "prepare slides" does not bind to "presentation" when they share zero meaningful tokens. Manual deadline selection is the recovery path.
 - **`_default_when_for_task` tz drift**: when `current_local_iso` isn't sent by the client, parser falls back to `datetime.now()` which is UTC inside the container. TaskManager then re-interprets as `USER_TIMEZONE` (Cairo) and `to_utc()` shifts it backwards, sometimes landing in the past → `start_in_past` rejection. Frontend always sends `current_local_iso` so the bug doesn't surface for real users; it only affects the test runner.
 
 ---

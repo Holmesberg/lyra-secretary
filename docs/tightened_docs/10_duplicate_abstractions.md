@@ -1,5 +1,8 @@
 # 10 Duplicate Abstractions
 
+**Status:** Historical audit snapshot from 2026-05-08. Paths may have been
+retired; current ownership comes from active registries and contracts.
+
 **Purpose:** Identify repeated logic and recommend canonical owners.
 
 ## Duplicate Registry
@@ -11,7 +14,7 @@
 | execution ratio | analytics, bias factor, Cortex, archetype proximity | sign/orientation drift | Cortex `execution_multiplier` |
 | clean-data filtering | analytics queries, bias factor lookup, archetype proximity, Cortex | inconsistent exclusions | Cortex profiles; call helper queries where possible |
 | valence classification | `inference_engine.py`, JARVIS imports, docs R9 | duplicate if reimplemented elsewhere | `inference_engine.py`, but label as inferred |
-| deadline matching | `deadline_heuristic.py`, `llm_parser.py`, legacy parser binding | multiple confidence semantics | `deadline_heuristic.py` for deterministic; LLM stays suggestion-only |
+| deadline matching | `deadline_heuristic.py`, legacy parser binding | multiple score semantics | `deadline_heuristic.py` owns deterministic suggestions |
 | pause recovery analysis | pause predictor, resume predictor, JARVIS dark columns | repeated pause filtering | Cortex `pause_process` query profile |
 | reflection engagement | `ReflectionViewLog` endpoint, analytics, JARVIS | exposure semantics can diverge | Exposure ledger Phase 1 owner |
 | category mapping | DB seed, frontend category list, docs priors | label semantic drift | category registry doc or shared API |

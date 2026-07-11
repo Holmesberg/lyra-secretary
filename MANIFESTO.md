@@ -65,7 +65,7 @@ Current freeze override: older sections that say a signal "must surface,"
 describe `/insights` additions, or name avoidance/motivation/focus/productivity
 patterns are historical research/product hypotheses only. During the
 freeze-closure refactor they do not authorize new runtime features, new
-user-facing insights, OpenClaw/GPT wiring, passive tracking, schema migration,
+user-facing insights, ReasoningRuntimeContract/OpenClawAdapter wiring, passive tracking, schema migration,
 provider adapters, behavior-transition equations, or agency/avoidance claims.
 Any future promotion must pass the current Authority Map, clean-data admission,
 exposure accounting, ClaimCompiler boundary, and explicit implementation plan.
@@ -374,8 +374,10 @@ LyraOS is a behavioral measurement instrument with a productivity interface.
 Its user-facing intelligence is rule-governed, probabilistic, inspectable,
 longitudinal, and epistemically constrained. It is not powered at its core by
 opaque LLM inference, hidden embeddings, generic summaries, or black-box
-confidence theater. LLMs may enrich tasks, assist operator work, and provide
-interface glue, but they do not become truth authorities for behavioral claims.
+confidence theater. Historical LLM task enrichment is retired; deterministic
+heuristics own current candidate scoring. Future reasoning-runtime support may
+assist only after separate approval and may never become truth authority for
+behavioral claims.
 
 Stronger inference must be earned through:
 
@@ -822,7 +824,7 @@ LyraOS is a measurement-backed productivity tool. Most productivity tools assume
 
 The tool layer delivers scheduling, timer management, and behavioral feedback. The research layer validates whether those insights actually predict anything. Neither is primary. The tool fails if the research is invalid — you are acting on noise. The research is academic if the tool is not used — you have no data.
 
-The central question: **Are humans wrong about themselves in a structured way that predicts failure?**
+The central question: **Are humans wrong about themselves in a structured way that can improve planning without overclaiming failure?**
 
 If yes — the error is modelable, correctable, and eventually preventable.
 If no — the data tells us that too, and we pivot.
@@ -1047,7 +1049,7 @@ Implementation: imported events live in Redis (ephemeral) or in `external_event_
 April snapshot. The current architecture is the Next.js web app with NextAuth
 Google identity, frontend-minted backend JWT, FastAPI v1 API, request user
 scope middleware, SQLAlchemy/Postgres persistence, Redis hot state, APScheduler
-workers, and a separate operator-only JARVIS/OpenClaw layer. The current
+workers, and a separate operator notification relay. The current
 authoritative public topology is `https://lyraos.org` -> `https://api.lyraos.org`;
 see `docs/deployment_architecture.md`, `README.md`, and the active Cortex
 contracts for the current shape. Archive summaries are lineage unless
@@ -1056,7 +1058,7 @@ explicitly promoted.
 ```
 Web UI (Next.js)                        ─┐
 Telegram (operator-only, not alpha)      ├→ FastAPI Backend → TaskManager → Postgres (prod) / SQLite (dev) + Redis → Notion
-OpenClaw agent (testing/dev, not alpha)  ─┘                ↕
+Operator relay (testing/dev, not alpha)  ─┘                ↕
                                                       APScheduler
                                   (reminders, overflow, sync retry, overdue
                                    task detection, pause prediction)
@@ -1069,24 +1071,31 @@ OpenClaw agent (testing/dev, not alpha)  ─┘                ↕
 - Pause/resume support — prayer breaks excluded from delta
 - Hard Rules in SKILL.md — AI agent cannot confirm without backend response
 
-**User-facing vs internal interfaces (clarified April 21, 2026):** Alpha users interact via the Web UI only. Telegram and OpenClaw remain operator-only development/testing tools until components are integrated into the Lyra codebase proper. User-facing Telegram + LLM-parsed task creation ship post-retention-validation. See `docs/strategic_decisions_april_21.md §5` and `docs/archive/legacy/planning/building_phases.md §Phase 4.5 Tier 4`.
+**User-facing vs internal interfaces (clarified July 11, 2026):** Alpha users
+interact through the Web UI only. Telegram and the operator notification relay
+remain operator-only transport. Future AI-assisted product behavior is parked
+behind evidence, ClaimCompiler, exposure, and approval gates; older roadmap
+documents do not authorize it.
 
-**Operator LLM runtime (clarified May 9, 2026):** JARVIS and the operator's
-OpenClaw stack may use hosted NVIDIA NIM models, currently
-`moonshotai/kimi-k2.6` with model-native thinking enabled for operator chat.
-This is an operator-only runtime choice, not a research signal and not a
-non-operator user-facing inference surface. Structured parser calls must keep
-machine-readable output constraints even when the chat runtime model changes.
+**Reasoning runtime boundary (clarified July 11, 2026):** Future AI reasoning
+must pass through:
 
-**Operator orchestration runtime (clarified May 9, 2026):** OpenClaw may be
-wired as a multi-agent operator runtime with Kimi K2.6 as the synthesis and
-adjudication layer, Codex/GPT-5.5 as the implementation and structural
-adversary layer, Gemini as the exploration and epistemic adversary layer, and a
-local memory layer for summarization/state persistence. This orchestration is
-operator-only. Agent outputs are not Lyra behavioral observations, are not
-research ground truth, and must not bypass Cortex clean-data, provenance,
-unknown-propagation, or product/research boundary rules. See
-`docs/archive/legacy/ai/openclaw_orchestration_contract_v0.md`.
+```text
+LyraOS
+-> ReasoningRuntimeContract
+-> OpenClawAdapter
+```
+
+This is a future runtime boundary, not a research signal or current user-facing
+inference surface. The retired NIM/Ollama task-enrichment runtime does not
+authorize replacement wiring.
+
+**Historical operator orchestration note (May 9, 2026):** The archived
+multi-agent orchestration proposal is non-authorizing lineage. No current
+operator model runtime, direct model client, or product reasoning adapter is
+authorized. Agent outputs are not Lyra behavioral observations or research
+ground truth and may not bypass Cortex, provenance, `UNKNOWN` propagation, or
+product/research boundaries.
 
 **Production deployment (April 16, 2026+):** Postgres via Supabase eu-west-1 (primary); SQLite retained at `.env.backup-sqlite-2026-04-16` for fast revert. Fronted by Cloudflare Tunnel from the operator's laptop at `lyraos.org` + `api.lyraos.org`. See `docs/deployment_architecture.md` for stack + recovery playbook.
 
@@ -1840,8 +1849,8 @@ The experiment has started. Stay in measurement mode.
 
 *Manifesto v1.15 — revised April 27, 2026 (Rule 17 archetype-proximity math amendment: effective-sample-size correction + bias-factor winsorization. Operator dogfood at 28 EXECUTED tasks returned 100.0% Procrastinator, 0.0% every other archetype — a 1.0000 / 0.0000 split at four decimals after 2 weeks of overrun-heavy data with a few extreme outliers (top observed bf values were 9.2, 3.7, 3.5). Two structural problems with the un-amended math: (1) the iid likelihood assumption was false (tasks within a user's window correlate along user × week × project × measurement-protocol axes; effective sample size by Kish formula is materially smaller than N), and (2) extreme outliers (bf > 3.0) drove tight-σ archetypes to log-likelihood -∞, since a Normal pdf at 30σ is effectively zero — so any archetype wide enough to absorb a 9× overrun (procrastinator σ=0.40) wins by a margin no amount of ESS damping can close. Amendment v1.15 fixes both: per-archetype log-likelihood is divided by `sqrt(N)` (Kish-style ESS treatment, treating the cluster as ~sqrt(N) effective independent observations) AND each task's observed bf is winsorized to `[0.30, 3.0]` before the Normal-pdf evaluation. The cap is principled: bf > 3.0 isn't "estimation error" the archetype model can read — it's scope-inflation territory the existing VT-22 hypothesis already covers, with its own dedicated mediation test (analysis rule 12). §25a metric, kill threshold (15% post-reveal planning inflation), floor (n ≥ 5 fresh-exposure users), and cohort caveat are all unchanged. v1.13/v1.14 analyses produced under the un-damped/un-winsorized formula remain on record and are tagged with their math version. UI display cap (99% maximum displayed) and display floor (2% minimum bar width) added as belt-and-suspenders against future saturation; rendering layer in `archetype-proximity-display.tsx`. Prompted by operator's question "the math behind archetypes might be leaning too hard towards procrastinator no?" — the honest answer was yes, on both counts. Post-amendment, operator's same data reads as 62% lark_low_discipline / 37% procrastinator / 1% diffuse_average — a real distribution rather than identity assertion.)*
 *Manifesto v1.16 — revised May 9, 2026 (Manifesto Governance Rule added. `MANIFESTO.md` is now the highest-priority governance artifact. Research-doctrine, ontology, measurement-semantics, pre-registration, product/research-boundary, and long-term architecture changes must either update the manifesto or explicitly document why no manifesto update is needed. This is a documentation governance rule only; no measurement formulas, thresholds, or product behavior changed.)*
-*Manifesto v1.17 — revised May 9, 2026 (Operator-only LLM runtime note added. Lyra JARVIS and the operator OpenClaw stack now target NVIDIA NIM `moonshotai/kimi-k2.6` with thinking enabled for chat turns. Structured parser calls explicitly disable thinking to preserve JSON. No measurement formulas, thresholds, clean-data profiles, or non-operator user-facing claims changed.)*
 *Manifesto v1.18 — revised May 15, 2026 (External-review interpretation and rule-based instrumentation doctrine added. Current LyraOS claims are framed as a rule-governed, probabilistic, inspectable behavioral instrument with AI support limited to enrichment, operator work, and interface assistance. User attention is treated as scientific capital; missingness remains provenance-aware signal; archetypes are cold-start priors whose authority must decay or be overridden by personal traces.)*
+*Manifesto v1.20 — revised July 11, 2026 (Direct NIM/Ollama task enrichment retired. Future AI reasoning remains parked behind ReasoningRuntimeContract/OpenClawAdapter, evidence, ClaimCompiler, exposure, and explicit approval gates. No measurement formulas, clean-data profiles, or user-facing behavioral claims changed.)*
 
 ---
 

@@ -5,7 +5,7 @@
 *Current status: historical design note. The current shipped architecture is
 NextAuth Google identity, frontend-minted backend JWT, FastAPI v1 API, request
 user scope middleware, SQLAlchemy/Postgres, Redis, APScheduler workers, and
-operator-only diagnostics plus OpenClaw operator-alert relay. Active JARVIS
+operator-only diagnostics plus the operator-alert relay. Active JARVIS
 runtime routes are removed; historical JARVIS audit rows remain exportable until
 an approved schema cleanup. Use `docs/deployment_architecture.md`,
 `docs/cortex_product_research_contract_v0.md`, `README.md`, and `MANIFESTO.md`
@@ -165,17 +165,17 @@ All three are independent of Phase 4 analytics features and can be a Sprint 0 in
 
 ---
 
-## 3. Docker Networking (OpenClaw Bridge)
+## 3. Docker Networking (Operator Relay Bridge)
 
 > Current freeze interpretation: this section documents historical network
-> reachability only. It does not authorize OpenClaw-to-product wiring, runtime
-> identity bypass, JARVIS/OpenClaw expansion, AI synthesis, or direct backend
-> mutation from OpenClaw. Current OpenClaw authority is relay-only and lives in
-> `docs/archive/legacy/ai/openclaw_orchestration_contract_v0.md` plus the active authority docs.
+> reachability only. It does not authorize reasoning-adapter-to-product wiring,
+> runtime identity bypass, JARVIS/adapter expansion, AI synthesis, or direct
+> backend mutation from the relay. Current adapter authority is relay-only and
+> subordinate to the active authority docs.
 
-Lyra Secretary and OpenClaw run as separate Docker Compose stacks with separate networks. The OpenClaw gateway needs to reach `http://backend:8000`.
+Lyra Secretary and the operator relay run as separate Docker Compose stacks with separate networks. The relay gateway needs to reach `http://backend:8000`.
 
-**Solution:** Add Lyra's network as external in OpenClaw's docker-compose.yml:
+**Solution:** Add Lyra's network as external in the relay docker-compose.yml:
 
 ```yaml
 services:
@@ -194,4 +194,6 @@ The gateway container has a foot in both networks, resolving `backend` via Docke
 
 **Verify:** `docker exec openclaw-openclaw-gateway-1 curl -s http://backend:8000/v1/health`
 
-The `--allow-unconfigured` flag in OpenClaw allows `exec` calls to arbitrary commands including `curl` to the Lyra backend. See OpenClaw documentation for configuration.
+The relay gateway's `--allow-unconfigured` flag allows `exec` calls to
+arbitrary commands including `curl` to the Lyra backend. See the relay runtime
+documentation for configuration.

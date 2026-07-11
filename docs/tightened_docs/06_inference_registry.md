@@ -9,7 +9,7 @@ and validity risks.
 | --- | --- | --- | --- | --- | --- | --- |
 | Category inference | title/description keywords | `Task.category` | symbolic keyword mapping | local lookup | active heuristic | category semantics can drift |
 | Deadline heuristic | title/description + bindable deadlines | candidates, auto-bind | symbolic scoring | 0.6 score, 0.2 margin, brittle guard | active heuristic | confidence is score, not probability |
-| LLM enrichment | task text + deadlines | `llm_*` suggestions | LLM + candidate ranking | 0.85/0.45 tiers | active assistive | external vendor, hallucination, not canonical |
+| Retired model enrichment | task text + deadlines | historical `llm_*` suggestions | direct NIM/Ollama provider | historical 0.85/0.45 tiers | retired 2026-07-11 | retained rows are lineage, not current inference |
 | Bias factor cascade | executed tasks by category/time/duration | personal cell ratio | statistical aggregate | first cell with `>=3` sessions | active legacy | low-n instability |
 | Bias blend | personal cell + archetype prior | `bias_factor_final` | heuristic shrinkage | `min(1,n/30)` | active legacy | called canonical in legacy, not Bayesian |
 | Valence classifier | duration ratio, reflection, pauses, scope | flow/friction/etc | deterministic rules | 15%, reflection cutoffs, pause count | research-grade | latent labels can be reified |

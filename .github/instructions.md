@@ -42,7 +42,7 @@ Freeze remains active. Do not add any of the following without explicit user
 approval and a new plan:
 
 - runtime AI synthesis;
-- OpenClaw-to-product GPT wiring;
+- ReasoningRuntimeContract/OpenClawAdapter product wiring;
 - new user-facing insight types;
 - behavior-transition equations;
 - causal pressure-return claims;

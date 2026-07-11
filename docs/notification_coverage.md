@@ -9,27 +9,27 @@ trusted-alpha access-control, audit, redaction, and provider-failure boundary.
 
 - **Per-user queue:** authenticated in-app/user-facing delivery through
   `notifications:pending:{user_id}` and `/v1/notifications/web/pending`.
-- **OpenClaw operator channel:** shared OpenClaw-polled queue for system state,
-  operator-owned events, and redacted observability metadata only. OpenClaw
-  relays this through its existing Telegram bot. Non-operator behavioral
+- **Operator relay channel:** shared relay-polled queue for system state,
+  operator-owned events, and redacted observability metadata only. The relay
+  sends this through its existing Telegram bot. Non-operator behavioral
   content must not be sent to this channel.
 
 The legacy `/v1/notifications/pending` route requires an explicit channel and
-must not be used by new callers. OpenClaw delivery uses either
-`/v1/notifications/openclaw/pending` from an authenticated OpenClaw agent flow
+must not be used by new callers. Operator relay delivery uses either
+`/v1/notifications/openclaw/pending` from an authenticated relay agent flow
 or the deterministic relay in `scripts/openclaw_operator_relay.mjs`, which
 drains only `notifications:pending:{OPENCLAW_OPERATOR_USER_ID}` and sends
-operator messages through the existing OpenClaw Telegram configuration.
+operator messages through the existing relay Telegram configuration.
 
 ## Boundary Rules
 
 1. User-owned behavioral events go to the per-user queue.
-2. The OpenClaw operator channel can mirror operator-owned events.
-3. The OpenClaw operator channel may mirror non-operator notification *metadata* only when
+2. The operator relay channel can mirror operator-owned events.
+3. The operator relay channel may mirror non-operator notification *metadata* only when
    the payload body, task title, raw ids, URLs, emails, user agent, notes, and
    error context are redacted or hashed. This is operator observability, not
    delivery to the user.
-4. The OpenClaw operator channel may mirror in-app toast/modal output-surface *metadata*
+4. The operator relay channel may mirror in-app toast/modal output-surface *metadata*
    only. Rendered copy stays in the product and exposure ledger; the operator channel sees
    surface id, channel, hashed user/task/exposure/render ids, template, and
    trigger source.
@@ -38,11 +38,11 @@ operator messages through the existing OpenClaw Telegram configuration.
    `exposure_id` and `surface_id`. Queue/reserve/deliver alone do not create
    exposure-render truth; browser render creates render truth, and later
    dismiss/ack/action/expiry creates interaction-outcome truth.
-6. System-health alerts may go to the OpenClaw operator channel, but should avoid task
+6. System-health alerts may go to the operator relay channel, but should avoid task
    titles, emails, tokens, iCal URLs, OAuth tokens, or raw payload bodies.
 7. Repeated failures must use dedupe/cooldown through
    `app.services.operator_notifier.notify_operator`.
-8. Missing OpenClaw operator delivery must never break a
+8. Missing operator relay delivery must never break a
    product mutation or research write.
 8a. The operator relay is observation-only. It must not mutate task, session,
     provider, notification-lifecycle, exposure, or user activity state.
@@ -123,46 +123,33 @@ User action needed: No student action. Operator should triage if this repeats.
 Data integrity risk: No reminder notification or output-surface row was attempted before user iteration.
 ```
 
-LLM enrichment max-instance example:
-
-```text
-Affected provider/subsystem: scheduler.health / llm_enrichment
-Affected user scope: unknown; a previous instance is still running for this job
-Retry behavior: This tick is skipped; scheduler tries again on the next interval.
-User action needed: No student action.
-Data integrity risk: Low unless the same job remains stuck across repeated intervals.
-```
-
-`llm_enrichment` is auxiliary. Max-instance warnings should not page as product
-failures unless they are persistent; provider slowness should degrade semantic
-enrichment, not authentication, user scoping, or core scheduling truth. See
-`docs/incidents/2026-05-17-llm-enrichment-maxinstances.md`.
+The former `llm_enrichment` scheduler path was retired on 2026-07-11. Its
+incident records remain historical and do not describe current notification
+coverage.
 
 ## Current Coverage Matrix
 
-| Subsystem | User queue | OpenClaw operator channel | Cooldown | Notes |
+| Subsystem | User queue | operator relay channel | Cooldown | Notes |
 | --- | --- | --- | --- | --- |
 | Pre-task reminders | yes | operator-owned full text; non-operator redacted metadata only | per task, 2h | Candidate scan is upcoming-task scoped; user-facing content stays in the authenticated queue. |
 | Timer overflow | yes | operator-owned full text; non-operator redacted metadata only | per session, 24h | User-facing content stays in the authenticated queue. |
 | Pause prediction | yes | operator-owned full text; non-operator redacted metadata only | per firing, 10m | Candidate scan is active-session scoped; raw task ids/titles stay out of the shared bot. |
-| Resume prediction | yes | operator-owned full text; non-operator redacted metadata only | job-level firing caps | Raw task title and ids stay in the per-user queue; OpenClaw mirror sees redacted metadata only. |
+| Resume prediction | yes | operator-owned full text; non-operator redacted metadata only | job-level firing caps | Raw task title and ids stay in the per-user queue; the operator mirror sees redacted metadata only. |
 | In-app toasts/modals | n/a | redacted metadata only | no content mirror | `stopwatch.micro_mirror`, `stopwatch.calibration_nudge`, `task.creation_nudge`, and similar modal/toast surfaces mirror render metadata only. Dashboard pages/cards do not mirror. |
 | Scheduler health | no | yes | 30m | Job error, missed run, and max-instance events. |
 | Per-user job exceptions | no | yes | 30m | Reports job/user id and exception class only. |
 | Moodle iCal | no | operator-owned/system | 15m-6h | Errors, summaries, and unparseable-event drift. |
 | Moodle Web Services | no | operator-owned/system | 15m-6h | Auth, decrypt, base-url, user-id, fetch failures. |
 | Google Calendar | no | operator-owned only | 1h-24h | Revoked/failed operator calendar sync. |
-| Notion retry | no | system/operator | 1h | Missing credentials or queue-stopping retry failure. |
-| LLM enrichment | no | system | 30m | Aggregate failed/unavailable/pending counts only. |
 | Stale/orphan recovery | no | operator-owned only | 30m | Recovery summaries; no user content. |
 | Overdue/missed deadline sweep | no | operator-owned only | caller-specific | Existing operator-only summaries. |
 
 ## Runtime Relay
 
 `scripts/start_openclaw_operator_relay.ps1` installs and restarts the live
-OpenClaw bridge inside `openclaw-openclaw-gateway-1`. The relay:
+operator relay bridge inside `openclaw-openclaw-gateway-1`. The relay:
 
-- reads the Telegram bot token and allowlisted operator chat from OpenClaw's
+- reads the Telegram bot token and allowlisted operator chat from the relay's
   existing config/environment;
 - drains `notifications:pending:1` by default;
 - relays `payload.message` exactly for `operator_alert` and other known
@@ -179,12 +166,12 @@ OpenClaw bridge inside `openclaw-openclaw-gateway-1`. The relay:
   includes user-submitted text and optional user email.
 - Non-operator task titles, raw pause/resume/reminder/timer message bodies,
   URLs, emails, user agents, notes, error context, and raw ids must not enter
-  the shared OpenClaw operator channel.
-- Redacted notification metadata may enter the OpenClaw operator channel only
+  the shared operator relay channel.
+- Redacted notification metadata may enter the operator relay channel only
   through `app.services.notification_queue.mirror_user_notification_to_operator`
   and only as an observability mirror after the authenticated per-user queue
   write is attempted.
-- Redacted toast/modal output-surface metadata may enter the OpenClaw operator
+- Redacted toast/modal output-surface metadata may enter the operator relay
   channel only through
   `app.services.output_surfaces.mirror_output_surface_render_to_operator`.
   Dashboard page/card renders are excluded to avoid high-volume behavioral

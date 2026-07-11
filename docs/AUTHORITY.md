@@ -85,16 +85,43 @@ ask not only "can this compute?" but "what human trajectory does this steer?"
 | Output surface translator | What may this user-facing surface publish? | Evidence eligibility. |
 | Pressure Map | Where should repair attention go? | Automatic task/calendar mutation or student-risk scoring. |
 | Exposure Ledger | What behavior-shaping output was shown or suppressed? | Universal behavioral memory. |
-| Agent council / parked JARVIS / OpenClaw | What should a human consider? | Silent doctrine, code, or runtime mutation. |
+| Agent council / parked JARVIS / reasoning adapters | What should a human consider? | Silent doctrine, code, or runtime mutation. |
 
 `docs/single_authority_contract.md` adds the stricter cross-surface rule:
 one owner per truth class, many producers, many views, one mutation path, and
-one claim path. If future AI synthesis is reopened, OpenClaw/GPT is the
-preferred reasoning host, but it remains downstream of Admission/Coverage,
-EvidencePacket packaging, ClaimCompiler, and output-surface policy. This
-identifies preferred future ownership only. It does not authorize runtime AI
-synthesis, model integration, prompt execution, user-facing draft generation,
-or OpenClaw-to-product wiring. OpenClaw/GPT is not a mutation owner.
+one claim path. If future AI synthesis is reopened, the product-facing
+boundary is:
+
+```text
+LyraOS
+-> ReasoningRuntimeContract
+-> OpenClawAdapter
+```
+
+`ReasoningRuntimeContract` is downstream of the Admission/Coverage Gate and
+`EvidencePacket` packaging. It returns a structured draft upstream of
+`ClaimCompiler` and output-surface policy; those deterministic owners may
+reject, constrain, suppress, or publish the draft. `OpenClawAdapter` is a
+candidate adapter, not product truth, mutation, publication, or clean-data
+authority. This identifies a parked architecture direction only. It does not
+authorize runtime AI synthesis, model integration, prompt execution,
+user-facing draft generation, or adapter-to-product wiring.
+
+Concept notes may use `EvidenceAdmissionGate` and `OutputClaimCompiler` as
+future interface names. They are aliases for the existing Admission/Coverage
+Gate and ClaimCompiler authority classes, not additional owners.
+
+The repository-wide candidate inventory, method-selection ladder, free-tier
+distillation path, and explicit no-AI zones are documented in
+`docs/concepts/ai_capability_completion_map.md`. That concept note cannot
+authorize code by itself.
+
+The intended future auth boundary is per-user reasoning-runtime connection
+state. LyraOS must not hold model-provider API keys, ChatGPT passwords, OAuth
+tokens, refresh tokens, or provider cookies, and must not fall back to a shared
+account, direct API billing, or a local model during the prerequisite phase.
+Future provider and auth strategies require separate approval, security review,
+provenance compatibility review, and implementation plan.
 
 The current refactor-risk snapshot is recorded in
 `docs/audits/refactor_spaghetti_audit_2026_06_29.md`. That audit is
@@ -150,7 +177,7 @@ These rules apply to every freeze-closure seam, even when a seam-specific plan
 does not repeat them:
 
 - Freeze remains active. Do not add runtime AI synthesis,
-  OpenClaw-to-product GPT wiring, new user-facing insight types,
+  ReasoningRuntimeContract/OpenClawAdapter product wiring, new user-facing insight types,
   behavior-transition equations, causal pressure-return claims,
   productivity/focus/motivation/avoidance scores, passive tracking, new
   provider adapters, schema migrations, or new public behavioral claims without

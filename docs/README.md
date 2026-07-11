@@ -15,14 +15,20 @@ Read these first for implementation work:
    freeze doctrine.
 2. `docs/current_transition_state.md` - active freeze-closure sequence,
    danger score, and governing document order.
-3. `docs/single_authority_contract.md` - one owner per truth class, mutation
+3. `docs/core_product_loop_refactor_plan_2026_07_11.md` - founder-approved
+   invariant-first implementation sequence and stop gates.
+4. `docs/single_authority_contract.md` - one owner per truth class, mutation
    path, and claim path.
-4. `docs/operator_dashboard_contract.md` - operator cockpit semantics,
+5. `docs/operator_dashboard_contract.md` - operator cockpit semantics,
    implementation/cohort readiness split, and stop/go invariants.
-5. `docs/runbooks/post_wave_dogfood_loop.md` - reusable browser/API/export
+6. `docs/runbooks/post_wave_dogfood_loop.md` - reusable browser/API/export
    proof loop.
-6. `docs/registries/refactor_stabilization_ledger.md` - seam ledger,
-   artifacts, issue references, and rollback notes.
+
+The chronological
+`docs/registries/refactor_stabilization_ledger.md` is audit evidence, not
+implementation authority. Its latest entry records seam artifacts, issues, and
+rollback notes; older entries preserve historical claims and may contradict
+current code without authorizing it.
 
 For Cortex, claim, and measurement boundaries, also read:
 
@@ -30,6 +36,17 @@ For Cortex, claim, and measurement boundaries, also read:
 - `docs/cortex_product_research_contract_v0.md`
 - `docs/claim_compiler_and_synthesis_boundary.md`
 - `docs/measurement_integrity_before_agency_claims.md`
+
+For future AI prerequisites and capability discovery, read these as
+non-authorizing concept notes:
+
+- `docs/concepts/ai_augmented_inference_prerequisite_architecture.md`
+- `docs/concepts/ai_capability_completion_map.md`
+- `docs/concepts/product_entitlement_runtime_and_research_prerequisite.md`
+
+These notes may define vocabulary, candidate roles, and prerequisites. They do
+not authorize runtime AI, adapter wiring, schema work, experiments, pricing,
+or user-visible AI output.
 
 For topology, deployment, and proof safety, also read:
 
@@ -40,7 +57,7 @@ For topology, deployment, and proof safety, also read:
 ## Current Freeze Boundary
 
 Freeze remains active. Do not add runtime AI synthesis,
-OpenClaw-to-product GPT wiring, new user-facing insight types,
+ReasoningRuntimeContract/OpenClawAdapter product wiring, new user-facing insight types,
 behavior-transition equations, causal pressure-return claims, productivity,
 focus, motivation, or avoidance scores, passive tracking, new provider
 adapters, schema migrations, public behavioral claims, or domain/rebrand work
@@ -82,7 +99,9 @@ These can guide current work only when subordinate to the active authority
 chain:
 
 - `docs/runbooks/post_wave_dogfood_loop.md`
-- `docs/archive/legacy/planning/core_product_loop_wave_plan.md` as historical/subordinate context
+- `docs/core_product_loop_refactor_plan_2026_07_11.md`
+- `docs/archive/legacy/planning/core_product_loop_wave_plan.md` as historical
+  source material only
 - `docs/architecture_freeze_priority_hold_2026_05_20.md`
 - `docs/audits/refactor_spaghetti_audit_2026_06_29.md` as ordering input only
 

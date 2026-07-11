@@ -1,6 +1,6 @@
 # Current Transition State
 
-**Date:** 2026-07-10
+**Date:** 2026-07-11
 **Status:** Active implementation orientation for the freeze-closure and safe
 refactor cycle.
 
@@ -31,21 +31,25 @@ complexity. Complexity reduction is only performed when supported by
 independent evidence, reversible seams, and mechanically enforced authority
 boundaries.
 
-This is a semantics-preserving stabilization/refactor pass. It should make
-existing behavior easier to verify and maintain, not create stronger claims,
-new surfaces, or new runtime authority.
+This is a stabilization/refactor pass. It should make existing behavior easier
+to verify and maintain, not create stronger claims, new surfaces, or new
+runtime authority. The only approved behavior expansion is the bounded,
+founder-only pause-policy v2 exception in the active core-loop plan; it grants
+no authority to resume-policy expansion or another prediction family.
 
-Current sequence:
+The founder-approved current sequence is defined by
+`docs/core_product_loop_refactor_plan_2026_07_11.md`:
 
-1. E0 exposure forensics and repair ledger.
-2. R2 operator cockpit trusted/red-for-real.
-3. S1c hardening into gates.
-4. R5a stale docs and authority cleanup before further extraction.
-5. R3/R4 behavior-preserving extraction in small reversible seams, only while
-   those seams reduce operational danger.
-6. R5b public proof/runtime runbooks.
-7. R6 final cohort proof or controlled evidence-collection alpha.
-8. Post-freeze computation planning only after R6.
+1. recover, separate, verify, commit, and push the current checkpoint;
+2. establish the shipped-feature preservation registry and verifier truth;
+3. make browser acknowledgement the only browser-render authority;
+4. preserve onboarding and cold-start behavior;
+5. complete capture and route parity;
+6. prove Pressure Map day-zero orientation value;
+7. prove execution/recovery and calibrate only founder-specific pause-policy
+   v2 under frozen burden and temporal-holdout rules;
+8. extract structure only when founder dogfood identifies a present need;
+9. consolidate findings and close with local, CI, and hosted-public proof.
 
 No backend god-module extraction should begin while `/operator` has unresolved
 exposure blockers. A cockpit may be implementation-green while cohort-yellow
@@ -67,14 +71,14 @@ is explicitly authorized.
 Use these documents as the current authority chain:
 
 1. `docs/AUTHORITY.md` - cross-repo authority hierarchy.
-2. `docs/single_authority_contract.md` - one owner per truth class, mutation
+2. `docs/core_product_loop_refactor_plan_2026_07_11.md` - active
+   founder-approved implementation plan and gate sequence.
+3. `docs/single_authority_contract.md` - one owner per truth class, mutation
    path, and claim path.
-3. `docs/operator_dashboard_contract.md` - implementation-green vs
+4. `docs/operator_dashboard_contract.md` - implementation-green vs
    cohort-green and cockpit readiness semantics.
-4. `docs/runbooks/post_wave_dogfood_loop.md` - reusable browser/API/export
+5. `docs/runbooks/post_wave_dogfood_loop.md` - reusable browser/API/export
    verification loop plus optional CI/CD proof collection after push.
-5. `docs/registries/refactor_stabilization_ledger.md` - wave/seam audit
-   trail, browser artifacts, rollback notes, and issue references.
 6. `docs/audits/e0_exposure_forensics_2026_07_01.md` - E0 row-level exposure
    forensics and repair evidence.
 7. `docs/audits/refactor_spaghetti_audit_2026_06_29.md` - documentation-only
@@ -94,12 +98,16 @@ Use these documents as the current authority chain:
    `docs/tightened_docs/17_immediate_freeze_targets.md` - semantic-entropy and
    freeze-gate constraints.
 
+`docs/registries/refactor_stabilization_ledger.md` is chronological audit
+evidence, not authority. Read its latest entry for current artifacts and retain
+older contradictions as historical lineage.
+
 `docs/archive/legacy/planning/building_phases.md` remains useful historical/product roadmap context,
 but it is stale April phase planning and is not current implementation
 authority.
 
 `docs/archive/AGENT_HANDOFF.md` remains historical onboarding context only. It
-cannot authorize JARVIS work, OpenClaw runtime mutation, AI synthesis, provider
+cannot authorize JARVIS work, reasoning-adapter runtime mutation, AI synthesis, provider
 adapters, passive tracking, new insight surfaces, or behavior-transition
 equations.
 
@@ -148,7 +156,7 @@ The current freeze-closure pass must not:
 - change clean-data semantics,
 - create new user-burden inputs,
 - introduce schema migrations without explicit user approval,
-- wire OpenClaw/GPT into product runtime,
+- wire ReasoningRuntimeContract/OpenClawAdapter into product runtime,
 - add new provider adapters,
 - add passive tracking,
 - or weaken operator denominators to force a green readiness state.
@@ -202,7 +210,7 @@ The following remain later phases and require a new explicit plan:
 
 - Admission/Coverage Gate, Execution Drift Decomposition, Re-entry Resolution
   Survival, and Pressure-to-Execution Funnel beyond operator diagnostics.
-- AI synthesis over evidence packets or OpenClaw/GPT product wiring.
+- AI synthesis over evidence packets or ReasoningRuntimeContract/OpenClawAdapter product wiring.
 - Public cascade intervention surfaces.
 - Behavior-transition runtime equations.
 - New provider adapters or passive tracking.
@@ -377,7 +385,7 @@ added from those waves until a current boundary failure promotes one of them.
 
 | Wave | Status | Promotion condition |
 | --- | --- | --- |
-| Wave 7: Agent / JARVIS / OpenClaw authority | Parked. | Promote only if a mutation-capable agent flow or confirmation path creates a current authority risk. |
+| Wave 7: Agent / JARVIS / reasoning-adapter authority | Parked. | Promote only if a mutation-capable agent flow or confirmation path creates a current authority risk. |
 | Wave 8: Repair jobs and mutation quarantine | Parked. | Promote only if repair-derived state can enter clean analytics or public evidence without an admission rule. |
 | Wave 9: Test suite as membrane system | Parked. | Promote only if tests block boundary simplification by preserving decorative internals. |
 | Wave 10: Public / AI-readable copy alignment | Parked. | Promote only if public or AI-readable copy implies authority the runtime does not have. |

@@ -18338,3 +18338,353 @@ Rollback note:
   and remove this ledger entry. No schema, data, Redis migration, hosted-public
   deploy, public restart, production repair, or rebrand/domain rollback is
   required.
+
+## 2026-07-11 - Direct Model Runtime Retirement
+
+Seam:
+
+- `retire-direct-model-runtime`
+
+Changed authority:
+
+- Removed the active NIM/Ollama task-enrichment runtime and the unused direct
+  `OPENAI_API_KEY` configuration surface.
+- Preserved `deadline_heuristic.score_deadlines()` as the current deterministic
+  candidate owner. Suggestions remain non-canonical until user confirmation.
+- Documented the parked future direction as
+  `LyraOS -> ReasoningRuntimeContract -> OpenClawAdapter`, with no direct
+  LyraOS model API/API-key, shared-account, or local-model fallback during the
+  prerequisite phase.
+- Corrected S1c/post-wave step classification so a handled native probe cannot
+  leave stale `$LASTEXITCODE` state that falsely fails a successful PowerShell
+  step.
+
+Removed paths:
+
+- `backend/app/services/llm_parser.py`;
+- `backend/app/services/nvidia_nim_client.py`;
+- `backend/app/services/jarvis_tools.py` and its orphaned NIM-era discovery-tool
+  tests;
+- `backend/app/workers/jobs/llm_enrichment.py`;
+- `scripts/llm_latency_bench.py`;
+- provider-specific parser, client, and scheduler tests;
+- NIM, Ollama, unused OpenAI API-key, and stale Notion credential examples from
+  active configuration surfaces.
+
+Parked paths:
+
+- Historical `llm_*`, `notion_*`, and Jarvis columns/migrations remain for
+  lineage, export, and delete compatibility until an approved schema migration.
+- Deterministic suggestion component/client/endpoint naming cleanup remains a
+  later characterization-first seam.
+- Embedded reasoning-runtime account linking, prompts, AI synthesis, adaptive
+  intervention, hosted-public deployment, and public restart remain parked.
+
+Moved authority:
+
+- No mutation, exposure, provider, ClaimCompiler, clean-data, schema, or
+  deployment authority moved.
+- Deterministic suggestion storage temporarily reuses historical `llm_*`
+  columns; comments and status `retired` prevent those rows from implying model
+  execution.
+
+Tests and verification:
+
+- Full backend suite after orphaned Jarvis/NIM test retirement: 1027 passed,
+  1 expected xfail.
+- Frontend typecheck and production build passed; 18 routes generated.
+- Authority surface and refactor-contract hard gates passed with zero findings.
+- Negative retirement gate:
+  `backend/tests/test_legacy_model_runtime_retired.py`; passed.
+- Wrapper success/failure contract:
+  `scripts/test_post_wave_evidence_manifest_contract.mjs`; passed.
+- Holmesberg local-current product loop:
+  `tmp/browser-product-loop/2026-07-11T04-30-35-801Z/result.json`; 134 checks,
+  zero failed checks, no active timer, and no unrendered synthetic creation-
+  nudge exposure residue.
+- Operator read-only proof reported zero count diffs and
+  `exposure_without_render_count=0`.
+- Standard local-current evidence manifest:
+  `tmp/post-wave-dogfood/20260711-075140-retire-direct-model-runtime-manifest-final-standard-local-current/summary.json`;
+  classification `standard_wave_proof_passed`, implementation green, cohort
+  yellow for real evidence gaps.
+
+Known non-blocking issues:
+
+- Hosted-public proof/deployment remains blocked or deferred under issue `#200`;
+  no public deploy or restart was performed.
+- Historical DB/export field names remain intentionally visible until migration
+  approval; they do not indicate an active model runtime.
+
+Behavior parity statement:
+
+- Brain Dump, task creation/edit, deterministic deadline suggestions,
+  confirmation/correction, timer execution, exposure lineage, export/delete,
+  and operator read-only behavior remain available. False model-activity copy
+  and direct provider execution are removed.
+
+Rollback note:
+
+- Revert this seam to restore the deleted provider runtime and prior wrapper
+  semantics. No schema/data migration or production repair was performed, so
+  rollback requires no row transformation. Public runtime was not deployed or
+  restarted by this seam.
+
+## 2026-07-11 - Reasoning Runtime Contract Naming And Authority Normalization
+
+Seam preflight:
+
+- Seam name: `reasoning-runtime-contract-doc-normalization`
+- Authority class: docs/authority plus public-copy alignment.
+- Touched surfaces: active authority docs, AI prerequisite concept docs,
+  parked pivot plan, notification coverage docs, and AI-readable public copy.
+- Expected user-visible behavior change: public copy no longer describes
+  LyraOS as AI-native or an adaptive scheduler.
+- Expected data/write behavior change: none.
+- Required proof: docs grep, authority scan, and diff check.
+- Rollback: revert this documentation-only seam.
+
+Changed authority:
+
+- Replaced direct future-host phrasing with:
+
+  ```text
+  LyraOS
+  -> ReasoningRuntimeContract
+  -> OpenClawAdapter
+  ```
+
+- Made `ReasoningRuntimeContract` the top-level future boundary and
+  `OpenClawAdapter` a candidate adapter, not product truth, mutation,
+  publication, clean-data, or exposure authority.
+- Split pre-runtime evidence admission from post-runtime claim compilation as
+  `EvidenceAdmissionGate` and `OutputClaimCompiler`.
+- Added a separate prerequisite concept for ProductEntitlement,
+  RuntimeConnection, and ResearchAssignment.
+- Clarified that no direct API/local fallback is a prerequisite-phase rule,
+  while any future adapter requires founder approval, security review,
+  provenance compatibility review, and an implementation plan.
+
+Removed/parked paths:
+
+- The resurrected root `docs/core_product_loop_wave_plan.md` now has no active
+  runtime or implementation authority.
+- Public AI-readable copy no longer uses AI-native/adaptive-scheduler language
+  as canonical shipped positioning.
+- No runtime code, env vars, endpoint paths, scripts, containers, schema, or
+  production data changed.
+
+Tests and verification:
+
+- `git diff --check`; passed with CRLF warnings only.
+- `python scripts/scan_refactor_contracts.py`; passed with zero findings.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed with zero missing owners and zero worker write drift.
+- `npm run typecheck` from `frontend`; passed.
+- Targeted grep over active architecture/public-copy files found no remaining
+  AI-native/adaptive-scheduler/OpenClaw-as-future-host wording outside
+  historical/research manifesto prose.
+
+Rollback note:
+
+- Revert this docs seam only. Runtime state is unaffected.
+
+## 2026-07-11 - Research Preview Pro And Cohort-Sponsored Runtime Doctrine
+
+Seam preflight:
+
+- Seam name: `research-preview-pro-runtime-sponsorship-doctrine`
+- Authority class: docs/authority.
+- Touched surfaces: product entitlement/runtime prerequisite concept and AI
+  prerequisite architecture concept.
+- Expected user-visible behavior change: none.
+- Expected data/write behavior change: none.
+- Required proof: docs diff check and refactor contract scan.
+- Rollback: revert this documentation-only seam.
+
+Changed authority:
+
+- Documented `research_preview_pro` as a temporary cohort entitlement, not a
+  pricing commitment or permanent AI entitlement.
+- Added `RuntimeFunding` as separate from `ProductEntitlement`,
+  `RuntimeConnection`, and `ResearchAssignment`.
+- Defined `founder_sponsored` and `cohort_sponsored` runtime funding as
+  temporary research-preview custody modes under `ReasoningRuntimeContract`.
+- Clarified that a trusted university wedge may test a Pro-shaped LyraOS
+  experience without bringing a personal ChatGPT subscription, while avoiding
+  any baked-in "founder account powers LyraOS" architecture.
+- Added audit concepts for subject user, runtime custodian, consent scope,
+  per-subject context isolation, migration target, and runtime funding.
+
+Removed/parked paths:
+
+- No runtime AI, adapter wiring, prompt, schema, credential storage, pricing
+  change, cohort assignment, public claim, or deployment was authorized.
+- Future user-connected and institution-sponsored runtime remain migration
+  targets, not current implementation.
+
+Tests and verification:
+
+- `git diff --check -- docs/concepts/product_entitlement_runtime_and_research_prerequisite.md docs/concepts/ai_augmented_inference_prerequisite_architecture.md docs/registries/refactor_stabilization_ledger.md`;
+  passed with CRLF warning on ledger only.
+- `python scripts/scan_refactor_contracts.py`; passed with zero findings.
+
+Rollback note:
+
+- Revert this docs seam only. Runtime state, public runtime, and production
+  data are unaffected.
+
+## 2026-07-11 - Repository-Wide AI Capability Completion Survey
+
+Seam preflight:
+
+- Seam name: `ai-capability-completion-map`
+- Authority class: docs/authority and research architecture.
+- Touched surfaces: active authority pointer, documentation map, repository
+  agent instructions, AI prerequisite concepts, product-entitlement concept,
+  the repository-instructions contract verifier, and this ledger.
+- Documented behaviors touched: none; current code was read as evidence only.
+- Expected user-visible behavior change: none.
+- Expected data/write behavior change: none.
+- Required proof: independent domain scans, docs diff check, refactor contract
+  scan, authority scan, and link/reference review.
+- Stop condition: any candidate that silently grants AI mutation, confidence,
+  clean-data, exposure, experiment, consent, retention, or deployment
+  authority.
+- Rollback: revert this documentation-only seam.
+
+Changed authority:
+
+- Added `docs/concepts/ai_capability_completion_map.md` as a non-authorizing,
+  repository-indexed inventory of candidate AI augmentation points.
+- Defined AI as a residual semantic/hypothesis layer after exact rules,
+  retrieval, graph methods, constraint solving, statistics, probabilistic
+  methods, classical ML, simulation, and user confirmation receive first
+  refusal.
+- Added a separate AI-to-deterministic distillation path so validated residual
+  discoveries can improve the free tier as versioned rules, lexicons, priors,
+  templates, fixtures, constraints, or classical models without runtime AI.
+- Corrected the reasoning order: admitted EvidencePacket enters the reasoning
+  runtime, which returns a draft to deterministic OutputClaimCompiler and
+  SurfacePolicy.
+- Recorded capture, planning, execution, recovery, insight/research,
+  operations, support, accessibility, localization, testing, and business-model
+  candidate classes with explicit no-AI zones.
+
+Independent review:
+
+- Six read-only domain agents reviewed backend ingestion/providers, frontend
+  UX, analytics/measurement, execution/recovery/exposure, all documentation,
+  and auth/privacy/infrastructure/CI.
+- A seventh read-only agent reviewed the business model, free/Pro/institution
+  boundaries, runtime funding, cohort sponsorship, economics, and deterministic
+  distillation.
+- An eighth verification agent and ninth adversarial completeness agent reviewed
+  falsifiability, tests, method ordering, omissions, and map consistency.
+
+Removed/parked paths:
+
+- No runtime AI, adapter wiring, prompt, schema, feature, experiment, pricing,
+  cohort assignment, public claim, provider path, deployment, or production
+  data change was authorized or implemented.
+- Direct model-provider and API-key paths remain retired/forbidden.
+
+Tests and verification:
+
+- `git diff --check` over the scoped authority/concept/instruction/verifier
+  files; passed with line-ending warnings only.
+- `python scripts/scan_refactor_contracts.py`; passed with zero findings.
+- `python scripts/scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift`;
+  passed with zero missing owners and zero worker write drift.
+- `node scripts/test_repository_instructions_contract.mjs`; passed after the
+  verifier was aligned with the canonical
+  `ReasoningRuntimeContract/OpenClawAdapter product wiring` freeze phrase.
+
+Browser proof:
+
+- Not applicable. This seam changes no runtime or public copy.
+
+Rollback note:
+
+- Revert the documentation files in this seam. Runtime state, hosted-public
+  artifacts, production data, and user behavior are unaffected.
+
+## 2026-07-11 - Wave 0 Freeze-Closure Checkpoint
+
+Seam preflight:
+
+- Seam name: `wave-0-freeze-closure-checkpoint`.
+- Authority class: checkpoint only; commits remain split by runtime,
+  verifier/CI, public copy, and docs/authority.
+- Touched surfaces: direct model-runtime retirement, deterministic deadline
+  suggestion compatibility, verification wrappers, browser harnesses, public
+  copy, active authority documents, and the approved invariant-first plan.
+- Expected user-visible behavior change: historical model-generated binding
+  candidates are no longer actionable; deterministic, user-confirmed deadline
+  suggestions remain available. Public copy no longer claims unshipped AI or
+  adaptive behavior.
+- Expected data/write behavior change: confirming a deterministic suggestion
+  records canonical deadline binding with `heuristic_confirmed` provenance;
+  rejection preserves historical candidate evidence. No schema or production
+  data change.
+- Stop condition: failing deterministic compatibility, cross-user isolation,
+  cleanup, operator read-only, or browser-render truth.
+- Rollback: revert the affected checkpoint commit by authority class. Retained
+  historical columns and rows make runtime retirement reversible without data
+  repair.
+
+Changed authority:
+
+- Retired direct NIM/Ollama/model-provider execution, scheduler registration,
+  configuration, clients, benchmarks, and Jarvis discovery tools.
+- Preserved deterministic deadline suggestions behind the existing canonical
+  user-confirmed task/deadline mutation path.
+- Classified legacy `llm_*` columns as historical compatibility pending a
+  separately approved migration.
+- Added the approved invariant-first core-loop refactor plan as the current
+  implementation plan without authorizing runtime AI or the future pivot.
+
+Tests and verification before checkpoint commits:
+
+- Backend full suite: `1039 passed, 1 xfailed`.
+- Runtime retirement/compatibility target: `45 passed`.
+- Frontend typecheck and production build: passed.
+- Refactor-contract and authority scans: passed with zero hard findings.
+- Local-current topology proof: passed with isolated public artifacts.
+- Holmesberg full product loop: passed with zero failed checks and recorded
+  cleanup identifiers.
+- Calendar/Table mutable browser retry: passed after correcting a Sunday-only
+  verifier setup error; product assertions were not weakened.
+- Operator read-only proof after mutation: implementation green, zero count
+  diffs, and `exposure_without_render_count=0`.
+- The aggregate wrapper remains red because an earlier forced-state Insights
+  run encountered local-current CORS readiness failure and an earlier operator
+  pass saw one transient pending-notification request failure. Later operator
+  and product-loop proofs passed. These are classified as verifier/topology
+  follow-up, not erased or relabeled as product success.
+
+Checkpoint commits:
+
+- Runtime retirement and deterministic compatibility: `37ebad2`.
+- Verifier, CI, and browser harness hardening: `320d85d`.
+- Public copy alignment: `04ced07`.
+- Authority plan and this ledger: the commit containing this entry.
+
+Browser proof artifacts:
+
+- `tmp/post-wave-dogfood/20260712-003811-wave0-checkpoint-final-retry-standard-local-current/holmesberg-product-loop/result.json`
+- `tmp/post-wave-dogfood/20260712-002441-wave0-checkpoint-final-full-local-current/calendar-table-mutation-retry/result.json`
+- `tmp/operator-readonly-stress-2026-07-11T21-54-30-071Z/result.json`
+
+Deletion/parking note:
+
+- Direct model-provider runtime and Jarvis discovery tooling are removed.
+- Historical columns and evidence remain parked until migration approval.
+- Runtime AI, adaptive intervention, new prediction families, task graphs, and
+  the future reasoning adapter remain forbidden.
+
+Rollback note:
+
+- Revert only the commit for the affected authority class. Do not restore a
+  direct provider path as a fallback, and do not delete retained historical
+  rows during rollback.

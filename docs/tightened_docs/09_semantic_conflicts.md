@@ -17,7 +17,7 @@
 | `cold_start/tentative/confirmed` vs `low/medium/high` | calibration contract vs analytics/frontend | competing confidence taxonomies | medium/high | freeze old terms; migrate by surface |
 | external deadlines in planning calibration | deadline/integration docs vs older analytics | imported constraints contaminate native planning | high | use Cortex `planning_calibration` profile |
 | archetype posterior vs survey archetype | archetype_service/proximity/frontend | static assignment and dynamic proximity coexist | medium/high | preserve distinction in UI/docs |
-| LLM candidate confidence vs heuristic confidence | `llm_parser.py`, `deadline_heuristic.py` | different score origins | medium | do not compare as probability |
+| Historical LLM candidate confidence vs current heuristic score | retained `llm_*` rows, `deadline_heuristic.py` | different score origins | medium | never combine; historical model rows are lineage only |
 | overlap vs multitasking vs interruption | conflict detector, stopwatch switch, calendar UI, pressure map | one word currently covers schedule collision, active task switch, and visible load compression | high | use the terminology boundary below |
 | context switch as umbrella vs runtime events | docs/research language, stopwatch `task_switch`, parent-child interruption chains | umbrella phrase can collapse causes and consequences | high | use `context_switching_footprint` only for derived research; keep runtime terms precise |
 | context-switching footprint vs open threads | internal metric language, user-facing recovery copy | internal term sounds surveillance-adjacent if surfaced directly | medium | product copy uses "open threads," "parked work," "resume load," or "re-entry load" |

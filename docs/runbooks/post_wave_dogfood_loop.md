@@ -373,11 +373,11 @@ exists.
 | Insights / ClaimCompiler | Locked/held/unlocked/suppressed states avoid causal/identity/diagnostic claims and show concrete reasons. | forced-state browser/API covered |
 | Exposure lifecycle | Decision, render or suppression, browser ack, linked interaction outcome where applicable. | partially browser/API covered; existing-decision suppression endpoint covered by backend tests |
 | Notifications | Queue, pending, render, dismiss, terminal lifecycle row. | browser/API covered |
-| Notification branches | Action, expiry, duplicate/cooldown, linked exposure, OpenClaw mirror redaction. | action/expiry browser/API covered; linked exposure backend covered; duplicate/OpenClaw targeted/gated |
+| Notification branches | Action, expiry, duplicate/cooldown, linked exposure, operator-mirror redaction. | action/expiry browser/API covered; linked exposure backend covered; duplicate/operator-mirror targeted/gated |
 | Settings/export | Export registry sections and no secret markers. | API covered |
 | Settings/delete | Browser export download, staged delete, final hard-delete and Redis purge. | disposable-account gated |
 | Providers/integrations | Credential redaction, provider provenance, connect/disconnect/failure/import idempotency. | credential gated |
-| OpenClaw/operator relay | No accidental product-user exposure, no destructive drain before send, one delivery authority. | relay covered; compatibility pending endpoint operator-gated and peek-only |
+| Operator relay | No accidental product-user exposure, no destructive drain before send, one delivery authority. | relay covered; compatibility pending endpoint operator-gated and peek-only |
 
 ## What The Loop Does Not Yet Prove
 
