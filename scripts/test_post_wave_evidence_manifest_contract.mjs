@@ -16,6 +16,7 @@ function assert(condition, message) {
 }
 
 const wrapper = read("scripts/run_post_wave_dogfood_loop.ps1");
+const s1cStack = read("scripts/run_s1c_verification_stack.ps1");
 const ciProof = read("scripts/collect_github_ci_cd_proof.ps1");
 const runbook = read("docs/runbooks/post_wave_dogfood_loop.md");
 
@@ -61,6 +62,27 @@ for (const classification of requiredClassifications) {
   assert(
     wrapper.includes(classification),
     `post-wave wrapper is missing classification ${classification}`
+  );
+}
+
+for (const [name, source] of [
+  ["post-wave wrapper", wrapper],
+  ["S1c stack", s1cStack],
+]) {
+  const resetIndex = source.indexOf("$global:LASTEXITCODE = 0");
+  const bodyIndex = source.indexOf("& $Body", resetIndex);
+  assert(
+    resetIndex >= 0 && bodyIndex > resetIndex,
+    `${name} must reset stale native LASTEXITCODE before each step body`
+  );
+  assert(
+    source.includes("$stepExitCode = $global:LASTEXITCODE"),
+    `${name} must retain native exit code for failure diagnostics`
+  );
+  assert(
+    source.includes("$stepSucceeded = $?") &&
+      source.includes("if (-not $stepSucceeded)"),
+    `${name} must classify the scriptblock result instead of handled probe exits`
   );
 }
 

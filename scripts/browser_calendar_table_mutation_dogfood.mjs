@@ -108,13 +108,14 @@ function floorToMinute(date) {
 
 function todayVisibleTaskStart() {
   const now = new Date();
-  const candidate = new Date(now.getTime() + 60 * 60_000);
+  const candidate = new Date(now.getTime() + 10 * 60_000);
   if (dateKey(candidate) === dateKey(now)) {
     return floorToMinute(candidate);
   }
-  const fallback = new Date(now);
-  fallback.setHours(23, 0, 0, 0);
-  return fallback;
+  // A run in the last ten minutes of a local day must not create tomorrow's
+  // task and then assert it appears in the still-selected current week. Keep
+  // the start on today while leaving its end in the near future.
+  return floorToMinute(new Date(now.getTime() - 10 * 60_000));
 }
 
 function iso(date) {
@@ -471,7 +472,7 @@ async function cleanupSyntheticExposureDebt(token, beforeExport) {
 
 async function runCalendarPath(page, token) {
   const title = `${prefix} calendar movable ${runKey}`;
-  const start = futureDate(26 * 60);
+  const start = todayVisibleTaskStart();
   const task = await createPlannedTask(token, title, start, 45);
 
   const calendarBefore = await goto(page, "/calendar", "calendar-before-reschedule");
@@ -479,8 +480,8 @@ async function runCalendarPath(page, token) {
     title,
   });
 
-  const newStart = futureDate(27 * 60 + 45);
-  const newEnd = new Date(newStart.getTime() + 60 * 60_000);
+  const newStart = new Date(start.getTime() + 5 * 60_000);
+  const newEnd = new Date(newStart.getTime() + 45 * 60_000);
   const rescheduled = await apiFetch(token, "/v1/reschedule", {
     method: "POST",
     body: JSON.stringify({

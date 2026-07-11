@@ -75,9 +75,12 @@ function Invoke-Step {
   Write-Host ""
   Write-Host "==> $Name"
   $started = Get-Date
+  $global:LASTEXITCODE = 0
   & $Body
-  if ($LASTEXITCODE -ne 0) {
-    throw "$Name failed with exit code $LASTEXITCODE"
+  $stepSucceeded = $?
+  $stepExitCode = $global:LASTEXITCODE
+  if (-not $stepSucceeded) {
+    throw "$Name failed with exit code $stepExitCode"
   }
   $durationMs = [int]((Get-Date) - $started).TotalMilliseconds
   $summary.Add([pscustomobject]@{

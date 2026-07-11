@@ -279,10 +279,7 @@ JARVIS_TOOLS_IMPORT_PATTERN = re.compile(
     r"from\s+app\.services\s+import\s+jarvis_tools)"
 )
 
-JARVIS_TOOLS_IMPORT_ALLOWED_PATHS = {
-    "backend/app/services/behavioral_signature_service.py",
-    "backend/app/services/jarvis_tools.py",
-}
+JARVIS_TOOLS_IMPORT_ALLOWED_PATHS: set[str] = set()
 
 LEGACY_NOTIFICATION_PENDING_PATTERN = re.compile(
     r"/v1/notifications/pending(?:\?channel=|['\"\s])|notifications/pending\?channel="
@@ -382,7 +379,7 @@ def stale_doc_authority_banner_findings() -> list[Finding]:
 def non_owner_jarvis_tools_import_findings(
     extra_files: dict[str, str] | None = None,
 ) -> list[Finding]:
-    """Keep removed Jarvis runtime internals behind explicit compatibility seams."""
+    """Fail closed if code imports the retired Jarvis/NIM tool island."""
     findings = scan_lines(
         rule_id="non_owner_services_must_not_import_jarvis_tools",
         severity="error",
