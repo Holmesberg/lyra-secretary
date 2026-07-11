@@ -18861,3 +18861,87 @@ Rollback note:
 
 - Revert the verifier seam only. Do not expand backend CORS or persist an
   onboarding skip merely to make a local fixture pass.
+
+## 2026-07-12 - Wave 2 Archetype Browser-Owned Render Truth
+
+Seam preflight:
+
+- Seam name: `archetype-proximity-browser-render-truth`.
+- Authority class: product/runtime followed by a separate verifier-only seam.
+- Touched surface: `analytics.archetype_proximity` and its mounted Insights
+  card.
+- Documented behavior preserved: the three-clean-task reveal threshold,
+  behavioral-proximity content, cold-start suppression, and user scoping.
+- Expected user-visible behavior change: none.
+- Expected data/write behavior change: render truth moves from the analytics
+  GET to authenticated browser acknowledgement; decision and suppression
+  writes otherwise retain their existing authority.
+- Required proof: no render before ACK, owner-scoped ACK, retry idempotency,
+  cross-user denial, frontend build/typecheck, static gates, real-cookie
+  browser proof, operator read-only proof, and cleanup.
+- Stop condition: weakening clean-data admission or treating suppression,
+  delivery, or fixture output as positive browser render proof.
+- Rollback: revert product commit `ec74bc8` and verifier commit `aa3ad97`
+  independently.
+
+Changed and moved authority:
+
+- Removed the endpoint's call to `emit_surface_render` for ready archetype
+  responses.
+- The endpoint now creates a `delivered` output-surface decision and returns
+  its exposure ID without a render ID.
+- The mounted React card now sends the surface ID, stable client event ID, and
+  rendered data snapshot to the shared authenticated ACK endpoint after the
+  component commits.
+- The ACK endpoint remains the canonical creator of one render row plus one
+  authenticated render acknowledgement; retries are idempotent.
+- No threshold, clean profile, formula, claim class, schema, provider, or
+  visible copy changed.
+
+Characterization and negative proof:
+
+- `backend/tests/test_analytics_archetype_proximity.py` proves a ready GET
+  leaves zero render and ACK rows until the owner acknowledges it.
+- The same test proves the first owner ACK creates render truth, a retry does
+  not duplicate it, and a cross-user ACK returns `404` without creating rows.
+- The stale frontend `render_id` response field was removed from the
+  archetype response contract.
+- Focused archetype browser mode was added to the Holmesberg product-loop
+  harness without changing the default full-loop assertions.
+
+Verification:
+
+- Archetype endpoint suite: 10 passed.
+- Shared output-surface, exposure-ledger, and operator suites: 57 passed.
+- Frontend typecheck and production build passed.
+- Local S1c authority, refactor-contract, backend-layer, Cortex read-only,
+  shipped-feature registry, relay, and fresh-Alembic gates passed.
+- Standard real-cookie macro proof for product commit `ec74bc8` passed at
+  `tmp/post-wave-dogfood/20260712-021031-wave2-archetype-browser-render-standard-local-current/summary.json`:
+  implementation green, zero operator count diffs, zero actionable
+  exposure-without-render rows, and Holmesberg cleanup for 14 tasks, eight
+  deadlines, and three notifications.
+- Focused proof at
+  `tmp/post-wave-dogfood/wave2-archetype-focused-gated/holmesberg-product-loop/result.json`
+  completed three canonical execution traces and cleanup, but correctly
+  reports `proof_status=gated`: recent behavior-shaping exposures leave the
+  only authorized mutable account at clean-data admission `0/3`.
+- No other authorized uncontaminated mutable cookie is available. Backend
+  lifecycle proof is green; a positive real-account reveal is not claimed.
+
+Issues and parked paths:
+
+- Issue `#202` remains open until an authorized clean account or expired
+  exposure horizon permits the positive mounted-card render proof.
+- Issue `#211` records the unrelated switch-chip finding discovered during a
+  full-loop retry; its product/verifier semantics must be classified outside
+  this exposure seam.
+- No production repair, exposure deletion, threshold weakening, operator
+  mutation, public restart, or hosted mutation was used to obtain proof.
+
+Rollback note:
+
+- Revert `ec74bc8` only to restore the prior product lifecycle, recognizing
+  that this also restores fabricated GET-time render truth.
+- Revert `aa3ad97` only to remove the focused verifier capability; this does
+  not alter runtime behavior.
