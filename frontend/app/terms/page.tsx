@@ -9,6 +9,11 @@ export default function TermsPage() {
         warranty.
       </p>
       <p>
+        Current access is trusted pre-alpha access and is not a permanent free
+        product entitlement. Pricing, availability, and access terms may change
+        before wider release.
+      </p>
+      <p>
         Do not rely on LyraOS for safety-critical, medical, legal, financial,
         or legally binding scheduling. Insights, predictions, archetype
         proximity, and adaptive-language surfaces are bounded hypotheses from

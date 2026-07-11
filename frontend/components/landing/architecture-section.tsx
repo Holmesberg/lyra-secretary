@@ -36,7 +36,7 @@ const STACK = [
 const BOUNDARIES = [
   {
     title: "AI is bounded support",
-    body: "LLM enrichment and OpenClaw support parsing, operator work, and implementation. They are not the behavioral truth substrate.",
+    body: "Deterministic parsers support current task capture. Future reasoning-runtime support remains parked behind evidence, claim, and approval gates.",
   },
   {
     title: "Adaptive scheduling is future-gated",

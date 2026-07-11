@@ -19,7 +19,7 @@ const sections = [
   {
     title: "Integrations And Service Providers",
     body: [
-      "LyraOS relies on service providers such as Cloudflare, Supabase, Google sign-in, Google Calendar when connected, Moodle when connected, Resend for email, and OpenClaw or Telegram for operator notification delivery when configured.",
+      "LyraOS relies on service providers such as Cloudflare, Supabase, Google sign-in, Google Calendar when connected, Moodle when connected, Resend for email, and an operator notification relay or Telegram for operator notification delivery when configured.",
       "Google Calendar refresh tokens, Moodle tokens, and private Moodle calendar URLs are treated as credential-class secrets. LyraOS stores them so server-side sync can work, redacts them from exports, and encrypts credential fields where the current runtime supports it.",
       "Imported provider facts are treated as provider evidence or candidates unless the product explicitly asks you to confirm them.",
     ],
@@ -29,15 +29,15 @@ const sections = [
     body: [
       "LyraOS is currently pre-alpha software operated as a small trusted-user system. Authorized operators may access internal dashboards, admin tools, feedback queues, logs, and database-backed diagnostics to keep the service running, investigate bugs, verify data-sovereignty behavior, and decide whether the cohort is ready to expand.",
       "The main operator cockpit is designed to be content-minimized: it avoids raw task titles, raw emails, provider tokens, and raw provider URLs by default. Some older or narrower admin surfaces can expose raw account emails, user IDs, feedback text, page URLs, user agents, error context, and operational timestamps.",
-      "Normal user-notification mirrors to the operator channel are redacted to metadata where possible. User-submitted feedback and operator-owned system alerts may be delivered as full text to operator email, OpenClaw, or Telegram so they can be triaged.",
+      "Normal user-notification mirrors to the operator channel are redacted to metadata where possible. User-submitted feedback and operator-owned system alerts may be delivered as full text to operator email, the operator notification relay, or Telegram so they can be triaged.",
     ],
   },
   {
     title: "AI, Insights, And Future Features",
     body: [
-      "Current user-facing insights are intended to be deterministic and evidence-bounded. Operator notifications may use the OpenClaw relay or Telegram when configured.",
-      "AI synthesis, behavior-transition equations, adaptive scheduling authority, new provider adapters, and new insight types are not automatically authorized by this policy. If LyraOS ships those features later, the policy and consent surface must be updated before they become user-facing runtime behavior.",
-      "Future AI or equation-based features must remain downstream of explicit evidence, uncertainty, privacy boundaries, and user-facing explanation. They must not create hidden identity labels or stronger claims than the underlying data supports.",
+      "Current user-facing insights are intended to be deterministic and evidence-bounded. Operator notifications may use the operator notification relay or Telegram when configured.",
+      "AI synthesis, behavior-transition equations, adaptive scheduling authority, reasoning-runtime adapters, new provider adapters, and new insight types are not automatically authorized by this policy. If LyraOS ships those features later, the policy and consent surface must be updated before they become user-facing runtime behavior.",
+      "Future AI or equation-based features must remain downstream of explicit evidence, uncertainty, privacy boundaries, ClaimCompiler gates, exposure logging, and user-facing explanation. They must not create hidden identity labels or stronger claims than the underlying data supports.",
     ],
   },
   {
