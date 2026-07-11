@@ -480,6 +480,14 @@ def test_baseet_deadline_pressure_validates_real_pressure_map_product_seam(
         user_id=user.user_id,
         base_time=datetime.utcnow(),
     )
+    task_ids_before = {
+        task_id
+        for (task_id,) in (
+            db.query(Task.task_id)
+            .filter(Task.user_id == user.user_id)
+            .all()
+        )
+    }
 
     response = client.get(
         "/v1/academic/pressure-map?horizon_days=14",
@@ -511,7 +519,15 @@ def test_baseet_deadline_pressure_validates_real_pressure_map_product_seam(
     assert data["mutation_permission"] == "explicit_user_confirmation_required"
     assert "automatic_task_creation" in data["denied_authority"]
     assert "automatic_calendar_mutation" in data["denied_authority"]
-    assert db.query(Task).filter(Task.user_id == user.user_id).count() == 0
+    task_ids_after = {
+        task_id
+        for (task_id,) in (
+            db.query(Task.task_id)
+            .filter(Task.user_id == user.user_id)
+            .all()
+        )
+    }
+    assert task_ids_after == task_ids_before
 
     assert data["items"]
     assert {item["provider_kind"] for item in data["items"]} == {"baseet"}
