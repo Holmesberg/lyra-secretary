@@ -127,7 +127,7 @@ export interface AcademicPressureMapResponse {
   allowed_authority?: string[];
   denied_authority?: string[];
   exposure_id?: string | null;
-  render_id?: string | null;
+  render_snapshot?: Record<string, unknown> | null;
 }
 
 export function getAcademicPressureMap(

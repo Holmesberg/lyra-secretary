@@ -26,10 +26,10 @@
  * Zero new backend endpoints. Zero schema changes. All data sourced
  * from endpoints that existed before this commit.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
-import { ackExposureRender, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import {
   queryTasks,
   queryTasksRange,
@@ -137,10 +137,6 @@ export default function PulsePage() {
     queryFn: () => getAcademicPressureMap(pressureHorizonDays),
     staleTime: 60_000,
   });
-
-  useEffect(() => {
-    void ackExposureRender(pressureQ.data?.exposure_id);
-  }, [pressureQ.data?.exposure_id]);
 
   const tasksToday = tasksTodayQ.data ?? [];
   const recentTasks = tasksRangeQ.data?.tasks ?? [];

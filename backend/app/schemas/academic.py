@@ -5,7 +5,7 @@ The response intentionally carries ranges, assumptions, and trust state
 instead of a single "AI knows the answer" estimate.
 """
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_serializer
 
@@ -148,7 +148,7 @@ class AcademicPressureMapResponse(BaseModel):
     allowed_authority: list[str] = Field(default_factory=list)
     denied_authority: list[str] = Field(default_factory=list)
     exposure_id: Optional[str] = None
-    render_id: Optional[str] = None
+    render_snapshot: Optional[dict[str, Any]] = None
 
     @field_serializer("generated_at_utc")
     def _serialize_generated_utc(self, v: datetime) -> str:

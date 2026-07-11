@@ -135,7 +135,8 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     assert "automatic_calendar_mutation" in data["denied_authority"]
     assert "learning_or_mastery_inference" in data["denied_authority"]
     assert data["exposure_id"]
-    assert data["render_id"]
+    assert "render_id" not in data
+    assert data["render_snapshot"]
     assert data["coverage_questions"][0]["trust_state"] == "verified_reachable"
     assert "3-5 student confirmations" in data["coverage_questions"][0]["reason"]
     assert data["capacity_context"]["google_calendar_connected"] is False
@@ -150,14 +151,56 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
         .filter(ExposureDecisionEvent.exposure_id == data["exposure_id"])
         .one()
     )
+    assert decision.decision_status == "delivered"
+    assert decision.exposure_category == "scheduling_suggestion"
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
+        .count()
+        == 0
+    )
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == decision.exposure_id)
+        .count()
+        == 0
+    )
+
+    ack_payload = {
+        "surface_id": "academic.pressure_map",
+        "client_event_id": f"academic.pressure_map:{decision.exposure_id}",
+        "content_snapshot": data["render_snapshot"],
+    }
+    first_ack = client.post(
+        f"/v1/exposures/{decision.exposure_id}/ack/render",
+        headers=auth_headers(alice.user_id),
+        json=ack_payload,
+    )
+    assert first_ack.status_code == 200, first_ack.text
+    assert first_ack.json()["created"] is True
+    second_ack = client.post(
+        f"/v1/exposures/{decision.exposure_id}/ack/render",
+        headers=auth_headers(alice.user_id),
+        json=ack_payload,
+    )
+    assert second_ack.status_code == 200, second_ack.text
+    assert second_ack.json()["created"] is False
+
+    db.refresh(decision)
     render = (
         db.query(ExposureRenderEvent)
-        .filter(ExposureRenderEvent.render_id == data["render_id"])
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
+        .one()
+    )
+    ack = (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == decision.exposure_id)
         .one()
     )
     assert decision.user_id == alice.user_id
-    assert decision.exposure_category == "scheduling_suggestion"
+    assert decision.decision_status == "rendered"
     assert render.surface == "academic.pressure_map"
+    assert ack.user_id == alice.user_id
     assert "Algorithms Quiz 2" not in render.content_snapshot
     assert "Private Final Exam" not in render.content_snapshot
     assert "coverage correctness" not in render.content_snapshot
@@ -170,6 +213,41 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     assert snapshot["coverage_question_count"] == 1
     assert snapshot["source_summary"]["external_obligation_count"] == 1
     assert snapshot["recovery_actions"]
+
+
+def test_pressure_map_render_ack_rejects_cross_user(db):
+    owner = _user(db, "pressure-owner@example.com")
+    other = _user(db, "pressure-other@example.com")
+    _deadline(db, owner.user_id, "Owner deadline", days=3)
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(owner.user_id),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    denied = client.post(
+        f"/v1/exposures/{data['exposure_id']}/ack/render",
+        headers=auth_headers(other.user_id),
+        json={
+            "surface_id": "academic.pressure_map",
+            "content_snapshot": data["render_snapshot"],
+        },
+    )
+    assert denied.status_code == 404
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == data["exposure_id"])
+        .count()
+        == 0
+    )
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == data["exposure_id"])
+        .count()
+        == 0
+    )
 
 
 def test_pressure_map_marks_overdue_without_inferring_completion(db):

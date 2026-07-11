@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   AlertTriangle,
   CalendarClock,
@@ -9,6 +10,7 @@ import {
   ShieldQuestion,
   X,
 } from "lucide-react";
+import { ackExposureRender } from "@/lib/api";
 import type {
   AcademicPressureMapResponse,
   AcademicRecoveryOption,
@@ -243,6 +245,16 @@ export function PulseAcademicPressureMap({
   onHorizonChange,
   taskEvidence = [],
 }: PulseAcademicPressureMapProps) {
+  useEffect(() => {
+    if (pressure?.exposure_id && pressure.render_snapshot) {
+      void ackExposureRender(pressure.exposure_id, {
+        surfaceId: "academic.pressure_map",
+        clientEventId: `academic.pressure_map:${pressure.exposure_id}`,
+        contentSnapshot: pressure.render_snapshot,
+      });
+    }
+  }, [pressure]);
+
   const {
     previewOpen,
     previewOption,

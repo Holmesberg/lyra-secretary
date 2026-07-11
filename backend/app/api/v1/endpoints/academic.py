@@ -11,10 +11,11 @@ from app.db.scoping import get_current_user_id
 from app.schemas.academic import AcademicPressureMapResponse
 from app.services.academic_pressure import build_pressure_map
 from app.services.output_surfaces import (
-    emit_surface_render,
+    create_output_surface_decision,
     get_output_surface_spec,
 )
 from app.core.authority import authority_for_surface
+from app.utils.time_utils import now_utc
 
 router = APIRouter()
 
@@ -100,14 +101,21 @@ def get_academic_pressure_map(
         raise HTTPException(status_code=401, detail="not authenticated")
 
     try:
-        emitted = emit_surface_render(
+        surface_id = "academic.pressure_map"
+        spec = get_output_surface_spec(surface_id)
+        authority = authority_for_surface(spec).as_dict()
+        render_snapshot = _pressure_map_exposure_snapshot(payload)
+        delivered_at = now_utc()
+        decision = create_output_surface_decision(
             db,
-            surface_id="academic.pressure_map",
+            surface_id=surface_id,
             user_id=uid,
-            content_snapshot=_pressure_map_exposure_snapshot(payload),
+            decision_status="delivered",
+            eligible_at=delivered_at,
             content_template_id="academic_pressure_map",
             initiative="system",
             trigger_source="academic.pressure_map",
+            delivered_at=delivered_at,
         )
         db.commit()
     except Exception:
@@ -119,18 +127,13 @@ def get_academic_pressure_map(
 
     return payload.model_copy(
         update={
-            "surface_id": emitted["surface_id"],
-            "truth_class": emitted["truth_class"],
-            "signal_targets": emitted["signal_targets"],
-            "clean_profile": emitted["clean_profile"],
-            "fallback_mode": emitted["fallback_mode"],
-            "authority_rung": emitted["authority_rung"],
-            "mutation_permission": emitted["mutation_permission"],
-            "public_translator": emitted["public_translator"],
-            "surface_role": emitted.get("surface_role"),
-            "allowed_authority": emitted.get("allowed_authority", []),
-            "denied_authority": emitted.get("denied_authority", []),
-            "exposure_id": emitted["exposure_id"],
-            "render_id": emitted["render_id"],
+            "surface_id": surface_id,
+            "truth_class": spec.truth_class,
+            "signal_targets": list(spec.signal_targets),
+            "clean_profile": spec.clean_profile,
+            "fallback_mode": spec.fallback_mode,
+            **authority,
+            "exposure_id": decision.exposure_id,
+            "render_snapshot": render_snapshot,
         }
     )
