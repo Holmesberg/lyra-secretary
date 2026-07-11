@@ -43,6 +43,7 @@ const runId = args.get("run-id") || `dogfood-${Date.now()}-${randomUUID().slice(
 const runKey = boundedIdentifier(runId, 42);
 const prefix = args.get("prefix") || `DOGFOOD ${randomUUID().slice(0, 8)}`;
 const cleanupOnly = args.get("cleanup-only") === "true";
+const archetypeProofOnly = args.get("archetype-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
 const forcePressureRecovery = args.get("force-pressure-recovery") === "true";
 const holmesbergCookie = process.env.LYRA_COOKIE_HOLMESBERG
@@ -2316,6 +2317,144 @@ async function runTimerSwitchChipPath(page, token) {
   }
 }
 
+async function ensureArchetypeReadinessForBrowserProof(token) {
+  const initial = await apiFetch(token, "/v1/analytics/archetype/proximity?days=14");
+  const initialCount = Number(initial.n_tasks || 0);
+  const minimumCount = Number(initial.min_n_required || 3);
+  const requiredCount = Math.max(0, minimumCount - initialCount);
+  let completedCount = 0;
+
+  for (let index = 0; index < requiredCount; index += 1) {
+    const title = `${prefix} archetype readiness ${index + 1}`;
+    const task = await createTaskViaApi(token, {
+      title,
+      startMinutes: 540 + (index * 15),
+      durationMinutes: 10,
+      category: "dogfood_archetype_readiness",
+    });
+    if (!task?.task_id) continue;
+
+    await apiFetch(token, "/v1/stopwatch/start", {
+      method: "POST",
+      headers: {
+        "X-Idempotency-Key": boundedIdentifier(`archetype-ready-start:${runKey}:${index}`),
+      },
+      body: JSON.stringify({
+        task_id: task.task_id,
+        pre_task_readiness: 3,
+      }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    await apiFetch(
+      token,
+      "/v1/stopwatch/stop?confirmed=true",
+      {
+        method: "POST",
+        headers: {
+          "X-Idempotency-Key": boundedIdentifier(`archetype-ready-stop:${runKey}:${index}`),
+        },
+        body: JSON.stringify({
+          post_task_reflection: 3,
+          task_completion_percentage: 100,
+          scope_outcome: "stuck_to_plan",
+        }),
+      },
+      [200, 409],
+    );
+    const executed = await findTaskByTitle(token, title);
+    if (executed?.state === "EXECUTED" && executed.executed_duration_minutes !== null) {
+      completedCount += 1;
+    }
+  }
+
+  const afterSetup = requiredCount > 0
+    ? await apiFetch(token, "/v1/analytics/archetype/proximity?days=14")
+    : initial;
+  if (afterSetup.ready && afterSetup.exposure_id) {
+    await apiFetch(
+      token,
+      `/v1/exposures/${encodeURIComponent(afterSetup.exposure_id)}/ack/suppress`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          suppression_reason: "client_discarded_before_render",
+        }),
+      },
+    );
+  }
+  addCheck(
+    "archetype browser proof setup completes canonical execution traces",
+    completedCount === requiredCount,
+    {
+      initial_count: initialCount,
+      minimum_count: minimumCount,
+      required_count: requiredCount,
+      completed_count: completedCount,
+      admitted_after_setup: Number(afterSetup.n_tasks || 0),
+      source: "canonical_task_and_stopwatch_dogfood",
+    },
+  );
+  return {
+    ready: afterSetup.ready === true,
+    nTasks: Number(afterSetup.n_tasks || 0),
+    minimumCount,
+  };
+}
+
+async function runArchetypeBrowserRenderProof(page, token, beforeExport) {
+  await goto(page, "/insights", "insights-browser-state");
+  const afterExport = await apiFetch(token, "/v1/users/me/export");
+  const beforeExposureIds = new Set(
+    rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id),
+  );
+  const newArchetypeDecisions = rows(afterExport, "exposure_decision_events")
+    .filter((row) => !beforeExposureIds.has(row.exposure_id))
+    .filter((row) => row.content_template_id === "analytics_archetype_proximity");
+  const archetypeRenderIds = new Set(
+    rows(afterExport, "exposure_render_events")
+      .filter((row) => row.surface === "analytics.archetype_proximity")
+      .map((row) => row.exposure_id),
+  );
+  const archetypeAckIds = new Set(
+    rows(afterExport, "exposure_ack_events")
+      .filter((row) => row.event_type === "render")
+      .map((row) => row.exposure_id),
+  );
+  const renderedArchetypeDecisions = newArchetypeDecisions
+    .filter((row) => row.decision_status === "rendered");
+  const browserProvenArchetypeDecisions = renderedArchetypeDecisions
+    .filter((row) => archetypeRenderIds.has(row.exposure_id))
+    .filter((row) => archetypeAckIds.has(row.exposure_id));
+  addCheck(
+    "archetype proximity render is browser-acknowledged",
+    browserProvenArchetypeDecisions.length >= 1,
+    {
+      new_decision_count: newArchetypeDecisions.length,
+      rendered_count: renderedArchetypeDecisions.length,
+      browser_proven_count: browserProvenArchetypeDecisions.length,
+      statuses: newArchetypeDecisions.map((row) => row.decision_status).sort(),
+    },
+  );
+  addCheck(
+    "archetype proximity has no fabricated rendered decision",
+    renderedArchetypeDecisions.every((row) => (
+      archetypeRenderIds.has(row.exposure_id)
+      && archetypeAckIds.has(row.exposure_id)
+    )),
+    {
+      rendered_count: renderedArchetypeDecisions.length,
+      missing_render_or_ack_count: renderedArchetypeDecisions.filter((row) => (
+        !archetypeRenderIds.has(row.exposure_id)
+        || !archetypeAckIds.has(row.exposure_id)
+      )).length,
+    },
+  );
+  return {
+    afterExport,
+    exposureIds: browserProvenArchetypeDecisions.map((row) => row.exposure_id),
+  };
+}
+
 async function runAnalyticsAndExposureChecks(page, token, beforeExport) {
   const evidence = {
     exposure_ids: [],
@@ -2834,6 +2973,50 @@ async function main() {
 
     beforeExport = await apiFetch(token, "/v1/users/me/export");
     expectNoPrivateLeak(JSON.stringify(beforeExport), "Holmesberg export before");
+
+    if (archetypeProofOnly) {
+      const readiness = await ensureArchetypeReadinessForBrowserProof(token);
+      let proofStatus = "gated";
+      if (readiness.ready) {
+        const proof = await runArchetypeBrowserRenderProof(page, token, beforeExport);
+        addCheck(
+          "archetype browser proof export contains rendered exposure",
+          proof.exposureIds.length >= 1,
+          { browser_proven_count: proof.exposureIds.length },
+        );
+        proofStatus = "passed";
+      } else {
+        addGated(
+          "archetype proximity positive browser render proof",
+          `clean-data admission is ${readiness.nTasks}/${readiness.minimumCount} on the authorized mutable account`,
+        );
+      }
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "archetype_render_only",
+        proof_status: proofStatus,
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
 
     await routeSweep(page);
     const deadline = await createDeadlineThroughUi(page, token);
