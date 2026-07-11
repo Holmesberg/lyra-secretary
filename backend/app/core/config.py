@@ -21,9 +21,6 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_PASSWORD: str = ""
 
-    # OpenAI
-    OPENAI_API_KEY: str = ""
-
     # User Context (CRITICAL)
     USER_TIMEZONE: str = "Africa/Cairo"
     USER_ID: str = "user_primary"
@@ -52,52 +49,6 @@ class Settings(BaseSettings):
     EMAIL_TRACKING_BASE_URL: str = Field(
         "https://api.lyraos.org", env="EMAIL_TRACKING_BASE_URL"
     )
-
-    # Local LLM enrichment (Workstream 1, magic-for-alpha 2026-04-28).
-    # Optional. When OLLAMA_URL is unreachable or the model is not loaded,
-    # the llm_enrichment APScheduler job marks tasks as
-    # llm_parse_status='unavailable' and the UI degrades to regex output
-    # - task creation never blocks on this dependency.
-    OLLAMA_URL: str = Field("http://host.docker.internal:11434", env="OLLAMA_URL")
-    # Default qwen2.5:3b - fits comfortably in 8GB VRAM (operator's
-    # A4000) with room for KV cache + system display. Operators with
-    # >12GB VRAM can override to qwen2.5:7b or qwen3:8b for better
-    # quality. Q4 quantized: ~1.9GB on disk, ~2.5GB loaded.
-    OLLAMA_MODEL: str = Field("qwen2.5:3b", env="OLLAMA_MODEL")
-    # Cut from 60s to 10s 2026-04-28 (stress-test P1 #4): qwen2.5:3b runs
-    # 5-8s warm; 10s leaves 25-50% headroom while a hung Ollama can no
-    # longer pin the APScheduler thread for a full minute (was blocking
-    # reminders, pause prediction, stale_session_recovery alongside).
-    OLLAMA_TIMEOUT_SECONDS: int = Field(10, env="OLLAMA_TIMEOUT_SECONDS")
-
-    # NVIDIA NIM client. Hosted inference remains optional for LLM parser
-    # enrichment: when NVIDIA_NIM_API_KEY is set, the enrichment path tries
-    # NIM first and falls back to Ollama on NimUnavailable. Default model
-    # switched 2026-05-09 to moonshotai/kimi-k2.6 after operator live-model
-    # selection; this does not change any research metric semantics.
-    NVIDIA_NIM_API_KEY: str = Field("", env="NVIDIA_NIM_API_KEY")
-    NVIDIA_NIM_MODEL: str = Field("moonshotai/kimi-k2.6", env="NVIDIA_NIM_MODEL")
-    NVIDIA_NIM_BASE_URL: str = Field(
-        "https://integrate.api.nvidia.com/v1", env="NVIDIA_NIM_BASE_URL"
-    )
-    # Direct calls keep the long timeout for operator diagnostics/manual probes.
-    # Background enrichment must use NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS so
-    # provider slowness degrades auxiliary parsing rather than pinning the
-    # scheduler.
-    NVIDIA_NIM_TIMEOUT_SECONDS: int = Field(120, env="NVIDIA_NIM_TIMEOUT_SECONDS")
-    NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS: int = Field(
-        15, env="NVIDIA_NIM_ENRICHMENT_TIMEOUT_SECONDS"
-    )
-    # Kimi K2.6 supports NVIDIA's chat_template_kwargs={"thinking": true}
-    # switch. Keep it env-controlled because structured JSON parsing must
-    # disable it per call.
-    NVIDIA_NIM_ENABLE_THINKING: bool = Field(True, env="NVIDIA_NIM_ENABLE_THINKING")
-    # Tier thresholds for the LLM deadline-binding chip (operator-locked
-    # 2026-04-28). Per stress-test conversation: confidence thresholds
-    # are the most important calibration stat. Tunable from .env so we
-    # can adjust without redeploying once we have alpha-cohort data.
-    LLM_TIER1_CONFIDENCE: float = Field(0.85, env="LLM_TIER1_CONFIDENCE")
-    LLM_TIER2_CONFIDENCE: float = Field(0.45, env="LLM_TIER2_CONFIDENCE")
 
     # Auth (Phase 2). JWT_SECRET is shared with the Next.js frontend's
     # NEXTAUTH_SECRET - both must be identical or token validation fails.

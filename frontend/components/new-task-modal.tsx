@@ -322,9 +322,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           new_end: endDate.toISOString(),
           title: title.trim(),
           category,
-          // Edit-modal parity (2026-04-28): description + deadline_id
-          // now editable. Backend resets llm_parse_status='pending' on
-          // description change so the chip refreshes.
+          // Description + deadline_id are editable. Backend refreshes
+          // deterministic deadline suggestions when task text changes.
           description: description.trim() || undefined,
           deadline_id: deadlineId ?? undefined,
           clear_deadline: clearDeadline,
@@ -550,10 +549,9 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             )}
           </div>
 
-          {/* Edit-modal parity (2026-04-28): description was previously
-              gated to create-only. Now editable on edit too — the
-              reschedule endpoint resets llm_parse_status='pending' on
-              change so the chip refreshes. */}
+          {/* Description is editable in both create and edit mode. The
+              backend refreshes deterministic deadline suggestions when task
+              text changes. */}
           <div className="flex flex-col gap-1.5">
             {!showDescription ? (
               <button

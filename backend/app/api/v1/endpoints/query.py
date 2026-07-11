@@ -282,8 +282,8 @@ def query_tasks(
                     deadline_titles.get(t.deadline_id)
                     if t.deadline_id else None
                 ),
-                # Workstream 1 LLM enrichment (alembic 036, 2026-04-28).
-                # Without these, the LlmEnrichmentChip cannot render.
+                # Deterministic suggestions currently reuse historical
+                # enrichment columns until a schema migration is approved.
                 "llm_parse_status": t.llm_parse_status,
                 "llm_inferred_deadline_id": t.llm_inferred_deadline_id,
                 "llm_deadline_match_confidence": t.llm_deadline_match_confidence,
@@ -294,9 +294,7 @@ def query_tasks(
                     if t.llm_binding_rejected_at else None
                 ),
                 # Trust-not-rewrite contract (alembic 039, 2026-04-28).
-                # Set by llm_enrichment when the LLM disagrees with an
-                # existing user/heuristic binding. Chip renders
-                # "Possible better match" when present.
+                # Historical model suggestion retained for export/audit.
                 "llm_alternative_suggestion": t.llm_alternative_suggestion,
             })
 

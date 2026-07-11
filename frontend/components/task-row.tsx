@@ -135,11 +135,10 @@ export function TaskRow({
             <span className="truncate">due: {task.deadline_title}</span>
           </div>
         )}
-        {/* LLM enrichment chip — magic-for-alpha W1, 2026-04-28.
-            Only renders when llm_parse_status is 'enriched' AND the user
-            hasn't already taken ownership of the binding. Self-suppresses
-            otherwise. Stops the row's PLANNED-edit click from bubbling so
-            chip clicks don't open the edit modal. */}
+        {/* Legacy-named deterministic deadline suggestion. It renders only
+            for the retired-provider compatibility marker and self-suppresses
+            after the user resolves it. Stops the row's PLANNED edit click
+            from bubbling so suggestion actions do not open the modal. */}
         {state === "PLANNED" && (
           <div onClick={(e) => e.stopPropagation()} className="mt-1.5">
             <LlmEnrichmentChip task={task} onChanged={onLlmChipChanged} />

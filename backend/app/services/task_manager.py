@@ -43,6 +43,34 @@ ANCHOR_TITLE_TOKENS = {
 }
 RCT_ARM_CONTROL = "deadline_soft_warning_control"
 RCT_ARM_TREATMENT = "deadline_soft_warning_treatment"
+
+
+def _store_deadline_suggestions(task: Task, heuristic_match) -> None:
+    """Write deterministic suggestions into legacy compatibility columns."""
+    task.llm_parse_status = "retired"
+    task.llm_inferred_deadline_id = None
+    task.llm_deadline_match_confidence = None
+    task.llm_deadline_candidates = None
+    task.llm_priority = None
+    task.llm_sub_items = None
+    task.llm_parsed_at = None
+    task.llm_alternative_suggestion = None
+    if heuristic_match is None or not heuristic_match.candidates:
+        return
+    task.llm_deadline_candidates = [
+        {
+            "deadline_id": candidate.deadline_id,
+            "title": candidate.title,
+            "confidence": candidate.score,
+            "source": candidate.source,
+        }
+        for candidate in heuristic_match.candidates
+    ]
+    top_candidate = heuristic_match.candidates[0]
+    task.llm_inferred_deadline_id = top_candidate.deadline_id
+    task.llm_deadline_match_confidence = top_candidate.score
+
+
 def _require_current_user(op: str) -> int:
     """Resolve the acting user_id from the request-scoped ContextVar.
 
@@ -322,7 +350,7 @@ class TaskManager:
             # stay suggestion-only in llm_* fields.
             #
             # The override priority list (operator-locked) is:
-            #   manual_user > heuristic_exact_title > llm_auto_confirmed >
+            #   manual_user > heuristic_exact_title > heuristic_confirmed >
             #   user_corrected > heuristic_startswith > heuristic_substring
             #   > parser_auto > null
             uid_for_pass2 = _require_current_user("create_task_pass2")
@@ -385,38 +413,10 @@ class TaskManager:
         if bound_deadline is not None and bound_deadline.state == "planned":
             bound_deadline.state = "active"
 
-        # Pre-populate llm_deadline_candidates from the heuristic match so
-        # the chip's Tier 1/2/3 dispatch fires INSTANTLY at create time
-        # rather than waiting for async LLM enrichment (5-9s, sometimes
-        # longer cold). Operator-locked 2026-04-28: "ensure deadline
-        # aware with tiers we discussed."
-        # Skipped when:
-        #   - User passed explicit deadline_id (chip suppressed via
-        #     user_explicit source guard anyway)
-        #   - Heuristic produced no candidates (Tier 3 quiet line will
-        #     fire from the chip's expectsIntelligence check; LLM may
-        #     populate later)
-        # The async LLM worker may overwrite these fields with stronger
-        # signal — that's intentional. The candidate-list refresh is
-        # softer than canonical-deadline rewrite (covered by trust-not-
-        # rewrite contract); user sees suggestions update but their
-        # chosen binding is never silently changed.
-        if (
-            deadline_id is None
-            and heuristic_match_for_candidates is not None
-            and heuristic_match_for_candidates.candidates
-        ):
-            task.llm_deadline_candidates = [
-                {
-                    "deadline_id": c.deadline_id,
-                    "title": c.title,
-                    "confidence": c.score,
-                }
-                for c in heuristic_match_for_candidates.candidates
-            ]
-            top_candidate = heuristic_match_for_candidates.candidates[0]
-            task.llm_inferred_deadline_id = top_candidate.deadline_id
-            task.llm_deadline_match_confidence = top_candidate.score
+        # Keep deterministic deadline suggestions immediate and
+        # user-confirmed. The llm_* names are historical storage only.
+        if deadline_id is None:
+            _store_deadline_suggestions(task, heuristic_match_for_candidates)
 
         self.db.add(task)
         self.db.flush()  # Get task_id
@@ -1136,9 +1136,7 @@ class TaskManager:
             new_start: New start time (UTC)
             new_end: New end time (UTC), or None to preserve duration
             title, category: optional field updates (None = no change)
-            description: optional new description (None = no change). When
-                changed, resets llm_parse_status='pending' so the enrichment
-                worker re-runs against the new text.
+            description: optional new description (None = no change).
             deadline_id: optional new explicit deadline binding. Validates
                 ownership + bindable state; sets deadline_match_source =
                 'user_explicit', confidence = 1.0. None = no change.
@@ -1184,29 +1182,36 @@ class TaskManager:
         task.planned_start_utc = new_start
         task.planned_end_utc = new_end
         task.planned_duration_minutes = int((new_end - new_start).total_seconds() / 60)
-        if title is not None:
+        content_changed = False
+        if title is not None and title != task.title:
             task.title = title
+            content_changed = True
         if category is not None:
             task.category = category
-        # Description edit-mode parity (2026-04-28): when description
-        # changes, reset LLM enrichment so the worker re-runs against
-        # the new text. Stale candidates from prior content shouldn't
-        # linger. We keep llm_binding_rejected_at sticky — if user
-        # rejected once, the re-enrichment audits the data without
-        # re-popping the chip.
-        # Normalize both sides before comparing so whitespace-only
-        # diffs don't trigger unnecessary re-enrichment churn.
+        # Refresh deterministic deadline suggestions when text changes. Keep
+        # the historical dismissal sticky so edits do not re-open a rejected
+        # suggestion.
         def _norm(s: Optional[str]) -> str:
             return (s or "").strip()
         if description is not None and _norm(description) != _norm(task.description):
             task.description = description
-            task.llm_parse_status = "pending"
-            task.llm_inferred_deadline_id = None
-            task.llm_deadline_match_confidence = None
-            task.llm_deadline_candidates = None
-            task.llm_priority = None
-            task.llm_sub_items = None
-            task.llm_parsed_at = None
+            content_changed = True
+        if content_changed and task.deadline_id is None:
+            deadlines = (
+                self.db.query(Deadline)
+                .filter(
+                    Deadline.user_id == task.user_id,
+                    Deadline.voided_at.is_(None),
+                    Deadline.state.in_(("planned", "active")),
+                )
+                .all()
+            )
+            heuristic_match = (
+                score_deadlines(task.title, task.description, deadlines)
+                if deadlines
+                else None
+            )
+            _store_deadline_suggestions(task, heuristic_match)
         # Explicit deadline clear/rebind via the editor. `deadline_id=None`
         # remains "no change"; `clear_deadline=True` is the explicit sentinel.
         if clear_deadline:

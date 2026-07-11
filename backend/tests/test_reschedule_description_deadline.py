@@ -2,7 +2,7 @@
 
 Reschedule endpoint now accepts description + deadline_id alongside the
 existing time/title/category fields. Covers:
-  - description change resets llm_parse_status='pending' + clears stale candidates
+  - description change refreshes deterministic deadline suggestions
   - whitespace-only description "change" does NOT trigger reset
   - deadline_id binding sets deadline_match_source='user_explicit'
   - clear_deadline explicitly removes an existing binding
@@ -108,7 +108,7 @@ def test_description_change_resets_llm_parse_status(db):
     )
     db.refresh(task)
     assert task.description == "totally new description with bullets"
-    assert task.llm_parse_status == "pending"  # reset
+    assert task.llm_parse_status == "retired"
     assert task.llm_inferred_deadline_id is None
     assert task.llm_deadline_match_confidence is None
     assert task.llm_deadline_candidates is None
@@ -155,7 +155,7 @@ def test_deadline_id_explicit_bind(db):
     assert deadline.state == "active"
 
 
-def test_no_change_when_description_and_deadline_omitted(db):
+def test_title_change_refreshes_deterministic_suggestions(db):
     user = _make_user(db)
     set_current_user_id(user.user_id)
     task = _make_task(db, user.user_id)
@@ -167,9 +167,10 @@ def test_no_change_when_description_and_deadline_omitted(db):
     )
     db.refresh(task)
     assert task.title == "renamed"
-    # Untouched
+    # Description is untouched; provider-era fields are retired because the
+    # title participates in deterministic deadline matching.
     assert task.description == "original"
-    assert task.llm_parse_status == "enriched"
+    assert task.llm_parse_status == "retired"
     assert task.deadline_id is None
 
 

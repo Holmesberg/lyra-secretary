@@ -14,9 +14,15 @@ export interface LlmDeadlineCandidate {
   deadline_id: string;
   title: string;
   confidence: number;
+  source?: string;
 }
 
-export type LlmParseStatus = "pending" | "enriched" | "unavailable" | "failed";
+export type LlmParseStatus =
+  | "pending"
+  | "enriched"
+  | "unavailable"
+  | "failed"
+  | "retired";
 
 export interface TaskRow {
   task_id: string;
@@ -272,9 +278,7 @@ export interface RescheduleInput {
   new_end: string;
   title?: string;
   category?: string;
-  /** Edit-modal parity (2026-04-28). When changed, backend resets
-   * llm_parse_status='pending' so the chip's candidate list refreshes
-   * against the new text. */
+  /** When changed, backend refreshes deterministic deadline suggestions. */
   description?: string;
   /** Explicit deadline rebind via the edit modal. Sets
    * deadline_match_source='user_explicit' with confidence=1.0. */

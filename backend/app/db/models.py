@@ -188,17 +188,12 @@ class Task(Base):
     scope_bullet_count_at_execute: Mapped[Optional[int]] = mapped_column(Integer)
 
     # ── LLM enrichment fields (alembic 036, magic-for-alpha 2026-04-28) ──
-    # Populated by the async background `llm_enrichment` worker, NOT by
-    # the fast-path POST /v1/create. Critical guardrails:
-    #   - Regex output (`scope_bullet_count_at_plan`) and parser-based
-    #     `deadline_id` remain canonical. These llm_* fields are a parallel
-    #     signal the user can confirm into canonical via a one-tap chip.
-    #   - `llm_parse_status` flips: pending → enriched | unavailable | failed.
-    #     UI degrades to regex output when status != 'enriched'.
-    #   - `llm_inferred_deadline_id` does NOT replace `deadline_id`;
-    #     `POST /v1/tasks/{id}/llm-confirm` copies it across on user accept.
+    # Provider runtime retired in 2026-07. These columns remain for
+    # historical export/delete compatibility until a separately approved
+    # schema migration. Deterministic deadline suggestions temporarily reuse
+    # the candidate columns; no model provider writes them.
     llm_parse_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
+        String(20), nullable=False, default="retired"
     )
     llm_priority: Mapped[Optional[int]] = mapped_column(Integer)
     llm_inferred_deadline_id: Mapped[Optional[str]] = mapped_column(
@@ -206,26 +201,14 @@ class Task(Base):
         ForeignKey("deadline.deadline_id", ondelete="SET NULL"),
     )
     llm_deadline_match_confidence: Mapped[Optional[float]] = mapped_column(Float)
-    # Tier system (operator-locked UX 2026-04-28):
-    #   Tier 1 — top confidence > 0.85: silent auto-chip with confirm
-    #   Tier 2 — top confidence 0.45-0.85: "Related to one of these?"
-    #             rendering top 2-3 candidates from this list
-    #   Tier 3 — top confidence < 0.45: no chip
-    #   Tier 4 — manual override always via DeadlinePickerSlot
+    # Historical storage reused by the deterministic deadline-suggestion UI.
     # Shape: [{"deadline_id": "...", "title": "...", "confidence": 0..1}, ...]
     llm_deadline_candidates: Mapped[Optional[list]] = mapped_column(JSON)
     llm_sub_items: Mapped[Optional[list]] = mapped_column(JSON)
     llm_parsed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    # Set by POST /v1/tasks/{id}/reject-llm-binding (Workstream 4) when
-    # the user explicitly rejects the LLM-suggested deadline binding.
+    # Historical dismissal field reused by deterministic suggestions.
     llm_binding_rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    # Trust-not-rewrite contract (alembic 039, 2026-04-28). When a
-    # heuristic-bound or user-bound task gets a different deadline
-    # suggestion from the async LLM enrichment, we DO NOT silently
-    # rewrite task.deadline_id — that breaks user trust ("the chip
-    # changed under me"). Instead, the alternative is stored here as a
-    # JSONB suggestion the chip can render as "Possible better match
-    # — [keep current] [switch]". User decides.
+    # Historical model alternative. No active runtime writes this field.
     # Shape: {"deadline_id": "...", "title": "...", "confidence": 0..1,
     #         "from_source": "llm_auto" | "heuristic_substring" | ...}
     llm_alternative_suggestion: Mapped[Optional[dict]] = mapped_column(JSON)
@@ -1582,7 +1565,7 @@ class JarvisInvocation(Base):
     )
     tool_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     # OpenAI-style tool args dict. Bounded by the tool schema declared in
-    # services/jarvis_tools.py — most args are scalars or short strings.
+    # Retired JARVIS executors used mostly scalar or short-string arguments.
     tool_args: Mapped[Optional[dict]] = mapped_column(JSON)
     tool_result_summary: Mapped[Optional[str]] = mapped_column(String(500))
     # 'executed' | 'pending_confirmation' | 'rejected' | 'failed'

@@ -8,8 +8,7 @@ Two routes power the new onboarding surface:
 
 Operator-locked design:
   - Deterministic over magic. Heuristic is the synchronous critical
-    path; LLM enrichment fires per-task afterward via the existing
-    llm_enrichment APScheduler job (nothing new to build here).
+    path; no model provider runs during or after this flow.
   - "Catches the user from the get-go." The brain-dump still gates
     onboarding completion; the rewritten UI does multi-parse + auto-
     bind + one-tap binding confirmation block instead of the meta

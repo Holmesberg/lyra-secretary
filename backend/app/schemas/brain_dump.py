@@ -2,9 +2,8 @@
 
 Used by POST /v1/brain-dump/parse (preview) and POST /v1/brain-dump/commit
 (write-through). Heuristic-only fan-out per operator decision 2026-04-28:
-no LLM dependency on the synchronous critical path; LLM async enrichment
-fires per-task afterward via the existing llm_enrichment worker and may
-surface "Possible better match" via the trust-not-rewrite contract.
+no model dependency on the synchronous critical path. Deterministic deadline
+suggestions remain non-canonical until the user confirms one.
 """
 from datetime import datetime
 from typing import Literal, Optional

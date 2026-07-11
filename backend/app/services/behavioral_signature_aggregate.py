@@ -2,7 +2,8 @@
 
 This read-only aggregate was extracted from the parked Jarvis tool island so
 operator analytics can depend on a narrow service boundary without importing
-``jarvis_tools``. It preserves the historical payload shape for compatibility.
+the retired ``jarvis_tools`` module. It preserves the historical payload shape
+for compatibility.
 """
 from __future__ import annotations
 

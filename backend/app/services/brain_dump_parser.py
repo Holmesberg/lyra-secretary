@@ -2,9 +2,8 @@
 
 Synchronously splits a free-text brain-dump into tasks + deadlines. NO
 LLM dependency — operator-locked: "deterministic over magic" for the
-onboarding moment. Async LLM enrichment still fires per-task via the
-existing `llm_enrichment` worker and may post a "Possible better match"
-chip later via the trust-not-rewrite contract.
+onboarding moment. Deterministic deadline suggestions may be attached during
+task creation; no model provider runs in this parser.
 
 Algorithm:
   1. Split raw text on commas / newlines / semicolons / " then "
