@@ -18810,3 +18810,54 @@ Rollback note:
 - Revert the verifier commit and this ledger entry together. Do not weaken a
   registry finding merely to make CI green; correct the declaration or runtime
   evidence under the appropriate authority seam.
+
+## 2026-07-12 - Local-Current Insights Fixture Topology Repair
+
+Seam preflight:
+
+- Seam name: `local-current-insights-fixture-topology`.
+- Authority class: verifier/harness and topology classification.
+- Touched surfaces: forced-state Insights browser harness, post-wave wrapper,
+  and evidence-manifest contract test.
+- Expected user-visible behavior change: none.
+- Expected data/write behavior change: none; the onboarding bypass is
+  sessionStorage-only and the Insights payload is fixture-intercepted.
+- Required proof: static contract, negative unproxied run, positive explicitly
+  proxied run, wrapper-level aggregate proof, and exact-head CI.
+- Stop condition: accepting localhost CORS failure, mutating Holmesberg
+  onboarding state, or presenting fixture proof as hosted-public behavior.
+- Rollback: revert `ce5a9b7`; issue `#210` becomes open again.
+
+Root cause and fix:
+
+- Local-current intentionally uses an explicit Playwright API proxy because the
+  production-configured backend does not trust arbitrary localhost ports.
+- Product-loop, Calendar/Table, and operator harnesses installed that proxy;
+  forced-state Insights did not.
+- The first proxy attempt correctly removed CORS errors but forwarded the real
+  Insights endpoint instead of the forced scenario. The final harness routes
+  the forced endpoint to its scenario handler and proxies only supporting API
+  requests.
+- Holmesberg's clean post-dogfood state legitimately opens Brain Dump
+  onboarding. The fixture now uses the existing session-only onboarding skip
+  key and labels both fixture overrides; it performs no backend onboarding
+  write.
+
+Negative proof:
+
+- Artifact `tmp/browser-insights-states/2026-07-11T22-50-51-274Z/result.json`
+  remained red without `--proxy-api`: `proxy_api=false`, exit `1`, 14 failed
+  checks.
+
+Positive proof:
+
+- Artifact `tmp/browser-insights-states/2026-07-11T22-54-16-330Z/result.json`
+  passed all 37 checks with `proxy_api=true`, `fixture_only=true`, and explicit
+  `session_only_onboarding_skip` plus `forced_insights_payload` labels.
+- Node syntax, evidence-manifest contract, PowerShell parser, and diff checks
+  passed.
+
+Rollback note:
+
+- Revert the verifier seam only. Do not expand backend CORS or persist an
+  onboarding skip merely to make a local fixture pass.
