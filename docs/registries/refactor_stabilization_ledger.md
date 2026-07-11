@@ -18688,3 +18688,77 @@ Rollback note:
 - Revert only the commit for the affected authority class. Do not restore a
   direct provider path as a fallback, and do not delete retained historical
   rows during rollback.
+
+## 2026-07-12 - Wave 1 Shipped-Feature Preservation Registry
+
+Seam preflight:
+
+- Seam name: `wave-1-shipped-feature-preservation-registry`.
+- Authority class: docs/authority and measurement inventory; no runtime code.
+- Touched surfaces: the active shipped/partial/dead/historical/parked feature
+  inventory and this ledger.
+- Documented behavior touched: all current onboarding, capture, planning,
+  execution, recovery, exposure, provider, privacy, and operator surfaces.
+- Expected user-visible behavior change: none.
+- Expected data/write behavior change: none.
+- Required proof: JSON/path/output-surface validation, independent frontend,
+  backend, and adversarial authority audits, diff check, and later CI hard gate.
+- Stop condition: any registry row that promotes a historical document,
+  conflates an unmounted UI with shipped delivery, or silently grants new
+  mutation/output authority.
+- Rollback: revert the registry and ledger entry; runtime is unchanged.
+
+Changed authority:
+
+- Added `docs/registries/shipped_feature_preservation_registry.json` as active
+  refactor evidence, explicitly not implementation authority or a backlog.
+- Recorded 45 feature families across `shipped`, `partial`, `dead_code`,
+  `historical`, and `parked` states.
+- Split computation, delivery, UI, and mutation facets so one shipped facet
+  cannot promote an entire partial feature.
+- Protected deterministic deadline suggestions even though their compatibility
+  storage/component names still use historical `llm_*` terminology.
+- Recorded real browser proof separately from credential-, disposable-account-,
+  first-run-, physical-drag-, fixture-, and hosted-public-gated paths.
+- Recorded the actual mounted cold-start order as consent, Brain Dump
+  onboarding, then survey. No order change is authorized by this registry.
+
+Independent review findings carried into the registry:
+
+- Pause/resume computation and generic toast delivery are mounted; the richer
+  action banners are dead/unmounted UI.
+- Archetype proximity, stopwatch outputs, and Insights still have server-owned
+  render-truth defects scheduled for separate Wave 2 seams.
+- Recovery is partial: mounted commands cover resume/stale resolution/open/
+  done/drop, not every historically documented option.
+- Provider credential mutation, account deletion, first-run consent/survey,
+  and physical Calendar drag remain honestly gated.
+
+Issues created or updated:
+
+- `#202` archetype proximity render truth.
+- `#203` stopwatch output render truth.
+- `#204` Insights render truth.
+- `#205` notification host visible-render acknowledgement.
+- `#206` onboarding order, validation, idempotency, and browser proof.
+- `#207` account deletion/runtime purge partial-success semantics.
+- `#208` Moodle completion-authority documentation drift.
+- `#209` prediction delivery versus unmounted action banners.
+- `#210` local-current Insights/CORS verifier readiness.
+- `#200` updated with hosted-public topology `502` evidence; no restart or
+  deploy was attempted.
+
+Verification:
+
+- Registry JSON parses successfully with 45 unique IDs.
+- Every active contract, runtime path, test path, and browser script currently
+  referenced by the registry exists.
+- Every referenced output-surface ID resolves in
+  `backend/app/core/output_surface_registry.json`.
+- No runtime, schema, public deployment, production data, or hosted artifact
+  changed.
+
+Rollback note:
+
+- Revert this documentation seam only. Do not use rollback to delete evidence,
+  remount dead UI, or promote parked work.
