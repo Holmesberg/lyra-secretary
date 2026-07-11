@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from app.db.models import (
     Archetype,
+    ExposureAckEvent,
     ExposureDecisionEvent,
     ExposureRenderEvent,
     SuppressionEvent,
@@ -41,6 +42,7 @@ def _clean_slate(db):
     set_current_user_id(None)
     db.rollback()
     db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM exposure_ack_event"))
     db.execute(text("DELETE FROM exposure_render_event"))
     db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM task"))
@@ -51,6 +53,7 @@ def _clean_slate(db):
     set_current_user_id(None)
     db.rollback()
     db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM exposure_ack_event"))
     db.execute(text("DELETE FROM exposure_render_event"))
     db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM task"))
@@ -172,7 +175,7 @@ def test_proximity_no_tasks_returns_uniform(db, archetypes_seeded):
     assert body["min_n_required"] == 3
 
 
-def test_proximity_ready_response_writes_render_event(db, archetypes_seeded):
+def test_proximity_ready_response_waits_for_browser_render_ack(db, archetypes_seeded):
     user = _make_user(db, user_id=79, email="px-ready@example.com")
     set_current_user_id(user.user_id)
     for i in range(3):
@@ -196,6 +199,8 @@ def test_proximity_ready_response_writes_render_event(db, archetypes_seeded):
     assert body["display_mode"] == "behavioral_proximity"
     assert body["eligible_sample_count"] == 3
     assert body["suppressed_reason"] is None
+    assert body["exposure_id"]
+    assert "render_id" not in body
 
     decision = (
         db.query(ExposureDecisionEvent)
@@ -205,14 +210,106 @@ def test_proximity_ready_response_writes_render_event(db, archetypes_seeded):
         )
         .one()
     )
+    assert decision.decision_status == "delivered"
+    assert decision.exposure_category == "meta_inference"
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
+        .count()
+        == 0
+    )
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == decision.exposure_id)
+        .count()
+        == 0
+    )
+
+    ack_payload = {
+        "surface_id": "analytics.archetype_proximity",
+        "client_event_id": f"analytics.archetype_proximity:{decision.exposure_id}",
+        "content_snapshot": {
+            "surface_id": "analytics.archetype_proximity",
+            "display_mode": body["display_mode"],
+            "n_tasks": body["n_tasks"],
+            "proximity": body["proximity"],
+        },
+    }
+    first_ack = client.post(
+        f"/v1/exposures/{decision.exposure_id}/ack/render",
+        headers=auth_headers(user.user_id),
+        json=ack_payload,
+    )
+    assert first_ack.status_code == 200, first_ack.text
+    assert first_ack.json()["created"] is True
+
+    second_ack = client.post(
+        f"/v1/exposures/{decision.exposure_id}/ack/render",
+        headers=auth_headers(user.user_id),
+        json=ack_payload,
+    )
+    assert second_ack.status_code == 200, second_ack.text
+    assert second_ack.json()["created"] is False
+
+    db.refresh(decision)
     render = (
         db.query(ExposureRenderEvent)
         .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
         .one()
     )
+    ack = (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == decision.exposure_id)
+        .one()
+    )
     assert decision.decision_status == "rendered"
-    assert decision.exposure_category == "meta_inference"
     assert render.surface == "analytics.archetype_proximity"
+    assert ack.user_id == user.user_id
+
+
+def test_proximity_render_ack_rejects_cross_user(db, archetypes_seeded):
+    owner = _make_user(db, user_id=80, email="px-owner@example.com")
+    other = _make_user(db, user_id=81, email="px-other@example.com")
+    set_current_user_id(owner.user_id)
+    for i in range(3):
+        _seed_executed_task(
+            db,
+            owner.user_id,
+            planned=30,
+            executed=60,
+            category="work",
+            days_ago=i + 1,
+        )
+    set_current_user_id(None)
+
+    response = client.get(
+        "/v1/analytics/archetype/proximity?days=14",
+        headers=auth_headers(owner.user_id),
+    )
+    assert response.status_code == 200, response.text
+    exposure_id = response.json()["exposure_id"]
+
+    denied = client.post(
+        f"/v1/exposures/{exposure_id}/ack/render",
+        headers=auth_headers(other.user_id),
+        json={
+            "surface_id": "analytics.archetype_proximity",
+            "content_snapshot": {"surface_id": "analytics.archetype_proximity"},
+        },
+    )
+    assert denied.status_code == 404
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == exposure_id)
+        .count()
+        == 0
+    )
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == exposure_id)
+        .count()
+        == 0
+    )
 
 
 # ── Authorization ────────────────────────────────────────────────

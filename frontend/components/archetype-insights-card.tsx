@@ -161,10 +161,23 @@ function DynamicProximityCard({
   });
 
   useEffect(() => {
-    if (proximityQ.data?.ready && proximityQ.data.exposure_id) {
-      void ackExposureRender(proximityQ.data.exposure_id);
+    const data = proximityQ.data;
+    if (data?.ready && data.exposure_id) {
+      void ackExposureRender(data.exposure_id, {
+        surfaceId: "analytics.archetype_proximity",
+        clientEventId: `analytics.archetype_proximity:${data.exposure_id}`,
+        contentSnapshot: {
+          surface_id: "analytics.archetype_proximity",
+          display_mode: data.display_mode,
+          lookback_days: data.lookback_days,
+          n_tasks: data.n_tasks,
+          eligible_sample_count: data.eligible_sample_count,
+          min_n_required: data.min_n_required,
+          proximity: data.proximity,
+        },
+      });
     }
-  }, [proximityQ.data?.ready, proximityQ.data?.exposure_id]);
+  }, [proximityQ.data]);
 
   if (proximityQ.isLoading) {
     return (

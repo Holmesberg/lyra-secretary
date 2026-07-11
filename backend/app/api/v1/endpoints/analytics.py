@@ -954,16 +954,19 @@ def get_archetype_proximity(
     }
     try:
         if ready:
-            emitted = emit_surface_render(
+            delivered_at = now_utc()
+            decision = create_output_surface_decision(
                 db,
                 surface_id=surface_id,
                 user_id=uid,
-                content_snapshot=json.dumps(response_payload, sort_keys=True, default=str),
+                decision_status="delivered",
+                eligible_at=delivered_at,
                 content_template_id="analytics_archetype_proximity",
+                initiative="system",
                 trigger_source="analytics.archetype_proximity",
+                delivered_at=delivered_at,
             )
-            response_payload["exposure_id"] = emitted["exposure_id"]
-            response_payload["render_id"] = emitted["render_id"]
+            response_payload["exposure_id"] = decision.exposure_id
         else:
             emit_surface_suppression(
                 db,
