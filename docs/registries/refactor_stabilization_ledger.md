@@ -18762,3 +18762,51 @@ Rollback note:
 
 - Revert this documentation seam only. Do not use rollback to delete evidence,
   remount dead UI, or promote parked work.
+
+## 2026-07-12 - Wave 1 Preservation Registry Hard Gate
+
+Seam preflight:
+
+- Seam name: `wave-1-preservation-registry-hard-gate`.
+- Authority class: CI/CD and verifier.
+- Touched surfaces: feature-registry scanner, local S1c gate sequence, CI static
+  gates, and evidence-manifest contract test.
+- Expected user-visible behavior change: none.
+- Expected data/write behavior change: none.
+- Required proof: positive registry scan plus negative classifier self-tests,
+  local/CI parity contract, PowerShell parse, and exact-head CI.
+- Stop condition: a hard rule that requires subjective feature judgment rather
+  than mechanically checking declared paths, states, proof, and authority.
+- Rollback: revert commit `095f4c4`; the registry remains readable evidence.
+
+Changed verification authority:
+
+- Added `scripts/scan_feature_preservation_registry.py` and made it a local S1c
+  and CI hard gate.
+- Added the backend-layer and Cortex read-only gates to local S1c so those
+  authority boundaries match CI instead of appearing only after push.
+- Extended the evidence-manifest contract test to enforce local/CI parity for
+  layer, Cortex, and preservation-registry self-tests and hard-fail execution.
+
+Negative proof:
+
+- Self-tests reject a missing required feature row.
+- Self-tests reject archive/parked/concept docs as active contracts.
+- Self-tests reject invalid states, unknown output surfaces, missing browser
+  checks, missing runtime paths, and partial rows whose facets all claim
+  shipped status.
+
+Verification:
+
+- Scanner compile, self-test, and hard-fail scan passed with 45 required rows
+  and zero findings.
+- Backend-layer compile/self-test/hard-fail scan passed.
+- Cortex compile/self-test/hard-fail scan passed.
+- `node scripts/test_post_wave_evidence_manifest_contract.mjs` passed.
+- S1c PowerShell parser check and `git diff --check` passed.
+
+Rollback note:
+
+- Revert the verifier commit and this ledger entry together. Do not weaken a
+  registry finding merely to make CI green; correct the declaration or runtime
+  evidence under the appropriate authority seam.
