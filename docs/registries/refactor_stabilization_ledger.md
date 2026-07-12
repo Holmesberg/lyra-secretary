@@ -19772,3 +19772,65 @@ Issue, parking, and rollback:
   separately parked in `#223`.
 - Revert `5ffef39` and `e37f26c` independently. No persisted or shipped state
   depends on this helper yet.
+
+## 2026-07-12 - Additive Pressure Map Demand Attribution
+
+Seam preflight:
+
+- Seam name: `pressure-map-additive-demand-attribution`.
+- Authority class: one backend product/runtime projection boundary, followed
+  by separate characterization tests and this ledger entry.
+- Documented behavior protected: deadlines count once as obligations; their
+  linked future task intervals are coverage; overlapping intervals count
+  once; standalone planned tasks remain inspectable obligations; work after a
+  deadline does not reduce demand; elapsed timer time is not completed scope.
+- Expected user-visible change: none. The existing Pulse fields and rendering
+  remain unchanged; the API response gains one additive, versioned projection.
+- Expected write change: none beyond the pressure surface's pre-existing
+  exposure decision lifecycle. No schema, migration, provider, task, deadline,
+  timer, or mutation authority changed.
+- Stop conditions preserved: availability/capacity authority, completed-scope
+  authority, estimate-prior changes, and switching the UI to the projection.
+
+Implementation and proof:
+
+- Product commit `0296ea89ec4b4be336c436f1ca326171466cffe7` wires the pure
+  count-once helper into `AcademicPressureMapResponse` as
+  `academic_demand_coverage_projection_v1`.
+- Test commit `9a842d3117fb4ce44ab0bd00690e7ac3b4d6d427` proves user
+  scoping, linked overlap union, standalone attribution, ordered schema bounds,
+  and the negative case where linked work scheduled after its deadline remains
+  noncontributing coverage.
+- The projection explicitly reports `provisional_demand_only`,
+  `unavailable_no_authority`, and collision state `unknown`. Legacy totals are
+  deliberately retained for behavior parity until a later UI seam proves a
+  safe switch.
+- Focused pytest passed: `31 passed`. Python compilation, backend layer scan,
+  mutation-authority scan, Cortex read-only scan, and `git diff --check`
+  passed. The local safe-mode value was explicitly set to the shipped
+  recovery-nudge behavior for characterization; no runtime configuration was
+  changed.
+- A direct real-cookie API check proved the additive schema and explicitly
+  suppressed its unrendered exposure candidate.
+- Mounted local-current browser proof used the real Holmesberg cookie against
+  a migrated disposable SQLite database. Consent and survey skip used
+  canonical endpoints, research consent remained false, and onboarding used
+  the documented browser-session skip. The Pressure Map produced one browser
+  render plus authenticated acknowledgement with no fabricated render state.
+- Browser evidence:
+  `tmp/browser-pressure-projection/20260712-150715/result.json` and
+  `pressure-map-browser-proof.png` in the same directory.
+- Cleanup proved no active synthetic task, deadline, or timer residue. The
+  disposable database and local backend process were removed after proof; no
+  hosted-public or production data was touched.
+
+Issue, parking, and rollback:
+
+- `#220` remains open: the additive projection is not yet the shipped UI
+  owner, and capacity/collision work remains separately gated by `#223` and
+  estimate admission by `#224`.
+- Browser inspection found unrelated duplicated empty-state wording. It is
+  isolated as `#227` rather than folded into this backend seam.
+- Revert product commit `0296ea89` to remove the additive response and builder;
+  revert test commit `9a842d3` independently. No persisted data or migration
+  depends on either commit.
