@@ -19959,3 +19959,52 @@ Failure classification, parking, and rollback:
 - Revert `50112fa` to restore the prior Insights lifecycle, `25fbc7f` to remove
   its characterization, and `e7cd10a` to remove verifier coverage. No persisted
   schema or migration depends on this seam.
+
+## 2026-07-12 - Wave 3 Onboarding And Cold-Start Integrity
+
+Usefulness and authority preserved:
+
+- Consent still precedes Brain Dump onboarding, which still precedes the
+  optional survey. Skip, intentional retake, assignment history, generic prior
+  fallback, and research-consent opt-out remain available.
+- No scoring formula, reveal threshold, prior weight, archetype classification,
+  schema, or visible behavioral claim changed.
+- Product commits `f08d4e3b8019a087ff0ea03564926440cd69e153` and
+  `dd5576cfe374bd24ebfa8fdb50983a8386dd276c` reject invalid item bounds before
+  writes and make transport retries idempotent while preserving deliberate
+  retakes as additive history. Proof commits are `e165584678e9bcbdd97ced8849853b1ec24478e3`
+  and `ce4af4dbb8874dc0fdceecef3541a9b633825af9`.
+- Product commit `ba66135af75da5f19da8da5d2a3a97925458dac6` fences `/me`
+  cache publication by mutation generation. An in-flight stale reader may
+  finish, but it can publish only into an obsolete generation. Proof commit
+  `c955c4104ddbc60c10f850a761a016f9925c572e` covers the negative stale-writer
+  interleaving and Redis-down behavior.
+
+Focused and mounted proof:
+
+- Survey/scoring and cache-focused backend suites passed (`72` and `30`
+  tests respectively); frontend typecheck, Python compilation, static authority
+  scans, and `git diff --check` passed for the touched seams.
+- A real-cookie local-current Holmesberg run traversed consent, Brain Dump
+  skip, explicit survey skip, and Settings without resurrecting the survey
+  gate. Every recorded post-mutation `/me` response reported
+  `archetype_survey_eligible=false`:
+  `tmp/onboarding-wave3/evidence/onboarding-race-focused.json`.
+- A separate mounted continuation completed all 29 survey items, sent one
+  stable idempotency key, replayed it without duplication, retained exactly
+  the skip plus intentional retake assignments, preserved research-consent
+  opt-out, fit the mobile viewport, and reported no page errors:
+  `tmp/onboarding-wave3/evidence/retake-result.json`.
+- One long-run click failed while a survey dialog intercepted the Settings
+  button. The focused lifecycle harness then proved current backend truth and
+  no mounted dialog without adding sleeps; the verifier was not used again as
+  a debugging interface.
+- Disposable SQLite, Redis DB 15, local Next output, and local process trees
+  were removed. Hosted-public artifacts and production data were untouched.
+
+Issue and rollback:
+
+- `#231` records the stale `/me` publication class and closes only after
+  exact-head CI. `#230` remains a separate operator-preflight improvement.
+- Revert each product commit above with its paired proof commit. The cache-key
+  generation is TTL-bound and introduces no persisted schema dependency.
