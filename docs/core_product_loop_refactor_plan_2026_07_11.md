@@ -462,8 +462,22 @@ forensics requires approval.
 - Macro-checkpoint after three related seams or 90 minutes.
 - Hard stop after eight seams/eight hours, two CI repair cycles, or three
   cosmetic-only seams.
-- Run full post-wave proof at macro-checkpoints, serious failures, first writer
-  extraction, and PR readiness.
+- Per seam, use the strict escalation ladder: static and targeted unit/contract
+  proof; focused API lifecycle proof; focused mounted-browser proof; exact
+  affected-row or export proof; focused cleanup and cross-user proof; then
+  commit.
+- Before an expensive browser run, preflight frontend/backend health,
+  topology and build IDs, real-cookie validity, onboarding state, selected
+  calendar range, proxy mode, page-load completion, account eligibility for
+  the target surface, existing synthetic lifecycle debt, target visibility,
+  and the expected export size and timeout envelope.
+- After two or three related seams, run the macro proof: full S1c,
+  multi-account proof, the complete Holmesberg product loop, operator
+  read-only stress, and exact-head CI. Also run it for serious cross-authority
+  failures, first writer extraction, and PR readiness.
+- If two comprehensive runs fail in the same verifier area, do not launch a
+  third. Reproduce and close that failure class with a focused harness first;
+  the full product loop is evidence, not a debugging interface.
 - Stay on `refactor/freeze-closure`.
 - Stage explicit paths only; separate authority classes into reviewable
   commits; keep generated evidence and recovery material out of Git.

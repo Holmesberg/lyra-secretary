@@ -359,20 +359,20 @@
     {
       "id": "notifications.web_lifecycle",
       "name": "Web notification pending, render, act, dismiss, and expiry lifecycle",
-      "status": "partial",
-      "facets": {"computation": "shipped", "delivery": "shipped", "ui": "shipped", "mutation": "partial"},
+      "status": "shipped",
+      "facets": {"computation": "shipped", "delivery": "shipped", "ui": "shipped", "mutation": "shipped"},
       "preservation_required": true,
       "owner": "notification_queue, notification_lifecycle, web notification API, and AppNotificationHost",
       "active_contracts": ["docs/notification_coverage.md", "docs/design_patterns/notification_patterns.md"],
-      "runtime_paths": ["backend/app/services/notification_queue.py", "backend/app/services/notification_lifecycle.py", "backend/app/api/v1/endpoints/notifications.py", "frontend/components/app-notification-host.tsx"],
+      "runtime_paths": ["backend/app/services/notification_queue.py", "backend/app/services/notification_lifecycle.py", "backend/app/api/v1/endpoints/notifications.py", "frontend/components/app-notification-host.tsx", "frontend/components/toast.tsx"],
       "user_effect": "Shows pending product notifications and records explicit terminal lifecycle evidence for render, action, dismissal, expiry, suppression, or lost-unrendered handling.",
       "writes": ["Redis pending queue", "NotificationLifecycleEvent", "linked exposure acknowledgement/outcome"],
       "exposure_class": "notification_lifecycle",
       "output_surface_ids": [],
-      "proof": {"tests": ["backend/tests/test_notification_queue_openclaw_mirror.py", "backend/tests/test_output_surfaces.py"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "notification details click records acted lifecycle"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "notification auto-dismiss records expired lifecycle"}], "minimum_tier": "local-current", "gated": []},
+      "proof": {"tests": ["backend/tests/test_notification_queue_openclaw_mirror.py", "backend/tests/test_output_surfaces.py"], "browser": [{"script": "scripts/browser_notification_lifecycle_dogfood.mjs", "check": "every rendered ACK was issued with exactly one visible matching toast"}, {"script": "scripts/browser_notification_lifecycle_dogfood.mjs", "check": "render ACK retries after a forced first failure without losing DOM proof"}, {"script": "scripts/browser_notification_lifecycle_dogfood.mjs", "check": "same-key duplicates produce one mounted toast and one honest non-render terminal"}, {"script": "scripts/browser_notification_lifecycle_dogfood.mjs", "check": "toast capacity leaves the fourth notification pending without fabricated render"}, {"script": "scripts/browser_notification_lifecycle_dogfood.mjs", "check": "final export proves exact affected-row lifecycle outcomes"}, {"script": "scripts/browser_notification_lifecycle_dogfood.mjs", "check": "notification lifecycle test leaves no synthetic pending rows"}], "minimum_tier": "local-current", "gated": []},
       "historical_sources": [],
       "rollback": "Stop presenting new notifications while preserving pending and durable lifecycle evidence.",
-      "known_gaps": ["Issue #205: host acknowledges render before visible React commit."]
+      "known_gaps": []
     },
     {
       "id": "notifications.reminders",

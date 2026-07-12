@@ -19336,3 +19336,82 @@ Issues, CI, and rollback:
 - Production currently serves the pre-fix but healthy `98bc1f8` artifact. The
   fix changes future build/restart safety and does not require another public
   restart to preserve current health.
+
+## 2026-07-12 - Wave 2 Notification Mounted-DOM Render Truth
+
+Seam preflight:
+
+- Seam name: `notification-mounted-dom-render-ack`.
+- Authority class: product/runtime plus measurement, followed by separate
+  backend characterization, browser-verifier, and ledger commits.
+- Documented behavior preserved: pending delivery, three-visible-toast
+  capacity, duplicate suppression, details action, dismissal, expiry,
+  unsupported-payload termination, and durable lifecycle/export evidence.
+- Expected user-visible change: none. The browser still shows the same Toasts;
+  render truth now waits for the matching Toast to mount.
+- Expected write change: `rendered` is acknowledged only by the mounted Toast
+  callback. Failed render ACKs retry with bounded backoff. Concurrent terminal
+  ACKs atomically remove only their exact Redis payload.
+- Stop condition: no notification policy, copy, prediction eligibility,
+  schema, provider, claim, or unrelated output-surface change was permitted.
+
+Changed and moved authority:
+
+- Commit `1e6e5eb` moved browser render acknowledgement from host scheduling
+  to the matching `Toast` mount. Unsupported and same-key duplicate candidates
+  still terminate as `lost_unrendered`; capacity-deferred candidates remain
+  pending until a visible slot exists.
+- Commit `e83fefb` added bounded idempotent render-ACK retry and removed the
+  host's parallel render-ACK path, leaving one browser owner.
+- Commit `bd9718c` replaced whole-list Redis read/delete/rewrite handling with
+  exact-payload `LREM`. This closes a race in which concurrent rendered and
+  lost-unrendered ACKs could restore each other's stale pending payload.
+- No decision, delivery, exposure, prediction, task, timer, provider,
+  clean-data, or claim authority changed.
+
+Characterization and focused proof:
+
+- Commit `438ae61` adds a deterministic concurrent-ACK race test. The targeted
+  notification queue/lifecycle module passed 13 tests.
+- Commit `a9401fd` adds the focused real-cookie lifecycle verifier and its
+  mechanical preflight: frontend/backend health, topology/build identity,
+  cookie/account role, onboarding gate, selected range, proxy mode, page-load
+  completion, surface eligibility, existing pending/synthetic debt, and export
+  size/timeout envelope.
+- Final artifact
+  `tmp/browser-notification-lifecycle/2026-07-12T07-05-58-360Z/result.json`
+  passed. It proves queue-before-render, DOM ownership for every rendered ACK,
+  retry after a forced `503`, action, expiry, unsupported and duplicate
+  `lost_unrendered`, three-toast capacity with deferred fourth render, nine
+  exact terminal export rows, and zero pending cleanup residue.
+- All mutable work used the Holmesberg account. The operator account was not
+  used to mutate notification state. Retained rows are uniquely prefixed,
+  explicit terminal synthetic lifecycle evidence rather than pending debt.
+- Frontend typecheck and production build passed before the focused run.
+
+Failed focused proofs and classification:
+
+- Runs `2026-07-12T06-48-56-726Z` through
+  `2026-07-12T07-01-57-286Z` remained focused and each left zero pending
+  residue. They classified, in order: missing onboarding eligibility preflight,
+  product retry failure after forced ACK rejection, verifier access to
+  `sessionStorage` before an eligible origin, and two reproductions of the
+  Redis concurrent-terminal-ACK race.
+- No full product-loop rerun was used as the debugging interface. The final
+  focused proof closed each failure class before this checkpoint.
+
+Topology discovery, issues, and rollback:
+
+- The backend service bind-mount plus Uvicorn reload caused the committed
+  backend queue fix to become active on the hosted API during local work.
+  Public frontend and API health remained `200`; no production data repair,
+  hosted mutation, or public frontend restart occurred. Issue `#218` owns
+  isolation of local backend edits from hosted-public runtime and remains out
+  of this seam.
+- Issue `#205` is closed only after this stack is pushed and exact-head CI is
+  green.
+- Revert `1e6e5eb` and `e83fefb` together to restore prior client ownership,
+  recognizing that doing so restores pre-mount render claims. Revert
+  `bd9718c` to restore snapshot queue removal, recognizing that it restores the
+  concurrency race. Revert `438ae61` or `a9401fd` independently to remove only
+  characterization or focused verifier coverage.
