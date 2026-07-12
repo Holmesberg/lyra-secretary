@@ -86,6 +86,10 @@ try {
     node scripts\test_openclaw_operator_relay.mjs
   }
 
+  Invoke-Step "public backend isolation contract gate" {
+    node scripts\test_public_backend_isolation_contract.mjs
+  }
+
   Invoke-Step "alembic fresh database smoke" {
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_alembic_fresh_smoke.ps1
   }
