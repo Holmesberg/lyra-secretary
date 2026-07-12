@@ -1949,6 +1949,7 @@ async function runPressureMapPath(page, token, beforeExport) {
   });
   const pressureSnapshot = await apiFetch(token, "/v1/academic/pressure-map?horizon_days=14");
   await suppressUnrenderedSurfaceProbe(token, pressureSnapshot, "pressure map setup probe");
+  await goto(page, "/pulse", "pulse-pressure-map-render-proof");
   const browserExposureIds = await assertPressureMapBrowserRender(token, beforeExport);
   const seededPressureItem = Array.isArray(pressureSnapshot.items)
     ? pressureSnapshot.items.find((item) => item.obligation_id === pressureDeadline.deadline_id)
@@ -2115,9 +2116,49 @@ async function runPressureMapPath(page, token, beforeExport) {
     ), createdTask || { title: pressureBlockTitle });
 
     await goto(page, "/calendar", "calendar-after-pressure-map-commit");
-    const calendarText = await page.locator("body").innerText();
-    addCheck("calendar shows pressure-map committed recovery block before cleanup", calendarText.includes(pressureBlockTitle), {
+    await clickAny(page, "calendar month view for pressure block", [
+      () => page.getByTestId("calendar-view-month-grid"),
+      () => page.getByRole("button", { name: /^Month$/i }),
+    ], 8_000);
+    const taskStart = new Date(createdTask?.start || Date.now());
+    const currentDate = new Date();
+    const monthOffset = (
+      (taskStart.getFullYear() - currentDate.getFullYear()) * 12
+      + taskStart.getMonth()
+      - currentDate.getMonth()
+    );
+    const boundedMonthOffset = Math.max(-2, Math.min(2, monthOffset));
+    for (let step = 0; step < Math.abs(boundedMonthOffset); step += 1) {
+      const direction = boundedMonthOffset > 0 ? /Next period/i : /Previous period/i;
+      await clickAny(page, "calendar pressure-block month navigation", [
+        () => page.getByRole("button", { name: direction }).first(),
+      ], 8_000);
+      await page.waitForTimeout(500);
+    }
+    const calendarLoading = page.getByText(/Loading calendar/i).first();
+    const calendarRangeLoaded = await calendarLoading
+      .waitFor({ state: "hidden", timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false);
+    addCheck("calendar completes the pressure-block range query", calendarRangeLoaded, {
+      task_id: createdTask?.task_id || null,
+      task_date: Number.isNaN(taskStart.getTime()) ? null : dateKey(taskStart),
+      month_offset: monthOffset,
+    });
+    const calendarEvent = page
+      .locator(`[data-event-id="${createdTask?.task_id || "missing"}"]`)
+      .first();
+    const calendarEventVisible = await calendarEvent
+      .waitFor({ state: "visible", timeout: 12_000 })
+      .then(() => true)
+      .catch(() => false);
+    await screenshot(page, "calendar-pressure-map-commit-month");
+    addCheck("calendar shows pressure-map committed recovery block before cleanup", calendarEventVisible, {
       title: pressureBlockTitle,
+      task_id: createdTask?.task_id || null,
+      task_date: Number.isNaN(taskStart.getTime()) ? null : dateKey(taskStart),
+      month_offset: monthOffset,
+      locator_visible: calendarEventVisible,
     });
   } finally {
     if (pressureMapRouteHandler) {
@@ -3562,14 +3603,22 @@ async function main() {
     }
 
     if (pressureProofOnly) {
-      await goto(page, "/pulse", "pressure-map-browser-proof");
-      const exposureIds = await assertPressureMapBrowserRender(token, beforeExport);
+      let exposureIds = [];
+      let proofScope = "pressure_map_render_only";
+      if (forcePressureRecovery) {
+        const pressureProof = await runPressureMapPath(page, token, beforeExport);
+        exposureIds = pressureProof.exposureIds;
+        proofScope = "pressure_map_path";
+      } else {
+        await goto(page, "/pulse", "pressure-map-browser-proof");
+        exposureIds = await assertPressureMapBrowserRender(token, beforeExport);
+      }
       await cleanupCreatedRows(token);
       await cleanupSyntheticExposureDebt(token, beforeExport);
       const result = {
         ok: checks.every((check) => check.ok),
         run_id: runId,
-        proof_scope: "pressure_map_render_only",
+        proof_scope: proofScope,
         proof_status: "passed",
         topology,
         frontend_origin: frontendOrigin,
