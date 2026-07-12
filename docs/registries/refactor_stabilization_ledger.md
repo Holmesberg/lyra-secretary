@@ -19548,3 +19548,76 @@ Issue, deployment state, and rollback:
 - Revert `4779f05` to restore prior visual presentation without changing any
   Pressure Map behavior. Revert `75e7354` independently to remove only the
   affordance and exact-cleanup verifier checks.
+
+## 2026-07-12 - Pressure Map V2 Product Contract
+
+Seam preflight:
+
+- Seam name: `pressure-map-v2-product-contract`.
+- Authority class: docs/authority only.
+- Trigger: founder review authorized the shipped Pressure Map to expand into a
+  dedicated decision tab, while the code audit confirmed that current combined
+  load, option semantics, and Day-0 orientation are not yet trustworthy enough
+  to support that UI honestly.
+- Expected user-visible and data-write change: none. This seam changes no
+  runtime, route, projection, prior, safety switch, schema, provider, AI path,
+  exposure row, or product data.
+- Stop condition: the documents could not authorize runtime AI, automatic
+  scheduling, passive capacity inference, unconfirmed dependency truth, or a
+  new claim class.
+
+Contract changes:
+
+- `docs/academic_pressure_map_contract.md` now defines pressure as a ranged,
+  time-based mismatch between remaining obligation demand and represented
+  capacity, never emotion or behavioral identity.
+- The contract preserves the existing `diagnostic_planning_surface`, response
+  fields, trust meanings, category boundary, accepted-intention calibration
+  rule, safe mode, explicit confirmation, and exposure doctrine.
+- It adds the entity-level count-once invariant: completed linked effort,
+  remaining demand, future linked planning coverage, and unrelated capacity
+  commitments remain distinct and attributable.
+- Demand and capacity both retain uncertainty. Collision states are
+  `certain_visible_collision`, `possible_collision`,
+  `no_visible_collision`, or `unknown`; no dominant pressure score is
+  authorized.
+- The target UX is a staged dedicated tab with Time, Coverage, and Sources
+  views over one projection, a compact Pulse entry point, one primary safe
+  action, an obligation inspector, and a side-effect-free whole-horizon
+  scenario preview.
+- AI-estimated difficulty, scope decomposition, and missing-component prompts
+  remain future candidate inputs behind a separately approved
+  `ReasoningRuntimeContract` seam. The deterministic map remains complete
+  without AI.
+- `docs/core_product_loop_refactor_plan_2026_07_11.md` now sequences Wave 5 as
+  accounting truth, action truth, dedicated Time view, bounded scenario
+  families, personal calibration, and only then future augmentation.
+
+Issue split:
+
+- Issue `#220` owns count-once demand/capacity accounting and attribution.
+- Issue `#221` owns canonical action parity, coverage correction, and truthful
+  split semantics.
+- Issue `#222` owns the staged dedicated tab and real Day-0 Orientation Gate;
+  it depends on `#220` and `#221` and is not one implementation seam.
+
+Verification and sources:
+
+- `scripts/scan_refactor_contracts.py` passed with zero findings.
+- `scripts/scan_feature_preservation_registry.py` passed for all 45 required
+  features.
+- `git diff --check` passed; only the repository's expected LF-to-CRLF warning
+  was emitted.
+- The literature boundary cites primary work on personal-informatics stages,
+  reflection/action gaps, uncertainty visualization, planning-fallacy duration
+  estimates, and resource-constrained scheduling. These sources inform
+  structure only; no external threshold, multiplier, effect size, or policy is
+  transferred into runtime.
+
+Parking and rollback:
+
+- Runtime AI, automatic scheduling, new providers, passive availability,
+  dependency persistence, schema work, and efficacy claims remain parked.
+- Revert the docs-only contract commit to restore the previous Pressure Map
+  contract and Wave 5 text. Future runtime seams remain independently
+  reversible and must not be bundled with this documentation change.
