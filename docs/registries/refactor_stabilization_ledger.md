@@ -18945,3 +18945,91 @@ Rollback note:
   that this also restores fabricated GET-time render truth.
 - Revert `aa3ad97` only to remove the focused verifier capability; this does
   not alter runtime behavior.
+
+## 2026-07-12 - Wave 2 Pressure Map Browser-Owned Render Truth
+
+Seam preflight:
+
+- Seam name: `pressure-map-browser-render-truth`.
+- Authority class: product/runtime followed by verifier/orchestration.
+- Touched surface: `academic.pressure_map` and the mounted Pulse Pressure Map
+  card.
+- Documented behavior preserved: 1/7/14-day views, source/trust distinctions,
+  uncertainty ranges, privacy-redacted structural telemetry, safe mode,
+  recovery preview, and explicit mutation confirmation.
+- Expected user-visible behavior change: none.
+- Expected data/write behavior change: GET creates a delivered decision;
+  component commit creates render plus authenticated ACK.
+- Negative proof: GET alone leaves zero render/ACK rows, retries are
+  idempotent, cross-user ACK fails, API-only probes terminate as suppressed,
+  and the operator account never calls the write-capable endpoint.
+- Rollback: revert product commit `6c50c05` and verifier commit `5f1ee2d`
+  independently.
+
+Changed and moved authority:
+
+- Removed backend `emit_surface_render` from Pressure Map GET.
+- The backend now returns its existing redacted structural snapshot as
+  `render_snapshot` with a delivered exposure decision; it does not retain
+  assignment titles or provider payload text in render telemetry.
+- `PulseAcademicPressureMap`, not the page-level query, owns the authenticated
+  render acknowledgement after the card mounts.
+- Removed the stale `render_id` response contract.
+- No Pressure Map calculation, recovery option, kill switch, threshold,
+  provider authority, mutation path, or schema changed.
+
+Verifier and account-role hardening:
+
+- Added a focused real-cookie Pressure Map proof mode to the canonical
+  Holmesberg wrapper.
+- Direct Pressure Map API probes now terminate with
+  `client_discarded_before_render` suppression instead of claiming render or
+  leaving delivered debt.
+- Multi-account smoke no longer calls Pressure Map with the read-only operator
+  account; its Holmesberg API-only probe must suppress successfully.
+- The static account-role contract hard-fails if this operator boundary or
+  probe-suppression path disappears.
+- Corrected the onboarding helper so a successful in-place skip mounts the
+  current route without an immediate second navigation that aborts the first
+  card before ACK.
+
+Characterization and verification:
+
+- Pressure Map suite: 12 passed, including pre-ACK absence, redacted snapshot,
+  owner ACK, retry idempotency, and cross-user denial.
+- Shared output-surface, exposure-ledger, and operator suites: 57 passed.
+- Frontend typecheck and production build passed.
+- Local S1c authority, contract, layer, Cortex, registry, relay, and fresh
+  Alembic gates passed.
+- Focused proof at
+  `tmp/post-wave-dogfood/wave2-pressure-map-focused-v3/holmesberg-product-loop/result.json`
+  passed with one new decision, one rendered row, one authenticated ACK, zero
+  fabricated rendered rows, and zero unterminated candidates.
+- Multi-account smoke passed: operator Pressure Map count is intentionally
+  absent and Holmesberg's API-only candidate is suppressed.
+- Post-proof operator artifact
+  `tmp/operator-readonly-stress-2026-07-12T00-16-44-290Z/result.json` passed
+  with zero count/route/dashboard diffs, implementation green, and
+  `exposure_without_render_count=0`.
+
+Synthetic cleanup record:
+
+- The earlier v2 focused run exposed a verifier double-navigation and left one
+  unrendered Pressure Map decision.
+- Read-only forensics found exactly one unlinked candidate created during that
+  run. It was classified as synthetic verifier debris and suppressed through
+  the canonical owner-scoped endpoint.
+- Redacted before/after artifact:
+  `tmp/exposure-cleanup/wave2-pressure-map-focused-v2-suppression.json`.
+- Before: delivered, zero suppression, render, or ACK rows. After: suppressed,
+  one suppression row, zero render or ACK rows. Deleted rows: zero.
+
+Issues and rollback:
+
+- Issue `#212` owns the original Pressure Map render-truth defect.
+- Issue `#211` remains separate; no switch-chip assertion was weakened to
+  complete this seam.
+- Reverting `6c50c05` restores fabricated server-side render truth and should
+  only be used as an explicit lifecycle rollback.
+- Reverting `5f1ee2d` removes verifier/orchestration hardening without changing
+  product runtime.
