@@ -110,6 +110,26 @@ function missingSyntheticCreationNudgeExposures(beforeExport, afterExport) {
     .sort((a, b) => String(exposureSortTime(b)).localeCompare(String(exposureSortTime(a))));
 }
 
+function missingSyntheticDeadlineSuggestionExposures(beforeExport, afterExport) {
+  const beforeIds = new Set(rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id));
+  const renderIds = new Set(rows(afterExport, "exposure_render_events").map((row) => row.exposure_id));
+  const ackIds = new Set(
+    rows(afterExport, "exposure_ack_events")
+      .filter((row) => row.event_type === "render")
+      .map((row) => row.exposure_id),
+  );
+  const suppressionIds = new Set(rows(afterExport, "suppression_events").map((row) => row.exposure_id));
+  return rows(afterExport, "exposure_decision_events")
+    .filter((row) => !beforeIds.has(row.exposure_id))
+    .filter((row) => row.content_template_id === "deadline_binding_suggestion")
+    .filter((row) => row.trigger_source === "parse.deadline_preview")
+    .filter((row) => row.decision_status === "delivered")
+    .filter((row) => !renderIds.has(row.exposure_id))
+    .filter((row) => !ackIds.has(row.exposure_id))
+    .filter((row) => !suppressionIds.has(row.exposure_id))
+    .sort((a, b) => String(exposureSortTime(b)).localeCompare(String(exposureSortTime(a))));
+}
+
 async function suppressUnrenderedSurfaceProbe(token, payload, label) {
   addCheck(`${label} returns an exposure decision`, Boolean(payload?.exposure_id), {
     surface_id: payload?.surface_id || null,
@@ -891,7 +911,69 @@ async function waitForDeadlineSuggestion(page, title, timeout = 20_000, options 
   return visible;
 }
 
+function deadlineSuggestionExposureState(beforeExport, afterExport) {
+  const beforeIds = new Set(
+    rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id),
+  );
+  const decisions = rows(afterExport, "exposure_decision_events")
+    .filter((row) => !beforeIds.has(row.exposure_id))
+    .filter((row) => row.content_template_id === "deadline_binding_suggestion")
+    .filter((row) => row.trigger_source === "parse.deadline_preview");
+  const renderIds = new Set(
+    rows(afterExport, "exposure_render_events")
+      .filter((row) => row.surface === "task.deadline_binding_suggestion")
+      .map((row) => row.exposure_id),
+  );
+  const ackIds = new Set(
+    rows(afterExport, "exposure_ack_events")
+      .filter((row) => row.event_type === "render")
+      .map((row) => row.exposure_id),
+  );
+  const suppressionIds = new Set(
+    rows(afterExport, "suppression_events").map((row) => row.exposure_id),
+  );
+  const browserProven = decisions
+    .filter((row) => renderIds.has(row.exposure_id))
+    .filter((row) => ackIds.has(row.exposure_id));
+  const fabricated = decisions
+    .filter((row) => renderIds.has(row.exposure_id))
+    .filter((row) => !ackIds.has(row.exposure_id));
+  const unterminated = decisions.filter((row) => (
+    !renderIds.has(row.exposure_id)
+    && !suppressionIds.has(row.exposure_id)
+  ));
+  return { decisions, browserProven, fabricated, unterminated };
+}
+
+async function assertDeadlineSuggestionBrowserRender(token, beforeExport) {
+  await pollFor(token, "deadline suggestion browser render acknowledgement", async () => {
+    const exported = await apiFetch(token, "/v1/users/me/export");
+    const state = deadlineSuggestionExposureState(beforeExport, exported);
+    return (
+      state.browserProven.length >= 1
+      && state.fabricated.length === 0
+      && state.unterminated.length === 0
+    ) ? state : null;
+  }, 15_000, 500);
+
+  const afterExport = await apiFetch(token, "/v1/users/me/export");
+  const state = deadlineSuggestionExposureState(beforeExport, afterExport);
+  addCheck("deadline suggestion render is browser-acknowledged", state.browserProven.length >= 1, {
+    new_decision_count: state.decisions.length,
+    browser_proven_count: state.browserProven.length,
+    statuses: state.decisions.map((row) => row.decision_status).sort(),
+  });
+  addCheck("deadline suggestion has no fabricated rendered decision", state.fabricated.length === 0, {
+    fabricated_count: state.fabricated.length,
+  });
+  addCheck("deadline suggestion has no unterminated browser candidate", state.unterminated.length === 0, {
+    unterminated_count: state.unterminated.length,
+    statuses: state.unterminated.map((row) => row.decision_status).sort(),
+  });
+}
+
 async function createTaskThroughUi(page, token, deadline) {
+  const beforeSuggestionExport = await apiFetch(token, "/v1/users/me/export");
   const title = `${deadline.title} study block`;
   const start = futureDate(3);
   const end = futureDate(63);
@@ -928,6 +1010,7 @@ async function createTaskThroughUi(page, token, deadline) {
 
   const sawSuggestion = await waitForDeadlineSuggestion(page, title, 8_000, { required: false });
   if (sawSuggestion) {
+    await assertDeadlineSuggestionBrowserRender(token, beforeSuggestionExport);
     await screenshot(page, "new-task-deadline-suggestion");
     await clickAny(page, "confirm deadline suggestion", [
       (p) => p.getByTestId("new-task-deadline-confirm-suggestion"),
@@ -1283,6 +1366,11 @@ async function runNewTaskBranchCoverage(page, token, anchorDeadline) {
     source: noBindPreview.deadline_match_source,
     confidence: noBindPreview.deadline_match_confidence,
   });
+  await suppressUnrenderedSurfaceProbe(
+    token,
+    noBindPreview,
+    "deadline preview API branch probe",
+  );
   const noBindCategory = `dogfood_${runKey.slice(0, 8)}`;
   await openNewTaskModal(page, "today-before-no-deadline-branch");
   await fillNewTaskCore(page, {
@@ -1719,6 +1807,38 @@ async function runBrainDumpBranchCoverage(page, token) {
 }
 
 async function assertPressureMapBrowserRender(token, beforeExport) {
+  await pollFor(token, "pressure map candidates reach terminal lifecycle", async () => {
+    const exported = await apiFetch(token, "/v1/users/me/export");
+    const beforeIds = new Set(
+      rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id),
+    );
+    const decisions = rows(exported, "exposure_decision_events")
+      .filter((row) => !beforeIds.has(row.exposure_id))
+      .filter((row) => row.content_template_id === "academic_pressure_map");
+    const renderIds = new Set(
+      rows(exported, "exposure_render_events")
+        .filter((row) => row.surface === "academic.pressure_map")
+        .map((row) => row.exposure_id),
+    );
+    const ackIds = new Set(
+      rows(exported, "exposure_ack_events")
+        .filter((row) => row.event_type === "render")
+        .map((row) => row.exposure_id),
+    );
+    const terminalIds = new Set([
+      ...renderIds,
+      ...rows(exported, "suppression_events").map((row) => row.exposure_id),
+    ]);
+    const browserProven = decisions.some((row) => (
+      renderIds.has(row.exposure_id) && ackIds.has(row.exposure_id)
+    ));
+    return (
+      decisions.length >= 1
+      && browserProven
+      && decisions.every((row) => terminalIds.has(row.exposure_id))
+    ) ? true : null;
+  }, 10_000, 500);
+
   const afterExport = await apiFetch(token, "/v1/users/me/export");
   const beforeIds = new Set(
     rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id),
@@ -2982,7 +3102,16 @@ async function cleanupCreatedRows(token) {
 async function cleanupSyntheticExposureDebt(token, beforeExport) {
   if (!beforeExport) return;
   const exported = await apiFetch(token, "/v1/users/me/export");
-  const candidates = missingSyntheticCreationNudgeExposures(beforeExport, exported);
+  const creationNudgeCandidates = missingSyntheticCreationNudgeExposures(beforeExport, exported);
+  const deadlineSuggestionCandidates = missingSyntheticDeadlineSuggestionExposures(beforeExport, exported);
+  addCheck(
+    "browser paths leave no unterminated synthetic deadline-suggestion exposures",
+    deadlineSuggestionCandidates.length === 0,
+    {
+      exposure_ids: deadlineSuggestionCandidates.map((row) => row.exposure_id),
+    },
+  );
+  const candidates = [...creationNudgeCandidates, ...deadlineSuggestionCandidates];
   for (const row of candidates) {
     const res = await apiFetch(token, `/v1/exposures/${encodeURIComponent(row.exposure_id)}/ack/suppress`, {
       method: "POST",
@@ -2999,10 +3128,15 @@ async function cleanupSyntheticExposureDebt(token, beforeExport) {
     cleanup.exposureSuppressions.add(row.exposure_id);
   }
   const after = await apiFetch(token, "/v1/users/me/export");
-  const remaining = missingSyntheticCreationNudgeExposures(beforeExport, after);
-  addCheck("cleanup leaves no unrendered synthetic creation-nudge exposures", remaining.length === 0, {
+  const remainingCreationNudges = missingSyntheticCreationNudgeExposures(beforeExport, after);
+  const remainingDeadlineSuggestions = missingSyntheticDeadlineSuggestionExposures(beforeExport, after);
+  addCheck("cleanup leaves no unrendered synthetic creation-nudge exposures", remainingCreationNudges.length === 0, {
     cleaned: candidates.map((row) => row.exposure_id),
-    remaining: remaining.map((row) => row.exposure_id),
+    remaining: remainingCreationNudges.map((row) => row.exposure_id),
+  });
+  addCheck("cleanup leaves no unrendered synthetic deadline-suggestion exposures", remainingDeadlineSuggestions.length === 0, {
+    cleaned: candidates.map((row) => row.exposure_id),
+    remaining: remainingDeadlineSuggestions.map((row) => row.exposure_id),
   });
 }
 
