@@ -19264,3 +19264,75 @@ Issues, parked paths, and rollback:
 - No files, rows, public artifacts, or user features were deleted. No public
   deploy/restart, hosted mutation, production repair, schema change, or
   invasive forensics occurred.
+
+## 2026-07-12 - Public Recovery And Source-Clean Build Contract
+
+Seam preflight:
+
+- Seam name: `public-next-build-source-hygiene`.
+- Authority class: CI/CD and topology/deployment, followed by a separate
+  verifier-contract commit and this docs/ledger commit.
+- Trigger: an explicitly approved recovery of a public frontend returning
+  Cloudflare `502` while the API remained healthy.
+- Expected user-visible change: restore the existing hosted frontend only.
+  No product behavior, copy, schema, data, provider, exposure, or claim
+  authority was permitted to change.
+- Rollback: revert the ops helper and restart-script commit independently from
+  the contract test. The already-running public artifact remains valid.
+
+Recovery and classification:
+
+- The authoritative `scripts/restart_frontend_wsl.ps1` path rebuilt into an
+  isolated staging artifact, atomically swapped it, and restored public `200`
+  health with served frontend build id `98bc1f8`.
+- Public topology verified `compiled_api_origin=https://api.lyraos.org`,
+  `nextauth_url=https://lyraos.org`, and `verified_topology=true`; the backend
+  `/v1/health` endpoint remained healthy.
+- The build exposed issue `#217`: PowerShell erased the intended Bash `$$`
+  staging suffix, and Next.js 15 rewrote tracked `frontend/tsconfig.json` for
+  the custom `distDir`. The prior static contract test had falsely passed
+  because it inspected unrendered PowerShell source text.
+- The generated `tsconfig.json` edit was restored exactly before any refactor
+  work resumed. No production data or runtime row was inspected or repaired.
+
+Changed authority and proof:
+
+- Commit `8d83394` preserves Bash PID expansion for staging and failed
+  artifacts, refuses dirty deploy inputs, snapshots Next-managed source
+  configuration, restores it on build exit or spawn failure, and blocks the
+  swap if any tracked or untracked source mutation remains.
+- Commit `442c6aa` adds a dynamic negative fixture proving existing build
+  inputs restore byte-for-byte and build-created inputs are removed. Static
+  checks also require dirty-tree and post-build fail-closed behavior.
+- An actual isolated Next 15 public build intentionally rewrote
+  `tsconfig.json`; SHA-256 proof confirmed both `tsconfig.json` and
+  `next-env.d.ts` returned to their exact pre-build hashes. The disposable
+  artifact was removed.
+- A dirty-tree invocation failed before stopping the live process, and a
+  follow-up public request remained `200`. This proves the negative gate does
+  not take production down while refusing unsafe input.
+- PowerShell parser, Node syntax, public restart contract, public topology,
+  and build-id checks passed.
+
+Hosted-public read-only proof:
+
+- Artifact
+  `tmp/operator-readonly-stress-2026-07-12T06-26-22-306Z/result.json` passed
+  authenticated desktop and mobile `/operator` routes with no browser issues
+  or warnings.
+- Before/after product counts and dashboard snapshots had zero differences.
+  `implementation_green=true`, `exposure_without_render_count=0`, and cohort
+  status remained yellow only for real-data readiness.
+- No hosted-public mutation, operator-account mutation, production repair,
+  schema change, or invasive forensics occurred.
+
+Issues, CI, and rollback:
+
+- Issue `#217` owns the deployment/verifier defect and records final exact-head
+  CI after this three-commit checkpoint is pushed.
+- Revert `8d83394` to remove source restoration and dirty-tree gates; doing so
+  reopens the tracked-source mutation risk. Revert `442c6aa` only to remove the
+  contract proof.
+- Production currently serves the pre-fix but healthy `98bc1f8` artifact. The
+  fix changes future build/restart safety and does not require another public
+  restart to preserve current health.

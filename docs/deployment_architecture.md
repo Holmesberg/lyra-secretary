@@ -158,6 +158,12 @@ powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1
 node scripts/verify_runtime_topology.mjs --topology public
 ```
 
+The restart fails before stopping the live frontend when the checkout contains
+tracked or untracked changes. Public builds use a per-run staging artifact and
+restore Next.js-managed `tsconfig.json` and `next-env.d.ts` bytes before the
+atomic swap. Any remaining source-tree mutation after the build blocks the
+swap rather than being treated as a successful deployment.
+
 `scripts/restart_public_frontend.ps1` is not a separate restart authority. It
 is kept only as a compatibility wrapper that warns and delegates to
 `scripts/restart_frontend_wsl.ps1`; use `-DryRun` to verify delegation without
