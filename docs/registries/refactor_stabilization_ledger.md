@@ -19033,3 +19033,114 @@ Issues and rollback:
   only be used as an explicit lifecycle rollback.
 - Reverting `5f1ee2d` removes verifier/orchestration hardening without changing
   product runtime.
+
+## 2026-07-12 - Wave 2 Deadline Suggestion And Pressure Candidate Closure
+
+Seam preflight:
+
+- Seam names: `deadline-suggestion-browser-render-truth` and
+  `pressure-map-cancelled-request-truth`.
+- Authority classes: product/runtime, characterization tests, and verifier,
+  split into separate commits.
+- Documented behavior preserved: deterministic deadline preview with explicit
+  confirm/pick-another/no-deadline choices, creation-nudge Use/Keep behavior,
+  Pressure Map projections and recovery previews, and owner-scoped output
+  lifecycle writes.
+- Expected user-visible change: none.
+- Expected data/write change: a mounted deadline card owns its render ACK;
+  Pressure Map computation reserves a candidate and cannot claim browser
+  delivery until authenticated render ACK.
+- Stop condition: any need for schema change, exposure-owner transfer,
+  projection change, or verifier acceptance of delivered-without-evidence.
+
+Deadline suggestion changes:
+
+- Commit `6222924` replaced GET-time render truth with a delivered decision and
+  redacted render snapshot. Only the mounted `DeadlinePickerSlot` acknowledges
+  render.
+- API-only, replaced, aborted, and unmounted suggestions terminate through the
+  existing owner-scoped suppression command. A mounted card whose ACK transport
+  fails remains visible as unresolved evidence instead of being falsely
+  suppressed.
+- Creation nudge already used delivered candidate plus mounted render ACK and
+  discard suppression, so its product authority was preserved unchanged.
+- Commit `7368d1e` added export-backed browser checks for mounted render proof,
+  fabricated render absence, API-only suppression, and synthetic cleanup.
+
+Pressure Map failure classification and correction:
+
+- Commit `5a1de5d` first added client ownership for query results and a bounded
+  discard timer. Commit `b54268c` added unload-safe ACK retries.
+- Comprehensive hard-navigation proof demonstrated the remaining fact: the
+  server could commit `delivered` after the old document was cancelled and
+  before the browser learned the exposure ID. No client timer or beacon can
+  terminalize an unknown ID.
+- Commit `eb85dbe` corrected the source claim. Pressure Map GET now records
+  `reserved` with no `delivered_at`; authenticated render ACK atomically records
+  render, ACK, `rendered`, and delivery time. A browser that received but did
+  not mount the candidate uses the same canonical suppression endpoint through
+  a same-origin authenticated beacon, with direct keepalive fallback.
+- Unclaimed `reserved` candidates are non-actionable diagnostics and do not
+  contaminate clean behavioral baselines. They are not delivery, exposure, or
+  terminal outcome evidence.
+- Commit `82ad1eb` characterizes reservation, owner ACK, idempotency,
+  cross-user denial, operator classification, and clean-baseline behavior.
+- Commit `ca19096` hard-fails any unrendered claimed status while explicitly
+  reporting honest unclaimed reservations.
+
+Failed proofs and cleanup:
+
+- `tmp/post-wave-dogfood/20260712-041259-wave2-deadline-pressure-final-standard-local-current/holmesberg-product-loop/result.json`
+  found two synthetic delivered candidates abandoned by hard navigation.
+  Redacted repair artifact:
+  `tmp/exposure-cleanup/wave2-pressure-route-unload-final.json`.
+- `tmp/post-wave-dogfood/20260712-043720-wave2-deadline-pressure-pagehide-final-standard-local-current/holmesberg-product-loop/result.json`
+  found one remaining delivered candidate after direct keepalive hardening.
+  Redacted repair artifact:
+  `tmp/exposure-cleanup/wave2-pressure-pagehide-final.json`.
+- `tmp/browser-product-loop/wave2-pressure-beacon-product-loop/result.json`
+  proved that same-origin unload delivery still cannot repair a request whose
+  response never reached the browser. Redacted repair artifact:
+  `tmp/exposure-cleanup/wave2-pressure-beacon-product-loop.json`.
+- Each repair used canonical suppression on only the attributed synthetic row.
+  No exposure, task, deadline, or production row was deleted.
+
+Final proof:
+
+- Targeted Pressure Map, exposure-ledger, operator, and LyraSim suites passed:
+  69 tests.
+- Frontend typecheck and production build passed, including the same-origin
+  suppression route.
+- Focused beacon authority proof rejected the read-only operator account with
+  no state change and allowed Holmesberg to suppress its own candidate.
+- Full product-loop artifact
+  `tmp/browser-product-loop/wave2-pressure-reserved-product-loop/result.json`
+  passed 148 checks. Seven Pressure Map decisions had authenticated render and
+  ACK evidence, one hard-cancelled request remained honestly `reserved`, one
+  API-only probe was suppressed, and zero claimed candidates were unterminated.
+- Canonical cleanup audit found zero non-void prefixed tasks, zero non-void
+  prefixed deadlines, and no active timer.
+- Standard macro proof
+  `tmp/post-wave-dogfood/20260712-052146-wave2-deadline-pressure-reserved-final-standard-local-current/summary.json`
+  passed with implementation green, zero operator count diffs,
+  `exposure_without_render_count=0`, cleanup green, and cohort status yellow
+  only for real-data readiness.
+- Exact-head CI for `ca19096584bf729363278f2ed93b5370401c4f0d` passed:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29176593149`.
+- No public deploy, public restart, hosted mutation, schema change, or
+  production repair was performed.
+
+Issues, parked paths, and rollback:
+
+- Issue `#213` owns deadline-suggestion render truth. Issue `#214` owns the
+  Pressure Map cancelled-request lifecycle defect.
+- Pressure recovery-option emission remains gated by its existing safety
+  policy and belongs to the later day-zero usefulness wave, not this lifecycle
+  seam.
+- Revert `6222924` to roll back deadline product behavior and `7368d1e` to
+  remove only its verifier coverage.
+- Revert `eb85dbe` to roll back Pressure Map reservation/beacon semantics,
+  recognizing that doing so restores a false server-side delivery claim.
+- Revert `82ad1eb` and `ca19096` independently to remove only tests or verifier
+  semantics. Revert `b54268c` and `5a1de5d` only with the product rollback if
+  their client lifecycle ownership is no longer used.
