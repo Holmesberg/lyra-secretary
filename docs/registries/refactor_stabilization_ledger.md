@@ -19621,3 +19621,88 @@ Parking and rollback:
 - Revert the docs-only contract commit to restore the previous Pressure Map
   contract and Wave 5 text. Future runtime seams remain independently
   reversible and must not be bundled with this documentation change.
+
+## 2026-07-12 - Pressure Map Adversarial Contract Correction
+
+Seam preflight:
+
+- Seam name: `pressure-map-v2-adversarial-contract-correction`.
+- Authority class: docs/authority and measurement planning only.
+- Base: docs-only contract commit
+  `b959b1534192cf1d55fd211371e306625292f245`.
+- Expected user-visible and data-write change: none. No runtime, route, input,
+  projection, prior value, provider, schema, exposure row, mutation, deploy, or
+  restart changed.
+- Stop condition: the correction could not turn missing availability into a
+  confident capacity claim, authorize several new commands to preserve the
+  mockup, or make the future dedicated tab current runtime authority.
+
+Independent adversarial review:
+
+- Six read-only agents audited accounting, UX/accessibility,
+  implementation feasibility, sequence/scope, estimate/AI admission, and
+  authority/privacy. They were closed after synthesis.
+- Accounting review rejected the earlier aggregate identity because elapsed
+  time is not completed scope, future coverage can exceed remaining demand,
+  and low/high endpoints require pointwise reconciliation. The corrected
+  contract distinguishes remaining demand, applied coverage, unscheduled
+  demand, and overcoverage with segment/entity attribution.
+- Feasibility review found no authoritative availability denominator. Busy
+  calendar intervals remain useful evidence, but capacity and collision stay
+  `UNKNOWN` until a separate authority is approved. The product still leads
+  with admissible provisional demand ranges instead of making missingness its
+  dominant voice.
+- Estimate review found a second clean-data owner in browser planning code:
+  title matching, completion scaling, pause aggregation, bias lookup, and raw
+  archetype provenance. The target contract now requires one server-side
+  projection owner and forbids unconfirmed AI candidates from changing the
+  deterministic projection.
+- UX review requires one dominant sentence, at most three numeric facts,
+  exactly one ranked action, equal-primary semantic chart/table access,
+  stable focus and live announcements, explicit range interpretation,
+  decision-text contrast, and mobile single-axis navigation.
+- Scope review changed the full tab from immediate implementation authority to
+  an activation-gated design target. Truthful Pulse orientation precedes any
+  new route; Coverage, Sources, and scenarios remain parked behind evidence
+  and canonical command authority.
+- Authority review found client-controlled render-ACK fields and operator
+  metrics that count decisions as opens/actions. Those boundaries now have
+  separate issues and block future tab activation.
+
+Product voice correction:
+
+- `UNKNOWN` is reserved for genuinely missing authority or inadmissible
+  evidence, not used as the product's default answer.
+- A compatible provisional range is prominent, source-bounded, and
+  correctable. Approved example: `LyraOS estimates 4-7 hours for these tasks.
+  Start the next timer and make the next estimate more yours.`
+- The challenge is directed at the estimate, never the user's discipline or
+  competence. Starting a timer creates execution evidence, not completed-scope
+  truth.
+
+Issue graph:
+
+- `#220` now owns count-once demand and linked-coverage accounting only.
+- `#221` begins with truthful demotion and may close without inventing new
+  recovery commands.
+- `#222` is an activation-gated design epic dependent on onboarding, capture,
+  accounting, action parity, availability, estimate admission, exposure ACK,
+  operator measurement, and real Pulse orientation.
+- `#223` owns availability authority before capacity/collision claims.
+- `#224` owns server-side estimate admission and calibration.
+- `#225` owns server-bound render surface, stimulus, and time.
+- `#226` owns separate Pressure Map decision/render/action/outcome metrics.
+- Findings were also linked to `#202`, `#204`, `#206`, and `#207`; no
+  production data forensics or schema work was performed.
+
+Verification, parking, and rollback:
+
+- Required local proof is the refactor-contract scan, preservation-registry
+  scan, and `git diff --check`; exact-head CI is collected after push.
+- Browser proof is intentionally not cited for this docs-only correction.
+- Runtime AI, a new Pressure Map route, new user input, availability
+  persistence, scenario storage, new recovery commands, automatic scheduling,
+  and schema migration remain parked.
+- Revert this docs-only correction commit to restore the pre-adversarial
+  contract. The earlier `b959b153` contract commit remains independently
+  reversible.

@@ -1,6 +1,6 @@
 # Current Transition State
 
-**Date:** 2026-07-11
+**Date:** 2026-07-12
 **Status:** Active implementation orientation for the freeze-closure and safe
 refactor cycle.
 
@@ -33,9 +33,18 @@ boundaries.
 
 This is a stabilization/refactor pass. It should make existing behavior easier
 to verify and maintain, not create stronger claims, new surfaces, or new
-runtime authority. The only approved behavior expansion is the bounded,
-founder-only pause-policy v2 exception in the active core-loop plan; it grants
-no authority to resume-policy expansion or another prediction family.
+runtime authority. The only approved runtime behavior expansion is the
+bounded, founder-only pause-policy v2 exception in the active core-loop plan;
+it grants no authority to resume-policy expansion or another prediction
+family.
+
+The Pressure Map dedicated tab is an approved **design target**, not an
+approved runtime expansion. Current Pressure Map work may correct shipped
+arithmetic and authority defects, demote unsupported actions, preserve
+browser-owned exposure truth, and make the existing Pulse summary truthful.
+Adding a route, user input, scenario engine, persistence model, capacity
+authority, or mutation command requires the activation and seam approvals in
+the active core-loop plan.
 
 The founder-approved current sequence is defined by
 `docs/core_product_loop_refactor_plan_2026_07_11.md`:
@@ -45,11 +54,14 @@ The founder-approved current sequence is defined by
 3. make browser acknowledgement the only browser-render authority;
 4. preserve onboarding and cold-start behavior;
 5. complete capture and route parity;
-6. prove Pressure Map day-zero orientation value;
-7. prove execution/recovery and calibrate only founder-specific pause-policy
+6. correct Pressure Map count-once demand truth, demote unsupported actions,
+   and prove the existing Pulse summary has day-zero orientation value;
+7. stop for the explicit Pressure Map activation checkpoint before any
+   dedicated-tab runtime work;
+8. prove execution/recovery and calibrate only founder-specific pause-policy
    v2 under frozen burden and temporal-holdout rules;
-8. extract structure only when founder dogfood identifies a present need;
-9. consolidate findings and close with local, CI, and hosted-public proof.
+9. extract structure only when founder dogfood identifies a present need;
+10. consolidate findings and close with local, CI, and hosted-public proof.
 
 No backend god-module extraction should begin while `/operator` has unresolved
 exposure blockers. A cockpit may be implementation-green while cohort-yellow
@@ -145,6 +157,12 @@ The current freeze-closure pass may:
 - and clarify documentation lineage when stale docs could authorize wrong
   runtime behavior.
 
+Within the shipped Pressure Map, it may also correct count-once attribution,
+provider/freshness truth, unsupported control presentation, exposure
+measurement, and truthful scope/unknown disclosure without changing estimate
+priors or creating new authority. Capacity and collision remain `UNKNOWN`
+while no explicit availability denominator exists.
+
 The current freeze-closure pass must not:
 
 - add new user-facing analytics claims,
@@ -155,6 +173,9 @@ The current freeze-closure pass must not:
 - implement adaptive scheduling,
 - change clean-data semantics,
 - create new user-burden inputs,
+- add the Pressure Map route, dedicated-tab shell, scenario engine, persistent
+  estimate correction, availability model, or new recovery command before the
+  explicit activation/authority checkpoints,
 - introduce schema migrations without explicit user approval,
 - wire ReasoningRuntimeContract/OpenClawAdapter into product runtime,
 - add new provider adapters,

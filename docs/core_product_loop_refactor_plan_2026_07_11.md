@@ -65,23 +65,28 @@ must independently satisfy the same test. Task-end prediction does not qualify.
 
 ### Pressure Map decision-surface expansion
 
-Founder approval on 2026-07-12 permits the shipped, registered Pressure Map to
-expand from a compact Pulse panel into a dedicated tab. This exception is
-bounded to:
+Founder approval on 2026-07-12 permits design of the shipped, registered
+Pressure Map as a future dedicated decision surface. It does not itself
+authorize a new route, input, scenario engine, persistence model, or mutation
+command. During freeze closure, this exception is bounded to:
 
 - correcting deterministic workload accounting and source attribution;
-- disclosing demand, linked coverage, uncertain capacity, and unknowns;
-- making existing or separately approved canonical correction paths usable;
-- adding a side-effect-free full-horizon scenario preview;
+- disclosing demand, linked coverage, unavailable capacity evidence, and
+  unknowns honestly;
+- demoting controls whose labels exceed their real behavior;
 - preserving Pulse as a compact truthful entry point;
-- and proving Day-0 orientation with real use.
+- preserving browser-owned exposure truth;
+- and proving Day-0 orientation with real Pulse use.
 
 It does not authorize runtime AI, automatic scheduling, a new behavioral
 construct, dependency persistence, passive availability inference, a provider,
 a schema migration, or a new claim class. Any missing mutation command still
 requires a declared owner, rollback, characterization proof, and its own seam.
-The whole tab may ship incrementally; this exception does not make every
-future Pressure Map idea part of the active backlog.
+The dedicated tab becomes eligible for a separate founder activation
+checkpoint only after capture, onboarding, count-once accounting, action
+parity, render-based measurement, and real Pulse orientation evidence pass.
+This exception does not make every future Pressure Map idea part of the active
+backlog.
 
 ## Core Invariants
 
@@ -100,13 +105,17 @@ future Pressure Map idea part of the active backlog.
   thresholds, and `personal_weight=min(1,n/30)` are provisional runtime
   behavior, not validated science.
 - Estimates expose ranges, broad provenance, uncertainty, and editability.
+- A compatible provisional range is a useful answer. `UNKNOWN` is reserved for
+  missing authority or genuinely inadmissible evidence, not used as a blanket
+  substitute for making a bounded estimate.
 - System-assisted estimates are not clean user estimates.
 - Pressure accounting is entity-attributed. A unit of work is counted once as
   remaining demand, future linked coverage, completed linked effort, or an
   unrelated capacity commitment; it may not occupy conflicting roles in the
   same projection.
-- Capacity is a range or a partial/unknown state. Calendar presence does not
-  establish exact productive capacity.
+- Capacity is a range only when an explicit availability authority exists;
+  otherwise it is partial/unknown. Calendar presence does not establish exact
+  productive capacity.
 - One active timer is allowed; pause reason is explicit; execution excludes
   pauses; session span includes interruption.
 - Recovery selection is not proof of successful recovery.
@@ -263,9 +272,10 @@ the next seam to capture rather than architecture.
 Active product contract:
 `docs/academic_pressure_map_contract.md`.
 
-The target is a dedicated decision surface, but sequencing remains
-invariant-first. Do not build a sophisticated visualization over arithmetic or
-actions that are still untrustworthy.
+The design target is a dedicated decision surface. Runtime work remains
+limited to the existing Pulse surface until an explicit activation checkpoint.
+Do not build a sophisticated visualization over arithmetic, capacity evidence,
+or actions that are still untrustworthy.
 
 ### Wave 5A: Accounting Truth
 
@@ -286,35 +296,60 @@ Characterize at least:
 - partial calendar availability;
 - and a task or deadline outside the active projection scope.
 
+Implement this stage in dependency order:
+
+1. obligation identity and demand attribution;
+2. future linked-coverage attribution and overcoverage;
+3. calendar interval union, mirror deduplication, and provider-status truth;
+4. clean scope-completion credit, if an existing authority can prove it;
+5. availability/capacity only after a separately approved authority exists.
+
+The repository currently has no authoritative availability denominator.
+Until one is approved, capacity and collision remain `UNKNOWN`; calendar busy
+time is not silently converted into total human availability.
+
 Establish permanent invariants:
 
-- each unit of effort has one entity-level attribution and one accounting role;
+- each estimate and coverage segment has one entity-level attribution and one
+  accounting role;
 - a linked deadline and task do not become two obligations;
 - linked future blocks cover demand rather than adding demand;
 - unlinked future blocks reduce capacity without claiming obligation coverage;
-- completed evidence reduces remaining work only when clean and linked;
+- elapsed time is not completed scope; completed evidence reduces remaining
+  work only when a clean, linked scope-completion authority proves it;
 - overlapping commitments use interval union rather than duplicate minute sums;
-- remaining effort and unscheduled demand cannot fall below zero;
+- applied coverage is capped by remaining demand and excess becomes explicit
+  overcoverage;
+- remaining demand equals applied future coverage plus unscheduled demand at
+  each scenario bound;
+- remaining effort, applied coverage, unscheduled demand, and overcoverage
+  cannot fall below zero;
 - unknown linkage, estimate, or capacity stays `UNKNOWN` rather than zero;
-- demand and capacity both retain low/high or partial bounds;
+- known demand retains low/high bounds; unavailable capacity evidence remains
+  unknown rather than receiving invented bounds;
 - every displayed aggregate can return redacted per-entity attribution.
 
-Classify time windows as:
+Only after an availability denominator exists may time windows be classified
+as:
 
 - `certain_visible_collision` when demand low exceeds capacity high;
 - `possible_collision` when intervals overlap adversely;
 - `no_visible_collision` when visible demand high fits represented capacity low;
 - `unknown` when evidence is insufficient.
 
-No crisp pressure score or behavioral label is introduced.
+Before that authority exists, the surface may disclose demand, linked
+coverage, unscheduled demand, overcoverage, unrelated busy time, and missing
+capacity evidence, but collision state is `UNKNOWN`. No crisp pressure score
+or behavioral label is introduced. Legacy `pressure_level` remains due
+proximity only and cannot be cited as reconciled pressure.
 
 #### Accounting gate
 
 All characterization fixtures and count-once assertions pass. A linked
-deadline/task/future-block fixture reconciles from raw estimate through
-completed effort, scheduled coverage, and remaining unscheduled demand with no
-duplicate attribution. The same proof includes overlapping commitments and an
-`UNKNOWN` case.
+deadline/task/future-block fixture reconciles total estimate, remaining demand,
+applied future coverage, unscheduled demand, and overcoverage with no duplicate
+attribution. The same proof includes interval-unioned commitments, provider
+failure/staleness, and an `UNKNOWN` capacity case.
 
 Failure keeps work in Wave 5A. No dedicated visualization or scenario engine
 proceeds over known-bad totals.
@@ -327,8 +362,10 @@ proceeds over known-bad totals.
 - Give every emitted option one honest state: canonical command, navigation,
   or visibly unavailable explanation.
 - Remove button styling from non-executable labels.
-- Add estimate or coverage correction only through a declared canonical owner;
-  no component-local behavioral truth.
+- Start by demoting or removing unsupported actions. Do not create several new
+  commands merely to preserve an ambitious design.
+- Add estimate or coverage correction only through a separately declared
+  canonical owner; no component-local behavioral truth.
 - Keep scheduling as editable preview plus confirmation.
 - Make `split_into_blocks` divide one remaining-effort range into explicit
   smaller chunks that reconcile with the original, or rename/remove it.
@@ -340,24 +377,66 @@ proceeds over known-bad totals.
 
 #### Action-parity gate
 
-For every response action, a registry fixture proves either the exact canonical
-command/navigation target or the absence of a clickable control. Browser proof
-covers correction, preview-no-write, explicit apply, conflict handling,
-double-submit protection, rollback, and cleanup.
+For every response action, a registry fixture proves either the exact existing
+canonical command/navigation target or the absence of a clickable control.
+Browser proof covers only actions that genuinely exist. Any new correction or
+recovery command requires a separately approved authority seam before its
+apply/rollback path can enter this gate.
 
-### Wave 5C: Dedicated Pressure Map Tab
+### Wave 5C: Truthful Pulse Orientation And Activation Checkpoint
 
-Add a dedicated tab only after Accounting and Action-Parity gates pass.
+First make the existing Pulse summary truthful and useful:
 
-The first release may contain the Time view only. Coverage and Sources views
-follow only when the same projection can support them without duplicated
-calculation or new authority.
+- one dominant sentence with state, main cause, and largest caveat;
+- at most three supporting facts;
+- exactly one primary action selected by deterministic authority ranking;
+- explicit academic/study scope, freshness, unknowns, and hidden-item count;
+- no alarm styling when capacity or collision is unknown;
+- a prominent provisional demand range plus a non-judgmental calibration cue,
+  such as `Start the next timer and make the next estimate more yours`;
+- and authenticated render measurement that distinguishes Pulse summary,
+  detail inspection, and future dedicated-tab use.
+
+The dedicated tab remains blocked until all of the following are evidenced:
+
+- onboarding integrity issue `#206` is closed or explicitly shown irrelevant;
+- the Capture Gate passes with a real five-obligation path;
+- issue `#220` count-once accounting passes;
+- issue `#221` action parity passes through demotion or canonical ownership;
+- browser render measurement no longer derives `opened` from decision rows;
+- and the real Pulse Orientation Gate changes or materially clarifies one
+  decision.
+
+Record one terminal state after the Pulse gate:
+
+- `code_green_human_observation_pending`;
+- `orientation_failed_return_to_weakest_stage`;
+- `activation_approval_pending`;
+- or `activation_denied_keep_pulse_only`.
+
+No tab shell is added before the founder explicitly activates it from the
+`activation_approval_pending` state.
+
+#### Ten-second Pulse comprehension gate
+
+With no explanation from the verifier, a real user can identify the main
+window, cause, largest uncertainty, current scope, and one available action.
+This requires qualitative founder proof in addition to selector assertions.
+
+### Wave 5D: Activated Dedicated Time View
+
+This stage begins only after the explicit activation checkpoint. The first
+release contains the Time view only. Coverage and Sources remain parked until
+the same projection can support them without duplicated calculation, new
+authority, or unsupported provenance claims.
 
 First viewport:
 
 - peak pressure window;
-- demand range versus represented capacity range;
-- uncovered-work range;
+- demand range and linked-coverage range;
+- represented capacity range when authoritative, otherwise an explicit
+  unmeasured-capacity state;
+- unscheduled-demand range;
 - main pressure source or missing-coverage reason;
 - full-width time landscape;
 - one primary safe action;
@@ -371,7 +450,7 @@ The selected-obligation inspector answers:
 1. why this creates visible pressure;
 2. what LyraOS knows;
 3. what is uncertain or missing;
-4. what remains uncovered if nothing changes;
+4. what remains unscheduled if nothing changes;
 5. which real actions are available.
 
 Desktop uses an unframed full-width landscape plus side inspector. Mobile uses
@@ -386,13 +465,16 @@ academic/study workload rather than imply whole-life coverage.
 #### Ten-second comprehension gate
 
 With no explanation from the verifier, a real user can identify the next peak
-window, the main cause, whether the collision is certain/possible/unknown, the
+window, the main cause, whether a collision is computable or why it is not, the
 largest missing assumption, and the primary available action. This requires
 qualitative founder proof in addition to selector assertions.
 
-### Wave 5D: Side-Effect-Free Scenario Preview
+### Wave 5E: Side-Effect-Free Scenario Preview
 
-Scenario mode begins only after the dedicated Time view is trusted.
+Scenario mode begins only after the dedicated Time view is trusted and Wave 6
+has established the canonical recovery commands required by the selected
+proposal family. Until then, the existing flow remains accurately named
+`Plan draft`; it is not described as a full-horizon scenario engine.
 
 Implement one proposal family per seam from this bounded set:
 
@@ -404,9 +486,10 @@ Implement one proposal family per seam from this bounded set:
 - remove an irrelevant obligation from the active plan.
 
 Every preview clones admitted inputs, applies one proposal, recomputes the
-entire horizon, displays before/after demand/capacity/uncovered ranges and new
-collisions, performs zero product writes, and exposes `Apply` only through a
-canonical command. A local bar move without full recomputation fails the gate.
+entire horizon, displays before/after demand, coverage, and unscheduled ranges,
+and includes capacity/collision changes only when their authority exists. It
+performs zero product writes and exposes `Apply` only through a canonical
+command. A local bar move without full recomputation fails the gate.
 
 #### Scenario gate
 
@@ -414,14 +497,18 @@ API and browser snapshots prove zero task/deadline/calendar writes before
 Apply, a complete projection diff after the proposal, exactly one canonical
 mutation after Apply, correct cache invalidation, and full synthetic cleanup.
 
-### Wave 5E: Estimate Ladder And Future Augmentation Boundary
+### Wave 5F: Estimate Ladder And Future Augmentation Boundary
 
-The deterministic map must remain useful in this order:
+Estimate selection and clean-data admission must have one server-side owner.
+The browser may present and correct candidates but may not title-match history,
+aggregate behavioral evidence, or select a prior. The deterministic map must
+remain useful in this order:
 
 1. user-entered or corrected range;
 2. clean linked personal evidence where admitted;
-3. registered research/population prior;
-4. deterministic task-type or semantic heuristic;
+3. one registered compatible research/population prior;
+4. deterministic task-type or semantic heuristics that select or widen that
+   prior without stacking independent-looking evidence;
 5. provider structure without duration authority;
 6. unresolved/missing state.
 
@@ -439,8 +526,11 @@ coverage, or user declaration. LyraOS does not invent hidden obligations.
 
 Future AI may propose task components, a range, scope questions, or competing
 estimate explanations only through a separately approved
-`ReasoningRuntimeContract` seam. AI remains candidate authority, cannot narrow
-or mutate silently, and must not be required for the free deterministic map.
+`ReasoningRuntimeContract` seam. AI remains candidate authority, is excluded
+from selected totals, collision state, and actions until explicit user
+conversion, cannot narrow or mutate silently, and must not be required for the
+free deterministic map. Without confirmation,
+`projection_without_ai == projection_with_ai`.
 
 ### Day-Zero Gate
 
@@ -449,15 +539,16 @@ A new account can:
 1. complete or skip the survey;
 2. import a calendar or submit a real Brain Dump;
 3. inspect accepted, reused, rejected, failed, and unresolved capture results;
-4. open Pressure Map directly from capture and from Pulse;
-5. distinguish demand, linked coverage, represented capacity, and unknowns;
+4. reach the truthful Pressure Map summary from capture and Pulse;
+5. distinguish demand, linked coverage, and whether capacity is represented or
+   still unmeasured;
 6. inspect and correct one estimate or coverage assumption through a real
    command;
 7. identify broad provenance as user, personal evidence, research/population,
    deterministic semantics, provider structure, future AI candidate, or
    unresolved;
-8. preview one bounded change without mutation;
-9. explicitly apply or reject one real action;
+8. inspect one bounded existing preview without mutation, when available;
+9. explicitly apply, reject, or learn why no safe action exists;
 10. encounter no personal-history or whole-life claim before supporting
     evidence exists.
 
@@ -475,7 +566,8 @@ capture behavior. Do not add more views, AI, scoring, or visual polish.
 ### Wave 5 anti-scope rules
 
 - One accounting or action authority per seam.
-- Time view before Coverage; Coverage before Sources.
+- Truthful Pulse orientation before route activation; Time view before
+  Coverage; Coverage before Sources.
 - One scenario proposal family per seam.
 - No AI runtime in Wave 5.
 - No dependency graph or passive capacity model.
