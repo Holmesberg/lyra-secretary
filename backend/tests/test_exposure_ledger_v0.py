@@ -298,6 +298,7 @@ def test_legacy_reflection_impression_maps_to_exposure(db):
             event_class="impression",
             payload="You usually overrun development tasks.",
             fired_at=event_time - timedelta(hours=2),
+            viewed_at=event_time - timedelta(hours=2),
         )
     )
     db.commit()
@@ -312,6 +313,34 @@ def test_legacy_reflection_impression_maps_to_exposure(db):
     assert result.state == "EXPOSED"
     assert result.exposure_ids == ["legacy_reflection:legacy-view-1"]
     assert result.exposure_categories == ["behavioral_insight"]
+
+
+def test_unviewed_legacy_reflection_does_not_map_to_exposure(db):
+    _clean(db)
+    user = _user(db)
+    event_time = datetime(2026, 5, 9, 12, 0, 0)
+    db.add(
+        ReflectionViewLog(
+            view_id="legacy-unviewed-1",
+            user_id=user.user_id,
+            reflection_type="micro_mirror",
+            event_class="impression",
+            payload="Candidate never mounted.",
+            fired_at=event_time - timedelta(hours=2),
+            viewed_at=None,
+        )
+    )
+    db.commit()
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=event_time,
+        signal_target="duration_behavior",
+    )
+
+    assert result.state == "NONE"
+    assert result.baseline_clean is True
 
 
 def test_legacy_calibration_nudge_acceptance_maps_to_intervention(db):

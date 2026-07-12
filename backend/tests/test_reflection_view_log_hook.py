@@ -16,7 +16,15 @@ from datetime import datetime, timedelta
 import pytest
 from sqlalchemy import text
 
-from app.db.models import ReflectionViewLog, Task, TaskState, User
+from app.db.models import (
+    ExposureAckEvent,
+    ExposureDecisionEvent,
+    ExposureRenderEvent,
+    ReflectionViewLog,
+    Task,
+    TaskState,
+    User,
+)
 from app.db.scoping import set_current_user_id
 from app.utils.time_utils import now_utc
 from tests.conftest import TestingSession
@@ -93,6 +101,26 @@ def _iso_future(minutes: int, duration: int = 30):
     )
 
 
+def _ack_stop_surface(client, body: dict, key: str, surface_id: str) -> None:
+    exposure_id = body[f"{key}_exposure_id"]
+    response = client.post(
+        f"/v1/exposures/{exposure_id}/ack/render",
+        headers=_h(),
+        json={
+            "surface_id": surface_id,
+            "client_event_id": f"{surface_id}:{exposure_id}",
+            "content_snapshot": {"message": body[key]},
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["created"] is True
+    viewed = client.post(
+        f"/v1/reflection_view/{body[f'{key}_view_id']}/viewed",
+        headers=_h(),
+    )
+    assert viewed.status_code == 200, viewed.text
+
+
 def _seed_dev_history(n: int = 3, delta: int = -15) -> None:
     """Seed n EXECUTED 'dev' tasks so calibration_nudge fires on next stop."""
     s = TestingSession()
@@ -149,6 +177,7 @@ def test_hook_writes_micro_mirror_row_on_stop(refl_env, client):
     body = r.json()
     assert body["micro_mirror"] == "Started on time."
     assert body["micro_mirror_view_id"] is not None
+    assert body["micro_mirror_exposure_id"] is not None
     assert body["calibration_nudge_view_id"] is None  # no history seeded
 
     check = TestingSession()
@@ -164,8 +193,45 @@ def test_hook_writes_micro_mirror_row_on_stop(refl_env, client):
         assert row.viewed_at is None
         assert row.dismissed_at is None
         assert row.dwell_seconds is None
+        decision = (
+            check.query(ExposureDecisionEvent)
+            .filter(
+                ExposureDecisionEvent.exposure_id
+                == body["micro_mirror_exposure_id"]
+            )
+            .one()
+        )
+        assert decision.decision_status == "reserved"
+        assert decision.delivered_at is None
+        assert check.query(ExposureRenderEvent).count() == 0
+        assert check.query(ExposureAckEvent).count() == 0
     finally:
         check.close()
+
+    _ack_stop_surface(
+        client,
+        body,
+        "micro_mirror",
+        "stopwatch.micro_mirror",
+    )
+    verify = TestingSession()
+    try:
+        decision = (
+            verify.query(ExposureDecisionEvent)
+            .filter(
+                ExposureDecisionEvent.exposure_id
+                == body["micro_mirror_exposure_id"]
+            )
+            .one()
+        )
+        row = verify.query(ReflectionViewLog).one()
+        assert decision.decision_status == "rendered"
+        assert decision.delivered_at is not None
+        assert verify.query(ExposureRenderEvent).count() == 1
+        assert verify.query(ExposureAckEvent).count() == 1
+        assert row.viewed_at is not None
+    finally:
+        verify.close()
 
 
 @needs_redis
@@ -201,6 +267,8 @@ def test_hook_writes_both_rows_when_both_signals_fire(refl_env, client):
     assert body["calibration_nudge"] is not None
     assert body["micro_mirror_view_id"] is not None
     assert body["calibration_nudge_view_id"] is not None
+    assert body["micro_mirror_exposure_id"] is not None
+    assert body["calibration_nudge_exposure_id"] is not None
     assert body["micro_mirror_view_id"] != body["calibration_nudge_view_id"]
 
     check = TestingSession()
@@ -217,8 +285,76 @@ def test_hook_writes_both_rows_when_both_signals_fire(refl_env, client):
         for row in rows.values():
             assert row.user_id == USER_ID
             assert row.task_id == task_id
+            assert row.viewed_at is None
+        exposure_ids = {
+            body["micro_mirror_exposure_id"],
+            body["calibration_nudge_exposure_id"],
+        }
+        decisions = (
+            check.query(ExposureDecisionEvent)
+            .filter(ExposureDecisionEvent.exposure_id.in_(exposure_ids))
+            .all()
+        )
+        assert len(decisions) == 2
+        assert {row.decision_status for row in decisions} == {"reserved"}
+        assert (
+            check.query(ExposureRenderEvent)
+            .filter(ExposureRenderEvent.exposure_id.in_(exposure_ids))
+            .count()
+            == 0
+        )
+        assert (
+            check.query(ExposureAckEvent)
+            .filter(ExposureAckEvent.exposure_id.in_(exposure_ids))
+            .count()
+            == 0
+        )
     finally:
         check.close()
+
+    _ack_stop_surface(
+        client,
+        body,
+        "micro_mirror",
+        "stopwatch.micro_mirror",
+    )
+    _ack_stop_surface(
+        client,
+        body,
+        "calibration_nudge",
+        "stopwatch.calibration_nudge",
+    )
+    verify = TestingSession()
+    try:
+        exposure_ids = {
+            body["micro_mirror_exposure_id"],
+            body["calibration_nudge_exposure_id"],
+        }
+        decisions = (
+            verify.query(ExposureDecisionEvent)
+            .filter(ExposureDecisionEvent.exposure_id.in_(exposure_ids))
+            .all()
+        )
+        assert len(decisions) == 2
+        assert {row.decision_status for row in decisions} == {"rendered"}
+        assert (
+            verify.query(ExposureRenderEvent)
+            .filter(ExposureRenderEvent.exposure_id.in_(exposure_ids))
+            .count()
+            == 2
+        )
+        assert (
+            verify.query(ExposureAckEvent)
+            .filter(ExposureAckEvent.exposure_id.in_(exposure_ids))
+            .count()
+            == 2
+        )
+        assert all(
+            row.viewed_at is not None
+            for row in verify.query(ReflectionViewLog).all()
+        )
+    finally:
+        verify.close()
 
 
 # ---------------------------------------------------------------------------
