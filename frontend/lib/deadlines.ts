@@ -152,7 +152,7 @@ export interface DeadlinePreviewResponse {
   clean_profile?: string | null;
   fallback_mode?: string | null;
   exposure_id?: string | null;
-  render_id?: string | null;
+  render_snapshot?: Record<string, unknown> | null;
 }
 
 /**
