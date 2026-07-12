@@ -1945,7 +1945,9 @@ async function runPressureMapPath(page, token, beforeExport) {
   let pressureMapRouteHandler = null;
   const pressureDeadline = await createDeadlineViaApi(token, {
     title: pressureDeadlineTitle,
-    dueMinutes: (3 * 24 * 60) - 30,
+    // Keep the verifier target ahead of obligations created earlier in the
+    // same chaotic loop so a truthful top-N preview cannot rank it out.
+    dueMinutes: 90,
   });
   const pressureSnapshot = await apiFetch(token, "/v1/academic/pressure-map?horizon_days=14");
   await suppressUnrenderedSurfaceProbe(token, pressureSnapshot, "pressure map setup probe");
@@ -2131,8 +2133,8 @@ async function runPressureMapPath(page, token, beforeExport) {
       deadline_title: pressureDeadlineTitle,
     });
     const seededRow = planRows.nth(seededRowIndex);
-    const blockStart = futureDate((2 * 24 * 60) + 75);
-    const blockEnd = futureDate((2 * 24 * 60) + 105);
+    const blockStart = futureDate(15);
+    const blockEnd = futureDate(45);
     await seededRow.getByTestId("pressure-map-plan-row-title").fill(pressureBlockTitle);
     await seededRow.getByTestId("pressure-map-plan-row-start").fill(localInput(blockStart));
     await seededRow.getByTestId("pressure-map-plan-row-end").fill(localInput(blockEnd));

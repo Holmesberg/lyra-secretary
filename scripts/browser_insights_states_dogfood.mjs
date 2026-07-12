@@ -145,12 +145,20 @@ function addCheck(name, ok, detail = null) {
   checks.push({ name, ok: Boolean(ok), detail });
 }
 
-async function installApiProxy(context, insightsRouteHandler) {
+async function installApiProxy(context, insightsRouteHandler, renderAckRouteHandler = null) {
   const apiPattern = `${apiOrigin.replace(/\/$/, "")}/**`;
   await context.route(apiPattern, async (route) => {
     const request = route.request();
-    if (new URL(request.url()).pathname === "/v1/analytics/insights") {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === "/v1/analytics/insights") {
       await insightsRouteHandler(route);
+      return;
+    }
+    if (
+      renderAckRouteHandler
+      && /^\/v1\/exposures\/[^/]+\/ack\/render$/.test(pathname)
+    ) {
+      await renderAckRouteHandler(route);
       return;
     }
     const requestHeaders = request.headers();
@@ -213,13 +221,13 @@ function textHasForbiddenClaim(text) {
   return forbiddenClaimWords.filter((word) => lower.includes(word));
 }
 
-async function newPage(browser, scenarioName, routeHandler) {
+async function newPage(browser, scenarioName, routeHandler, renderAckRouteHandler = null) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   await context.addInitScript((key) => {
     window.sessionStorage.setItem(key, "1");
   }, onboardingSkipSessionKey);
   if (proxyApi) {
-    await installApiProxy(context, routeHandler);
+    await installApiProxy(context, routeHandler, renderAckRouteHandler);
   }
   await context.addCookies(parseAndExpandCookies(cookie, frontendOrigin));
   const consoleErrors = [];
@@ -234,8 +242,111 @@ async function newPage(browser, scenarioName, routeHandler) {
   });
   if (!proxyApi) {
     await page.route(`${apiOrigin}/v1/analytics/insights**`, routeHandler);
+    if (renderAckRouteHandler) {
+      await page.route(
+        `${apiOrigin}/v1/exposures/*/ack/render`,
+        renderAckRouteHandler,
+      );
+    }
   }
   return { context, page, consoleErrors, scenarioName };
+}
+
+async function runExposureAckScenario(browser) {
+  const base = scenarios.find((scenario) => scenario.name === "unlocked").payload;
+  const exposureId = `fixture-insights-${Date.now()}`;
+  const renderSnapshot = {
+    schema_version: "analytics_insights_exposure_snapshot_v1",
+    surface_id: "analytics.insights",
+    insight_count: base.insights.length,
+    insight_ids: base.insights.map((insight) => insight.id),
+    audit_envelopes: [],
+  };
+  const payload = {
+    ...base,
+    exposure_id: exposureId,
+    render_snapshot: renderSnapshot,
+  };
+  const ackRequests = [];
+  const { context, page, consoleErrors } = await newPage(
+    browser,
+    "exposure-ack",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(payload),
+      });
+    },
+    async (route) => {
+      const request = route.request();
+      let body = null;
+      try {
+        body = JSON.parse(request.postData() || "{}");
+      } catch (error) {
+        body = { parse_error: String(error?.message || error) };
+      }
+      ackRequests.push({
+        method: request.method(),
+        pathname: new URL(request.url()).pathname,
+        body,
+      });
+      if (ackRequests.length === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "forced fixture retry" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ack_id: `fixture-ack-${exposureId}`,
+          exposure_id: exposureId,
+          event_type: "render",
+          user_id: 0,
+          acked_at: new Date().toISOString(),
+          created: true,
+        }),
+      });
+    },
+  );
+  try {
+    await page.goto(`${frontendOrigin}/insights`, { waitUntil: "domcontentloaded" });
+    await page.getByText(/afternoon estimates are running long/i).waitFor({ timeout: 15_000 });
+    const deadline = Date.now() + 10_000;
+    while (ackRequests.length < 2 && Date.now() < deadline) {
+      await page.waitForTimeout(100);
+    }
+    await screenshot(page, "exposure-ack-desktop");
+
+    addCheck("insights mounted render retries a failed acknowledgement", ackRequests.length === 2, {
+      request_count: ackRequests.length,
+    });
+    const finalAck = ackRequests.at(-1);
+    addCheck("insights render acknowledgement uses the canonical owner route", Boolean(
+      finalAck
+      && finalAck.method === "POST"
+      && finalAck.pathname === `/v1/exposures/${exposureId}/ack/render`
+    ), finalAck);
+    addCheck("insights render acknowledgement binds surface, event, and snapshot", Boolean(
+      finalAck
+      && finalAck.body?.surface_id === "analytics.insights"
+      && finalAck.body?.client_event_id === `analytics.insights:${exposureId}`
+      && JSON.stringify(finalAck.body?.content_snapshot) === JSON.stringify(renderSnapshot)
+    ), finalAck?.body || null);
+    const unexpectedErrors = consoleErrors.filter(
+      (entry) => !entry.includes("503 (Service Unavailable)"),
+    );
+    addCheck("insights render acknowledgement retry has no unexpected page errors", unexpectedErrors.length === 0, {
+      console_errors: consoleErrors,
+      unexpected_errors: unexpectedErrors,
+    });
+  } finally {
+    await context.close();
+  }
 }
 
 async function runScenario(browser, scenario) {
@@ -359,6 +470,7 @@ try {
   for (const scenario of scenarios) {
     await runScenario(browser, scenario);
   }
+  await runExposureAckScenario(browser);
   await runLatencyScenario(browser);
   await runErrorScenario(browser);
   result = {
@@ -367,7 +479,11 @@ try {
     api_origin: apiOrigin,
     proxy_api: proxyApi,
     fixture_only: true,
-    fixture_overrides: ["session_only_onboarding_skip", "forced_insights_payload"],
+    fixture_overrides: [
+      "session_only_onboarding_skip",
+      "forced_insights_payload",
+      "forced_render_ack_transport",
+    ],
     output_dir: outDir,
     checks,
     issues,
@@ -379,7 +495,11 @@ try {
     api_origin: apiOrigin,
     proxy_api: proxyApi,
     fixture_only: true,
-    fixture_overrides: ["session_only_onboarding_skip", "forced_insights_payload"],
+    fixture_overrides: [
+      "session_only_onboarding_skip",
+      "forced_insights_payload",
+      "forced_render_ack_transport",
+    ],
     output_dir: outDir,
     error: error instanceof Error ? error.message : String(error),
     checks,
