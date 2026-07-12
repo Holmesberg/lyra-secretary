@@ -274,15 +274,15 @@
       "preservation_required": true,
       "owner": "Stopwatch stop result packaging and output-surface lifecycle",
       "active_contracts": ["docs/calibration_contract.md", "docs/claim_compiler_and_synthesis_boundary.md"],
-      "runtime_paths": ["backend/app/api/v1/endpoints/stopwatch.py", "backend/app/services/stopwatch_reflections.py", "frontend/components/active-timer-banner.tsx"],
+      "runtime_paths": ["backend/app/api/v1/endpoints/stopwatch.py", "backend/app/services/stopwatch_reflections.py", "backend/app/services/output_surfaces.py", "frontend/components/toast.tsx", "frontend/lib/hooks/use-today-stopwatch-commands.ts", "frontend/lib/hooks/use-pulse-focus-stopwatch-commands.ts"],
       "user_effect": "After a clean stop, may show bounded execution reflection or estimate-calibration wording without changing session truth.",
       "writes": ["output decision/suppression/exposure lifecycle", "legacy reflection compatibility row"],
       "exposure_class": "registered_behavioral_output",
       "output_surface_ids": ["stopwatch.micro_mirror", "stopwatch.calibration_nudge"],
-      "proof": {"tests": ["backend/tests/test_output_surfaces.py", "backend/tests/test_calibration_nudge_event.py", "backend/tests/test_analytics_calibration_nudge.py"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "timer stop clears active session"}], "minimum_tier": "local-current", "gated": ["specific rendered micro-mirror/calibration copy is not isolated in the browser harness"]},
+      "proof": {"tests": ["backend/tests/test_output_surfaces.py", "backend/tests/test_calibration_nudge_event.py", "backend/tests/test_analytics_calibration_nudge.py", "backend/tests/test_reflection_view_log_hook.py", "backend/tests/test_exposure_ledger_v0.py"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "Pulse stop outputs never fabricate browser render or acknowledgement"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "Today Toast creates exactly one authenticated render and legacy view"}], "minimum_tier": "local-current", "gated": ["positive mounted calibration-nudge copy remains dependent on eligible same-category history and Rule 11 active assignment; lifecycle parity for both outputs is backend-characterized"]},
       "historical_sources": [],
       "rollback": "Suppress these outputs while preserving the completed stopwatch session and correction authority.",
-      "known_gaps": ["Issue #203: server emits render truth before browser acknowledgement."]
+      "known_gaps": ["Issue #215: Pulse suppresses stop-result outputs because it has no mounted output surface; Today renders them as Toasts."]
     },
     {
       "id": "predictions.pause",

@@ -19144,3 +19144,123 @@ Issues, parked paths, and rollback:
 - Revert `82ad1eb` and `ca19096` independently to remove only tests or verifier
   semantics. Revert `b54268c` and `5a1de5d` only with the product rollback if
   their client lifecycle ownership is no longer used.
+
+## 2026-07-12 - Wave 2 Stopwatch Stop-Output Browser Ownership
+
+Seam preflight:
+
+- Seam name: `stopwatch-stop-output-browser-render-truth`.
+- Authority class: product/runtime plus measurement, followed by separate
+  characterization and verifier commits.
+- Documented behavior preserved: completed-session truth, micro-mirror and
+  calibration wording, Rule 11 suppression, Today Toast lifespan/detail
+  behavior, Pulse stop flow, correction authority, and legacy reflection-view
+  compatibility.
+- Expected user-visible change: none. Today still renders eligible outputs;
+  Pulse remains visually unchanged until route parity is handled by issue
+  `#215`.
+- Expected write change: stop creates a reserved decision and unviewed legacy
+  candidate. Today Toast mount creates authenticated render/ACK and stamps the
+  compatibility row viewed. Pulse records `client_surface_unavailable`
+  suppression because it does not mount either output.
+- Stop condition: no stopwatch-finalization, schema, threshold, wording,
+  lifespan, correction, or route-parity expansion was permitted.
+
+Changed and moved authority:
+
+- Commit `4f4376d` removed server-side render emission from stopwatch stop
+  packaging. The endpoint now reserves `stopwatch.micro_mirror` and
+  `stopwatch.calibration_nudge` decisions without `delivered_at` or render/ACK
+  evidence.
+- `Toast` mount on Today now owns browser render acknowledgement. It retries
+  idempotently with a stable client event ID and preserves the independent
+  legacy `viewed_at` callback.
+- Pulse no longer silently abandons returned candidates; it terminates them as
+  explicit non-render suppression. This does not claim the user saw them.
+- Legacy exposure fallback now admits only reflection rows with `viewed_at`;
+  fired-but-unmounted compatibility candidates remain clean baseline.
+- No completed session, task state, Redis state, predictor, provider, claim,
+  or clean-data authority changed.
+
+Characterization and negative proof:
+
+- Commit `bdaea58` proves API stop alone yields reserved decisions, zero
+  render/ACK rows, and unviewed legacy candidates for both output families.
+- Owner render acknowledgement transitions each decision to rendered exactly
+  once and stamps one legacy view. Existing cross-user ACK and suppression
+  denial tests remain green.
+- Unviewed legacy candidates no longer map to behavioral exposure.
+- Targeted lifecycle suite: 54 passed. Wider stopwatch/exposure suite: 76
+  passed. Operator suite passed 13/13 in isolation.
+- The combined operator run exposed an unrelated fixture leak; issue `#216`
+  records the tests-only isolation defect. Operator production behavior was
+  not changed to make that mixed-order suite pass.
+
+Browser and verifier proof:
+
+- Commit `86023bb` adds a real-cookie Today path that creates an API-assisted
+  task, stops through mounted UI, handles explicit early-stop confirmation,
+  observes a real Toast, and requires exactly one render, one authenticated
+  ACK, and one viewed compatibility row.
+- The same verifier proves Pulse stop outputs have zero render/ACK evidence,
+  terminate as explicit suppression, and remain unviewed in the compatibility
+  adapter.
+- Synthetic API-only stopwatch candidates are suppressed during cleanup only
+  when they are new in the run and linked to the run's synthetic tasks.
+- Targeted Today artifact
+  `tmp/browser-product-loop/wave2-stopwatch-output-targeted-redacted-local-current/result.json`
+  passed with one browser-proven micro-mirror exposure and no residue.
+- Full chaotic product-loop artifact
+  `tmp/browser-product-loop/wave2-stopwatch-output-combined-final-local-current/result.json`
+  passed. Pulse non-render suppression, Today browser render, execution,
+  recovery, notification lifecycle, export, operator privacy, and cleanup were
+  all green.
+
+Independent Pressure Map verifier repair:
+
+- Full-loop retries exposed an existing Sunday-boundary and Playwright wait
+  defect in the Pressure Map-to-Calendar assertion. Screenshots showed the
+  check running before the switched range finished loading; no product bug was
+  claimed from that false wait.
+- Commit `c8e4914` makes `runPressureMapPath` own its Pulse route, adds a
+  focused full-path mode, switches Calendar to the created task's month, waits
+  with `locator.waitFor` rather than immediate `isVisible`/`isHidden` probes,
+  and verifies the canonical Schedule-X `data-event-id`.
+- Targeted artifact
+  `tmp/browser-product-loop/wave2-pressure-calendar-real-wait-targeted/result.json`
+  passed browser render truth, double-lock idempotency, planning provenance,
+  Calendar visibility, and cleanup.
+
+Final macro proof:
+
+- Frontend typecheck and production build passed locally.
+- Exact-head CI for `c8e4914b0d81e783be703b9725a062f2119ce46c`
+  passed backend, frontend, topology, Alembic, S1c authority, registry,
+  Cortex, account-role, and contract gates:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29178988930`.
+- Standard evidence manifest
+  `tmp/post-wave-dogfood/20260712-065941-wave2-stopwatch-output-standard-local-current/summary.json`
+  passed with local-current topology, five green nested results, zero operator
+  count diffs, `exposure_without_render_count=0`, cleanup green,
+  implementation green, and CI linked to the exact full SHA.
+- Cohort status remains yellow because real-data readiness is insufficient;
+  no denominator or blocker was weakened.
+- The standard run's nonblocking browser notes are preserved: onboarding skip
+  to reach dogfood, Today pre-screenshot visibility timing, parser title
+  normalization, and the intentionally gated real Pressure Map recovery
+  option. The separately forced Pressure Map path is labeled fixture-backed.
+
+Issues, parked paths, and rollback:
+
+- Issue `#203` is resolved by the product, test, browser, cleanup, operator,
+  and CI evidence above.
+- Issue `#215` owns Pulse/Today stop-output presentation parity. It is parked
+  for the later route-parity wave and was not smuggled into exposure work.
+- Issue `#216` owns operator-test cross-file exposure cleanup.
+- Revert `4f4376d` only to restore the prior product lifecycle, recognizing
+  that it restores fabricated server-side render truth. Revert `bdaea58` to
+  remove characterization only, `86023bb` to remove stopwatch browser proof
+  only, and `c8e4914` to remove the independent Pressure wait/path repair.
+- No files, rows, public artifacts, or user features were deleted. No public
+  deploy/restart, hosted mutation, production repair, schema change, or
+  invasive forensics occurred.
