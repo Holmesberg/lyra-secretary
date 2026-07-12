@@ -127,10 +127,16 @@ function PlanPreviewDialog({
                   <button
                     data-testid="pressure-map-plan-row-toggle"
                     type="button"
+                    aria-pressed={row.enabled}
                     onClick={() => updateRow(row.id, { enabled: !row.enabled })}
-                    className="rounded-sm border border-hairline px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-signal"
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-sm border px-3 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal ${
+                      row.enabled
+                        ? "border-signal/50 bg-signal/10 text-signal hover:bg-signal/15"
+                        : "border-hairline bg-void/50 text-dust hover:border-signal/40 hover:text-parchment"
+                    }`}
                   >
-                    {row.enabled ? "Include" : "Discarded"}
+                    <CheckCircle2 size={12} aria-hidden="true" />
+                    {row.enabled ? "Included" : "Excluded"}
                   </button>
                 </div>
 
@@ -284,6 +290,9 @@ export function PulseAcademicPressureMap({
             <button
               key={days}
               type="button"
+              aria-label={`Show ${pressureHorizonLabel(days)} pressure horizon`}
+              aria-pressed={horizonDays === days}
+              data-testid={`pressure-map-horizon-${days}`}
               onClick={() => onHorizonChange?.(days)}
               className={pressureHorizonClass(days, horizonDays)}
             >
@@ -383,15 +392,16 @@ export function PulseAcademicPressureMap({
                   Next recovery option
                 </div>
                 {primaryIsPlanOption && planOption && canPreviewPlan && (
-                  <button
+                  <Button
                     data-testid="pressure-map-preview"
                     type="button"
                     onClick={() => openPlanPreview(planOption)}
-                    className="inline-flex items-center gap-1 rounded-sm border border-signal/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/10"
+                    size="sm"
+                    className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
                   >
-                    <ListPlus size={11} />
-                    Preview
-                  </button>
+                    <ListPlus size={13} aria-hidden="true" />
+                    Preview plan
+                  </Button>
                 )}
               </div>
               <p className="text-[12px] font-medium text-parchment">
@@ -410,15 +420,16 @@ export function PulseAcademicPressureMap({
                   <ListPlus size={12} />
                   Planning option
                 </div>
-                <button
+                <Button
                   data-testid="pressure-map-preview"
                   type="button"
                   onClick={() => openPlanPreview(planOption)}
-                  className="inline-flex items-center gap-1 rounded-sm border border-signal/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/10"
+                  size="sm"
+                  className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
                 >
-                  <ListPlus size={11} />
-                  Preview
-                </button>
+                  <ListPlus size={13} aria-hidden="true" />
+                  Preview plan
+                </Button>
               </div>
               <p className="text-[12px] font-medium text-parchment">
                 {planOption.label}
