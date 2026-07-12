@@ -4,6 +4,10 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  restorePublicBuildInputs,
+  snapshotPublicBuildInputs,
+} from "./public-build-source-guard.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(__dirname, "..");
@@ -78,6 +82,18 @@ const env = {
   NEXT_DIST_DIR: distDir,
 };
 
+const buildInputSnapshot =
+  command === "build" ? snapshotPublicBuildInputs(frontendRoot) : null;
+
+let buildInputsRestored = false;
+function restoreBuildInputs() {
+  if (!buildInputSnapshot || buildInputsRestored) {
+    return;
+  }
+  restorePublicBuildInputs(buildInputSnapshot);
+  buildInputsRestored = true;
+}
+
 console.log("[public-topology] NEXTAUTH_URL=https://lyraos.org");
 console.log("[public-topology] NEXT_PUBLIC_API_URL=https://api.lyraos.org");
 console.log(`[public-topology] NEXT_PUBLIC_BUILD_ID=${env.NEXT_PUBLIC_BUILD_ID}`);
@@ -99,7 +115,23 @@ const child = spawn(
   }
 );
 
+child.on("error", (error) => {
+  try {
+    restoreBuildInputs();
+  } catch (restoreError) {
+    console.error("[public-topology] failed to restore build inputs", restoreError);
+  }
+  console.error("[public-topology] failed to start Next.js", error);
+  process.exit(1);
+});
+
 child.on("exit", (code, signal) => {
+  try {
+    restoreBuildInputs();
+  } catch (error) {
+    console.error("[public-topology] failed to restore build inputs", error);
+    process.exit(3);
+  }
   if (signal) {
     console.error(`[public-topology] next ${command} exited via ${signal}`);
     process.exit(1);

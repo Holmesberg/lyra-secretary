@@ -25,14 +25,21 @@ SESSION='lyra-frontend'
 START_SCRIPT='/tmp/start_lyra_frontend.sh'
 FRONTEND_LOG='/tmp/frontend.log'
 PUBLIC_NEXT_DIR='.next-public'
-STAGING_NEXT_DIR=".next-public.staging.$$"
+STAGING_NEXT_DIR=".next-public.staging.`$`$"
 PREVIOUS_NEXT_DIR='.next-public.previous'
-FAILED_NEXT_DIR=".next-public.failed.$$"
+FAILED_NEXT_DIR=".next-public.failed.`$`$"
 
 source ~/.nvm/nvm.sh
 
 cd "`$FRONTEND_DIR"
 export NEXT_TELEMETRY_DISABLED=1
+
+SOURCE_STATUS="`$(git -C "`$FRONTEND_DIR/.." status --porcelain --untracked-files=all)"
+if [ -n "`$SOURCE_STATUS" ]; then
+  echo 'ERROR: refusing to deploy from a dirty tracked or untracked tree.' >&2
+  printf '%s\n' "`$SOURCE_STATUS" >&2
+  exit 48
+fi
 
 echo '== Lyra frontend WSL restart =='
 echo "frontend_dir=`$FRONTEND_DIR"
@@ -62,6 +69,13 @@ if [ "`$NO_BUILD" != '1' ]; then
   echo "== building public topology into staging artifact `$STAGING_NEXT_DIR =="
   rm -rf "`$STAGING_NEXT_DIR"
   NEXT_DIST_DIR="`$STAGING_NEXT_DIR" npm run build:public
+  POST_BUILD_SOURCE_STATUS="`$(git -C "`$FRONTEND_DIR/.." status --porcelain --untracked-files=all)"
+  if [ -n "`$POST_BUILD_SOURCE_STATUS" ]; then
+    echo 'ERROR: public build mutated tracked or untracked source files. Refusing to swap.' >&2
+    printf '%s\n' "`$POST_BUILD_SOURCE_STATUS" >&2
+    rm -rf "`$STAGING_NEXT_DIR"
+    exit 49
+  fi
   if [ ! -s "`$STAGING_NEXT_DIR/BUILD_ID" ]; then
     echo "ERROR: staged `$STAGING_NEXT_DIR/BUILD_ID is missing. Refusing to swap incomplete production artifact." >&2
     rm -rf "`$STAGING_NEXT_DIR"
