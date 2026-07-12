@@ -19706,3 +19706,49 @@ Verification, parking, and rollback:
 - Revert this docs-only correction commit to restore the pre-adversarial
   contract. The earlier `b959b153` contract commit remains independently
   reversible.
+
+## 2026-07-12 - Pressure Map Count-Once Projection Foundation
+
+Seam preflight:
+
+- Seam name: `pressure-map-count-once-projection-foundation`.
+- Authority class: product/runtime pure helper, followed by separate unit
+  proof. No API, route, projection owner, database, provider, exposure, or UI
+  behavior is wired to the helper yet.
+- Documented behavior protected: ranged estimates, no inferred completion,
+  linked future coverage as coverage rather than duplicate demand, explicit
+  overcoverage, and no availability/capacity invention.
+- Expected user-visible and data-write change: none.
+- Stop conditions preserved: schema migration, availability authority, prior
+  value change, or ambiguous scope-completion ownership.
+
+Implementation and proof:
+
+- Commit `8bff98f` adds a pure projection primitive accepting complete
+  admissible joint scenarios. It cannot independently combine interval
+  endpoints into an impossible scenario.
+- Each scalar scenario enforces:
+  `remaining = applied_coverage + unscheduled_demand` and
+  `feasible_future_coverage = applied_coverage + overcoverage`.
+- Completed scope credit is an explicit input; elapsed execution is not an
+  accepted substitute. Credit beyond the estimate is retained as an
+  inconsistency rather than silently hidden.
+- Commit `38fd022` adds 11 focused tests for count-once reconciliation,
+  overcoverage, estimate inconsistency, joint-scenario envelopes, negative and
+  non-integer minutes, duplicate IDs, empty input, and inverted envelopes.
+- Targeted pytest passed: `11 passed`. Backend import-layer scan and
+  `git diff --check` passed.
+- Browser proof was not run because this foundation has no shipped consumer.
+  Focused browser, affected-row/export attribution, and cleanup become required
+  in the later integration seam; the full product loop remains a
+  macro-checkpoint proof.
+
+Issue, parking, and rollback:
+
+- This is the first bounded implementation slice of `#220`; the issue remains
+  open until real obligation attribution and the shipped response consume the
+  primitive.
+- Capacity/collision authority remains in `#223`; estimate admission remains
+  in `#224`. Neither is smuggled into this helper.
+- Revert `8bff98f` and `38fd022` independently. Because the helper is unused,
+  rollback changes no current user behavior or data.
