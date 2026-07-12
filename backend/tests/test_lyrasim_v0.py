@@ -55,7 +55,7 @@ from scripts.lyrasim.scorers import score_scenario
 from scripts.lyrasim.scorers.core import _rate_metric
 
 from app.api.v1.endpoints import analytics as analytics_module
-from app.db.models import ExposureRenderEvent, Task, User
+from app.db.models import ExposureAckEvent, ExposureRenderEvent, Task, User
 from app.services import academic_pressure as academic_pressure_service
 from tests.conftest import auth_headers
 
@@ -496,7 +496,46 @@ def test_baseet_deadline_pressure_validates_real_pressure_map_product_seam(
 
     assert response.status_code == 200, response.text
     data = response.json()
-    output = lyra_output_from_pressure_map_response(data)
+    delivered_output = lyra_output_from_pressure_map_response(data)
+    assert delivered_output.product_seams_exercised == (
+        "academic_pressure.pressure_map",
+    )
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == data["exposure_id"])
+        .count()
+        == 0
+    )
+
+    render_ack = client.post(
+        f"/v1/exposures/{data['exposure_id']}/ack/render",
+        headers=auth_headers(user.user_id),
+        json={
+            "surface_id": "academic.pressure_map",
+            "client_event_id": f"lyrasim:{data['exposure_id']}",
+            "content_snapshot": data["render_snapshot"],
+        },
+    )
+    assert render_ack.status_code == 200, render_ack.text
+    assert render_ack.json()["created"] is True
+
+    render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == data["exposure_id"])
+        .one()
+    )
+    ack = (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == data["exposure_id"])
+        .one()
+    )
+    assert ack.user_id == user.user_id
+    assert ack.event_type == "render"
+
+    output = lyra_output_from_pressure_map_response(
+        data,
+        verified_rendered_exposure_id=render.exposure_id,
+    )
     score = score_scenario(scenario, output)
     report = build_report(scenario=scenario, output=output, score=score)
 
@@ -550,11 +589,6 @@ def test_baseet_deadline_pressure_validates_real_pressure_map_product_seam(
     assert "overloaded" not in data["headline"].lower()
     assert "overloaded" not in data["pressure_summary"].lower()
 
-    render = (
-        db.query(ExposureRenderEvent)
-        .filter(ExposureRenderEvent.render_id == data["render_id"])
-        .one()
-    )
     snapshot = render.content_snapshot
     assert "Assignment 1" not in snapshot
     assert "hash_baseet" not in snapshot
