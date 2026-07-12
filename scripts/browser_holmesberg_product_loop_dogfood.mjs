@@ -1807,7 +1807,7 @@ async function runBrainDumpBranchCoverage(page, token) {
 }
 
 async function assertPressureMapBrowserRender(token, beforeExport) {
-  await pollFor(token, "pressure map candidates reach terminal lifecycle", async () => {
+  await pollFor(token, "pressure map claimed candidates reach terminal lifecycle", async () => {
     const exported = await apiFetch(token, "/v1/users/me/export");
     const beforeIds = new Set(
       rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id),
@@ -1829,13 +1829,16 @@ async function assertPressureMapBrowserRender(token, beforeExport) {
       ...renderIds,
       ...rows(exported, "suppression_events").map((row) => row.exposure_id),
     ]);
+    const unterminatedClaimed = decisions.filter((row) => (
+      row.decision_status !== "reserved" && !terminalIds.has(row.exposure_id)
+    ));
     const browserProven = decisions.some((row) => (
       renderIds.has(row.exposure_id) && ackIds.has(row.exposure_id)
     ));
     return (
       decisions.length >= 1
       && browserProven
-      && decisions.every((row) => terminalIds.has(row.exposure_id))
+      && unterminatedClaimed.length === 0
     ) ? true : null;
   }, 10_000, 500);
 
@@ -1864,7 +1867,8 @@ async function assertPressureMapBrowserRender(token, beforeExport) {
     ...renderIds,
     ...rows(afterExport, "suppression_events").map((row) => row.exposure_id),
   ]);
-  const unterminated = decisions.filter((row) => !terminalIds.has(row.exposure_id));
+  const unclaimed = decisions.filter((row) => !terminalIds.has(row.exposure_id));
+  const unterminatedClaimed = unclaimed.filter((row) => row.decision_status !== "reserved");
   addCheck("pressure map render is browser-acknowledged", browserProven.length >= 1, {
     new_decision_count: decisions.length,
     rendered_count: rendered.length,
@@ -1881,11 +1885,18 @@ async function assertPressureMapBrowserRender(token, beforeExport) {
       )).length,
     },
   );
-  addCheck("pressure map has no unterminated browser candidate", unterminated.length === 0, {
-    new_decision_count: decisions.length,
-    unterminated_count: unterminated.length,
-    unterminated_statuses: unterminated.map((row) => row.decision_status).sort(),
-  });
+  addCheck(
+    "pressure map unclaimed candidates do not claim browser delivery",
+    unterminatedClaimed.length === 0,
+    {
+      new_decision_count: decisions.length,
+      unclaimed_reserved_count: unclaimed.filter((row) => row.decision_status === "reserved").length,
+      unterminated_claimed_count: unterminatedClaimed.length,
+      unterminated_claimed_statuses: unterminatedClaimed
+        .map((row) => row.decision_status)
+        .sort(),
+    },
+  );
   return browserProven.map((row) => row.exposure_id);
 }
 
