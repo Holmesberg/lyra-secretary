@@ -19834,3 +19834,56 @@ Issue, parking, and rollback:
 - Revert product commit `0296ea89` to remove the additive response and builder;
   revert test commit `9a842d3` independently. No persisted data or migration
   depends on either commit.
+
+## 2026-07-12 - Wave 0 Sequential Audit Closure
+
+Audit scope:
+
+- Rechecked the active Wave 0 requirements after the founder directed the
+  implementation loop to return to Waves 0-4 after the bounded Wave 5 seam.
+- This audit changes no runtime, public copy, deployment, data, authority, or
+  product behavior. It records current checkpoint integrity and distinguishes
+  missing historical evidence from current risk.
+
+Current proof:
+
+- Branch `refactor/freeze-closure` and
+  `origin/refactor/freeze-closure` both resolved to exact head
+  `7f1258da8fa954a766b65ac3d1324a6d46b198fd` with a clean worktree.
+- Exact-head CI passed all topology, backend, S1c static, frontend typecheck,
+  and frontend production-build jobs:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29192199814`.
+- A detached worktree reconstructed exact head `7f1258d` from Git, had no
+  tracked diff, passed the refactor-contract scan, passed all 45 preservation
+  registry rows, and passed the 31 focused Pressure Map projection tests.
+  The detached worktree was removed after proof.
+- `git merge-tree --write-tree --messages origin/main HEAD` completed without
+  conflicts and produced merge tree
+  `eea89e16b56dac0e525356b7e4ebc0d0f31d1894`. This is mergeability proof,
+  not merge authorization.
+- The earlier Wave 0 ledger already records authority-separated retirement,
+  verifier/CI, public-copy, and docs commits plus full local/browser/operator
+  proof. Current static gates continue to prohibit the retired direct model
+  runtime.
+
+Historical recovery-bundle classification:
+
+- No surviving ledger or repository evidence proves that the original
+  encrypted dirty-tree recovery bundle was created and restored before the
+  first Wave 0 commits. That historical substep remains `unverified`; it is not
+  silently relabeled as passed.
+- Creating a replacement bundle now would duplicate a clean, pushed,
+  CI-green, detached-reconstructable Git checkpoint and would not reduce
+  present danger. The original bundle requirement is therefore obsolete for
+  the current clean state, not waived for future dirty checkpoints.
+- Future large dirty checkpoints still require a pre-edit recovery manifest
+  when Git cannot yet reconstruct approved uncommitted work.
+
+Exit and rollback:
+
+- Wave 0 is closed for current execution: runtime retirement, deterministic
+  compatibility, authority-separated history, remote reconstruction, CI, and
+  mergeability are proven. No merge, rebase, deploy, restart, or branch change
+  occurred.
+- This entry is audit-only. Revert its docs commit to remove the audit note;
+  current runtime and prior checkpoint commits remain unchanged.
