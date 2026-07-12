@@ -6,11 +6,25 @@ Shape matches what `archetype_service.score_*` functions expect:
 - bscs: 13 items, each 1-5 (items 2,3,4,5,7,9,10,12,13 reverse-keyed server-side)
 - gp: 9 items, each 1-5 (all forward-keyed)
 
-Frontend sends raw 1-5 responses. Server handles reverse-keying + range
-validation. Out-of-range values fail loud via ValueError in the service,
-surfaced here as 400 by FastAPI.
+Frontend sends raw responses. The request boundary enforces each instrument's
+item scale as a 422 before the scoring service or assignment writer runs;
+server scoring still repeats the bounds defensively before reverse-keying.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _validate_item_bounds(
+    values: list[int],
+    bounds: list[tuple[int, int]],
+    label: str,
+) -> list[int]:
+    for index, (value, (low, high)) in enumerate(zip(values, bounds)):
+        if value < low or value > high:
+            raise ValueError(
+                f"{label}: item {index} value {value!r} out of range "
+                f"[{low}, {high}]"
+            )
+    return values
 
 
 class ArchetypeSurveyIn(BaseModel):
@@ -24,6 +38,30 @@ class ArchetypeSurveyIn(BaseModel):
     bfi_c: list[int] = Field(..., min_length=2, max_length=2)
     bscs: list[int] = Field(..., min_length=13, max_length=13)
     gp: list[int] = Field(..., min_length=9, max_length=9)
+
+    @field_validator("meq")
+    @classmethod
+    def validate_meq_bounds(cls, values: list[int]) -> list[int]:
+        return _validate_item_bounds(
+            values,
+            [(1, 5), (1, 4), (1, 4), (1, 4), (1, 5)],
+            "meq",
+        )
+
+    @field_validator("bfi_c")
+    @classmethod
+    def validate_bfi_c_bounds(cls, values: list[int]) -> list[int]:
+        return _validate_item_bounds(values, [(1, 5)] * 2, "bfi_c")
+
+    @field_validator("bscs")
+    @classmethod
+    def validate_bscs_bounds(cls, values: list[int]) -> list[int]:
+        return _validate_item_bounds(values, [(1, 5)] * 13, "bscs")
+
+    @field_validator("gp")
+    @classmethod
+    def validate_gp_bounds(cls, values: list[int]) -> list[int]:
+        return _validate_item_bounds(values, [(1, 5)] * 9, "gp")
 
 
 class ArchetypeAssignmentOut(BaseModel):
