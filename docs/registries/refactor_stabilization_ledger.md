@@ -19752,3 +19752,23 @@ Issue, parking, and rollback:
   in `#224`. Neither is smuggled into this helper.
 - Revert `8bff98f` and `38fd022` independently. Because the helper is unused,
   rollback changes no current user behavior or data.
+
+## 2026-07-12 - Pressure Map Linked-Coverage Interval Union
+
+- Seam name: `pressure-map-linked-coverage-interval-union`.
+- Authority class: pure product/runtime helper plus separate unit proof. The
+  helper remains unwired, so user-visible and write behavior remain unchanged.
+- Commit `5ffef39` adds half-open window clipping and interval union for future
+  linked coverage. Overlapping or adjacent intervals count once; intervals
+  outside the window contribute zero; sub-minute remainders are floored so
+  feasible coverage is not overstated.
+- Commit `e37f26c` expands the focused projection suite to 15 tests, including
+  clipped overlap, disjoint segments, duplicate IDs, invalid windows, and
+  invalid intervals.
+- Targeted pytest, Python compilation, backend import-layer scan, and
+  `git diff --check` passed. Browser proof remains deferred until the additive
+  projection is wired to a real API response.
+- This remains inside `#220`; calendar/provider capacity authority remains
+  separately parked in `#223`.
+- Revert `5ffef39` and `e37f26c` independently. No persisted or shipped state
+  depends on this helper yet.
