@@ -1,5 +1,9 @@
 FROM python:3.11-slim
 
+ARG BUILD_ID=dev
+LABEL org.lyraos.backend-build-id=$BUILD_ID
+ENV BUILD_ID=$BUILD_ID
+
 WORKDIR /app
 
 # Install system dependencies

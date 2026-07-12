@@ -1,12 +1,14 @@
 services:
   backend:
+    image: lyra-backend-public:current
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        BUILD_ID: ${BACKEND_BUILD_ID:-dev}
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
       - ./runtime_topology.json:/runtime_topology.json:ro
       - lyra_data:/app/data
     environment:
@@ -17,6 +19,7 @@ services:
       # 2026-04-16 and restarting backend.
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/lyra.db}
       - REDIS_URL=redis://redis:6379/0
+      - BUILD_ID=${BACKEND_BUILD_ID:-dev}
       - USER_TIMEZONE=Africa/Cairo
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
@@ -42,7 +45,7 @@ services:
       - LYRA_RECOVERY_NUDGES_ENABLED=${LYRA_RECOVERY_NUDGES_ENABLED:-true}
     depends_on:
       - redis
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   redis:
     image: redis:7-alpine
