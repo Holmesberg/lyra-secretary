@@ -6,6 +6,7 @@ so the next bias_factor_lookup picks up the new archetype?
 """
 from datetime import datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.db.models import Archetype, ArchetypeAssignment, User
@@ -195,10 +196,67 @@ def test_survey_rejects_out_of_range_meq_item():
         },
         headers={"X-User-Id": str(uid)},
     )
-    # ValueError from the scorer bubbles as 500. Pydantic won't catch
-    # it because the min/max validators only check list length, not
-    # item values (items have different scales per position).
-    assert resp.status_code >= 400
+    assert resp.status_code == 422
+
+    db = TestingSession()
+    try:
+        user = db.query(User).filter(User.user_id == uid).one()
+        assert user.archetype_id is None
+        assert (
+            db.query(ArchetypeAssignment)
+            .filter(ArchetypeAssignment.user_id == uid)
+            .count()
+            == 0
+        )
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize(
+    ("instrument", "invalid_values"),
+    [
+        ("bfi_c", [0, 3]),
+        ("bscs", [3] * 12 + [6]),
+        ("gp", [3] * 8 + [0]),
+    ],
+)
+def test_survey_rejects_each_out_of_range_instrument_without_writes(
+    instrument,
+    invalid_values,
+):
+    db = TestingSession()
+    try:
+        _seed_archetypes(db)
+        uid = _make_user(db, f"range-{instrument}-test@example.com")
+    finally:
+        db.close()
+
+    payload = {
+        "meq": [3, 3, 3, 3, 3],
+        "bfi_c": [3, 3],
+        "bscs": [3] * 13,
+        "gp": [3] * 9,
+    }
+    payload[instrument] = invalid_values
+    resp = client.post(
+        "/v1/users/me/archetype/survey",
+        json=payload,
+        headers={"X-User-Id": str(uid)},
+    )
+
+    assert resp.status_code == 422
+    db = TestingSession()
+    try:
+        user = db.query(User).filter(User.user_id == uid).one()
+        assert user.archetype_id is None
+        assert (
+            db.query(ArchetypeAssignment)
+            .filter(ArchetypeAssignment.user_id == uid)
+            .count()
+            == 0
+        )
+    finally:
+        db.close()
 
 
 def test_get_me_surfaces_archetype_fields():
