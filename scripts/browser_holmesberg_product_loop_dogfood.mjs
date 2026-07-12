@@ -2018,12 +2018,71 @@ async function runPressureMapPath(page, token, beforeExport) {
   const beforeTasks = await findTasksByPrefix(token);
   try {
     await goto(page, "/pulse", "pulse-pressure-map");
-    const previewVisible = await page.getByTestId("pressure-map-preview").first().isVisible({ timeout: 8_000 }).catch(() => false);
+    const previewControl = page.getByTestId("pressure-map-preview").first();
+    const previewVisible = await previewControl.isVisible({ timeout: 8_000 }).catch(() => false);
     addCheck("pressure map preview is available after seeded due-soon deadline", previewVisible, {
       deadline_id: pressureDeadline.deadline_id,
       title: pressureDeadlineTitle,
       forced_browser_fixture: Boolean(pressureMapRouteHandler),
     });
+    const previewText = (await previewControl.innerText()).trim();
+    const desktopPreviewBox = await previewControl.boundingBox();
+    addCheck(
+      "pressure map plan action has explicit copy and a stable click target",
+      /Preview plan/i.test(previewText)
+        && desktopPreviewBox !== null
+        && desktopPreviewBox.height >= 32
+        && desktopPreviewBox.width >= 96,
+      { text: previewText, box: desktopPreviewBox },
+    );
+    const horizonControls = page.locator('[data-testid^="pressure-map-horizon-"]');
+    const horizonCount = await horizonControls.count();
+    const horizonState = [];
+    for (let index = 0; index < horizonCount; index += 1) {
+      const control = horizonControls.nth(index);
+      horizonState.push({
+        test_id: await control.getAttribute("data-testid"),
+        pressed: await control.getAttribute("aria-pressed"),
+        box: await control.boundingBox(),
+      });
+    }
+    addCheck(
+      "pressure map horizon controls expose one pressed 32px segmented state",
+      horizonCount === 3
+        && horizonState.filter((control) => control.pressed === "true").length === 1
+        && horizonState.every((control) => (
+          control.box !== null
+          && control.box.height >= 32
+          && control.box.width >= 48
+        )),
+      horizonState,
+    );
+    await screenshot(page, "pressure-map-affordance-desktop");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(250);
+    const mobilePreviewBox = await previewControl.boundingBox();
+    const mobileHorizonBoxes = [];
+    for (let index = 0; index < horizonCount; index += 1) {
+      mobileHorizonBoxes.push(await horizonControls.nth(index).boundingBox());
+    }
+    addCheck(
+      "pressure map action controls remain visible and uncut on mobile",
+      mobilePreviewBox !== null
+        && mobilePreviewBox.height >= 32
+        && mobilePreviewBox.x >= 0
+        && mobilePreviewBox.x + mobilePreviewBox.width <= 390
+        && mobileHorizonBoxes.every((box) => (
+          box !== null
+          && box.height >= 32
+          && box.x >= 0
+          && box.x + box.width <= 390
+        )),
+      { preview: mobilePreviewBox, horizons: mobileHorizonBoxes },
+    );
+    await screenshot(page, "pressure-map-affordance-mobile");
+    await page.setViewportSize({ width: 1440, height: 950 });
+    await page.waitForTimeout(250);
     await clickAny(page, "pressure preview", [(p) => p.getByTestId("pressure-map-preview")]);
     await firstVisible(page, [
       (p) => p.getByTestId("pressure-map-plan-preview"),
@@ -3456,6 +3515,24 @@ async function cleanupCreatedRows(token) {
       method: "DELETE",
     });
   }
+  const tasksAfterCleanup = await findTasksByPrefix(token);
+  const deadlinesAfterCleanup = await findDeadlinesByPrefix(token);
+  const activeSyntheticTasks = tasksAfterCleanup.filter((task) => !task.voided_at);
+  const activeSyntheticDeadlines = deadlinesAfterCleanup.filter((deadline) => !deadline.voided_at);
+  addCheck(
+    "cleanup leaves no active prefixed task or deadline rows",
+    activeSyntheticTasks.length === 0 && activeSyntheticDeadlines.length === 0,
+    {
+      active_task_ids: activeSyntheticTasks.map((task) => task.task_id),
+      active_deadline_ids: activeSyntheticDeadlines.map((deadline) => deadline.deadline_id),
+      terminal_task_ids: tasksAfterCleanup
+        .filter((task) => task.voided_at)
+        .map((task) => task.task_id),
+      terminal_deadline_ids: deadlinesAfterCleanup
+        .filter((deadline) => deadline.voided_at)
+        .map((deadline) => deadline.deadline_id),
+    },
+  );
   const status = await apiFetch(token, "/v1/stopwatch/status");
   addCheck("cleanup leaves Holmesberg with no active timer", !status.active, status);
 }
