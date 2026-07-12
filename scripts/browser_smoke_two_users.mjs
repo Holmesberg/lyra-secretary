@@ -75,6 +75,28 @@ async function assertForbidden(token, path) {
   }
 }
 
+async function suppressApiOnlyPressureProbe(accountLabel, token, pressure) {
+  if (!pressure?.exposure_id) {
+    fail(`${accountLabel}: pressure map response omitted exposure decision`);
+  }
+  const result = await apiFetchForConfiguredApi(
+    token,
+    `/v1/exposures/${encodeURIComponent(pressure.exposure_id)}/ack/suppress`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        suppression_reason: "client_discarded_before_render",
+      }),
+    },
+  );
+  if (!result.response.ok || !["suppressed", "already_suppressed"].includes(result.body?.status)) {
+    fail(`${accountLabel}: pressure map API-only probe was not suppressed`, {
+      status: result.response.status,
+      body: result.body,
+    });
+  }
+}
+
 async function assertGoneOrNotFound(token, path) {
   const result = await apiFetchForConfiguredApi(token, path);
   if (![404, 410].includes(result.response.status)) {
@@ -134,11 +156,15 @@ async function smokeAccount(browser, account) {
     });
   }
   const integrations = await assertOkApiForAccount(account.label, token, "/v1/integrations");
-  const pressure = await assertOkApiForAccount(
-    account.label,
-    token,
-    "/v1/academic/pressure-map?horizon_days=14"
-  );
+  let pressure = null;
+  if (!me.is_operator) {
+    pressure = await assertOkApiForAccount(
+      account.label,
+      token,
+      "/v1/academic/pressure-map?horizon_days=14"
+    );
+    await suppressApiOnlyPressureProbe(account.label, token, pressure);
+  }
   const summary = await assertOkApiForAccount(
     account.label,
     token,
@@ -155,7 +181,7 @@ async function smokeAccount(browser, account) {
   if (!moodle) {
     fail(`Moodle integration row missing for ${account.label}`);
   }
-  if (!Array.isArray(pressure.items)) {
+  if (!me.is_operator && !Array.isArray(pressure?.items)) {
     fail(`academic pressure payload malformed for ${account.label}`);
   }
   if (typeof summary.total_tasks !== "number") {
@@ -181,7 +207,7 @@ async function smokeAccount(browser, account) {
     is_operator: Boolean(me.is_operator),
     moodle_status: moodle.status,
     moodle_ws_connected: Boolean(moodle.ws_connected),
-    pressure_items: pressure.items.length,
+    pressure_items: pressure?.items?.length ?? null,
     export_tasks: (exported.tasks || []).length,
   };
 }

@@ -17,6 +17,7 @@ function assert(condition, message) {
 
 const insightsDogfood = read("scripts/browser_insights_states_dogfood.mjs");
 const operatorReadonly = read("scripts/browser_stress_operator_readonly.mjs");
+const multiAccountSmoke = read("scripts/browser_smoke_two_users.mjs");
 const runbook = read("docs/runbooks/post_wave_dogfood_loop.md");
 const authority = read("docs/AUTHORITY.md");
 
@@ -35,6 +36,10 @@ assert(
 assert(
   !operatorReadonly.includes("LYRA_COOKIE_HOLMESBERG"),
   "Operator read-only stress must not use the mutable dogfood cookie"
+);
+assert(
+  /if \(!me\.is_operator\) \{[\s\S]*academic\/pressure-map[\s\S]*suppressApiOnlyPressureProbe/.test(multiAccountSmoke),
+  "Multi-account smoke must keep Pressure Map writes off the operator account and suppress non-rendered probes"
 );
 assert(
   runbook.includes("Never use the operator account for mutable dogfood"),

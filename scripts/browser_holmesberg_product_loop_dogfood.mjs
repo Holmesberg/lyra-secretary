@@ -44,6 +44,7 @@ const runKey = boundedIdentifier(runId, 42);
 const prefix = args.get("prefix") || `DOGFOOD ${randomUUID().slice(0, 8)}`;
 const cleanupOnly = args.get("cleanup-only") === "true";
 const archetypeProofOnly = args.get("archetype-proof-only") === "true";
+const pressureProofOnly = args.get("pressure-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
 const forcePressureRecovery = args.get("force-pressure-recovery") === "true";
 const holmesbergCookie = process.env.LYRA_COOKIE_HOLMESBERG
@@ -107,6 +108,27 @@ function missingSyntheticCreationNudgeExposures(beforeExport, afterExport) {
     .filter((row) => !ackIds.has(row.exposure_id))
     .filter((row) => !suppressionIds.has(row.exposure_id))
     .sort((a, b) => String(exposureSortTime(b)).localeCompare(String(exposureSortTime(a))));
+}
+
+async function suppressUnrenderedSurfaceProbe(token, payload, label) {
+  addCheck(`${label} returns an exposure decision`, Boolean(payload?.exposure_id), {
+    surface_id: payload?.surface_id || null,
+  });
+  const result = await apiFetch(
+    token,
+    `/v1/exposures/${encodeURIComponent(payload.exposure_id)}/ack/suppress`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        suppression_reason: "client_discarded_before_render",
+      }),
+    },
+  );
+  addCheck(`${label} records non-render suppression`, [
+    "suppressed",
+    "already_suppressed",
+  ].includes(result.status), result);
+  cleanup.exposureSuppressions.add(payload.exposure_id);
 }
 
 function dateKey(date = new Date()) {
@@ -288,12 +310,17 @@ async function goto(page, pathname, name) {
   let text = await page.locator("body").innerText({ timeout: 10_000 });
   if (/ONBOARDING|LyraOS starts learning from the first plan/i.test(text)) {
     await completeOnboardingGate(page);
-    await page.goto(`${frontendOrigin}${pathname}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 45_000,
-    });
+    await page.waitForTimeout(1_200);
     await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
     text = await page.locator("body").innerText({ timeout: 10_000 });
+    if (/ONBOARDING|LyraOS starts learning from the first plan/i.test(text)) {
+      await page.goto(`${frontendOrigin}${pathname}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 45_000,
+      });
+      await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
+      text = await page.locator("body").innerText({ timeout: 10_000 });
+    }
   }
   expectNoPrivateLeak(text, `render ${pathname}`);
   await screenshot(page, name);
@@ -1691,7 +1718,58 @@ async function runBrainDumpBranchCoverage(page, token) {
   });
 }
 
-async function runPressureMapPath(page, token) {
+async function assertPressureMapBrowserRender(token, beforeExport) {
+  const afterExport = await apiFetch(token, "/v1/users/me/export");
+  const beforeIds = new Set(
+    rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id),
+  );
+  const decisions = rows(afterExport, "exposure_decision_events")
+    .filter((row) => !beforeIds.has(row.exposure_id))
+    .filter((row) => row.content_template_id === "academic_pressure_map");
+  const renderIds = new Set(
+    rows(afterExport, "exposure_render_events")
+      .filter((row) => row.surface === "academic.pressure_map")
+      .map((row) => row.exposure_id),
+  );
+  const ackIds = new Set(
+    rows(afterExport, "exposure_ack_events")
+      .filter((row) => row.event_type === "render")
+      .map((row) => row.exposure_id),
+  );
+  const rendered = decisions.filter((row) => row.decision_status === "rendered");
+  const browserProven = rendered
+    .filter((row) => renderIds.has(row.exposure_id))
+    .filter((row) => ackIds.has(row.exposure_id));
+  const terminalIds = new Set([
+    ...renderIds,
+    ...rows(afterExport, "suppression_events").map((row) => row.exposure_id),
+  ]);
+  const unterminated = decisions.filter((row) => !terminalIds.has(row.exposure_id));
+  addCheck("pressure map render is browser-acknowledged", browserProven.length >= 1, {
+    new_decision_count: decisions.length,
+    rendered_count: rendered.length,
+    browser_proven_count: browserProven.length,
+    statuses: decisions.map((row) => row.decision_status).sort(),
+  });
+  addCheck(
+    "pressure map has no fabricated rendered decision",
+    rendered.every((row) => renderIds.has(row.exposure_id) && ackIds.has(row.exposure_id)),
+    {
+      rendered_count: rendered.length,
+      missing_render_or_ack_count: rendered.filter((row) => (
+        !renderIds.has(row.exposure_id) || !ackIds.has(row.exposure_id)
+      )).length,
+    },
+  );
+  addCheck("pressure map has no unterminated browser candidate", unterminated.length === 0, {
+    new_decision_count: decisions.length,
+    unterminated_count: unterminated.length,
+    unterminated_statuses: unterminated.map((row) => row.decision_status).sort(),
+  });
+  return browserProven.map((row) => row.exposure_id);
+}
+
+async function runPressureMapPath(page, token, beforeExport) {
   const pressureDeadlineTitle = `${prefix} pressure map deadline`;
   const pressureBlockTitle = `${prefix} pressure recovery block`;
   const pressureMapPattern = `${apiOrigin.replace(/\/$/, "")}/v1/academic/pressure-map**`;
@@ -1701,6 +1779,8 @@ async function runPressureMapPath(page, token) {
     dueMinutes: (3 * 24 * 60) - 30,
   });
   const pressureSnapshot = await apiFetch(token, "/v1/academic/pressure-map?horizon_days=14");
+  await suppressUnrenderedSurfaceProbe(token, pressureSnapshot, "pressure map setup probe");
+  const browserExposureIds = await assertPressureMapBrowserRender(token, beforeExport);
   const seededPressureItem = Array.isArray(pressureSnapshot.items)
     ? pressureSnapshot.items.find((item) => item.obligation_id === pressureDeadline.deadline_id)
     : null;
@@ -1728,7 +1808,7 @@ async function runPressureMapPath(page, token) {
       addIssue("pressure map commit path skipped because backend recovery nudges are gated", {
         hint: "rerun with --force-pressure-recovery to exercise the browser commit seam against public createTask",
       });
-      return;
+      return { exposureIds: browserExposureIds };
     }
     addIssue("pressure map recovery options unavailable; using browser-only recovery fixture for commit seam coverage", {
       warnings: pressureSnapshot.warnings,
@@ -1737,6 +1817,8 @@ async function runPressureMapPath(page, token) {
     pressureMapRouteHandler = async (route) => {
       const body = {
         ...pressureSnapshot,
+        exposure_id: null,
+        render_snapshot: null,
         recovery_options: [
           {
             action: "create_plan",
@@ -1873,6 +1955,7 @@ async function runPressureMapPath(page, token) {
       await page.unroute(pressureMapPattern, pressureMapRouteHandler).catch(() => {});
     }
   }
+  return { exposureIds: browserExposureIds };
 }
 
 async function runTimerPath(page, token, task) {
@@ -2490,20 +2573,16 @@ async function runAnalyticsAndExposureChecks(page, token, beforeExport) {
   }
 
   const pressure = await apiFetch(token, "/v1/academic/pressure-map?horizon_days=14");
+  await suppressUnrenderedSurfaceProbe(token, pressure, "pressure map analytics probe");
   addCheck("pressure map carries authority/exposure metadata", Boolean(
     pressure.surface_id === "academic.pressure_map"
     || pressure.exposure_id
-    || pressure.render_id
     || pressure.source_summary
   ), {
     surface_id: pressure.surface_id,
     exposure_id: pressure.exposure_id,
-    render_id: pressure.render_id,
     item_count: Array.isArray(pressure.items) ? pressure.items.length : null,
   });
-  if (pressure.exposure_id) {
-    evidence.exposure_ids.push(pressure.exposure_id);
-  }
 
   const insights = await apiFetch(token, "/v1/analytics/insights");
   const insightText = JSON.stringify(insights).toLowerCase();
@@ -3018,6 +3097,37 @@ async function main() {
       return;
     }
 
+    if (pressureProofOnly) {
+      await goto(page, "/pulse", "pressure-map-browser-proof");
+      const exposureIds = await assertPressureMapBrowserRender(token, beforeExport);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "pressure_map_render_only",
+        proof_status: "passed",
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        exposure_count: exposureIds.length,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
     await routeSweep(page);
     const deadline = await createDeadlineThroughUi(page, token);
     const task = await createTaskThroughUi(page, token, deadline);
@@ -3026,13 +3136,16 @@ async function main() {
     await runNewTaskBranchCoverage(page, token, deadline);
     await runBrainDumpPath(page, token);
     await runBrainDumpBranchCoverage(page, token);
-    await runPressureMapPath(page, token);
+    const pressureEvidence = await runPressureMapPath(page, token, beforeExport);
     const timer = await runTimerPath(page, token, task);
     await runPulseMissedPlanDropPath(page, token);
     await runPulseMissedPlanDonePath(page, token);
     await runTimerSwitchChipPath(page, token);
     const executedTask = timer.task;
     const exposures = await runAnalyticsAndExposureChecks(page, token, beforeExport);
+    for (const exposureId of pressureEvidence.exposureIds) {
+      exposures.exposure_ids.push(exposureId);
+    }
     const notification = await runNotificationPath(page, token, task);
 
     await goto(page, "/calendar", "calendar-after-dogfood");

@@ -18,7 +18,9 @@ param(
 
   [switch]$ProxyApi,
 
-  [switch]$ForcePressureRecovery
+  [switch]$ForcePressureRecovery,
+
+  [switch]$PressureProofOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -128,6 +130,9 @@ try {
   }
   if ([bool]$ForcePressureRecovery) {
     $args += @("--force-pressure-recovery", "true")
+  }
+  if ([bool]$PressureProofOnly) {
+    $args += "--pressure-proof-only"
   }
 
   node @args
