@@ -1,5 +1,7 @@
 """OpenClaw operator mirror for user notification queue events."""
+from concurrent.futures import ThreadPoolExecutor
 import json
+from threading import Barrier, Lock
 from uuid import uuid4
 
 from app.db.models import (
@@ -197,6 +199,17 @@ def test_web_channel_preserves_operator_alerts_for_openclaw(monkeypatch):
         def delete(self, _key):
             self.items = []
 
+        def lrem(self, _key, count, value):
+            removed = 0
+            kept = []
+            for item in self.items:
+                if item == value and (count == 0 or removed < count):
+                    removed += 1
+                else:
+                    kept.append(item)
+            self.items = kept
+            return removed
+
         def rpush(self, key, value):
             self.rpushed.append((key, value))
             self.items.append(value)
@@ -310,10 +323,67 @@ class _LifecycleRedis:
     def delete(self, _key):
         self.items = []
 
+    def lrem(self, _key, count, value):
+        removed = 0
+        kept = []
+        for item in self.items:
+            if item == value and (count == 0 or removed < count):
+                removed += 1
+            else:
+                kept.append(item)
+        self.items = kept
+        return removed
+
 
 class _LifecycleRedisClient:
     def __init__(self, redis):
         self.client = redis
+
+
+def test_concurrent_terminal_acks_do_not_resurrect_sibling(monkeypatch):
+    class ConcurrentRedis(_LifecycleRedis):
+        def __init__(self):
+            super().__init__()
+            self.read_barrier = Barrier(2)
+            self.lock = Lock()
+
+        def lrange(self, _key, _start, _end):
+            with self.lock:
+                snapshot = list(self.items)
+            self.read_barrier.wait(timeout=2)
+            return snapshot
+
+        def lrem(self, _key, count, value):
+            with self.lock:
+                return super().lrem(_key, count, value)
+
+    redis = ConcurrentRedis()
+    payloads = [
+        {"notification_id": "rendered-id", "type": "resume_prediction"},
+        {"notification_id": "lost-id", "type": "resume_prediction"},
+    ]
+    for payload in payloads:
+        redis.rpush("notifications:pending:7", json.dumps(payload, sort_keys=True))
+
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+
+    def acknowledge(notification_id, event_type):
+        return notification_queue.ack_user_notifications(
+            7,
+            [notification_id],
+            event_type=event_type,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        rendered = pool.submit(acknowledge, "rendered-id", "rendered")
+        lost = pool.submit(acknowledge, "lost-id", "lost_unrendered")
+        assert sorted([rendered.result(), lost.result()]) == [1, 1]
+
+    assert redis.items == []
 
 
 def test_web_pending_reserves_and_render_ack_marks_only_rendered(db, monkeypatch):
