@@ -45,6 +45,7 @@ const prefix = args.get("prefix") || `DOGFOOD ${randomUUID().slice(0, 8)}`;
 const cleanupOnly = args.get("cleanup-only") === "true";
 const archetypeProofOnly = args.get("archetype-proof-only") === "true";
 const pressureProofOnly = args.get("pressure-proof-only") === "true";
+const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
 const forcePressureRecovery = args.get("force-pressure-recovery") === "true";
 const holmesbergCookie = process.env.LYRA_COOKIE_HOLMESBERG
@@ -128,6 +129,43 @@ function missingSyntheticDeadlineSuggestionExposures(beforeExport, afterExport) 
     .filter((row) => !ackIds.has(row.exposure_id))
     .filter((row) => !suppressionIds.has(row.exposure_id))
     .sort((a, b) => String(exposureSortTime(b)).localeCompare(String(exposureSortTime(a))));
+}
+
+const STOPWATCH_OUTPUT_TEMPLATES = new Set([
+  "micro_mirror",
+  "calibration_nudge",
+]);
+
+function newStopwatchOutputDecisions(beforeExport, afterExport, taskId = null) {
+  const beforeIds = new Set(
+    rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id),
+  );
+  return rows(afterExport, "exposure_decision_events")
+    .filter((row) => !beforeIds.has(row.exposure_id))
+    .filter((row) => row.trigger_source === "stopwatch.stop")
+    .filter((row) => STOPWATCH_OUTPUT_TEMPLATES.has(row.content_template_id))
+    .filter((row) => !taskId || row.task_id === taskId)
+    .sort((a, b) => String(exposureSortTime(b)).localeCompare(String(exposureSortTime(a))));
+}
+
+function missingSyntheticStopwatchOutputExposures(beforeExport, afterExport) {
+  const renderIds = new Set(
+    rows(afterExport, "exposure_render_events").map((row) => row.exposure_id),
+  );
+  const ackIds = new Set(
+    rows(afterExport, "exposure_ack_events")
+      .filter((row) => row.event_type === "render")
+      .map((row) => row.exposure_id),
+  );
+  const suppressionIds = new Set(
+    rows(afterExport, "suppression_events").map((row) => row.exposure_id),
+  );
+  return newStopwatchOutputDecisions(beforeExport, afterExport)
+    .filter((row) => row.task_id && cleanup.tasks.has(row.task_id))
+    .filter((row) => row.decision_status === "reserved")
+    .filter((row) => !renderIds.has(row.exposure_id))
+    .filter((row) => !ackIds.has(row.exposure_id))
+    .filter((row) => !suppressionIds.has(row.exposure_id));
 }
 
 async function suppressUnrenderedSurfaceProbe(token, payload, label) {
@@ -2089,6 +2127,93 @@ async function runPressureMapPath(page, token, beforeExport) {
   return { exposureIds: browserExposureIds };
 }
 
+async function assertPulseStopOutputSuppression(token, beforeExport, taskId) {
+  const snapshot = await pollFor(token, "Pulse stop-output suppression evidence", async () => {
+    const exported = await apiFetch(token, "/v1/users/me/export");
+    const decisions = newStopwatchOutputDecisions(beforeExport, exported, taskId);
+    return decisions.length > 0 ? { exported, decisions } : null;
+  }, 12_000, 750);
+  if (!snapshot) {
+    addGated(
+      "Pulse stop-output suppression browser proof",
+      "the stopped task produced no eligible micro-mirror or calibration candidate",
+    );
+    return [];
+  }
+
+  const { exported, decisions } = snapshot;
+  const renderIds = new Set(
+    rows(exported, "exposure_render_events").map((row) => row.exposure_id),
+  );
+  const ackIds = new Set(
+    rows(exported, "exposure_ack_events")
+      .filter((row) => row.event_type === "render")
+      .map((row) => row.exposure_id),
+  );
+  const suppressionByExposure = new Map(
+    rows(exported, "suppression_events").map((row) => [row.exposure_id, row]),
+  );
+  const clientSuppressed = decisions.filter((row) => (
+    suppressionByExposure.get(row.exposure_id)?.suppression_reason
+      === "client_surface_unavailable"
+  ));
+
+  addCheck("Pulse stop outputs never fabricate browser render or acknowledgement", decisions.every((row) => (
+    !renderIds.has(row.exposure_id) && !ackIds.has(row.exposure_id)
+  )), {
+    decisions: decisions.map((row) => ({
+      exposure_id: row.exposure_id,
+      content_template_id: row.content_template_id,
+      decision_status: row.decision_status,
+      randomization_arm: row.randomization_arm,
+    })),
+    rendered_ids: decisions.filter((row) => renderIds.has(row.exposure_id)).map((row) => row.exposure_id),
+    acked_ids: decisions.filter((row) => ackIds.has(row.exposure_id)).map((row) => row.exposure_id),
+  });
+  addCheck("Pulse stop outputs terminate as explicit suppression", decisions.every((row) => (
+    row.decision_status === "suppressed" && suppressionByExposure.has(row.exposure_id)
+  )), {
+    decisions: decisions.map((row) => ({
+      exposure_id: row.exposure_id,
+      content_template_id: row.content_template_id,
+      decision_status: row.decision_status,
+    })),
+    suppressions: decisions.map((row) => {
+      const suppression = suppressionByExposure.get(row.exposure_id);
+      return suppression ? {
+        exposure_id: suppression.exposure_id,
+        suppression_reason: suppression.suppression_reason,
+      } : null;
+    }),
+  });
+
+  if (clientSuppressed.length === 0) {
+    addGated(
+      "Pulse client-surface-unavailable suppression branch",
+      "Rule 11 or output eligibility suppressed every stopwatch output before client delivery",
+    );
+  } else {
+    const legacyRows = rows(exported, "reflection_view_logs");
+    addCheck("Pulse hidden stop outputs remain unviewed in the legacy adapter", clientSuppressed.every((decision) => (
+      legacyRows.some((row) => (
+        row.task_id === taskId
+        && row.reflection_type === decision.content_template_id
+        && !row.viewed_at
+      ))
+    )), {
+      task_id: taskId,
+      exposure_ids: clientSuppressed.map((row) => row.exposure_id),
+    });
+  }
+
+  for (const decision of decisions) {
+    if (suppressionByExposure.has(decision.exposure_id)) {
+      cleanup.exposureSuppressions.add(decision.exposure_id);
+    }
+  }
+  return decisions.map((row) => row.exposure_id);
+}
+
 async function runTimerPath(page, token, task) {
   await goto(page, "/pulse", "pulse-before-timer");
   let focus = page.getByTestId("pulse-focus-card").first();
@@ -2212,6 +2337,8 @@ async function runTimerPath(page, token, task) {
   addCheck("pulse re-entry pick-up resumes paused session", Boolean(status.active && !status.paused), status);
   addCheck("timer resume clears paused flag", Boolean(status.active && !status.paused), status);
 
+  const beforeStopOutputExport = await apiFetch(token, "/v1/users/me/export");
+
   await clickAny(page, "stop session", [
     () => focus.getByTestId("focus-stop"),
     () => focus.getByRole("button", { name: /^Stop$/i }),
@@ -2248,6 +2375,11 @@ async function runTimerPath(page, token, task) {
   await page.waitForTimeout(2_000);
   status = await apiFetch(token, "/v1/stopwatch/status");
   addCheck("timer stop clears active session", !status.active, status);
+  await assertPulseStopOutputSuppression(
+    token,
+    beforeStopOutputExport,
+    task.task_id,
+  );
   const refreshed = await findTaskByTitle(token, task.title);
   addCheck("timer stop writes execution delta fields", Boolean(
     refreshed
@@ -2260,6 +2392,183 @@ async function runTimerPath(page, token, task) {
   ), refreshed);
   await screenshot(page, "pulse-after-timer-stop");
   return { task: refreshed, sessionId };
+}
+
+async function submitTodayStopDialog(page, dialog, buttonName, label) {
+  const responsePromise = page.waitForResponse(
+    (response) => response.url().includes("/v1/stopwatch/stop"),
+    { timeout: 15_000 },
+  ).catch((error) => ({
+    __missing: true,
+    message: String(error?.message || error).split("\n")[0],
+  }));
+  await clickAny(page, label, [
+    () => dialog.getByRole("button", { name: buttonName }).first(),
+  ], 10_000);
+  const response = await responsePromise;
+  addCheck(`${label} reaches the canonical stop endpoint`, Boolean(
+    response && !response.__missing && response.status() < 400
+  ), {
+    status: response?.__missing ? null : response.status(),
+    error: response?.__missing ? response.message : null,
+  });
+  return await response.json();
+}
+
+async function runTodayStopOutputRenderPath(page, token) {
+  const beforeExport = await apiFetch(token, "/v1/users/me/export");
+  const title = `${prefix} today stop output`;
+  const created = await createTaskViaApi(token, {
+    title,
+    startMinutes: 12,
+    durationMinutes: 30,
+    category: `dogfood_stop_output_${runKey}`,
+  });
+  const task = await findTaskByTitle(token, title);
+  addCheck("Today stop-output setup creates a canonical task", Boolean(
+    created?.task_id && task?.task_id === created.task_id
+  ), { created, task });
+
+  await apiFetch(token, "/v1/stopwatch/start", {
+    method: "POST",
+    headers: {
+      "X-Idempotency-Key": boundedIdentifier(`today-stop-output-start:${runKey}`),
+    },
+    body: JSON.stringify({
+      task_id: task.task_id,
+      pre_task_readiness: 3,
+    }),
+  });
+
+  const taskDate = dateKey(new Date(task.planned_start_utc || Date.now()));
+  await goto(page, `/today?date=${encodeURIComponent(taskDate)}`, "today-stop-output-proof");
+  await closeBlockingDialog(page, "today stop-output proof");
+  const taskRow = page
+    .locator(`[data-testid="task-row"][data-task-id="${task.task_id}"]`)
+    .first();
+  const taskRowVisible = await taskRow
+    .waitFor({ state: "visible", timeout: 12_000 })
+    .then(() => true)
+    .catch(() => false);
+  addCheck("Today renders the active stop-output proof task", taskRowVisible, {
+    task_id: task.task_id,
+    task_date: taskDate,
+  });
+  await taskRow.locator('button[title="Stop timer"]').click();
+
+  const dialog = page.getByRole("dialog").filter({ hasText: /How was your focus/i }).first();
+  await firstVisible(page, [() => dialog], 8_000, "Today reflection dialog");
+  await dialog.getByRole("button", { name: /Average - some flow/i }).click();
+  await dialog.locator("#pct").fill("100");
+  const scope = dialog.getByRole("button", { name: /Stuck to plan/i }).first();
+  if (await scope.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await scope.click();
+  }
+
+  let stopBody = await submitTodayStopDialog(
+    page,
+    dialog,
+    /^Stop timer$/i,
+    "Today stop-output first submit",
+  );
+  if (stopBody.requires_confirmation) {
+    await firstVisible(page, [
+      () => dialog.getByRole("button", { name: /Confirm early stop/i }).first(),
+    ], 8_000, "Today early-stop confirmation");
+    stopBody = await submitTodayStopDialog(
+      page,
+      dialog,
+      /Confirm early stop/i,
+      "Today stop-output confirmation",
+    );
+  }
+
+  addCheck("Today stop-output path closes the timer", Boolean(
+    stopBody?.task_id === task.task_id && !stopBody.requires_confirmation
+  ), stopBody);
+  const status = await apiFetch(token, "/v1/stopwatch/status");
+  addCheck("Today stop-output proof leaves no active timer", !status.active, status);
+
+  const exposureId = stopBody.micro_mirror_exposure_id || null;
+  if (!exposureId) {
+    const afterControl = await apiFetch(token, "/v1/users/me/export");
+    const decisions = newStopwatchOutputDecisions(beforeExport, afterControl, task.task_id);
+    const renderIds = new Set(
+      rows(afterControl, "exposure_render_events").map((row) => row.exposure_id),
+    );
+    const ackIds = new Set(
+      rows(afterControl, "exposure_ack_events").map((row) => row.exposure_id),
+    );
+    const suppressionIds = new Set(
+      rows(afterControl, "suppression_events").map((row) => row.exposure_id),
+    );
+    addCheck("Today Rule 11 control remains explicit non-render evidence", decisions.length > 0 && decisions.every((row) => (
+      row.decision_status === "suppressed"
+      && suppressionIds.has(row.exposure_id)
+      && !renderIds.has(row.exposure_id)
+      && !ackIds.has(row.exposure_id)
+    )), {
+      decisions: decisions.map((row) => ({
+        exposure_id: row.exposure_id,
+        content_template_id: row.content_template_id,
+        decision_status: row.decision_status,
+        randomization_arm: row.randomization_arm,
+      })),
+    });
+    for (const decision of decisions) cleanup.exposureSuppressions.add(decision.exposure_id);
+    addGated(
+      "Today stopwatch output positive browser render proof",
+      "Rule 11 no-nudge control suppressed the eligible micro-mirror before delivery",
+    );
+    return { task, exposureIds: [] };
+  }
+
+  const toast = page
+    .getByTestId("notification-toast")
+    .filter({ hasText: stopBody.micro_mirror })
+    .first();
+  const toastVisible = await toast
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  addCheck("Today renders the micro-mirror in a real Toast", toastVisible, {
+    exposure_id: exposureId,
+    message: stopBody.micro_mirror,
+  });
+  const evidence = await pollFor(token, "Today stop-output render evidence", async () => {
+    const exported = await apiFetch(token, "/v1/users/me/export");
+    const decision = rows(exported, "exposure_decision_events")
+      .find((row) => row.exposure_id === exposureId);
+    const renders = rows(exported, "exposure_render_events")
+      .filter((row) => row.exposure_id === exposureId);
+    const acks = rows(exported, "exposure_ack_events")
+      .filter((row) => row.exposure_id === exposureId && row.event_type === "render");
+    const legacy = rows(exported, "reflection_view_logs")
+      .find((row) => row.view_id === stopBody.micro_mirror_view_id);
+    return decision?.decision_status === "rendered"
+      && decision?.delivered_at
+      && renders.length === 1
+      && acks.length === 1
+      && legacy?.viewed_at
+      ? { decision, renders, acks, legacy }
+      : null;
+  }, 15_000, 750);
+  addCheck("Today Toast creates exactly one authenticated render and legacy view", Boolean(evidence), evidence ? {
+    exposure_id: exposureId,
+    decision_status: evidence.decision.decision_status,
+    delivered_at_present: Boolean(evidence.decision.delivered_at),
+    render_count: evidence.renders.length,
+    render_surface: evidence.renders[0]?.surface || null,
+    ack_count: evidence.acks.length,
+    legacy_view_id: evidence.legacy.view_id,
+    legacy_viewed_at_present: Boolean(evidence.legacy.viewed_at),
+  } : {
+    exposure_id: exposureId,
+    legacy_view_id: stopBody.micro_mirror_view_id,
+  });
+  await screenshot(page, "today-stop-output-browser-rendered");
+  await toast.getByTestId("notification-toast-dismiss").click().catch(() => {});
+  return { task, exposureIds: [exposureId] };
 }
 
 async function runPulseMissedPlanDropPath(page, token) {
@@ -3115,6 +3424,7 @@ async function cleanupSyntheticExposureDebt(token, beforeExport) {
   const exported = await apiFetch(token, "/v1/users/me/export");
   const creationNudgeCandidates = missingSyntheticCreationNudgeExposures(beforeExport, exported);
   const deadlineSuggestionCandidates = missingSyntheticDeadlineSuggestionExposures(beforeExport, exported);
+  const stopwatchOutputCandidates = missingSyntheticStopwatchOutputExposures(beforeExport, exported);
   addCheck(
     "browser paths leave no unterminated synthetic deadline-suggestion exposures",
     deadlineSuggestionCandidates.length === 0,
@@ -3122,7 +3432,11 @@ async function cleanupSyntheticExposureDebt(token, beforeExport) {
       exposure_ids: deadlineSuggestionCandidates.map((row) => row.exposure_id),
     },
   );
-  const candidates = [...creationNudgeCandidates, ...deadlineSuggestionCandidates];
+  const candidates = [
+    ...creationNudgeCandidates,
+    ...deadlineSuggestionCandidates,
+    ...stopwatchOutputCandidates,
+  ];
   for (const row of candidates) {
     const res = await apiFetch(token, `/v1/exposures/${encodeURIComponent(row.exposure_id)}/ack/suppress`, {
       method: "POST",
@@ -3141,6 +3455,7 @@ async function cleanupSyntheticExposureDebt(token, beforeExport) {
   const after = await apiFetch(token, "/v1/users/me/export");
   const remainingCreationNudges = missingSyntheticCreationNudgeExposures(beforeExport, after);
   const remainingDeadlineSuggestions = missingSyntheticDeadlineSuggestionExposures(beforeExport, after);
+  const remainingStopwatchOutputs = missingSyntheticStopwatchOutputExposures(beforeExport, after);
   addCheck("cleanup leaves no unrendered synthetic creation-nudge exposures", remainingCreationNudges.length === 0, {
     cleaned: candidates.map((row) => row.exposure_id),
     remaining: remainingCreationNudges.map((row) => row.exposure_id),
@@ -3148,6 +3463,10 @@ async function cleanupSyntheticExposureDebt(token, beforeExport) {
   addCheck("cleanup leaves no unrendered synthetic deadline-suggestion exposures", remainingDeadlineSuggestions.length === 0, {
     cleaned: candidates.map((row) => row.exposure_id),
     remaining: remainingDeadlineSuggestions.map((row) => row.exposure_id),
+  });
+  addCheck("cleanup leaves no unterminated synthetic stopwatch-output candidates", remainingStopwatchOutputs.length === 0, {
+    cleaned: stopwatchOutputCandidates.map((row) => row.exposure_id),
+    remaining: remainingStopwatchOutputs.map((row) => row.exposure_id),
   });
 }
 
@@ -3273,6 +3592,36 @@ async function main() {
       return;
     }
 
+    if (stopwatchOutputProofOnly) {
+      const proof = await runTodayStopOutputRenderPath(page, token);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "stopwatch_output_render_only",
+        proof_status: proof.exposureIds.length > 0 ? "passed" : "gated",
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        exposure_count: proof.exposureIds.length,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
     await routeSweep(page);
     const deadline = await createDeadlineThroughUi(page, token);
     const task = await createTaskThroughUi(page, token, deadline);
@@ -3283,12 +3632,16 @@ async function main() {
     await runBrainDumpBranchCoverage(page, token);
     const pressureEvidence = await runPressureMapPath(page, token, beforeExport);
     const timer = await runTimerPath(page, token, task);
+    const stopOutputEvidence = await runTodayStopOutputRenderPath(page, token);
     await runPulseMissedPlanDropPath(page, token);
     await runPulseMissedPlanDonePath(page, token);
     await runTimerSwitchChipPath(page, token);
     const executedTask = timer.task;
     const exposures = await runAnalyticsAndExposureChecks(page, token, beforeExport);
     for (const exposureId of pressureEvidence.exposureIds) {
+      exposures.exposure_ids.push(exposureId);
+    }
+    for (const exposureId of stopOutputEvidence.exposureIds) {
       exposures.exposure_ids.push(exposureId);
     }
     const notification = await runNotificationPath(page, token, task);
