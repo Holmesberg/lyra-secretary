@@ -217,6 +217,17 @@ class _QueueRedis:
     def lrange(self, _key, _start, _end):
         return list(self.items)
 
+    def lrem(self, _key, count, value):
+        removed = 0
+        kept = []
+        for item in self.items:
+            if item == value and (count == 0 or removed < count):
+                removed += 1
+            else:
+                kept.append(item)
+        self.items = kept
+        return removed
+
     def delete(self, _key):
         self.items = []
 
