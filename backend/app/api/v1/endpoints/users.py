@@ -1,12 +1,13 @@
 """User account endpoints (Phase 2): /me, consent, export, data-summary, hard delete."""
 import hashlib
+import json
 import logging
 from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -68,6 +69,19 @@ BUILT_IN_CATEGORIES = [
 ]
 
 router = APIRouter()
+
+
+def _cached_survey_response(
+    redis: RedisClient,
+    key: str,
+    user_id: int,
+) -> Optional[ArchetypeAssignmentOut]:
+    cached = redis.check_idempotency(key, user_id=user_id)
+    if cached is None:
+        return None
+    if redis.is_idempotency_pending(cached):
+        raise HTTPException(status_code=409, detail="idempotency_in_progress")
+    return ArchetypeAssignmentOut(**json.loads(cached))
 
 
 def _current_user(db: Session) -> User:
@@ -154,7 +168,10 @@ def get_me(db: Session = Depends(get_db)):
     latest_assignment = (
         db.query(ArchetypeAssignment)
         .filter(ArchetypeAssignment.user_id == user.user_id)
-        .order_by(ArchetypeAssignment.assigned_at.desc())
+        .order_by(
+            ArchetypeAssignment.assigned_at.desc(),
+            ArchetypeAssignment.assignment_id.desc(),
+        )
         .first()
     )
     has_assignment = latest_assignment is not None
@@ -315,7 +332,9 @@ def delete_google_refresh_token(
 
 @router.post("/users/me/archetype/survey", response_model=ArchetypeAssignmentOut)
 def submit_archetype_survey(
-    body: ArchetypeSurveyIn, db: Session = Depends(get_db)
+    body: ArchetypeSurveyIn,
+    db: Session = Depends(get_db),
+    x_idempotency_key: Optional[str] = Header(None),
 ) -> ArchetypeAssignmentOut:
     """Score the 29-item battery and write an ArchetypeAssignment.
 
@@ -326,55 +345,123 @@ def submit_archetype_survey(
     29-item responses in `raw_responses` for future re-scoring under
     Gate 3/4 weight tuning.
 
-    Idempotent by user: if the user already has an assignment, a new
-    row is added and User.archetype_id updates to the latest. The
-    historical row stays (enables longitudinal study of how archetype
-    assignment drifts across retakes).
+    A user-scoped X-Idempotency-Key makes transport retries return the
+    original response without writing a duplicate assignment. A deliberate
+    retake uses a new key, appends a new row, and updates User.archetype_id;
+    historical rows remain available for longitudinal comparison.
     """
     user = _current_user(db)
 
-    meq_score, chronotype = score_meq(body.meq)
-    bfi_c_score, _ = score_bfi_c(body.bfi_c)
-    bscs_score, _ = score_bscs(body.bscs)
-    gp_score, _ = score_gp(body.gp)
-    discipline_z = compute_discipline_z(bfi_c_score, bscs_score, gp_score)
-    discipline = classify_discipline(discipline_z)
-    archetype_id = assign_archetype(chronotype, discipline)
+    idempotency_key = (
+        f"archetype:survey:{x_idempotency_key.strip()}"
+        if x_idempotency_key and x_idempotency_key.strip()
+        else None
+    )
+    idempotency_cache: Optional[RedisClient] = None
+    idempotency_reserved = False
+    if idempotency_key is not None:
+        try:
+            idempotency_cache = RedisClient()
+            cached = _cached_survey_response(
+                idempotency_cache,
+                idempotency_key,
+                user.user_id,
+            )
+            if cached is not None:
+                return cached
+            idempotency_reserved = idempotency_cache.reserve_idempotency(
+                idempotency_key,
+                ttl_seconds=60,
+                user_id=user.user_id,
+            )
+            if not idempotency_reserved:
+                cached = _cached_survey_response(
+                    idempotency_cache,
+                    idempotency_key,
+                    user.user_id,
+                )
+                if cached is not None:
+                    return cached
+                raise HTTPException(
+                    status_code=409,
+                    detail="idempotency_in_progress",
+                )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("survey idempotency unavailable: %s", exc)
+            raise HTTPException(
+                status_code=503,
+                detail="survey_submission_temporarily_unavailable",
+            ) from exc
 
-    assignment = ArchetypeAssignment(
-        user_id=user.user_id,
+    try:
+        meq_score, chronotype = score_meq(body.meq)
+        bfi_c_score, _ = score_bfi_c(body.bfi_c)
+        bscs_score, _ = score_bscs(body.bscs)
+        gp_score, _ = score_gp(body.gp)
+        discipline_z = compute_discipline_z(bfi_c_score, bscs_score, gp_score)
+        discipline = classify_discipline(discipline_z)
+        archetype_id = assign_archetype(chronotype, discipline)
+
+        assignment = ArchetypeAssignment(
+            user_id=user.user_id,
+            archetype_id=archetype_id,
+            meq_score=meq_score,
+            bfi_c_score=bfi_c_score,
+            bscs_score=bscs_score,
+            gp_score=gp_score,
+            chronotype=chronotype,
+            discipline_z=round(discipline_z, 3),
+            assigned_at=datetime.utcnow(),
+            completed=True,
+            skipped_at=None,
+            raw_responses={
+                "meq": body.meq,
+                "bfi_c": body.bfi_c,
+                "bscs": body.bscs,
+                "gp": body.gp,
+            },
+        )
+        db.add(assignment)
+        user.archetype_id = archetype_id
+        db.commit()
+    except Exception:
+        db.rollback()
+        if (
+            idempotency_cache is not None
+            and idempotency_key is not None
+            and idempotency_reserved
+        ):
+            idempotency_cache.clear_idempotency(
+                idempotency_key,
+                user_id=user.user_id,
+            )
+        raise
+
+    response = ArchetypeAssignmentOut(
         archetype_id=archetype_id,
+        completed=True,
+        chronotype=chronotype,
+        discipline_z=round(discipline_z, 3),
         meq_score=meq_score,
         bfi_c_score=bfi_c_score,
         bscs_score=bscs_score,
         gp_score=gp_score,
-        chronotype=chronotype,
-        discipline_z=round(discipline_z, 3),
-        assigned_at=datetime.utcnow(),
-        completed=True,
-        skipped_at=None,
-        raw_responses={
-            "meq": body.meq,
-            "bfi_c": body.bfi_c,
-            "bscs": body.bscs,
-            "gp": body.gp,
-        },
     )
-    db.add(assignment)
-    user.archetype_id = archetype_id
-    db.commit()
+    if idempotency_cache is not None and idempotency_key is not None:
+        try:
+            idempotency_cache.set_idempotency(
+                idempotency_key,
+                response.model_dump_json(),
+                ttl_seconds=60,
+                user_id=user.user_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("survey idempotency store unavailable: %s", exc)
     invalidate_me(user.user_id)  # archetype_id, archetype_*_at flip
 
-    return ArchetypeAssignmentOut(
-        archetype_id=archetype_id,
-        completed=True,
-        chronotype=chronotype,
-        discipline_z=round(discipline_z, 3),
-        meq_score=meq_score,
-        bfi_c_score=bfi_c_score,
-        bscs_score=bscs_score,
-        gp_score=gp_score,
-    )
+    return response
 
 
 @router.post("/users/me/archetype/skip", response_model=ArchetypeAssignmentOut)
@@ -393,6 +480,10 @@ def skip_archetype_survey(db: Session = Depends(get_db)) -> ArchetypeAssignmentO
     existing = (
         db.query(ArchetypeAssignment)
         .filter(ArchetypeAssignment.user_id == user.user_id)
+        .order_by(
+            ArchetypeAssignment.assigned_at.desc(),
+            ArchetypeAssignment.assignment_id.desc(),
+        )
         .first()
     )
     if existing is not None and existing.skipped_at is not None:

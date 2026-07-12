@@ -26,6 +26,7 @@
  * Tangney 2004 BSCS indices {2,3,4,5,7,9,10,12,13}.
  */
 import { api } from "./api";
+import { idempotencyHeaders } from "./tasks/idempotency";
 
 export type Instrument = "meq" | "bfi_c" | "bscs" | "gp";
 
@@ -306,10 +307,12 @@ export interface ArchetypeAssignmentResult {
 }
 
 export async function submitArchetypeSurvey(
-  payload: ArchetypeSurveyPayload
+  payload: ArchetypeSurveyPayload,
+  idempotencyKey?: string
 ): Promise<ArchetypeAssignmentResult> {
   return api<ArchetypeAssignmentResult>("/v1/users/me/archetype/survey", {
     method: "POST",
+    headers: idempotencyHeaders("archetype-survey", idempotencyKey),
     body: JSON.stringify(payload),
   });
 }

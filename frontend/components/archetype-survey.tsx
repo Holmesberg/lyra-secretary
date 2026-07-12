@@ -33,7 +33,7 @@
  * (does survey exposure correlate with retention?). Not wired in v1;
  * the survey is submission-telemetered only.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import {
@@ -97,6 +97,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [confirmSkip, setConfirmSkip] = useState(false);
+  const submitIdempotencyKeyRef = useRef<string | null>(null);
 
   // After a successful survey submit / skip, the user's archetype_id
   // changes — which means every bias_factor lookup needs a fresh blend
@@ -124,6 +125,17 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
     setAnswers((a) => ({ ...a, [itemId]: value }));
   }
 
+  function submitIdempotencyKey() {
+    if (!submitIdempotencyKeyRef.current) {
+      const random =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      submitIdempotencyKeyRef.current = `survey:${random}`;
+    }
+    return submitIdempotencyKeyRef.current;
+  }
+
   async function handleNext() {
     if (!isFinalSection) {
       setSectionIdx((i) => i + 1);
@@ -133,12 +145,15 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
     setBusy(true);
     setErr(null);
     try {
-      await submitArchetypeSurvey({
-        meq: MEQ_ITEMS.map((it) => answers[it.id]),
-        bfi_c: BFI_C_ITEMS.map((it) => answers[it.id]),
-        bscs: BSCS_ITEMS.map((it) => answers[it.id]),
-        gp: GP_ITEMS.map((it) => answers[it.id]),
-      });
+      await submitArchetypeSurvey(
+        {
+          meq: MEQ_ITEMS.map((it) => answers[it.id]),
+          bfi_c: BFI_C_ITEMS.map((it) => answers[it.id]),
+          bscs: BSCS_ITEMS.map((it) => answers[it.id]),
+          gp: GP_ITEMS.map((it) => answers[it.id]),
+        },
+        submitIdempotencyKey(),
+      );
       invalidateArchetypeDependent();
       onFinished();
     } catch (e) {
