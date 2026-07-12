@@ -48,6 +48,7 @@ import {
   getAcademicPressureMap,
   type AcademicPressureMapResponse,
 } from "@/lib/academic";
+import { registerPressureMapCandidate } from "@/lib/pressure-map-exposure";
 import {
   focusMinutesToday,
   winsToday,
@@ -134,7 +135,11 @@ export default function PulsePage() {
   });
   const pressureQ = useQuery<AcademicPressureMapResponse>({
     queryKey: queryKeys.pressureMapHorizon(pressureHorizonDays),
-    queryFn: () => getAcademicPressureMap(pressureHorizonDays),
+    queryFn: async () => {
+      const pressure = await getAcademicPressureMap(pressureHorizonDays);
+      registerPressureMapCandidate(pressure);
+      return pressure;
+    },
     staleTime: 60_000,
   });
 

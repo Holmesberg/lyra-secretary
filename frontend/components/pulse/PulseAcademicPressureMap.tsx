@@ -10,11 +10,11 @@ import {
   ShieldQuestion,
   X,
 } from "lucide-react";
-import { ackExposureRender } from "@/lib/api";
 import type {
   AcademicPressureMapResponse,
   AcademicRecoveryOption,
 } from "@/lib/academic";
+import { ackVisiblePressureMap } from "@/lib/pressure-map-exposure";
 import { type TaskRow } from "@/lib/tasks";
 import {
   PRESSURE_HORIZON_OPTIONS,
@@ -246,12 +246,8 @@ export function PulseAcademicPressureMap({
   taskEvidence = [],
 }: PulseAcademicPressureMapProps) {
   useEffect(() => {
-    if (pressure?.exposure_id && pressure.render_snapshot) {
-      void ackExposureRender(pressure.exposure_id, {
-        surfaceId: "academic.pressure_map",
-        clientEventId: `academic.pressure_map:${pressure.exposure_id}`,
-        contentSnapshot: pressure.render_snapshot,
-      });
+    if (pressure) {
+      ackVisiblePressureMap(pressure);
     }
   }, [pressure]);
 
