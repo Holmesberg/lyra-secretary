@@ -252,18 +252,12 @@ def ack_user_notifications(
     key = _queue_key(int(user_id))
     raw_items = list(redis.client.lrange(key, 0, -1))
     removed = 0
-    preserved: list[str] = []
-    for raw in raw_items:
-        payload = json.loads(raw)
-        payload_id = _payload_id(payload)
-        if terminal_remove and payload_id in wanted and _web_visible(payload):
-            removed += 1
-            continue
-        preserved.append(
-            raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
-        )
-    if removed:
-        redis.client.delete(key)
-        for raw in preserved:
-            redis.client.rpush(key, raw)
+    if terminal_remove:
+        for raw in raw_items:
+            payload = json.loads(raw)
+            payload_id = _payload_id(payload)
+            if payload_id in wanted and _web_visible(payload):
+                # LREM is atomic for each payload. Rewriting the whole list lets
+                # concurrent render/lost ACKs restore each other's stale copy.
+                removed += int(redis.client.lrem(key, 0, raw) or 0)
     return removed
