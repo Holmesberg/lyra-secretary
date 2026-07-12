@@ -185,3 +185,24 @@ export async function ackExposureSuppression(
     return false;
   }
 }
+
+export function queueExposureSuppressionBeacon(
+  exposureId: string | null | undefined,
+): boolean {
+  if (
+    !exposureId ||
+    typeof navigator === "undefined" ||
+    typeof navigator.sendBeacon !== "function"
+  ) {
+    return false;
+  }
+  try {
+    const body = new Blob(
+      [JSON.stringify({ exposure_id: exposureId })],
+      { type: "application/json" },
+    );
+    return navigator.sendBeacon("/api/exposures/suppress", body);
+  } catch {
+    return false;
+  }
+}

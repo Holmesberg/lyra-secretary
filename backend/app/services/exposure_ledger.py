@@ -46,8 +46,10 @@ ExposureTerminalState = Literal[
 ]
 
 NON_ACTIONABLE_MISSING_RENDER_STATUSES = frozenset(
-    {"suppressed", "delayed", "failed", "queued"}
+    {"suppressed", "delayed", "failed", "queued", "reserved"}
 )
+
+UNCLAIMED_DECISION_STATUSES = frozenset({"reserved"})
 
 LEGACY_REFLECTION_CATEGORY = {
     "micro_mirror": "behavioral_insight",
@@ -621,6 +623,8 @@ def _bulk_v0_state_dirty(
     categories: dict[str, int],
 ) -> bool:
     for decision in decisions:
+        if decision.decision_status in UNCLAIMED_DECISION_STATUSES:
+            continue
         if decision.exposure_category not in categories:
             continue
         horizon = categories[decision.exposure_category]
@@ -756,6 +760,8 @@ def _check_v0_events(
 
     suppression_only = False
     for decision in decisions:
+        if decision.decision_status in UNCLAIMED_DECISION_STATUSES:
+            continue
         horizon = categories[decision.exposure_category]
         window_start = event_time - timedelta(minutes=horizon)
         if decision.eligible_at < window_start:

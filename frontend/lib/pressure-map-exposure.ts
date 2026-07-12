@@ -1,6 +1,10 @@
 "use client";
 
-import { ackExposureRender, ackExposureSuppression } from "@/lib/api";
+import {
+  ackExposureRender,
+  ackExposureSuppression,
+  queueExposureSuppressionBeacon,
+} from "@/lib/api";
 import type { AcademicPressureMapResponse } from "@/lib/academic";
 
 const DISCARD_DELAY_MS = 3_000;
@@ -74,7 +78,10 @@ function installPageLifecycleListener() {
       if (renderAttempted.has(exposureId) && pressure.render_snapshot) {
         ackVisiblePressureMap(pressure, 0, true);
       } else {
-        suppressDiscardedPressureMap(exposureId, 0, true);
+        const queued = queueExposureSuppressionBeacon(exposureId);
+        if (!queued) {
+          suppressDiscardedPressureMap(exposureId, 0, true);
+        }
       }
     }
   });

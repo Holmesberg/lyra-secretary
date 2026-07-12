@@ -105,17 +105,16 @@ def get_academic_pressure_map(
         spec = get_output_surface_spec(surface_id)
         authority = authority_for_surface(spec).as_dict()
         render_snapshot = _pressure_map_exposure_snapshot(payload)
-        delivered_at = now_utc()
+        eligible_at = now_utc()
         decision = create_output_surface_decision(
             db,
             surface_id=surface_id,
             user_id=uid,
-            decision_status="delivered",
-            eligible_at=delivered_at,
+            decision_status="reserved",
+            eligible_at=eligible_at,
             content_template_id="academic_pressure_map",
             initiative="system",
             trigger_source="academic.pressure_map",
-            delivered_at=delivered_at,
         )
         db.commit()
     except Exception:
