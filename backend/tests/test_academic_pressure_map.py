@@ -151,7 +151,8 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
         .filter(ExposureDecisionEvent.exposure_id == data["exposure_id"])
         .one()
     )
-    assert decision.decision_status == "delivered"
+    assert decision.decision_status == "reserved"
+    assert decision.delivered_at is None
     assert decision.exposure_category == "scheduling_suggestion"
     assert (
         db.query(ExposureRenderEvent)
@@ -199,6 +200,7 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     )
     assert decision.user_id == alice.user_id
     assert decision.decision_status == "rendered"
+    assert decision.delivered_at is not None
     assert render.surface == "academic.pressure_map"
     assert ack.user_id == alice.user_id
     assert "Algorithms Quiz 2" not in render.content_snapshot

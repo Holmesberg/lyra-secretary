@@ -85,6 +85,11 @@ def test_exposure_terminal_classifier_preserves_diagnostic_boundaries():
         has_render=False,
         has_suppression=False,
     )
+    reserved = classify_exposure_terminal_state(
+        decision_status="reserved",
+        has_render=False,
+        has_suppression=False,
+    )
     actionable = classify_exposure_terminal_state(
         decision_status="shown",
         has_render=False,
@@ -110,6 +115,10 @@ def test_exposure_terminal_classifier_preserves_diagnostic_boundaries():
     assert failed.state == "non_actionable_without_render"
     assert failed.has_terminal_event is False
     assert failed.is_actionable_missing_render is False
+
+    assert reserved.state == "non_actionable_without_render"
+    assert reserved.has_terminal_event is False
+    assert reserved.is_actionable_missing_render is False
 
     assert actionable.state == "actionable_missing_render"
     assert actionable.has_terminal_event is False
@@ -441,6 +450,14 @@ def test_bulk_baseline_clean_task_ids_matches_single_row_helper(db):
         created_at=exposed_start,
     )
     db.add_all([clean_task, exposed_task])
+    record_decision(
+        db,
+        user_id=user.user_id,
+        eligible_at=clean_start - timedelta(minutes=30),
+        decision_status="reserved",
+        exposure_category="scheduling_suggestion",
+        content_template_id="academic-pressure-map",
+    )
     decision = record_decision(
         db,
         user_id=user.user_id,
