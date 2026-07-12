@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getInsights,
   type Insight,
+  type InsightsResponse,
   type SuppressedInsightGenerator,
 } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,44 @@ function ConfidenceBar({
 }
 
 const CONFIDENCE_THRESHOLDS: Record<string, number> = { low: 6, medium: 15 };
+const INSIGHTS_RENDER_ACK_RETRY_MS = [250, 750, 1500, 3000, 6000];
+const pendingInsightsRenderAcks = new Set<string>();
+const acknowledgedInsightsRenders = new Set<string>();
+
+function acknowledgeInsightsRender(data: InsightsResponse, attempt = 0) {
+  const exposureId = data.exposure_id;
+  const snapshot = data.render_snapshot;
+  if (
+    !data.ready ||
+    !exposureId ||
+    !snapshot ||
+    pendingInsightsRenderAcks.has(exposureId) ||
+    acknowledgedInsightsRenders.has(exposureId)
+  ) {
+    return;
+  }
+
+  pendingInsightsRenderAcks.add(exposureId);
+  void ackExposureRender(exposureId, {
+    surfaceId: data.surface_id || "analytics.insights",
+    clientEventId: `analytics.insights:${exposureId}`,
+    contentSnapshot: snapshot,
+    keepalive: true,
+  })
+    .then((ok) => {
+      if (ok) {
+        acknowledgedInsightsRenders.add(exposureId);
+        return;
+      }
+      const delay = INSIGHTS_RENDER_ACK_RETRY_MS[attempt];
+      if (delay !== undefined) {
+        globalThis.setTimeout(() => {
+          acknowledgeInsightsRender(data, attempt + 1);
+        }, delay);
+      }
+    })
+    .finally(() => pendingInsightsRenderAcks.delete(exposureId));
+}
 
 function FeaturedCard({ insight }: { insight: Insight }) {
   const label = insight.title ?? ID_LABELS[insight.id] ?? insight.id;
@@ -201,10 +240,10 @@ export default function InsightsPage() {
   });
 
   useEffect(() => {
-    if (data?.ready && data.exposure_id) {
-      void ackExposureRender(data.exposure_id);
+    if (data) {
+      acknowledgeInsightsRender(data);
     }
-  }, [data?.ready, data?.exposure_id]);
+  }, [data]);
 
   if (isLoading) {
     return (

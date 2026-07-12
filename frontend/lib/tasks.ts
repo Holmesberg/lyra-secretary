@@ -127,7 +127,7 @@ export interface InsightsResponse {
   fallback_mode?: string;
   legacy_adapter?: string | null;
   exposure_id?: string | null;
-  render_id?: string | null;
+  render_snapshot?: Record<string, unknown> | null;
   suppressed_generators?: SuppressedInsightGenerator[];
   message?: string;
   reopen_after_clean_sessions?: number;

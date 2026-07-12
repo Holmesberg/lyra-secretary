@@ -73,7 +73,6 @@ from app.services.output_surfaces import (
     RULE11_POLICY_VERSION,
     RULE11_SUPPRESSION_REASON,
     create_output_surface_decision,
-    emit_surface_render,
     emit_surface_suppression,
     get_output_surface_spec,
     rule11_no_nudge_control_active,
@@ -368,23 +367,23 @@ def get_insights(
             else:
                 if rule11_control_active and reopen_gate:
                     arm = RULE11_ACTIVE_ARM
-                emitted = emit_surface_render(
+                render_snapshot = _insights_exposure_snapshot(
+                    response_payload,
+                    candidates,
+                )
+                decision = create_output_surface_decision(
                     db,
                     surface_id=surface_id,
                     user_id=uid,
-                    content_snapshot=_insights_exposure_snapshot(
-                        response_payload,
-                        candidates,
-                    ),
+                    decision_status="reserved",
                     eligible_at=eligible_at,
-                    rendered_at=eligible_at,
                     content_template_id=ANALYTICS_INSIGHTS_TEMPLATE_ID,
                     trigger_source=ANALYTICS_INSIGHTS_SURFACE_ID,
                     randomization_arm=arm,
                     randomization_policy_version=policy,
                 )
-                response_payload["exposure_id"] = emitted["exposure_id"]
-                response_payload["render_id"] = emitted["render_id"]
+                response_payload["exposure_id"] = decision.exposure_id
+                response_payload["render_snapshot"] = render_snapshot
         else:
             emit_surface_suppression(
                 db,
