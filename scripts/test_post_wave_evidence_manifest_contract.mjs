@@ -109,7 +109,9 @@ for (const gate of [
 
 assert(
   insightsDogfood.includes('args.get("proxy-api") === "true"') &&
-    insightsDogfood.includes("installApiProxy(context, routeHandler)"),
+    insightsDogfood.includes(
+      "installApiProxy(context, routeHandler, renderAckRouteHandler)"
+    ),
   "Insights dogfood must make local-current API proxying explicit"
 );
 assert(
