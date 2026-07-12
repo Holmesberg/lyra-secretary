@@ -19478,3 +19478,73 @@ Issue state and rollback:
 - Revert `a3c4a37` to restore the old Compose/startup topology, recognizing
   that this reopens automatic public reload from checkout edits. Revert
   `9324528` independently to remove only the mechanical gate.
+
+## 2026-07-12 - Pressure Map Action Affordance
+
+Seam preflight:
+
+- Seam name: `pressure-map-action-affordance`.
+- Authority class: frontend product presentation, followed by a separate
+  browser-verifier commit.
+- Documented behavior preserved: 1/7/14-day horizons, read-only orientation,
+  safety-gated recovery emission, editable preview, dismiss-without-write,
+  explicit lock-in, canonical TaskManager creation, and cleanup.
+- Expected write change: none. No action, endpoint, mutation owner, threshold,
+  recovery option, or safety flag changed.
+- Trigger: issue `#219` records that 9px low-contrast controls and the label
+  `Preview` did not provide clear click affordance in the narrow Pulse panel.
+
+Product and verifier changes:
+
+- Commit `4779f05` gives each horizon a stable 48x32 segmented-control target
+  with `aria-pressed`, upgrades the planning command to a high-contrast
+  129x32 `Preview plan` button, and gives the preview row's Included/Excluded
+  control an explicit pressed state. Routing and writes are unchanged.
+- Commit `75e7354` extends the existing focused Pressure Map path with desktop
+  and mobile target-size, label, pressed-state, and viewport-clipping checks.
+  It also closes a verifier gap by requiring cleanup to prove zero active
+  prefixed task/deadline rows rather than merely sending cleanup requests.
+
+Focused browser, affected-row, and cleanup proof:
+
+- Local production build ran at `http://localhost:3002` without modifying the
+  isolated hosted-public frontend artifact. Frontend typecheck and production
+  build passed.
+- First artifact
+  `tmp/browser-product-loop/wave5-pressure-affordance-local-current/result.json`
+  stopped before the UI path because the verifier proxied the hosted API while
+  the local build was compiled for `http://localhost:8000`. The lone setup
+  candidate was suppressed and the synthetic deadline was cleaned. This was a
+  verifier/topology invocation error, not a product failure.
+- Corrected focused artifact
+  `tmp/browser-product-loop/wave5-pressure-affordance-local-current-b/result.json`
+  passed browser-owned Pressure Map render, explicit action affordance,
+  desktop/mobile sizing, dismiss-without-write, editable preview, double-lock
+  idempotency, canonical deadline binding/provenance, Calendar visibility, and
+  cleanup.
+- Screenshots
+  `pressure-map-affordance-desktop.png`,
+  `pressure-map-affordance-mobile.png`, and `pressure-map-preview.png` show no
+  overlap or clipping and keep diagnostic text visually distinct from the
+  primary command.
+- Cleanup-only artifact
+  `tmp/browser-product-loop/wave5-pressure-affordance-cleanup-local-current-b/result.json`
+  proves zero active prefixed tasks, zero active prefixed deadlines, and no
+  active timer. The terminal synthetic deadline remains explicitly voided.
+- Recovery-option emission was fixture-enabled and labeled because the normal
+  public safety configuration remains read-only. Task creation and cleanup
+  still used the real canonical backend; this is not cited as hosted-public
+  availability proof.
+- Exact-head CI for `75e7354164fe17a55d320f5e260f7730c2aa3061` passed:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29185773284`.
+
+Issue, deployment state, and rollback:
+
+- Issue `#219` closes with the product commit, screenshots, focused browser
+  artifact, exact cleanup, and exact-head CI.
+- The updated frontend is not deployed by this seam. Public frontend restart
+  remains approval-gated; local-current proof and hosted-public proof are not
+  interchangeable.
+- Revert `4779f05` to restore prior visual presentation without changing any
+  Pressure Map behavior. Revert `75e7354` independently to remove only the
+  affordance and exact-cleanup verifier checks.
