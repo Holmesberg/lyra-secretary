@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -20,7 +20,7 @@ interface ToastEntry {
 }
 
 const MAX_VISIBLE_TOASTS = 3;
-const surfacedNotificationIds = new Set<string>();
+const renderedNotificationIds = new Set<string>();
 const surfacedToastKeys = new Set<string>();
 
 function asString(value: unknown): string | null {
@@ -134,13 +134,17 @@ export function AppNotificationHost() {
     const renderedIds: string[] = [];
     const lostUnrenderedIds: string[] = [];
     const nextToasts: ToastEntry[] = [];
+    const queuedToastKeys = new Set(toasts.map((toast) => toast.dedupeKey));
     for (const notification of notifications) {
       const id = notificationId(notification);
       if (acknowledged.current.has(id)) {
         continue;
       }
-      if (surfaced.current.has(id) || surfacedNotificationIds.has(id)) {
+      if (renderedNotificationIds.has(id)) {
         renderedIds.push(id);
+        continue;
+      }
+      if (surfaced.current.has(id)) {
         continue;
       }
       const toast = toUserToast(notification);
@@ -152,14 +156,15 @@ export function AppNotificationHost() {
         lostUnrenderedIds.push(id);
         continue;
       }
+      if (queuedToastKeys.has(toast.dedupeKey)) {
+        continue;
+      }
       if (toasts.length + nextToasts.length >= MAX_VISIBLE_TOASTS) {
         continue;
       }
       surfaced.current.add(id);
-      surfacedNotificationIds.add(id);
-      surfacedToastKeys.add(toast.dedupeKey);
+      queuedToastKeys.add(toast.dedupeKey);
       nextToasts.push({ id, ...toast });
-      renderedIds.push(id);
     }
     if (nextToasts.length > 0) {
       setToasts((prev) =>
@@ -180,7 +185,19 @@ export function AppNotificationHost() {
         lostUnrenderedIds.forEach((id) => acknowledged.current.delete(id));
       });
     }
-  }, [notifications, toasts.length]);
+  }, [notifications, toasts]);
+
+  const handleRendered = useCallback((id: string, dedupeKey: string) => {
+    renderedNotificationIds.add(id);
+    surfacedToastKeys.add(dedupeKey);
+    if (acknowledged.current.has(id)) {
+      return;
+    }
+    acknowledged.current.add(id);
+    ackPendingNotifications([id], "rendered").catch(() => {
+      acknowledged.current.delete(id);
+    });
+  }, []);
 
   if (toasts.length === 0) return null;
 
@@ -193,6 +210,7 @@ export function AppNotificationHost() {
           message={toast.message}
           lifespan={toast.lifespan}
           detailHref={toast.detailHref}
+          onRendered={(id) => handleRendered(id, toast.dedupeKey)}
           onDismiss={(id, reason = "dismissed") => {
             setToasts((prev) => prev.filter((item) => item.id !== id));
             ackPendingNotifications([id], reason).catch(() => {

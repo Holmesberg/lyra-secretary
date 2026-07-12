@@ -66,6 +66,7 @@ export interface ToastProps {
    * engagement affordance = glance-and-dismiss is the only option.
    */
   detailHref?: string;
+  onRendered?: (id: string) => void;
   onDismiss: (id: string, reason?: "acted" | "dismissed" | "expired") => void;
 }
 
@@ -79,6 +80,7 @@ export function Toast({
   surfaceId,
   lifespan = "auto",
   detailHref,
+  onRendered,
   onDismiss,
 }: ToastProps) {
   // One-shot guard — stamp viewed_at exactly once per mount (Strict
@@ -109,7 +111,8 @@ export function Toast({
     if (exposureId && surfaceId) {
       acknowledgeToastRender(exposureId, surfaceId, message);
     }
-  }, [exposureId, message, surfaceId, viewId]);
+    onRendered?.(id);
+  }, [exposureId, id, message, onRendered, surfaceId, viewId]);
 
   useEffect(() => {
     if (lifespan !== "auto") return;
