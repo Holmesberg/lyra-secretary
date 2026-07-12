@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 
 
 def _require_minutes(name: str, value: int) -> None:
@@ -84,6 +85,32 @@ class DemandCoverageProjection:
         return len(self.scenario_results)
 
 
+@dataclass(frozen=True)
+class TimeInterval:
+    interval_id: str
+    start: datetime
+    end: datetime
+
+    def __post_init__(self) -> None:
+        if not self.interval_id.strip():
+            raise ValueError("interval_id must be non-empty")
+        if self.end <= self.start:
+            raise ValueError("interval end must be after start")
+
+
+@dataclass(frozen=True)
+class UnionSegment:
+    start: datetime
+    end: datetime
+
+
+@dataclass(frozen=True)
+class IntervalUnion:
+    total_minutes: int
+    segments: tuple[UnionSegment, ...]
+    contributing_interval_ids: tuple[str, ...]
+
+
 def _project_scenario(
     scenario: DemandCoverageScenario,
 ) -> DemandCoverageScenarioResult:
@@ -153,5 +180,59 @@ def project_demand_coverage(
             result.scenario_id
             for result in results
             if result.estimate_inconsistent
+        ),
+    )
+
+
+def union_interval_minutes(
+    intervals: Iterable[TimeInterval],
+    *,
+    window_start: datetime,
+    window_end: datetime,
+) -> IntervalUnion:
+    """Return the clipped union of intervals, flooring sub-minute coverage."""
+
+    if window_end <= window_start:
+        raise ValueError("window_end must be after window_start")
+
+    interval_list = tuple(intervals)
+    interval_ids = [interval.interval_id for interval in interval_list]
+    if len(set(interval_ids)) != len(interval_ids):
+        raise ValueError("interval_id values must be unique")
+
+    clipped: list[tuple[datetime, datetime, str]] = []
+    for interval in interval_list:
+        start = max(interval.start, window_start)
+        end = min(interval.end, window_end)
+        if end > start:
+            clipped.append((start, end, interval.interval_id))
+
+    if not clipped:
+        return IntervalUnion(
+            total_minutes=0,
+            segments=(),
+            contributing_interval_ids=(),
+        )
+
+    clipped.sort(key=lambda value: (value[0], value[1], value[2]))
+    segments: list[UnionSegment] = []
+    current_start, current_end, _ = clipped[0]
+    for start, end, _ in clipped[1:]:
+        if start <= current_end:
+            current_end = max(current_end, end)
+            continue
+        segments.append(UnionSegment(start=current_start, end=current_end))
+        current_start, current_end = start, end
+    segments.append(UnionSegment(start=current_start, end=current_end))
+
+    total_seconds = sum(
+        (segment.end - segment.start).total_seconds()
+        for segment in segments
+    )
+    return IntervalUnion(
+        total_minutes=max(0, int(total_seconds // 60)),
+        segments=tuple(segments),
+        contributing_interval_ids=tuple(
+            interval_id for _, _, interval_id in clipped
         ),
     )
