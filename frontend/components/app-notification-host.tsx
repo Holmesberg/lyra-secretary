@@ -20,6 +20,7 @@ interface ToastEntry {
 }
 
 const MAX_VISIBLE_TOASTS = 3;
+const RENDER_ACK_RETRY_MS = [250, 750, 1500, 3000, 6000];
 const renderedNotificationIds = new Set<string>();
 const surfacedToastKeys = new Set<string>();
 
@@ -131,7 +132,6 @@ export function AppNotificationHost() {
 
   useEffect(() => {
     if (notifications.length === 0) return;
-    const renderedIds: string[] = [];
     const lostUnrenderedIds: string[] = [];
     const nextToasts: ToastEntry[] = [];
     const queuedToastKeys = new Set(toasts.map((toast) => toast.dedupeKey));
@@ -141,7 +141,6 @@ export function AppNotificationHost() {
         continue;
       }
       if (renderedNotificationIds.has(id)) {
-        renderedIds.push(id);
         continue;
       }
       if (surfaced.current.has(id)) {
@@ -173,12 +172,6 @@ export function AppNotificationHost() {
           .slice(0, MAX_VISIBLE_TOASTS)
       );
     }
-    if (renderedIds.length > 0) {
-      renderedIds.forEach((id) => acknowledged.current.add(id));
-      ackPendingNotifications(renderedIds, "rendered").catch(() => {
-        renderedIds.forEach((id) => acknowledged.current.delete(id));
-      });
-    }
     if (lostUnrenderedIds.length > 0) {
       lostUnrenderedIds.forEach((id) => acknowledged.current.add(id));
       ackPendingNotifications(lostUnrenderedIds, "lost_unrendered").catch(() => {
@@ -187,7 +180,11 @@ export function AppNotificationHost() {
     }
   }, [notifications, toasts]);
 
-  const handleRendered = useCallback((id: string, dedupeKey: string) => {
+  const handleRendered = useCallback(function acknowledgeRendered(
+    id: string,
+    dedupeKey: string,
+    attempt = 0
+  ) {
     renderedNotificationIds.add(id);
     surfacedToastKeys.add(dedupeKey);
     if (acknowledged.current.has(id)) {
@@ -196,6 +193,12 @@ export function AppNotificationHost() {
     acknowledged.current.add(id);
     ackPendingNotifications([id], "rendered").catch(() => {
       acknowledged.current.delete(id);
+      const delay = RENDER_ACK_RETRY_MS[attempt];
+      if (delay !== undefined) {
+        globalThis.setTimeout(() => {
+          acknowledgeRendered(id, dedupeKey, attempt + 1);
+        }, delay);
+      }
     });
   }, []);
 
