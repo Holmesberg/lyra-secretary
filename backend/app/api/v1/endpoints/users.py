@@ -34,7 +34,11 @@ from app.services.user_data_registry import (
     hard_delete_retained_rows,
     purge_user_auxiliary_rows,
 )
-from app.utils.me_cache import get_cached_me, invalidate_me, set_cached_me
+from app.utils.me_cache import (
+    get_cached_me_with_epoch,
+    invalidate_me,
+    set_cached_me_if_epoch,
+)
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, strip_tz
 
@@ -102,7 +106,7 @@ def get_me(db: Session = Depends(get_db)):
     # below (d1_return_at, onboarding backfill) are one-time stamps so
     # missing them on cache hits is harmless — the next miss after the
     # 30s window handles the next eligible call.
-    cached = get_cached_me(user.user_id)
+    cached, cache_epoch = get_cached_me_with_epoch(user.user_id)
     if cached is not None:
         return cached
     # Grandfathered-user backfill (2026-04-28 hotfix): re-enabling the
@@ -256,7 +260,7 @@ def get_me(db: Session = Depends(get_db)):
         "google_calendar_connected": user.google_refresh_token is not None,
         "created_at": user.created_at.isoformat(),
     }
-    set_cached_me(user.user_id, payload)
+    set_cached_me_if_epoch(user.user_id, payload, cache_epoch)
     return payload
 
 
