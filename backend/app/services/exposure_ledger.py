@@ -536,6 +536,7 @@ def baseline_clean_task_ids(
             .filter(
                 ReflectionViewLog.user_id.in_(user_ids),
                 ReflectionViewLog.event_class == "impression",
+                ReflectionViewLog.viewed_at.is_not(None),
                 ReflectionViewLog.reflection_type.in_(reflection_types),
                 ReflectionViewLog.fired_at >= min_start,
                 ReflectionViewLog.fired_at <= max_end,
@@ -933,6 +934,7 @@ def _first_legacy_reflection(
         .filter(
             ReflectionViewLog.user_id == user_id,
             ReflectionViewLog.event_class == "impression",
+            ReflectionViewLog.viewed_at.is_not(None),
             ReflectionViewLog.reflection_type.in_(types),
             ReflectionViewLog.fired_at >= start,
             ReflectionViewLog.fired_at <= event_time,

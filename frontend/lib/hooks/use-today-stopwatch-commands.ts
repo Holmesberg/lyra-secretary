@@ -6,7 +6,6 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 
-import { ackExposureRender } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { announceUndoAvailable } from "@/lib/undo";
 import {
@@ -39,6 +38,8 @@ interface TodayStopwatchCommandOptions {
     viewId: string | null,
     lifespan: TodayToastLifespan,
     detailHref?: string,
+    exposureId?: string | null,
+    surfaceId?: string | null,
   ) => void;
 }
 
@@ -206,8 +207,9 @@ export function useTodayStopwatchCommands({
             res.micro_mirror_view_id ?? null,
             "auto",
             "/insights",
+            res.micro_mirror_exposure_id ?? null,
+            "stopwatch.micro_mirror",
           );
-          void ackExposureRender(res.micro_mirror_exposure_id);
         }
         if (res.calibration_nudge) {
           pushToast(
@@ -215,8 +217,9 @@ export function useTodayStopwatchCommands({
             res.calibration_nudge_view_id ?? null,
             "pin",
             "/insights",
+            res.calibration_nudge_exposure_id ?? null,
+            "stopwatch.calibration_nudge",
           );
-          void ackExposureRender(res.calibration_nudge_exposure_id);
         }
         refresh();
       } catch (e: unknown) {

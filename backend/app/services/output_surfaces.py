@@ -266,6 +266,42 @@ def _assert_surface_allowed_for_user(
         raise PermissionError(f"operator_only_output_surface:{spec.surface_id}")
 
 
+def create_legacy_surface_view_candidate(
+    db: Session,
+    *,
+    surface_id: str,
+    user_id: int,
+    task_id: Optional[str],
+    payload: Any,
+    fired_at=None,
+    viewed_at=None,
+    dismissed_at=None,
+    dwell_seconds: Optional[int] = None,
+    outcome: Optional[str] = None,
+) -> Optional[str]:
+    """Preserve a legacy fired row without claiming that the browser viewed it."""
+    spec = get_output_surface_spec(surface_id)
+    _assert_surface_allowed_for_user(db, spec=spec, user_id=user_id)
+    if not spec.legacy_adapter:
+        return None
+    row = ReflectionViewLog(
+        view_id=str(uuid4()),
+        user_id=user_id,
+        reflection_type=spec.legacy_adapter,
+        event_class="impression",
+        task_id=task_id,
+        payload=_snapshot_to_text(payload),
+        fired_at=strip_tz(fired_at or now_utc()),
+        viewed_at=strip_tz(viewed_at),
+        dismissed_at=strip_tz(dismissed_at),
+        dwell_seconds=dwell_seconds,
+        outcome=outcome,
+    )
+    db.add(row)
+    db.flush()
+    return row.view_id
+
+
 def emit_surface_render(
     db: Session,
     *,
@@ -338,22 +374,18 @@ def emit_surface_render(
 
     legacy_view_id: Optional[str] = None
     if create_legacy_view and spec.legacy_adapter:
-        row = ReflectionViewLog(
-            view_id=str(uuid4()),
+        legacy_view_id = create_legacy_surface_view_candidate(
+            db,
+            surface_id=surface_id,
             user_id=user_id,
-            reflection_type=spec.legacy_adapter,
-            event_class="impression",
             task_id=task_id,
-            payload=_snapshot_to_text(legacy_payload) if legacy_payload is not None else content_snapshot_text,
+            payload=legacy_payload if legacy_payload is not None else content_snapshot_text,
             fired_at=rendered_at,
-            viewed_at=strip_tz(legacy_viewed_at),
-            dismissed_at=strip_tz(legacy_dismissed_at),
+            viewed_at=legacy_viewed_at,
+            dismissed_at=legacy_dismissed_at,
             dwell_seconds=legacy_dwell_seconds,
             outcome=legacy_outcome,
         )
-        db.add(row)
-        db.flush()
-        legacy_view_id = row.view_id
 
     authority = authority_for_surface(spec).as_dict()
     return {

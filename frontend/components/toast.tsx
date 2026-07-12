@@ -3,12 +3,50 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowUpRight, X } from "lucide-react";
 
+import { ackExposureRender } from "@/lib/api";
 import { markDismissed, markViewed } from "@/lib/reflection-view";
+
+const RENDER_ACK_RETRY_MS = [250, 750, 1500, 3000, 6000];
+const pendingRenderAcks = new Set<string>();
+const acknowledgedRenders = new Set<string>();
+
+function acknowledgeToastRender(
+  exposureId: string,
+  surfaceId: string,
+  message: string,
+  attempt = 0,
+) {
+  if (pendingRenderAcks.has(exposureId) || acknowledgedRenders.has(exposureId)) {
+    return;
+  }
+  pendingRenderAcks.add(exposureId);
+  void ackExposureRender(exposureId, {
+    surfaceId,
+    clientEventId: `${surfaceId}:${exposureId}`,
+    contentSnapshot: { message },
+    keepalive: true,
+  })
+    .then((ok) => {
+      if (ok) {
+        acknowledgedRenders.add(exposureId);
+        return;
+      }
+      const delay = RENDER_ACK_RETRY_MS[attempt];
+      if (delay !== undefined) {
+        globalThis.setTimeout(() => {
+          acknowledgeToastRender(exposureId, surfaceId, message, attempt + 1);
+        }, delay);
+      }
+    })
+    .finally(() => pendingRenderAcks.delete(exposureId));
+}
 
 export interface ToastProps {
   id: string;
   message: string;
   viewId?: string | null;
+  exposureId?: string | null;
+  surfaceId?: string | null;
   /**
    * "auto" — dismiss after 8s (default, for micro_mirror).
    * "pin"  — never auto-dismiss (for calibration_nudge reference-class
@@ -37,6 +75,8 @@ export function Toast({
   id,
   message,
   viewId,
+  exposureId,
+  surfaceId,
   lifespan = "auto",
   detailHref,
   onDismiss,
@@ -44,7 +84,7 @@ export function Toast({
   // One-shot guard — stamp viewed_at exactly once per mount (Strict
   // Mode double-mounts in dev would otherwise send two POSTs; the
   // server is idempotent but the extra call is wasted).
-  const viewed = useRef(false);
+  const mounted = useRef(false);
 
   // Keep a ref to the freshest dismiss handler so the auto-dismiss
   // setTimeout doesn't capture a stale closure if parent re-renders
@@ -61,12 +101,15 @@ export function Toast({
   };
 
   useEffect(() => {
-    if (viewed.current || !viewId) return;
-    viewed.current = true;
-    markViewed(viewId).catch(() => {
+    if (mounted.current) return;
+    mounted.current = true;
+    if (viewId) markViewed(viewId).catch(() => {
       /* fire-and-forget — dwell tracking degrades gracefully */
     });
-  }, [viewId]);
+    if (exposureId && surfaceId) {
+      acknowledgeToastRender(exposureId, surfaceId, message);
+    }
+  }, [exposureId, message, surfaceId, viewId]);
 
   useEffect(() => {
     if (lifespan !== "auto") return;

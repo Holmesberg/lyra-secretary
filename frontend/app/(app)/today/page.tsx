@@ -67,6 +67,8 @@ interface ToastEntry {
   id: string;
   message: string;
   viewId: string | null;
+  exposureId?: string | null;
+  surfaceId?: string | null;
   lifespan: "auto" | "pin";
   detailHref?: string;
 }
@@ -301,12 +303,17 @@ function TodayInner() {
     viewId: string | null,
     lifespan: "auto" | "pin",
     detailHref?: string,
+    exposureId?: string | null,
+    surfaceId?: string | null,
   ) => {
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setToasts((prev) => [...prev, { id, message, viewId, lifespan, detailHref }]);
+    setToasts((prev) => [
+      ...prev,
+      { id, message, viewId, exposureId, surfaceId, lifespan, detailHref },
+    ]);
   }, []);
 
   const refresh = () => {
@@ -921,6 +928,8 @@ function TodayInner() {
             id={t.id}
             message={t.message}
             viewId={t.viewId}
+            exposureId={t.exposureId}
+            surfaceId={t.surfaceId}
             lifespan={t.lifespan}
             detailHref={t.detailHref}
             onDismiss={removeToast}
