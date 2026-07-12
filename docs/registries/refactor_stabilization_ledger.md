@@ -19449,9 +19449,10 @@ Changed deployment authority:
   serve the expected full SHA.
 - Reboot orchestration delegates to that backend path rather than rebuilding a
   reload-enabled bind-mounted service inline.
-- The currently running public backend was not replaced by this seam. It still
-  reports build id `dev` and remains on the old process topology until an
-  explicit approved restart applies the committed contract.
+- After exact-head CI passed, the founder approved one public backend restart.
+  The wrapper built before replacement, retained the previous image, ran the
+  existing Alembic head check, and made local and hosted topology serve full
+  build id `6031ed88bf4355717b0891503ca832fd4c5ed414`.
 
 Negative and contract proof:
 
@@ -19461,15 +19462,19 @@ Negative and contract proof:
 - Direct wrapper proof rejected both a missing approval switch and an approved
   invocation from a dirty tree before Docker mutation. The live backend build
   ID stayed `dev`, and public frontend/API health stayed available.
+- Post-restart negative proof temporarily changed one tracked host source file.
+  Host and container hashes diverged while container identity, process start
+  time, hosted build ID, and public health remained unchanged. Removing the
+  probe restored identical hashes and a clean Git tree.
 - Public frontend restart and runtime-watchdog contract tests remained green.
 - No cookie, environment secret, rendered Compose environment, database,
   production row, or generated artifact was committed.
 
 Issue state and rollback:
 
-- Issue `#218` remains open until a clean exact-head build is applied through
-  an approved backend restart and a subsequent local source edit is proven not
-  to change the hosted build ID.
+- Issue `#218` is closed with exact-head CI, approved restart, hosted build-ID
+  match, rollback availability, source-isolation negative proof, and restored
+  clean status.
 - Revert `a3c4a37` to restore the old Compose/startup topology, recognizing
   that this reopens automatic public reload from checkout edits. Revert
   `9324528` independently to remove only the mechanical gate.
