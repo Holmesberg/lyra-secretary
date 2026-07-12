@@ -7,7 +7,7 @@ instead of a single "AI knows the answer" estimate.
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, model_validator
 
 
 AcademicTrustState = Literal[
@@ -42,6 +42,10 @@ AcademicRecoveryAction = Literal[
     "create_plan",
     "review_calendar",
     "clear_or_ignore",
+]
+AcademicProjectionRole = Literal[
+    "deadline_obligation",
+    "standalone_task_obligation",
 ]
 
 
@@ -121,6 +125,60 @@ class AcademicCapacityContext(BaseModel):
     caveat: str
 
 
+class AcademicMinuteEnvelope(BaseModel):
+    low_minutes: int = Field(ge=0)
+    high_minutes: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _ordered_bounds(self) -> "AcademicMinuteEnvelope":
+        if self.low_minutes > self.high_minutes:
+            raise ValueError("low_minutes cannot exceed high_minutes")
+        return self
+
+
+class AcademicObligationDemandProjection(BaseModel):
+    obligation_id: str
+    projection_role: AcademicProjectionRole
+    source_class: AcademicSourceClass
+    total_estimate: AcademicMinuteEnvelope
+    completed_scope_credit: AcademicMinuteEnvelope
+    remaining_demand: AcademicMinuteEnvelope
+    feasible_future_coverage: AcademicMinuteEnvelope
+    applied_coverage: AcademicMinuteEnvelope
+    unscheduled_demand: AcademicMinuteEnvelope
+    overcoverage: AcademicMinuteEnvelope
+    linked_task_ids: list[str] = Field(default_factory=list)
+    coverage_task_ids: list[str] = Field(default_factory=list)
+    noncontributing_linked_task_ids: list[str] = Field(default_factory=list)
+    estimate_inconsistent: bool = False
+
+
+class AcademicDemandCoverageProjection(BaseModel):
+    schema_version: Literal["academic_demand_coverage_projection_v1"] = (
+        "academic_demand_coverage_projection_v1"
+    )
+    projection_status: Literal["provisional_demand_only"] = (
+        "provisional_demand_only"
+    )
+    capacity_status: Literal["unavailable_no_authority"] = (
+        "unavailable_no_authority"
+    )
+    collision_state: Literal["unknown"] = "unknown"
+    obligation_count: int = Field(ge=0)
+    scenario_count: int = Field(ge=1)
+    total_estimate: AcademicMinuteEnvelope
+    completed_scope_credit: AcademicMinuteEnvelope
+    remaining_demand: AcademicMinuteEnvelope
+    feasible_future_coverage: AcademicMinuteEnvelope
+    applied_coverage: AcademicMinuteEnvelope
+    unscheduled_demand: AcademicMinuteEnvelope
+    overcoverage: AcademicMinuteEnvelope
+    inconsistent_obligation_ids: list[str] = Field(default_factory=list)
+    obligations: list[AcademicObligationDemandProjection] = Field(
+        default_factory=list
+    )
+
+
 class AcademicPressureMapResponse(BaseModel):
     generated_at_utc: datetime
     horizon_days: int
@@ -133,6 +191,7 @@ class AcademicPressureMapResponse(BaseModel):
     capacity_context: AcademicCapacityContext
     estimated_low_minutes: int
     estimated_high_minutes: int
+    demand_coverage_projection: AcademicDemandCoverageProjection
     source_summary: AcademicSourceSummary
     methodology: list[str]
     warnings: list[str]

@@ -35,6 +35,9 @@ from app.schemas.academic import (
     AcademicTrustState,
 )
 from app.services.calendar_sync import fetch_google_events
+from app.services.academic_pressure_projection_builder import (
+    build_demand_coverage_projection,
+)
 from app.utils.time_utils import now_utc, strip_tz
 
 
@@ -359,6 +362,29 @@ def _planned_academic_task_rows(
         .filter(Task.planned_end_utc > start)
         .filter(Task.category.in_(tuple(ACADEMIC_PRESSURE_TASK_CATEGORIES)))
         .order_by(Task.planned_start_utc.asc())
+        .all()
+    )
+
+
+def _future_projection_task_rows(
+    db: Session,
+    user_id: int,
+    start: datetime,
+    end: datetime,
+) -> list[Task]:
+    return (
+        db.query(Task)
+        .filter(Task.user_id == user_id)
+        .filter(Task.voided_at.is_(None))
+        .filter(Task.is_anchor.is_(False))
+        .filter(
+            Task.state.in_(
+                [TaskState.PLANNED, TaskState.EXECUTING, TaskState.PAUSED]
+            )
+        )
+        .filter(Task.planned_start_utc < end)
+        .filter(Task.planned_end_utc > start)
+        .order_by(Task.planned_start_utc.asc(), Task.task_id.asc())
         .all()
     )
 
@@ -736,6 +762,17 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
         warnings.append("Baseet pressure inputs are disabled by operator safety switch.")
 
     coverage_questions = _coverage_questions(items)
+    demand_coverage_projection = build_demand_coverage_projection(
+        items=items,
+        future_tasks=_future_projection_task_rows(
+            db,
+            uid,
+            generated_at,
+            window_end,
+        ),
+        window_start=generated_at,
+        window_end=window_end,
+    )
     return AcademicPressureMapResponse(
         generated_at_utc=generated_at,
         horizon_days=horizon_days,
@@ -768,6 +805,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
         ),
         estimated_low_minutes=low_total,
         estimated_high_minutes=high_total,
+        demand_coverage_projection=demand_coverage_projection,
         source_summary=AcademicSourceSummary(
             deadlines_total=len(deadlines),
             external_obligation_count=external_count,
