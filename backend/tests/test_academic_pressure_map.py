@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from app.db.models import (
     Deadline,
@@ -16,6 +17,7 @@ from app.db.models import (
 )
 from app.db.scoping import set_current_user_id
 from app.main import app
+from app.schemas.academic import AcademicMinuteEnvelope
 from app.core.config import settings
 from app.core.kill_switches import (
     provider_progress_signals_enabled,
@@ -95,7 +97,7 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     alice = _user(db, "alice-pressure@example.com")
     bob = _user(db, "bob-pressure@example.com")
     _deadline(db, alice.user_id, "Algorithms Quiz 2", days=5, external_source="moodle_ics")
-    _deadline(db, bob.user_id, "Private Final Exam", days=5)
+    bob_deadline = _deadline(db, bob.user_id, "Private Final Exam", days=5)
 
     resp = client.get(
         "/v1/academic/pressure-map?horizon_days=14",
@@ -145,6 +147,12 @@ def test_pressure_map_is_user_scoped_and_returns_ranges(db):
     assert data["source_summary"]["native_obligation_count"] == 0
     assert "moodle_deadlines" not in data["source_summary"]
     assert "native_deadlines" not in data["source_summary"]
+    projection_ids = {
+        item["obligation_id"]
+        for item in data["demand_coverage_projection"]["obligations"]
+    }
+    assert projection_ids == {data["items"][0]["obligation_id"]}
+    assert bob_deadline.deadline_id not in projection_ids
 
     decision = (
         db.query(ExposureDecisionEvent)
@@ -309,6 +317,155 @@ def test_pressure_map_includes_planned_task_load_but_not_deleted_or_executed(db)
     assert "planned duration is visible intention" in " ".join(
         data["items"][0]["estimate"]["assumptions"]
     )
+
+
+def test_pressure_projection_counts_linked_tasks_as_union_coverage(db):
+    user = _user(db, "linked-coverage-pressure@example.com")
+    deadline = _deadline(db, user.user_id, "Linked systems project", days=5)
+    now = datetime.utcnow()
+    first = Task(
+        user_id=user.user_id,
+        title="Systems project block one",
+        category="study",
+        planned_start_utc=now + timedelta(hours=2),
+        planned_end_utc=now + timedelta(hours=4),
+        planned_duration_minutes=120,
+        state=TaskState.PLANNED,
+        deadline_id=deadline.deadline_id,
+        deadline_match_source="user_explicit",
+        deadline_match_confidence=1.0,
+    )
+    second = Task(
+        user_id=user.user_id,
+        title="Systems project block two",
+        category="study",
+        planned_start_utc=now + timedelta(hours=3),
+        planned_end_utc=now + timedelta(hours=5),
+        planned_duration_minutes=120,
+        state=TaskState.PLANNED,
+        deadline_id=deadline.deadline_id,
+        deadline_match_source="user_explicit",
+        deadline_match_confidence=1.0,
+    )
+    db.add_all([first, second])
+    db.commit()
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    projection = data["demand_coverage_projection"]
+    assert projection["schema_version"] == "academic_demand_coverage_projection_v1"
+    assert projection["projection_status"] == "provisional_demand_only"
+    assert projection["capacity_status"] == "unavailable_no_authority"
+    assert projection["collision_state"] == "unknown"
+    assert projection["obligation_count"] == 1
+    assert projection["completed_scope_credit"] == {
+        "low_minutes": 0,
+        "high_minutes": 0,
+    }
+
+    obligation = projection["obligations"][0]
+    assert obligation["obligation_id"] == deadline.deadline_id
+    assert obligation["projection_role"] == "deadline_obligation"
+    assert obligation["linked_task_ids"] == [first.task_id, second.task_id]
+    assert obligation["coverage_task_ids"] == [first.task_id, second.task_id]
+    assert obligation["noncontributing_linked_task_ids"] == []
+    assert obligation["feasible_future_coverage"] == {
+        "low_minutes": 180,
+        "high_minutes": 180,
+    }
+    assert projection["total_estimate"] == obligation["total_estimate"]
+    assert projection["remaining_demand"] == obligation["remaining_demand"]
+    assert (
+        projection["remaining_demand"]["low_minutes"]
+        == projection["applied_coverage"]["low_minutes"]
+        + projection["unscheduled_demand"]["low_minutes"]
+    )
+    assert data["estimated_low_minutes"] > projection["total_estimate"]["low_minutes"]
+
+
+def test_pressure_projection_self_links_standalone_planned_task(db):
+    user = _user(db, "standalone-coverage-pressure@example.com")
+    now = datetime.utcnow()
+    task = Task(
+        user_id=user.user_id,
+        title="Standalone study block",
+        category="study",
+        planned_start_utc=now + timedelta(hours=2),
+        planned_end_utc=now + timedelta(hours=3),
+        planned_duration_minutes=60,
+        state=TaskState.PLANNED,
+    )
+    db.add(task)
+    db.commit()
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    projection = response.json()["demand_coverage_projection"]
+    assert projection["obligation_count"] == 1
+    obligation = projection["obligations"][0]
+    assert obligation["obligation_id"] == task.task_id
+    assert obligation["projection_role"] == "standalone_task_obligation"
+    assert obligation["linked_task_ids"] == [task.task_id]
+    assert obligation["feasible_future_coverage"] == {
+        "low_minutes": 60,
+        "high_minutes": 60,
+    }
+    assert obligation["unscheduled_demand"] == {
+        "low_minutes": 0,
+        "high_minutes": 0,
+    }
+
+
+def test_pressure_projection_does_not_apply_linked_work_after_deadline(db):
+    user = _user(db, "late-linked-coverage-pressure@example.com")
+    deadline = _deadline(db, user.user_id, "Near-term lab", days=1)
+    now = datetime.utcnow()
+    deadline.due_at_utc = now + timedelta(hours=2)
+    late_task = Task(
+        user_id=user.user_id,
+        title="Lab block scheduled too late",
+        category="study",
+        planned_start_utc=now + timedelta(hours=3),
+        planned_end_utc=now + timedelta(hours=4),
+        planned_duration_minutes=60,
+        state=TaskState.PLANNED,
+        deadline_id=deadline.deadline_id,
+        deadline_match_source="user_explicit",
+        deadline_match_confidence=1.0,
+    )
+    db.add(late_task)
+    db.commit()
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    obligation = response.json()["demand_coverage_projection"]["obligations"][0]
+    assert obligation["obligation_id"] == deadline.deadline_id
+    assert obligation["linked_task_ids"] == [late_task.task_id]
+    assert obligation["coverage_task_ids"] == []
+    assert obligation["noncontributing_linked_task_ids"] == [late_task.task_id]
+    assert obligation["feasible_future_coverage"] == {
+        "low_minutes": 0,
+        "high_minutes": 0,
+    }
+    assert obligation["unscheduled_demand"] == obligation["remaining_demand"]
+
+
+def test_pressure_projection_schema_rejects_inverted_envelope():
+    with pytest.raises(ValidationError, match="low_minutes cannot exceed"):
+        AcademicMinuteEnvelope(low_minutes=90, high_minutes=60)
 
 
 def test_pressure_map_includes_prescheduled_academic_task_blocks(db):
