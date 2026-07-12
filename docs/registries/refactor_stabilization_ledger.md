@@ -19887,3 +19887,75 @@ Exit and rollback:
   occurred.
 - This entry is audit-only. Revert its docs commit to remove the audit note;
   current runtime and prior checkpoint commits remain unchanged.
+
+## 2026-07-12 - Insights Browser-Owned Render Truth
+
+Seam preflight:
+
+- Seam name: `insights-browser-owned-render-truth`.
+- Authority class: one product/runtime exposure boundary, followed by separate
+  characterization and verifier commits.
+- Documented behavior protected: Insights remains read-only, Rule 11 remains
+  bounded, source cards and confidence packaging remain unchanged, and the
+  rendered stimulus remains redacted and reconstructible.
+- Expected user-visible change: none to Insights copy, ranking, confidence,
+  suppression, or eligibility. The lifecycle now records render only after the
+  mounted browser acknowledges the exact redacted snapshot.
+- Expected write change: the Insights GET reserves a decision but no longer
+  writes delivery or render truth. The authenticated browser ACK creates the
+  idempotent render and acknowledgement rows.
+- Stop conditions preserved: no schema, claim, insight-generator, Rule 11,
+  clean-data, operator, provider, or mutation authority changed.
+
+Implementation and focused proof:
+
+- Product commit `50112fa28697f4b0e7c9f3506ac70062b3158926`
+  replaces server-side `emit_surface_render` with a reserved decision and
+  returns the exact redacted `render_snapshot`. The mounted Insights page uses
+  the canonical owner route, stable client event ID, keepalive, and bounded
+  retry without blocking the view.
+- Test commit `25fbc7fcdb824192ec05fd41b0a824adc6181521`
+  proves no render or ACK exists after GET, cross-user ACK fails `404`, owner
+  ACK creates render truth once, retry is idempotent, and persisted content is
+  the returned redacted snapshot. Focused backend proof passed `49` tests;
+  isolated operator fixtures passed `13` tests.
+- Verifier commit `e7cd10a8187773a7d47348e9a718eea4f37edc28`
+  adds a fixture-labeled mounted render scenario with forced first-ACK `503`,
+  exact route/surface/event/snapshot assertions, and successful retry. It also
+  keeps the Pressure Map target inside the full loop's truthful top-N window.
+- Frontend typecheck and production build passed. Backend layer, mutation
+  authority, Cortex read-only, and `git diff --check` gates passed.
+- Focused mounted-browser evidence:
+  `tmp/browser-insights-states/2026-07-12T12-33-51-300Z/result.json`.
+  The fixture is explicitly labeled and is not cited as hosted-user evidence.
+- Real-cookie local-current Holmesberg proof exercised the surrounding mutable
+  loop and cleanup. A focused rerun for the Pressure Map verifier setup passed
+  at
+  `tmp/browser-product-loop/wave2-pressure-seed-fix-20260712-153746/result.json`.
+- Hosted-public operator desktop/mobile proof used the real read-only operator
+  cookie and reported zero count diffs, zero exposure-without-render, and
+  `implementation_green=true`:
+  `tmp/operator-readonly-wave2-insights-hosted/`. Hosted builds were frontend
+  `98bc1f8` and backend `6031ed88bf4355717b0891503ca832fd4c5ed414`,
+  so this is explicitly deployment-lag cockpit proof, not proof that the new
+  Insights code is deployed.
+
+Failure classification, parking, and rollback:
+
+- The full macro run at
+  `tmp/browser-product-loop/wave2-insights-final-20260712-153810/result.json`
+  found that the task was created and rendered in Today while a cached 14-day
+  query remained stale. Cleanup still found and voided all synthetic rows.
+  This distinct cache-coherency defect is isolated as `#229` for Wave 4 rather
+  than mixed into the Insights lifecycle commit.
+- A local disposable operator run was correctly held at onboarding and made no
+  count changes. The missing cheap account-eligibility classification is
+  isolated as verifier issue `#230`; the operator account was not mutated to
+  force local proof.
+- Mixed-order operator fixture leakage remains `#216`. The Insights seam does
+  not weaken operator metrics or alter those fixtures.
+- `#204` may close only after exact-head CI passes. `#228` may close only after
+  its verifier commit is CI-green; the product cache issue remains separate.
+- Revert `50112fa` to restore the prior Insights lifecycle, `25fbc7f` to remove
+  its characterization, and `e7cd10a` to remove verifier coverage. No persisted
+  schema or migration depends on this seam.
