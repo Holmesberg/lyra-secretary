@@ -19373,6 +19373,11 @@ Characterization and focused proof:
 
 - Commit `438ae61` adds a deterministic concurrent-ACK race test. The targeted
   notification queue/lifecycle module passed 13 tests.
+- Exact-head CI run `29183846529` found one tests-only compatibility gap:
+  `test_timer_overflow_notifications._QueueRedis` did not implement the new
+  `LREM` contract. Commit `6fbd634` adds exact-removal behavior to that fake;
+  the timer-overflow and notification lifecycle modules then passed 17 tests.
+  Frontend, topology, and every S1c static gate in that run were already green.
 - Commit `a9401fd` adds the focused real-cookie lifecycle verifier and its
   mechanical preflight: frontend/backend health, topology/build identity,
   cookie/account role, onboarding gate, selected range, proxy mode, page-load
