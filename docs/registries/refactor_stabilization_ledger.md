@@ -19420,3 +19420,56 @@ Topology discovery, issues, and rollback:
   `bd9718c` to restore snapshot queue removal, recognizing that it restores the
   concurrency race. Revert `438ae61` or `a9401fd` independently to remove only
   characterization or focused verifier coverage.
+
+## 2026-07-12 - Public Backend Checkout Isolation Contract
+
+Seam preflight:
+
+- Seam name: `public-backend-artifact-isolation`.
+- Authority class: topology/deployment plus CI/CD. The mix is required because
+  the public launch boundary is not trustworthy unless the same invariant is a
+  hard local and CI gate.
+- Trigger: issue `#218` proved that the hosted API bind-mounted `./backend` and
+  ran Uvicorn reload, so an uncommitted local edit could become public code.
+- Expected user-visible and data-write change: none. This seam changes launch
+  isolation only; it does not restart the live backend, run a migration, or
+  alter product data.
+- Stop condition: no backend application behavior, local verification server,
+  schema, frontend process, tunnel, or production row was allowed to change.
+
+Changed deployment authority:
+
+- Commit `a3c4a37` makes the public Compose backend image-owned: no checkout
+  bind at `/app`, no Uvicorn `--reload`, and a full Git SHA carried in both the
+  image label and runtime `BUILD_ID`.
+- `scripts/restart_backend_public.ps1` is the approval-gated backend restart
+  path. It refuses dirty source, builds before replacement, preserves the
+  running image for rollback, verifies no-build image identity, applies the
+  existing Alembic check, and refuses success unless local and hosted topology
+  serve the expected full SHA.
+- Reboot orchestration delegates to that backend path rather than rebuilding a
+  reload-enabled bind-mounted service inline.
+- The currently running public backend was not replaced by this seam. It still
+  reports build id `dev` and remains on the old process topology until an
+  explicit approved restart applies the committed contract.
+
+Negative and contract proof:
+
+- Commit `9324528` adds a rendered-Compose hard gate to local S1c and CI.
+- The gate rejects an injected `/app` checkout bind, injected `--reload`, a
+  missing runtime build ID, and a missing image build ID.
+- Direct wrapper proof rejected both a missing approval switch and an approved
+  invocation from a dirty tree before Docker mutation. The live backend build
+  ID stayed `dev`, and public frontend/API health stayed available.
+- Public frontend restart and runtime-watchdog contract tests remained green.
+- No cookie, environment secret, rendered Compose environment, database,
+  production row, or generated artifact was committed.
+
+Issue state and rollback:
+
+- Issue `#218` remains open until a clean exact-head build is applied through
+  an approved backend restart and a subsequent local source edit is proven not
+  to change the hosted build ID.
+- Revert `a3c4a37` to restore the old Compose/startup topology, recognizing
+  that this reopens automatic public reload from checkout edits. Revert
+  `9324528` independently to remove only the mechanical gate.
