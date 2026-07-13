@@ -3061,12 +3061,12 @@ async function runPressureMapPath(page, token, beforeExport) {
   });
   const backendPlanOption = Array.isArray(pressureSnapshot.recovery_options)
     ? pressureSnapshot.recovery_options.find((option) => (
-        option.action === "create_plan" || option.action === "split_into_blocks"
+        option.action === "create_plan"
       ))
     : null;
   if (!backendPlanOption) {
     addGated("real pressure-map recovery option", {
-      reason: "backend returned no create_plan/split_into_blocks option for seeded high-pressure item",
+      reason: "backend returned no coverage-safe create_plan option for seeded high-pressure item",
       warnings: pressureSnapshot.warnings,
       recovery_options: pressureSnapshot.recovery_options,
     });
@@ -3085,12 +3085,32 @@ async function runPressureMapPath(page, token, beforeExport) {
         ...pressureSnapshot,
         exposure_id: null,
         render_snapshot: null,
+        coverage_questions: [
+          {
+            obligation_id: pressureDeadline.deadline_id,
+            question: `What exactly does ${pressureDeadlineTitle} cover?`,
+            reason: "Dogfood fixture keeps uncertain coverage separate from the provisional plan draft.",
+            trust_state: "requires_user_confirmation",
+          },
+        ],
         recovery_options: [
           {
-            action: "create_plan",
-            label: "Create a recovery plan",
-            detail: "Turn the due-soon pressure points into editable study blocks.",
+            action: "confirm_coverage",
+            label: "Coverage still needs confirmation",
+            detail: "Review the source details for these obligations before using them in a plan draft.",
             obligation_ids: [pressureDeadline.deadline_id],
+          },
+          {
+            action: "create_plan",
+            label: "Draft study blocks",
+            detail: "Preview editable study blocks from the current provisional ranges. Confirm source coverage before relying on this draft.",
+            obligation_ids: [pressureDeadline.deadline_id],
+          },
+          {
+            action: "review_calendar",
+            label: "Add schedule context",
+            detail: "Calendar is not connected. Open Integrations to add read-only schedule context.",
+            obligation_ids: [],
           },
         ],
         warnings: [
@@ -3121,6 +3141,36 @@ async function runPressureMapPath(page, token, beforeExport) {
       title: pressureDeadlineTitle,
       forced_browser_fixture: Boolean(pressureMapRouteHandler),
     });
+    const planningNote = page.getByText(/^Planning note$/i).first();
+    const planningNoteVisible = await planningNote.isVisible({ timeout: 4_000 }).catch(() => false);
+    const falseCoverageControlCount = await page
+      .getByRole("button", { name: /Coverage still needs confirmation/i })
+      .count();
+    addCheck(
+      "pressure map coverage uncertainty is an explicit non-clickable planning note",
+      planningNoteVisible && falseCoverageControlCount === 0,
+      { planning_note_visible: planningNoteVisible, matching_button_count: falseCoverageControlCount },
+    );
+    const reviewCalendarLink = page.getByTestId("pressure-map-review-calendar").first();
+    const reviewCalendarVisible = await reviewCalendarLink
+      .isVisible({ timeout: 4_000 })
+      .catch(() => false);
+    const reviewCalendarHref = reviewCalendarVisible
+      ? await reviewCalendarLink.getAttribute("href")
+      : null;
+    const reviewCalendarEmitted = Boolean(pressureMapRouteHandler)
+      || pressureSnapshot.recovery_options.some((option) => option.action === "review_calendar");
+    addCheck(
+      "pressure map calendar context is an obvious Settings navigation when emitted",
+      !reviewCalendarEmitted
+        || (reviewCalendarVisible && reviewCalendarHref === "/settings#integrations"),
+      {
+        emitted: reviewCalendarEmitted,
+        visible: reviewCalendarVisible,
+        href: reviewCalendarHref,
+        google_calendar_connected: pressureSnapshot?.source_summary?.google_calendar_connected ?? null,
+      },
+    );
     const previewText = (await previewControl.innerText()).trim();
     const desktopPreviewBox = await previewControl.boundingBox();
     addCheck(
@@ -3197,10 +3247,17 @@ async function runPressureMapPath(page, token, beforeExport) {
     await page.setViewportSize({ width: 1440, height: 950 });
     await page.waitForTimeout(250);
     await clickAny(page, "pressure preview", [(p) => p.getByTestId("pressure-map-preview")]);
-    await firstVisible(page, [
+    const draftDialog = await firstVisible(page, [
       (p) => p.getByTestId("pressure-map-plan-preview"),
-      (p) => p.getByRole("dialog", { name: /Preview recovery plan/i }),
+      (p) => p.getByRole("dialog", { name: /^Plan draft$/i }),
     ], 8_000);
+    const draftText = await draftDialog.innerText();
+    addCheck(
+      "pressure map preview is honestly labeled as a capacity-unchecked plan draft",
+      /Plan draft/i.test(draftText)
+        && /does not check free-time capacity/i.test(draftText),
+      { dialog_text: draftText },
+    );
     await screenshot(page, "pressure-map-preview");
     await clickAny(page, "pressure preview dismiss", [
       (p) => p.getByTestId("pressure-map-preview-dismiss"),
@@ -3221,7 +3278,7 @@ async function runPressureMapPath(page, token, beforeExport) {
     await clickAny(page, "pressure preview reopen", [(p) => p.getByTestId("pressure-map-preview")], 8_000);
     const dialog = await firstVisible(page, [
       (p) => p.getByTestId("pressure-map-plan-preview"),
-      (p) => p.getByRole("dialog", { name: /Preview recovery plan/i }),
+      (p) => p.getByRole("dialog", { name: /^Plan draft$/i }),
     ], 8_000, "pressure map plan preview reopen");
     const planRows = dialog.locator('[data-testid="pressure-map-plan-row"]');
     const rowCount = await planRows.count();
@@ -3392,6 +3449,23 @@ async function runPressureMapPath(page, token, beforeExport) {
       horizontal_overflow_pixels: mobileCalendarOverflow,
     });
     await page.setViewportSize({ width: 1440, height: 950 });
+    if (reviewCalendarVisible) {
+      await goto(page, "/pulse", "pulse-pressure-map-calendar-navigation");
+      await clickAny(page, "pressure map open integrations", [
+        (p) => p.getByTestId("pressure-map-review-calendar"),
+      ], 8_000);
+      await page.waitForURL(/\/settings#integrations$/, { timeout: 8_000 });
+      const integrationsTarget = page.locator("#integrations").first();
+      const integrationsVisible = await integrationsTarget
+        .isVisible({ timeout: 8_000 })
+        .catch(() => false);
+      addCheck(
+        "pressure map calendar navigation lands on the existing Integrations owner",
+        integrationsVisible,
+        { url: page.url() },
+      );
+      await screenshot(page, "pressure-map-calendar-navigation-target");
+    }
   } finally {
     if (pressureMapRouteHandler) {
       await page.unroute(pressureMapPattern, pressureMapRouteHandler).catch(() => {});

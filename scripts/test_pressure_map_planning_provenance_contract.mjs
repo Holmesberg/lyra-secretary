@@ -14,9 +14,11 @@ function assert(condition, message) {
 }
 
 const planning = read("frontend/lib/pressure-map-planning.ts");
+const options = read("frontend/lib/pressure-map-options.ts");
 const preview = read("frontend/components/pulse/PulseAcademicPressureMap.tsx");
 const commit = read("frontend/components/pulse/use-pressure-map-plan-commit.ts");
 const calendar = read("frontend/app/(app)/calendar/page.tsx");
+const integrations = read("frontend/components/integrations-section.tsx");
 
 assert(
   planning.includes("suggestedDurationMinutes: number")
@@ -49,6 +51,38 @@ assert(
     && preview.includes("start the timer to prove it right or wrong")
     && preview.includes("This is planning footprint, not execution truth."),
   "Pressure Map preview must make the estimate useful, editable, and bounded",
+);
+
+assert(
+  options.includes('disposition: "canonical_command"')
+    && options.includes('owner: "TaskManager via usePressureMapPlanCommit"')
+    && options.includes('target: "POST /v1/tasks after explicit preview confirmation"')
+    && options.includes('disposition: "navigation"')
+    && options.includes('target: "/settings#integrations"')
+    && options.includes('owner: "No canonical correction command"')
+    && options.includes('disposition: "retired_compatibility"'),
+  "every Pressure Map response action must declare an exact command, navigation, diagnostic, or retired owner/target",
+);
+
+assert(
+  options.includes('(option) => option.action === "create_plan"')
+    && !options.includes('find((option) => option.action === "split_into_blocks")'),
+  "the frontend must select only the honest plan-draft command and must not revive the retired split action",
+);
+
+assert(
+  preview.includes("<DialogTitle>Plan draft</DialogTitle>")
+    && preview.includes("does not check free-time capacity")
+    && preview.includes('data-testid="pressure-map-review-calendar"')
+    && preview.includes('? "Planning note"')
+    && !preview.includes("Preview recovery plan")
+    && !preview.includes("Next recovery option"),
+  "Pressure Map must distinguish plan drafts, navigation, and non-clickable planning notes",
+);
+
+assert(
+  integrations.includes('<Card id="integrations" tabIndex={-1}>'),
+  "review_calendar navigation must terminate at the existing Settings integrations surface",
 );
 
 assert(

@@ -274,8 +274,35 @@ def test_pressure_map_marks_overdue_without_inferring_completion(db):
     assert "do not infer completion" in " ".join(data["items"][0]["warnings"])
     assert "No completion is inferred" in " ".join(data["warnings"])
     assert any(point["kind"] == "overdue" for point in data["compression_points"])
-    assert any(option["action"] == "create_plan" for option in data["recovery_options"])
+    assert [option["action"] for option in data["recovery_options"]] == [
+        "confirm_coverage",
+        "create_plan",
+        "review_calendar",
+    ]
+    assert "Review the source details" in data["recovery_options"][0]["detail"]
+    assert "provisional ranges" in data["recovery_options"][1]["detail"]
     assert db.query(Task).count() == 0
+
+
+def test_pressure_map_relabels_false_split_as_provisional_plan_draft(db):
+    user = _user(db, "provisional-plan-pressure@example.com")
+    deadline = _deadline(db, user.user_id, "Native OS Lab", days=-1)
+
+    resp = client.get("/v1/academic/pressure-map", headers=auth_headers(user.user_id))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["coverage_questions"]
+    plan = next(
+        option for option in data["recovery_options"] if option["action"] == "create_plan"
+    )
+    assert plan["label"] == "Draft study blocks"
+    assert plan["obligation_ids"] == [deadline.deadline_id]
+    assert "provisional ranges" in plan["detail"]
+    assert all(
+        option["action"] != "split_into_blocks"
+        for option in data["recovery_options"]
+    )
 
 
 def test_pressure_map_includes_planned_task_load_but_not_deleted_or_executed(db):
@@ -1133,7 +1160,7 @@ def test_pressure_map_uses_agency_not_panic_copy(db):
     assert any("research integrity" in line for line in data["methodology"])
 
 
-def test_pressure_map_names_deadline_clusters_and_biggest_split_option(db):
+def test_pressure_map_names_deadline_clusters_without_false_split_action(db):
     user = _user(db, "cluster-pressure@example.com")
     _deadline(db, user.user_id, "Algorithms Quiz", days=2, external_source="moodle_ics")
     _deadline(db, user.user_id, "Systems Project", days=3, external_source="moodle_ics")
@@ -1143,7 +1170,9 @@ def test_pressure_map_names_deadline_clusters_and_biggest_split_option(db):
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert any(point["kind"] == "cluster" for point in data["compression_points"])
-    assert any(option["action"] == "split_into_blocks" for option in data["recovery_options"])
+    assert any(option["action"] == "confirm_coverage" for option in data["recovery_options"])
+    assert all(option["action"] != "split_into_blocks" for option in data["recovery_options"])
+    assert any(option["action"] == "create_plan" for option in data["recovery_options"])
 
 
 def test_baseet_pressure_input_kill_switch_suppresses_baseet_rows(db, monkeypatch):
