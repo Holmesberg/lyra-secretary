@@ -20371,3 +20371,59 @@ Rollback:
   `88dbc59`, `1d179c9`, and `4fa0683` to restore the task-row-only verifier.
   Test-only commits `d40f448` and `a8474c1` may be reverted independently.
   No migration or production-data repair is involved.
+
+### Count-once Pulse summary and render-evidence congruence
+
+Seam and behavior:
+
+- Issue `#220` remains the owner. Product commit `91f81bc` switches the compact
+  Pulse Pressure Map from the legacy additive `estimated_*` total to the
+  existing count-once projection: remaining demand, coverage applied by linked
+  plans, and unscheduled demand. It makes no estimate-prior, linkage, capacity,
+  collision, provider, schema, or mutation change.
+- The same product commit records those displayed structural aggregates in the
+  redacted render snapshot. Obligation IDs, task IDs, titles, and per-entity
+  projection rows are deliberately excluded. Regression commit `4533341`
+  proves a case where the legacy total exceeds the count-once total and locks
+  the retained projection to the count-once result.
+- Verifier commit `3d66995` requires the non-zero browser values to equal the
+  API projection, requires authenticated render evidence to retain the same
+  redacted values, and checks the summary remains uncut at `390x844`. A first
+  focused verifier run correctly isolated an order-sensitive JSON comparison;
+  canonical structural comparison fixed the harness without changing product
+  behavior.
+
+Proof:
+
+- The focused Pressure Map projection and endpoint set passed `42` tests;
+  frontend typecheck and an isolated production build passed. `git diff
+  --check` remained clean.
+- Current-source proof used lifespan-disabled backend `8001` and frontend
+  `3018` with `.next-local-current`; public ports `8000/3000` and
+  `.next-public` were untouched. The real Holmesberg cookie rendered a seeded
+  `90 to 240` minute remaining range, zero applied coverage, and the same
+  `90 to 240` minute unscheduled range. The plan preview, single canonical block,
+  Calendar destination, browser acknowledgement, mobile layout, and cleanup
+  passed at
+  `tmp/post-wave-dogfood/pressure-count-once-4533341/verifier-proof-r2/result.json`.
+- The retained focused harness failure is
+  `tmp/post-wave-dogfood/pressure-count-once-4533341/verifier-proof/result.json`;
+  its values were equal but object key order differed.
+- Operator after-proof passed at
+  `tmp/post-wave-dogfood/pressure-count-once-4533341/operator-after/result.json`
+  with zero count, route, and dashboard diffs; zero issues/warnings;
+  `implementation_green=true`; explicit cohort yellow; and
+  `exposure_without_render_count=0`.
+- Exact-head CI passed for
+  `3d6699521d332f7ff1061e60610fea086db0e856`:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29256190826`.
+
+Remaining boundary and rollback:
+
+- The Pulse UI-owner switch is closed, but issue `#220` remains open for the
+  Accounting Gate's still-named missing-estimate/linkage, unresolved capture,
+  provider-freshness, and partial-availability fixtures. No capacity or
+  collision authority is implied.
+- Revert `91f81bc` to restore the legacy Pulse summary and remove the retained
+  aggregate, `4533341` to remove its regression proof, and `3d66995` to remove
+  only the browser congruence checks. No migration or data repair is involved.
