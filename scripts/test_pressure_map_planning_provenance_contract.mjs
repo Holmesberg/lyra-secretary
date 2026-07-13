@@ -16,6 +16,7 @@ function assert(condition, message) {
 const planning = read("frontend/lib/pressure-map-planning.ts");
 const preview = read("frontend/components/pulse/PulseAcademicPressureMap.tsx");
 const commit = read("frontend/components/pulse/use-pressure-map-plan-commit.ts");
+const calendar = read("frontend/app/(app)/calendar/page.tsx");
 
 assert(
   planning.includes("suggestedDurationMinutes: number")
@@ -48,6 +49,12 @@ assert(
     && preview.includes("start the timer to prove it right or wrong")
     && preview.includes("This is planning footprint, not execution truth."),
   "Pressure Map preview must make the estimate useful, editable, and bounded",
+);
+
+assert(
+  calendar.includes('dayBoundaries: { start: "06:00", end: "24:00" }')
+    && calendar.includes("const endHour = 24;"),
+  "Pressure Map recovery blocks crossing 23:00 must remain visible in Calendar",
 );
 
 console.log(JSON.stringify({
