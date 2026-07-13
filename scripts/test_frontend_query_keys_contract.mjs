@@ -18,6 +18,7 @@ function assert(condition, message) {
 const queryKeys = read("frontend/lib/query-keys.ts");
 const deadlinesPage = read("frontend/app/(app)/deadlines/page.tsx");
 const calendarPage = read("frontend/app/(app)/calendar/page.tsx");
+const tablePage = read("frontend/app/(app)/table/page.tsx");
 const todayPage = read("frontend/app/(app)/today/page.tsx");
 
 assert(
@@ -72,5 +73,19 @@ for (const [name, source] of [
     `${name} must not keep a deadline-only invalidation path`,
   );
 }
+
+for (const [name, source] of [
+  ["Calendar", calendarPage],
+  ["Table", tablePage],
+]) {
+  assert(
+    source.includes("invalidateTaskMutationCaches"),
+    `${name} task mutations must use the shared task-dependent recipe`,
+  );
+}
+assert(
+  !tablePage.includes("void refetchTasks();"),
+  "Table correction must not refresh only its local task range",
+);
 
 console.log(JSON.stringify({ ok: true, checked: "frontend_query_keys_contract" }));
