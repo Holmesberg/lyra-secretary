@@ -276,16 +276,25 @@ Wave 4 checkpoint status on 2026-07-13:
 - Today stop rollback truth is closed: initial confirmation and failed requests
   restore the captured running or paused projection, and failed requests
   immediately reconcile from canonical task/stopwatch reads.
-- The remaining Wave 4 work is invalidation completeness and any capture-route
-  gap exposed by the Capture Gate. Do not
-  repeat closed layout, partial-read, integration-legibility, or pause-reason
-  seams.
+- The five-obligation Capture Gate passed on 2026-07-13 with real canonical
+  Holmesberg writes, exact export proof, direct destinations, and cleanup. The
+  account-readiness fixture changed only the browser `GET /v1/users/me`
+  response and is not hosted-public proof.
+- The remaining Wave 4 work is invalidation completeness. Do not repeat closed
+  layout, partial-read, integration-legibility, pause-reason, stop-result, or
+  capture-result seams.
 
 ### Capture Gate
 
 A real five-obligation Brain Dump or import must produce inspectable accepted
 items and an obvious destination without database repair. Failure redirects
 the next seam to capture rather than architecture.
+
+Status: passed on 2026-07-13. The focused browser path created four tasks and
+one deadline from an editable five-item preview, returned five canonical
+outcomes, exposed Pressure Map/Table/Deadlines/Calendar destinations, proved
+the rows through export, and terminalized every synthetic row without manual
+repair.
 
 ## Wave 5: Pressure Map Accounting, UX, And Day-Zero Value
 

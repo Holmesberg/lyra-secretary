@@ -21199,3 +21199,43 @@ Next boundary:
 - Rollback remains the independent reversion of the zero-duration and Today
   rollback product/verifier commits recorded above. This checkpoint added no
   product code, runtime authority, production mutation, or deployment action.
+
+## 2026-07-13 - Wave 4 Five-Obligation Capture Gate
+
+Gate result:
+
+- Verifier commit `6648fd6` exposes the pre-existing focused capture mode
+  through `run_holmesberg_product_loop_dogfood.ps1`; it changes no product
+  behavior, classifier, topology trust decision, or runtime authority.
+- The real-cookie local-current run passed at
+  `tmp/post-wave-dogfood/wave4-capture-gate-646fcf5/r1/result.json`. The
+  browser edited all five preview rows, committed four tasks plus one deadline,
+  received five created canonical outcomes with no failed item, and proved the
+  exact IDs through user export.
+- The completion surface reported accepted counts and exposed visible links to
+  Pressure Map, Table, Deadlines, and Calendar. The Pressure Map link opened the
+  existing populated surface. Desktop/mobile screenshots were inspected; the
+  actions remained legible and mobile horizontal overflow was zero.
+- The account-readiness fixture affected only the browser response for
+  `GET /v1/users/me`, performed no write, and is labeled as local-current rather
+  than hosted-public proof. Parse, commit, export, navigation, and cleanup used
+  the real Holmesberg account and backend.
+- Cleanup left zero active prefixed tasks or deadlines, no active timer, and no
+  unterminated creation-nudge, deadline-suggestion, or stopwatch-output debt.
+  No database repair was required.
+- The first isolated build used `127.0.0.1:8001` while the declared verifier
+  contract used `localhost:8001`; topology preflight classified the mismatch
+  before browser mutation. The artifact was rebuilt with the canonical origin,
+  and explicit local-current topology then passed. No comprehensive run was
+  used to diagnose the setup mismatch.
+- Isolated ports `3018/8001` and `.next-local-current` were removed after proof.
+  Hosted frontend, API, and topology remained `200` and verified; no public
+  restart or artifact mutation occurred.
+
+Next boundary:
+
+- Capture is closed for the present Wave 4 contract. The next product seam is
+  selected only from concrete stale-state risk found by the bounded query-
+  invalidation audit; already-correct routes remain untouched.
+- Revert `6648fd6` to remove only the wrapper selector. No product rollback,
+  schema change, data repair, or deployment action is required.
