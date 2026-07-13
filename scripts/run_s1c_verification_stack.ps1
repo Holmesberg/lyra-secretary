@@ -82,6 +82,10 @@ try {
     & $python scripts\scan_feature_preservation_registry.py --fail-on-errors
   }
 
+  Invoke-Step "onboarding Brain Dump recovery contract gate" {
+    node scripts\test_onboarding_brain_dump_recovery_contract.mjs
+  }
+
   Invoke-Step "OpenClaw operator relay hermetic test" {
     node scripts\test_openclaw_operator_relay.mjs
   }
