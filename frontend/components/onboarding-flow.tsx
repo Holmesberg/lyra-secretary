@@ -125,8 +125,17 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
     if (parsing || committing || skipping) return;
     setError(null);
     setSkipping(true);
-    onSkipped();
-    void api("/v1/users/me/skip-onboarding", { method: "POST" });
+    try {
+      await api("/v1/users/me/skip-onboarding", { method: "POST" });
+      onSkipped();
+    } catch (skipError) {
+      setError(
+        skipError instanceof Error
+          ? skipError.message
+          : "Couldn't skip onboarding. Try again.",
+      );
+      setSkipping(false);
+    }
   }
 
   return (
@@ -189,13 +198,19 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
               </div>
 
               {error && (
-                <div className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
+                <div
+                  data-testid="onboarding-brain-dump-error"
+                  role="alert"
+                  className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember"
+                >
                   {error}
                 </div>
               )}
 
               <div className="mt-2 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <button
+                  data-testid="onboarding-brain-dump-skip"
+                  type="button"
                   onClick={handleSkip}
                   disabled={parsing || skipping}
                   className={cn(
