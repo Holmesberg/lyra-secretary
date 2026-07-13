@@ -316,9 +316,8 @@ function TodayInner() {
     ]);
   }, []);
 
-  const refresh = () => {
-    void invalidateTodayTaskCommandSurfaces(qc, viewedDate, nextDateStr);
-  };
+  const refresh = () =>
+    invalidateTodayTaskCommandSurfaces(qc, viewedDate, nextDateStr);
 
   const { handleStart, handleStop } = useTodayStopwatchCommands({
     tasksDayKey,
@@ -541,14 +540,20 @@ function TodayInner() {
   async function handleDelete(task: TaskRowType) {
     if (!window.confirm("Delete this task? Cancelled plans are recorded as a behavioral signal.")) return;
     setErrorMsg(null);
+    await qc.cancelQueries({ queryKey: tasksDayKey });
+    const snapshot = qc.getQueryData<TaskRowType[]>(tasksDayKey);
     qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
       old?.filter((t) => t.task_id !== task.task_id)
     );
     try {
       await deleteTask(task.task_id);
       announceUndoAvailable("Task deleted.");
-      refresh();
+      await refresh();
     } catch (e: any) {
+      if (snapshot !== undefined) {
+        qc.setQueryData(tasksDayKey, snapshot);
+      }
+      await refresh();
       setErrorMsg(e?.message ?? "Failed to delete task");
     }
   }
@@ -589,17 +594,30 @@ function TodayInner() {
     clearSelection();
     setVoidModalOpen(false);
 
-    try {
-      await Promise.all(ids.map((id) => voidTask(id, reason, detail)));
-      qc.invalidateQueries({ queryKey: tasksDayKey });
-      qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
-    } catch (e) {
-      // Rollback the optimistic mutation; surface error.
+    const results = await Promise.allSettled(
+      ids.map((id) => voidTask(id, reason, detail))
+    );
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+
+    if (failures.length > 0) {
+      // Each void command commits independently. Restore first, then refetch
+      // canonical truth so successful siblings stay voided while failed rows
+      // remain visible.
       if (snapshot !== undefined) {
         qc.setQueryData(tasksDayKey, snapshot);
       }
+    }
+
+    await refresh();
+
+    if (failures.length > 0) {
+      const firstFailure = failures[0].reason;
       setErrorMsg(
-        `Void failed: ${e instanceof Error ? e.message : String(e)}`
+        `${failures.length} of ${ids.length} tasks could not be voided: ${
+          firstFailure instanceof Error ? firstFailure.message : String(firstFailure)
+        }`
       );
     }
   }
