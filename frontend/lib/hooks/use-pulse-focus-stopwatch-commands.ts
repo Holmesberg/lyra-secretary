@@ -9,10 +9,13 @@ import {
 } from "react";
 import { useMutation } from "@tanstack/react-query";
 
-import { ackExposureSuppression } from "@/lib/api";
 import { useTimerCommandInvalidation } from "@/lib/hooks/use-timer-command-invalidation";
 import { announceUndoAvailable } from "@/lib/undo";
 import { QUICK_PAUSE_REASON } from "@/lib/stopwatch-pause-reasons";
+import {
+  presentStopwatchStopOutputs,
+  type PushStopwatchStopOutputToast,
+} from "@/lib/stopwatch-stop-outputs";
 import {
   pauseStopwatch,
   resumeStopwatch,
@@ -24,22 +27,6 @@ import {
 } from "@/lib/tasks";
 
 export type PulseFocusMode = "idle" | "reflection" | "next-prompt";
-
-const SUPPRESSION_RETRY_MS = [250, 750, 1500, 3000];
-
-function suppressUnavailableStopOutput(exposureId?: string | null, attempt = 0) {
-  if (!exposureId) return;
-  void ackExposureSuppression(exposureId, {
-    suppressionReason: "client_surface_unavailable",
-  }).then((ok) => {
-    const delay = SUPPRESSION_RETRY_MS[attempt];
-    if (!ok && delay !== undefined) {
-      globalThis.setTimeout(() => {
-        suppressUnavailableStopOutput(exposureId, attempt + 1);
-      }, delay);
-    }
-  });
-}
 
 interface StoppedSummary {
   minutes: number;
@@ -56,6 +43,7 @@ interface PulseFocusStopwatchCommandOptions {
   setStoppedSummary: Dispatch<SetStateAction<StoppedSummary | null>>;
   setErrorMsg: Dispatch<SetStateAction<string | null>>;
   setInfoMsg: Dispatch<SetStateAction<string | null>>;
+  pushToast: PushStopwatchStopOutputToast;
   lastStoppedTaskIdRef: MutableRefObject<string | null>;
 }
 
@@ -69,6 +57,7 @@ export function usePulseFocusStopwatchCommands({
   setStoppedSummary,
   setErrorMsg,
   setInfoMsg,
+  pushToast,
   lastStoppedTaskIdRef,
 }: PulseFocusStopwatchCommandOptions) {
   const refreshTimerSurfaces = useTimerCommandInvalidation();
@@ -156,8 +145,7 @@ export function usePulseFocusStopwatchCommands({
       setRequiresConfirm(false);
       setErrorMsg(null);
       setInfoMsg(null);
-      suppressUnavailableStopOutput(res.micro_mirror_exposure_id);
-      suppressUnavailableStopOutput(res.calibration_nudge_exposure_id);
+      presentStopwatchStopOutputs(res, pushToast);
       setReflection(null);
       setCompletionPct("");
       setScopeOutcome(null);

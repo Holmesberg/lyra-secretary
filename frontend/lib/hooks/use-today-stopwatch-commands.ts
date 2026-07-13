@@ -7,6 +7,10 @@ import {
 } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/query-keys";
+import {
+  presentStopwatchStopOutputs,
+  type PushStopwatchStopOutputToast,
+} from "@/lib/stopwatch-stop-outputs";
 import { announceUndoAvailable } from "@/lib/undo";
 import {
   startStopwatch,
@@ -22,8 +26,6 @@ export interface TodayEarlyStopState {
   message: string;
 }
 
-type TodayToastLifespan = "auto" | "pin";
-
 interface TodayStopwatchCommandOptions {
   tasksDayKey: QueryKey;
   refresh: () => void;
@@ -33,14 +35,7 @@ interface TodayStopwatchCommandOptions {
   setReflectionOpen: Dispatch<SetStateAction<boolean>>;
   setEarlyStop: Dispatch<SetStateAction<TodayEarlyStopState | null>>;
   setInfoMsg: Dispatch<SetStateAction<string | null>>;
-  pushToast: (
-    message: string,
-    viewId: string | null,
-    lifespan: TodayToastLifespan,
-    detailHref?: string,
-    exposureId?: string | null,
-    surfaceId?: string | null,
-  ) => void;
+  pushToast: PushStopwatchStopOutputToast;
 }
 
 export function useTodayStopwatchCommands({
@@ -201,26 +196,7 @@ export function useTodayStopwatchCommands({
             `${res.paused_parent.title} is still paused (${res.paused_parent.paused_minutes} min). Resume when ready.`,
           );
         }
-        if (res.micro_mirror) {
-          pushToast(
-            res.micro_mirror,
-            res.micro_mirror_view_id ?? null,
-            "auto",
-            "/insights",
-            res.micro_mirror_exposure_id ?? null,
-            "stopwatch.micro_mirror",
-          );
-        }
-        if (res.calibration_nudge) {
-          pushToast(
-            res.calibration_nudge,
-            res.calibration_nudge_view_id ?? null,
-            "pin",
-            "/insights",
-            res.calibration_nudge_exposure_id ?? null,
-            "stopwatch.calibration_nudge",
-          );
-        }
+        presentStopwatchStopOutputs(res, pushToast);
         refresh();
       } catch (e: unknown) {
         if (snapshot !== undefined) {

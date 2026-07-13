@@ -36,9 +36,10 @@
  *      now resets mode→'idle' when status flips inactive while in
  *      reflection AND no in-flight stop mutation.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Pause, Play, Square } from "lucide-react";
+import { Toast } from "@/components/toast";
 import {
   getStopwatchStatus,
   type ScopeOutcome,
@@ -47,6 +48,7 @@ import {
 } from "@/lib/tasks";
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
 import { queryKeys } from "@/lib/query-keys";
+import type { StopwatchStopOutputToast } from "@/lib/stopwatch-stop-outputs";
 import {
   usePulseFocusStopwatchCommands,
   type PulseFocusMode,
@@ -54,6 +56,10 @@ import {
 
 export interface PulseFocusCardProps {
   todaysTasks: TaskRow[];
+}
+
+interface PulseToastEntry extends StopwatchStopOutputToast {
+  id: string;
 }
 
 function fmtTime(iso: string | null | undefined): string {
@@ -125,7 +131,44 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<PulseToastEntry[]>([]);
   const lastStoppedTaskIdRef = useRef<string | null>(null);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((previous) => previous.filter((toast) => toast.id !== id));
+  }, []);
+
+  const pushToast = useCallback((
+    message: string,
+    viewId: string | null,
+    lifespan: "auto" | "pin",
+    detailHref = "/insights",
+    exposureId: string | null = null,
+    surfaceId: string | null = null,
+  ) => {
+    if (
+      surfaceId !== "stopwatch.micro_mirror"
+      && surfaceId !== "stopwatch.calibration_nudge"
+    ) {
+      return;
+    }
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setToasts((previous) => [
+      ...previous,
+      {
+        id,
+        message,
+        viewId,
+        lifespan,
+        detailHref,
+        exposureId,
+        surfaceId,
+      },
+    ]);
+  }, []);
 
   function beginReflection() {
     setCompletionPct("");
@@ -151,6 +194,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       setStoppedSummary,
       setErrorMsg,
       setInfoMsg,
+      pushToast,
       lastStoppedTaskIdRef,
     });
 
@@ -195,7 +239,8 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
           : "Ready when you are";
 
   return (
-    <div
+    <>
+      <div
       data-testid="pulse-focus-card"
       className="terminal-panel relative flex flex-col items-center overflow-hidden px-5 py-6 sm:px-6 sm:py-7"
     >
@@ -592,6 +637,22 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
           {infoMsg} <span className="text-signal/60">· tap to dismiss</span>
         </button>
       )}
-    </div>
+      </div>
+      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            id={toast.id}
+            message={toast.message}
+            viewId={toast.viewId}
+            exposureId={toast.exposureId}
+            surfaceId={toast.surfaceId}
+            lifespan={toast.lifespan}
+            detailHref={toast.detailHref}
+            onDismiss={removeToast}
+          />
+        ))}
+      </div>
+    </>
   );
 }
