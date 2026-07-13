@@ -14,6 +14,7 @@ ItemKind = Literal["task", "deadline"]
 BindingTier = Literal["tier1_auto", "tier2_ask", "tier3_skip"]
 BindingTargetKind = Literal["parsed_deadline", "existing_deadline"]
 ParserStatus = Literal["heuristic_parsed", "empty"]
+CommitOutcomeStatus = Literal["created", "reused", "rejected", "failed"]
 
 
 class BrainDumpParsedItem(BaseModel):
@@ -138,12 +139,26 @@ class BrainDumpFailedItem(BaseModel):
     retry_hint: Optional[str] = None
 
 
+class BrainDumpCommitOutcome(BaseModel):
+    """Per-item commit truth for an accepted Brain Dump preview."""
+
+    item_id: str
+    kind: ItemKind
+    title: str
+    status: CommitOutcomeStatus
+    canonical_id: Optional[str] = None
+    reason: Optional[str] = None
+    detail: Optional[str] = None
+    retry_hint: Optional[str] = None
+
+
 class BrainDumpCommitResponse(BaseModel):
     tasks_created: int
     deadlines_created: int
     bindings_applied: int
     task_ids: list[str]
     deadline_ids: list[str]
+    outcomes: list[BrainDumpCommitOutcome] = Field(default_factory=list)
     # LYR-114 fix 2026-04-30: per-item failure surface. Empty when all
     # items committed cleanly. Frontend renders a dismissible warning
     # panel listing failures + a retry affordance per item.

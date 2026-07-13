@@ -6,10 +6,22 @@
  * before planning/recovery review, and it shrinks while a timer is active so
  * the current session remains the visual center.
  */
+import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Flag, Link as LinkIcon, Mic } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  FileText,
+  Flag,
+  Gauge,
+  Link as LinkIcon,
+  Mic,
+  Table2,
+  X,
+} from "lucide-react";
 import { BrainDumpQuickModal } from "@/components/pulse/BrainDumpQuickModal";
+import type { BrainDumpCommitResponse } from "@/lib/brain-dump";
 import { getStopwatchStatus, type StopwatchStatus } from "@/lib/tasks";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -24,28 +36,33 @@ export function PulseQuickCaptureV2() {
   const [text, setText] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [seedText, setSeedText] = useState("");
-  const [bannerCount, setBannerCount] = useState<{
-    tasks: number;
-    deadlines: number;
-  } | null>(null);
+  const [captureResult, setCaptureResult] =
+    useState<BrainDumpCommitResponse | null>(null);
 
   const compact = !!statusQ.data?.active;
 
   function openModal(e?: React.FormEvent) {
     e?.preventDefault();
+    setCaptureResult(null);
     setSeedText(text);
     setModalOpen(true);
   }
 
-  function handleCompleted(counts: {
-    tasks: number;
-    deadlines: number;
-    bindings: number;
-  }) {
-    setBannerCount({ tasks: counts.tasks, deadlines: counts.deadlines });
+  function handleCompleted(result: BrainDumpCommitResponse) {
+    setCaptureResult(result);
     setText("");
-    setTimeout(() => setBannerCount(null), 4000);
   }
+
+  const outcomes = captureResult?.outcomes ?? [];
+  const reusedCount = outcomes.filter((row) => row.status === "reused").length;
+  const rejectedCount = outcomes.filter((row) => row.status === "rejected").length;
+  const failedCount = outcomes.filter((row) => row.status === "failed").length;
+  const hasAcceptedResult = Boolean(
+    captureResult &&
+      (captureResult.tasks_created > 0 ||
+        captureResult.deadlines_created > 0 ||
+        reusedCount > 0),
+  );
 
   return (
     <>
@@ -97,26 +114,58 @@ export function PulseQuickCaptureV2() {
         </button>
       </form>
 
-      {bannerCount && (
+      {captureResult && (
         <div
           role="status"
-          className="rounded-sm border border-signal/40 bg-signal/5 px-4 py-2 text-[12px] text-signal"
+          data-testid="brain-dump-capture-result"
+          className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-sm border border-signal/40 bg-signal/5 px-4 py-3 text-[12px] text-signal"
         >
-          Locked in.{" "}
-          {bannerCount.tasks > 0 && (
-            <>
-              <span className="font-display">{bannerCount.tasks}</span>{" "}
-              {bannerCount.tasks === 1 ? "task" : "tasks"}
-            </>
+          <div className="min-w-[220px] flex-1">
+            <span className="font-medium text-parchment">Capture complete.</span>{" "}
+            {captureResult.tasks_created} task
+            {captureResult.tasks_created === 1 ? "" : "s"} and{" "}
+            {captureResult.deadlines_created} deadline
+            {captureResult.deadlines_created === 1 ? "" : "s"} created
+            {reusedCount > 0 && `; ${reusedCount} existing obligation reused`}
+            {rejectedCount > 0 && `; ${rejectedCount} item rejected`}
+            {failedCount > 0 && `; ${failedCount} item failed`}.
+          </div>
+          {hasAcceptedResult && (
+            <nav
+              aria-label="Review captured work"
+              className="flex flex-wrap items-center gap-2"
+            >
+              <CaptureDestination
+                href="/pulse#pressure-map"
+                label="Open Pressure Map"
+                icon={Gauge}
+              />
+              {captureResult.tasks_created > 0 && (
+                <CaptureDestination href="/table" label="Review tasks" icon={Table2} />
+              )}
+              {(captureResult.deadlines_created > 0 || reusedCount > 0) && (
+                <CaptureDestination
+                  href="/deadlines"
+                  label="Review deadlines"
+                  icon={Flag}
+                />
+              )}
+              <CaptureDestination
+                href="/calendar"
+                label="Open calendar"
+                icon={CalendarDays}
+              />
+            </nav>
           )}
-          {bannerCount.tasks > 0 && bannerCount.deadlines > 0 && " + "}
-          {bannerCount.deadlines > 0 && (
-            <>
-              <span className="font-display">{bannerCount.deadlines}</span>{" "}
-              {bannerCount.deadlines === 1 ? "deadline" : "deadlines"}
-            </>
-          )}{" "}
-          captured.
+          <button
+            type="button"
+            aria-label="Dismiss capture result"
+            title="Dismiss capture result"
+            onClick={() => setCaptureResult(null)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-hairline text-dust transition-colors hover:border-signal/40 hover:text-parchment"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
@@ -127,6 +176,27 @@ export function PulseQuickCaptureV2() {
         onCompleted={handleCompleted}
       />
     </>
+  );
+}
+
+function CaptureDestination({
+  href,
+  label,
+  icon: Icon,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex h-8 items-center gap-1.5 rounded-sm border border-signal/30 bg-void-2/40 px-2.5 font-mono text-[10px] uppercase tracking-widest text-signal transition-colors hover:border-signal/60 hover:bg-signal/10"
+    >
+      <Icon className="h-3 w-3" />
+      {label}
+      <ArrowRight className="h-3 w-3" />
+    </Link>
   );
 }
 

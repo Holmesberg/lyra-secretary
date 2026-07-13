@@ -35,6 +35,7 @@ import {
   pad2,
 } from "@/lib/brain-dump-ui";
 import { useBrainDumpFlow } from "@/lib/hooks/use-brain-dump-flow";
+import type { BrainDumpCommitResponse } from "@/lib/brain-dump";
 import { invalidateBrainDumpCommitCaches } from "@/lib/query-keys";
 
 /** Pulse-specific retry hints; shared failure wording lives in brain-dump-ui. */
@@ -86,11 +87,7 @@ export interface BrainDumpQuickModalProps {
   seedText?: string;
   /** Optional callback fired after a successful commit. Useful for
    *  showing a banner / toast on the parent surface. */
-  onCompleted?: (counts: {
-    tasks: number;
-    deadlines: number;
-    bindings: number;
-  }) => void;
+  onCompleted?: (result: BrainDumpCommitResponse) => void;
 }
 
 export function BrainDumpQuickModal({
@@ -134,11 +131,7 @@ export function BrainDumpQuickModal({
     useStableCommitKey: true,
     onCommitResult: (res) => {
       void invalidateBrainDumpCommitCaches(qc);
-      onCompleted?.({
-        tasks: res.tasks_created,
-        deadlines: res.deadlines_created,
-        bindings: res.bindings_applied,
-      });
+      onCompleted?.(res);
     },
     onCleanCommit: () => onOpenChange(false),
   });

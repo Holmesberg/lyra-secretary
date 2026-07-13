@@ -278,7 +278,11 @@ export function PulseAcademicPressureMap({
   } = selectPressurePlanOption(pressure);
 
   return (
-    <div className="terminal-panel flex h-full flex-col p-5">
+    <div
+      id="pressure-map"
+      data-testid="pressure-map"
+      className="terminal-panel flex h-full scroll-mt-6 flex-col p-5"
+    >
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <div className="font-display text-[10px] font-medium uppercase tracking-macro text-dust">
           <span className="opacity-50">[ </span>
