@@ -59,6 +59,7 @@ const captureProofOnly = args.get("capture-proof-only") === "true";
 const onboardingPartialRecoveryProofOnly = args.get("onboarding-partial-recovery-proof-only") === "true";
 const onboardingSkipProofOnly = args.get("onboarding-skip-proof-only") === "true";
 const reentryProofOnly = args.get("reentry-proof-only") === "true";
+const reentryRescheduleProofOnly = args.get("reentry-reschedule-proof-only") === "true";
 const creationNudgeProofOnly = args.get("creation-nudge-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
 const fixtureAccountReady = args.get("fixture-account-ready") === "true";
@@ -5132,6 +5133,141 @@ async function runPulseMissedPlanDonePath(page, token) {
   return executed;
 }
 
+async function runPulseReentryReschedulePath(page, token) {
+  const title = `${prefix} missed plan reschedule`;
+  const task = await createTaskViaApi(token, {
+    title,
+    startMinutes: 480,
+    durationMinutes: 30,
+    category: "dogfood_reentry",
+  });
+  addCheck("re-entry reschedule setup creates planned task", Boolean(task?.task_id), task || { title });
+  if (!task?.task_id) return { taskIds: [] };
+
+  const pastEnd = new Date(Date.now() - 25 * 60_000);
+  const pastStart = new Date(pastEnd.getTime() - 30 * 60_000);
+  await rescheduleTaskViaApi(token, task.task_id, { start: pastStart, end: pastEnd });
+
+  await goto(page, "/pulse", "pulse-missed-plan-reschedule-before");
+  const reentryQueue = page.locator('section[aria-label="Re-entry queue"]').first();
+  const missedCard = reentryQueue
+    .locator("div")
+    .filter({ hasText: title })
+    .filter({ hasText: /Missed plan/i })
+    .first();
+  const rescheduleLink = missedCard.getByRole("link", { name: /Reschedule/i }).first();
+  const rescheduleHref = await rescheduleLink.getAttribute("href").catch(() => null);
+  addCheck("missed-plan re-entry exposes a task-specific Reschedule command", Boolean(
+    rescheduleHref
+    && rescheduleHref.includes("/today?")
+    && rescheduleHref.includes(`edit_task=${encodeURIComponent(task.task_id)}`)
+  ), { task_id: task.task_id, href: rescheduleHref });
+  await screenshot(page, "pulse-missed-plan-reschedule-visible");
+
+  const desktopViewport = page.viewportSize() || { width: 1440, height: 950 };
+  await page.setViewportSize({ width: 390, height: 844 });
+  await goto(page, "/pulse", "pulse-missed-plan-reschedule-mobile");
+  const mobileOverflow = await page.evaluate(() => (
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  ));
+  const mobileRescheduleVisible = await rescheduleLink.isVisible({ timeout: 8_000 }).catch(() => false);
+  addCheck("re-entry actions fit the mobile viewport", Boolean(
+    mobileOverflow <= 1 && mobileRescheduleVisible
+  ), { viewport: { width: 390, height: 844 }, horizontal_overflow_pixels: mobileOverflow });
+  await screenshot(page, "pulse-missed-plan-reschedule-mobile");
+  await rescheduleLink.click({ timeout: 10_000 });
+
+  const modal = page.getByTestId("new-task-modal").first();
+  await modal.waitFor({ state: "visible", timeout: 12_000 });
+  addCheck("re-entry Reschedule opens the existing task editor", (
+    await page.getByTestId("new-task-title").inputValue()
+  ) === title, {
+    task_id: task.task_id,
+    title_value: await page.getByTestId("new-task-title").inputValue(),
+  });
+  await page.waitForTimeout(200);
+  const modalOverflow = await modal.evaluate((element) => element.scrollWidth - element.clientWidth);
+  const modalBox = await modal.boundingBox();
+  await page.waitForTimeout(100);
+  const settledModalBox = await modal.boundingBox();
+  const modalPageOverflow = await page.evaluate(() => (
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  ));
+  addCheck("re-entry task editor fits the mobile viewport", Boolean(
+    modalOverflow <= 1
+    && modalPageOverflow <= 1
+    && settledModalBox
+    && settledModalBox.x >= -1
+    && settledModalBox.x + settledModalBox.width <= 391
+    && modalBox
+    && Math.abs(settledModalBox.x - modalBox.x) <= 1
+    && Math.abs(settledModalBox.width - modalBox.width) <= 1
+  ), {
+    viewport: { width: 390, height: 844 },
+    internal_overflow_pixels: modalOverflow,
+    page_overflow_pixels: modalPageOverflow,
+    first_settled_bounding_box: modalBox,
+    final_bounding_box: settledModalBox,
+  });
+  await screenshot(page, "today-reentry-reschedule-editor-mobile");
+
+  const newStart = new Date(Date.now() + 120 * 60_000);
+  const newEnd = new Date(newStart.getTime() + 40 * 60_000);
+  await page.getByTestId("new-task-start").fill(localInput(newStart));
+  await page.getByTestId("new-task-end").fill(localInput(newEnd));
+  const rescheduleResponse = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && new URL(response.url()).pathname === "/v1/reschedule"
+  ));
+  await page.getByTestId("new-task-save").click();
+  const response = await rescheduleResponse;
+  addCheck("re-entry editor confirms through canonical reschedule authority", response.ok(), {
+    status: response.status(),
+    path: new URL(response.url()).pathname,
+  });
+
+  const rescheduled = await pollFor(token, "re-entry canonical reschedule", async () => {
+    const current = await findTaskByTitle(token, title);
+    if (!current) return null;
+    const actualStart = new Date(current.start || current.planned_start_utc).getTime();
+    return Math.abs(actualStart - newStart.getTime()) < 90_000 ? current : null;
+  }, 15_000, 750);
+  addCheck("re-entry reschedule preserves task identity and updates canonical time", Boolean(
+    rescheduled?.task_id === task.task_id
+    && rescheduled.planned_duration_minutes === 40
+  ), rescheduled || { task_id: task.task_id });
+
+  await page.setViewportSize(desktopViewport);
+  await goto(page, "/pulse", "pulse-missed-plan-reschedule-after");
+  const afterQueueText = await page
+    .locator('section[aria-label="Re-entry queue"]')
+    .first()
+    .innerText({ timeout: 4_000 })
+    .catch(() => "");
+  addCheck("future rescheduled task leaves the missed-plan queue", !afterQueueText.includes(title), {
+    task_id: task.task_id,
+    body_excerpt: afterQueueText.slice(0, 500),
+  });
+  await screenshot(page, "pulse-missed-plan-reschedule-after");
+
+  const unknownId = randomUUID();
+  await goto(
+    page,
+    `/today?date=${dateKey()}&edit_task=${encodeURIComponent(unknownId)}`,
+    "today-unknown-reentry-reschedule",
+  );
+  const unknownRejected = await page
+    .getByText("That task is no longer available to reschedule.", { exact: true })
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  addCheck("unknown task destination does not open the reschedule editor", Boolean(
+    unknownRejected && !(await modal.isVisible().catch(() => false))
+  ), { requested_task_id: unknownId, message_visible: unknownRejected });
+
+  return { taskIds: [task.task_id] };
+}
+
 async function runTimerSwitchChipPath(page, token) {
   const parentTitle = `${prefix} switch parent`;
   const childTitle = `${prefix} switch child`;
@@ -6593,6 +6729,43 @@ async function main() {
         output_dir: outDir,
         dropped_task_id: dropped?.task_id || null,
         completed_task_id: completed?.task_id || null,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (reentryRescheduleProofOnly) {
+      const proof = await runPulseReentryReschedulePath(page, token);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const afterCleanup = await apiFetch(token, "/v1/users/me/export");
+      const cleanedTasks = proof.taskIds.map(
+        (taskId) => rows(afterCleanup, "tasks").find((row) => row.task_id === taskId) || null,
+      );
+      addCheck("re-entry reschedule proof voids every synthetic task", cleanedTasks.every(
+        (task) => task?.voided_at && task?.voided_reason === "test_contamination",
+      ), { tasks: cleanedTasks });
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "pulse_reentry_reschedule_only",
+        proof_status: "passed",
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        task_ids: proof.taskIds,
         checks,
         issues,
         gated,
