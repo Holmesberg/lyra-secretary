@@ -4260,8 +4260,11 @@ async function runTodayVoidSettlementProof(page, token) {
   await voidDialog.locator("#void-reason").selectOption("system_error");
 
   const voidPattern = "**/v1/tasks/*/void";
+  let routedSuccessCount = 0;
+  let routedFailureCount = 0;
   await page.route(voidPattern, async (route) => {
     if (route.request().url().includes(`/v1/tasks/${bulkFailureTask.task_id}/void`)) {
+      routedFailureCount += 1;
       await route.fulfill({
         status: 503,
         contentType: "application/json",
@@ -4269,27 +4272,15 @@ async function runTodayVoidSettlementProof(page, token) {
       });
       return;
     }
-    await route.continue();
+    routedSuccessCount += 1;
+    await route.fallback();
   });
-  const successfulVoid = page.waitForResponse(
-    (response) => response.request().method() === "POST"
-      && response.url().includes(`/v1/tasks/${bulkSuccessTask.task_id}/void`)
-      && response.ok(),
-    { timeout: 15_000 },
-  );
-  const failedVoid = page.waitForResponse(
-    (response) => response.request().method() === "POST"
-      && response.url().includes(`/v1/tasks/${bulkFailureTask.task_id}/void`)
-      && response.status() === 503,
-    { timeout: 15_000 },
-  );
   await voidDialog.getByRole("button", { name: /^Confirm void$/i }).click();
-  const [successfulResponse, failedResponse] = await Promise.all([successfulVoid, failedVoid]);
-  await page.unroute(voidPattern).catch(() => {});
   await page.getByText(/1 of 2 tasks could not be voided/i).first().waitFor({
     state: "visible",
     timeout: 10_000,
   });
+  await page.unroute(voidPattern).catch(() => {});
   await rowFor(bulkFailureTask.task_id).waitFor({ state: "visible", timeout: 10_000 });
   await rowFor(bulkSuccessTask.task_id).waitFor({ state: "detached", timeout: 10_000 });
 
@@ -4301,8 +4292,8 @@ async function runTodayVoidSettlementProof(page, token) {
     (row) => row.task_id === bulkFailureTask.task_id,
   );
   addCheck("Today partial bulk void preserves each canonical outcome", Boolean(
-    successfulResponse.ok()
-    && failedResponse.status() === 503
+    routedSuccessCount === 1
+    && routedFailureCount === 1
     && exportedBulkSuccess?.voided_at
     && !exportedBulkFailure?.voided_at
     && await rowFor(bulkFailureTask.task_id).isVisible()
@@ -4310,8 +4301,8 @@ async function runTodayVoidSettlementProof(page, token) {
   ), {
     successful_task: exportedBulkSuccess || null,
     failed_task: exportedBulkFailure || null,
-    successful_status: successfulResponse.status(),
-    failed_status: failedResponse.status(),
+    routed_success_count: routedSuccessCount,
+    routed_failure_count: routedFailureCount,
   });
   await screenshot(page, "today-void-settlement-desktop");
 

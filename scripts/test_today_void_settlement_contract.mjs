@@ -22,7 +22,8 @@ assert(
 assert(
   browser.includes('const todayVoidSettlementProofOnly = args.get("today-void-settlement-proof-only") === "true"')
     && browser.includes('proof_scope: "today_delete_void_failure_settlement"')
-    && browser.includes("Today partial bulk void preserves each canonical outcome"),
+    && browser.includes("Today partial bulk void preserves each canonical outcome")
+    && browser.includes("await route.fallback();"),
   "focused browser proof must exercise failed single deletion and partial bulk settlement",
 );
 assert(
