@@ -6,6 +6,7 @@ param(
   [switch]$AllowPublicFrontendArtifactMutation,
   [int]$LocalCurrentPort = 3013,
   [int]$LocalCurrentApiPort = 8000,
+  [switch]$FixtureAccountReady,
   [switch]$ProxyApi
 )
 
@@ -87,6 +88,9 @@ Invoke-NodeChecked `
 $browserArgs = @("scripts/browser_stress_operator_readonly.mjs")
 if ($useProxyApi) {
   $browserArgs += @("--proxy-api", "true")
+}
+if ([bool]$FixtureAccountReady) {
+  $browserArgs += @("--fixture-account-ready", "true")
 }
 $browserArgs += @("--expect-readiness-split", "true")
 
