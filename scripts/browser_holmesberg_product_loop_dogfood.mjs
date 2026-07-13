@@ -91,6 +91,73 @@ function rows(body, key) {
   return Array.isArray(body?.[key]) ? body[key] : [];
 }
 
+function parseJsonObject(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).sort(([left], [right]) => (
+      left.localeCompare(right)
+    ));
+    return `{${entries.map(([key, item]) => (
+      `${JSON.stringify(key)}:${canonicalJson(item)}`
+    )).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function redactedPressureProjection(projection) {
+  return {
+    schema_version: projection.schema_version,
+    projection_status: projection.projection_status,
+    capacity_status: projection.capacity_status,
+    collision_state: projection.collision_state,
+    obligation_count: projection.obligation_count,
+    scenario_count: projection.scenario_count,
+    total_estimate: projection.total_estimate,
+    completed_scope_credit: projection.completed_scope_credit,
+    remaining_demand: projection.remaining_demand,
+    feasible_future_coverage: projection.feasible_future_coverage,
+    applied_coverage: projection.applied_coverage,
+    unscheduled_demand: projection.unscheduled_demand,
+    overcoverage: projection.overcoverage,
+    inconsistent_obligation_count: Array.isArray(projection.inconsistent_obligation_ids)
+      ? projection.inconsistent_obligation_ids.length
+      : 0,
+  };
+}
+
+async function pressureProjectionUiState(page) {
+  const readEnvelope = async (testId) => {
+    const locator = page.getByTestId(testId).first();
+    await locator.waitFor({ state: "visible", timeout: 8_000 });
+    return {
+      low_minutes: Number(await locator.getAttribute("data-low-minutes")),
+      high_minutes: Number(await locator.getAttribute("data-high-minutes")),
+      text: (await locator.innerText()).trim(),
+      box: await locator.boundingBox(),
+    };
+  };
+  return {
+    remaining_demand: await readEnvelope("pressure-map-remaining-demand"),
+    applied_coverage: await readEnvelope("pressure-map-applied-coverage"),
+    unscheduled_demand: await readEnvelope("pressure-map-unscheduled-demand"),
+  };
+}
+
 function exposureSortTime(row) {
   return row?.delivered_at || row?.eligible_at || row?.created_at || "";
 }
@@ -2148,6 +2215,46 @@ async function runPressureMapPath(page, token, beforeExport) {
   await suppressUnrenderedSurfaceProbe(token, pressureSnapshot, "pressure map setup probe");
   await goto(page, "/pulse", "pulse-pressure-map-render-proof");
   const browserExposureIds = await assertPressureMapBrowserRender(token, beforeExport);
+  const uiProjection = await pressureProjectionUiState(page);
+  const expectedUiProjection = {
+    remaining_demand: pressureSnapshot.demand_coverage_projection.remaining_demand,
+    applied_coverage: pressureSnapshot.demand_coverage_projection.applied_coverage,
+    unscheduled_demand: pressureSnapshot.demand_coverage_projection.unscheduled_demand,
+  };
+  const uiProjectionValues = Object.fromEntries(
+    Object.entries(uiProjection).map(([key, value]) => ([
+      key,
+      { low_minutes: value.low_minutes, high_minutes: value.high_minutes },
+    ])),
+  );
+  addCheck(
+    "pressure map displays the count-once demand projection",
+    canonicalJson(uiProjectionValues) === canonicalJson(expectedUiProjection),
+    { expected: expectedUiProjection, displayed: uiProjectionValues },
+  );
+
+  const renderedExport = await apiFetch(token, "/v1/users/me/export");
+  const browserExposureIdSet = new Set(browserExposureIds);
+  const retainedProjections = rows(renderedExport, "exposure_render_events")
+    .filter((row) => browserExposureIdSet.has(row.exposure_id))
+    .map((row) => parseJsonObject(row.content_snapshot)?.demand_coverage_projection)
+    .filter(Boolean);
+  const expectedRetainedProjection = redactedPressureProjection(
+    pressureSnapshot.demand_coverage_projection,
+  );
+  addCheck(
+    "pressure map render evidence retains the displayed redacted projection",
+    retainedProjections.length >= 1
+      && retainedProjections.every((projection) => (
+        canonicalJson(projection) === canonicalJson(expectedRetainedProjection)
+        && !("obligations" in projection)
+        && !("inconsistent_obligation_ids" in projection)
+      )),
+    {
+      expected: expectedRetainedProjection,
+      retained: retainedProjections,
+    },
+  );
   const seededPressureItem = Array.isArray(pressureSnapshot.items)
     ? pressureSnapshot.items.find((item) => item.obligation_id === pressureDeadline.deadline_id)
     : null;
@@ -2258,6 +2365,7 @@ async function runPressureMapPath(page, token, beforeExport) {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(250);
+    const mobileProjection = await pressureProjectionUiState(page);
     const mobilePreviewBox = await previewControl.boundingBox();
     const mobileHorizonBoxes = [];
     for (let index = 0; index < horizonCount; index += 1) {
@@ -2276,6 +2384,22 @@ async function runPressureMapPath(page, token, beforeExport) {
           && box.x + box.width <= 390
         )),
       { preview: mobilePreviewBox, horizons: mobileHorizonBoxes },
+    );
+    const mobileProjectionBoxes = Object.values(mobileProjection).map((value) => value.box);
+    const mobilePressureOverflow = await page.getByTestId("pressure-map").first().evaluate((element) => (
+      element.scrollWidth - element.clientWidth
+    ));
+    addCheck(
+      "pressure map projection remains readable and uncut on mobile",
+      mobileProjectionBoxes.every((box) => (
+        box !== null
+        && box.x >= 0
+        && box.x + box.width <= 390
+      )) && mobilePressureOverflow <= 1,
+      {
+        projection_boxes: mobileProjectionBoxes,
+        horizontal_overflow_pixels: mobilePressureOverflow,
+      },
     );
     await screenshot(page, "pressure-map-affordance-mobile");
     await page.setViewportSize({ width: 1440, height: 950 });
