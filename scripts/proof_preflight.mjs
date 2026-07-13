@@ -40,7 +40,7 @@ function withTimeout(label, promise, timeoutMs) {
   ]).finally(() => clearTimeout(timeout));
 }
 
-function policyErrors({ account, intent, topology, prefix, fixtureAccountReady, proxyApi = false }) {
+function policyErrors({ account, intent, topology, prefix, fixtureAccountReady, proxyApi = false, runtimeDataMode = "shared" }) {
   const errors = [];
   if (intent === "mutable" && account !== "holmesberg") {
     errors.push("mutable proof is restricted to Holmesberg");
@@ -53,6 +53,9 @@ function policyErrors({ account, intent, topology, prefix, fixtureAccountReady, 
   }
   if (fixtureAccountReady && !proxyApi) {
     errors.push("account-readiness fixture requires explicit API proxying");
+  }
+  if (runtimeDataMode === "disposable" && (topology !== "local-current" || account !== "holmesberg")) {
+    errors.push("disposable runtime data is restricted to local-current Holmesberg proof");
   }
   return errors;
 }
@@ -81,6 +84,9 @@ if (flag("--self-test")) {
   }
   if (!policyErrors({ account: "holmesberg", intent: "readonly", topology: "public", fixtureAccountReady: true }).length) {
     failures.push("public account fixture was accepted");
+  }
+  if (!policyErrors({ account: "operator", intent: "readonly", topology: "local-current", runtimeDataMode: "disposable" }).length) {
+    failures.push("disposable operator proof was accepted");
   }
   if (buildMatches("actual", "wrong")) failures.push("wrong build ID was accepted");
   if (!accountGateBlockers("Before you continue").includes("consent_required")) {
@@ -132,9 +138,13 @@ const maxPending = Number(arg("--max-pending-notifications", "0"));
 const proxyApi = flag("--proxy-api");
 const fixtureAccountReady = flag("--fixture-account-ready");
 const requireAccountReady = flag("--require-account-ready");
+const runtimeDataMode = arg("--runtime-data-mode", "shared");
 
 if (!frontendOrigin || !apiOrigin) throw new Error("--frontend and --api are required");
 if (!['readonly', 'mutable'].includes(intent)) throw new Error("--intent must be readonly or mutable");
+if (!["shared", "disposable"].includes(runtimeDataMode)) {
+  throw new Error("--runtime-data-mode must be shared or disposable");
+}
 
 const accounts = accountArg === "both" ? ["operator", "holmesberg"] : [accountArg];
 const envNames = {
@@ -220,7 +230,7 @@ try {
   check("frontend build matches expected", buildMatches(frontend.body?.build_id, expectedBuildId), { actual: frontend.body?.build_id, expected: expectedBuildId });
 
   if (checks.every((item) => item.ok)) for (const account of accounts) {
-    const errors = policyErrors({ account, intent, topology, prefix, fixtureAccountReady, proxyApi });
+    const errors = policyErrors({ account, intent, topology, prefix, fixtureAccountReady, proxyApi, runtimeDataMode });
     check(`${account} policy`, errors.length === 0, errors);
     const cookie = process.env[envNames[account]];
     assertCookieHeaderLooksUsable(account, cookie);
@@ -262,12 +272,24 @@ try {
         await locator.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => {});
         selectorVisible = await locator.isVisible().catch(() => false);
       }
+      let screenshot = null;
+      if (outFile) {
+        const artifactPath = path.resolve(repoRoot, outFile);
+        const screenshotPath = path.join(
+          path.dirname(artifactPath),
+          `${path.basename(artifactPath, path.extname(artifactPath))}-${account}-target.png`,
+        );
+        fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        screenshot = path.relative(repoRoot, screenshotPath).replaceAll("\\", "/");
+      }
       mounted = {
         status: response?.status() ?? null,
         selector: readySelector,
         selector_visible: selectorVisible,
         page_errors: pageErrors,
         account_gate_blockers: gateBlockers,
+        screenshot,
       };
       check(`${account} target mount`, Boolean(
         response?.ok()
@@ -304,12 +326,15 @@ const result = {
   frontend_build_id: checks.find((item) => item.name === "frontend build matches expected")?.detail?.actual ?? null,
   intent,
   fixture_account_ready: fixtureAccountReady,
+  runtime_data_mode: runtimeDataMode,
   selected_date: selectedDate,
   selected_week: selectedWeek,
   target_path: targetPath,
   checks,
   accounts: accountResults,
-  writes: "none; browser API mutations are blocked with proof_preflight_read_only",
+  writes: runtimeDataMode === "disposable"
+    ? "first-login account provisioning may write only to the disposable runtime database; browser API mutations are blocked"
+    : "none; browser API mutations are blocked with proof_preflight_read_only",
 };
 
 if (outFile) {

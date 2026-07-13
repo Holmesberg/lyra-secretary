@@ -151,6 +151,9 @@ if ($runtimeManifestRecord) {
   if ($ExpectedFrontendBuildId -ne [string]$runtimeManifestRecord.expected_build_id) {
     throw "RuntimeManifest build ID does not match ExpectedFrontendBuildId."
   }
+  if ([string]$runtimeManifestRecord.data.mode -eq "disposable" -and $Account -ne "holmesberg") {
+    throw "Disposable local-current data supports Holmesberg proof only; operator identity is not provisioned as operator in a fresh database."
+  }
 }
 
 if ($Topology -ne "public") {
@@ -200,6 +203,7 @@ try {
   if ($ProxyApi) { $args += "--proxy-api" }
   if ($FixtureAccountReady) { $args += "--fixture-account-ready" }
   if ($RequireAccountReady) { $args += "--require-account-ready" }
+  if ($runtimeManifestRecord) { $args += @("--runtime-data-mode", [string]$runtimeManifestRecord.data.mode) }
 
   node @args
   if ($LASTEXITCODE -ne 0) { throw "proof preflight blocked the run with exit code $LASTEXITCODE" }
@@ -218,4 +222,5 @@ try {
   intent = $Intent
   artifact = $OutFile
   backend_test_entrypoint = "scripts/run_backend_pytest.ps1"
+  runtime_data_mode = if ($runtimeManifestRecord) { [string]$runtimeManifestRecord.data.mode } else { "unbound" }
 } | ConvertTo-Json -Depth 6

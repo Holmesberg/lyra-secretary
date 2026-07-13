@@ -4,7 +4,10 @@ param(
   [string]$DistDir = ".next-local-current",
   [string]$ExpectedBuildId = "",
   [string]$OutFile = "tmp/local-current-runtime/active.json",
-  [string]$PythonPath = ""
+  [string]$PythonPath = "",
+  [switch]$DisposableData,
+  [ValidateRange(8, 15)]
+  [int]$DisposableRedisDatabase = 15
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,6 +59,29 @@ function Resolve-ProjectPython {
     throw "Project Python cannot import uvicorn: $candidate"
   }
   return (Resolve-Path -LiteralPath $candidate).Path
+}
+
+function Get-RedisDatabaseSize {
+  param(
+    [Parameter(Mandatory = $true)][string]$Python,
+    [Parameter(Mandatory = $true)][string]$RedisUrl
+  )
+  $size = & $Python -c "import redis,sys; print(redis.from_url(sys.argv[1], socket_connect_timeout=3, socket_timeout=3).dbsize())" $RedisUrl
+  if ($LASTEXITCODE -ne 0 -or "$size" -notmatch '^\d+$') {
+    throw "Could not inspect disposable Redis database at $RedisUrl."
+  }
+  return [int]$size
+}
+
+function Reset-DisposableRedisDatabase {
+  param(
+    [Parameter(Mandatory = $true)][string]$Python,
+    [Parameter(Mandatory = $true)][string]$RedisUrl
+  )
+  & $Python -c "import redis,sys; r=redis.from_url(sys.argv[1], socket_connect_timeout=3, socket_timeout=3); r.flushdb(); print(r.dbsize())" $RedisUrl | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not reset disposable Redis database at $RedisUrl."
+  }
 }
 
 function Wait-JsonEndpoint {
@@ -141,17 +167,47 @@ $frontendErr = Join-Path $runDir "frontend.err.log"
 $startedPids = [System.Collections.Generic.List[int]]::new()
 $frontendOrigin = "http://localhost:$FrontendPort"
 $apiOrigin = "http://localhost:$BackendPort"
+$disposableDatabasePath = Join-Path $runDir "disposable.sqlite"
+$disposableDatabaseUrl = "sqlite:///$(($disposableDatabasePath -replace '\\', '/'))"
+$disposableRedisUrl = "redis://localhost:6379/$DisposableRedisDatabase"
+$migrationOut = Join-Path $runDir "alembic.out.log"
+$migrationErr = Join-Path $runDir "alembic.err.log"
+$disposableRedisOwned = $false
 
 try {
   $savedEnvironment = @{
     BUILD_ID = $env:BUILD_ID
     FRONTEND_URL = $env:FRONTEND_URL
     CORS_ALLOWED_ORIGINS = $env:CORS_ALLOWED_ORIGINS
+    DATABASE_URL = $env:DATABASE_URL
+    REDIS_URL = $env:REDIS_URL
+    USER_EMAIL_ENABLED = $env:USER_EMAIL_ENABLED
+    OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED = $env:OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED
+    OPENCLAW_MIRROR_USER_NOTIFICATIONS = $env:OPENCLAW_MIRROR_USER_NOTIFICATIONS
   }
   try {
     $env:BUILD_ID = $ExpectedBuildId
     $env:FRONTEND_URL = $frontendOrigin
     $env:CORS_ALLOWED_ORIGINS = $frontendOrigin
+    if ($DisposableData) {
+      $existingRedisKeys = Get-RedisDatabaseSize -Python $python -RedisUrl $disposableRedisUrl
+      if ($existingRedisKeys -ne 0) {
+        throw "Disposable Redis database $DisposableRedisDatabase is not empty ($existingRedisKeys keys). Refusing to erase unknown state."
+      }
+      $disposableRedisOwned = $true
+      $env:DATABASE_URL = $disposableDatabaseUrl
+      $env:REDIS_URL = $disposableRedisUrl
+      $env:USER_EMAIL_ENABLED = "false"
+      $env:OPENCLAW_OPERATOR_NOTIFICATIONS_ENABLED = "false"
+      $env:OPENCLAW_MIRROR_USER_NOTIFICATIONS = "false"
+      $migration = Start-Process -FilePath $python `
+        -ArgumentList @("-m", "alembic", "upgrade", "head") `
+        -WorkingDirectory $backendDir -WindowStyle Hidden `
+        -RedirectStandardOutput $migrationOut -RedirectStandardError $migrationErr -PassThru -Wait
+      if ($migration.ExitCode -ne 0) {
+        throw "Disposable database migration failed with exit code $($migration.ExitCode). Logs: $migrationOut ; $migrationErr"
+      }
+    }
     $backend = Start-Process -FilePath $python `
       -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$BackendPort", "--lifespan", "off") `
       -WorkingDirectory $backendDir -WindowStyle Hidden `
@@ -234,6 +290,7 @@ try {
     classification = "local_current_runtime_ready"
     topology = "local-current"
     repo_root = $repoRoot
+    run_dir = $runDir
     expected_build_id = $ExpectedBuildId
     started_at = (Get-Date).ToUniversalTime().ToString("o")
     frontend = [ordered]@{
@@ -261,6 +318,19 @@ try {
       stdout = $backendOut
       stderr = $backendErr
     }
+    data = if ($DisposableData) {
+      [ordered]@{
+        mode = "disposable"
+        target_account_state = "unprovisioned"
+        database_path = $disposableDatabasePath
+        redis_url = $disposableRedisUrl
+        redis_database = $DisposableRedisDatabase
+        migration_stdout = $migrationOut
+        migration_stderr = $migrationErr
+      }
+    } else {
+      [ordered]@{ mode = "shared" }
+    }
   }
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $manifestPath) | Out-Null
   $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
@@ -277,6 +347,12 @@ try {
     }
   }
   Stop-StartedProcesses -ProcessIds $startedPids
+  if ($DisposableData -and $disposableRedisOwned) {
+    Reset-DisposableRedisDatabase -Python $python -RedisUrl $disposableRedisUrl
+    foreach ($path in @($disposableDatabasePath, "$disposableDatabasePath-wal", "$disposableDatabasePath-shm")) {
+      if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+    }
+  }
   Write-Host "Local-current startup failed. Backend logs: $backendOut ; $backendErr"
   Write-Host "Frontend logs: $frontendOut ; $frontendErr"
   throw

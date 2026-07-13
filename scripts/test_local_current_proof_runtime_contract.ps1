@@ -18,6 +18,9 @@ $requiredStartFragments = @(
   'Test-DescendsFromStartedProcess',
   'tsconfig.original.json',
   'Restore the exact pre-build bytes',
+  '[switch]$DisposableData',
+  'target_account_state = "unprovisioned"',
+  'Refusing to erase unknown state',
   'ConvertTo-Json -Depth 8'
 )
 foreach ($fragment in $requiredStartFragments) {
@@ -30,11 +33,26 @@ if (-not $stopSource.Contains('PID $ProcessId was reused; refusing to stop it.')
 if (-not $stopSource.Contains('Refusing to remove unsafe artifact path')) {
   throw "Teardown does not bound artifact deletion."
 }
+if (-not $stopSource.Contains('Refusing to remove unsafe disposable database path')) {
+  throw "Teardown does not bound disposable database deletion."
+}
+if (-not $stopSource.Contains('Refusing to trust unsafe disposable run directory')) {
+  throw "Teardown does not bind disposable deletion to the recorded run directory."
+}
+if (-not $stopSource.Contains("Refusing to invoke Python outside this checkout's .venv311.")) {
+  throw "Teardown does not bind Redis cleanup to the project interpreter."
+}
+if (-not $stopSource.Contains('Refusing to reset unsafe disposable Redis target.')) {
+  throw "Teardown does not bound disposable Redis reset."
+}
 if (-not $preflightSource.Contains('[string]$RuntimeManifest')) {
   throw "Proof preflight cannot consume the runtime ownership manifest."
 }
 if (-not $preflightSource.Contains('RuntimeManifest build ID does not match')) {
   throw "Proof preflight does not bind runtime ownership to the expected build."
+}
+if (-not $preflightSource.Contains('Disposable local-current data supports Holmesberg proof only')) {
+  throw "Proof preflight does not reject operator proof against disposable account state."
 }
 if ($pytestSource -match 'Get-Command\s+python') {
   throw "Backend pytest restored a system-Python fallback."

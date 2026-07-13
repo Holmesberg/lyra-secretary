@@ -1,6 +1,7 @@
 param(
   [string]$Manifest = "tmp/local-current-runtime/active.json",
-  [switch]$RemoveArtifact
+  [switch]$RemoveArtifact,
+  [switch]$RemoveDisposableData
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,9 +79,45 @@ if ($RemoveArtifact) {
   }
 }
 
+$disposableDataRemoved = $false
+if ($RemoveDisposableData) {
+  if ([string]$runtime.data.mode -ne "disposable") {
+    throw "Manifest does not own disposable runtime data."
+  }
+  $runtimePrefix = [IO.Path]::GetFullPath((Join-Path $repoRoot "tmp\local-current-runtime")).TrimEnd('\') + '\'
+  $runDir = [IO.Path]::GetFullPath([string]$runtime.run_dir).TrimEnd('\')
+  if (-not ($runDir + '\').StartsWith($runtimePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to trust unsafe disposable run directory: $runDir"
+  }
+  $databasePath = [IO.Path]::GetFullPath([string]$runtime.data.database_path)
+  if (
+    -not $databasePath.StartsWith(($runDir + '\'), [StringComparison]::OrdinalIgnoreCase) -or
+    (Split-Path -Leaf $databasePath) -ne "disposable.sqlite"
+  ) {
+    throw "Refusing to remove unsafe disposable database path: $databasePath"
+  }
+  $redisDatabase = [int]$runtime.data.redis_database
+  $expectedRedisUrl = "redis://localhost:6379/$redisDatabase"
+  if ($redisDatabase -lt 8 -or $redisDatabase -gt 15 -or [string]$runtime.data.redis_url -ne $expectedRedisUrl) {
+    throw "Refusing to reset unsafe disposable Redis target."
+  }
+  $python = [IO.Path]::GetFullPath([string]$runtime.backend.python)
+  $expectedPython = [IO.Path]::GetFullPath((Join-Path $repoRoot ".venv311\Scripts\python.exe"))
+  if (-not $python.Equals($expectedPython, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to invoke Python outside this checkout's .venv311."
+  }
+  & $python -c "import redis,sys; r=redis.from_url(sys.argv[1], socket_connect_timeout=3, socket_timeout=3); r.flushdb(); print(r.dbsize())" $expectedRedisUrl | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "Disposable Redis reset failed." }
+  foreach ($path in @($databasePath, "$databasePath-wal", "$databasePath-shm")) {
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+  }
+  $disposableDataRemoved = $true
+}
+
 [ordered]@{
   ok = $true
   classification = "local_current_runtime_stopped"
   manifest = $manifestPath
   artifact_removed = [bool]$RemoveArtifact
+  disposable_data_removed = $disposableDataRemoved
 } | ConvertTo-Json
