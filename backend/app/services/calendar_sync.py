@@ -78,7 +78,7 @@ class ExternalEventFetchResult:
     """Events plus read availability without claiming provider completeness."""
 
     events: list[ExternalEvent]
-    status: Literal["available", "unavailable", "not_connected"]
+    status: Literal["available", "partial", "unavailable", "not_connected"]
     reason: str | None = None
 
 
@@ -200,9 +200,26 @@ def fetch_google_events_with_status(
     if cached:
         try:
             payload = json.loads(cached)
+            if isinstance(payload, list):
+                events_payload = payload
+                status = "available"
+                reason = None
+            elif (
+                isinstance(payload, dict)
+                and payload.get("schema_version") == "gcal_events_cache_v2"
+                and isinstance(payload.get("events"), list)
+            ):
+                events_payload = payload["events"]
+                status = payload.get("status")
+                reason = payload.get("reason")
+                if status not in {"available", "partial"}:
+                    raise ValueError("unsupported cached calendar read status")
+            else:
+                raise ValueError("unsupported cached calendar payload")
             return ExternalEventFetchResult(
-                events=[ExternalEvent(**e) for e in payload],
-                status="available",
+                events=[ExternalEvent(**e) for e in events_payload],
+                status=status,
+                reason=reason,
             )
         except Exception as e:
             # Cache poisoning shouldn't bubble up — log and re-fetch.
@@ -344,12 +361,16 @@ def fetch_google_events_with_status(
             )
 
         events: list[ExternalEvent] = []
+        partial_reasons: set[str] = set()
+        if response.get("nextPageToken"):
+            partial_reasons.add("pagination_truncated")
         for item in response.get("items", []):
             # Skip all-day events (no time data — can't place on a
             # scheduled view).
             start = item.get("start", {})
             end = item.get("end", {})
             if "dateTime" not in start or "dateTime" not in end:
+                partial_reasons.add("all_day_events_excluded")
                 continue
 
             # Skip events the user has declined. Self-organized events
@@ -366,6 +387,11 @@ def fetch_google_events_with_status(
                 end_dt = datetime.fromisoformat(end["dateTime"].replace("Z", "+00:00"))
             except ValueError:
                 logger.warning("gcal: could not parse event times: %s", item.get("id"))
+                partial_reasons.add("invalid_event_times")
+                continue
+            if end_dt <= start_dt:
+                logger.warning("gcal: non-positive event interval: %s", item.get("id"))
+                partial_reasons.add("invalid_event_times")
                 continue
 
             events.append(
@@ -378,13 +404,27 @@ def fetch_google_events_with_status(
                 )
             )
 
-        # Cache the serialized list.
+        status = "partial" if partial_reasons else "available"
+        reason = ",".join(sorted(partial_reasons)) or None
+        # Preserve coverage status through cache while accepting legacy lists
+        # on read for compatibility with already-cached event windows.
         redis.setex(
             _events_cache_key(user_id, date_from_key, date_to_key),
             CACHE_TTL_SECONDS,
-            json.dumps([e.__dict__ for e in events]),
+            json.dumps(
+                {
+                    "schema_version": "gcal_events_cache_v2",
+                    "events": [e.__dict__ for e in events],
+                    "status": status,
+                    "reason": reason,
+                }
+            ),
         )
-        return ExternalEventFetchResult(events=events, status="available")
+        return ExternalEventFetchResult(
+            events=events,
+            status=status,
+            reason=reason,
+        )
     finally:
         db.close()
 
