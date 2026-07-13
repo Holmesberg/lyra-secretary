@@ -33,7 +33,10 @@ import {
   fmtMinutes,
   type PlanRow,
 } from "@/lib/pressure-map-planning";
-import { selectPressurePlanOption } from "@/lib/pressure-map-options";
+import {
+  pressureMapActionContract,
+  selectPressurePlanOption,
+} from "@/lib/pressure-map-options";
 import { usePressureMapPlanCommit } from "./use-pressure-map-plan-commit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,9 +100,9 @@ function PlanPreviewDialog({
         data-testid="pressure-map-plan-preview"
       >
         <DialogHeader>
-          <DialogTitle>Preview recovery plan</DialogTitle>
+          <DialogTitle>Plan draft</DialogTitle>
           <DialogDescription>
-            {option?.label ?? "Create editable focus blocks"}. Nothing is created until you lock this in.
+            {option?.label ?? "Edit study blocks"}. This draft uses the current estimate ranges and does not check free-time capacity. Nothing is created until you lock it in.
           </DialogDescription>
         </DialogHeader>
 
@@ -286,9 +289,17 @@ export function PulseAcademicPressureMap({
   const hasItems = items.length > 0;
   const {
     planOption,
+    navigationOption,
+    primaryRecoveryOption,
     canPreviewPlan,
     primaryIsPlanOption,
   } = selectPressurePlanOption(pressure);
+  const primaryAction = primaryRecoveryOption
+    ? pressureMapActionContract(primaryRecoveryOption.action)
+    : null;
+  const primaryIsNavigation = primaryAction?.disposition === "navigation";
+  const primaryIsDiagnostic = primaryAction?.disposition === "diagnostic"
+    || primaryAction?.disposition === "retired_compatibility";
   const projection = pressure?.demand_coverage_projection;
   const calendarSummary = (() => {
     const source = pressure?.source_summary;
@@ -482,12 +493,28 @@ export function PulseAcademicPressureMap({
             </div>
           )}
 
-          {pressure.recovery_options.length > 0 && (
-            <div className="mt-3 rounded-sm border border-signal/20 bg-signal/5 px-3 py-2">
+          {primaryRecoveryOption && primaryAction && (
+            <div className={`mt-3 rounded-sm px-3 py-2 ${
+              primaryIsDiagnostic
+                ? "border border-hairline bg-void-2/40"
+                : "border border-signal/20 bg-signal/5"
+            }`}>
               <div className="mb-1 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-signal">
-                  <ClipboardCheck size={12} />
-                  Next recovery option
+                <div className={`flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest ${
+                  primaryIsDiagnostic ? "text-dust" : "text-signal"
+                }`}>
+                  {primaryIsDiagnostic ? (
+                    <ShieldQuestion size={12} />
+                  ) : primaryIsNavigation ? (
+                    <CalendarClock size={12} />
+                  ) : (
+                    <ClipboardCheck size={12} />
+                  )}
+                  {primaryIsDiagnostic
+                    ? "Planning note"
+                    : primaryIsNavigation
+                      ? "Schedule context"
+                      : "Plan draft"}
                 </div>
                 {primaryIsPlanOption && planOption && canPreviewPlan && (
                   <Button
@@ -498,15 +525,27 @@ export function PulseAcademicPressureMap({
                     className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
                   >
                     <ListPlus size={13} aria-hidden="true" />
-                    Preview plan
+                    {primaryAction.controlLabel}
+                  </Button>
+                )}
+                {primaryIsNavigation && primaryAction.target && (
+                  <Button
+                    asChild
+                    size="sm"
+                    className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
+                  >
+                    <a data-testid="pressure-map-review-calendar" href={primaryAction.target}>
+                      <CalendarClock size={13} aria-hidden="true" />
+                      {primaryAction.controlLabel}
+                    </a>
                   </Button>
                 )}
               </div>
               <p className="text-[12px] font-medium text-parchment">
-                {pressure.recovery_options[0].label}
+                {primaryRecoveryOption.label}
               </p>
               <p className="mt-1 text-[11px] leading-snug text-dust">
-                {genericPressureCopy(pressure.recovery_options[0].detail)}
+                {genericPressureCopy(primaryRecoveryOption.detail)}
               </p>
             </div>
           )}
@@ -526,7 +565,7 @@ export function PulseAcademicPressureMap({
                   className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
                 >
                   <ListPlus size={13} aria-hidden="true" />
-                  Preview plan
+                  Preview plan draft
                 </Button>
               </div>
               <p className="text-[12px] font-medium text-parchment">
@@ -534,6 +573,36 @@ export function PulseAcademicPressureMap({
               </p>
               <p className="mt-1 text-[11px] leading-snug text-dust">
                 {genericPressureCopy(planOption.detail)}
+              </p>
+            </div>
+          )}
+
+          {navigationOption && navigationOption !== primaryRecoveryOption && (
+            <div className="mt-3 rounded-sm border border-signal/20 bg-signal/5 px-3 py-2">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-signal">
+                  <CalendarClock size={12} />
+                  Schedule context
+                </div>
+                <Button
+                  asChild
+                  size="sm"
+                  className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
+                >
+                  <a
+                    data-testid="pressure-map-review-calendar"
+                    href={pressureMapActionContract(navigationOption.action).target ?? "/settings#integrations"}
+                  >
+                    <CalendarClock size={13} aria-hidden="true" />
+                    Open integrations
+                  </a>
+                </Button>
+              </div>
+              <p className="text-[12px] font-medium text-parchment">
+                {navigationOption.label}
+              </p>
+              <p className="mt-1 text-[11px] leading-snug text-dust">
+                {genericPressureCopy(navigationOption.detail)}
               </p>
             </div>
           )}

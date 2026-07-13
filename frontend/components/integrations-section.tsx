@@ -147,7 +147,7 @@ export function IntegrationsSection() {
   }
 
   return (
-    <Card>
+    <Card id="integrations" tabIndex={-1}>
       <CardHeader>
         <CardTitle>Integrations</CardTitle>
         <p className="text-xs text-dust">

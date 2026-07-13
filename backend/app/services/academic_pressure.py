@@ -573,48 +573,52 @@ def _recovery_options(
         return [
             AcademicRecoveryOption(
                 action="clear_or_ignore",
-                label="Keep the window clean",
+                label="Nothing to plan in this window",
                 detail="No active academic pressure is visible here. Add or import deadlines, lectures, labs, tutorials, or study blocks if something is missing.",
                 obligation_ids=[],
             )
         ]
 
     options: list[AcademicRecoveryOption] = []
-    high_or_overdue = [item for item in items if item.pressure_level in ("high", "overdue")]
-    largest = sorted(items, key=lambda item: item.estimate.high_minutes, reverse=True)[:2]
+    high_or_overdue = [
+        item
+        for item in items
+        if item.pressure_level in ("high", "overdue")
+    ]
+    draft_items = high_or_overdue or sorted(
+        items,
+        key=lambda item: item.estimate.high_minutes,
+        reverse=True,
+    )[:2]
     if coverage_questions:
         options.append(
             AcademicRecoveryOption(
                 action="confirm_coverage",
-                label="Confirm coverage",
-                detail="Lock what these deadlines actually cover before LyraOS turns them into study blocks.",
+                label="Coverage still needs confirmation",
+                detail="Review the source details for these obligations before using them in a plan draft.",
                 obligation_ids=[q.obligation_id for q in coverage_questions],
             )
         )
-    if high_or_overdue:
+    if draft_items:
         options.append(
             AcademicRecoveryOption(
                 action="create_plan",
-                label="Create a recovery plan",
-                detail="Turn the due-soon pressure points into editable study blocks.",
-                obligation_ids=[item.obligation_id for item in high_or_overdue],
-            )
-        )
-    if largest:
-        options.append(
-            AcademicRecoveryOption(
-                action="split_into_blocks",
-                label="Split the biggest work",
-                detail="Break the largest visible obligations into smaller blocks before they compress the week.",
-                obligation_ids=[item.obligation_id for item in largest],
+                label="Draft study blocks",
+                detail=(
+                    "Preview editable study blocks from the current provisional ranges. "
+                    "Confirm source coverage before relying on this draft."
+                    if coverage_questions
+                    else "Preview editable study blocks for obligations whose coverage is already clear."
+                ),
+                obligation_ids=[item.obligation_id for item in draft_items],
             )
         )
     if not gcal_connected:
         options.append(
             AcademicRecoveryOption(
                 action="review_calendar",
-                label="Review schedule context",
-                detail="Calendar is not connected, so LyraOS can show academic load but not true free-time mismatch.",
+                label="Add schedule context",
+                detail="Calendar is not connected. Open Integrations to add read-only schedule context.",
                 obligation_ids=[],
             )
         )
