@@ -18,7 +18,10 @@ import {
 } from "@/lib/deadline-view";
 import { DeadlineModal } from "@/components/deadline-modal";
 import { Button } from "@/components/ui/button";
-import { queryKeys } from "@/lib/query-keys";
+import {
+  invalidateDeadlineMutationCaches,
+  queryKeys,
+} from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 interface DeadlineRowProps {
@@ -263,11 +266,11 @@ export default function DeadlinesPage() {
 
   async function handleVoid(d: DeadlineResponse) {
     await voidDeadline(d.deadline_id);
-    qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+    await invalidateDeadlineMutationCaches(qc);
   }
 
   function handleSaved() {
-    qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+    void invalidateDeadlineMutationCaches(qc);
   }
 
   return (

@@ -43,6 +43,7 @@ import {
 import { ackExposureRender } from "@/lib/api";
 import { announceUndoAvailable } from "@/lib/undo";
 import {
+  invalidateDeadlineMutationCaches,
   invalidateTodayTaskCommandSurfaces,
   queryKeys,
 } from "@/lib/query-keys";
@@ -848,9 +849,9 @@ function TodayInner() {
                 deadline={item.deadline}
                 overdue={item.overdue}
                 onEdit={(d) => setEditingDeadline(d)}
-                onChanged={() =>
-                  qc.invalidateQueries({ queryKey: queryKeys.deadlines })
-                }
+                onChanged={() => {
+                  void invalidateDeadlineMutationCaches(qc);
+                }}
               />
             )
           )}
@@ -914,8 +915,7 @@ function TodayInner() {
         open={!!bindingTask}
         onClose={() => setBindingTask(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
-          refresh();
+          void invalidateDeadlineMutationCaches(qc);
         }}
       />
 
@@ -932,7 +932,7 @@ function TodayInner() {
         deadline={editingDeadline}
         onClose={() => setEditingDeadline(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+          void invalidateDeadlineMutationCaches(qc);
           setEditingDeadline(null);
         }}
       />

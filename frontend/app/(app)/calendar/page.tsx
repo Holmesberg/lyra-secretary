@@ -50,7 +50,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { invalidateTaskQueries, queryKeys } from "@/lib/query-keys";
+import {
+  invalidateDeadlineMutationCaches,
+  invalidateTaskQueries,
+  queryKeys,
+} from "@/lib/query-keys";
 import {
   CALENDAR_TIMEZONE,
   calendarIdForState,
@@ -896,7 +900,7 @@ export default function CalendarPage() {
         deadline={editingDeadline}
         onClose={() => setEditingDeadline(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+          void invalidateDeadlineMutationCaches(qc);
           setEditingDeadline(null);
         }}
       />
