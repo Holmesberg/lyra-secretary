@@ -16,6 +16,8 @@ param(
 
   [int]$LocalCurrentPort = 3013,
 
+  [int]$LocalCurrentApiPort = 8000,
+
   [switch]$ProxyApi,
 
   [switch]$ForcePressureRecovery,
@@ -23,6 +25,8 @@ param(
   [switch]$PressureProofOnly,
 
   [switch]$PressureCalendarPartialProofOnly,
+
+  [switch]$OnboardingPartialRecoveryProofOnly,
 
   [switch]$PulseStopwatchOutputProofOnly,
 
@@ -61,7 +65,7 @@ try {
     $env:LYRA_API_ORIGIN = "https://api.lyraos.org"
   } elseif ($Topology -eq "local-current") {
     $env:LYRA_FRONTEND_ORIGIN = "http://localhost:$LocalCurrentPort"
-    $env:LYRA_API_ORIGIN = "http://localhost:8000"
+    $env:LYRA_API_ORIGIN = "http://localhost:$LocalCurrentApiPort"
     $env:NEXTAUTH_URL = $env:LYRA_FRONTEND_ORIGIN
   } else {
     $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"
@@ -142,6 +146,9 @@ try {
   }
   if ([bool]$PressureCalendarPartialProofOnly) {
     $args += "--pressure-calendar-partial-proof-only"
+  }
+  if ([bool]$OnboardingPartialRecoveryProofOnly) {
+    $args += "--onboarding-partial-recovery-proof-only"
   }
   if ([bool]$PulseStopwatchOutputProofOnly) {
     $args += "--pulse-stopwatch-output-proof-only"
