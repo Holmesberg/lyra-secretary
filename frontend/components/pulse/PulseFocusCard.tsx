@@ -38,7 +38,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Pause, Play, Square } from "lucide-react";
+import { AlertTriangle, Loader2, Pause, Play, RefreshCw, Square } from "lucide-react";
 import { Toast } from "@/components/toast";
 import {
   getStopwatchStatus,
@@ -237,6 +237,36 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
         : plannedTasks.length > 0
           ? "Ready when you are"
           : "Ready when you are";
+
+  if (statusQ.isError) {
+    return (
+      <div
+        data-testid="pulse-focus-status-unavailable"
+        role="status"
+        className="terminal-panel flex min-h-[320px] flex-col items-center justify-center gap-4 px-6 py-8 text-center"
+      >
+        <AlertTriangle className="h-6 w-6 text-ember" aria-hidden />
+        <div>
+          <div className="font-display text-[10px] uppercase tracking-macro text-ember">
+            [ Focus unavailable ]
+          </div>
+          <p className="mt-2 max-w-xs text-sm text-parchment">
+            The live timer did not load, so Pulse will not guess its state.
+          </p>
+        </div>
+        <button
+          data-testid="pulse-focus-status-retry"
+          type="button"
+          onClick={() => void statusQ.refetch()}
+          disabled={statusQ.isFetching}
+          className="inline-flex min-h-[40px] items-center justify-center gap-2 border border-ember/40 px-3 font-mono text-[10px] uppercase tracking-widest text-ember transition-colors hover:bg-ember/10 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${statusQ.isFetching ? "animate-spin" : ""}`} />
+          Retry timer
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>

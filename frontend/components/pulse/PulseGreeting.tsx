@@ -14,9 +14,9 @@ import { format } from "date-fns";
 
 export interface PulseGreetingProps {
   displayName: string | null;
-  focusMinutesToday: number;
-  winsToday: number;
-  overdueCount: number;
+  focusMinutesToday: number | null;
+  winsToday: number | null;
+  overdueCount: number | null;
   onSearchClick?: () => void;
 }
 
@@ -28,7 +28,8 @@ function greetingFor(hour: number): string {
   return "Up late";
 }
 
-function fmtFocus(minutes: number): string {
+function fmtFocus(minutes: number | null): string {
+  if (minutes === null) return "--";
   if (minutes <= 0) return "0m";
   if (minutes < 60) return `${minutes}m`;
   const h = Math.floor(minutes / 60);
@@ -62,19 +63,22 @@ export function PulseGreeting({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill
+          testId="pulse-focus-today-metric"
           label="Focus today"
           value={fmtFocus(focusMinutesToday)}
-          tone={focusMinutesToday > 0 ? "signal" : "dust"}
+          tone={focusMinutesToday !== null && focusMinutesToday > 0 ? "signal" : "dust"}
         />
         <StatusPill
+          testId="pulse-wins-metric"
           label="Wins"
-          value={winsToday.toString().padStart(2, "0")}
-          tone={winsToday > 0 ? "signal" : "dust"}
+          value={winsToday === null ? "--" : winsToday.toString().padStart(2, "0")}
+          tone={winsToday !== null && winsToday > 0 ? "signal" : "dust"}
         />
         <StatusPill
+          testId="pulse-overdue-metric"
           label="Overdue"
-          value={overdueCount.toString().padStart(2, "0")}
-          tone={overdueCount > 0 ? "ember" : "dust"}
+          value={overdueCount === null ? "--" : overdueCount.toString().padStart(2, "0")}
+          tone={overdueCount !== null && overdueCount > 0 ? "ember" : "dust"}
         />
         {onSearchClick && (
           <button
@@ -92,10 +96,12 @@ export function PulseGreeting({
 }
 
 function StatusPill({
+  testId,
   label,
   value,
   tone,
 }: {
+  testId: string;
   label: string;
   value: string;
   tone: "signal" | "ember" | "dust";
@@ -120,6 +126,7 @@ function StatusPill({
         : "bg-void-2/40";
   return (
     <div
+      data-testid={testId}
       className={`flex items-center gap-2 rounded-sm border px-3 py-1.5 ${borderCls} ${bgCls}`}
     >
       <span
