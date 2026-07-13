@@ -21627,3 +21627,57 @@ Rollback and next use:
   canonical shared-data launcher and preflight. The docs commit may be reverted
   independently. Future cold-start browser seams should use disposable mode;
   shared/local and hosted-public operator proof remain read-only.
+
+## 2026-07-14 - Wave 5A Unlinked Planning Source Honesty
+
+Present-value accounting correction:
+
+- Product commit `b15e127` makes unlinked academic/study planning inspectable
+  without counting it as obligation demand or linked coverage. The builder
+  interval-unions overlapping blocks, publishes scoped task IDs in the user's
+  full response, and retains only count/minutes/status in browser render
+  evidence. Canonically linked blocks for obligations outside the selected
+  horizon are not mislabeled as unlinked.
+- Characterization commit `63ba372` covers study and academic blocks, mixed
+  linked/unlinked rows, overlapping unlinked intervals, provider-mirror
+  context, suggested-but-unconfirmed links, out-of-scope canonical links, and
+  redacted render snapshots. All 29 focused Pressure Map tests and frontend
+  typecheck passed.
+- The Pulse summary now says exactly why the context is excluded and preserves
+  the existing prominent demand range and planning action. No estimate prior,
+  capacity denominator, collision classifier, mutation authority, schema,
+  provider, or public runtime changed.
+
+Verifier incident and focused proof:
+
+- The first focused invocation exposed issue `#257`: three wrappers could kill
+  an already owned local-current listener and replace it with `next dev` unless
+  a caller remembered `-AssumeLocalFrontendReady`. Verifier commit `49024f9`
+  makes local-current consume the exact externally owned runtime; only plain
+  local topology may bootstrap a dev frontend. The existing local-current
+  contract now locks this behavior for Holmesberg, Calendar/Table, and operator
+  wrappers.
+- After stopping only the checkout-owned dev process, manifest teardown removed
+  the disposable data/artifact, and a clean relaunch/preflight verified exact
+  build `49024f92edc5419af69049b0ca02b7df1557d668`, ports `3018/8001`, real
+  Holmesberg cookie, non-operator role, zero pending notifications, a clean
+  prefix, and the mounted Pressure Map.
+- Focused real-cookie proof passed 36/36 checks at
+  `tmp/post-wave-dogfood/wave5a-unlinked-focused-r3/result.json`. It observed
+  one 75-minute unlinked block in API and UI, authenticated the redacted render
+  snapshot, exercised desktop/mobile planning affordances, created exactly one
+  linked recovery block despite double lock, and cleaned all synthetic rows.
+  Screenshots were inspected directly; the new context line and existing
+  actions remained readable and contained on desktop and `390x844` mobile.
+- Final teardown closed ports `3018/8001`, removed `.next-local-current` and the
+  disposable SQLite database, and left Redis DB 15 at zero keys. Hosted-public
+  artifacts, ports, accounts, data, deploy, and restart were untouched.
+
+Rollback and next boundary:
+
+- Revert `b15e127` to remove the additive context DTO/UI, `63ba372` to remove
+  its proof, and `49024f9` independently to restore the old wrapper behavior.
+- Issue `#220` remains open for the still-representable Accounting Gate gaps.
+  Missing-estimate and unresolved-capture work must not invent persistence or
+  authority merely to satisfy a checklist; the next seam follows current
+  runtime evidence.

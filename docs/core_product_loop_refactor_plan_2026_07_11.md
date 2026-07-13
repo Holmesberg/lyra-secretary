@@ -372,7 +372,9 @@ Establish permanent invariants:
   accounting role;
 - a linked deadline and task do not become two obligations;
 - linked future blocks cover demand rather than adding demand;
-- unlinked future blocks reduce capacity without claiming obligation coverage;
+- unlinked future blocks remain explicit planning context rather than demand or
+  obligation coverage; they may reduce a future capacity envelope only after
+  that separate authority exists;
 - elapsed time is not completed scope; completed evidence reduces remaining
   work only when a clean, linked scope-completion authority proves it;
 - overlapping commitments use interval union rather than duplicate minute sums;
@@ -400,6 +402,14 @@ coverage, unscheduled demand, overcoverage, unrelated busy time, and missing
 capacity evidence, but collision state is `UNKNOWN`. No crisp pressure score
 or behavioral label is introduced. Legacy `pressure_level` remains due
 proximity only and cannot be cited as reconciled pressure.
+
+Completed 2026-07-14: the shipped projection now reports interval-unioned,
+unlinked academic/study planning as `context_only_not_demand_or_coverage`.
+The full API retains scoped task attribution; browser render evidence retains
+only task count and union minutes. Known links to obligations outside the
+selected horizon are not relabeled as unlinked. This closes the unknown-linkage
+source-honesty slice without inventing capacity, missing estimates, or durable
+unresolved-capture state.
 
 #### Accounting gate
 
