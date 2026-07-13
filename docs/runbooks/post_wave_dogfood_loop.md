@@ -44,13 +44,29 @@ running:
 
 ```powershell
 $head = (git rev-parse HEAD).Trim()
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\start_local_current_proof_runtime.ps1 `
+  -ExpectedBuildId $head -OutFile tmp\local-current-runtime\active.json
+
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\proof_preflight.ps1 `
   -Topology local-current -FrontendOrigin http://localhost:3018 `
   -ApiOrigin http://localhost:8001 -ProxyApi `
   -Account holmesberg -Intent mutable -ExpectedFrontendBuildId $head `
+  -RuntimeManifest tmp\local-current-runtime\active.json `
   -FixtureAccountReady -TargetPath /pulse `
   -ReadySelector '[data-testid="pulse-quick-capture-input"]' `
   -SyntheticPrefix 'DOGFOOD W4 seam-name' -MaxPendingNotifications 0
+```
+
+The launcher requires `.venv311`, refuses occupied ports instead of killing or
+reusing them, builds only `.next-local-current`, verifies exact frontend and
+backend build IDs, and records process ownership in the runtime manifest.
+After proof, tear down only those recorded processes and the bounded artifact:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\stop_local_current_proof_runtime.ps1 `
+  -Manifest tmp\local-current-runtime\active.json -RemoveArtifact
 ```
 
 The preflight is read-only. It checks the canonical
@@ -63,6 +79,10 @@ explicit `DOGFOOD` prefix. Browser API mutations are blocked.
 If the readiness fixture is used, it is local-current and browser-response
 only; it does not change the account. It may support focused product proof but
 is not hosted-public evidence.
+
+The backend test entrypoint is `scripts/run_backend_pytest.ps1`. It always
+runs from `backend/` through `.venv311` and fails closed when that interpreter
+is unavailable; do not reconstruct either choice in ad hoc commands.
 
 For abandoned synthetic task/deadline rows, use the existing local-current
 `-CleanupOnly` product-loop mode with the exact `DOGFOOD` prefix, then rerun

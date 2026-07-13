@@ -21469,3 +21469,58 @@ Next boundary and rollback:
   remove its contract. Verifier commits may be reverted independently. No
   schema migration, production repair, deploy, restart, or authority transfer
   is required.
+
+## 2026-07-13 - Wave 4 Provider Invalidation And Canonical Proof Runtime
+
+Usefulness and cache truth:
+
+- Issue `#255` bounds the final frozen invalidation call sites. Product commit
+  `f425b9c` makes Google Calendar connect/disconnect share one integration and
+  Calendar-event recipe. Moodle iCal and web-service sync now compose
+  integration status with the established deadline-mutation recipe, refreshing
+  tasks, deadlines, ranges, evidence, Pressure Map, and `me` without changing
+  provider, deadline, or execution authority.
+- Test commit `acabd17` locks the callback, disconnect, Moodle connect, iCal,
+  and web-service call sites. Frontend typecheck and the query-key contract
+  passed. No real provider credential was connected, refreshed, mutated, or
+  disconnected.
+- Real-cookie local-current preflight mounted the Google callback result and
+  observed `Google Calendar connected.` with no browser errors at
+  `tmp/proof-preflight/provider-invalidation-409c2da-r2.json`. The existing
+  focused integration proof passed desktop/mobile layout, Settings navigation,
+  private-leak checks, and exact export immutability at
+  `tmp/provider-invalidation/provider-invalidation-409c2da/result.json`.
+  Provider credential mutation remains explicitly gated until disposable
+  provider accounts exist.
+
+Proof infrastructure made reusable:
+
+- The first startup attempt selected system Python `3.14`, which lacked
+  Uvicorn. Commit `409c2da` adds one fail-closed local-current launcher and
+  teardown path. It requires `.venv311`, refuses occupied ports, builds only
+  `.next-local-current`, verifies exact frontend/backend build IDs, records
+  checkout-owned PIDs and start times, restores Next's generated tsconfig
+  rewrite byte-for-byte, and removes only a bounded local-current artifact.
+- Negative contracts prove an occupied port and missing project interpreter
+  stop before any build or service start. A real positive run started exact
+  build `409c2da2c18f9d93b66f6024826f542a7a42fc46` on `3018/8001` and left
+  `git status` clean. Teardown closed both recorded listeners and removed the
+  isolated artifact; hosted ports and `.next-public` were untouched.
+- The first canonical preflight then rejected the frontend listener because
+  `npm.cmd` had exited after handing the socket to Node. This retained negative
+  proof rather than weakening ownership. Commit `4cfc192` lets preflight bind
+  the listener to the launcher's checkout, PID start time, origins, and exact
+  build manifest. The same run then passed with
+  `ownership_source=runtime_manifest`.
+- Commit `1ab75db` removes the backend test wrapper's system-Python fallback.
+  The canonical wrapper passed `tests/test_config.py` from repo root as `3`
+  tests through `.venv311` and `backend/`.
+
+Next boundary and rollback:
+
+- Frozen invalidation backlog item 3 is closed. The next run is one macro
+  checkpoint for the related Calendar/Table/provider seams, not another audit.
+- Revert `f425b9c` and `acabd17` for provider invalidation behavior and its
+  lock. Revert `409c2da`, `4cfc192`, and `1ab75db` independently to remove the
+  reusable proof runtime and fail-closed wrappers. No schema, production data,
+  provider credential, deploy, restart, or authority transfer is involved.

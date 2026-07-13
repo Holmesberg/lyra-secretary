@@ -281,8 +281,9 @@ Wave 4 checkpoint status on 2026-07-13:
   account-readiness fixture changed only the browser `GET /v1/users/me`
   response and is not hosted-public proof.
 - Shared task/deadline invalidation recipes and the existing Deadlines,
-  Calendar, and Today deadline-mutation call sites are closed. The remaining
-  Wave 4 work is the bounded call-site list below. Do not repeat closed layout,
+  Calendar, Today, Table, Google-connect, and Moodle-sync mutation call sites
+  are closed. The remaining Wave 4 work must come from an already-named
+  behavior or gate, not a new invalidation audit. Do not repeat closed layout,
   partial-read, integration-legibility, pause-reason, stop-result,
   capture-result, shared-recipe, or deadline-call-site seams.
 
@@ -295,9 +296,10 @@ Frozen invalidation backlog, in execution order:
    include their proven Pressure Map, evidence, range, deadline, and `me`
    dependencies. Deadlines, Calendar, and Today deadline mutations delegate to
    the shared deadline recipe.
-3. Calendar task-mutation and Table-correction call sites completed
-   2026-07-13. Remaining: close Google-connect and Moodle-sync call-site gaps
-   only when the shared recipes do not already cover them.
+3. Completed 2026-07-13: Calendar task-mutation, Table-correction,
+   Google-connect, and Moodle-sync call sites delegate to the established
+   task/deadline/integration recipes. Provider sync still preserves provider
+   provenance and does not become execution truth.
 
 The related macro proof passed with 192 product-loop checks, zero operator read
 diffs, zero exposure-without-render cases, and exact synthetic cleanup. The
