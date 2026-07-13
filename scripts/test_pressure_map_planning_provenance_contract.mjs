@@ -71,6 +71,15 @@ assert(
 );
 
 assert(
+  options.includes("function pressureActionRank(")
+    && options.includes('contract.disposition === "canonical_command"')
+    && options.includes('contract.disposition === "navigation"')
+    && options.includes("pressureActionRank(left.option, canPreviewPlan)")
+    && !options.includes("pressure.recovery_options[0] ?? null"),
+  "Pressure Map primary action must use deterministic executable-first ranking rather than backend array order",
+);
+
+assert(
   preview.includes("<DialogTitle>Plan draft</DialogTitle>")
     && preview.includes("does not check free-time capacity")
     && preview.includes('data-testid="pressure-map-review-calendar"')
@@ -78,6 +87,24 @@ assert(
     && !preview.includes("Preview recovery plan")
     && !preview.includes("Next recovery option"),
   "Pressure Map must distinguish plan drafts, navigation, and non-clickable planning notes",
+);
+
+assert(
+  preview.includes('data-testid="pressure-map-orientation-summary"')
+    && preview.includes('data-testid="pressure-map-orientation-facts"')
+    && preview.includes("data-fact-count={orientationFacts.length}")
+    && preview.includes(".slice(0, 3)")
+    && preview.includes('testId: "pressure-map-main-cause"')
+    && preview.includes('testId: "pressure-map-largest-caveat"')
+    && preview.includes('data-testid="pressure-map-hidden-items"')
+    && preview.includes('data-testid="pressure-map-hidden-reasons"')
+    && preview.includes('data-testid="pressure-map-calibration-cue"')
+    && preview.includes('data-testid="pressure-map-primary-action"')
+    && preview.includes('data-testid="pressure-map-secondary-navigation"')
+    && preview.includes("Start the next timer to make the next estimate more yours.")
+    && preview.includes('? "Planning note"')
+    && preview.includes(': "Primary action"'),
+  "Pressure Map must bound its orientation facts, disclose capped content, and expose exactly one primary action",
 );
 
 assert(

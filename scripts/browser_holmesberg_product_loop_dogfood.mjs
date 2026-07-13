@@ -2973,6 +2973,12 @@ async function runPressureMapPath(page, token, beforeExport) {
     // same chaotic loop so a truthful top-N preview cannot rank it out.
     dueMinutes: 90,
   });
+  for (let index = 1; index <= 4; index += 1) {
+    await createDeadlineViaApi(token, {
+      title: `${prefix} pressure overflow ${index}`,
+      dueMinutes: 90 + (index * 15),
+    });
+  }
   const pressureContextTask = await createTaskViaApi(token, {
     title: pressureContextTitle,
     startMinutes: 180,
@@ -2984,6 +2990,52 @@ async function runPressureMapPath(page, token, beforeExport) {
   await goto(page, "/pulse", "pulse-pressure-map-render-proof");
   const browserExposureIds = await assertPressureMapBrowserRender(token, beforeExport);
   const uiProjection = await pressureProjectionUiState(page);
+  const orientationSummary = page.getByTestId("pressure-map-orientation-summary").first();
+  const orientationFacts = page.getByTestId("pressure-map-orientation-facts").first();
+  const orientationFactCount = Number(await orientationFacts.getAttribute("data-fact-count"));
+  const hiddenItems = page.getByTestId("pressure-map-hidden-items").first();
+  const hiddenItemCount = await hiddenItems.isVisible({ timeout: 4_000 })
+    .then(async (visible) => visible ? Number(await hiddenItems.getAttribute("data-hidden-count")) : 0)
+    .catch(() => 0);
+  const hiddenReasons = page.getByTestId("pressure-map-hidden-reasons").first();
+  const hiddenReasonCount = await hiddenReasons.isVisible({ timeout: 4_000 })
+    .then(async (visible) => visible ? Number(await hiddenReasons.getAttribute("data-hidden-count")) : 0)
+    .catch(() => 0);
+  const expectedHiddenItems = Math.max(0, pressureSnapshot.items.length - 4);
+  const expectedHiddenReasons = Math.max(0, pressureSnapshot.compression_points.length - 1);
+  addCheck(
+    "pressure map gives one bounded orientation summary with at most three facts",
+    await orientationSummary.isVisible()
+      && orientationFactCount >= 1
+      && orientationFactCount <= 3
+      && await page.getByTestId("pressure-map-main-cause").first().isVisible()
+      && await page.getByTestId("pressure-map-scope-summary").first().isVisible()
+      && await page.getByTestId("pressure-map-largest-caveat").first().isVisible(),
+    {
+      summary: (await orientationSummary.innerText()).trim(),
+      fact_count: orientationFactCount,
+    },
+  );
+  addCheck(
+    "pressure map discloses every capped obligation and compression reason",
+    expectedHiddenItems > 0
+      && expectedHiddenReasons > 0
+      && hiddenItemCount === expectedHiddenItems
+      && hiddenReasonCount === expectedHiddenReasons,
+    {
+      expected_hidden_items: expectedHiddenItems,
+      displayed_hidden_items: hiddenItemCount,
+      expected_hidden_reasons: expectedHiddenReasons,
+      displayed_hidden_reasons: hiddenReasonCount,
+    },
+  );
+  const calibrationCue = page.getByTestId("pressure-map-calibration-cue").first();
+  addCheck(
+    "pressure map frames the provisional estimate as a timer-calibration invitation",
+    await calibrationCue.isVisible()
+      && /start the next timer/i.test(await calibrationCue.innerText()),
+    { text: (await calibrationCue.innerText()).trim() },
+  );
   const uiUnlinkedContext = uiProjection.unlinked_planning_context;
   delete uiProjection.unlinked_planning_context;
   const expectedUiProjection = {
@@ -3141,15 +3193,44 @@ async function runPressureMapPath(page, token, beforeExport) {
       title: pressureDeadlineTitle,
       forced_browser_fixture: Boolean(pressureMapRouteHandler),
     });
-    const planningNote = page.getByText(/^Planning note$/i).first();
-    const planningNoteVisible = await planningNote.isVisible({ timeout: 4_000 }).catch(() => false);
+    const primaryActionCards = page.getByTestId("pressure-map-primary-action");
+    const primaryActionCount = await primaryActionCards.count();
+    const primaryActionType = primaryActionCount === 1
+      ? await primaryActionCards.first().getAttribute("data-action")
+      : null;
+    const primaryActionText = primaryActionCount === 1
+      ? (await primaryActionCards.first().innerText()).trim()
+      : "";
+    addCheck(
+      "pressure map promotes exactly one executable primary action",
+      primaryActionCount === 1
+        && primaryActionType === "create_plan"
+        && /Primary action/i.test(primaryActionText)
+        && /Preview plan draft/i.test(primaryActionText),
+      {
+        count: primaryActionCount,
+        action: primaryActionType,
+        text: primaryActionText,
+      },
+    );
+    const coverageCaveat = page.getByTestId("pressure-map-largest-caveat").first();
+    const coverageCaveatVisible = await coverageCaveat.isVisible({ timeout: 4_000 }).catch(() => false);
+    const coverageCaveatText = coverageCaveatVisible
+      ? (await coverageCaveat.innerText()).trim()
+      : "";
     const falseCoverageControlCount = await page
       .getByRole("button", { name: /Coverage still needs confirmation/i })
       .count();
     addCheck(
-      "pressure map coverage uncertainty is an explicit non-clickable planning note",
-      planningNoteVisible && falseCoverageControlCount === 0,
-      { planning_note_visible: planningNoteVisible, matching_button_count: falseCoverageControlCount },
+      "pressure map coverage uncertainty is an explicit non-clickable caveat",
+      coverageCaveatVisible
+        && /coverage question/i.test(coverageCaveatText)
+        && falseCoverageControlCount === 0,
+      {
+        caveat_visible: coverageCaveatVisible,
+        caveat_text: coverageCaveatText,
+        matching_button_count: falseCoverageControlCount,
+      },
     );
     const reviewCalendarLink = page.getByTestId("pressure-map-review-calendar").first();
     const reviewCalendarVisible = await reviewCalendarLink
