@@ -261,6 +261,14 @@ Requirements:
 - Return created, reused, rejected, and failed outcomes with direct navigation.
 - Keep provider imports separately provenance-bound and idempotent.
 
+Wave 4 checkpoint status on 2026-07-13:
+
+- Today narrow-screen execution rows, Pulse partial-read truth, and Pulse
+  integration-row legibility have focused real-cookie browser proof.
+- The remaining Wave 4 work is explicit pause-reason parity, shared stop-result
+  interpretation, invalidation completeness, and any capture-route gap exposed
+  by the Capture Gate. Do not repeat closed layout or partial-read seams.
+
 ### Capture Gate
 
 A real five-obligation Brain Dump or import must produce inspectable accepted

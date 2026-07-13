@@ -20888,3 +20888,57 @@ Remaining and rollback:
 - Revert `449b19a` and `ff5bd73` independently for the two product changes.
   Revert their verifier/wrapper/CI commits independently. Revert `af39d97` to
   restore exact-task-only Today row selection. No production repair is needed.
+
+## 2026-07-13 - Wave 4 Pulse Integration Legibility
+
+Usefulness restored:
+
+- Issue `#239` captured real-browser overlap between provider name, connection
+  status, and the Settings action in Pulse's two-span Integrations column.
+- Product commit `e794a63` gives each provider row explicit label, status, and
+  action lines with bounded wrapping. Product commit `2b4c26a` fixes the root
+  width constraint by stacking Recovery and Integrations in one four-span
+  status column. Pulse remains the composition owner; provider and Settings
+  authorities are unchanged.
+- The final desktop layout gives each integration row `326px` of width rather
+  than `134px`. The mobile layout retains `308px` rows. No provider state,
+  credential, query, route, or mutation changed.
+
+Focused proof and classified failures:
+
+- Verifier commit `4491ea3` adds a read-only focused mode that measures every
+  real provider label/status/action rectangle at `1440x950` and `390x844`,
+  follows the canonical Settings destination, and compares canonical export
+  digests. Commit `2775355` replaces an immediate post-navigation text read
+  with a mounted Settings-surface wait.
+- The first bounded invocation was killed by an undersized command timeout and
+  produced no product result. The next retained failure at
+  `tmp/post-wave-dogfood/wave4-pulse-integrations-4491ea3/focused-r2/result.json`
+  showed the real Holmesberg consent gate; Pulse correctly never mounted. The
+  focused rerun used the existing labeled, response-only account-readiness
+  fixture and did not mutate consent or onboarding state.
+- The next retained result at
+  `tmp/post-wave-dogfood/wave4-pulse-integrations-4491ea3/focused-r3/result.json`
+  proved both layouts and the `/settings` destination, then exposed only the
+  verifier's immediate-body-read race. Its failure screenshot shows the fully
+  rendered Integrations card.
+- Final real-cookie local-current proof passed at
+  `tmp/post-wave-dogfood/wave4-pulse-integrations-2b4c26a/focused/result.json`.
+  Both viewports had zero horizontal overflow, every measured rectangle was
+  contained with zero collisions, and the Settings action mounted the real
+  Integrations surface. Canonical before/after digests matched across `180`
+  tasks, `99` deadlines, `37` stopwatch sessions, and `20` pause events.
+- Desktop and mobile screenshots were inspected directly. The final desktop
+  status column is legible without wrapping provider names or statuses; mobile
+  remains legible and aligned. No synthetic rows, notifications, exposures, or
+  runtime residue were created.
+- Current source ran on isolated frontend `3018`, lifespan-disabled backend
+  `8001`, and `.next-local-current`. The isolated processes and artifact were
+  removed after proof; public runtime and `.next-public` were untouched.
+
+Rollback:
+
+- Revert `2b4c26a` to restore the former bottom-row column allocation and
+  `e794a63` to restore the former single-line provider rows. Revert `4491ea3`
+  and `2775355` independently to remove only focused proof plumbing. No data
+  repair is required.
