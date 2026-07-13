@@ -20,6 +20,8 @@ param(
 
   [switch]$ProxyApi,
 
+  [switch]$FixtureAccountReady,
+
   [switch]$ForcePressureRecovery,
 
   [switch]$PressureProofOnly,
@@ -127,6 +129,9 @@ try {
   )
   if ($useProxyApi) {
     $args += "--proxy-api"
+  }
+  if ([bool]$FixtureAccountReady) {
+    $args += "--fixture-account-ready"
   }
   if (-not [string]::IsNullOrWhiteSpace($RunId)) {
     $args += @("--run-id", $RunId)
