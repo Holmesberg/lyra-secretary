@@ -22,7 +22,9 @@ param(
 
   [switch]$PressureProofOnly,
 
-  [switch]$PulseStopwatchOutputProofOnly
+  [switch]$PulseStopwatchOutputProofOnly,
+
+  [switch]$TimerSwitchProofOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -138,6 +140,9 @@ try {
   }
   if ([bool]$PulseStopwatchOutputProofOnly) {
     $args += "--pulse-stopwatch-output-proof-only"
+  }
+  if ([bool]$TimerSwitchProofOnly) {
+    $args += "--timer-switch-proof-only"
   }
 
   node @args
