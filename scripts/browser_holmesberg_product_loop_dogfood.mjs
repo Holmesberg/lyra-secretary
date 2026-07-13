@@ -51,6 +51,7 @@ const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-onl
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
 const captureProofOnly = args.get("capture-proof-only") === "true";
 const onboardingPartialRecoveryProofOnly = args.get("onboarding-partial-recovery-proof-only") === "true";
+const onboardingSkipProofOnly = args.get("onboarding-skip-proof-only") === "true";
 const reentryProofOnly = args.get("reentry-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
 const fixtureAccountReady = args.get("fixture-account-ready") === "true";
@@ -2413,6 +2414,106 @@ async function runOnboardingPartialRecoveryProof(page, token, me, beforeExport) 
   }
 }
 
+async function runOnboardingSkipProof(page, token, me, beforeExport) {
+  const mePattern = /\/v1\/users\/me(?:\?.*)?$/;
+  const skipPattern = /\/v1\/users\/me\/skip-onboarding(?:\?.*)?$/;
+  const sessionKey = "lyra:onboarding-skip-this-session";
+  let meReads = 0;
+  let skipRequests = 0;
+  const jsonHeaders = {
+    "access-control-allow-origin": frontendOrigin,
+    "access-control-allow-credentials": "true",
+    "content-type": "application/json",
+  };
+
+  const meHandler = async (route) => {
+    meReads += 1;
+    await route.fulfill({
+      status: 200,
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        ...me,
+        terms_accepted_at: me.terms_accepted_at || "1970-01-01T00:00:00Z",
+        archetype_survey_eligible: false,
+        onboarding_completed_at: null,
+        has_active_task_history: false,
+      }),
+    });
+  };
+  const skipHandler = async (route) => {
+    skipRequests += 1;
+    if (skipRequests === 1) {
+      await route.fulfill({
+        status: 503,
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          detail: "Onboarding skip is temporarily unavailable. Try again.",
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        ok: true,
+        onboarding_completed_at: "2026-07-13T00:00:00Z",
+      }),
+    });
+  };
+
+  await page.addInitScript((key) => window.sessionStorage.removeItem(key), sessionKey);
+  await page.route(mePattern, meHandler);
+  await page.route(skipPattern, skipHandler);
+  try {
+    await page.goto(`${frontendOrigin}/pulse`, {
+      waitUntil: "domcontentloaded",
+      timeout: 45_000,
+    });
+    await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
+    const skip = page.getByTestId("onboarding-brain-dump-skip");
+    await skip.waitFor({ state: "visible", timeout: 8_000 });
+
+    await skip.click();
+    const error = page.getByTestId("onboarding-brain-dump-error");
+    await error.waitFor({ state: "visible", timeout: 8_000 });
+    addCheck("failed onboarding skip remains visible and retryable", Boolean(
+      await skip.isVisible()
+        && await skip.isEnabled()
+        && /temporarily unavailable/i.test(await error.innerText())
+    ), { skip_requests: skipRequests });
+    addCheck("failed onboarding skip does not set the session bypass", Boolean(
+      await page.evaluate((key) => window.sessionStorage.getItem(key), sessionKey) === null
+    ));
+    await screenshot(page, "onboarding-skip-failure-retry");
+
+    await skip.click();
+    await skip.waitFor({ state: "hidden", timeout: 8_000 });
+    addCheck("acknowledged onboarding skip mounts the app", Boolean(
+      await page.evaluate((key) => window.sessionStorage.getItem(key), sessionKey) === "1"
+        && skipRequests === 2
+        && meReads >= 2
+    ), { skip_requests: skipRequests, me_reads: meReads });
+    await screenshot(page, "onboarding-skip-success");
+
+    const afterExport = await apiFetch(token, "/v1/users/me/export");
+    addCheck("onboarding skip browser fixture leaves product rows unchanged", Boolean(
+      countRows(beforeExport, "tasks") === countRows(afterExport, "tasks")
+        && countRows(beforeExport, "deadlines") === countRows(afterExport, "deadlines")
+    ), {
+      before_tasks: countRows(beforeExport, "tasks"),
+      after_tasks: countRows(afterExport, "tasks"),
+      before_deadlines: countRows(beforeExport, "deadlines"),
+      after_deadlines: countRows(afterExport, "deadlines"),
+    });
+    return { meReads, skipRequests };
+  } finally {
+    await page.evaluate((key) => window.sessionStorage.removeItem(key), sessionKey).catch(() => {});
+    await page.unroute(mePattern, meHandler).catch(() => {});
+    await page.unroute(skipPattern, skipHandler).catch(() => {});
+  }
+}
+
 async function runCaptureGatePath(page, token) {
   const before = await apiFetch(token, "/v1/users/me/export");
   const taskTitles = [
@@ -4551,6 +4652,43 @@ async function main() {
           Array.isArray(body?.items) ? body.items.map((item) => item.item_id) : []
         )),
         me_read_count: proof.meReads,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [],
+          deadline_ids: [],
+          notification_ids: [],
+          exposure_suppression_ids: [],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (onboardingSkipProofOnly) {
+      beforeExport = await apiFetch(token, "/v1/users/me/export");
+      expectNoPrivateLeak(JSON.stringify(beforeExport), "Holmesberg export before onboarding skip fixture");
+      addIssue("onboarding skip failure-retry browser fixture enabled", {
+        scope: "GET /v1/users/me eligibility plus POST /v1/users/me/skip-onboarding browser responses",
+        writes: "none",
+        hosted_public_proof: false,
+      });
+      const proof = await runOnboardingSkipProof(page, token, me, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "onboarding_skip_failure_retry_fixture",
+        proof_status: "passed",
+        fixture_only: true,
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        me_read_count: proof.meReads,
+        skip_request_count: proof.skipRequests,
         checks,
         issues,
         gated,
