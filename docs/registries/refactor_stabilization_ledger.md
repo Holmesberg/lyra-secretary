@@ -21044,3 +21044,56 @@ Next boundary:
 - Revert the bounded product and verifier commits named in the preceding two
   ledger entries for rollback. This checkpoint added no runtime authority or
   production data operation.
+
+## 2026-07-13 - Wave 4 Zero-Duration Stop Truth
+
+Usefulness restored:
+
+- Issue `#243` recorded that the backend correctly persisted a confirmed
+  zero-duration stop as `SKIPPED`, while the frontend omitted `skipped` and
+  `skip_reason` from its typed contract. Pulse could then celebrate the result
+  as `Session complete` and `Protected focus`; Today briefly projected
+  `EXECUTED` and offered no terminal explanation.
+- Product commit `ece3434` carries the existing response fields into the
+  frontend and centralizes the terminal interpretation. Pulse now says the
+  session was too short to record and that the task was marked skipped. Today
+  corrects its optimistic cache to `SKIPPED` and shows the same bounded notice.
+  Normal executed summaries, backend finalization, exposure generation,
+  mutation authority, and retained evidence semantics are unchanged.
+
+Focused proof and failure classification:
+
+- Frontend typecheck passed. Existing backend zero-duration and idempotency
+  characterization passed `6` tests. Verifier commit `c6baa2b` adds route-
+  selectable real-cookie Pulse and Today proof without adding a new product
+  path.
+- The first browser result was consent-gated before Pulse mounted. Later local
+  runs exposed two harness assumptions: setting the reflection range to its DOM
+  default did not update React state, and creating Today's second task outside
+  the UI left the five-second task query cache stale. The focused harness now
+  selects a changed reflection value, supplies explicit `0%`/reduced context,
+  polls canonical query visibility, and reloads Today before selection.
+- Pulse passed at
+  `tmp/post-wave-dogfood/wave4-zero-stop-ece3434/pulse-final/result.json`.
+  Today passed at
+  `tmp/post-wave-dogfood/wave4-zero-stop-ece3434/today-focused-r1/result.json`.
+  Both real-cookie local-current paths reached initial and confirmed stop,
+  observed `skipped=true` with `skip_reason=zero_duration`, rendered honest
+  desktop/mobile terminal state, retained exact `SKIPPED` task and ended
+  session rows, emitted no completion-output decision, and voided synthetic
+  tasks as `test_contamination` with no active timer or exposure residue.
+- A long synthetic title/category revealed document-level Pulse mobile
+  overflow outside the changed focus card. The target card and result remained
+  inside the `390px` viewport; adjacent issue `#244` owns the separate layout
+  defect rather than hiding it or mixing it into this seam.
+- The disposable frontend used `.next-local-current` on `3018` with backend
+  `8001`, compiled product build
+  `ece34343a7d5016fb0eee7472b89851f279f028f`. Isolated processes and artifacts
+  were removed. Public ports `3000/8000`, `.next-public`, and hosted runtime
+  were untouched.
+
+Rollback:
+
+- Revert `ece3434` to restore the prior frontend type and presenters. Revert
+  `c6baa2b` independently to remove focused proof plumbing. No schema, data
+  repair, deployment, restart, or authority transfer is required.

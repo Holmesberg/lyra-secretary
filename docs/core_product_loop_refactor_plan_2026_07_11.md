@@ -248,7 +248,9 @@ Requirements:
 
 ## Wave 4: Capture And Route Parity
 
-- Centralize Pulse/Today stop-result interpretation.
+- Centralize Pulse/Today stop-result interpretation. Completed for the existing
+  zero-duration `SKIPPED` terminal result on 2026-07-13; issue `#242` still
+  separately owns paused rollback projection.
 - Require explicit pause reasons from every route.
 - Centralize invalidation for tasks, deadlines, evidence, Pressure Map,
   Calendar, Table, stopwatch, and integrations.
@@ -268,8 +270,11 @@ Wave 4 checkpoint status on 2026-07-13:
 - Explicit pause-reason parity is closed: every live frontend caller now supplies
   a typed canonical reason, and Pulse requires an explicit selection before the
   timer mutation. Dismissing the chooser writes nothing.
-- The remaining Wave 4 work is shared stop-result interpretation, invalidation
-  completeness, and any capture-route gap exposed by the Capture Gate. Do not
+- Shared zero-duration stop-result truth is closed: Pulse and Today now present
+  the backend-owned `SKIPPED` result without completion language or optimistic
+  `EXECUTED` residue.
+- The remaining Wave 4 work is invalidation completeness and any capture-route
+  gap exposed by the Capture Gate. Do not
   repeat closed layout, partial-read, integration-legibility, or pause-reason
   seams.
 
