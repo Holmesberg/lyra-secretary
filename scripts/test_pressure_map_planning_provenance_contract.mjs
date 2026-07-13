@@ -57,6 +57,13 @@ assert(
   "Pressure Map recovery blocks before 06:00 or crossing 23:00 must remain visible in Calendar",
 );
 
+const browserProof = read("scripts/browser_holmesberg_product_loop_dogfood.mjs");
+assert(
+  browserProof.includes("mobile Calendar keeps the pressure-map recovery block inspectable")
+    && browserProof.includes("calendar-pressure-map-commit-day-mobile"),
+  "Pressure Map Calendar proof must retain the mobile off-hours visibility check",
+);
+
 console.log(JSON.stringify({
   ok: true,
   checked: "pressure_map_planning_provenance_contract",

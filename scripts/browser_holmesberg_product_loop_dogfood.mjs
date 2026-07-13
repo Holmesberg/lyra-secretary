@@ -3331,6 +3331,25 @@ async function runPressureMapPath(page, token, beforeExport) {
       view: "day",
       locator_visible: calendarEventVisible,
     });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileCalendarEventVisible = await calendarEvent
+      .waitFor({ state: "visible", timeout: 12_000 })
+      .then(() => true)
+      .catch(() => false);
+    const mobileCalendarOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    await screenshot(page, "calendar-pressure-map-commit-day-mobile");
+    addCheck("mobile Calendar keeps the pressure-map recovery block inspectable", Boolean(
+      mobileCalendarEventVisible && mobileCalendarOverflow <= 1
+    ), {
+      task_id: createdTask?.task_id || null,
+      viewport: { width: 390, height: 844 },
+      locator_visible: mobileCalendarEventVisible,
+      horizontal_overflow_pixels: mobileCalendarOverflow,
+    });
+    await page.setViewportSize({ width: 1440, height: 950 });
   } finally {
     if (pressureMapRouteHandler) {
       await page.unroute(pressureMapPattern, pressureMapRouteHandler).catch(() => {});
