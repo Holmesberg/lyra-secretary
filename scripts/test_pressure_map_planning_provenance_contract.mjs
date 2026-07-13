@@ -52,9 +52,9 @@ assert(
 );
 
 assert(
-  calendar.includes('dayBoundaries: { start: "06:00", end: "24:00" }')
+  calendar.includes('dayBoundaries: { start: "00:00", end: "24:00" }')
     && calendar.includes("const endHour = 24;"),
-  "Pressure Map recovery blocks crossing 23:00 must remain visible in Calendar",
+  "Pressure Map recovery blocks before 06:00 or crossing 23:00 must remain visible in Calendar",
 );
 
 console.log(JSON.stringify({
