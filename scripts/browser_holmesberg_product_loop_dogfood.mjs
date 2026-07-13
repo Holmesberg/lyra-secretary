@@ -48,7 +48,9 @@ const pressureProofOnly = args.get("pressure-proof-only") === "true";
 const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "true";
 const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-only") === "true";
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
+const captureProofOnly = args.get("capture-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
+const fixtureAccountReady = args.get("fixture-account-ready") === "true";
 const forcePressureRecovery = args.get("force-pressure-recovery") === "true";
 const holmesbergCookie = process.env.LYRA_COOKIE_HOLMESBERG
   || process.env.LYRA_COOKIE_MORIARTY
@@ -498,13 +500,30 @@ async function installApiProxy(context) {
         timeout: 45_000,
         failOnStatusCode: false,
       });
+      const responseHeaders = {
+        ...response.headers(),
+        ...corsHeaders,
+      };
+      let responseBody = await response.body();
+      if (
+        fixtureAccountReady
+        && request.method().toUpperCase() === "GET"
+        && new URL(request.url()).pathname === "/v1/users/me"
+        && response.ok()
+      ) {
+        const me = JSON.parse(responseBody.toString("utf8"));
+        me.terms_accepted_at = me.terms_accepted_at || "1970-01-01T00:00:00Z";
+        me.archetype_survey_eligible = false;
+        me.onboarding_completed_at = me.onboarding_completed_at || "1970-01-01T00:00:00Z";
+        me.has_active_task_history = true;
+        responseBody = Buffer.from(JSON.stringify(me));
+        delete responseHeaders["content-encoding"];
+        delete responseHeaders["content-length"];
+      }
       await route.fulfill({
         status: response.status(),
-        headers: {
-          ...response.headers(),
-          ...corsHeaders,
-        },
-        body: await response.body(),
+        headers: responseHeaders,
+        body: responseBody,
       });
     } catch (error) {
       if (/Target page, context or browser has been closed/i.test(String(error?.message || error))) {
@@ -1938,6 +1957,179 @@ async function assertPressureMapBrowserRender(token, beforeExport) {
     },
   );
   return browserProven.map((row) => row.exposure_id);
+}
+
+async function runCaptureGatePath(page, token) {
+  const before = await apiFetch(token, "/v1/users/me/export");
+  const taskTitles = [
+    `${prefix} capture review notes`,
+    `${prefix} capture draft outline`,
+    `${prefix} capture email advisor`,
+    `${prefix} capture prepare slides`,
+  ];
+  const deadlineTitle = `${prefix} capture submission`;
+  const raw = [
+    `${taskTitles[0]} tomorrow 30min`,
+    `${taskTitles[1]} tomorrow 45min`,
+    `${taskTitles[2]} tomorrow 15min`,
+    `${taskTitles[3]} tomorrow 40min`,
+    `deadline ${deadlineTitle} tomorrow 11pm`,
+  ].join("\n");
+
+  await goto(page, "/pulse", "pulse-before-five-obligation-capture");
+  const consentVisible = await page.getByRole("heading", { name: /Before you continue/i })
+    .isVisible({ timeout: 500 }).catch(() => false);
+  const surveyVisible = await page.locator('[aria-labelledby="archetype-survey-title"]')
+    .isVisible({ timeout: 500 }).catch(() => false);
+  const onboardingVisible = await page.getByText(/LyraOS starts learning from the first plan/i)
+    .isVisible({ timeout: 500 }).catch(() => false);
+  addCheck("capture gate account-state preflight is interaction-ready", Boolean(
+    !consentVisible && !surveyVisible && !onboardingVisible
+  ), {
+    consent_visible: consentVisible,
+    survey_visible: surveyVisible,
+    onboarding_visible: onboardingVisible,
+    fixture_account_ready: fixtureAccountReady,
+  });
+  await fillAny(page, "five-obligation quick capture", [
+    (p) => p.getByTestId("pulse-quick-capture-input"),
+    (p) => p.getByPlaceholder(/brain dump anything/i),
+  ], raw);
+  await clickAny(page, "open five-obligation capture", [
+    (p) => p.getByTestId("pulse-quick-capture-submit"),
+    (p) => p.getByRole("button", { name: /Capture/i }),
+  ]);
+  await firstVisible(page, [
+    (p) => p.getByTestId("brain-dump-modal"),
+    (p) => p.getByRole("dialog", { name: /Brain dump/i }),
+  ], 8_000, "five-obligation brain dump modal");
+  await fillAny(page, "five-obligation brain dump textarea", [
+    (p) => p.getByTestId("brain-dump-textarea"),
+  ], raw);
+  await clickAny(page, "parse five-obligation brain dump", [
+    (p) => p.getByTestId("brain-dump-parse"),
+  ]);
+  await page.getByText(/LyraOS found/i).first().waitFor({ timeout: 20_000 });
+
+  const { titleInputs, whenInputs } = await brainDumpEditableLocators(page);
+  addCheck("capture gate preview exposes all five obligations", (
+    await titleInputs.count() === 5 && await whenInputs.count() === 5
+  ), {
+    title_inputs: await titleInputs.count(),
+    when_inputs: await whenInputs.count(),
+  });
+  const expectedTitles = [...taskTitles, deadlineTitle];
+  for (let index = 0; index < expectedTitles.length; index += 1) {
+    await titleInputs.nth(index).fill(expectedTitles[index]);
+    await whenInputs.nth(index).fill(localInput(futureDate(180 + index * 45)));
+  }
+  await screenshot(page, "capture-gate-five-obligation-preview");
+
+  const commitResponsePromise = page.waitForResponse((response) => (
+    response.url().includes("/v1/brain-dump/commit")
+      && response.request().method().toUpperCase() === "POST"
+  ), { timeout: 20_000 });
+  await clickAny(page, "commit five-obligation brain dump", [
+    (p) => p.getByTestId("brain-dump-lock-in"),
+  ]);
+  const commitResponse = await commitResponsePromise;
+  const commit = await commitResponse.json();
+  for (const taskId of commit.task_ids || []) cleanup.tasks.add(taskId);
+  for (const deadlineId of commit.deadline_ids || []) cleanup.deadlines.add(deadlineId);
+  addCheck("capture gate commit returns five created outcomes", Boolean(
+    commitResponse.ok()
+      && commit.tasks_created === 4
+      && commit.deadlines_created === 1
+      && Array.isArray(commit.outcomes)
+      && commit.outcomes.length === 5
+      && commit.outcomes.every((row) => row.status === "created" && row.canonical_id)
+      && Array.isArray(commit.failed_items)
+      && commit.failed_items.length === 0
+  ), commit);
+
+  const result = await firstVisible(page, [
+    (p) => p.getByTestId("brain-dump-capture-result"),
+  ], 12_000, "capture result destinations");
+  const resultText = await result.innerText();
+  addCheck("capture result reports accepted counts", Boolean(
+    /4 tasks and 1 deadline created/i.test(resultText)
+  ), { result_text: resultText });
+  const pressureLink = result.getByRole("link", { name: /Open Pressure Map/i });
+  const taskLink = result.getByRole("link", { name: /Review tasks/i });
+  const deadlineLink = result.getByRole("link", { name: /Review deadlines/i });
+  const calendarLink = result.getByRole("link", { name: /Open calendar/i });
+  await Promise.all([
+    pressureLink.waitFor({ state: "visible", timeout: 5_000 }),
+    taskLink.waitFor({ state: "visible", timeout: 5_000 }),
+    deadlineLink.waitFor({ state: "visible", timeout: 5_000 }),
+    calendarLink.waitFor({ state: "visible", timeout: 5_000 }),
+  ]);
+  const destinationState = {
+    pressure_visible: await pressureLink.isVisible(),
+    task_visible: await taskLink.isVisible(),
+    deadline_visible: await deadlineLink.isVisible(),
+    calendar_visible: await calendarLink.isVisible(),
+    pressure_href: await pressureLink.getAttribute("href"),
+    task_href: await taskLink.getAttribute("href"),
+    deadline_href: await deadlineLink.getAttribute("href"),
+    calendar_href: await calendarLink.getAttribute("href"),
+  };
+  addCheck("capture result exposes direct review destinations", Boolean(
+    destinationState.pressure_visible
+      && destinationState.task_visible
+      && destinationState.deadline_visible
+      && destinationState.calendar_visible
+      && destinationState.pressure_href === "/pulse#pressure-map"
+      && destinationState.task_href === "/table"
+      && destinationState.deadline_href === "/deadlines"
+      && destinationState.calendar_href === "/calendar"
+  ), destinationState);
+  await screenshot(page, "capture-gate-result-desktop");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await result.scrollIntoViewIfNeeded();
+  const mobileOverflow = await page.evaluate(() => (
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  ));
+  addCheck("capture result fits the mobile viewport", mobileOverflow <= 1, {
+    horizontal_overflow_pixels: mobileOverflow,
+  });
+  await screenshot(page, "capture-gate-result-mobile");
+  await page.setViewportSize({ width: 1440, height: 950 });
+
+  const after = await apiFetch(token, "/v1/users/me/export");
+  const taskIds = new Set(commit.task_ids || []);
+  const deadlineIds = new Set(commit.deadline_ids || []);
+  const exportedTasks = rows(after, "tasks").filter((row) => taskIds.has(row.task_id));
+  const exportedDeadlines = rows(after, "deadlines").filter((row) => deadlineIds.has(row.deadline_id));
+  addCheck("capture gate export contains every accepted canonical row", Boolean(
+    exportedTasks.length === 4
+      && exportedDeadlines.length === 1
+      && exportedTasks.every((row) => row.title.startsWith(prefix))
+      && exportedDeadlines.every((row) => row.title.startsWith(prefix))
+  ), {
+    task_ids: exportedTasks.map((row) => row.task_id),
+    deadline_ids: exportedDeadlines.map((row) => row.deadline_id),
+  });
+
+  await pressureLink.click();
+  await page.waitForURL((url) => url.pathname === "/pulse" && url.hash === "#pressure-map", {
+    timeout: 10_000,
+  });
+  const pressureMap = page.getByTestId("pressure-map").first();
+  await pressureMap.waitFor({ state: "visible", timeout: 12_000 });
+  const pressureInViewport = await pressureMap.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.bottom > 0 && rect.top < window.innerHeight;
+  });
+  addCheck("capture result opens the existing Pressure Map", pressureInViewport, {
+    url: page.url(),
+  });
+  await screenshot(page, "capture-gate-pressure-map-destination");
+
+  return {
+    taskIds: [...taskIds],
+    deadlineIds: [...deadlineIds],
+  };
 }
 
 async function runPressureMapPath(page, token, beforeExport) {
@@ -3720,6 +3912,13 @@ async function main() {
 
     beforeExport = await apiFetch(token, "/v1/users/me/export");
     expectNoPrivateLeak(JSON.stringify(beforeExport), "Holmesberg export before");
+    if (fixtureAccountReady) {
+      addIssue("local-current account eligibility fixture enabled", {
+        scope: "GET /v1/users/me browser response eligibility fields only",
+        writes: "none",
+        hosted_public_proof: false,
+      });
+    }
 
     if (archetypeProofOnly) {
       const readiness = await ensureArchetypeReadinessForBrowserProof(token);
@@ -3789,6 +3988,53 @@ async function main() {
         user_ref: userRef(me.user_id),
         output_dir: outDir,
         exposure_count: exposureIds.length,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (captureProofOnly) {
+      const proof = await runCaptureGatePath(page, token);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const afterCleanup = await apiFetch(token, "/v1/users/me/export");
+      const activePrefixedTasks = rows(afterCleanup, "tasks").filter((row) => (
+        String(row.title || "").startsWith(prefix) && !row.voided_at
+      ));
+      const activePrefixedDeadlines = rows(afterCleanup, "deadlines").filter((row) => (
+        String(row.title || "").startsWith(prefix) && !row.voided_at
+      ));
+      addCheck("capture gate cleanup leaves no active prefixed rows", Boolean(
+        activePrefixedTasks.length === 0 && activePrefixedDeadlines.length === 0
+      ), {
+        active_task_ids: activePrefixedTasks.map((row) => row.task_id),
+        active_deadline_ids: activePrefixedDeadlines.map((row) => row.deadline_id),
+      });
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "five_obligation_capture_gate",
+        proof_status: "passed",
+        fixtures: {
+          account_ready: fixtureAccountReady,
+        },
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        captured_task_count: proof.taskIds.length,
+        captured_deadline_count: proof.deadlineIds.length,
         checks,
         issues,
         gated,
