@@ -755,6 +755,53 @@ class TaskManager:
         if nudge_event.resolved_at is None:
             nudge_event.resolved_at = now_utc()
 
+    def void_task(
+        self,
+        task_id: str,
+        *,
+        voided_reason: str,
+        void_reason_detail: Optional[str] = None,
+    ) -> tuple[Task, str, Optional[str]]:
+        """Void a task and its linked calibration outcome atomically."""
+        uid = _require_current_user("void_task")
+        task = (
+            self.db.query(Task)
+            .filter(Task.task_id == task_id, Task.user_id == uid)
+            .first()
+        )
+        if task is None:
+            raise ValueError("Task not found")
+        if task.state == TaskState.DELETED:
+            raise ImmutableTaskError("Cannot void a DELETED task")
+
+        previous_state = (
+            task.state.value if hasattr(task.state, "value") else str(task.state)
+        )
+        previous_status = task.initiation_status
+        voided_at = now_utc()
+        task.voided_at = voided_at
+        task.voided_reason = voided_reason
+        task.void_reason_detail = void_reason_detail
+        if task.state == TaskState.EXECUTED:
+            task.initiation_status = "system_error"
+
+        (
+            self.db.query(CalibrationNudgeEvent)
+            .filter(
+                CalibrationNudgeEvent.user_id == uid,
+                CalibrationNudgeEvent.task_id == task_id,
+                CalibrationNudgeEvent.voided_at.is_(None),
+            )
+            .update(
+                {CalibrationNudgeEvent.voided_at: voided_at},
+                synchronize_session=False,
+            )
+        )
+        self.db.commit()
+        self.db.refresh(task)
+        _invalidate_user_runtime_caches(task.user_id, "void_task")
+        return task, previous_state, previous_status
+
     def skip_task(
         self,
         task_id: str,

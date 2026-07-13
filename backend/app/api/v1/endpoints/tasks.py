@@ -319,25 +319,16 @@ def void_task(
     initiation_status='system_error' for backward compatibility with
     existing analytics filters.
     """
-    task = db.query(Task).filter(Task.task_id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.state == TaskState.DELETED:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot void a DELETED task",
+    try:
+        task, previous_state, previous_status = TaskManager(db).void_task(
+            task_id,
+            voided_reason=request.voided_reason,
+            void_reason_detail=request.void_reason_detail,
         )
-    previous_state = task.state.value if hasattr(task.state, "value") else str(task.state)
-    previous_status = task.initiation_status
-    task.voided_at = _now_utc()
-    task.voided_reason = request.voided_reason
-    task.void_reason_detail = request.void_reason_detail
-    # Preserve legacy EXECUTED→system_error mapping so old analytics
-    # filters that test initiation_status still exclude the row.
-    if task.state == TaskState.EXECUTED:
-        task.initiation_status = "system_error"
-    db.commit()
-    db.refresh(task)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ImmutableTaskError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Close any unclosed stopwatch session bound to this task and clear
     # the user's Redis active/pause keys. Without this, the frontend
