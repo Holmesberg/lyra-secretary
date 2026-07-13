@@ -41,6 +41,8 @@ param(
   [ValidateSet("both", "pulse", "today")]
   [string]$ZeroDurationStopRoute = "both",
 
+  [switch]$TodayStopRollbackProofOnly,
+
   [switch]$PulsePartialErrorProofOnly,
 
   [switch]$PulseIntegrationsLayoutProofOnly,
@@ -182,6 +184,9 @@ try {
       "--zero-duration-stop-proof-only",
       "--zero-duration-stop-route", $ZeroDurationStopRoute
     )
+  }
+  if ([bool]$TodayStopRollbackProofOnly) {
+    $args += "--today-stop-rollback-proof-only"
   }
   if ([bool]$PulsePartialErrorProofOnly) {
     $args += "--pulse-partial-error-proof-only"

@@ -50,6 +50,7 @@ const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "tr
 const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-only") === "true";
 const zeroDurationStopProofOnly = args.get("zero-duration-stop-proof-only") === "true";
 const zeroDurationStopRoute = args.get("zero-duration-stop-route") || "both";
+const todayStopRollbackProofOnly = args.get("today-stop-rollback-proof-only") === "true";
 const pulsePartialErrorProofOnly = args.get("pulse-partial-error-proof-only") === "true";
 const pulseIntegrationsLayoutProofOnly = args.get("pulse-integrations-layout-proof-only") === "true";
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
@@ -4010,6 +4011,180 @@ async function runTodayZeroDurationStopPath(page, token) {
   return { task, sessionId: stopBody.session_id };
 }
 
+async function runTodayStopRollbackCase(page, token, { paused, failure }) {
+  const stateLabel = paused ? "paused" : "running";
+  const outcomeLabel = failure ? "failure" : "confirmation";
+  const dayOffset = (paused ? 2 : 0) + (failure ? 1 : 0);
+  const title = `${prefix} today rollback ${stateLabel} ${outcomeLabel}`;
+  const created = await createTaskViaApi(token, {
+    title,
+    startMinutes: 14 + dayOffset * 24 * 60,
+    durationMinutes: 30,
+    category: `dogfood_today_rollback_${stateLabel}_${outcomeLabel}_${runKey}`,
+  });
+  const task = await findTaskByTitle(token, title);
+  addCheck(`Today ${stateLabel} ${outcomeLabel} setup creates a canonical task`, Boolean(
+    created?.task_id && task?.task_id === created.task_id
+  ), { created, task });
+  await apiFetch(token, "/v1/stopwatch/start", {
+    method: "POST",
+    headers: {
+      "X-Idempotency-Key": boundedIdentifier(`today-rollback-start:${stateLabel}:${outcomeLabel}:${runKey}`),
+    },
+    body: JSON.stringify({ task_id: task.task_id, pre_task_readiness: 3 }),
+  });
+  if (paused) {
+    await apiFetch(token, "/v1/stopwatch/pause", {
+      method: "POST",
+      headers: {
+        "X-Idempotency-Key": boundedIdentifier(`today-rollback-pause:${outcomeLabel}:${runKey}`),
+      },
+      body: JSON.stringify({
+        pause_reason: "intentional_break",
+        pause_initiator: "self",
+      }),
+    });
+  }
+
+  const canonicalBefore = await apiFetch(token, "/v1/stopwatch/status");
+  addCheck(`Today ${stateLabel} ${outcomeLabel} setup preserves canonical timer state`, Boolean(
+    canonicalBefore.active
+    && canonicalBefore.task_id === task.task_id
+    && canonicalBefore.paused === paused
+  ), canonicalBefore);
+
+  const taskDate = dateKey(new Date(task.start || task.planned_start_utc || Date.now()));
+  await goto(page, `/today?date=${encodeURIComponent(taskDate)}`, `today-rollback-${stateLabel}-${outcomeLabel}`);
+  await closeBlockingDialog(page, `Today rollback ${stateLabel} ${outcomeLabel}`);
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 45_000 });
+  await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
+  const taskRow = page
+    .locator(`[data-testid="task-row"][data-task-id="${task.task_id}"]`)
+    .first();
+  await taskRow.waitFor({ state: "visible", timeout: 12_000 });
+  const expectedState = paused ? "PAUSED" : "EXECUTING";
+  addCheck(`Today ${stateLabel} ${outcomeLabel} row starts from canonical state`, (
+    await taskRow.getAttribute("data-task-state")
+  ) === expectedState, {
+    expected_state: expectedState,
+    actual_state: await taskRow.getAttribute("data-task-state"),
+  });
+
+  await clickAny(page, `Today ${stateLabel} ${outcomeLabel} stop`, [
+    () => page.getByTestId("active-timer-stop").first(),
+    () => taskRow.locator('button[title="Stop timer"]').first(),
+  ], 10_000);
+  const dialog = page.getByRole("dialog").filter({ hasText: /How was your focus/i }).first();
+  await dialog.waitFor({ state: "visible", timeout: 8_000 });
+  await dialog.getByRole("button", { name: /Average - some flow/i }).click();
+  await dialog.locator("#pct").fill("0");
+  await dialog.getByRole("button", { name: /Reduced scope/i }).click();
+
+  let requestEvidence;
+  if (failure) {
+    const failedStopPattern = "**/v1/stopwatch/stop**";
+    await page.route(failedStopPattern, async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Focused stop rollback fixture" }),
+      });
+    }, { times: 1 });
+    const failedResponse = page.waitForResponse(
+      (response) => response.request().method() === "POST"
+        && response.url().includes("/v1/stopwatch/stop")
+        && response.status() === 503,
+      { timeout: 15_000 },
+    );
+    const refreshResponse = page.waitForResponse(
+      (response) => response.request().method() === "GET"
+        && response.url().includes("/v1/stopwatch/status")
+        && response.ok(),
+      { timeout: 15_000 },
+    );
+    await clickAny(page, `Today ${stateLabel} failed stop fixture`, [
+      () => dialog.getByRole("button", { name: /^Stop timer$/i }).first(),
+    ], 10_000);
+    const [failed, refreshed] = await Promise.all([failedResponse, refreshResponse]);
+    await page.unroute(failedStopPattern);
+    await page.getByText(/Focused stop rollback fixture/i).first().waitFor({
+      state: "visible",
+      timeout: 8_000,
+    });
+    requestEvidence = {
+      stop_status: failed.status(),
+      refresh_status: refreshed.status(),
+      refresh_url: refreshed.url(),
+    };
+  } else {
+    const body = await submitStopControl(
+      page,
+      dialog,
+      /^Stop timer$/i,
+      `Today ${stateLabel} early-stop confirmation gate`,
+    );
+    addCheck(`Today ${stateLabel} first stop requires confirmation`, Boolean(
+      body.requires_confirmation === true && body.is_early_stop === true
+    ), body);
+    await dialog.getByRole("button", { name: /Confirm early stop/i }).waitFor({
+      state: "visible",
+      timeout: 8_000,
+    });
+    requestEvidence = body;
+  }
+
+  await page.waitForFunction(
+    ({ taskId, state }) => document.querySelector(
+      `[data-testid="task-row"][data-task-id="${taskId}"]`,
+    )?.getAttribute("data-task-state") === state,
+    { taskId: task.task_id, state: expectedState },
+    { timeout: 10_000 },
+  );
+  const canonicalAfter = await apiFetch(token, "/v1/stopwatch/status");
+  addCheck(`Today ${stateLabel} ${outcomeLabel} rollback restores timer and task truth`, Boolean(
+    canonicalAfter.active
+    && canonicalAfter.task_id === task.task_id
+    && canonicalAfter.paused === paused
+    && await taskRow.getAttribute("data-task-state") === expectedState
+  ), {
+    expected_state: expectedState,
+    row_state: await taskRow.getAttribute("data-task-state"),
+    stopwatch: canonicalAfter,
+    request: requestEvidence,
+  });
+  await screenshot(page, `today-rollback-${stateLabel}-${outcomeLabel}-restored`);
+  await dialog.getByRole("button", { name: /^Cancel$/i }).click();
+
+  const stopped = await apiFetch(token, "/v1/stopwatch/stop?confirmed=true", {
+    method: "POST",
+    headers: {
+      "X-Idempotency-Key": boundedIdentifier(`today-rollback-clean-stop:${stateLabel}:${outcomeLabel}:${runKey}`),
+    },
+    body: JSON.stringify({
+      post_task_reflection: 3,
+      task_completion_percentage: 0,
+      scope_outcome: "reduced",
+    }),
+  });
+  return {
+    task,
+    sessionId: stopped.session_id,
+    expectedState,
+    outcomeLabel,
+    stateLabel,
+  };
+}
+
+async function runTodayStopRollbackProof(page, token) {
+  const proofs = [];
+  for (const paused of [false, true]) {
+    for (const failure of [false, true]) {
+      proofs.push(await runTodayStopRollbackCase(page, token, { paused, failure }));
+    }
+  }
+  return proofs;
+}
+
 async function submitStopControl(page, dialog, buttonName, label) {
   const responsePromise = page.waitForResponse(
     (response) => response.url().includes("/v1/stopwatch/stop"),
@@ -5619,6 +5794,58 @@ async function main() {
         api_origin: apiOrigin,
         user_ref: userRef(me.user_id),
         output_dir: outDir,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (todayStopRollbackProofOnly) {
+      addIssue("Today stop transport-failure fixture enabled", {
+        scope: "one stop POST per running/paused case; canonical reads and writes remain real",
+        writes: "synthetic Holmesberg task/timer rows only",
+        hosted_public_proof: false,
+      });
+      const proofs = await runTodayStopRollbackProof(page, token);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const afterCleanup = await apiFetch(token, "/v1/users/me/export");
+      const cleanedTasks = proofs.map(({ task }) => (
+        rows(afterCleanup, "tasks").find((row) => row.task_id === task.task_id) || null
+      ));
+      const cleanedSessions = proofs.map(({ sessionId }) => (
+        rows(afterCleanup, "stopwatch_sessions").find((row) => row.session_id === sessionId) || null
+      ));
+      addCheck("Today stop rollback proof terminalizes retained synthetic evidence", Boolean(
+        cleanedTasks.every((task) => task?.voided_at && task?.voided_reason === "test_contamination")
+        && cleanedSessions.every((session) => session?.end_time_utc)
+      ), { tasks: cleanedTasks, sessions: cleanedSessions });
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "today_stop_rollback_truth",
+        proof_status: "passed",
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        cases: proofs.map(({ task, sessionId, expectedState, outcomeLabel, stateLabel }) => ({
+          task_id: task.task_id,
+          session_id: sessionId,
+          expected_state: expectedState,
+          outcome: outcomeLabel,
+          initial_state: stateLabel,
+        })),
         checks,
         issues,
         gated,
