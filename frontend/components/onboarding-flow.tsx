@@ -31,10 +31,12 @@
  * stamped it.
  */
 import { useEffect, useRef, useState } from "react";
+import { ArrowRight, CalendarPlus, PencilLine, Trash2 } from "lucide-react";
 import {
   bindingKey,
   brainDumpBindingTargetLabel,
   failureCopy,
+  pad2,
 } from "@/lib/brain-dump-ui";
 import { api } from "@/lib/api";
 import { useBrainDumpFlow } from "@/lib/hooks/use-brain-dump-flow";
@@ -52,12 +54,21 @@ function retryCopy(hint: string | null): string {
     case "schedule_tomorrow_same_time":
       return "Try scheduling tomorrow at the same time.";
     case "edit_when_local":
-      return "You can edit this in /today after onboarding.";
+      return "Add or correct the date, then retry.";
     case "remove_deadline_binding":
       return "Unbind from the deadline and retry.";
     default:
       return "";
   }
+}
+
+function toDateTimeInput(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 16);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate(),
+  )}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
 function formatWhen(iso: string | null): string {
@@ -91,9 +102,12 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
     handleParse,
     handleCommit,
     setBindingChoice,
-    clearFailures,
+    updateItem,
+    removeItem,
+    retryFailedItems,
     bindingsForTask,
     tier2Unanswered,
+    canMoveFailedToTomorrow,
   } = useBrainDumpFlow({
     emptyTextError: "Type something first — at least one task or deadline.",
     emptyResultError:
@@ -125,7 +139,9 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
           <h1 className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-parchment md:text-4xl">
             {step === "dump"
               ? "LyraOS starts learning from the first plan you write."
-              : "Look right? Lock it in."}
+              : step === "review_failures"
+                ? "A few items need attention."
+                : "Look right? Lock it in."}
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-dust md:text-base">
             {step === "dump"
@@ -133,8 +149,10 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 "deadlines, half-thoughts. Times and dates inside the " +
                 "text get parsed automatically. You'll review before " +
                 "anything saves."
-              : "LyraOS split your dump into tasks and deadlines. " +
-                "Confirm any links between them, then save."}
+              : step === "review_failures"
+                ? "Saved items stay saved. Fix only the failed rows, or continue with what landed."
+                : "LyraOS split your dump into tasks and deadlines. " +
+                  "Confirm any links between them, then save."}
           </p>
         </div>
 
@@ -150,6 +168,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <textarea
+                  data-testid="onboarding-brain-dump-textarea"
                   ref={textareaRef}
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
@@ -187,6 +206,8 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                   {skipping ? "Skipping…" : "Skip for now"}
                 </button>
                 <button
+                  data-testid="onboarding-brain-dump-parse"
+                  type="button"
                   onClick={handleParse}
                   disabled={parsing || skipping || !rawText.trim()}
                   className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
@@ -223,9 +244,19 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 text-sm font-medium text-parchment">
-                        {it.title}
-                      </div>
+                      <label className="mt-2 flex flex-col gap-1.5">
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                          Title
+                        </span>
+                        <input
+                          data-testid={`onboarding-brain-dump-item-title-${it.item_id}`}
+                          value={it.title}
+                          onChange={(event) =>
+                            updateItem(it.item_id, { title: event.target.value })
+                          }
+                          className="rounded-sm border border-hairline-signal/30 bg-void/50 px-3 py-2 text-sm text-parchment outline-none focus:border-signal/60 focus:ring-1 focus:ring-signal/30"
+                        />
+                      </label>
                       <div className="mt-0.5 text-xs text-dust">
                         {formatWhen(it.when_local)}
                         {it.category && (
@@ -246,6 +277,63 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                           )}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      title="Discard item"
+                      aria-label={`Discard ${it.title}`}
+                      onClick={() => removeItem(it.item_id)}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-hairline-signal/30 text-dust transition-colors hover:border-ember/50 hover:text-ember focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember/60"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  <div
+                    className={cn(
+                      "mt-3 grid gap-3",
+                      it.kind === "task"
+                        ? "sm:grid-cols-[minmax(0,1fr)_120px]"
+                        : "sm:grid-cols-1",
+                    )}
+                  >
+                    <label className="flex min-w-0 flex-col gap-1.5">
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                        {it.kind === "deadline" ? "Due" : "Start"}
+                      </span>
+                      <input
+                        data-testid={`onboarding-brain-dump-item-when-${it.item_id}`}
+                        type="datetime-local"
+                        value={toDateTimeInput(it.when_local)}
+                        onChange={(event) =>
+                          updateItem(it.item_id, {
+                            when_local: event.target.value || null,
+                          })
+                        }
+                        className="min-w-0 rounded-sm border border-hairline-signal/30 bg-void/50 px-3 py-2 font-mono text-xs text-parchment outline-none focus:border-signal/60 focus:ring-1 focus:ring-signal/30"
+                      />
+                    </label>
+                    {it.kind === "task" && (
+                      <label className="flex flex-col gap-1.5">
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                          Minutes
+                        </span>
+                        <input
+                          data-testid={`onboarding-brain-dump-item-duration-${it.item_id}`}
+                          type="number"
+                          min={1}
+                          max={720}
+                          value={it.duration_minutes ?? ""}
+                          onChange={(event) =>
+                            updateItem(it.item_id, {
+                              duration_minutes: event.target.value
+                                ? Number(event.target.value)
+                                : null,
+                            })
+                          }
+                          className="rounded-sm border border-hairline-signal/30 bg-void/50 px-3 py-2 font-mono text-xs text-parchment outline-none focus:border-signal/60 focus:ring-1 focus:ring-signal/30"
+                        />
+                      </label>
+                    )}
                   </div>
 
                   {it.duration_source === "research_prior_v1" &&
@@ -336,6 +424,8 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 </span>
               )}
               <button
+                data-testid="onboarding-brain-dump-lock-in"
+                type="button"
                 onClick={handleCommit}
                 disabled={committing || items.length === 0 || tier2Unanswered}
                 className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
@@ -349,14 +439,18 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
         {step === "review_failures" && (
           <div className="flex flex-col gap-6">
             <p className="text-sm text-dust">
-              Your plan landed.{" "}
+              The items that worked are already saved. Only the rows below
+              will be retried. {" "}
               <span className="text-ember">
                 {failures.length} item{failures.length === 1 ? "" : "s"}{" "}
                 couldn&apos;t be scheduled
               </span>{" "}
               and need attention:
             </p>
-            <ul className="flex flex-col gap-3 rounded-sm border border-ember/30 bg-ember/[0.04] p-4">
+            <ul
+              data-testid="onboarding-brain-dump-failures"
+              className="flex flex-col gap-3 rounded-sm border border-ember/30 bg-ember/[0.04] p-4"
+            >
               {failures.map((f) => (
                 <li key={f.item_id} className="text-sm">
                   <div className="font-mono text-xs text-parchment">
@@ -372,15 +466,37 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 </li>
               ))}
             </ul>
-            <div className="flex justify-end pt-1">
+            <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap sm:justify-end">
+              {canMoveFailedToTomorrow && (
+                <button
+                  data-testid="onboarding-brain-dump-move-failed-to-tomorrow"
+                  type="button"
+                  onClick={() =>
+                    retryFailedItems({ movePastToTomorrow: true })
+                  }
+                  className="cyber-pill cyber-pill-compact inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
+                >
+                  <CalendarPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Move to tomorrow
+                </button>
+              )}
               <button
-                onClick={() => {
-                  clearFailures();
-                  onCompleted();
-                }}
-                className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
+                data-testid="onboarding-brain-dump-edit-failed-items"
+                type="button"
+                onClick={() => retryFailedItems()}
+                className="cyber-pill cyber-pill-compact inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
-                Continue to LyraOS
+                <PencilLine className="h-3.5 w-3.5" aria-hidden="true" />
+                Edit failed items
+              </button>
+              <button
+                data-testid="onboarding-brain-dump-continue-saved"
+                type="button"
+                onClick={onCompleted}
+                className="cyber-pill cyber-pill-compact cyber-pill-primary inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
+              >
+                Continue with saved items
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             </div>
           </div>
