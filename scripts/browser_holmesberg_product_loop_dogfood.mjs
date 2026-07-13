@@ -3696,11 +3696,17 @@ async function runTodayStopOutputRenderPath(page, token) {
     viewport: { width: 390, height: 844 },
   });
   await page.waitForTimeout(250);
-  const mobileTaskRowBox = await taskRow.boundingBox();
+  const mobileTaskRow = await firstVisible(page, [
+    () => taskRow,
+    (currentPage) => currentPage.locator('[data-testid="task-row"]:visible').first(),
+  ], 5_000, "Today mobile task row").catch(() => null);
+  const mobileTaskRowBox = mobileTaskRow
+    ? await mobileTaskRow.boundingBox().catch(() => null)
+    : null;
   const mobileTaskButtonBoxes = [];
-  const mobileTaskButtons = taskRow.locator("button:visible");
-  for (let index = 0; index < await mobileTaskButtons.count(); index += 1) {
-    mobileTaskButtonBoxes.push(await mobileTaskButtons.nth(index).boundingBox());
+  const mobileTaskButtons = mobileTaskRow?.locator("button:visible") ?? null;
+  for (let index = 0; index < (mobileTaskButtons ? await mobileTaskButtons.count() : 0); index += 1) {
+    mobileTaskButtonBoxes.push(await mobileTaskButtons.nth(index).boundingBox().catch(() => null));
   }
   const mobileDocumentOverflow = await page.evaluate(() => (
     document.documentElement.scrollWidth - document.documentElement.clientWidth
