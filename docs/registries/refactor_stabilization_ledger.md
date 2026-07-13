@@ -21413,3 +21413,59 @@ Next boundary and rollback:
   Revert `6d7dfd6` and `c119053` to restore the 23:00 Calendar boundary and
   remove its proof. No migration, data repair, deployment, or authority
   transfer is required.
+
+## 2026-07-13 - Wave 4 Calendar And Table Mutation Invalidation
+
+Usefulness and cache truth:
+
+- Issue `#250` bounds this product seam. Commit `faef7b5` routes Calendar task
+  edits/reschedules and Table execution corrections through the established
+  shared task-mutation invalidation recipe. Commit `09d6919` locks both call
+  sites and forbids Table's former local-only refetch. No writer, schema,
+  provider, exposure, or mutation authority changed.
+- The focused Calendar proof now edits through the mounted `NewTaskModal`,
+  observes the successful canonical reschedule, and requires the resulting
+  `/v1/tasks/query` refetch. The stored task moved from 09:00 to 09:05 and
+  remained visible after reload. Executed-task reschedule still failed closed.
+- The focused Table proof corrected an execution from 60 to 45 minutes through
+  the mounted dialog, verified the correction row in export, proved CSV output
+  used 45 minutes, and proved `Show voided` reveals only after the control is
+  selected.
+
+Verifier hardening and classification:
+
+- Issue `#251` records preflight proxy teardown and eligibility truth. Commit
+  `6a265f4` settles proxy routes before context close; commit `175f581` makes
+  target mounting classify consent and onboarding gates. Negative proof at
+  `tmp/proof-preflight/audit-mutation-negative-consent.json` rejected the real
+  local account as `consent_required`; the explicit local fixture passed at
+  `tmp/proof-preflight/audit-mutation-positive-fixture.json`.
+- Issue `#252` records local API isolation. Commits `19ab425` and `c4f8b44`
+  route the wrapper to the selected checkout-owned API port and lock that
+  contract. Commits `2b4d13d` and `beee7d4` keep late-night fixtures future-
+  dated, carry explicit local fixture readiness into the runner, use the
+  stable Schedule-X event identity, and add a Calendar-only escalation tier.
+- The passing combined Calendar/Table artifact is
+  `tmp/calendar-table-mutation/audit-mutation-09d6919-r3/result.json`. The
+  stronger mounted Calendar-only artifact is
+  `tmp/calendar-table-mutation/audit-mutation-09d6919-r5/result.json`.
+  Independent post-cleanup proof is
+  `tmp/proof-preflight/audit-mutation-r5-after.json`. All exact-prefix tasks
+  were voided, pending notification debt and the active timer were zero, and
+  browser server errors were empty.
+- Calendar and Table screenshots were inspected directly. Calendar controls,
+  the edited block, Table correction values, `Show voided`, and CSV controls
+  were visible and non-overlapping. Issue `#253` separately parks genuine
+  cross-midnight Calendar representation; it was not hidden inside this cache
+  seam. Issue `#254` tracks a future disposable local-current account fixture
+  instead of repeatedly rediscovering shared-account consent/onboarding state.
+
+Next boundary and rollback:
+
+- Calendar task mutation and Table correction are closed in frozen backlog
+  item 3. The next bounded invalidation seam is Google connect and Moodle sync
+  only where their current call sites still omit established shared recipes.
+- Revert `faef7b5` to restore prior call-site invalidation and `09d6919` to
+  remove its contract. Verifier commits may be reverted independently. No
+  schema migration, production repair, deploy, restart, or authority transfer
+  is required.

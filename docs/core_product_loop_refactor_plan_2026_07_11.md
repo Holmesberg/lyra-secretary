@@ -295,9 +295,9 @@ Frozen invalidation backlog, in execution order:
    include their proven Pressure Map, evidence, range, deadline, and `me`
    dependencies. Deadlines, Calendar, and Today deadline mutations delegate to
    the shared deadline recipe.
-3. Remaining: close Calendar task-mutation, Table-correction, Google-connect,
-   and Moodle-sync call-site gaps only when the shared recipes do not already
-   cover them.
+3. Calendar task-mutation and Table-correction call sites completed
+   2026-07-13. Remaining: close Google-connect and Moodle-sync call-site gaps
+   only when the shared recipes do not already cover them.
 
 The related macro proof passed with 192 product-loop checks, zero operator read
 diffs, zero exposure-without-render cases, and exact synthetic cleanup. The
@@ -846,6 +846,11 @@ forensics requires approval.
   the declared topology, account, intent, build, target, selected range, and
   synthetic prefix. A blocked preflight prohibits the expensive run. Do not
   recreate these checks manually.
+- A focused runner must receive the same explicit account-readiness fixture,
+  API origin, topology, and synthetic prefix that preflight approved. Target
+  mount proof must reject consent/onboarding gates rather than accepting a
+  generic visible element behind them. Fixture-backed proof remains local-
+  current and cannot be cited as hosted-public user proof.
 - After two or three related seams, run the macro proof: full S1c,
   multi-account proof, the complete Holmesberg product loop, operator
   read-only stress, and exact-head CI. Also run it for serious cross-authority
