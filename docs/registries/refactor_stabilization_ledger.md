@@ -21239,3 +21239,48 @@ Next boundary:
   invalidation audit; already-correct routes remain untouched.
 - Revert `6648fd6` to remove only the wrapper selector. No product rollback,
   schema change, data repair, or deployment action is required.
+
+## 2026-07-13 - Canonical Proof Preflight
+
+Efficiency boundary:
+
+- Issue `#245` records recurring setup rediscovery as verifier infrastructure
+  debt rather than product failure. Commit `6a52bbb` adds one read-only
+  `proof_preflight.ps1` entrypoint and its Playwright/API probe. Commit
+  `72e549b` makes the negative semantics a local S1c and CI hard gate.
+- The preflight owns the canonical topology health path, local artifact and
+  port ownership, exact frontend build, cookie/session validity, operator and
+  Holmesberg roles, terms/onboarding state, optional selected date/week,
+  read-only target mount, export envelope, pending notification debt, active
+  timer report, and active rows under an explicit synthetic prefix.
+- Browser API mutations are blocked during mounted preflight. Operator mutable
+  intent, a non-`DOGFOOD` prefix, a public readiness fixture, and a mismatched
+  frontend build all fail closed. The wrong-build proof produced zero account
+  results, proving rejection occurs before expensive export reads.
+- Hosted read-only positive proof passed both real accounts at
+  `tmp/proof-preflight/public-positive.json`. Operator `/operator` mount passed
+  after replacing an immediate `isVisible()` sample with an explicit selector
+  wait at `tmp/proof-preflight/public-operator-mount-r2.json`. The first false
+  mount result was classified and reproduced only in this focused harness.
+- The preflight reported operator ready, Holmesberg onboarding-gated, no active
+  timer, zero pending notification debt, and bounded exports without writing
+  account or product state. Public build `98bc1f8` matched exactly.
+- Local S1c exercised the new hermetic negative gate in `317ms` while all other
+  static, preservation, Cortex, backend-layer, OpenClaw relay, and fresh-
+  Alembic gates remained green.
+
+Reset and audit limits:
+
+- Existing local-current `-CleanupOnly` remains the bounded reset for exact
+  `DOGFOOD` task/deadline prefixes. It must be followed by preflight proof and
+  does not authorize user/onboarding reset, unrelated lifecycle suppression,
+  production repair, or a shared-account purge.
+- The final read-only invalidation audit was closed after producing the frozen
+  Wave 4 backlog. No further audit may recursively choose the next Wave 4 seam;
+  already-correct paths stay out of scope.
+
+Rollback:
+
+- Revert `6a52bbb` to remove the preflight entrypoint and `72e549b` to remove
+  its local/CI gate. No product behavior, schema, account row, deployment, or
+  production data changes are involved.

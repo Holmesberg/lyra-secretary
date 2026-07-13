@@ -284,6 +284,20 @@ Wave 4 checkpoint status on 2026-07-13:
   layout, partial-read, integration-legibility, pause-reason, stop-result, or
   capture-result seams.
 
+Frozen invalidation backlog, in execution order:
+
+1. Correct Today's single-delete and bulk-void failure settlement so partial
+   server success cannot be overwritten by a stale optimistic snapshot.
+2. Expand the existing shared query-key recipes for task, deadline, undo, and
+   re-entry mutations to include only their proven Pressure Map, evidence,
+   range, deadline, and `me` dependencies.
+3. Close remaining Calendar, Table-correction, Google-connect, and Moodle-sync
+   call-site gaps only when the shared recipes do not already cover them.
+
+Already-correct Pulse timer, Brain Dump, Pressure Map commit, deadline-prefix,
+Calendar task-range, and Google-disconnect recipes remain untouched. No new
+audit is needed to choose among these seams.
+
 ### Capture Gate
 
 A real five-obligation Brain Dump or import must produce inspectable accepted
@@ -818,11 +832,10 @@ forensics requires approval.
   proof; focused API lifecycle proof; focused mounted-browser proof; exact
   affected-row or export proof; focused cleanup and cross-user proof; then
   commit.
-- Before an expensive browser run, preflight frontend/backend health,
-  topology and build IDs, real-cookie validity, onboarding state, selected
-  calendar range, proxy mode, page-load completion, account eligibility for
-  the target surface, existing synthetic lifecycle debt, target visibility,
-  and the expected export size and timeout envelope.
+- Before an expensive browser run, execute `scripts/proof_preflight.ps1` for
+  the declared topology, account, intent, build, target, selected range, and
+  synthetic prefix. A blocked preflight prohibits the expensive run. Do not
+  recreate these checks manually.
 - After two or three related seams, run the macro proof: full S1c,
   multi-account proof, the complete Holmesberg product loop, operator
   read-only stress, and exact-head CI. Also run it for serious cross-authority

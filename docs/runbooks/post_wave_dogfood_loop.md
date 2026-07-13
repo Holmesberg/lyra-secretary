@@ -25,6 +25,52 @@ Never use the operator account for mutable dogfood. Operator browser checks must
 observe runtime state without creating, editing, rendering actions, dismissing
 notifications, starting timers, or changing product/user state.
 
+## Proof Preflight
+
+Run the canonical preflight before an expensive browser verifier. Do not
+re-derive health paths, ports, account state, or export limits in ad hoc shell
+commands.
+
+Hosted read-only example:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\proof_preflight.ps1 `
+  -Topology public -Account both -Intent readonly `
+  -ExpectedFrontendBuildId <served-build-id>
+```
+
+Focused local-current mutable example, after the isolated runtime is already
+running:
+
+```powershell
+$head = (git rev-parse HEAD).Trim()
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\proof_preflight.ps1 `
+  -Topology local-current -FrontendOrigin http://localhost:3018 `
+  -ApiOrigin http://localhost:8001 -ProxyApi `
+  -Account holmesberg -Intent mutable -ExpectedFrontendBuildId $head `
+  -FixtureAccountReady -TargetPath /pulse `
+  -ReadySelector '[data-testid="pulse-quick-capture-input"]' `
+  -SyntheticPrefix 'DOGFOOD W4 seam-name' -MaxPendingNotifications 0
+```
+
+The preflight is read-only. It checks the canonical
+`/v1/health/topology` endpoint, artifact isolation, local port/process
+ownership, exact build ID, real cookie/session validity, account role,
+terms/onboarding state, optional selected date/week, target mount, export
+duration/size, active timer, pending notification debt, and active rows for an
+explicit `DOGFOOD` prefix. Browser API mutations are blocked.
+
+If the readiness fixture is used, it is local-current and browser-response
+only; it does not change the account. It may support focused product proof but
+is not hosted-public evidence.
+
+For abandoned synthetic task/deadline rows, use the existing local-current
+`-CleanupOnly` product-loop mode with the exact `DOGFOOD` prefix, then rerun
+the preflight with that prefix. This terminalizes test rows through canonical
+commands. It is not a user reset, onboarding reset, production repair, or
+permission to suppress unrelated lifecycle evidence. Pending lifecycle debt,
+an active timer, or a non-`DOGFOOD` prefix remains blocking.
+
 ## Command
 
 ```powershell
