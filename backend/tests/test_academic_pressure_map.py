@@ -557,6 +557,40 @@ def test_pressure_projection_does_not_apply_linked_work_after_deadline(db):
     assert obligation["unscheduled_demand"] == obligation["remaining_demand"]
 
 
+def test_pressure_projection_does_not_promote_block_for_out_of_scope_deadline(db):
+    user = _user(db, "out-of-scope-linked-pressure@example.com")
+    deadline = _deadline(db, user.user_id, "Later systems project", days=5)
+    now = datetime.utcnow()
+    linked_block = Task(
+        user_id=user.user_id,
+        title="Early systems project block",
+        category="study",
+        planned_start_utc=now + timedelta(hours=2),
+        planned_end_utc=now + timedelta(hours=3),
+        planned_duration_minutes=60,
+        state=TaskState.PLANNED,
+        deadline_id=deadline.deadline_id,
+        deadline_match_source="user_explicit",
+        deadline_match_confidence=1.0,
+    )
+    db.add(linked_block)
+    db.commit()
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=1",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    projection = data["demand_coverage_projection"]
+    assert projection["capacity_status"] == "unavailable_no_authority"
+    assert projection["collision_state"] == "unknown"
+    assert projection["obligation_count"] == 0
+    assert projection["obligations"] == []
+    assert data["source_summary"]["planned_lyra_minutes"] == 60
+
+
 def test_pressure_projection_schema_rejects_inverted_envelope():
     with pytest.raises(ValidationError, match="low_minutes cannot exceed"):
         AcademicMinuteEnvelope(low_minutes=90, high_minutes=60)
