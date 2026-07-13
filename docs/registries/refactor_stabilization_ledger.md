@@ -20427,3 +20427,86 @@ Remaining boundary and rollback:
 - Revert `91f81bc` to restore the legacy Pulse summary and remove the retained
   aggregate, `4533341` to remove its regression proof, and `3d66995` to remove
   only the browser congruence checks. No migration or data repair is involved.
+
+### Partial Calendar coverage preserved through Pressure Map
+
+Seam and behavior:
+
+- Product commit `02acfcc` makes Google Calendar reads report `partial` when
+  the single-page response declares more pages or excludes all-day/invalid
+  event intervals. Valid timed events remain usable. Cache envelope v2 retains
+  status and reason; legacy list caches remain readable as `available`.
+  Regression commit `123cf75` locks the partial cache round trip, valid-event
+  retention, successful empty read, unavailable read, not-connected read, and
+  legacy-cache compatibility.
+- Product commit `3bf2f0a` carries partiality into the Pressure Map without
+  promoting it to complete coverage. Known valid intervals are unioned into
+  `calendar_busy_minutes`, the capacity caveat says coverage is incomplete,
+  and Pulse visibly reports the status and known busy time. Regression commit
+  `05cae7e` proves partial known-busy time survives API projection. Verifier
+  commit `5027cb5` proves the browser copy, mobile fit, authenticated render
+  acknowledgement, and retained redacted source summary with a clearly
+  labeled browser-only fixture.
+- This is read-truth and presentation work only. It does not paginate Google,
+  mutate credentials, claim free-time capacity, alter provider provenance, or
+  add a provider. Existing credential mutation remains separately tracked by
+  issue `#235` and was not exercised.
+
+Focused and macro proof:
+
+- The Calendar reader set passed `5` targeted tests. The focused Pressure Map
+  availability set passed `4` cases and frontend typecheck passed. The partial
+  mounted-browser proof passed `14` checks at
+  `tmp/post-wave-dogfood/pressure-partial-calendar-05cae7e/browser-proof/result.json`:
+  it displayed `Google Calendar partial: 2h known busy; more may be missing.`,
+  retained status/minutes in authenticated render evidence, fit at `390x844`,
+  and left no synthetic residue.
+- Full local S1c passed static authority, refactor, backend-layer, Cortex,
+  shipped-feature, relay, public-isolation, fresh-Alembic, full backend, and
+  isolated frontend-build gates. Multi-account proof passed at
+  `tmp/post-wave-dogfood/partial-calendar-macro-5027cb5/multi-account.json`;
+  operator and Holmesberg scopes remained distinct and the API-only Pressure
+  Map probe terminated through suppression.
+- The first full loop failure is retained at
+  `tmp/post-wave-dogfood/partial-calendar-macro-5027cb5/holmesberg-product-loop/result.json`.
+  It showed the congruence verifier comparing the latest API projection with
+  every earlier valid Pressure Map render in the same run. Verifier commit
+  `2afc0ba` requires at least one exact current match while still requiring all
+  retained projections to exclude entity rows/IDs. Focused closure passed at
+  `pressure-congruence-focused/result.json`.
+- The second full loop failure is retained at
+  `holmesberg-product-loop-r2/result.json`. Its screenshot showed the target
+  month cell collapsed behind `+7 events`; the canonical task existed and the
+  range query had completed. Verifier commit `b5ad58f` proves the Pressure Map
+  destination in Day view on the task's actual date while the independent
+  route sweep continues to cover Month view. Focused closure passed at
+  `pressure-calendar-day-focused/result.json`.
+- The final real-cookie Holmesberg macro passed at
+  `holmesberg-product-loop-r3/result.json`. It traversed capture, deadline
+  binding, rapid-submit idempotency, Pressure Map planning and Calendar
+  destination, stopwatch/recovery, notification/exposure lifecycle, and
+  cleanup. It tracked `16` task IDs, `8` deadline IDs, `3` notification IDs,
+  and `5` suppression IDs; no active prefixed row, active timer, or
+  unterminated synthetic output candidate remained.
+- The first operator run correctly exposed an incomplete onboarding preflight
+  and is retained at `operator-after/result.json`; it still reported zero data
+  and dashboard diffs. The read-only browser response fixture rerun passed at
+  `operator-after-r2/result.json` with zero count, route, and dashboard diffs,
+  no issues/warnings, `implementation_green=true`, explicit cohort yellow,
+  and `exposure_without_render_count=0`.
+- Current-source runtime used isolated frontend `3018`, lifespan-disabled
+  backend `8001`, and `.next-local-current`. Public ports `3000/8000` and
+  `.next-public` were untouched; isolated processes and artifacts were removed.
+- Exact-head CI passed for
+  `b5ad58f9b999439e1529b35fda2e3d2368d35eae`:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29258494566`.
+
+Remaining boundary and rollback:
+
+- Issue `#220` remains open for the remaining Accounting Gate fixtures and
+  source/linkage honesty. Partial provider coverage is now explicit, but no
+  capacity or collision authority is implied.
+- Revert `02acfcc` with `123cf75` to restore list-only cache/read status;
+  revert `3bf2f0a` with `05cae7e` to remove partial Pressure Map projection;
+  revert `5027cb5`, `2afc0ba`, and `b5ad58f` independently to remove only
+  verifier coverage. No migration or production-data repair is involved.
