@@ -157,6 +157,9 @@ jobs:
     - name: Run product-loop account preflight contract gate
       run: node scripts/test_product_loop_account_preflight_contract.mjs
 
+    - name: Run operator account preflight contract gate
+      run: node scripts/test_operator_account_preflight_contract.mjs
+
     - name: Run Pressure Map planning provenance contract gate
       run: node scripts/test_pressure_map_planning_provenance_contract.mjs
 

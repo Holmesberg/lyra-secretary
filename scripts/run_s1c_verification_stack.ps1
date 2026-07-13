@@ -98,6 +98,10 @@ try {
     node scripts\test_product_loop_account_preflight_contract.mjs
   }
 
+  Invoke-Step "operator account preflight contract gate" {
+    node scripts\test_operator_account_preflight_contract.mjs
+  }
+
   Invoke-Step "Pressure Map planning provenance contract gate" {
     node scripts\test_pressure_map_planning_provenance_contract.mjs
   }
