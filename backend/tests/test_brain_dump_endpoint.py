@@ -95,6 +95,18 @@ def test_commit_clean_batch_returns_empty_failed_items(client, db):
     body = r.json()
     assert body["tasks_created"] == 1
     assert body["failed_items"] == []
+    assert body["outcomes"] == [
+        {
+            "item_id": body["outcomes"][0]["item_id"],
+            "kind": "task",
+            "title": "test task A",
+            "status": "created",
+            "canonical_id": body["task_ids"][0],
+            "reason": None,
+            "detail": None,
+            "retry_hint": None,
+        }
+    ]
 
 
 @needs_redis
@@ -226,6 +238,8 @@ def test_commit_past_time_task_lands_in_failed_items(client, db):
     assert failed["title"] == "should fail past time"
     assert failed["reason"] == "past_time"
     assert failed["retry_hint"] == "schedule_tomorrow_same_time"
+    assert body["outcomes"][0]["status"] == "rejected"
+    assert body["outcomes"][0]["reason"] == "past_time"
 
 
 def test_commit_mixed_pass_and_fail_partitions_correctly(client, db):
@@ -351,7 +365,11 @@ def test_commit_duplicate_deadline_reuses_existing_for_bindings(client, db):
     assert body["deadlines_created"] == 0
     assert body["tasks_created"] == 1
     assert body["bindings_applied"] == 1
-    assert body["failed_items"][0]["reason"] == "duplicate_deadline"
+    assert body["failed_items"] == []
+    reused = next(row for row in body["outcomes"] if row["kind"] == "deadline")
+    assert reused["status"] == "reused"
+    assert reused["reason"] == "duplicate_deadline"
+    assert reused["canonical_id"] == existing.deadline_id
     assert db.query(Deadline).filter(Deadline.user_id == user.user_id).count() == 1
     task = db.query(Task).filter(Task.task_id == body["task_ids"][0]).one()
     assert task.deadline_id == existing.deadline_id
