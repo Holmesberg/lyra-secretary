@@ -287,6 +287,11 @@ export function PulseAcademicPressureMap({
   } = usePressureMapPlanCommit({ pressure, taskEvidence });
   const items = pressure?.items.slice(0, 4) ?? [];
   const hasItems = items.length > 0;
+  const hiddenItemCount = Math.max(0, (pressure?.items.length ?? 0) - items.length);
+  const hiddenReasonCount = Math.max(
+    0,
+    (pressure?.compression_points.length ?? 0) - 1,
+  );
   const {
     planOption,
     navigationOption,
@@ -315,6 +320,48 @@ export function PulseAcademicPressureMap({
     }
     return `Google Calendar available: ${knownBusy} known busy.`;
   })();
+  const largestCaveat = (() => {
+    if (!pressure) return null;
+    const coverageCount = pressure.coverage_questions.length;
+    if (coverageCount > 0) {
+      return `${coverageCount} source coverage question${coverageCount === 1 ? " keeps" : "s keep"} this range provisional.`;
+    }
+    if (pressure.source_summary.google_calendar_read_status === "partial") {
+      return "Calendar coverage is partial, so more scheduled load may be missing.";
+    }
+    if (pressure.source_summary.google_calendar_read_status === "unavailable") {
+      return "Calendar is connected but unavailable for this read.";
+    }
+    if (
+      pressure.source_summary.google_calendar_read_status === "not_connected"
+      || pressure.demand_coverage_projection.capacity_status === "unavailable_no_authority"
+    ) {
+      return "Free-time capacity is not measured; this is a demand view, not a collision forecast.";
+    }
+    return null;
+  })();
+  const orientationFacts = pressure ? [
+    pressure.compression_points[0]
+      ? {
+          label: "Main cause",
+          text: genericPressureCopy(pressure.compression_points[0].detail),
+          testId: "pressure-map-main-cause",
+        }
+      : null,
+    {
+      label: "Scope",
+      text: `${pressure.source_summary.external_obligation_count} external, ${pressure.source_summary.native_obligation_count} native, ${pressure.source_summary.academic_task_count} linked tasks, and ${pressure.source_summary.study_task_count} focus blocks. ${calendarSummary}`,
+      testId: "pressure-map-scope-summary",
+    },
+    largestCaveat
+      ? {
+          label: "Largest caveat",
+          text: largestCaveat,
+          testId: "pressure-map-largest-caveat",
+        }
+      : null,
+  ].filter((fact): fact is { label: string; text: string; testId: string } => fact !== null)
+    .slice(0, 3) : [];
 
   return (
     <div
@@ -360,23 +407,37 @@ export function PulseAcademicPressureMap({
               <CalendarClock size={16} />
             </div>
             <div className="min-w-0">
-              <p className="text-[15px] leading-snug text-parchment">
+              <p
+                data-testid="pressure-map-orientation-summary"
+                className="text-[15px] leading-snug text-parchment"
+              >
                 {genericPressureCopy(pressure.pressure_summary || pressure.headline)}
               </p>
-              <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-                {pressure.source_summary.external_obligation_count} external /{" "}
-                {pressure.source_summary.native_obligation_count} native /{" "}
-                {pressure.source_summary.academic_task_count} linked tasks /{" "}
-                {pressure.source_summary.study_task_count} focus blocks
-              </p>
-              <p
-                data-testid="pressure-map-calendar-coverage"
+              <dl
+                data-testid="pressure-map-orientation-facts"
+                data-fact-count={orientationFacts.length}
                 data-calendar-read-status={pressure.source_summary.google_calendar_read_status}
                 data-calendar-busy-minutes={pressure.source_summary.calendar_busy_minutes ?? ""}
-                className="mt-1 text-[11px] leading-snug text-dust"
+                className="mt-2 space-y-1.5 text-[11px] leading-snug text-dust"
               >
-                {calendarSummary}
-              </p>
+                {orientationFacts.map((fact) => (
+                  <div key={fact.label} data-testid={fact.testId}>
+                    <dt className="inline font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                      {fact.label}:{" "}
+                    </dt>
+                    <dd className="inline">{fact.text}</dd>
+                    {fact.testId === "pressure-map-main-cause" && hiddenReasonCount > 0 && (
+                      <span
+                        data-testid="pressure-map-hidden-reasons"
+                        data-hidden-count={hiddenReasonCount}
+                        className="ml-1 text-dust-deep"
+                      >
+                        {hiddenReasonCount} more reason{hiddenReasonCount === 1 ? "" : "s"} also contribute.
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </dl>
             </div>
           </div>
 
@@ -439,53 +500,58 @@ export function PulseAcademicPressureMap({
                   </p>
                 )}
               </div>
-            </div>
-          )}
-
-          {pressure.compression_points.length > 0 && (
-            <div className="mb-3 rounded-sm border border-hairline bg-void-2/30 px-3 py-2">
-              <div className="mb-1 flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                <ShieldQuestion size={12} className="text-signal" />
-                Why the week feels compressed
-              </div>
-              <p className="text-[12px] leading-snug text-dust">
-                {genericPressureCopy(pressure.compression_points[0].detail)}
+              <p
+                data-testid="pressure-map-calibration-cue"
+                className="mt-2 text-[11px] leading-snug text-dust"
+              >
+                Start the next timer to make the next estimate more yours.
               </p>
             </div>
           )}
 
           {hasItems ? (
-            <ul className="flex flex-col gap-2">
-              {items.map((item) => (
-                <li
-                  key={item.obligation_id}
-                  className={`rounded-sm border px-3 py-2 ${pressureClass(item)}`}
+            <div>
+              <ul className="flex flex-col gap-2">
+                {items.map((item) => (
+                  <li
+                    key={item.obligation_id}
+                    className={`rounded-sm border px-3 py-2 ${pressureClass(item)}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] text-parchment">
+                          {item.title}
+                        </p>
+                        <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                          {item.obligation_type} / {item.complexity_tier} /{" "}
+                          {fmtTrust(item.trust_state)}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-display text-[13px] text-signal">
+                          {fmtHours(
+                            item.estimate.low_minutes,
+                            item.estimate.high_minutes
+                          )}
+                        </p>
+                        <p className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                          {fmtTiming(item)}
+                        </p>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {hiddenItemCount > 0 && (
+                <p
+                  data-testid="pressure-map-hidden-items"
+                  data-hidden-count={hiddenItemCount}
+                  className="mt-2 font-mono text-[10px] uppercase tracking-widest text-dust"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] text-parchment">
-                        {item.title}
-                      </p>
-                      <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                        {item.obligation_type} / {item.complexity_tier} /{" "}
-                        {fmtTrust(item.trust_state)}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="font-display text-[13px] text-signal">
-                        {fmtHours(
-                          item.estimate.low_minutes,
-                          item.estimate.high_minutes
-                        )}
-                      </p>
-                      <p className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                        {fmtTiming(item)}
-                      </p>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  +{hiddenItemCount} more obligation{hiddenItemCount === 1 ? "" : "s"} in this window
+                </p>
+              )}
+            </div>
           ) : (
             <div className="flex flex-1 items-center gap-3 rounded-sm border border-hairline bg-void-2/40 px-3 py-4 text-sm text-dust">
               <CheckCircle2 size={16} className="shrink-0 text-signal" />
@@ -494,11 +560,15 @@ export function PulseAcademicPressureMap({
           )}
 
           {primaryRecoveryOption && primaryAction && (
-            <div className={`mt-3 rounded-sm px-3 py-2 ${
+            <div
+              data-testid="pressure-map-primary-action"
+              data-action={primaryRecoveryOption.action}
+              className={`mt-3 rounded-sm px-3 py-2 ${
               primaryIsDiagnostic
                 ? "border border-hairline bg-void-2/40"
                 : "border border-signal/20 bg-signal/5"
-            }`}>
+              }`}
+            >
               <div className="mb-1 flex items-center justify-between gap-2">
                 <div className={`flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest ${
                   primaryIsDiagnostic ? "text-dust" : "text-signal"
@@ -512,9 +582,7 @@ export function PulseAcademicPressureMap({
                   )}
                   {primaryIsDiagnostic
                     ? "Planning note"
-                    : primaryIsNavigation
-                      ? "Schedule context"
-                      : "Plan draft"}
+                    : "Primary action"}
                 </div>
                 {primaryIsPlanOption && planOption && canPreviewPlan && (
                   <Button
@@ -578,7 +646,10 @@ export function PulseAcademicPressureMap({
           )}
 
           {navigationOption && navigationOption !== primaryRecoveryOption && (
-            <div className="mt-3 rounded-sm border border-signal/20 bg-signal/5 px-3 py-2">
+            <div
+              data-testid="pressure-map-secondary-navigation"
+              className="mt-3 rounded-sm border border-hairline bg-void-2/30 px-3 py-2"
+            >
               <div className="mb-1 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-signal">
                   <CalendarClock size={12} />
@@ -586,6 +657,7 @@ export function PulseAcademicPressureMap({
                 </div>
                 <Button
                   asChild
+                  variant="ghost"
                   size="sm"
                   className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
                 >

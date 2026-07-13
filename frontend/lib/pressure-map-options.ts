@@ -65,6 +65,27 @@ export interface PressurePlanOptionSelection {
   primaryIsPlanOption: boolean;
 }
 
+function pressureActionRank(
+  option: AcademicRecoveryOption,
+  canPreviewPlan: boolean,
+): number {
+  const contract = pressureMapActionContract(option.action);
+  if (
+    contract.disposition === "canonical_command"
+    && option.action === "create_plan"
+    && canPreviewPlan
+  ) {
+    return 0;
+  }
+  if (contract.disposition === "navigation") {
+    return 1;
+  }
+  if (contract.disposition === "diagnostic") {
+    return 2;
+  }
+  return 3;
+}
+
 export function selectPressurePlanOption(
   pressure: AcademicPressureMapResponse | null,
 ): PressurePlanOptionSelection {
@@ -84,8 +105,14 @@ export function selectPressurePlanOption(
   const navigationOption = pressure.recovery_options.find(
     (option) => pressureMapActionContract(option.action).disposition === "navigation",
   ) ?? null;
-  const primaryRecoveryOption = pressure.recovery_options[0] ?? null;
   const canPreviewPlan = planItemsForOption(pressure, planOption).length > 0;
+  const primaryRecoveryOption = pressure.recovery_options
+    .map((option, index) => ({ option, index }))
+    .sort((left, right) => (
+      pressureActionRank(left.option, canPreviewPlan)
+      - pressureActionRank(right.option, canPreviewPlan)
+      || left.index - right.index
+    ))[0]?.option ?? null;
   const primaryIsPlanOption =
     primaryRecoveryOption !== null &&
     planOption !== null &&
