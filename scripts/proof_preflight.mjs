@@ -61,6 +61,14 @@ function buildMatches(actual, expected) {
   return !expected || String(actual || "") === String(expected);
 }
 
+function accountGateBlockers(bodyText) {
+  const text = String(bodyText || "");
+  return [
+    /Before you continue/i.test(text) ? "consent_required" : null,
+    /LyraOS starts learning from the first plan/i.test(text) ? "onboarding_required" : null,
+  ].filter(Boolean);
+}
+
 if (flag("--self-test")) {
   const failures = [];
   const wrapper = fs.readFileSync(path.join(repoRoot, "scripts", "proof_preflight.ps1"), "utf8");
@@ -75,6 +83,12 @@ if (flag("--self-test")) {
     failures.push("public account fixture was accepted");
   }
   if (buildMatches("actual", "wrong")) failures.push("wrong build ID was accepted");
+  if (!accountGateBlockers("Before you continue").includes("consent_required")) {
+    failures.push("consent gate was not classified");
+  }
+  if (!accountGateBlockers("LyraOS starts learning from the first plan").includes("onboarding_required")) {
+    failures.push("onboarding gate was not classified");
+  }
   if (HEALTH_PATH !== "/v1/health/topology") failures.push("canonical health path drifted");
   if (!wrapper.includes(".IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0")) {
     failures.push("PowerShell 5 compatible checkout ownership comparison is missing");
@@ -234,14 +248,27 @@ try {
       page.on("pageerror", (error) => pageErrors.push(error.message));
       const response = await page.goto(`${frontendOrigin}${targetPath}`, { waitUntil: "domcontentloaded", timeout: timeoutMs });
       await page.locator("body").waitFor({ state: "visible", timeout: timeoutMs });
+      const bodyText = await page.locator("body").innerText({ timeout: timeoutMs });
+      const gateBlockers = accountGateBlockers(bodyText);
       let selectorVisible = null;
       if (readySelector) {
         const locator = page.locator(readySelector).first();
         await locator.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => {});
         selectorVisible = await locator.isVisible().catch(() => false);
       }
-      mounted = { status: response?.status() ?? null, selector: readySelector, selector_visible: selectorVisible, page_errors: pageErrors };
-      check(`${account} target mount`, Boolean(response?.ok() && pageErrors.length === 0 && (readySelector ? selectorVisible : true)), mounted);
+      mounted = {
+        status: response?.status() ?? null,
+        selector: readySelector,
+        selector_visible: selectorVisible,
+        page_errors: pageErrors,
+        account_gate_blockers: gateBlockers,
+      };
+      check(`${account} target mount`, Boolean(
+        response?.ok()
+        && pageErrors.length === 0
+        && gateBlockers.length === 0
+        && (readySelector ? selectorVisible : true)
+      ), mounted);
     }
 
     accountResults.push({
