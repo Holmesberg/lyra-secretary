@@ -408,6 +408,49 @@ def test_pressure_map_distinguishes_empty_calendar_from_unavailable_read(
         assert "unavailable" in data["capacity_context"]["caveat"].lower()
 
 
+def test_pressure_map_preserves_known_busy_from_partial_calendar_read(
+    db,
+    monkeypatch,
+):
+    user = _user(db, "calendar-partial-pressure@example.com")
+    user.google_refresh_token = "fixture-token"
+    db.commit()
+    now = datetime.utcnow()
+    monkeypatch.setattr(
+        "app.services.academic_pressure.fetch_google_events_with_status",
+        lambda _user_id, _start, _end: SimpleNamespace(
+            events=[
+                ExternalEvent(
+                    id="known-partial-event",
+                    title="Known calendar block",
+                    start=(now + timedelta(hours=1)).isoformat(),
+                    end=(now + timedelta(hours=3)).isoformat(),
+                    calendar_id="primary",
+                )
+            ],
+            status="partial",
+            reason="pagination_truncated",
+        ),
+    )
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=1",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    summary = data["source_summary"]
+    capacity = data["capacity_context"]
+    assert summary["google_calendar_read_status"] == "partial"
+    assert summary["calendar_busy_minutes"] == 120
+    assert capacity["google_calendar_read_status"] == "partial"
+    assert capacity["known_busy_minutes"] == 120
+    assert "partial" in capacity["caveat"].lower()
+    assert "incomplete" in capacity["caveat"].lower()
+    assert any("partial" in warning.lower() for warning in data["warnings"])
+
+
 def test_pressure_projection_keeps_unconfirmed_calendar_mirror_sources_separate(
     db,
     monkeypatch,
