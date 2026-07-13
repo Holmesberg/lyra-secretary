@@ -10,6 +10,7 @@ const contract = JSON.parse(
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 const multiAccountWrapper = read("scripts/run_multi_account_browser_smoke.ps1");
 const operatorWrapper = read("scripts/run_operator_readonly_browser_stress.ps1");
+const calendarTableWrapper = read("scripts/run_calendar_table_mutation_dogfood.ps1");
 
 function assert(condition, message) {
   if (!condition) {
@@ -44,6 +45,7 @@ for (const origin of contract.declared_browser_origins) {
 for (const [name, wrapper] of [
   ["multi-account", multiAccountWrapper],
   ["operator read-only", operatorWrapper],
+  ["Calendar/Table mutation", calendarTableWrapper],
 ]) {
   assert(
     wrapper.includes("[int]$LocalCurrentApiPort = 8000"),
