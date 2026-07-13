@@ -36,6 +36,11 @@ param(
 
   [switch]$PulseStopwatchOutputProofOnly,
 
+  [switch]$ZeroDurationStopProofOnly,
+
+  [ValidateSet("both", "pulse", "today")]
+  [string]$ZeroDurationStopRoute = "both",
+
   [switch]$PulsePartialErrorProofOnly,
 
   [switch]$PulseIntegrationsLayoutProofOnly,
@@ -171,6 +176,12 @@ try {
   }
   if ([bool]$PulseStopwatchOutputProofOnly) {
     $args += "--pulse-stopwatch-output-proof-only"
+  }
+  if ([bool]$ZeroDurationStopProofOnly) {
+    $args += @(
+      "--zero-duration-stop-proof-only",
+      "--zero-duration-stop-route", $ZeroDurationStopRoute
+    )
   }
   if ([bool]$PulsePartialErrorProofOnly) {
     $args += "--pulse-partial-error-proof-only"

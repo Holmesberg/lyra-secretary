@@ -48,6 +48,8 @@ const pressureProofOnly = args.get("pressure-proof-only") === "true";
 const pressureCalendarPartialProofOnly = args.get("pressure-calendar-partial-proof-only") === "true";
 const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "true";
 const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-only") === "true";
+const zeroDurationStopProofOnly = args.get("zero-duration-stop-proof-only") === "true";
+const zeroDurationStopRoute = args.get("zero-duration-stop-route") || "both";
 const pulsePartialErrorProofOnly = args.get("pulse-partial-error-proof-only") === "true";
 const pulseIntegrationsLayoutProofOnly = args.get("pulse-integrations-layout-proof-only") === "true";
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
@@ -3764,7 +3766,251 @@ async function runTimerPath(page, token, task) {
   };
 }
 
-async function submitTodayStopDialog(page, dialog, buttonName, label) {
+async function runPulseZeroDurationStopPath(page, token) {
+  const beforeExport = await apiFetch(token, "/v1/users/me/export");
+  const title = `${prefix} pulse zero stop`;
+  const created = await createTaskViaApi(token, {
+    title,
+    startMinutes: 10,
+    durationMinutes: 30,
+    category: `dogfood_pulse_zero_stop_${runKey}`,
+  });
+  const task = await findTaskByTitle(token, title);
+  addCheck("Pulse zero-duration setup creates a canonical task", Boolean(
+    created?.task_id && task?.task_id === created.task_id
+  ), { created, task });
+
+  await goto(page, "/pulse", "pulse-zero-duration-before-start");
+  const focus = page.getByTestId("pulse-focus-card").first();
+  await focus.waitFor({ state: "visible", timeout: 15_000 });
+  const option = focus.locator(
+    `[data-testid="focus-task-option"][data-task-id="${task.task_id}"]`,
+  ).first();
+  await option.waitFor({ state: "visible", timeout: 10_000 });
+  await option.click();
+  await clickAny(page, "Pulse zero-duration start", [
+    () => focus.getByTestId("focus-start-session"),
+    () => focus.getByRole("button", { name: /Start session/i }),
+  ], 10_000);
+  const active = await pollFor(token, "Pulse zero-duration active timer", async () => {
+    const status = await apiFetch(token, "/v1/stopwatch/status");
+    return status.active && status.task_id === task.task_id ? status : null;
+  }, 12_000, 500);
+  addCheck("Pulse zero-duration start opens the selected task", Boolean(active), active);
+
+  await clickAny(page, "Pulse zero-duration stop", [
+    () => focus.getByTestId("focus-stop"),
+    () => focus.getByRole("button", { name: /^Stop$/i }),
+  ], 8_000);
+  await setRangeAny(page, "Pulse zero-duration reflection", [
+    (currentPage) => currentPage.getByLabel(/Post-task reflection/i),
+    (currentPage) => currentPage.locator('input[type="range"]').last(),
+  ], 4, 8_000);
+  await fillAny(page, "Pulse zero-duration completion", [
+    (currentPage) => currentPage.getByTestId("focus-completion"),
+  ], "0", 8_000);
+  await focus.getByTestId("focus-scope-reduced").click();
+  await focus.getByTestId("focus-finish").waitFor({ state: "visible", timeout: 5_000 });
+  await page.waitForFunction(() => {
+    const finish = document.querySelector('[data-testid="focus-finish"]');
+    return finish instanceof HTMLButtonElement && !finish.disabled;
+  }, null, { timeout: 5_000 });
+
+  let stopBody = await submitStopControl(
+    page,
+    focus,
+    /Finish/i,
+    "Pulse zero-duration first stop",
+  );
+  if (stopBody.requires_confirmation) {
+    stopBody = await submitStopControl(
+      page,
+      focus,
+      /Finish anyway|Finish/i,
+      "Pulse zero-duration confirmed stop",
+    );
+  }
+  addCheck("Pulse zero-duration response preserves skipped terminal truth", Boolean(
+    stopBody.task_id === task.task_id
+    && stopBody.skipped === true
+    && stopBody.skip_reason === "zero_duration"
+  ), stopBody);
+
+  const skippedResult = focus.getByTestId("pulse-stop-skipped-result");
+  await skippedResult.waitFor({ state: "visible", timeout: 10_000 });
+  const focusText = await focus.innerText();
+  addCheck("Pulse presents skipped truth without completion celebration", Boolean(
+    /Too short to record/i.test(focusText)
+    && /marked skipped/i.test(focusText)
+    && !/Protected focus|Session complete/i.test(focusText)
+  ), { body_excerpt: focusText.slice(0, 900) });
+  await screenshot(page, "pulse-zero-duration-stop-desktop");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileBox = await skippedResult.boundingBox();
+  const focusBox = await focus.boundingBox();
+  const overflow = await page.evaluate(() => Math.max(
+    0,
+    document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  ));
+  addCheck("Pulse skipped result fits the mobile viewport", Boolean(
+    mobileBox
+    && focusBox
+    && mobileBox.x >= 0
+    && mobileBox.x + mobileBox.width <= 390
+    && focusBox.x >= 0
+    && focusBox.x + focusBox.width <= 390
+  ), { result_box: mobileBox, focus_card_box: focusBox });
+  if (overflow > 1) {
+    addIssue("Pulse page has mobile overflow outside the skipped-result surface", {
+      horizontal_overflow_pixels: overflow,
+      task_title: task.title,
+    });
+  }
+  await screenshot(page, "pulse-zero-duration-stop-mobile");
+  await page.setViewportSize({ width: 1440, height: 950 });
+
+  const afterExport = await apiFetch(token, "/v1/users/me/export");
+  const exportedTask = rows(afterExport, "tasks").find((row) => row.task_id === task.task_id);
+  const exportedSession = rows(afterExport, "stopwatch_sessions").find(
+    (row) => row.session_id === stopBody.session_id,
+  );
+  const decisions = newStopwatchOutputDecisions(beforeExport, afterExport, task.task_id);
+  addCheck("Pulse zero-duration export remains skipped instead of executed", Boolean(
+    exportedTask?.state === "SKIPPED"
+    && exportedTask?.executed_duration_minutes == null
+    && exportedSession?.end_time_utc
+  ), { task: exportedTask || null, session: exportedSession || null });
+  addCheck("Pulse zero-duration stop emits no completion output candidate", decisions.length === 0, {
+    decisions,
+  });
+  return { task, sessionId: stopBody.session_id };
+}
+
+async function runTodayZeroDurationStopPath(page, token) {
+  const beforeExport = await apiFetch(token, "/v1/users/me/export");
+  const title = `${prefix} today zero stop`;
+  const created = await createTaskViaApi(token, {
+    title,
+    startMinutes: 12,
+    durationMinutes: 30,
+    category: `dogfood_today_zero_stop_${runKey}`,
+  });
+  const task = await findTaskByTitle(token, title);
+  addCheck("Today zero-duration setup creates a canonical task", Boolean(
+    created?.task_id && task?.task_id === created.task_id
+  ), { created, task });
+  await apiFetch(token, "/v1/stopwatch/start", {
+    method: "POST",
+    headers: {
+      "X-Idempotency-Key": boundedIdentifier(`today-zero-stop-start:${runKey}`),
+    },
+    body: JSON.stringify({ task_id: task.task_id, pre_task_readiness: 3 }),
+  });
+
+  const taskDate = dateKey(new Date(task.start || task.planned_start_utc || Date.now()));
+  const queriedTask = await pollFor(
+    token,
+    "Today zero-duration task query visibility",
+    async () => {
+      const response = await apiFetch(
+        token,
+        `/v1/tasks/query?date=${encodeURIComponent(taskDate)}&days=1&state=all`,
+      );
+      return (response.tasks || []).find((row) => row.task_id === task.task_id) || null;
+    },
+    12_000,
+    500,
+  );
+  addCheck("Today task query includes the active zero-duration task", Boolean(queriedTask), {
+    task_id: task.task_id,
+    task_date: taskDate,
+    state: queriedTask?.state || null,
+  });
+  await goto(page, `/today?date=${encodeURIComponent(taskDate)}`, "today-zero-duration-before-stop");
+  await closeBlockingDialog(page, "Today zero-duration stop");
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 45_000 });
+  await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
+  const taskRow = page
+    .locator(`[data-testid="task-row"][data-task-id="${task.task_id}"]`)
+    .first();
+  await taskRow.waitFor({ state: "visible", timeout: 12_000 });
+  await clickAny(page, "Today zero-duration stop", [
+    () => page.getByTestId("active-timer-stop").first(),
+    () => taskRow.locator('button[title="Stop timer"]').first(),
+  ], 10_000);
+  const dialog = page.getByRole("dialog").filter({ hasText: /How was your focus/i }).first();
+  await dialog.waitFor({ state: "visible", timeout: 8_000 });
+  await dialog.getByRole("button", { name: /Average - some flow/i }).click();
+  await dialog.locator("#pct").fill("0");
+  await dialog.getByRole("button", { name: /Reduced scope/i }).click();
+
+  let stopBody = await submitStopControl(
+    page,
+    dialog,
+    /^Stop timer$/i,
+    "Today zero-duration first stop",
+  );
+  if (stopBody.requires_confirmation) {
+    stopBody = await submitStopControl(
+      page,
+      dialog,
+      /Confirm early stop/i,
+      "Today zero-duration confirmed stop",
+    );
+  }
+  addCheck("Today zero-duration response preserves skipped terminal truth", Boolean(
+    stopBody.task_id === task.task_id
+    && stopBody.skipped === true
+    && stopBody.skip_reason === "zero_duration"
+  ), stopBody);
+
+  const infoNotice = page.getByText(/before one active minute was recorded.*marked skipped/i).first();
+  await infoNotice.waitFor({ state: "visible", timeout: 10_000 });
+  const rowText = await taskRow.innerText();
+  addCheck("Today corrects optimistic completion to visible skipped truth", Boolean(
+    /Skipped/i.test(rowText)
+    && await infoNotice.isVisible()
+  ), { task_row: rowText.slice(0, 700), notice: await infoNotice.innerText() });
+  await screenshot(page, "today-zero-duration-stop-desktop");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const rowBox = await taskRow.boundingBox();
+  const noticeBox = await infoNotice.boundingBox();
+  const overflow = await page.evaluate(() => Math.max(
+    0,
+    document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  ));
+  addCheck("Today skipped result fits the mobile viewport", Boolean(
+    rowBox
+    && noticeBox
+    && rowBox.x >= 0
+    && rowBox.x + rowBox.width <= 390
+    && noticeBox.x >= 0
+    && noticeBox.x + noticeBox.width <= 390
+    && overflow <= 1
+  ), { task_row: rowBox, notice: noticeBox, horizontal_overflow_pixels: overflow });
+  await screenshot(page, "today-zero-duration-stop-mobile");
+  await page.setViewportSize({ width: 1440, height: 950 });
+
+  const afterExport = await apiFetch(token, "/v1/users/me/export");
+  const exportedTask = rows(afterExport, "tasks").find((row) => row.task_id === task.task_id);
+  const exportedSession = rows(afterExport, "stopwatch_sessions").find(
+    (row) => row.session_id === stopBody.session_id,
+  );
+  const decisions = newStopwatchOutputDecisions(beforeExport, afterExport, task.task_id);
+  addCheck("Today zero-duration export remains skipped instead of executed", Boolean(
+    exportedTask?.state === "SKIPPED"
+    && exportedTask?.executed_duration_minutes == null
+    && exportedSession?.end_time_utc
+  ), { task: exportedTask || null, session: exportedSession || null });
+  addCheck("Today zero-duration stop emits no completion output candidate", decisions.length === 0, {
+    decisions,
+  });
+  return { task, sessionId: stopBody.session_id };
+}
+
+async function submitStopControl(page, dialog, buttonName, label) {
   const responsePromise = page.waitForResponse(
     (response) => response.url().includes("/v1/stopwatch/stop"),
     { timeout: 15_000 },
@@ -3930,7 +4176,7 @@ async function runTodayStopOutputRenderPath(page, token) {
     await scope.click();
   }
 
-  let stopBody = await submitTodayStopDialog(
+  let stopBody = await submitStopControl(
     page,
     dialog,
     /^Stop timer$/i,
@@ -3940,7 +4186,7 @@ async function runTodayStopOutputRenderPath(page, token) {
     await firstVisible(page, [
       () => dialog.getByRole("button", { name: /Confirm early stop/i }).first(),
     ], 8_000, "Today early-stop confirmation");
-    stopBody = await submitTodayStopDialog(
+    stopBody = await submitStopControl(
       page,
       dialog,
       /Confirm early stop/i,
@@ -5324,6 +5570,55 @@ async function main() {
         user_ref: userRef(me.user_id),
         output_dir: outDir,
         exposure_count: proof.exposureIds.length,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (zeroDurationStopProofOnly) {
+      const pulse = zeroDurationStopRoute !== "today"
+        ? await runPulseZeroDurationStopPath(page, token)
+        : null;
+      const today = zeroDurationStopRoute !== "pulse"
+        ? await runTodayZeroDurationStopPath(page, token)
+        : null;
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const afterCleanup = await apiFetch(token, "/v1/users/me/export");
+      const proofs = [pulse, today].filter(Boolean);
+      const cleanedTasks = proofs.map(({ task }) => (
+        rows(afterCleanup, "tasks").find((row) => row.task_id === task.task_id) || null
+      ));
+      const cleanedSessions = proofs.map(({ sessionId }) => (
+        rows(afterCleanup, "stopwatch_sessions").find((row) => row.session_id === sessionId) || null
+      ));
+      addCheck("zero-duration proof terminalizes retained synthetic evidence", Boolean(
+        cleanedTasks.every((task) => (
+          task?.voided_at && task?.voided_reason === "test_contamination"
+        ))
+        && cleanedSessions.every((session) => session?.end_time_utc)
+      ), { tasks: cleanedTasks, sessions: cleanedSessions });
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "pulse_today_zero_duration_stop_truth",
+        proof_route: zeroDurationStopRoute,
+        proof_status: "passed",
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
         checks,
         issues,
         gated,
