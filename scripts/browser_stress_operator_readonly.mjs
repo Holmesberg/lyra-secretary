@@ -670,6 +670,7 @@ const result = {
   expect_readiness_split: expectReadinessSplit,
   user_ref: null,
   is_operator: null,
+  account_eligibility_blockers: [],
   before_counts: null,
   pre_dashboard_count_diffs: [],
   pre_dashboard_count_diff_attribution: [],
@@ -701,6 +702,19 @@ try {
   if (!result.is_operator) {
     result.issues.push("alinassersabry cookie did not resolve to an operator account");
   }
+  result.account_eligibility_blockers = [
+    !me.body.terms_accepted_at ? "terms_not_accepted" : null,
+    me.body.archetype_survey_eligible ? "archetype_survey_pending" : null,
+    !me.body.onboarding_completed_at ? "onboarding_not_completed" : null,
+    !me.body.has_active_task_history ? "no_active_task_history" : null,
+  ].filter(Boolean);
+  const browserRouteEligible = fixtureAccountReady
+    || result.account_eligibility_blockers.length === 0;
+  if (!browserRouteEligible) {
+    result.issues.push(
+      `operator browser account preflight blocked route proof: ${result.account_eligibility_blockers.join(", ")}`,
+    );
+  }
 
   const beforeExport = await fetchJson("/v1/users/me/export", token);
   if (beforeExport.status !== 200) throw new Error(`pre export failed with ${beforeExport.status}`);
@@ -728,27 +742,29 @@ try {
   }
   result.dashboard_before_snapshot = dashboardReadOnlySnapshot(beforeDashboard.body || {});
 
-  for (const viewport of viewports) {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    for (const route of routes) {
-      const routeBeforeExport = await fetchJson("/v1/users/me/export", token);
-      const routeBeforeCounts = countExport(routeBeforeExport.body || {});
-      const routeResult = await checkRoute(page, route, viewport);
-      result.routes.push(routeResult);
-      const routeAfterExport = await fetchJson("/v1/users/me/export", token);
-      const routeAfterCounts = countExport(routeAfterExport.body || {});
-      const routeDiffs = diffCounts(routeBeforeCounts, routeAfterCounts);
-      if (routeDiffs.length > 0) {
-        result.route_count_diffs.push({
-          viewport: viewport.name,
-          route: route.path,
-          diffs: routeDiffs,
-          attribution: attributeCountDiffs(
-            routeDiffs,
-            routeBeforeExport.body || {},
-            routeAfterExport.body || {},
-          ),
-        });
+  if (browserRouteEligible) {
+    for (const viewport of viewports) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      for (const route of routes) {
+        const routeBeforeExport = await fetchJson("/v1/users/me/export", token);
+        const routeBeforeCounts = countExport(routeBeforeExport.body || {});
+        const routeResult = await checkRoute(page, route, viewport);
+        result.routes.push(routeResult);
+        const routeAfterExport = await fetchJson("/v1/users/me/export", token);
+        const routeAfterCounts = countExport(routeAfterExport.body || {});
+        const routeDiffs = diffCounts(routeBeforeCounts, routeAfterCounts);
+        if (routeDiffs.length > 0) {
+          result.route_count_diffs.push({
+            viewport: viewport.name,
+            route: route.path,
+            diffs: routeDiffs,
+            attribution: attributeCountDiffs(
+              routeDiffs,
+              routeBeforeExport.body || {},
+              routeAfterExport.body || {},
+            ),
+          });
+        }
       }
     }
   }
