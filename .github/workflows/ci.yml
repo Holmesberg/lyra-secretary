@@ -151,6 +151,9 @@ jobs:
     - name: Run onboarding Brain Dump recovery contract gate
       run: node scripts/test_onboarding_brain_dump_recovery_contract.mjs
 
+    - name: Run Pressure Map planning provenance contract gate
+      run: node scripts/test_pressure_map_planning_provenance_contract.mjs
+
     - name: Run undo invalidation contract gate
       run: node scripts/test_undo_invalidation_contract.mjs
 

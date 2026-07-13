@@ -86,6 +86,10 @@ try {
     node scripts\test_onboarding_brain_dump_recovery_contract.mjs
   }
 
+  Invoke-Step "Pressure Map planning provenance contract gate" {
+    node scripts\test_pressure_map_planning_provenance_contract.mjs
+  }
+
   Invoke-Step "OpenClaw operator relay hermetic test" {
     node scripts\test_openclaw_operator_relay.mjs
   }
