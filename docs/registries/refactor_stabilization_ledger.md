@@ -20235,3 +20235,71 @@ Rollback:
   Revert `2d96dfb` with `6845474` to restore the former two-commit skip
   publication. Revert `6f92c91` to remove only the focused verifier repair.
   No schema migration or production-data repair is involved.
+
+### Linked and unlinked planning attribution
+
+Seams and behavior:
+
+- Product commit `7dd2359` removes canonical deadline-linked tasks from the
+  standalone-obligation builder even when the linked deadline falls outside
+  the selected horizon. Regression commit `83ebd98` proves the block cannot
+  become a self-covered second obligation. Exact-head CI passed at
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29248952322`.
+- Test commit `e6d0aa8` freezes the current shipped Pressure Map estimate
+  ranges, complexity modifiers, outward rounding, source labels, and
+  task-duration semantics as provisional compatibility behavior. It does not
+  validate those priors as science or authorize cohort thresholds.
+- Product commit `77cd3fe` keeps unlinked LyraOS planning blocks out of v2
+  demand and coverage. They remain visible in the legacy item/source summary
+  as planning commitments; capacity and collision authority remain UNKNOWN.
+  Test commit `07bfb5f` covers unlinked study and academic blocks, mixed linked
+  and unlinked blocks, and suggestion-only inferred deadline IDs. The red
+  characterization failed four cases before the product repair.
+- This changes read-only projection accounting only. It does not alter task,
+  deadline, provider, timer, completion, recovery, exposure, schema, or write
+  authority. Pulse still reads legacy totals, so issue `#220` and the Wave 5A
+  Accounting Gate remain open.
+
+Proof and verifier closure:
+
+- The focused Pressure Map and prior set passed `51` tests. The full S1c stack
+  passed all static authority, layer, Cortex, feature-preservation, relay,
+  public-isolation, and fresh-Alembic gates; the backend result was `1094
+  passed, 1 xfailed`, and frontend production build/typecheck passed.
+- The first complete product-loop run retained one verifier failure: React
+  rendered the soft-conflict action after an instantaneous visibility sample.
+  The failure screenshot showed the product in the valid conflict state with
+  `Create anyway` available. Verifier commit `6bfe374` replaces that sample
+  with a bounded mounted-browser wait. The focused pressure-only proof then
+  passed before any comprehensive rerun:
+  `tmp/post-wave-dogfood/wave5a-pressure-conflict-wait-07bfb5f/result.json`.
+- Current-source local topology ran on isolated frontend `3018` and backend
+  `8001`, both from product head/build `07bfb5f9b6eb`; production ports and
+  artifacts were untouched. Multi-account proof used real cookies and kept
+  the operator read-only.
+- The final Holmesberg macro passed `181` checks with zero failures at
+  `tmp/post-wave-dogfood/wave5a-accounting-macro-6bfe374/holmesberg-product-loop/result.json`.
+  Pressure Map browser render had authenticated acknowledgement, double-lock
+  created exactly one deadline-linked recovery block, Calendar exposed that
+  block before cleanup, and cleanup left no active prefixed rows, active
+  timer, or unterminated synthetic output candidate.
+- Operator after-proof passed at
+  `tmp/post-wave-dogfood/wave5a-accounting-macro-6bfe374/operator-after/result.json`
+  with zero count, route, or dashboard diffs, zero route issues/warnings,
+  `implementation_green=true`, explicit cohort yellow, and
+  `exposure_without_render_count=0`. Desktop and mobile screenshots had no
+  incoherent overlap; Pressure Map horizon and plan controls remained visible
+  and uncut.
+- Exact-head CI passed for
+  `6bfe374d3fc57ca1d4f9155775e1bee06a4833a5`:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29251030111`.
+  The generated top-level evidence summary is
+  `tmp/post-wave-dogfood/wave5a-accounting-macro-6bfe374/evidence-manifest.json`.
+
+Rollback:
+
+- Revert `7dd2359` with `83ebd98` to restore out-of-horizon linked-task
+  projection. Revert `77cd3fe` with `07bfb5f` to restore unlinked tasks as
+  self-covered standalone obligations. Revert `e6d0aa8` to remove only the
+  compatibility characterization, and `6bfe374` to restore the old verifier
+  visibility sample. No migration or production-data repair is involved.
