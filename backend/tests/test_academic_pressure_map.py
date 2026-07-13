@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -326,23 +327,27 @@ def test_pressure_map_unions_overlapping_calendar_busy_intervals(db, monkeypatch
     db.commit()
     now = datetime.utcnow()
     monkeypatch.setattr(
-        "app.services.academic_pressure.fetch_google_events",
-        lambda _user_id, _start, _end: [
-            ExternalEvent(
-                id="calendar-a",
-                title="Calendar A",
-                start=(now + timedelta(hours=1)).isoformat(),
-                end=(now + timedelta(hours=3)).isoformat(),
-                calendar_id="primary",
-            ),
-            ExternalEvent(
-                id="calendar-b",
-                title="Calendar B",
-                start=(now + timedelta(hours=2)).isoformat(),
-                end=(now + timedelta(hours=4)).isoformat(),
-                calendar_id="primary",
-            ),
-        ],
+        "app.services.academic_pressure.fetch_google_events_with_status",
+        lambda _user_id, _start, _end: SimpleNamespace(
+            status="available",
+            reason=None,
+            events=[
+                ExternalEvent(
+                    id="calendar-a",
+                    title="Calendar A",
+                    start=(now + timedelta(hours=1)).isoformat(),
+                    end=(now + timedelta(hours=3)).isoformat(),
+                    calendar_id="primary",
+                ),
+                ExternalEvent(
+                    id="calendar-b",
+                    title="Calendar B",
+                    start=(now + timedelta(hours=2)).isoformat(),
+                    end=(now + timedelta(hours=4)).isoformat(),
+                    calendar_id="primary",
+                ),
+            ],
+        ),
     )
 
     response = client.get(
@@ -355,6 +360,52 @@ def test_pressure_map_unions_overlapping_calendar_busy_intervals(db, monkeypatch
     assert data["source_summary"]["google_calendar_connected"] is True
     assert data["source_summary"]["calendar_busy_minutes"] == 180
     assert data["capacity_context"]["known_busy_minutes"] == 180
+
+
+@pytest.mark.parametrize(
+    ("read_status", "expected_busy_minutes", "warning_fragment"),
+    [
+        ("available", 0, None),
+        ("unavailable", None, "unavailable, not zero"),
+    ],
+)
+def test_pressure_map_distinguishes_empty_calendar_from_unavailable_read(
+    db,
+    monkeypatch,
+    read_status,
+    expected_busy_minutes,
+    warning_fragment,
+):
+    user = _user(db, f"calendar-{read_status}-pressure@example.com")
+    user.google_refresh_token = "fixture-token"
+    db.commit()
+    monkeypatch.setattr(
+        "app.services.academic_pressure.fetch_google_events_with_status",
+        lambda _user_id, _start, _end: SimpleNamespace(
+            events=[],
+            status=read_status,
+            reason=None if read_status == "available" else "provider_error",
+        ),
+    )
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=1",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["source_summary"]["google_calendar_connected"] is True
+    assert data["source_summary"]["google_calendar_read_status"] == read_status
+    assert data["source_summary"]["calendar_busy_minutes"] == expected_busy_minutes
+    assert data["capacity_context"]["google_calendar_read_status"] == read_status
+    assert data["capacity_context"]["known_busy_minutes"] == expected_busy_minutes
+    warnings = " ".join(data["warnings"])
+    if warning_fragment is None:
+        assert "unavailable, not zero" not in warnings
+    else:
+        assert warning_fragment in warnings
+        assert "unavailable" in data["capacity_context"]["caveat"].lower()
 
 
 def test_pressure_projection_keeps_unconfirmed_calendar_mirror_sources_separate(
@@ -378,23 +429,27 @@ def test_pressure_projection_keeps_unconfirmed_calendar_mirror_sources_separate(
     db.add(task)
     db.commit()
     monkeypatch.setattr(
-        "app.services.academic_pressure.fetch_google_events",
-        lambda _user_id, _start, _end: [
-            ExternalEvent(
-                id="calendar-original",
-                title=task.title,
-                start=start.isoformat(),
-                end=end.isoformat(),
-                calendar_id="primary",
-            ),
-            ExternalEvent(
-                id="calendar-duplicate",
-                title=task.title,
-                start=start.isoformat(),
-                end=end.isoformat(),
-                calendar_id="primary",
-            ),
-        ],
+        "app.services.academic_pressure.fetch_google_events_with_status",
+        lambda _user_id, _start, _end: SimpleNamespace(
+            status="available",
+            reason=None,
+            events=[
+                ExternalEvent(
+                    id="calendar-original",
+                    title=task.title,
+                    start=start.isoformat(),
+                    end=end.isoformat(),
+                    calendar_id="primary",
+                ),
+                ExternalEvent(
+                    id="calendar-duplicate",
+                    title=task.title,
+                    start=start.isoformat(),
+                    end=end.isoformat(),
+                    calendar_id="primary",
+                ),
+            ],
+        ),
     )
 
     response = client.get(
