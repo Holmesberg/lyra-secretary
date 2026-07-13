@@ -2842,6 +2842,37 @@ async function runPressureMapPath(page, token, beforeExport) {
       deadline_title: pressureDeadlineTitle,
     });
     const seededRow = planRows.nth(seededRowIndex);
+    const estimateSource = seededRow.getByTestId("pressure-map-plan-row-estimate-source");
+    const estimateSourceText = (await estimateSource.innerText()).trim();
+    addCheck("pressure map estimate names broad evidence without identity-style provenance", Boolean(
+      /LyraOS's starting estimate:/i.test(estimateSourceText)
+      && /start the timer to prove it right or wrong/i.test(estimateSourceText)
+      && /(personal timing evidence|research\/population starting estimate|starting estimate)/i.test(estimateSourceText)
+      && !/archetype\s+[a-z_]+/i.test(estimateSourceText)
+    ), { text: estimateSourceText });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(250);
+    const mobileDialogBox = await dialog.boundingBox();
+    const mobileEstimateBox = await estimateSource.boundingBox();
+    const mobileDialogOverflow = await dialog.evaluate((element) => (
+      element.scrollWidth - element.clientWidth
+    ));
+    addCheck("pressure map estimate remains readable and uncut in the mobile dialog", Boolean(
+      mobileDialogBox
+      && mobileEstimateBox
+      && mobileDialogBox.x >= 0
+      && mobileDialogBox.x + mobileDialogBox.width <= 390
+      && mobileEstimateBox.x >= 0
+      && mobileEstimateBox.x + mobileEstimateBox.width <= 390
+      && mobileDialogOverflow <= 1
+    ), {
+      dialog: mobileDialogBox,
+      estimate: mobileEstimateBox,
+      horizontal_overflow_pixels: mobileDialogOverflow,
+    });
+    await screenshot(page, "pressure-map-estimate-mobile");
+    await page.setViewportSize({ width: 1440, height: 950 });
+    await page.waitForTimeout(250);
     const blockStart = futureDate(15);
     const blockEnd = futureDate(45);
     await seededRow.getByTestId("pressure-map-plan-row-title").fill(pressureBlockTitle);
@@ -2885,6 +2916,7 @@ async function runPressureMapPath(page, token, beforeExport) {
       && createdTask.executed_duration_minutes === null
       && String(createdTask.description || "").includes("Created from Pressure Map recovery preview.")
       && String(createdTask.description || "").includes("Planning footprint only; execution truth comes from the timer.")
+      && !/archetype\s+[a-z_]+/i.test(String(createdTask.description || ""))
     ), createdTask || { title: pressureBlockTitle });
 
     await goto(page, "/calendar", "calendar-after-pressure-map-commit");
