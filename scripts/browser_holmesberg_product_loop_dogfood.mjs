@@ -48,6 +48,7 @@ const pressureProofOnly = args.get("pressure-proof-only") === "true";
 const pressureCalendarPartialProofOnly = args.get("pressure-calendar-partial-proof-only") === "true";
 const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "true";
 const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-only") === "true";
+const pulsePartialErrorProofOnly = args.get("pulse-partial-error-proof-only") === "true";
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
 const captureProofOnly = args.get("capture-proof-only") === "true";
 const onboardingPartialRecoveryProofOnly = args.get("onboarding-partial-recovery-proof-only") === "true";
@@ -120,6 +121,18 @@ function canonicalJson(value) {
     )).join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function canonicalProductStateDigest(exported) {
+  const sectionNames = ["tasks", "deadlines", "stopwatch_sessions", "pause_events"];
+  const sections = Object.fromEntries(sectionNames.map((name) => [
+    name,
+    rows(exported, name).map((row) => canonicalJson(row)).sort(),
+  ]));
+  return {
+    sha256: createHash("sha256").update(canonicalJson(sections)).digest("hex"),
+    counts: Object.fromEntries(sectionNames.map((name) => [name, sections[name].length])),
+  };
 }
 
 function redactedPressureProjection(projection) {
@@ -2129,6 +2142,137 @@ async function runPressureMapPartialCalendarProof(page, token, beforeExport) {
     return { exposureIds };
   } finally {
     await page.unroute(pressureMapPattern, routeHandler).catch(() => {});
+  }
+}
+
+async function runPulsePartialErrorProof(page, token, beforeExport) {
+  const taskPattern = new RegExp(
+    `${escapeRegex(apiOrigin.replace(/\/$/, ""))}/v1/tasks/query\\?.*`,
+  );
+  const stopwatchPattern = new RegExp(
+    `${escapeRegex(apiOrigin.replace(/\/$/, ""))}/v1/stopwatch/status(?:\\?.*)?$`,
+  );
+  let failTodayRead = true;
+  let failStopwatchRead = true;
+  let todayFailureCount = 0;
+  let stopwatchFailureCount = 0;
+
+  const fulfillFixtureFailure = async (route, surface) => {
+    await route.fulfill({
+      status: 503,
+      headers: {
+        "content-type": "application/json",
+        "access-control-allow-origin": frontendOrigin,
+        "access-control-allow-credentials": "true",
+      },
+      body: JSON.stringify({ detail: `${surface} verifier fixture unavailable` }),
+    });
+  };
+  const taskHandler = async (route) => {
+    const url = new URL(route.request().url());
+    if (
+      failTodayRead
+      && url.searchParams.get("days") === "1"
+      && url.searchParams.has("date")
+    ) {
+      todayFailureCount += 1;
+      await fulfillFixtureFailure(route, "today task read");
+      return;
+    }
+    await route.fallback();
+  };
+  const stopwatchHandler = async (route) => {
+    if (failStopwatchRead) {
+      stopwatchFailureCount += 1;
+      await fulfillFixtureFailure(route, "stopwatch status read");
+      return;
+    }
+    await route.fallback();
+  };
+
+  await page.route(taskPattern, taskHandler);
+  await page.route(stopwatchPattern, stopwatchHandler);
+  try {
+    const beforeState = canonicalProductStateDigest(beforeExport);
+    await goto(page, "/pulse", "pulse-partial-read-failure");
+
+    const partialAlert = page.getByTestId("pulse-partial-error").first();
+    await partialAlert.waitFor({ state: "visible", timeout: 20_000 });
+    const initialBody = await page.locator("body").innerText();
+    const initialMetrics = {
+      focus: (await page.getByTestId("pulse-focus-today-metric").innerText()).trim(),
+      wins: (await page.getByTestId("pulse-wins-metric").innerText()).trim(),
+    };
+    addCheck(
+      "Pulse read failure is explicit instead of an empty plan",
+      await page.getByTestId("pulse-unavailable-today-plan").isVisible()
+        && await page.getByTestId("pulse-unavailable-current-focus").isVisible()
+        && !/Nothing on the day yet/i.test(initialBody),
+      { fixture_only: true, today_failure_count: todayFailureCount },
+    );
+    addCheck(
+      "Pulse failed metrics are unavailable instead of false zero",
+      initialMetrics.focus.includes("--") && initialMetrics.wins.includes("--"),
+      { fixture_only: true, metrics: initialMetrics },
+    );
+    addCheck(
+      "Pulse partial failure keeps capture and healthy orientation usable",
+      await page.getByTestId("pulse-quick-capture").isVisible()
+        && await page.getByTestId("pulse-pressure-section").isVisible()
+        && await page.getByTestId("pulse-deadlines-section").isVisible()
+        && await page.getByTestId("pulse-integrations-section").isVisible(),
+      { fixture_only: true },
+    );
+    await screenshot(page, "pulse-partial-read-explicit");
+
+    failTodayRead = false;
+    await page.getByTestId("pulse-partial-error-retry").click();
+    await page.getByTestId("pulse-today-plan-section").waitFor({ state: "visible", timeout: 20_000 });
+    await partialAlert.waitFor({ state: "hidden", timeout: 10_000 });
+    const recoveredMetrics = {
+      focus: (await page.getByTestId("pulse-focus-today-metric").innerText()).trim(),
+      wins: (await page.getByTestId("pulse-wins-metric").innerText()).trim(),
+    };
+    addCheck(
+      "Pulse retry restores the failed Today read",
+      !recoveredMetrics.focus.includes("--")
+        && !recoveredMetrics.wins.includes("--")
+        && await page.getByTestId("pulse-unavailable-today-plan").count() === 0,
+      { fixture_only: true, metrics: recoveredMetrics, today_failure_count: todayFailureCount },
+    );
+
+    const focusUnavailable = page.getByTestId("pulse-focus-status-unavailable").first();
+    await focusUnavailable.waitFor({ state: "visible", timeout: 20_000 });
+    addCheck(
+      "Pulse stopwatch read failure is explicit instead of false idle",
+      stopwatchFailureCount >= 1
+        && await page.getByTestId("pulse-focus-card").count() === 0
+        && /will not guess its state/i.test(await focusUnavailable.innerText()),
+      { fixture_only: true, stopwatch_failure_count: stopwatchFailureCount },
+    );
+    await screenshot(page, "pulse-focus-status-unavailable");
+
+    failStopwatchRead = false;
+    await page.getByTestId("pulse-focus-status-retry").click();
+    await page.getByTestId("pulse-focus-card").waitFor({ state: "visible", timeout: 20_000 });
+    addCheck(
+      "Pulse timer retry restores the canonical focus card",
+      await page.getByTestId("pulse-focus-status-unavailable").count() === 0,
+      { fixture_only: true, stopwatch_failure_count: stopwatchFailureCount },
+    );
+    await screenshot(page, "pulse-partial-read-recovered");
+
+    const afterExport = await apiFetch(token, "/v1/users/me/export");
+    const afterState = canonicalProductStateDigest(afterExport);
+    addCheck(
+      "Pulse failure fixture leaves canonical product rows unchanged",
+      beforeState.sha256 === afterState.sha256,
+      { fixture_only: true, before: beforeState, after: afterState },
+    );
+    return { todayFailureCount, stopwatchFailureCount };
+  } finally {
+    await page.unroute(taskPattern, taskHandler).catch(() => {});
+    await page.unroute(stopwatchPattern, stopwatchHandler).catch(() => {});
   }
 }
 
@@ -4960,6 +5104,43 @@ async function main() {
         user_ref: userRef(me.user_id),
         output_dir: outDir,
         exposure_count: proof.exposureIds.length,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (pulsePartialErrorProofOnly) {
+      addIssue("Pulse partial-read browser fixture enabled", {
+        scope: "Today task and stopwatch status GET responses only",
+        writes: "none",
+        hosted_public_proof: false,
+      });
+      const proof = await runPulsePartialErrorProof(page, token, beforeExport);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "pulse_partial_read_failure_retry_fixture",
+        proof_status: "passed",
+        fixture_only: true,
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        today_failure_count: proof.todayFailureCount,
+        stopwatch_failure_count: proof.stopwatchFailureCount,
         checks,
         issues,
         gated,
