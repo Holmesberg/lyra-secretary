@@ -21791,3 +21791,108 @@ Rollback and next boundary:
   hidden items and reasons and improve deterministic summary/action hierarchy;
   it may not introduce capacity authority, a dedicated tab, a new correction
   command, or another architecture audit.
+
+## 2026-07-14 - Wave 5C Pressure Map Orientation
+
+Useful orientation without new authority:
+
+- Product commit `b2092af` makes the existing Pressure Map summary deterministic
+  and action-led. It selects the first executable planning command before
+  navigation or diagnostic options, shows one primary action, limits the
+  orientation summary to three facts, and discloses hidden obligation and
+  reason counts instead of silently truncating them.
+- The card now invites calibration through the existing timer path. It does not
+  introduce a capacity model, correction command, dedicated tab, estimate
+  prior, schema, provider, or new behavioral claim. Calendar remains secondary
+  context and non-executable coverage notes remain visually non-clickable.
+- Characterization commit `5fd5615` locks action ranking, the three-fact cap,
+  hidden-count disclosure, one-primary-action hierarchy, and calibration copy.
+  Frontend typecheck and the planning contract passed.
+
+Focused mounted proof:
+
+- Exact-build local-current proof passed 45 checks with no gated path at
+  `tmp/post-wave-dogfood/wave5c-orientation-5fd5615/result.json`. Five synthetic
+  obligations plus one unlinked planning block forced both truncation paths.
+  The browser showed three facts, `+2 more obligations`, `3 more reasons`, one
+  primary `create_plan` action, and the existing Calendar route.
+- The real Holmesberg cookie was used against disposable data. The proof
+  authenticated the Pressure Map render, retained count-once accounting,
+  created and cleaned the canonical planning block, and left no prefix, timer,
+  exposure, SQLite, Redis DB 15, port, or isolated-artifact residue.
+- Desktop and mobile screenshots were inspected directly. The dominant action,
+  disclosure text, and calibration cue were contained and non-overlapping.
+  This proves implementation usability; it does not claim that Pressure Map
+  changed a founder decision. The founder Orientation Gate remains a real-use
+  product-loop gate.
+
+Rollback and boundary:
+
+- Revert `b2092af` for the product hierarchy and `5fd5615` for its proof.
+  Existing tasks, deadlines, exposures, and Pressure Map rows remain valid.
+- The next planned wave is execution, recovery, and bounded prediction policy.
+  No further opportunistic Pressure Map refinement is authorized without new
+  product evidence.
+
+## 2026-07-14 - Task-Creation Estimate Stability And Cleanup Truth
+
+User-visible race repair:
+
+- Issue `#258` recorded that New Task estimates appeared and disappeared before
+  `Use` or `Keep` could be clicked. Product commit `f7a99b6` removes the local
+  pre-authority card: a clickable estimate now waits for backend eligibility
+  and an exposure decision. Both buttons require backend readiness.
+- Once the fast canonical lookup authorizes an estimate, slower personal
+  hydration may enrich it but cannot retract it merely because its stricter
+  threshold is ineligible. Explicit backend suppression still clears the card,
+  and material category, time, or duration edits retire the previous estimate.
+  No debounce, threshold, prior, exposure owner, schema, or task mutation
+  behavior changed.
+- Verifier commit `474ce67` adds a focused race proof and static contract. The
+  negative fixture proves a suppressed fast response never flashes a clickable
+  card. The delayed-hydration fixture proves an authorized card remains visible
+  and enabled through a slower ineligible response, then records the explicit
+  user decision through normal task creation.
+
+Adjacent cleanup blocker and repair:
+
+- The first focused run at `474ce67` passed every estimate and authenticated
+  exposure check, then correctly failed cleanup: the synthetic task was voided
+  but its linked `calibration_nudge_event` remained active. Issue `#259`
+  records this independent writer defect.
+- Product commit `e5153d7` routes task voiding through canonical `TaskManager`
+  authority and stamps active linked calibration outcomes in the same database
+  transaction as the task. Existing response semantics, executed-task legacy
+  status, stopwatch cleanup, range invalidation, and cross-user isolation are
+  preserved. Test commit `504eb32` locks endpoint behavior.
+- Targeted calibration and adversarial multi-user suites passed 43 tests. No
+  migration, production repair, deletion, deployment, restart, or public
+  mutation occurred.
+
+Exact focused evidence:
+
+- Canonical preflight passed at exact frontend/backend build
+  `504eb3263f99197953186d5e16246ffe82464acd` with checkout-owned ports,
+  isolated artifacts, a disposable SQLite database, Redis DB 15, the real
+  Holmesberg cookie, explicit local API proxying, zero pending notifications,
+  no active timer, a clean prefix, and mounted `/today`.
+- The focused rerun passed all 16 checks at
+  `tmp/post-wave-dogfood/creation-nudge-504eb32/result.json`. The suppressed
+  card never flashed; `Use 80 min` survived delayed hydration; exactly one
+  authenticated render and one accepted calibration outcome were recorded;
+  cleanup voided the task and linked outcome at the same timestamp.
+- Post-run preflight at
+  `tmp/proof-preflight/creation-nudge-504eb32-after.json` found the prefix clean,
+  pending count zero, and no active timer. The estimate screenshot was inspected
+  directly: `Use` and `Keep` remained visible, enabled, contained, and
+  non-overlapping. Teardown closed ports `3018/8001`, removed the isolated build
+  and disposable database, and left Redis DB 15 empty.
+
+Rollback and next boundary:
+
+- Revert `f7a99b6` for product estimate behavior, `474ce67` for focused proof,
+  `e5153d7` for canonical void/outcome settlement, and `504eb32` for its test.
+  Each authority class remains independently reversible.
+- This seam closes only the reported estimate race and the cleanup blocker it
+  exposed. It does not expand the creation-nudge policy, research prior,
+  prediction families, or downstream refactor scope.
