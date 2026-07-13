@@ -98,11 +98,12 @@ export function TaskRow({
       data-task-title={task.title}
       data-task-state={state}
       className={cn(
-        "group flex items-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-2.5 py-2 transition-colors sm:gap-4 sm:px-4 sm:py-3",
+        "group flex w-full min-w-0 flex-col items-stretch gap-2 rounded-sm border border-hairline bg-void-2/40 px-2.5 py-2 transition-colors sm:flex-row sm:items-center sm:gap-4 sm:px-4 sm:py-3",
         selected && "border-signal/40 bg-signal/5",
         isLive && !selected && "border-signal/30 bg-signal/[0.03]"
       )}
     >
+      <div className="flex min-w-0 items-center gap-2 sm:contents">
       {onToggleSelect && (
         <input
           type="checkbox"
@@ -115,7 +116,7 @@ export function TaskRow({
           onClick={(e) => e.stopPropagation()}
         />
       )}
-      <div className="w-28 font-mono text-xs text-dust">
+      <div className="w-[4.75rem] shrink-0 font-mono text-xs text-dust sm:w-28">
         {start}–{end}
       </div>
       <div
@@ -145,11 +146,13 @@ export function TaskRow({
           </div>
         )}
       </div>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:contents">
       <ResearchLayer task={task} />
       {cat && catColor && (
         <span
           className={cn(
-            "rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide",
+            "max-w-[10rem] truncate rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide",
             catColor
           )}
         >
@@ -164,7 +167,7 @@ export function TaskRow({
       >
         {state}
       </span>
-      <div className="flex items-center gap-1">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
         {onEditBinding && (
           <Button
             size="sm"
@@ -269,6 +272,7 @@ export function TaskRow({
           </>
         )}
         {isTerminal && !canMarkDone && <div className="w-8" />}
+      </div>
       </div>
     </div>
   );
