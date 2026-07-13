@@ -61,6 +61,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\proof_preflight.ps
 The launcher requires `.venv311`, refuses occupied ports instead of killing or
 reusing them, builds only `.next-local-current`, verifies exact frontend and
 backend build IDs, and records process ownership in the runtime manifest.
+
+For cold-start or account-state proof that must not depend on shared local
+rows, start the same runtime with disposable data:
+
+```powershell
+$head = (git rev-parse HEAD).Trim()
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\start_local_current_proof_runtime.ps1 `
+  -ExpectedBuildId $head -OutFile tmp\local-current-runtime\disposable.json `
+  -DisposableData -DisposableRedisDatabase 15
+
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\proof_preflight.ps1 `
+  -Topology local-current -FrontendOrigin http://localhost:3018 `
+  -ApiOrigin http://localhost:8001 -Account holmesberg -Intent readonly `
+  -ExpectedFrontendBuildId $head `
+  -RuntimeManifest tmp\local-current-runtime\disposable.json
+```
+
+Disposable mode migrates a fresh SQLite database, requires an empty dedicated
+Redis DB in the bounded `8..15` range, disables email/operator notification
+delivery, and permits only the real Holmesberg cookie. The target account is
+initially unprovisioned; its first authenticated read may create only its row
+and operational audit data inside that disposable database. Account readiness
+is therefore predictably cold-start rather than inherited from shared state.
+Operator proof remains read-only against a non-disposable runtime.
+
 After proof, tear down only those recorded processes and the bounded artifact:
 
 ```powershell
@@ -69,7 +95,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File `
   -Manifest tmp\local-current-runtime\active.json -RemoveArtifact
 ```
 
-The preflight is read-only. It checks the canonical
+For disposable mode, require data cleanup explicitly:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\stop_local_current_proof_runtime.ps1 `
+  -Manifest tmp\local-current-runtime\disposable.json `
+  -RemoveArtifact -RemoveDisposableData
+```
+
+Teardown validates the recorded run directory, exact checkout interpreter,
+bounded SQLite filename, and dedicated Redis target before deletion/reset. It
+does not erase a nonempty Redis DB at startup; unknown state fails closed.
+
+The preflight blocks product API mutations. Outside disposable first-login
+provisioning it is read-only. It checks the canonical
 `/v1/health/topology` endpoint, artifact isolation, local port/process
 ownership, exact build ID, real cookie/session validity, account role,
 terms/onboarding state, optional selected date/week, target mount, export

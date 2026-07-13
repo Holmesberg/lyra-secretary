@@ -851,6 +851,10 @@ forensics requires approval.
   the declared topology, account, intent, build, target, selected range, and
   synthetic prefix. A blocked preflight prohibits the expensive run. Do not
   recreate these checks manually.
+- Use the manifest-bound disposable local-current data mode for cold-start or
+  deterministic account-state proof instead of resetting shared account rows.
+  It is Holmesberg-only, creates no fabricated credential, and is incomplete
+  until its temporary SQLite file and dedicated Redis DB are removed.
 - A focused runner must receive the same explicit account-readiness fixture,
   API origin, topology, and synthetic prefix that preflight approved. Target
   mount proof must reject consent/onboarding gates rather than accepting a

@@ -21582,3 +21582,48 @@ Boundary and rollback:
   invalidation and proof-runtime commits remain independently reversible as
   recorded above. No schema migration, production repair, deploy, restart, or
   authority transfer is required.
+
+## 2026-07-14 - Disposable Local-Current Account And Data Preflight
+
+Infrastructure debt closed:
+
+- Issue `#254` recorded repeated shared-account consent/onboarding surprises.
+  Verifier commit `f74de38` adds a manifest-bound `-DisposableData` mode to the
+  canonical local-current launcher. It migrates a fresh SQLite database, uses
+  an explicitly empty dedicated Redis DB, disables email/operator notification
+  delivery, and admits only the real Holmesberg cookie. No test credential,
+  backend identity override, product route, schema migration, or public mode
+  was added.
+- The preflight artifact now records `runtime_data_mode`. In disposable mode it
+  labels first-login provisioning as an isolated write, rejects operator proof
+  before browser launch, and can retain a target-page screenshot for gate
+  classification. The shared-account browser-response fixture remains
+  separately labeled and does not become hosted-public proof.
+
+Negative and mounted proof:
+
+- A nonempty Redis DB 15 was rejected before migration or service start with
+  `Refusing to erase unknown state`; the unknown test key remained present and
+  was removed only by its creator. Operator proof was rejected before cookie
+  import because a fresh database does not provision the operator role.
+- A real Holmesberg cookie against the disposable runtime produced one new
+  non-operator account row and zero task, deadline, stopwatch, notification,
+  exposure-decision, or exposure-render rows. Required-readiness preflight
+  failed only on `account_ready=false` at
+  `tmp/proof-preflight/disposable-cold-start-blocked.json`.
+- Mounted `/pulse` proof classified the real `consent_required` gate with no
+  page errors and retained
+  `tmp/proof-preflight/disposable-cold-start-mounted-holmesberg-target.png`.
+  Read-only cold-start preflight passed at
+  `tmp/proof-preflight/disposable-cold-start-pass.json` with zero pending
+  notifications, no active timer, and a clean synthetic prefix.
+- Manifest teardown removed the isolated Next artifact and SQLite database,
+  emptied Redis DB 15, and closed ports 3018/8001. Hosted ports,
+  `.next-public`, shared account rows, and production data were untouched.
+
+Rollback and next use:
+
+- Revert `f74de38` to remove disposable data mode while retaining the earlier
+  canonical shared-data launcher and preflight. The docs commit may be reverted
+  independently. Future cold-start browser seams should use disposable mode;
+  shared/local and hosted-public operator proof remain read-only.
