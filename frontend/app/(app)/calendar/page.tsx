@@ -598,16 +598,10 @@ export default function CalendarPage() {
       calendars: STATE_CALENDARS,
       isDark: true,
       timezone: TIMEZONE,
-      // Crop the visible day to 06:00–24:00. Keeping the midnight boundary
-      // visible prevents accepted late tasks from disappearing when they
-      // cross 23:00, while still avoiding the unused overnight hours.
-      // Schedule-X default is 00:00–24:00 — on mobile this means the
-      // top of the visible grid is midnight, and the operator has to
-      // scroll a long way to reach their actual tasks. Cropping shows
-      // ~17 productive hours instead of 24, which fits ~2x more of the
-      // day in viewport at the same zoom level.
-      // 2026-04-30 mobile-density fix per operator screenshot review.
-      dayBoundaries: { start: "06:00", end: "24:00" },
+      // Accepted plans are inspectable truth, including work scheduled before
+      // 06:00. The viewport below auto-scrolls to the active/first relevant
+      // event (or now), so ordinary daytime use does not begin at midnight.
+      dayBoundaries: { start: "00:00", end: "24:00" },
       // Schedule-X default (eventOverlap: true) cascades overlapping events
       // at horizontal offsets but extends each to the right edge — titles
       // obscured by neighbors. false makes them split into equal sub-columns,
@@ -702,7 +696,7 @@ export default function CalendarPage() {
   }, [calendar, events, eventsService]);
 
   // Schedule-X starts the time-grid at the top of the day-boundary window.
-  // With 06:00-24:00 cropped into a fixed-height internal scroll viewport,
+  // With 00:00-24:00 inside a fixed-height internal scroll viewport,
   // afternoon/evening work can be correctly rendered but below the fold,
   // making the calendar look empty. After events mount, land the viewport on
   // the active task first when it is visible, then the first LyraOS task in the
