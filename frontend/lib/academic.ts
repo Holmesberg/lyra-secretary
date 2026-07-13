@@ -129,6 +129,13 @@ export interface AcademicObligationDemandProjection {
   estimate_inconsistent: boolean;
 }
 
+export interface AcademicUnlinkedPlanningContext {
+  status: "context_only_not_demand_or_coverage";
+  task_count: number;
+  union_minutes: number;
+  task_ids: string[];
+}
+
 export interface AcademicDemandCoverageProjection {
   schema_version: "academic_demand_coverage_projection_v1";
   projection_status: "provisional_demand_only";
@@ -143,6 +150,7 @@ export interface AcademicDemandCoverageProjection {
   applied_coverage: AcademicMinuteEnvelope;
   unscheduled_demand: AcademicMinuteEnvelope;
   overcoverage: AcademicMinuteEnvelope;
+  unlinked_planning_context: AcademicUnlinkedPlanningContext;
   inconsistent_obligation_ids: string[];
   obligations: AcademicObligationDemandProjection[];
 }

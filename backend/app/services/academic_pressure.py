@@ -819,6 +819,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             generated_at,
             window_end,
         ),
+        planning_context_tasks=academic_tasks,
         window_start=generated_at,
         window_end=window_end,
     )

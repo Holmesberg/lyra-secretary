@@ -161,6 +161,23 @@ class AcademicObligationDemandProjection(BaseModel):
     estimate_inconsistent: bool = False
 
 
+class AcademicUnlinkedPlanningContext(BaseModel):
+    status: Literal["context_only_not_demand_or_coverage"] = (
+        "context_only_not_demand_or_coverage"
+    )
+    task_count: int = Field(ge=0)
+    union_minutes: int = Field(ge=0)
+    task_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _task_ids_match_count(self) -> "AcademicUnlinkedPlanningContext":
+        if len(self.task_ids) != self.task_count:
+            raise ValueError("task_count must match task_ids")
+        if len(set(self.task_ids)) != len(self.task_ids):
+            raise ValueError("task_ids must be unique")
+        return self
+
+
 class AcademicDemandCoverageProjection(BaseModel):
     schema_version: Literal["academic_demand_coverage_projection_v1"] = (
         "academic_demand_coverage_projection_v1"
@@ -181,6 +198,7 @@ class AcademicDemandCoverageProjection(BaseModel):
     applied_coverage: AcademicMinuteEnvelope
     unscheduled_demand: AcademicMinuteEnvelope
     overcoverage: AcademicMinuteEnvelope
+    unlinked_planning_context: AcademicUnlinkedPlanningContext
     inconsistent_obligation_ids: list[str] = Field(default_factory=list)
     obligations: list[AcademicObligationDemandProjection] = Field(
         default_factory=list

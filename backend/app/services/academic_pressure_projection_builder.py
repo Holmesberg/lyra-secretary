@@ -11,6 +11,7 @@ from app.schemas.academic import (
     AcademicObligationDemandProjection,
     AcademicPressureItem,
     AcademicProjectionRole,
+    AcademicUnlinkedPlanningContext,
 )
 from app.services.academic_pressure_projection import (
     DemandCoverageScenario,
@@ -165,6 +166,8 @@ def _sum_projection_envelopes(
 
 def _aggregate_projection(
     obligations: list[AcademicObligationDemandProjection],
+    *,
+    unlinked_planning_context: AcademicUnlinkedPlanningContext,
 ) -> AcademicDemandCoverageProjection:
     totals = _sum_projection_envelopes(obligations)
     scenario_count = 1
@@ -183,8 +186,34 @@ def _aggregate_projection(
             for obligation in obligations
             if obligation.estimate_inconsistent
         ],
+        unlinked_planning_context=unlinked_planning_context,
         obligations=obligations,
         **totals,
+    )
+
+
+def _unlinked_planning_context(
+    tasks: Iterable[Task],
+    *,
+    window_start: datetime,
+    window_end: datetime,
+) -> AcademicUnlinkedPlanningContext:
+    unlinked_tasks = sorted(
+        (task for task in tasks if not task.deadline_id),
+        key=lambda task: (
+            strip_tz(task.planned_start_utc) or window_end,
+            task.task_id,
+        ),
+    )
+    union_minutes, task_ids, _, _ = _task_coverage(
+        unlinked_tasks,
+        window_start=window_start,
+        window_end=window_end,
+    )
+    return AcademicUnlinkedPlanningContext(
+        task_count=len(task_ids),
+        union_minutes=union_minutes,
+        task_ids=task_ids,
     )
 
 
@@ -192,6 +221,7 @@ def build_demand_coverage_projection(
     *,
     items: list[AcademicPressureItem],
     future_tasks: list[Task],
+    planning_context_tasks: list[Task],
     window_start: datetime,
     window_end: datetime,
 ) -> AcademicDemandCoverageProjection:
@@ -218,4 +248,11 @@ def build_demand_coverage_projection(
             )
         )
 
-    return _aggregate_projection(obligations)
+    return _aggregate_projection(
+        obligations,
+        unlinked_planning_context=_unlinked_planning_context(
+            planning_context_tasks,
+            window_start=window_start,
+            window_end=window_end,
+        ),
+    )

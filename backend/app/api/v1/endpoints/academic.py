@@ -82,6 +82,13 @@ def _pressure_map_exposure_snapshot(
             "applied_coverage": projection.applied_coverage.model_dump(),
             "unscheduled_demand": projection.unscheduled_demand.model_dump(),
             "overcoverage": projection.overcoverage.model_dump(),
+            "unlinked_planning_context": {
+                "status": projection.unlinked_planning_context.status,
+                "task_count": projection.unlinked_planning_context.task_count,
+                "union_minutes": (
+                    projection.unlinked_planning_context.union_minutes
+                ),
+            },
             "inconsistent_obligation_count": len(
                 projection.inconsistent_obligation_ids
             ),

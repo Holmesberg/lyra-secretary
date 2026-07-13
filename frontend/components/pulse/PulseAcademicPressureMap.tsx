@@ -411,6 +411,22 @@ export function PulseAcademicPressureMap({
                   </span>{" "}
                   not yet scheduled
                 </p>
+                {projection.unlinked_planning_context.task_count > 0 && (
+                  <p
+                    data-testid="pressure-map-unlinked-planning-context"
+                    data-task-count={projection.unlinked_planning_context.task_count}
+                    data-union-minutes={projection.unlinked_planning_context.union_minutes}
+                    className="col-span-2 text-dust"
+                  >
+                    {projection.unlinked_planning_context.task_count} academic/study block
+                    {projection.unlinked_planning_context.task_count === 1 ? " is" : "s are"}{" "}
+                    not linked to an obligation ({fmtMinutes(
+                      projection.unlinked_planning_context.union_minutes
+                    )}). LyraOS keeps {projection.unlinked_planning_context.task_count === 1 ? "it" : "them"}{" "}
+                    as planning context instead of counting {projection.unlinked_planning_context.task_count === 1 ? "it" : "them"}{" "}
+                    as demand or coverage.
+                  </p>
+                )}
               </div>
             </div>
           )}
