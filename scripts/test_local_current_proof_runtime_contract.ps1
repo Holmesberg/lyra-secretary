@@ -5,6 +5,7 @@ $stopPath = Join-Path $PSScriptRoot "stop_local_current_proof_runtime.ps1"
 $startSource = Get-Content -Raw -LiteralPath $startPath
 $stopSource = Get-Content -Raw -LiteralPath $stopPath
 $preflightSource = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "proof_preflight.ps1")
+$pytestSource = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "run_backend_pytest.ps1")
 
 $requiredStartFragments = @(
   '.venv311\Scripts\python.exe',
@@ -34,6 +35,12 @@ if (-not $preflightSource.Contains('[string]$RuntimeManifest')) {
 }
 if (-not $preflightSource.Contains('RuntimeManifest build ID does not match')) {
   throw "Proof preflight does not bind runtime ownership to the expected build."
+}
+if ($pytestSource -match 'Get-Command\s+python') {
+  throw "Backend pytest restored a system-Python fallback."
+}
+if (-not $pytestSource.Contains('Plain python fallback is forbidden')) {
+  throw "Backend pytest does not fail closed when project Python is missing."
 }
 
 $frontendPort = 39118

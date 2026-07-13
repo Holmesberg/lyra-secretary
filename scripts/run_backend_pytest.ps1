@@ -8,12 +8,10 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $venvPython = Join-Path $repoRoot ".venv311\Scripts\python.exe"
 
-if (Test-Path -LiteralPath $venvPython) {
-  $python = $venvPython
-} else {
-  $pythonCommand = Get-Command python -ErrorAction Stop
-  $python = $pythonCommand.Source
+if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+  throw "Project Python is missing at $venvPython. Plain python fallback is forbidden."
 }
+$python = (Resolve-Path -LiteralPath $venvPython).Path
 
 $backendPath = Join-Path $repoRoot "backend"
 
