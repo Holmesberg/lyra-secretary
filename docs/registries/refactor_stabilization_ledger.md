@@ -20620,3 +20620,52 @@ Rollback:
   unconstrained preview layout. Revert `ba22028` and `63f4a46` independently
   to remove only focused verification and CI gating. Existing confirmed tasks
   need no migration or data repair.
+
+### Onboarding skip acknowledgement durability
+
+Seam and behavior:
+
+- Product commit `1419964` changes the existing Brain Dump onboarding skip
+  from optimistic dismissal to acknowledgement-first behavior. The browser
+  now waits for the canonical `POST /v1/users/me/skip-onboarding` response;
+  failure leaves onboarding mounted, shows a retryable alert, and re-enables
+  the skip command. Success still invokes the existing session-only bypass.
+- The backend endpoint remains first-write-wins. Characterization commit
+  `86eabdc` proves a repeated request returns the original timestamp,
+  invalidates `/me` only on the first write, and creates no task or deadline.
+  The same contract locks the intentional next-visit re-engagement rule for
+  empty accounts.
+- Verifier commit `6d5740e` adds a mounted failure-then-retry path, wrapper
+  commit `ee56c21` exposes it for local-current proof, and CI/S1c commit
+  `d07939b` promotes only the stable source contract. No schema, onboarding
+  order, parser, task/deadline authority, or durable failed-row persistence
+  changed.
+
+Proof:
+
+- `backend/tests/test_onboarding_skip.py`, the onboarding skip source
+  contract, frontend typecheck, verifier syntax, PowerShell parse, and `git
+  diff --check` passed.
+- Focused real-cookie Holmesberg proof passed on its first mounted run at
+  `tmp/post-wave-dogfood/wave3-onboarding-skip-86eabdc/focused-r1/result.json`.
+  A fixture-only first POST returned `503`; onboarding stayed visible with an
+  explicit error and no session bypass. The second POST was acknowledged,
+  mounted Pulse, and set the session bypass. Real export counts remained
+  exactly `133` tasks and `75` deadlines before and after.
+- The fixture changes only browser responses for `/me` eligibility and the
+  skip endpoint. It uses the real Holmesberg cookie but is local-current proof,
+  not hosted-public or durable-write proof. The backend characterization is
+  the independent durable-write proof.
+- Current source ran on isolated frontend `3018` and lifespan-disabled backend
+  `8001`, both at build `86eabdcb7cb31db31d094a061ad61a18be100f22`.
+  Public ports `3000/8000` remained listening, `.next-public` retained build
+  `4vmRw9lKO8m_ZWpDPW6t8`, and isolated processes/artifacts were removed.
+
+Remaining boundary and rollback:
+
+- Reload persistence for uncommitted failed Brain Dump rows remains parked;
+  the mounted order remains consent, Brain Dump onboarding, then survey.
+- Revert `1419964` to restore optimistic skip behavior. Revert `6d5740e`,
+  `ee56c21`, `86eabdc`, and `d07939b` independently to remove browser,
+  wrapper, characterization, and CI coverage. Existing timestamps require no
+  repair or migration.
