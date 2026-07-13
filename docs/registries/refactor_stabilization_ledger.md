@@ -20510,3 +20510,57 @@ Remaining boundary and rollback:
   revert `3bf2f0a` with `05cae7e` to remove partial Pressure Map projection;
   revert `5027cb5`, `2afc0ba`, and `b5ad58f` independently to remove only
   verifier coverage. No migration or production-data repair is involved.
+
+### Onboarding Brain Dump partial-recovery parity
+
+Seam and behavior:
+
+- Product commit `cbb6f9d` makes the mounted onboarding confirmation editable
+  and gives a partial commit three explicit choices: move eligible failed rows
+  to tomorrow, edit only failed rows, or continue with the rows already saved.
+  Discard, title, date, and duration changes use the existing shared Brain Dump
+  flow owner. The retry payload continues to filter by failed item ID, so a
+  previously accepted row is not resubmitted.
+- Contract commit `6f88db3` mechanically locks the editable fields, recovery
+  controls, completion refetch, and failed-ID filtering. Verifier commit
+  `cef5435` adds a real-cookie, mounted, fixture-only onboarding path. Wrapper
+  commit `607e535` lets local-current proof name an isolated API port instead
+  of silently mixing a current frontend with production backend `8000`.
+  CI/S1c commit `68b4a5b` promotes the stable contract to both standard gates.
+- No backend mutation owner, batch transaction behavior, onboarding stamp,
+  schema, persistence layer, parser, provider, or public runtime changed.
+  Failed rows remain in browser memory only; durable recovery after reload is
+  explicitly parked rather than improvised.
+
+Proof:
+
+- `backend/tests/test_brain_dump_endpoint.py` passed `11` cases; the new static
+  contract and frontend typecheck passed. A negative topology proof rejected
+  production API `8000` because the current frontend was compiled for isolated
+  backend `8001`; the matching `3018/8001` topology passed.
+- The first focused failure is retained at
+  `tmp/post-wave-dogfood/onboarding-partial-recovery-2a80083/browser-proof/result.json`:
+  the generic dogfood navigator correctly skipped onboarding, making it
+  unsuitable for first-run proof. Direct authenticated navigation closed that
+  harness class.
+- The second focused failure is retained at
+  `browser-proof-r2/result.json`: every product assertion passed, while a
+  request-level wait observed `/me` before the route-handler counter advanced.
+  A response-level wait closed the timing race without product changes.
+- Final mounted proof passed at `browser-proof-r4/result.json`. It rendered two
+  editable rows, returned one partial failure, displayed all three recovery
+  commands, fit each control inside `390x844` with zero horizontal overflow,
+  retried only `onboarding-fixture-failed`, invoked the explicit completion
+  refetch, and left Holmesberg unchanged at `133` tasks and `75` deadlines.
+  Screenshots cover desktop partial review, mobile hierarchy, and edited retry.
+- Exact-head CI passed for `68b4a5ba1dfdb4bb0f801b6c61d5b881fde95d4f`:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29260386579`.
+  Public ports `3000/8000` and `.next-public` were untouched; isolated
+  `3018/8001` services and `.next-local-current` were removed after proof.
+
+Rollback:
+
+- Revert `cbb6f9d` to restore read-only onboarding preview and the former
+  continue-only partial state. Revert `6f88db3`, `cef5435`, `607e535`, and
+  `68b4a5b` independently to remove contract, browser, topology-wrapper, and
+  CI coverage. Accepted canonical rows require no repair or migration.
