@@ -70,8 +70,8 @@ try {
   Write-Host "Proxy API: $useProxyApi"
   Write-Host ""
 
-  if (($Topology -eq "local" -or $Topology -eq "local-current") -and -not $AssumeLocalFrontendReady) {
-    $port = if ($Topology -eq "local-current") { $LocalCurrentPort } else { 3000 }
+  if ($Topology -eq "local" -and -not $AssumeLocalFrontendReady) {
+    $port = 3000
     Ensure-LocalFrontendDev `
       -Reason "calendar/table mutation local topology proof" `
       -Port $port `

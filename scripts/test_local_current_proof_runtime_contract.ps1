@@ -6,6 +6,11 @@ $startSource = Get-Content -Raw -LiteralPath $startPath
 $stopSource = Get-Content -Raw -LiteralPath $stopPath
 $preflightSource = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "proof_preflight.ps1")
 $pytestSource = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "run_backend_pytest.ps1")
+$localCurrentWrappers = @(
+  "run_holmesberg_product_loop_dogfood.ps1",
+  "run_calendar_table_mutation_dogfood.ps1",
+  "run_operator_readonly_browser_stress.ps1"
+)
 
 $requiredStartFragments = @(
   '.venv311\Scripts\python.exe',
@@ -59,6 +64,15 @@ if ($pytestSource -match 'Get-Command\s+python') {
 }
 if (-not $pytestSource.Contains('Plain python fallback is forbidden')) {
   throw "Backend pytest does not fail closed when project Python is missing."
+}
+foreach ($wrapper in $localCurrentWrappers) {
+  $source = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot $wrapper)
+  if ($source -notmatch 'if \(\$Topology -eq "local" -and -not \$AssumeLocalFrontendReady\)') {
+    throw "$wrapper must bootstrap frontend artifacts only for plain local topology."
+  }
+  if ($source -match '\$Topology -eq "local-current"\) -and -not \$AssumeLocalFrontendReady') {
+    throw "$wrapper must consume, not bootstrap, a local-current runtime."
+  }
 }
 
 $frontendPort = 39118
