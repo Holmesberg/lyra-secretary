@@ -20129,3 +20129,54 @@ Issue and rollback:
   `https://github.com/Holmesberg/lyra-secretary/actions/runs/29245100638`.
   Revert `331508e` to restore aggregate transient results, `7338b28` to remove
   outcome characterization, and `2b4b942` to remove only the focused verifier.
+
+## 2026-07-13 - Wave 5A Cross-Obligation Coverage Attribution
+
+Seam and behavior:
+
+- Issue `#220` remains the owner. This seam corrects one present read-only
+  accounting defect: aggregate projection previously pooled all feasible
+  coverage before reconciliation, allowing overcoverage for obligation A to
+  mask unscheduled demand for obligation B while aggregate identities still
+  appeared balanced.
+- Product commit `c394197` now aggregates the already-reconciled per-obligation
+  envelopes. It does not change estimate priors, obligation linkage, provider
+  authority, completion credit, capacity, collision, schema, or writes.
+- Regression commit `83c50e6` creates one overcovered obligation and one
+  uncovered obligation, then proves every aggregate projection field equals
+  the sum of its entity-attributed values. The test failed against the former
+  aggregate and passes after the repair.
+- The shipped Pulse summary still reads legacy totals. Issue `#220` therefore
+  remains open for the UI-owner switch and the rest of its accounting fixture
+  matrix; this checkpoint does not claim the Wave 5A Accounting Gate.
+
+Focused proof:
+
+- `32` Pressure Map projection and endpoint tests passed. Backend layer,
+  mutation-authority, Cortex read-only, Python compile, and `git diff --check`
+  checks passed.
+- Local-current topology was isolated on frontend `3018` and backend `8001`,
+  both built from `83c50e6`; the topology verifier passed with explicit API
+  proxy mode. The backend ran with lifespan disabled, so no scheduler started.
+- The first browser run correctly failed before Pressure Map evaluation because
+  the Holmesberg account was behind the consent gate. Its screenshot and
+  result remain in
+  `tmp/browser-pressure-projection/wave5a-attribution-83c50e6/proof/` as
+  classified harness evidence.
+- The successful focused run used the existing browser-only account-readiness
+  fixture and a real Holmesberg cookie. It produced one browser-rendered
+  Pressure Map decision, one authenticated acknowledgement, no fabricated
+  render, no active timer or prefixed product rows, and no unterminated
+  synthetic output debt. Evidence:
+  `tmp/browser-pressure-projection/wave5a-attribution-83c50e6/proof-r2/result.json`.
+- The eligibility fixture changed only the browser response to
+  `GET /v1/users/me`; it wrote no account state and is not hosted-public or
+  first-run onboarding proof. Both isolated processes and generated Next
+  artifacts were removed after proof. Hosted-public runtime was untouched.
+- Exact-head CI is pending the checkpoint push and will be linked on issue
+  `#220`; the issue remains open regardless of this checkpoint's CI result.
+
+Rollback:
+
+- Revert `c394197` to restore aggregate pooling and `83c50e6` to remove only
+  its regression proof. No persisted data or migration depends on this seam.
