@@ -47,7 +47,11 @@ function Get-LocalPortProof {
   $pidValue = $listeners[0].OwningProcess
   $process = Get-CimInstance Win32_Process -Filter "ProcessId = $pidValue" -ErrorAction SilentlyContinue
   $commandLine = [string]$process.CommandLine
-  if ($Topology -eq "local-current" -and $commandLine -and -not $commandLine.Contains($repoRoot, [StringComparison]::OrdinalIgnoreCase)) {
+  $checkoutOwned = [bool](
+    $commandLine -and
+    $commandLine.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0
+  )
+  if ($Topology -eq "local-current" -and -not $checkoutOwned) {
     throw "$Label listener $pidValue is not owned by this checkout."
   }
   return [ordered]@{
@@ -55,7 +59,7 @@ function Get-LocalPortProof {
     port = $Origin.Port
     pid = $pidValue
     process = $process.Name
-    checkout_owned = [bool]($commandLine -and $commandLine.Contains($repoRoot, [StringComparison]::OrdinalIgnoreCase))
+    checkout_owned = $checkoutOwned
   }
 }
 

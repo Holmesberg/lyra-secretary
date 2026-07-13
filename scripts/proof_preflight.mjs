@@ -63,6 +63,7 @@ function buildMatches(actual, expected) {
 
 if (flag("--self-test")) {
   const failures = [];
+  const wrapper = fs.readFileSync(path.join(repoRoot, "scripts", "proof_preflight.ps1"), "utf8");
   if (!policyErrors({ account: "operator", intent: "mutable", topology: "local-current" }).length) {
     failures.push("operator mutable intent was accepted");
   }
@@ -74,6 +75,12 @@ if (flag("--self-test")) {
   }
   if (buildMatches("actual", "wrong")) failures.push("wrong build ID was accepted");
   if (HEALTH_PATH !== "/v1/health/topology") failures.push("canonical health path drifted");
+  if (!wrapper.includes(".IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0")) {
+    failures.push("PowerShell 5 compatible checkout ownership comparison is missing");
+  }
+  if (wrapper.includes(".Contains($repoRoot, [StringComparison]::OrdinalIgnoreCase)")) {
+    failures.push("unsupported Windows PowerShell String.Contains overload returned");
+  }
   console.log(JSON.stringify({ ok: failures.length === 0, checked: "proof_preflight", failures }));
   process.exit(failures.length ? 1 : 0);
 }
