@@ -49,6 +49,7 @@ const pressureCalendarPartialProofOnly = args.get("pressure-calendar-partial-pro
 const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "true";
 const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-only") === "true";
 const pulsePartialErrorProofOnly = args.get("pulse-partial-error-proof-only") === "true";
+const pulseIntegrationsLayoutProofOnly = args.get("pulse-integrations-layout-proof-only") === "true";
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
 const captureProofOnly = args.get("capture-proof-only") === "true";
 const onboardingPartialRecoveryProofOnly = args.get("onboarding-partial-recovery-proof-only") === "true";
@@ -2274,6 +2275,114 @@ async function runPulsePartialErrorProof(page, token, beforeExport) {
     await page.unroute(taskPattern, taskHandler).catch(() => {});
     await page.unroute(stopwatchPattern, stopwatchHandler).catch(() => {});
   }
+}
+
+function boxesOverlap(a, b) {
+  return Boolean(
+    a && b
+    && a.x < b.x + b.width
+    && a.x + a.width > b.x
+    && a.y < b.y + b.height
+    && a.y + a.height > b.y
+  );
+}
+
+function boxContains(outer, inner) {
+  return Boolean(
+    outer && inner
+    && inner.x >= outer.x - 1
+    && inner.y >= outer.y - 1
+    && inner.x + inner.width <= outer.x + outer.width + 1
+    && inner.y + inner.height <= outer.y + outer.height + 1
+  );
+}
+
+async function runPulseIntegrationsLayoutProof(page, token, beforeExport) {
+  const viewports = [
+    { name: "desktop", width: 1440, height: 950 },
+    { name: "mobile", width: 390, height: 844 },
+  ];
+  const snapshots = [];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await goto(page, "/pulse", `pulse-integrations-${viewport.name}`);
+    const section = page.getByTestId("pulse-integrations-section").first();
+    await section.waitFor({ state: "visible", timeout: 20_000 });
+    const rows = section.locator('li[data-testid^="pulse-integration-"]');
+    const rowCount = await rows.count();
+    const rowSnapshots = [];
+
+    for (let index = 0; index < rowCount; index += 1) {
+      const row = rows.nth(index);
+      const testId = await row.getAttribute("data-testid");
+      const integrationId = String(testId || "").replace("pulse-integration-", "");
+      const label = page.getByTestId(`pulse-integration-${integrationId}-label`);
+      const status = page.getByTestId(`pulse-integration-${integrationId}-status`);
+      const action = page.getByTestId(`pulse-integration-${integrationId}-action`);
+      const actionVisible = await action.isVisible().catch(() => false);
+      const boxes = {
+        row: await row.boundingBox(),
+        label: await label.boundingBox(),
+        status: await status.boundingBox(),
+        action: actionVisible ? await action.boundingBox() : null,
+      };
+      rowSnapshots.push({
+        integration_id: integrationId,
+        label: (await label.innerText()).trim(),
+        status: (await status.innerText()).trim(),
+        action_href: actionVisible ? await action.getAttribute("href") : null,
+        boxes,
+        contained: boxContains(boxes.row, boxes.label)
+          && boxContains(boxes.row, boxes.status)
+          && (!boxes.action || boxContains(boxes.row, boxes.action)),
+        collision: boxesOverlap(boxes.label, boxes.status)
+          || boxesOverlap(boxes.label, boxes.action)
+          || boxesOverlap(boxes.status, boxes.action),
+      });
+    }
+
+    const overflow = await section.evaluate((element) => element.scrollWidth - element.clientWidth);
+    addCheck(`Pulse integration rows fit without overlap on ${viewport.name}`, Boolean(
+      rowCount > 0
+      && overflow <= 1
+      && rowSnapshots.every((row) => row.contained && !row.collision)
+    ), {
+      viewport,
+      horizontal_overflow_pixels: overflow,
+      rows: rowSnapshots,
+    });
+    await screenshot(page, `pulse-integrations-${viewport.name}`);
+    snapshots.push({ viewport, rows: rowSnapshots, horizontal_overflow_pixels: overflow });
+  }
+
+  const manageLink = page.getByRole("link", { name: /manage/i }).first();
+  const disconnectedAction = page.locator('[data-testid^="pulse-integration-"][data-testid$="-action"]').first();
+  const navigationLink = await disconnectedAction.isVisible().catch(() => false)
+    ? disconnectedAction
+    : manageLink;
+  addCheck(
+    "Pulse integration action retains Settings destination",
+    await navigationLink.getAttribute("href") === "/settings",
+    { href: await navigationLink.getAttribute("href") },
+  );
+  await navigationLink.click();
+  await page.waitForURL((url) => url.pathname === "/settings", { timeout: 20_000 });
+  addCheck(
+    "Pulse integration action opens the canonical Settings surface",
+    /integrations/i.test(await page.locator("body").innerText()),
+    { pathname: new URL(page.url()).pathname },
+  );
+
+  const afterExport = await apiFetch(token, "/v1/users/me/export");
+  const beforeState = canonicalProductStateDigest(beforeExport);
+  const afterState = canonicalProductStateDigest(afterExport);
+  addCheck(
+    "Pulse integration layout proof leaves canonical product rows unchanged",
+    beforeState.sha256 === afterState.sha256,
+    { before: beforeState, after: afterState },
+  );
+  return { snapshots };
 }
 
 async function runOnboardingPartialRecoveryProof(page, token, me, beforeExport) {
@@ -5155,6 +5264,34 @@ async function main() {
           deadline_ids: [...cleanup.deadlines],
           notification_ids: [...cleanup.notifications],
           exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (pulseIntegrationsLayoutProofOnly) {
+      const proof = await runPulseIntegrationsLayoutProof(page, token, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "pulse_integrations_layout_only",
+        proof_status: "passed",
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        snapshots: proof.snapshots,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [],
+          deadline_ids: [],
+          notification_ids: [],
+          exposure_suppression_ids: [],
         },
       };
       await writeJson("result.json", result);

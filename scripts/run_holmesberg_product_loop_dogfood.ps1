@@ -38,6 +38,8 @@ param(
 
   [switch]$PulsePartialErrorProofOnly,
 
+  [switch]$PulseIntegrationsLayoutProofOnly,
+
   [switch]$TimerSwitchProofOnly
 )
 
@@ -172,6 +174,9 @@ try {
   }
   if ([bool]$PulsePartialErrorProofOnly) {
     $args += "--pulse-partial-error-proof-only"
+  }
+  if ([bool]$PulseIntegrationsLayoutProofOnly) {
+    $args += "--pulse-integrations-layout-proof-only"
   }
   if ([bool]$TimerSwitchProofOnly) {
     $args += "--timer-switch-proof-only"
