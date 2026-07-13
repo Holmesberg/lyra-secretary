@@ -464,6 +464,17 @@ paths and exact synthetic cleanup. No correction command, capacity authority,
 schema, provider, or new mutation path was added. Hidden-item disclosure stays
 in the truthful Pulse-orientation seam rather than expanding this action seam.
 
+Macro checkpoint completed 2026-07-14 at exact head `7e5794e`. The isolated
+local-current product loop passed 200/200 checks, operator read-only stress
+reported zero count/route/dashboard diffs and
+`exposure_without_render_count=0`, synthetic cleanup was exact, and exact-head
+CI passed. Hosted-public health remained available, but the authenticated
+output-surface diagnostics route again returned Cloudflare `524`; issue `#200`
+retains that deployment/runtime-performance classification. No public deploy
+or restart was performed. This explicit hosted-public degradation does not
+authorize another broad verification retry or block the bounded local Wave 5C
+orientation seam.
+
 ### Wave 5C: Truthful Pulse Orientation And Activation Checkpoint
 
 First make the existing Pulse summary truthful and useful:

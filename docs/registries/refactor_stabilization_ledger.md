@@ -21734,3 +21734,60 @@ Rollback and next boundary:
 - Issues `#220` and `#221` now close the related accounting/action pair. The
   next operation is their Wave 5 macro-checkpoint, not another local action
   refinement or architecture audit.
+
+## 2026-07-14 - Wave 5 Accounting And Action Macro Checkpoint
+
+Exact-head proof:
+
+- The checkpoint ran at
+  `7e5794ee25c65502ec0c3dc7d6da8b40a36d3c8d`. The canonical mutable preflight
+  verified isolated ports `3018/8001`, the exact frontend/backend build, real
+  Holmesberg cookie, non-operator role, disposable data, zero pending
+  notifications, no active timer, a clean synthetic prefix, and the mounted
+  Pressure Map.
+- The complete real-cookie Holmesberg loop passed 200/200 checks with no
+  failures at
+  `tmp/post-wave-dogfood/wave5-macro-7e5794e/result.json`. It exercised capture,
+  task/deadline creation and idempotency, timer navigation and recovery,
+  notification/prediction lifecycle, Pressure Map planning, Calendar/Table,
+  browser-owned render truth, and resulting cleanup.
+- Desktop/mobile Pressure Map, plan draft, Brain Dump partial recovery,
+  pause-reason, Calendar, Today, Table, notification, and operator screenshots
+  were inspected. The Pressure Map actions remained obvious and contained;
+  neutral planning notes were not styled as commands; no overlapping or
+  clipped controls were found.
+- Operator read-only stress passed at
+  `tmp/operator-readonly-stress-2026-07-13T22-26-06-800Z/result.json` with zero
+  count, route-count, attribution, or dashboard diffs. Implementation readiness
+  was green, cohort readiness remained yellow for missing evidence, and
+  `exposure_without_render_count=0`.
+- Post-run preflight found the exact prefix clean, zero pending notifications,
+  and no active timer. Teardown closed ports `3018/8001`, removed the isolated
+  build and disposable SQLite database, and left Redis DB 15 at zero keys.
+- The top-level manifest is
+  `tmp/post-wave-dogfood/wave5-macro-7e5794e/evidence_manifest.json`. Exact-head
+  CI passed in GitHub Actions run `29289203044`.
+
+Hosted-public classification:
+
+- The local S1c stack reached its hosted-public multi-account stage after its
+  local static, backend, migration, and build gates. The authenticated
+  `/v1/analytics/output_surfaces/diagnostics` call returned Cloudflare `524`.
+- Focused classification found public `/v1/health`, `/v1/health/topology`, and
+  frontend `/api/topology` healthy while the same authenticated diagnostics
+  route passed on isolated exact-head local-current. Issue `#200` was updated
+  with these artifacts and CI proof.
+- This remains hosted-runtime/deployment performance evidence, not a current
+  product regression. No public deploy, restart, production mutation, or
+  invasive forensics was performed. The failure did not trigger another full
+  S1c or product-loop retry.
+
+Rollback and next boundary:
+
+- The checkpoint adds no runtime behavior to roll back. Revert the preceding
+  Wave 5A and 5B product/test commits independently if their behavior is later
+  disproved; retain this entry as historical evidence.
+- The next bounded seam is Wave 5C truthful Pulse orientation. It may disclose
+  hidden items and reasons and improve deterministic summary/action hierarchy;
+  it may not introduce capacity authority, a dedicated tab, a new correction
+  command, or another architecture audit.
