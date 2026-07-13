@@ -50,6 +50,7 @@ const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "tr
 const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-only") === "true";
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
 const captureProofOnly = args.get("capture-proof-only") === "true";
+const onboardingPartialRecoveryProofOnly = args.get("onboarding-partial-recovery-proof-only") === "true";
 const reentryProofOnly = args.get("reentry-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
 const fixtureAccountReady = args.get("fixture-account-ready") === "true";
@@ -2127,6 +2128,288 @@ async function runPressureMapPartialCalendarProof(page, token, beforeExport) {
     return { exposureIds };
   } finally {
     await page.unroute(pressureMapPattern, routeHandler).catch(() => {});
+  }
+}
+
+async function runOnboardingPartialRecoveryProof(page, token, me, beforeExport) {
+  const mePattern = /\/v1\/users\/me(?:\?.*)?$/;
+  const parsePattern = /\/v1\/brain-dump\/parse(?:\?.*)?$/;
+  const commitPattern = /\/v1\/brain-dump\/commit(?:\?.*)?$/;
+  const successId = "onboarding-fixture-success";
+  const failedId = "onboarding-fixture-failed";
+  const successTitle = `${prefix} onboarding saved row`;
+  const failedTitle = `${prefix} onboarding failed row`;
+  const editedTitle = `${prefix} onboarding recovered row`;
+  const parseBodies = [];
+  const commitBodies = [];
+  let meReads = 0;
+
+  const jsonHeaders = {
+    "access-control-allow-origin": frontendOrigin,
+    "access-control-allow-credentials": "true",
+    "content-type": "application/json",
+  };
+
+  const meHandler = async (route) => {
+    meReads += 1;
+    await route.fulfill({
+      status: 200,
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        ...me,
+        terms_accepted_at: me.terms_accepted_at || "1970-01-01T00:00:00Z",
+        archetype_survey_eligible: false,
+        onboarding_completed_at: null,
+        has_active_task_history: false,
+      }),
+    });
+  };
+
+  const parseHandler = async (route) => {
+    parseBodies.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        parser_status: "heuristic_parsed",
+        bindings: [],
+        items: [
+          {
+            item_id: successId,
+            kind: "task",
+            title: successTitle,
+            description: null,
+            when_local: localInput(futureDate(180)),
+            duration_minutes: 30,
+            category: "Study",
+            category_source: "heuristic_v1",
+            duration_source: "user_explicit",
+            duration_confidence: 1,
+            duration_basis: null,
+            confidence: 0.95,
+          },
+          {
+            item_id: failedId,
+            kind: "task",
+            title: failedTitle,
+            description: null,
+            when_local: localInput(futureDate(-180)),
+            duration_minutes: 45,
+            category: "Study",
+            category_source: "heuristic_v1",
+            duration_source: "user_explicit",
+            duration_confidence: 1,
+            duration_basis: null,
+            confidence: 0.95,
+          },
+        ],
+      }),
+    });
+  };
+
+  const commitHandler = async (route) => {
+    const body = route.request().postDataJSON();
+    commitBodies.push(body);
+    const firstCommit = commitBodies.length === 1;
+    await route.fulfill({
+      status: 200,
+      headers: jsonHeaders,
+      body: JSON.stringify(firstCommit ? {
+        tasks_created: 1,
+        deadlines_created: 0,
+        bindings_applied: 0,
+        task_ids: ["fixture-task-saved"],
+        deadline_ids: [],
+        outcomes: [
+          {
+            item_id: successId,
+            kind: "task",
+            title: successTitle,
+            status: "created",
+            canonical_id: "fixture-task-saved",
+            reason: null,
+            detail: null,
+            retry_hint: null,
+          },
+          {
+            item_id: failedId,
+            kind: "task",
+            title: failedTitle,
+            status: "rejected",
+            canonical_id: null,
+            reason: "past_time",
+            detail: "Start time is in the past.",
+            retry_hint: "schedule_tomorrow_same_time",
+          },
+        ],
+        failed_items: [
+          {
+            item_id: failedId,
+            kind: "task",
+            title: failedTitle,
+            reason: "past_time",
+            detail: "Start time is in the past.",
+            retry_hint: "schedule_tomorrow_same_time",
+          },
+        ],
+      } : {
+        tasks_created: 1,
+        deadlines_created: 0,
+        bindings_applied: 0,
+        task_ids: ["fixture-task-recovered"],
+        deadline_ids: [],
+        outcomes: [
+          {
+            item_id: failedId,
+            kind: "task",
+            title: editedTitle,
+            status: "created",
+            canonical_id: "fixture-task-recovered",
+            reason: null,
+            detail: null,
+            retry_hint: null,
+          },
+        ],
+        failed_items: [],
+      }),
+    });
+  };
+
+  await page.route(mePattern, meHandler);
+  await page.route(parsePattern, parseHandler);
+  await page.route(commitPattern, commitHandler);
+  try {
+    await page.goto(`${frontendOrigin}/pulse`, {
+      waitUntil: "domcontentloaded",
+      timeout: 45_000,
+    });
+    await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
+    const onboardingBody = await page.locator("body").innerText({ timeout: 10_000 });
+    expectNoPrivateLeak(onboardingBody, "onboarding partial recovery fixture render");
+    await screenshot(page, "onboarding-partial-recovery-start");
+    await page.getByText(/LyraOS starts learning from the first plan/i)
+      .waitFor({ state: "visible", timeout: 8_000 });
+    await fillAny(page, "onboarding fixture brain dump", [
+      (candidate) => candidate.getByTestId("onboarding-brain-dump-textarea"),
+    ], `${successTitle}\n${failedTitle}`);
+    await clickAny(page, "parse onboarding fixture brain dump", [
+      (candidate) => candidate.getByTestId("onboarding-brain-dump-parse"),
+    ]);
+    await page.getByTestId(`onboarding-brain-dump-item-title-${successId}`)
+      .waitFor({ state: "visible", timeout: 8_000 });
+    addCheck("onboarding preview exposes editable parsed rows", Boolean(
+      await page.locator('[data-testid^="onboarding-brain-dump-item-title-"]').count() === 2
+        && await page.locator('[data-testid^="onboarding-brain-dump-item-when-"]').count() === 2
+        && await page.locator('[data-testid^="onboarding-brain-dump-item-duration-"]').count() === 2
+    ), {
+      title_inputs: await page.locator('[data-testid^="onboarding-brain-dump-item-title-"]').count(),
+      when_inputs: await page.locator('[data-testid^="onboarding-brain-dump-item-when-"]').count(),
+      duration_inputs: await page.locator('[data-testid^="onboarding-brain-dump-item-duration-"]').count(),
+    });
+
+    await clickAny(page, "commit onboarding partial fixture", [
+      (candidate) => candidate.getByTestId("onboarding-brain-dump-lock-in"),
+    ]);
+    const failures = page.getByTestId("onboarding-brain-dump-failures");
+    await failures.waitFor({ state: "visible", timeout: 8_000 });
+    const partialCopy = await page.locator("body").innerText();
+    addCheck("onboarding partial result preserves saved-row truth", Boolean(
+      /items that worked are already saved/i.test(partialCopy)
+        && /only the rows below will be retried/i.test(partialCopy)
+        && partialCopy.includes(failedTitle)
+    ), { failed_title: failedTitle });
+    addCheck("onboarding partial result exposes explicit recovery and completion", Boolean(
+      await page.getByTestId("onboarding-brain-dump-move-failed-to-tomorrow").isVisible()
+        && await page.getByTestId("onboarding-brain-dump-edit-failed-items").isVisible()
+        && await page.getByTestId("onboarding-brain-dump-continue-saved").isVisible()
+    ));
+    addCheck("partial commit does not complete onboarding", meReads === 1, { me_reads: meReads });
+    await screenshot(page, "onboarding-partial-recovery-review-desktop");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const overflow = await page.evaluate(() => (
+      document.documentElement.scrollWidth - document.documentElement.clientWidth
+    ));
+    const mobileControls = {};
+    for (const testId of [
+      "onboarding-brain-dump-move-failed-to-tomorrow",
+      "onboarding-brain-dump-edit-failed-items",
+      "onboarding-brain-dump-continue-saved",
+    ]) {
+      const box = await page.getByTestId(testId).boundingBox();
+      mobileControls[testId] = box;
+    }
+    addCheck("onboarding recovery controls fit the mobile viewport", Boolean(
+      overflow <= 1
+        && Object.values(mobileControls).every((box) => (
+          box && box.x >= 0 && box.x + box.width <= 390
+        ))
+    ), { horizontal_overflow_pixels: overflow, controls: mobileControls });
+    await screenshot(page, "onboarding-partial-recovery-review-mobile");
+    await page.setViewportSize({ width: 1440, height: 950 });
+
+    await clickAny(page, "edit only failed onboarding rows", [
+      (candidate) => candidate.getByTestId("onboarding-brain-dump-edit-failed-items"),
+    ]);
+    const retryTitles = page.locator('[data-testid^="onboarding-brain-dump-item-title-"]');
+    await retryTitles.first().waitFor({ state: "visible", timeout: 8_000 });
+    addCheck("onboarding retry contains only the failed row", Boolean(
+      await retryTitles.count() === 1
+        && await retryTitles.first().getAttribute("data-testid")
+          === `onboarding-brain-dump-item-title-${failedId}`
+    ), { retry_row_count: await retryTitles.count() });
+    await retryTitles.first().fill(editedTitle);
+    await page.getByTestId(`onboarding-brain-dump-item-when-${failedId}`)
+      .fill(localInput(futureDate(240)));
+    await screenshot(page, "onboarding-partial-recovery-edited-row");
+
+    const meReadsBeforeCleanCommit = meReads;
+    const completionRefetch = page.waitForResponse((response) => {
+      const request = response.request();
+      const url = new URL(response.url());
+      return request.method().toUpperCase() === "GET"
+        && url.pathname === "/v1/users/me";
+    }, { timeout: 8_000 });
+    await clickAny(page, "commit edited onboarding failure", [
+      (candidate) => candidate.getByTestId("onboarding-brain-dump-lock-in"),
+    ]);
+    await completionRefetch;
+    addCheck("clean retry invokes explicit onboarding completion refetch", Boolean(
+      meReads > meReadsBeforeCleanCommit
+    ), { before: meReadsBeforeCleanCommit, after: meReads });
+
+    addCheck("onboarding retry request excludes previously saved rows", Boolean(
+      parseBodies.length === 1
+        && commitBodies.length === 2
+        && Array.isArray(commitBodies[0]?.items)
+        && commitBodies[0].items.length === 2
+        && Array.isArray(commitBodies[1]?.items)
+        && commitBodies[1].items.length === 1
+        && commitBodies[1].items[0].item_id === failedId
+        && commitBodies[1].items[0].title === editedTitle
+        && !commitBodies[1].items.some((item) => item.item_id === successId)
+    ), {
+      parse_calls: parseBodies.length,
+      commit_item_ids: commitBodies.map((body) => (
+        Array.isArray(body?.items) ? body.items.map((item) => item.item_id) : []
+      )),
+    });
+
+    const afterExport = await apiFetch(token, "/v1/users/me/export");
+    addCheck("fixture recovery leaves task and deadline rows unchanged", Boolean(
+      countRows(beforeExport, "tasks") === countRows(afterExport, "tasks")
+        && countRows(beforeExport, "deadlines") === countRows(afterExport, "deadlines")
+    ), {
+      before_tasks: countRows(beforeExport, "tasks"),
+      after_tasks: countRows(afterExport, "tasks"),
+      before_deadlines: countRows(beforeExport, "deadlines"),
+      after_deadlines: countRows(afterExport, "deadlines"),
+    });
+    return { parseBodies, commitBodies, meReads };
+  } finally {
+    await page.unroute(mePattern, meHandler).catch(() => {});
+    await page.unroute(parsePattern, parseHandler).catch(() => {});
+    await page.unroute(commitPattern, commitHandler).catch(() => {});
   }
 }
 
@@ -4210,6 +4493,47 @@ async function main() {
       console.log(JSON.stringify(result, null, 2));
       return;
     }
+
+    if (onboardingPartialRecoveryProofOnly) {
+      beforeExport = await apiFetch(token, "/v1/users/me/export");
+      expectNoPrivateLeak(JSON.stringify(beforeExport), "Holmesberg export before onboarding fixture");
+      addIssue("onboarding partial-recovery browser fixture enabled", {
+        scope: "GET /v1/users/me eligibility plus Brain Dump parse/commit browser responses",
+        writes: "none",
+        hosted_public_proof: false,
+      });
+      const proof = await runOnboardingPartialRecoveryProof(page, token, me, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "onboarding_partial_recovery_fixture",
+        proof_status: "passed",
+        fixture_only: true,
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        parse_call_count: proof.parseBodies.length,
+        commit_item_ids: proof.commitBodies.map((body) => (
+          Array.isArray(body?.items) ? body.items.map((item) => item.item_id) : []
+        )),
+        me_read_count: proof.meReads,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [],
+          deadline_ids: [],
+          notification_ids: [],
+          exposure_suppression_ids: [],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
     await apiFetch(token, "/v1/operator/dashboard", {}, [403]);
     await apiFetch(token, "/v1/admin/dashboard", {}, [404, 410]);
     await apiFetch(token, "/v1/jarvis/health", {}, [404, 410]);
