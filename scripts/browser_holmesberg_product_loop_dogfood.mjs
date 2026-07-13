@@ -3551,6 +3551,31 @@ async function runTodayStopOutputRenderPath(page, token) {
     pause: mobilePauseBox,
     viewport: { width: 390, height: 844 },
   });
+  await page.waitForTimeout(250);
+  const mobileTaskRowBox = await taskRow.boundingBox();
+  const mobileTaskButtonBoxes = [];
+  const mobileTaskButtons = taskRow.locator("button:visible");
+  for (let index = 0; index < await mobileTaskButtons.count(); index += 1) {
+    mobileTaskButtonBoxes.push(await mobileTaskButtons.nth(index).boundingBox());
+  }
+  const mobileDocumentOverflow = await page.evaluate(() => (
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  ));
+  addCheck("Today task row and commands fit the mobile viewport", Boolean(
+    mobileDocumentOverflow <= 1
+      && mobileTaskRowBox
+      && mobileTaskRowBox.x >= 0
+      && mobileTaskRowBox.x + mobileTaskRowBox.width <= 390
+      && mobileTaskButtonBoxes.length >= 2
+      && mobileTaskButtonBoxes.every((box) => (
+        box && box.x >= 0 && box.x + box.width <= 390
+      ))
+  ), {
+    horizontal_overflow_pixels: mobileDocumentOverflow,
+    task_row: mobileTaskRowBox,
+    task_buttons: mobileTaskButtonBoxes,
+    viewport: { width: 390, height: 844 },
+  });
   await screenshot(page, "today-stop-output-proof-mobile");
   await page.setViewportSize(desktopViewport);
   await stopControl.click();
