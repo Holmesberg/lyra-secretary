@@ -20303,3 +20303,71 @@ Rollback:
   self-covered standalone obligations. Revert `e6d0aa8` to remove only the
   compatibility characterization, and `6bfe374` to restore the old verifier
   visibility sample. No migration or production-data repair is involved.
+
+### Provider-read truth and Today active-stop parity
+
+Seams and behavior:
+
+- Test commits `d40f448` and `a8474c1` lock uncovered obligations, zero-credit
+  executed links, future linked coverage, and conservative mirror attribution.
+  They change no runtime behavior or scientific authority.
+- Product commit `6920ed4` distinguishes a successful empty Google Calendar
+  read from an unavailable read. Pressure Map now reports unavailable busy
+  time as `null` with an explicit warning instead of manufacturing zero.
+  Test commit `5e0f772` locks the positive, negative, not-connected, overlap,
+  and compatibility-reader cases. No freshness, pagination, provider
+  completeness, credential mutation, capacity, or collision claim was added.
+- Existing read-side credential mutation remains unchanged and is tracked by
+  issue `#235`; it requires separate approval and disposable credential proof.
+- The first macro browser pass exposed issue `#236`: Today rendered an active
+  task in its timer banner without a Stop command. Product commit `fed1917`
+  adds Stop by opening the existing ReflectionModal and canonical
+  `handleStop`; it adds no finalizer or write path. Verifier commits `88dbc59`,
+  `1d179c9`, and `4fa0683` accept task-row or banner presentation, prefer the
+  banner for direct proof, and assert Stop/Pause fit without overlap at
+  `390x844`.
+- Mobile proof also exposed existing task-row horizontal overflow, filed as
+  issue `#237` and kept outside this stopwatch seam. Raw archetype slug
+  provenance found in a Pressure Map-created task was attached to existing
+  onboarding/cold-start issue `#206`, not fixed opportunistically.
+
+Proof:
+
+- Focused provider/Pressure Map tests passed `59` cases and frontend typecheck
+  passed. The full S1c stack passed every authority, refactor, layer, Cortex,
+  feature-preservation, relay, public-isolation, and fresh-Alembic gate, with
+  `1102 passed, 1 xfailed` in the backend suite.
+- Local-current topology used isolated frontend `3018`, backend `8001`, and
+  frontend build `88dbc594e656`; production ports and artifacts were not
+  mutated. Real-cookie multi-account proof preserved operator/non-operator
+  scoping and terminated its API-only Pressure Map probe via suppression.
+- Focused Pressure Map proof passed with authenticated browser render,
+  one canonical recovery block, Calendar destination proof, obvious desktop
+  and mobile controls, and complete cleanup:
+  `tmp/post-wave-dogfood/provider-status-5e0f772/pressure-focused-ready/result.json`.
+- The retained first macro failure is
+  `tmp/post-wave-dogfood/provider-status-5e0f772/holmesberg-full/result.json`.
+  Focused Today closure directly selected `stop_surface=active_timer_banner`,
+  completed the canonical reflection/stop path, recorded exactly one
+  authenticated micro-mirror render, proved mobile controls, and cleaned all
+  state at `today-mobile-4fa0683/result.json`.
+- The final Holmesberg macro passed `182` checks with zero failures at
+  `holmesberg-full-4fa0683/result.json`. Cleanup left no active prefixed task
+  or deadline, active timer, or unterminated synthetic output candidate.
+- Operator after-proof passed at `operator-after-4fa0683/result.json` with zero
+  count, route, and dashboard diffs; zero issues/warnings;
+  `implementation_green=true`; explicit cohort yellow; and
+  `exposure_without_render_count=0`.
+- Exact-head CI passed for
+  `4fa0683e08fceb2fb2bc58b8df2e3d0ce48abac1`:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29254108862`.
+  The generated summary is
+  `tmp/post-wave-dogfood/provider-status-5e0f772/evidence-manifest.json`.
+
+Rollback:
+
+- Revert `6920ed4` with `5e0f772` to restore list-only Calendar read semantics.
+  Revert `fed1917` to remove the Today banner Stop command, and revert
+  `88dbc59`, `1d179c9`, and `4fa0683` to restore the task-row-only verifier.
+  Test-only commits `d40f448` and `a8474c1` may be reverted independently.
+  No migration or production-data repair is involved.
