@@ -130,6 +130,8 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const [stoppedSummary, setStoppedSummary] = useState<{
     minutes: number;
     delta: number | null;
+    skipped: boolean;
+    notice: string | null;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
@@ -235,7 +237,9 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       : showReflection
         ? "How was it?"
         : showNextPrompt
-          ? "Session complete"
+          ? stoppedSummary?.skipped
+            ? "Session not recorded"
+            : "Session complete"
           : "Current focus session";
 
   // Title above timer
@@ -243,7 +247,9 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     showRunning || showPaused || showReflection
       ? status?.task_title ?? null
       : showNextPrompt
-        ? "Start the next one?"
+        ? stoppedSummary?.skipped
+          ? "Choose what to do next"
+          : "Start the next one?"
         : plannedTasks.length > 0
           ? "Ready when you are"
           : "Ready when you are";
@@ -609,26 +615,45 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
         <div className="my-2 flex w-full max-w-md flex-col items-center gap-4 px-1">
           {stoppedSummary && (
             <div className="flex flex-col items-center gap-1 text-center">
-              <div className="flex items-baseline gap-2">
-                <span className="font-display text-5xl font-semibold tabular-nums neon-cyan">
-                  {stoppedSummary.minutes}
-                  <span className="text-xl text-signal/85">m</span>
-                </span>
-              </div>
-              <div className="font-display text-[10px] uppercase tracking-macro text-dust">
-                <span className="opacity-50">[ </span>
-                Protected focus
-                <span className="opacity-50"> ]</span>
-              </div>
-              {stoppedSummary.delta !== null && (
-                <div
-                  className={`font-mono text-[10px] uppercase tracking-widest ${
-                    stoppedSummary.delta <= 0 ? "text-signal" : "text-ember"
-                  }`}
-                >
-                  {stoppedSummary.delta > 0 ? "+" : ""}
-                  {stoppedSummary.delta}m vs plan
-                </div>
+              {stoppedSummary.skipped ? (
+                <>
+                  <AlertTriangle className="mb-1 h-6 w-6 text-ember" aria-hidden />
+                  <div
+                    data-testid="pulse-stop-skipped-result"
+                    className="font-display text-[11px] uppercase tracking-macro text-ember"
+                  >
+                    <span className="opacity-50">[ </span>
+                    Too short to record
+                    <span className="opacity-50"> ]</span>
+                  </div>
+                  <p className="max-w-sm text-xs leading-relaxed text-dust">
+                    {stoppedSummary.notice}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-display text-5xl font-semibold tabular-nums neon-cyan">
+                      {stoppedSummary.minutes}
+                      <span className="text-xl text-signal/85">m</span>
+                    </span>
+                  </div>
+                  <div className="font-display text-[10px] uppercase tracking-macro text-dust">
+                    <span className="opacity-50">[ </span>
+                    Protected focus
+                    <span className="opacity-50"> ]</span>
+                  </div>
+                  {stoppedSummary.delta !== null && (
+                    <div
+                      className={`font-mono text-[10px] uppercase tracking-widest ${
+                        stoppedSummary.delta <= 0 ? "text-signal" : "text-ember"
+                      }`}
+                    >
+                      {stoppedSummary.delta > 0 ? "+" : ""}
+                      {stoppedSummary.delta}m vs plan
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

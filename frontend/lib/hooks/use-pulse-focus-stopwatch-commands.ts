@@ -13,6 +13,7 @@ import { useTimerCommandInvalidation } from "@/lib/hooks/use-timer-command-inval
 import { announceUndoAvailable } from "@/lib/undo";
 import type { PauseReason } from "@/lib/stopwatch-pause-reasons";
 import {
+  interpretStopwatchStopResult,
   presentStopwatchStopOutputs,
   type PushStopwatchStopOutputToast,
 } from "@/lib/stopwatch-stop-outputs";
@@ -31,6 +32,8 @@ export type PulseFocusMode = "idle" | "reflection" | "next-prompt";
 interface StoppedSummary {
   minutes: number;
   delta: number | null;
+  skipped: boolean;
+  notice: string | null;
 }
 
 interface PulseFocusStopwatchCommandOptions {
@@ -137,9 +140,12 @@ export function usePulseFocusStopwatchCommands({
         return;
       }
       lastStoppedTaskIdRef.current = res.task_id;
+      const result = interpretStopwatchStopResult(res);
       setStoppedSummary({
         minutes: Math.round(res.duration_minutes),
         delta: res.delta_minutes ?? null,
+        skipped: result.skipped,
+        notice: result.notice,
       });
       setMode("next-prompt");
       setRequiresConfirm(false);

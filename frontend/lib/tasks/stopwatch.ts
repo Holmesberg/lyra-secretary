@@ -138,6 +138,8 @@ export interface StopResponse {
   calibration_nudge?: string | null;
   calibration_nudge_view_id?: string | null;
   calibration_nudge_exposure_id?: string | null;
+  skipped: boolean;
+  skip_reason: string | null;
   paused_parent?: {
     task_id: string;
     title: string;

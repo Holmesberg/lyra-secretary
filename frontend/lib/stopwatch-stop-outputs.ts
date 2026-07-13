@@ -20,6 +20,32 @@ export type PushStopwatchStopOutputToast = (
   surfaceId?: string | null,
 ) => void;
 
+export interface StopwatchStopResult {
+  skipped: boolean;
+  taskState: "EXECUTED" | "SKIPPED";
+  notice: string | null;
+}
+
+export function interpretStopwatchStopResult(
+  response: StopResponse,
+): StopwatchStopResult {
+  if (!response.skipped) {
+    return {
+      skipped: false,
+      taskState: "EXECUTED",
+      notice: null,
+    };
+  }
+
+  return {
+    skipped: true,
+    taskState: "SKIPPED",
+    notice: response.skip_reason === "zero_duration"
+      ? "This session ended before one active minute was recorded, so the task was marked skipped."
+      : "This session was not recorded as completed, so the task was marked skipped.",
+  };
+}
+
 export function getStopwatchStopOutputToasts(
   response: StopResponse,
 ): StopwatchStopOutputToast[] {

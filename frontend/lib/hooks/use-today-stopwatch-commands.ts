@@ -8,6 +8,7 @@ import {
 
 import { queryKeys } from "@/lib/query-keys";
 import {
+  interpretStopwatchStopResult,
   presentStopwatchStopOutputs,
   type PushStopwatchStopOutputToast,
 } from "@/lib/stopwatch-stop-outputs";
@@ -189,13 +190,22 @@ export function useTodayStopwatchCommands({
           });
           return;
         }
+        const result = interpretStopwatchStopResult(res);
+        qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
+          old?.map((task) =>
+            task.task_id === res.task_id
+              ? { ...task, state: result.taskState }
+              : task
+          ),
+        );
         setReflectionOpen(false);
         setEarlyStop(null);
-        if (res.paused_parent) {
-          setInfoMsg(
-            `${res.paused_parent.title} is still paused (${res.paused_parent.paused_minutes} min). Resume when ready.`,
-          );
-        }
+        const pausedParentNotice = res.paused_parent
+          ? `${res.paused_parent.title} is still paused (${res.paused_parent.paused_minutes} min). Resume when ready.`
+          : null;
+        setInfoMsg(
+          [result.notice, pausedParentNotice].filter(Boolean).join(" ") || null,
+        );
         presentStopwatchStopOutputs(res, pushToast);
         refresh();
       } catch (e: unknown) {
