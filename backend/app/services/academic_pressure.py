@@ -30,11 +30,12 @@ from app.schemas.academic import (
     AcademicPressureItem,
     AcademicPressureMapResponse,
     AcademicPressureLevel,
+    AcademicProviderReadStatus,
     AcademicRecoveryOption,
     AcademicSourceSummary,
     AcademicTrustState,
 )
-from app.services.calendar_sync import fetch_google_events
+from app.services.calendar_sync import fetch_google_events_with_status
 from app.services.academic_pressure_projection_builder import (
     build_demand_coverage_projection,
 )
@@ -325,12 +326,14 @@ def _calendar_busy_minutes(
     user: User | None,
     start: datetime,
     end: datetime,
-) -> tuple[int, bool]:
+) -> tuple[int | None, bool, AcademicProviderReadStatus]:
     if user is None or not user.google_refresh_token:
-        return 0, False
-    events = fetch_google_events(user_id, start, end)
+        return None, False, "not_connected"
+    result = fetch_google_events_with_status(user_id, start, end)
+    if result.status != "available":
+        return None, True, result.status
     intervals: list[TimeInterval] = []
-    for index, event in enumerate(events):
+    for index, event in enumerate(result.events):
         try:
             event_start = strip_tz(datetime.fromisoformat(event.start))
             event_end = strip_tz(datetime.fromisoformat(event.end))
@@ -350,7 +353,7 @@ def _calendar_busy_minutes(
         window_start=start,
         window_end=end,
     )
-    return busy.total_minutes, True
+    return busy.total_minutes, True, "available"
 
 
 def _planned_task_minutes(db: Session, user_id: int, start: datetime, end: datetime) -> int:
@@ -622,13 +625,19 @@ def _capacity_context(
     low: int,
     high: int,
     planned_minutes: int,
-    calendar_busy: int,
+    calendar_busy: int | None,
     gcal_connected: bool,
+    calendar_read_status: AcademicProviderReadStatus,
 ) -> AcademicCapacityContext:
-    if gcal_connected:
+    if calendar_read_status == "available":
         caveat = (
-            "Known busy time comes from connected Google Calendar and planned LyraOS tasks; "
-            "unscheduled real-life constraints may still be missing."
+            "Calendar busy time is available and planned LyraOS tasks are reported separately; "
+            "neither establishes true free time."
+        )
+    elif calendar_read_status == "unavailable":
+        caveat = (
+            "Google Calendar is connected but unavailable for this view; busy time is unavailable, "
+            "not zero, and true free time remains unknown."
         )
     else:
         caveat = (
@@ -641,6 +650,7 @@ def _capacity_context(
         estimated_academic_low_minutes=low,
         estimated_academic_high_minutes=high,
         google_calendar_connected=gcal_connected,
+        google_calendar_read_status=calendar_read_status,
         caveat=caveat,
     )
 
@@ -748,7 +758,13 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
 
     low_total = sum(item.estimate.low_minutes for item in items)
     high_total = sum(item.estimate.high_minutes for item in items)
-    calendar_busy, gcal_connected = _calendar_busy_minutes(uid, user, generated_at, window_end)
+    calendar_busy, gcal_connected, calendar_read_status = _calendar_busy_minutes(
+        uid,
+        user,
+        generated_at,
+        window_end,
+    )
+    legacy_calendar_busy = calendar_busy or 0
     planned_minutes = _planned_task_minutes(db, uid, generated_at, window_end)
     native_count = sum(1 for d in deadlines if not d.external_source)
     external_count = sum(1 for d in deadlines if d.external_source)
@@ -772,6 +788,10 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
         warnings.append("Some imported items need coverage confirmation before plan generation.")
     if not gcal_connected:
         warnings.append("Google Calendar is not connected, so free-time mismatch is incomplete.")
+    elif calendar_read_status == "unavailable":
+        warnings.append(
+            "Google Calendar is unavailable for this view; calendar busy time is unavailable, not zero."
+        )
     if read_only_pressure_mode_enabled():
         warnings.append(
             "Read-only pressure safe mode is active; recovery nudges and mutations are disabled."
@@ -802,7 +822,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             low_total,
             high_total,
             planned_minutes,
-            calendar_busy,
+            legacy_calendar_busy,
             gcal_connected,
         ),
         items=items,
@@ -811,7 +831,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             low_total,
             high_total,
             planned_minutes,
-            calendar_busy,
+            legacy_calendar_busy,
             gcal_connected,
         ),
         recovery_options=_recovery_options(items, coverage_questions, gcal_connected),
@@ -822,6 +842,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             planned_minutes,
             calendar_busy,
             gcal_connected,
+            calendar_read_status,
         ),
         estimated_low_minutes=low_total,
         estimated_high_minutes=high_total,
@@ -841,6 +862,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             academic_task_minutes=academic_task_minutes,
             study_task_minutes=study_task_minutes,
             google_calendar_connected=gcal_connected,
+            google_calendar_read_status=calendar_read_status,
             calendar_busy_minutes=calendar_busy,
             planned_lyra_minutes=planned_minutes,
         ),

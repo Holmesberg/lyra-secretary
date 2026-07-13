@@ -27,7 +27,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
@@ -71,6 +71,15 @@ class ExternalEvent:
     end: str
     calendar_id: str
     source: str = "google"
+
+
+@dataclass
+class ExternalEventFetchResult:
+    """Events plus read availability without claiming provider completeness."""
+
+    events: list[ExternalEvent]
+    status: Literal["available", "unavailable", "not_connected"]
+    reason: str | None = None
 
 
 def _access_token_cache_key(user_id: int) -> str:
@@ -175,10 +184,10 @@ def _get_credentials(user: User, db=None) -> Optional[Credentials]:
     return creds
 
 
-def fetch_google_events(
+def fetch_google_events_with_status(
     user_id: int, date_from: datetime, date_to: datetime
-) -> list[ExternalEvent]:
-    """Return this user's Google Calendar events in the window.
+) -> ExternalEventFetchResult:
+    """Return events and whether the requested window was readable.
 
     Cached in Redis for CACHE_TTL_SECONDS. On cache miss, calls
     events.list against the user's primary calendar with
@@ -191,7 +200,10 @@ def fetch_google_events(
     if cached:
         try:
             payload = json.loads(cached)
-            return [ExternalEvent(**e) for e in payload]
+            return ExternalEventFetchResult(
+                events=[ExternalEvent(**e) for e in payload],
+                status="available",
+            )
         except Exception as e:
             # Cache poisoning shouldn't bubble up — log and re-fetch.
             logger.warning("gcal: cache parse failed, re-fetching: %s", e)
@@ -200,10 +212,21 @@ def fetch_google_events(
     try:
         user = db.query(User).filter(User.user_id == user_id).first()
         if user is None:
-            return []
+            return ExternalEventFetchResult(
+                events=[], status="unavailable", reason="user_not_found"
+            )
+        was_connected = bool(user.google_refresh_token)
         creds = _get_credentials(user, db)
         if creds is None:
-            return []
+            return ExternalEventFetchResult(
+                events=[],
+                status="unavailable" if was_connected else "not_connected",
+                reason=(
+                    "credentials_unavailable"
+                    if was_connected
+                    else "not_connected"
+                ),
+            )
 
         try:
             service = build("calendar", "v3", credentials=creds, cache_discovery=False)
@@ -283,7 +306,11 @@ def fetch_google_events(
                         dedupe_key=f"gcal-http:{user_id}:{e.resp.status}",
                         cooldown_seconds=60 * 60,
                     )
-            return []
+            return ExternalEventFetchResult(
+                events=[],
+                status="unavailable",
+                reason=f"provider_http_{e.resp.status}",
+            )
         except Exception as e:
             logger.warning("gcal: events.list failed for user %s: %s", user_id, e)
             if user.is_operator:
@@ -310,7 +337,11 @@ def fetch_google_events(
                     dedupe_key=f"gcal-events-failed:{user_id}:{type(e).__name__}",
                     cooldown_seconds=60 * 60,
                 )
-            return []
+            return ExternalEventFetchResult(
+                events=[],
+                status="unavailable",
+                reason=f"provider_{type(e).__name__}",
+            )
 
         events: list[ExternalEvent] = []
         for item in response.get("items", []):
@@ -353,9 +384,17 @@ def fetch_google_events(
             CACHE_TTL_SECONDS,
             json.dumps([e.__dict__ for e in events]),
         )
-        return events
+        return ExternalEventFetchResult(events=events, status="available")
     finally:
         db.close()
+
+
+def fetch_google_events(
+    user_id: int, date_from: datetime, date_to: datetime
+) -> list[ExternalEvent]:
+    """Compatibility reader for existing Calendar consumers."""
+
+    return fetch_google_events_with_status(user_id, date_from, date_to).events
 
 
 def store_refresh_token(user_id: int, refresh_token: str) -> None:

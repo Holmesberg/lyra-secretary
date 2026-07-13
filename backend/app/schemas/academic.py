@@ -24,6 +24,11 @@ AcademicComplexityTier = Literal["low", "medium", "high", "unknown"]
 AcademicConfidence = Literal["low", "medium", "high"]
 AcademicPressureLevel = Literal["low", "medium", "high", "overdue"]
 AcademicSourceClass = Literal["external", "native", "lyra_task"]
+AcademicProviderReadStatus = Literal[
+    "available",
+    "unavailable",
+    "not_connected",
+]
 AcademicEvidenceClass = Literal[
     "external_obligation",
     "native_obligation",
@@ -91,7 +96,8 @@ class AcademicSourceSummary(BaseModel):
     academic_task_minutes: int = 0
     study_task_minutes: int = 0
     google_calendar_connected: bool
-    calendar_busy_minutes: int
+    google_calendar_read_status: AcademicProviderReadStatus
+    calendar_busy_minutes: Optional[int]
     planned_lyra_minutes: int
 
 
@@ -117,11 +123,12 @@ class AcademicCoverageQuestion(BaseModel):
 
 
 class AcademicCapacityContext(BaseModel):
-    known_busy_minutes: int
+    known_busy_minutes: Optional[int]
     planned_lyra_minutes: int
     estimated_academic_low_minutes: int
     estimated_academic_high_minutes: int
     google_calendar_connected: bool
+    google_calendar_read_status: AcademicProviderReadStatus
     caveat: str
 
 

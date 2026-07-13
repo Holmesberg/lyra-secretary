@@ -74,6 +74,9 @@ def _pressure_map_exposure_snapshot(
             "google_calendar_connected": (
                 source_summary.google_calendar_connected
             ),
+            "google_calendar_read_status": (
+                source_summary.google_calendar_read_status
+            ),
             "calendar_busy_minutes": source_summary.calendar_busy_minutes,
             "planned_lyra_minutes": source_summary.planned_lyra_minutes,
         },

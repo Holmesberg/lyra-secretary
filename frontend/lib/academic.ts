@@ -13,6 +13,10 @@ export type AcademicPressureLevel = "low" | "medium" | "high" | "overdue";
 export type AcademicComplexityTier = "low" | "medium" | "high" | "unknown";
 export type AcademicConfidence = "low" | "medium" | "high";
 export type AcademicSourceClass = "external" | "native" | "lyra_task";
+export type AcademicProviderReadStatus =
+  | "available"
+  | "unavailable"
+  | "not_connected";
 export type AcademicEvidenceClass =
   | "external_obligation"
   | "native_obligation"
@@ -66,7 +70,8 @@ export interface AcademicSourceSummary {
   academic_task_minutes: number;
   study_task_minutes: number;
   google_calendar_connected: boolean;
-  calendar_busy_minutes: number;
+  google_calendar_read_status: AcademicProviderReadStatus;
+  calendar_busy_minutes: number | null;
   planned_lyra_minutes: number;
 }
 
@@ -92,11 +97,12 @@ export interface AcademicCoverageQuestion {
 }
 
 export interface AcademicCapacityContext {
-  known_busy_minutes: number;
+  known_busy_minutes: number | null;
   planned_lyra_minutes: number;
   estimated_academic_low_minutes: number;
   estimated_academic_high_minutes: number;
   google_calendar_connected: boolean;
+  google_calendar_read_status: AcademicProviderReadStatus;
   caveat: string;
 }
 
