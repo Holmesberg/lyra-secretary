@@ -106,6 +106,46 @@ export interface AcademicCapacityContext {
   caveat: string;
 }
 
+export interface AcademicMinuteEnvelope {
+  low_minutes: number;
+  high_minutes: number;
+}
+
+export interface AcademicObligationDemandProjection {
+  obligation_id: string;
+  projection_role: "deadline_obligation" | "standalone_task_obligation";
+  source_class: AcademicSourceClass;
+  total_estimate: AcademicMinuteEnvelope;
+  completed_scope_credit: AcademicMinuteEnvelope;
+  remaining_demand: AcademicMinuteEnvelope;
+  feasible_future_coverage: AcademicMinuteEnvelope;
+  applied_coverage: AcademicMinuteEnvelope;
+  unscheduled_demand: AcademicMinuteEnvelope;
+  overcoverage: AcademicMinuteEnvelope;
+  linked_task_ids: string[];
+  coverage_task_ids: string[];
+  noncontributing_linked_task_ids: string[];
+  estimate_inconsistent: boolean;
+}
+
+export interface AcademicDemandCoverageProjection {
+  schema_version: "academic_demand_coverage_projection_v1";
+  projection_status: "provisional_demand_only";
+  capacity_status: "unavailable_no_authority";
+  collision_state: "unknown";
+  obligation_count: number;
+  scenario_count: number;
+  total_estimate: AcademicMinuteEnvelope;
+  completed_scope_credit: AcademicMinuteEnvelope;
+  remaining_demand: AcademicMinuteEnvelope;
+  feasible_future_coverage: AcademicMinuteEnvelope;
+  applied_coverage: AcademicMinuteEnvelope;
+  unscheduled_demand: AcademicMinuteEnvelope;
+  overcoverage: AcademicMinuteEnvelope;
+  inconsistent_obligation_ids: string[];
+  obligations: AcademicObligationDemandProjection[];
+}
+
 export interface AcademicPressureMapResponse {
   generated_at_utc: string;
   horizon_days: number;
@@ -118,6 +158,7 @@ export interface AcademicPressureMapResponse {
   capacity_context: AcademicCapacityContext;
   estimated_low_minutes: number;
   estimated_high_minutes: number;
+  demand_coverage_projection: AcademicDemandCoverageProjection;
   source_summary: AcademicSourceSummary;
   methodology: string[];
   warnings: string[];

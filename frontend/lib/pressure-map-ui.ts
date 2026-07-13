@@ -9,6 +9,13 @@ export function fmtHours(lowMinutes: number, highMinutes: number): string {
   return `${low}-${high}h`;
 }
 
+export function fmtHoursText(lowMinutes: number, highMinutes: number): string {
+  const low = Math.round(lowMinutes / 30) / 2;
+  const high = Math.round(highMinutes / 30) / 2;
+  if (low === high) return `${low} ${low === 1 ? "hour" : "hours"}`;
+  return `${low} to ${high} hours`;
+}
+
 export function fmtDue(days: number): string {
   if (days < 0) return "overdue";
   if (days < 1) return "due today";
@@ -59,6 +66,7 @@ export function genericPressureCopy(copy: string): string {
     .replaceAll("visible academic load", "visible load")
     .replaceAll("academic load", "visible load")
     .replaceAll("academic pressure", "visible pressure")
+    .replaceAll("visible visible pressure", "visible pressure")
     .replaceAll("academic ranges", "visible ranges")
     .replaceAll("academic obligations", "obligations")
     .replaceAll("academic tasks", "linked tasks")

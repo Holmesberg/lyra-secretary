@@ -37,6 +37,7 @@ def _pressure_map_exposure_snapshot(
     context, so provider-derived titles/details do not become durable exhaust.
     """
     source_summary = payload.source_summary
+    projection = payload.demand_coverage_projection
     authority = authority_for_surface(
         get_output_surface_spec("academic.pressure_map")
     ).as_dict()
@@ -63,6 +64,28 @@ def _pressure_map_exposure_snapshot(
         "coverage_question_count": len(payload.coverage_questions),
         "estimated_low_minutes": payload.estimated_low_minutes,
         "estimated_high_minutes": payload.estimated_high_minutes,
+        "demand_coverage_projection": {
+            "schema_version": projection.schema_version,
+            "projection_status": projection.projection_status,
+            "capacity_status": projection.capacity_status,
+            "collision_state": projection.collision_state,
+            "obligation_count": projection.obligation_count,
+            "scenario_count": projection.scenario_count,
+            "total_estimate": projection.total_estimate.model_dump(),
+            "completed_scope_credit": (
+                projection.completed_scope_credit.model_dump()
+            ),
+            "remaining_demand": projection.remaining_demand.model_dump(),
+            "feasible_future_coverage": (
+                projection.feasible_future_coverage.model_dump()
+            ),
+            "applied_coverage": projection.applied_coverage.model_dump(),
+            "unscheduled_demand": projection.unscheduled_demand.model_dump(),
+            "overcoverage": projection.overcoverage.model_dump(),
+            "inconsistent_obligation_count": len(
+                projection.inconsistent_obligation_ids
+            ),
+        },
         "source_summary": {
             "deadlines_total": source_summary.deadlines_total,
             "external_obligation_count": source_summary.external_obligation_count,

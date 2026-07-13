@@ -19,6 +19,7 @@ import { type TaskRow } from "@/lib/tasks";
 import {
   PRESSURE_HORIZON_OPTIONS,
   fmtHours,
+  fmtHoursText,
   fmtTiming,
   fmtTrust,
   genericPressureCopy,
@@ -276,6 +277,7 @@ export function PulseAcademicPressureMap({
     canPreviewPlan,
     primaryIsPlanOption,
   } = selectPressurePlanOption(pressure);
+  const projection = pressure?.demand_coverage_projection;
 
   return (
     <div
@@ -325,17 +327,59 @@ export function PulseAcademicPressureMap({
                 {genericPressureCopy(pressure.pressure_summary || pressure.headline)}
               </p>
               <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-                {fmtHours(
-                  pressure.estimated_low_minutes,
-                  pressure.estimated_high_minutes
-                )}{" "}
-                visible load / {pressure.source_summary.external_obligation_count} external /{" "}
+                {pressure.source_summary.external_obligation_count} external /{" "}
                 {pressure.source_summary.native_obligation_count} native /{" "}
                 {pressure.source_summary.academic_task_count} linked tasks /{" "}
                 {pressure.source_summary.study_task_count} focus blocks
               </p>
             </div>
           </div>
+
+          {projection && (
+            <div className="mb-3 border-y border-hairline py-3">
+              <p
+                data-testid="pressure-map-remaining-demand"
+                data-low-minutes={projection.remaining_demand.low_minutes}
+                data-high-minutes={projection.remaining_demand.high_minutes}
+                className="text-[13px] leading-snug text-parchment"
+              >
+                LyraOS estimates {fmtHoursText(
+                  projection.remaining_demand.low_minutes,
+                  projection.remaining_demand.high_minutes
+                )} of study work remains in this window.
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] leading-snug">
+                <p
+                  data-testid="pressure-map-applied-coverage"
+                  data-low-minutes={projection.applied_coverage.low_minutes}
+                  data-high-minutes={projection.applied_coverage.high_minutes}
+                  className="text-dust"
+                >
+                  <span className="font-medium text-signal">
+                    {fmtHoursText(
+                      projection.applied_coverage.low_minutes,
+                      projection.applied_coverage.high_minutes
+                    )}
+                  </span>{" "}
+                  covered by linked plans
+                </p>
+                <p
+                  data-testid="pressure-map-unscheduled-demand"
+                  data-low-minutes={projection.unscheduled_demand.low_minutes}
+                  data-high-minutes={projection.unscheduled_demand.high_minutes}
+                  className="text-dust"
+                >
+                  <span className="font-medium text-ember">
+                    {fmtHoursText(
+                      projection.unscheduled_demand.low_minutes,
+                      projection.unscheduled_demand.high_minutes
+                    )}
+                  </span>{" "}
+                  not yet scheduled
+                </p>
+              </div>
+            </div>
+          )}
 
           {pressure.compression_points.length > 0 && (
             <div className="mb-3 rounded-sm border border-hairline bg-void-2/30 px-3 py-2">
