@@ -3505,16 +3505,91 @@ async function runTimerPath(page, token, task) {
   }
   addCheck("timer start opens active session", Boolean(status.active && status.task_id === task.task_id), status);
   const sessionId = status.session_id;
+  const selectedPauseReason = "external_interruption";
 
   await clickAny(page, "pause session", [
     () => focus.getByTestId("focus-pause"),
     () => focus.getByRole("button", { name: /^Pause$/i }),
   ], 10_000);
-  await page.waitForTimeout(1_200);
-  status = await apiFetch(token, "/v1/stopwatch/status");
+  const reasonPicker = focus.getByTestId("focus-pause-reasons");
+  await reasonPicker.waitFor({ state: "visible", timeout: 8_000 });
+  const reasonOptions = reasonPicker.locator('[data-testid^="focus-pause-reason-"]');
+  const desktopPickerBox = await reasonPicker.boundingBox();
+  addCheck("Pulse pause opens the complete explicit reason vocabulary", Boolean(
+    desktopPickerBox
+    && await reasonOptions.count() === 7
+  ), {
+    option_count: await reasonOptions.count(),
+    box: desktopPickerBox,
+  });
+  await screenshot(page, "pulse-pause-reason-picker-desktop");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobilePickerBox = await reasonPicker.boundingBox();
+  const mobileOverflow = await page.evaluate(() => Math.max(
+    0,
+    document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  ));
+  addCheck("Pulse pause reasons fit the mobile document width", Boolean(
+    mobilePickerBox
+    && mobilePickerBox.x >= 0
+    && mobilePickerBox.x + mobilePickerBox.width <= 390
+    && mobileOverflow <= 1
+  ), {
+    box: mobilePickerBox,
+    horizontal_overflow_pixels: mobileOverflow,
+  });
+  await screenshot(page, "pulse-pause-reason-picker-mobile");
+  await page.setViewportSize({ width: 1440, height: 950 });
+
+  await focus.getByTestId("focus-pause").click();
+  await reasonPicker.waitFor({ state: "hidden", timeout: 5_000 });
+  const statusAfterDismiss = await apiFetch(token, "/v1/stopwatch/status");
+  const exportAfterDismiss = await apiFetch(token, "/v1/users/me/export");
+  const pauseRowsAfterDismiss = rows(exportAfterDismiss, "pause_events").filter(
+    (row) => row.session_id === sessionId,
+  );
+  addCheck("dismissing Pulse pause reasons does not mutate timer truth", Boolean(
+    statusAfterDismiss.active
+    && !statusAfterDismiss.paused
+    && pauseRowsAfterDismiss.length === 0
+  ), {
+    status: statusAfterDismiss,
+    pause_rows: pauseRowsAfterDismiss,
+  });
+
+  await focus.getByTestId("focus-pause").click();
+  await reasonPicker.waitFor({ state: "visible", timeout: 5_000 });
+
+  const pauseResponsePromise = page.waitForResponse(
+    (response) => (
+      response.url().includes("/v1/stopwatch/pause")
+      && response.request().method() === "POST"
+    ),
+    { timeout: 15_000 },
+  );
+  await focus.getByTestId(`focus-pause-reason-${selectedPauseReason}`).click();
+  const pauseResponse = await pauseResponsePromise;
+  addCheck("Pulse explicit pause reaches the canonical pause endpoint", pauseResponse.ok(), {
+    status: pauseResponse.status(),
+    url: pauseResponse.url(),
+  });
+  status = await pollFor(token, "explicit Pulse pause reflected in status", async () => {
+    const next = await apiFetch(token, "/v1/stopwatch/status");
+    return next.active && next.paused ? next : null;
+  }, 15_000, 750) || await apiFetch(token, "/v1/stopwatch/status");
   addCheck("timer pause is reflected in status", Boolean(status.active && status.paused), status);
   const pausedSessionId = status.session_id;
   const pauseSecondsBeforeNavigation = Number(status.current_pause_seconds || 0);
+  const pauseExport = await apiFetch(token, "/v1/users/me/export");
+  const explicitPauseRow = rows(pauseExport, "pause_events").find(
+    (row) => row.session_id === sessionId,
+  );
+  addCheck("Pulse pause export preserves the explicitly selected reason", Boolean(
+    explicitPauseRow
+    && explicitPauseRow.pause_reason === selectedPauseReason
+    && explicitPauseRow.pause_initiator === "self"
+  ), explicitPauseRow || { session_id: sessionId, expected_reason: selectedPauseReason });
 
   await firstVisible(page, [
     () => focus.getByTestId("focus-resume"),
@@ -3681,7 +3756,12 @@ async function runTimerPath(page, token, task) {
     && typeof refreshed.pause_count === "number"
   ), refreshed);
   await screenshot(page, "pulse-after-timer-stop");
-  return { task: refreshed, sessionId, exposureIds: stopOutputExposureIds };
+  return {
+    task: refreshed,
+    sessionId,
+    pauseReason: selectedPauseReason,
+    exposureIds: stopOutputExposureIds,
+  };
 }
 
 async function submitTodayStopDialog(page, dialog, buttonName, label) {
@@ -4662,6 +4742,8 @@ function assertDogfoodEvidenceInExport(exported, evidence) {
     pauseRow
     && pauseRow.resumed_at_utc
     && pauseRow.duration_minutes !== null
+    && pauseRow.pause_reason === evidence.timer.pauseReason
+    && pauseRow.pause_initiator === "self"
   ), pauseRow || { session_id: evidence.timer.sessionId });
 
   const exposureIds = new Set(evidence.exposures.exposure_ids);
@@ -5210,6 +5292,27 @@ async function main() {
       const proof = await runTimerPath(page, token, task);
       await cleanupCreatedRows(token);
       await cleanupSyntheticExposureDebt(token, beforeExport);
+      const afterCleanup = await apiFetch(token, "/v1/users/me/export");
+      const cleanedTask = rows(afterCleanup, "tasks").find(
+        (row) => row.task_id === task.task_id,
+      );
+      const cleanedSession = rows(afterCleanup, "stopwatch_sessions").find(
+        (row) => row.session_id === proof.sessionId,
+      );
+      const cleanedPause = rows(afterCleanup, "pause_events").find(
+        (row) => row.session_id === proof.sessionId,
+      );
+      addCheck("Pulse pause proof terminalizes retained synthetic evidence", Boolean(
+        cleanedTask?.voided_at
+        && cleanedTask?.voided_reason === "test_contamination"
+        && cleanedSession?.end_time_utc
+        && cleanedPause?.resumed_at_utc
+        && cleanedPause?.pause_reason === proof.pauseReason
+      ), {
+        task: cleanedTask || null,
+        session: cleanedSession || null,
+        pause: cleanedPause || null,
+      });
       const result = {
         ok: checks.every((check) => check.ok),
         run_id: runId,
