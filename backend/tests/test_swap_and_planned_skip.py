@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.db.models import Task, TaskSource, TaskState
 from app.main import app
+from app.services.task_manager import TaskManager
 from app.utils.time_utils import now_utc
 from datetime import timedelta
 from tests.conftest import TestingSession
@@ -153,6 +154,30 @@ def test_planned_mark_abandoned_sets_user_skipped_status():
     t = db.query(Task).filter(Task.task_id == "planned-skip-2").first()
     db.close()
     assert t.initiation_status == "user_skipped"
+
+
+def test_skip_task_sets_initiation_status_before_transition_commit(monkeypatch):
+    _seed("planned-skip-atomic", TaskState.PLANNED)
+    db = TestingSession()
+    manager = TaskManager(db)
+    transition = manager.state_machine.transition
+    observed = {}
+
+    def observe_transition(task, new_state, notes=None):
+        observed["initiation_status"] = task.initiation_status
+        return transition(task, new_state, notes=notes)
+
+    monkeypatch.setattr(manager.state_machine, "transition", observe_transition)
+    skipped = manager.skip_task(
+        "planned-skip-atomic",
+        reason="user chose Drop",
+        initiation_status="user_skipped",
+    )
+    db.close()
+
+    assert observed["initiation_status"] == "user_skipped"
+    assert skipped.state == TaskState.SKIPPED
+    assert skipped.initiation_status == "user_skipped"
 
 
 def test_executed_task_cannot_be_mark_abandoned():
