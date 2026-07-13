@@ -48,7 +48,9 @@ const runId = args.get("run-id") || `calendar-table-${Date.now()}-${randomUUID()
 const runKey = boundedIdentifier(runId, 42);
 const prefix = args.get("prefix") || `DOGFOOD CT ${randomUUID().slice(0, 8)}`;
 const cleanupOnly = args.get("cleanup-only") === "true";
+const calendarOnly = args.get("calendar-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
+const fixtureAccountReady = args.get("fixture-account-ready") === "true";
 const holmesbergCookie = process.env.LYRA_COOKIE_HOLMESBERG
   || process.env.LYRA_COOKIE_MORIARTY
   || "";
@@ -106,16 +108,17 @@ function floorToMinute(date) {
   return next;
 }
 
-function todayVisibleTaskStart(durationMinutes = 45) {
+function calendarVisibleTaskStart(durationMinutes = 45) {
   const now = new Date();
   const candidate = new Date(now.getTime() + 10 * 60_000);
   const candidateEnd = new Date(candidate.getTime() + durationMinutes * 60_000);
   if (dateKey(candidate) === dateKey(now) && dateKey(candidateEnd) === dateKey(now)) {
     return floorToMinute(candidate);
   }
-  // This harness proves same-day Calendar mutation semantics. Keep late-night
-  // runs away from the separately tracked cross-midnight rendering boundary.
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0, 0, 0);
+  // Keep the fixture in one day without creating a task in the past. The
+  // Calendar week view includes tomorrow except at the separately tracked
+  // end-of-week boundary.
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0, 0, 0);
 }
 
 function iso(date) {
@@ -299,13 +302,30 @@ async function installApiProxy(context) {
         timeout: 45_000,
         failOnStatusCode: false,
       });
+      const responseHeaders = {
+        ...response.headers(),
+        ...corsHeaders,
+      };
+      let responseBody = await response.body();
+      if (
+        fixtureAccountReady
+        && request.method().toUpperCase() === "GET"
+        && new URL(request.url()).pathname === "/v1/users/me"
+        && response.ok()
+      ) {
+        const me = JSON.parse(responseBody.toString("utf8"));
+        me.terms_accepted_at = me.terms_accepted_at || "1970-01-01T00:00:00Z";
+        me.archetype_survey_eligible = false;
+        me.onboarding_completed_at = me.onboarding_completed_at || "1970-01-01T00:00:00Z";
+        me.has_active_task_history = true;
+        responseBody = Buffer.from(JSON.stringify(me));
+        delete responseHeaders["content-encoding"];
+        delete responseHeaders["content-length"];
+      }
       await route.fulfill({
         status: response.status(),
-        headers: {
-          ...response.headers(),
-          ...corsHeaders,
-        },
-        body: await response.body(),
+        headers: responseHeaders,
+        body: responseBody,
       });
     } catch (error) {
       if (/Target page, context or browser has been closed/i.test(String(error?.message || error))) {
@@ -470,29 +490,52 @@ async function cleanupSyntheticExposureDebt(token, beforeExport) {
   });
 }
 
+async function gotoCalendarTaskWeek(page, start, name) {
+  let body = await goto(page, "/calendar", name);
+  if (new Date().getDay() === 0 && start.getDay() === 1) {
+    await page.getByRole("button", { name: "Next period", exact: true }).click();
+    await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
+    await page.waitForTimeout(750);
+    body = await page.locator("body").innerText({ timeout: 10_000 });
+    await screenshot(page, `${name}-next-week`);
+  }
+  return body;
+}
+
 async function runCalendarPath(page, token) {
   const title = `${prefix} calendar movable ${runKey}`;
-  const start = todayVisibleTaskStart();
+  const start = calendarVisibleTaskStart();
   const task = await createPlannedTask(token, title, start, 45);
 
-  const calendarBefore = await goto(page, "/calendar", "calendar-before-reschedule");
+  const calendarBefore = await gotoCalendarTaskWeek(page, start, "calendar-before-reschedule");
   addCheck("calendar route renders planned synthetic task", calendarBefore.includes(title), {
     title,
   });
 
   const newStart = new Date(start.getTime() + 5 * 60_000);
   const newEnd = new Date(newStart.getTime() + 45 * 60_000);
-  const rescheduled = await apiFetch(token, "/v1/reschedule", {
-    method: "POST",
-    body: JSON.stringify({
-      task_id: task.task_id,
-      new_start: localInput(newStart),
-      new_end: localInput(newEnd),
-    }),
+  const calendarEvent = page.locator(`[data-event-id="${task.task_id}"]`).first();
+  await calendarEvent.waitFor({ state: "visible", timeout: 10_000 });
+  await calendarEvent.click();
+  await page.getByTestId("new-task-modal").waitFor({ state: "visible", timeout: 10_000 });
+  await page.getByTestId("new-task-start").fill(localInput(newStart));
+  await page.getByTestId("new-task-end").fill(localInput(newEnd));
+  const rescheduleResponse = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && new URL(response.url()).pathname === "/v1/reschedule"
+  ), { timeout: 15_000 });
+  const taskRefetch = page.waitForResponse((response) => (
+    response.request().method() === "GET"
+    && new URL(response.url()).pathname === "/v1/tasks/query"
+    && response.status() === 200
+  ), { timeout: 15_000 });
+  await page.getByTestId("new-task-save").click();
+  const rescheduled = await rescheduleResponse;
+  addCheck("calendar edit modal accepts planned task reschedule", rescheduled.ok(), {
+    status: rescheduled.status(),
   });
-  addCheck("calendar mutation authority accepts planned task reschedule", Boolean(rescheduled?.rescheduled), {
-    rescheduled,
-  });
+  await taskRefetch;
+  addCheck("calendar edit invalidates and refetches task projections", true);
 
   const updated = await findTaskByTitle(token, title);
   addCheck("reschedule updates canonical planned task times", (
@@ -503,7 +546,7 @@ async function runCalendarPath(page, token) {
     after: updated,
   });
 
-  const calendarAfter = await goto(page, "/calendar", "calendar-after-reschedule");
+  const calendarAfter = await gotoCalendarTaskWeek(page, newStart, "calendar-after-reschedule");
   addCheck("calendar route renders rescheduled task after reload", calendarAfter.includes(title), {
     title,
   });
@@ -609,7 +652,7 @@ async function runTablePath(page, token) {
   });
 
   const voidedTitle = `${prefix} table voided ${runKey}`;
-  const voidedTask = await createPlannedTask(token, voidedTitle, todayVisibleTaskStart(30), 30);
+  const voidedTask = await createPlannedTask(token, voidedTitle, calendarVisibleTaskStart(30), 30);
   await apiFetch(token, `/v1/tasks/${encodeURIComponent(voidedTask.task_id)}/void`, {
     method: "POST",
     body: JSON.stringify({
@@ -692,7 +735,9 @@ async function main() {
 
     await apiFetch(ctx.token, "/v1/operator/dashboard", {}, [403]);
     await runCalendarPath(ctx.page, ctx.token);
-    await runTablePath(ctx.page, ctx.token);
+    if (!calendarOnly) {
+      await runTablePath(ctx.page, ctx.token);
+    }
 
     await cleanupCreatedRows(ctx.token);
     await cleanupSyntheticExposureDebt(ctx.token, beforeExport);
@@ -710,6 +755,8 @@ async function main() {
       topology,
       frontendOrigin,
       apiOrigin,
+      fixture_account_ready: fixtureAccountReady,
+      calendar_only: calendarOnly,
       run_id: runId,
       prefix,
       user_ref: userRef(ctx.me.user_id),

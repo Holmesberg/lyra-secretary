@@ -10,6 +10,8 @@ param(
 
   [switch]$CleanupOnly,
 
+  [switch]$CalendarOnly,
+
   [switch]$AssumeLocalFrontendReady,
 
   [switch]$AllowPublicFrontendArtifactMutation,
@@ -18,7 +20,9 @@ param(
 
   [int]$LocalCurrentApiPort = 8000,
 
-  [switch]$ProxyApi
+  [switch]$ProxyApi,
+
+  [switch]$FixtureAccountReady
 )
 
 $ErrorActionPreference = "Stop"
@@ -104,6 +108,12 @@ try {
   if ($useProxyApi) {
     $args += "--proxy-api"
   }
+  if ([bool]$FixtureAccountReady) {
+    if ($Topology -ne "local-current") {
+      throw "FixtureAccountReady is restricted to local-current."
+    }
+    $args += "--fixture-account-ready"
+  }
   if (-not [string]::IsNullOrWhiteSpace($RunId)) {
     $args += @("--run-id", $RunId)
   }
@@ -115,6 +125,9 @@ try {
   }
   if ([bool]$CleanupOnly) {
     $args += @("--cleanup-only")
+  }
+  if ([bool]$CalendarOnly) {
+    $args += @("--calendar-only")
   }
 
   node @args

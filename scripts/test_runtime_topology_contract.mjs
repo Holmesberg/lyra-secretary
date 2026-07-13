@@ -61,4 +61,19 @@ for (const [name, wrapper] of [
   );
 }
 
+assert(
+  calendarTableWrapper.includes("[switch]$FixtureAccountReady")
+    && calendarTableWrapper.includes('$args += "--fixture-account-ready"'),
+  "Calendar/Table wrapper must carry explicit local account-readiness fixture state into browser proof",
+);
+assert(
+  calendarTableWrapper.includes("[switch]$CalendarOnly")
+    && calendarTableWrapper.includes('$args += @("--calendar-only")'),
+  "Calendar/Table wrapper must expose a focused Calendar-only debugging tier",
+);
+assert(
+  calendarTableWrapper.includes('if ($Topology -ne "local-current")'),
+  "Calendar/Table account-readiness fixture must remain local-current only",
+);
+
 console.log(JSON.stringify({ ok: true, checked: "runtime_topology_contract" }));
