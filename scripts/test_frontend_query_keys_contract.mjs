@@ -16,6 +16,9 @@ function assert(condition, message) {
 }
 
 const queryKeys = read("frontend/lib/query-keys.ts");
+const deadlinesPage = read("frontend/app/(app)/deadlines/page.tsx");
+const calendarPage = read("frontend/app/(app)/calendar/page.tsx");
+const todayPage = read("frontend/app/(app)/today/page.tsx");
 
 assert(
   queryKeys.includes("operatorDashboard: [\"operator-dashboard-v12\"] as const"),
@@ -55,5 +58,19 @@ assert(
     && /export function invalidatePressureRecoveryCommitCaches[\s\S]*return invalidateDeadlineMutationCaches\(queryClient\)/.test(queryKeys),
   "capture and Pressure Map commits must use the shared deadline-dependent recipe",
 );
+for (const [name, source] of [
+  ["Deadlines", deadlinesPage],
+  ["Calendar", calendarPage],
+  ["Today", todayPage],
+]) {
+  assert(
+    source.includes('invalidateDeadlineMutationCaches'),
+    `${name} deadline mutations must use the shared deadline-dependent recipe`,
+  );
+  assert(
+    !/invalidateQueries\(\{\s*queryKey:\s*queryKeys\.deadlines\s*}/.test(source),
+    `${name} must not keep a deadline-only invalidation path`,
+  );
+}
 
 console.log(JSON.stringify({ ok: true, checked: "frontend_query_keys_contract" }));
