@@ -2368,9 +2368,11 @@ async function runPulseIntegrationsLayoutProof(page, token, beforeExport) {
   );
   await navigationLink.click();
   await page.waitForURL((url) => url.pathname === "/settings", { timeout: 20_000 });
+  const settingsIntegrations = page.getByText("Integrations", { exact: true }).first();
+  await settingsIntegrations.waitFor({ state: "visible", timeout: 20_000 });
   addCheck(
     "Pulse integration action opens the canonical Settings surface",
-    /integrations/i.test(await page.locator("body").innerText()),
+    await settingsIntegrations.isVisible(),
     { pathname: new URL(page.url()).pathname },
   );
 
