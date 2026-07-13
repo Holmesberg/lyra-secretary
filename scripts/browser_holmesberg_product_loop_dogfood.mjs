@@ -5011,6 +5011,20 @@ async function main() {
       return;
     }
 
+    if (!fixtureAccountReady) {
+      const accountEligibilityBlockers = [
+        !me.terms_accepted_at ? "terms_not_accepted" : null,
+        me.archetype_survey_eligible ? "archetype_survey_pending" : null,
+        !me.onboarding_completed_at ? "onboarding_not_completed" : null,
+        !me.has_active_task_history ? "no_active_task_history" : null,
+      ].filter(Boolean);
+      addCheck(
+        "Holmesberg account preflight admits the full product loop",
+        accountEligibilityBlockers.length === 0,
+        { blockers: accountEligibilityBlockers },
+      );
+    }
+
     await routeSweep(page);
     const deadline = await createDeadlineThroughUi(page, token);
     const task = await createTaskThroughUi(page, token, deadline);
