@@ -20180,3 +20180,58 @@ Rollback:
 
 - Revert `c394197` to restore aggregate pooling and `83c50e6` to remove only
   its regression proof. No persisted data or migration depends on this seam.
+
+### Calendar union, atomic skip outcome, and macro checkpoint
+
+- Product commit `a8a4bb5` replaces additive calendar-duration accounting
+  with an interval union, so overlapping calendar blocks do not manufacture
+  extra coverage. Regression commit `5bead2b` locks the overlap case. This
+  changes no calendar write, task linkage, completion credit, estimate prior,
+  or capacity authority.
+- The first complete Holmesberg loop exposed a separate transaction-boundary
+  defect tracked by issue `#234`: mark-abandoned published canonical
+  `SKIPPED` before persisting `user_skipped` or `abandoned`, allowing a reader
+  to observe impossible intermediate truth. Product commit `2d96dfb` passes
+  the initiation outcome into the canonical transition; regression commit
+  `6845474` proves the outcome exists before that transition commits. The
+  focused task-state set passed `25` tests.
+- Verifier commit `6f92c91` separates API truth from mounted Today feed truth,
+  adds a focused Pulse re-entry mode, clicks the Pressure Map conflict action
+  before waiting for its mutation, and labels the browser-only account
+  eligibility fixture explicitly. It changes no product behavior or durable
+  account state.
+- First failures remain retained and classified under
+  `tmp/post-wave-dogfood/wave5a-accounting-macro-5bead2b/`. Focused closure
+  artifacts are `reentry-focused-after/result.json`,
+  `pressure-cache-focused/result.json`, and `stop-cache-focused/result.json`.
+  Each passed with a real Holmesberg cookie, exact affected-row checks, and
+  synthetic cleanup.
+- The third complete Holmesberg loop passed `181` checks with zero failures at
+  `holmesberg-product-loop-r3/result.json`. It covered capture, Brain Dump,
+  deadline binding, idempotency, Pressure Map action and Calendar destination,
+  stopwatch output, timer switching, recovery, notification/exposure,
+  Calendar/Table, and cleanup. Sixteen task IDs, eight deadline IDs, three
+  notification IDs, and five suppression IDs were tracked; no active prefixed
+  row, active timer, or unterminated synthetic output candidate remained.
+- Operator read-only proof passed before and after mutation and again against
+  the exact runtime head. It reported zero count, route, or dashboard snapshot
+  diffs, zero exposure-without-render, implementation green, and cohort yellow
+  for real evidence gaps. Local-current topology identified frontend and
+  backend build `68454749d0e6`; production processes and artifacts were not
+  touched.
+- Exact-head CI passed for
+  `6f92c910a53c0f6078864ee64d6132c583cf6d52`:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29248289653`.
+  The top-level evidence summary is
+  `tmp/post-wave-dogfood/wave5a-accounting-macro-5bead2b/evidence-manifest.json`.
+- Issue `#220` remains open. Pulse still reads legacy totals and the accounting
+  fixture matrix does not yet prove every source/linkage case. This macro
+  checkpoint establishes runtime and verifier reliability; it does not claim
+  the Wave 5A Accounting Gate.
+
+Rollback:
+
+- Revert `a8a4bb5` with `5bead2b` to restore additive calendar accounting.
+  Revert `2d96dfb` with `6845474` to restore the former two-commit skip
+  publication. Revert `6f92c91` to remove only the focused verifier repair.
+  No schema migration or production-data repair is involved.
