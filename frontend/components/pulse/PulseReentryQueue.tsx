@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Clock, ExternalLink, RotateCcw, X } from "lucide-react";
+import { CalendarClock, Check, Clock, ExternalLink, RotateCcw, X } from "lucide-react";
 import { ReflectionModal } from "@/components/reflection-modal";
 import {
   getStopwatchStatus,
@@ -29,6 +29,11 @@ function localDateKeyFromIso(iso: string | null | undefined): string {
 
 function todayKey(): string {
   return localDateKeyFromIso(new Date().toISOString());
+}
+
+function taskEditorHref(taskId: string, date: string): string {
+  const params = new URLSearchParams({ date, edit_task: taskId });
+  return `/today?${params.toString()}`;
 }
 
 function formatMinutes(minutes: number | null | undefined): string {
@@ -74,7 +79,9 @@ function buildCandidates(
 
   if (status?.active && status.paused && status.task_id && status.task_title) {
     const pausedMinutes = Math.max(0, (status.current_pause_seconds ?? 0) / 60);
-    const dateHref = `/today?date=${todayKey()}`;
+    const task = tasks.find((candidate) => candidate.task_id === status.task_id);
+    const date = localDateKeyFromIso(task?.start ?? task?.end);
+    const dateHref = `/today?date=${date}`;
     const id = `paused:${status.task_id}`;
     if (!dismissed.has(id)) {
       candidates.push({
@@ -88,6 +95,7 @@ function buildCandidates(
         pausedMinutes,
         detail: pausedAgeDetail(pausedMinutes),
         dateHref,
+        rescheduleHref: taskEditorHref(status.task_id, date),
         action:
           pausedMinutes >= STALE_PAUSE_THRESHOLD_MINUTES
             ? "resolve_stale"
@@ -100,6 +108,8 @@ function buildCandidates(
   for (const paused of status?.paused_others ?? []) {
     const id = `paused:${paused.task_id}`;
     if (dismissed.has(id)) continue;
+    const task = tasks.find((candidate) => candidate.task_id === paused.task_id);
+    const date = localDateKeyFromIso(task?.start ?? task?.end);
     candidates.push({
       kind: "paused",
       id,
@@ -110,7 +120,8 @@ function buildCandidates(
       plannedMinutes: paused.planned_duration_minutes ?? null,
       pausedMinutes: paused.paused_minutes,
       detail: pausedAgeDetail(paused.paused_minutes),
-      dateHref: `/today?date=${todayKey()}`,
+      dateHref: `/today?date=${date}`,
+      rescheduleHref: taskEditorHref(paused.task_id, date),
       action:
         paused.paused_minutes >= STALE_PAUSE_THRESHOLD_MINUTES
           ? "resolve_stale"
@@ -134,13 +145,15 @@ function buildCandidates(
     const id = `missed:${task.task_id}`;
     if (dismissed.has(id)) continue;
     const startMs = task.start ? new Date(task.start).getTime() : endMs ?? 0;
+    const taskDate = localDateKeyFromIso(task.start ?? task.end);
     candidates.push({
       kind: "missed",
       id,
       title: task.title,
       taskId: task.task_id,
       detail: missedDetail(task),
-      dateHref: `/today?date=${localDateKeyFromIso(task.start ?? task.end)}`,
+      dateHref: `/today?date=${taskDate}`,
+      rescheduleHref: taskEditorHref(task.task_id, taskDate),
       canMarkDone: !!endMs && endMs < now,
       canDrop: overduePlanned,
       priority: autoSkipped ? 20 - startMs / 1_000_000_000_000 : 10 - startMs / 1_000_000_000_000,
@@ -202,11 +215,11 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
         </Link>
       </div>
 
-      <div className="grid gap-2 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-2 lg:grid-cols-3">
         {candidates.map((candidate) => (
           <div
             key={candidate.id}
-            className="rounded-sm border border-hairline bg-void/45 px-3 py-2"
+            className="min-w-0 rounded-sm border border-hairline bg-void/45 px-3 py-2"
           >
             <div className="mb-1.5 flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -291,6 +304,13 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
                   )}
                 </>
               )}
+              <Link
+                href={candidate.rescheduleHref}
+                className="inline-flex items-center gap-1 rounded-sm border border-signal/40 bg-signal/10 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20 hover:text-signal-neon"
+              >
+                <CalendarClock className="h-3 w-3" />
+                Reschedule
+              </Link>
               <Link
                 href={candidate.dateHref}
                 className="inline-flex items-center gap-1 rounded-sm border border-hairline bg-void-2/50 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-dust transition-colors hover:border-signal/35 hover:text-parchment"

@@ -270,6 +270,7 @@ function TodayInner() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
+  const handledEditTaskRef = useRef<string | null>(null);
   const [correctionTask, setCorrectionTask] = useState<TaskRowType | null>(null);
   const [bindingTask, setBindingTask] = useState<TaskRowType | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -285,6 +286,40 @@ function TodayInner() {
   // applies this reason directly — one-tap pause from the prediction
   // banner's primary action (2026-04-22). Clears on handled.
   const [quickPauseReason, setQuickPauseReason] = useState<PauseReason | undefined>(undefined);
+
+  useEffect(() => {
+    const requestedTaskId = searchParams.get("edit_task");
+    if (!requestedTaskId) {
+      handledEditTaskRef.current = null;
+      return;
+    }
+    if (tasksQ.isPending || handledEditTaskRef.current === requestedTaskId) {
+      return;
+    }
+
+    handledEditTaskRef.current = requestedTaskId;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("edit_task");
+    const query = params.toString();
+    router.replace(query ? `/today?${query}` : "/today");
+
+    const task = (tasksQ.data ?? []).find(
+      (candidate) => candidate.task_id === requestedTaskId
+    );
+    if (
+      !task ||
+      task.voided_at ||
+      task.state === "EXECUTED" ||
+      task.state === "DELETED"
+    ) {
+      setInfoMsg("That task is no longer available to reschedule.");
+      return;
+    }
+
+    setInfoMsg(null);
+    setEditingTask(task);
+  }, [router, searchParams, tasksQ.data, tasksQ.isPending]);
+
   const clearRequestPause = useCallback(() => {
     setRequestPause(false);
     setQuickPauseReason(undefined);

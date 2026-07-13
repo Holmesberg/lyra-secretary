@@ -29,6 +29,7 @@ export type PulseReentryCandidate =
       plannedMinutes: number | null;
       pausedMinutes: number;
       dateHref: string;
+      rescheduleHref: string;
       action: "resume_current" | "switch_paused" | "resolve_stale";
       priority: number;
     }
@@ -39,6 +40,7 @@ export type PulseReentryCandidate =
       detail: string;
       taskId: string;
       dateHref: string;
+      rescheduleHref: string;
       canMarkDone: boolean;
       canDrop: boolean;
       priority: number;

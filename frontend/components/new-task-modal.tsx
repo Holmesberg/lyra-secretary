@@ -402,6 +402,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     <Dialog open={open} onOpenChange={(o) => { if (!o) { resetForm(); onClose(); } }}>
       <DialogContent
         data-testid="new-task-modal"
+        className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto"
         onKeyDown={(e) => {
           if (e.key !== "Enter") return;
           if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
