@@ -86,6 +86,10 @@ try {
     node scripts\test_onboarding_brain_dump_recovery_contract.mjs
   }
 
+  Invoke-Step "onboarding skip durability contract gate" {
+    node scripts\test_onboarding_skip_contract.mjs
+  }
+
   Invoke-Step "Pressure Map planning provenance contract gate" {
     node scripts\test_pressure_map_planning_provenance_contract.mjs
   }
