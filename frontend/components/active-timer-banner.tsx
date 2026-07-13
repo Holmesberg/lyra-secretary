@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Pause, Play, X, ArrowLeftRight } from "lucide-react";
+import { Pause, Play, Square, X, ArrowLeftRight } from "lucide-react";
 import {
   type StopwatchStatus,
   type PausedOther,
@@ -42,9 +42,10 @@ interface Props {
   // (2026-04-22): operator mid-break shouldn't have to pick a reason.
   quickPauseReason?: PauseReason;
   onRequestPauseHandled?: () => void;
+  onStop: () => void;
 }
 
-export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWarning, requestPause, quickPauseReason, onRequestPauseHandled }: Props) {
+export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWarning, requestPause, quickPauseReason, onRequestPauseHandled, onStop }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showReasonPicker, setShowReasonPicker] = useState(false);
@@ -186,6 +187,19 @@ export function ActiveTimerBanner({ status, showOrphanWarning, onDismissOrphanWa
             {elapsed}
           </div>
           <div className="relative">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onStop}
+              disabled={busy}
+              title="Stop timer"
+              data-testid="active-timer-stop"
+              className="mr-2"
+            >
+              <Square className="mr-1 h-3.5 w-3.5" />
+              Stop
+            </Button>
             <Button
               type="button"
               variant="outline"

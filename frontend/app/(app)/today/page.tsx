@@ -668,6 +668,7 @@ function TodayInner() {
           requestPause={requestPause}
           quickPauseReason={quickPauseReason}
           onRequestPauseHandled={clearRequestPause}
+          onStop={() => setReflectionOpen(true)}
         />
       )}
 
