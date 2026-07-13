@@ -11,7 +11,6 @@ import {
   userRef,
 } from "./browser_auth_helpers.mjs";
 
-const { chromium } = frontendRequire("playwright");
 const HEALTH_PATH = "/v1/health/topology";
 
 function arg(name, fallback = null) {
@@ -78,6 +77,8 @@ if (flag("--self-test")) {
   console.log(JSON.stringify({ ok: failures.length === 0, checked: "proof_preflight", failures }));
   process.exit(failures.length ? 1 : 0);
 }
+
+const { chromium } = frontendRequire("playwright");
 
 const topology = arg("--topology", "public");
 const frontendOrigin = normalize(arg("--frontend"));
