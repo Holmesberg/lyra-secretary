@@ -4359,9 +4359,20 @@ async function runTodayZeroDurationStopPath(page, token) {
   const taskRow = page
     .locator(`[data-testid="task-row"][data-task-id="${task.task_id}"]`)
     .first();
-  await taskRow.waitFor({ state: "visible", timeout: 12_000 });
+  const activeTimerStop = page.getByTestId("active-timer-stop").first();
+  await activeTimerStop.waitFor({ state: "visible", timeout: 12_000 });
+  const activeTimerTitleVisible = await page
+    .getByText(title, { exact: true })
+    .first()
+    .isVisible()
+    .catch(() => false);
+  addCheck(
+    "Today zero-duration task mounts in the active timer banner",
+    activeTimerTitleVisible,
+    { task_id: task.task_id, title },
+  );
   await clickAny(page, "Today zero-duration stop", [
-    () => page.getByTestId("active-timer-stop").first(),
+    () => activeTimerStop,
     () => taskRow.locator('button[title="Stop timer"]').first(),
   ], 10_000);
   const dialog = page.getByRole("dialog").filter({ hasText: /How was your focus/i }).first();
