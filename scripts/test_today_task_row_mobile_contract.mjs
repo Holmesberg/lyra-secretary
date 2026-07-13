@@ -5,6 +5,7 @@ const read = (path) => fs.readFileSync(path, "utf8");
 
 const taskRow = read("frontend/components/task-row.tsx");
 const browser = read("scripts/browser_holmesberg_product_loop_dogfood.mjs");
+const wrapper = read("scripts/run_holmesberg_product_loop_dogfood.ps1");
 
 assert(
   taskRow.includes("flex w-full min-w-0 flex-col items-stretch")
@@ -26,6 +27,11 @@ assert(
     && browser.includes("mobileDocumentOverflow <= 1")
     && browser.includes("mobileTaskButtonBoxes.every"),
   "focused Today proof must fail on document, row, or command overflow",
+);
+assert(
+  wrapper.includes("[switch]$TodayStopwatchOutputProofOnly")
+    && wrapper.includes('$args += "--stopwatch-output-proof-only"'),
+  "PowerShell wrapper must expose the focused Today task-row proof",
 );
 
 console.log(JSON.stringify({ ok: true, checked: "today_task_row_mobile_contract" }));

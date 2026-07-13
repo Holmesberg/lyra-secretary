@@ -32,6 +32,8 @@ param(
 
   [switch]$OnboardingSkipProofOnly,
 
+  [switch]$TodayStopwatchOutputProofOnly,
+
   [switch]$PulseStopwatchOutputProofOnly,
 
   [switch]$TimerSwitchProofOnly
@@ -159,6 +161,9 @@ try {
   }
   if ([bool]$OnboardingSkipProofOnly) {
     $args += "--onboarding-skip-proof-only"
+  }
+  if ([bool]$TodayStopwatchOutputProofOnly) {
+    $args += "--stopwatch-output-proof-only"
   }
   if ([bool]$PulseStopwatchOutputProofOnly) {
     $args += "--pulse-stopwatch-output-proof-only"
