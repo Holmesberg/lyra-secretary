@@ -21284,3 +21284,66 @@ Rollback:
 - Revert `6a52bbb` to remove the preflight entrypoint and `72e549b` to remove
   its local/CI gate. No product behavior, schema, account row, deployment, or
   production data changes are involved.
+
+## 2026-07-13 - Wave 4 Today Delete/Void Settlement
+
+Usefulness and truth restored:
+
+- Issue `#246` recorded two Today failure paths that could contradict server
+  truth. A failed single delete left its optimistic removal visible, while one
+  failed request in a bulk void restored the entire stale snapshot and could
+  resurrect siblings whose independent backend commits had succeeded.
+- Product commit `07b054a` snapshots and reconciles failed single deletion,
+  settles every bulk void request independently, restores before partial-
+  failure refetch, and lets canonical task/stopwatch reads determine the final
+  rows. It changes no backend writer, schema, exposure, prediction, provider,
+  or mutation authority.
+- Verifier commit `cdc199f` adds one focused real-cookie local-current proof
+  for a failed single delete and one failed sibling in a two-task bulk void.
+  Commit `29906da` preserves the existing API proxy route chain with
+  `route.fallback()` rather than bypassing it in the failure fixture.
+
+Focused proof:
+
+- Frontend typecheck, `test_today_void_settlement_contract.mjs`, and both
+  `test_void_clears_stopwatch.py` backend cases passed. `git diff --check`
+  passed.
+- Mandatory preflight passed at
+  `tmp/proof-preflight/today-void-settlement-r2.json`: isolated ports were
+  checkout-owned, frontend build `cdc199f7f9624672ca82210568608cd041ad0892`
+  matched, Holmesberg was the non-operator mutable account, pending
+  notifications and active timer were zero, the prefix was clean, export was
+  bounded, and `/today` mounted without browser errors.
+- The first local-current preflight discovered that Windows PowerShell 5 does
+  not support the newer two-argument `String.Contains` overload. Commits
+  `5635543` and `6383fea` replace it with a hermetic `IndexOf` assertion and
+  trace checkout ownership through child-process ancestry. No product browser
+  mutation ran until the focused preflight passed.
+- The first browser fixture proved single-delete rollback, then timed out while
+  waiting across a page route that bypassed the context API proxy. Backend logs
+  showed the real sibling write had succeeded and cleanup terminalized all
+  three rows. The fixture was corrected in isolation; no comprehensive loop
+  was used as a debugger.
+- The passing result is
+  `tmp/post-wave-dogfood/today-void-settlement-cdc199f/r2/result.json`. The
+  injected single-delete `503` restored a visible canonical `PLANNED` row. In
+  the bulk case, exact export and mounted UI agreed that the successful sibling
+  was voided and absent while the failed sibling remained active and visible.
+  The error stated `1 of 2` rather than claiming the whole operation failed.
+- The desktop screenshot was inspected directly. The error, retained rows,
+  and row commands were legible and non-overlapping. Cleanup then stamped all
+  three synthetic tasks `test_contamination`, left no active timer, and left no
+  unterminated synthetic exposure candidate.
+- The disposable production build used `.next-local-current` on `3018` with a
+  lifespan-disabled backend on `8001`. Both listeners and the artifact were
+  removed after proof. Hosted ports and `.next-public` were untouched.
+
+Next boundary and rollback:
+
+- Frozen invalidation backlog item 1 is closed. The next seam may expand the
+  existing shared task/deadline/undo/re-entry query-key recipes; it must not
+  reopen Today settlement or start another audit.
+- Revert `07b054a` to restore prior Today settlement. Revert `cdc199f` and
+  `29906da` independently to remove the focused proof. Revert `5635543` and
+  `6383fea` to remove the Windows ownership fixes. No schema migration, data
+  repair, deployment, restart, or authority transfer is required.

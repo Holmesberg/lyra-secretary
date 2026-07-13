@@ -286,8 +286,9 @@ Wave 4 checkpoint status on 2026-07-13:
 
 Frozen invalidation backlog, in execution order:
 
-1. Correct Today's single-delete and bulk-void failure settlement so partial
-   server success cannot be overwritten by a stale optimistic snapshot.
+1. Completed 2026-07-13: Today's single-delete and bulk-void failure
+   settlement now reconciles canonical state, so partial server success cannot
+   be overwritten by a stale optimistic snapshot.
 2. Expand the existing shared query-key recipes for task, deadline, undo, and
    re-entry mutations to include only their proven Pressure Map, evidence,
    range, deadline, and `me` dependencies.
