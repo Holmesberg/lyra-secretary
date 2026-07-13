@@ -106,6 +106,10 @@ try {
     node scripts\test_pressure_map_planning_provenance_contract.mjs
   }
 
+  Invoke-Step "Today task-row mobile contract gate" {
+    node scripts\test_today_task_row_mobile_contract.mjs
+  }
+
   Invoke-Step "OpenClaw operator relay hermetic test" {
     node scripts\test_openclaw_operator_relay.mjs
   }
