@@ -22000,3 +22000,73 @@ Registry correction, rollback, and next boundary:
 - Terminal stop convergence is closed. Non-terminal start, pause, resume, and
   switch DB/Redis handoffs remain explicitly unproven; they are not claimed
   safe by this seam.
+
+## 2026-07-14 - Wave 6 Execution And Recovery Macro Checkpoint
+
+Verifier trust correction:
+
+- The first full S1c invocation exposed issue `#263`: the feature-preservation
+  self-test failed on an inexact browser-check label, but a later successful
+  command in the same PowerShell step overwrote `$LASTEXITCODE` and the stack
+  incorrectly reported success.
+- CI commit `e3ad841` adds a checked native-command boundary around every
+  multi-command S1c gate. Its negative self-test injects exit code `7` and
+  proves the later success command is unreachable. Docs commit `abd9c83`
+  replaces the combined registry phrase with the exact Pulse and Today browser
+  check names.
+- The repaired S1c stack then passed from clean exact head: native failure
+  negative proof, topology, authority, refactor, backend-layer, Cortex,
+  preservation-registry, preflight, Pressure Map, Today, relay, and public
+  isolation contracts; fresh Alembic migration; full backend suite; and
+  frontend production build.
+
+Exact-head browser macro:
+
+- Exact frontend/backend build
+  `abd9c83cbd723ecb74904b65e36b2518ebbbdf1f` ran on checkout-owned isolated
+  ports `3018/8001`, disposable SQLite, Redis DB 15, and explicit API proxying.
+  Preflight at `tmp/proof-preflight/wave6-macro-before.json` proved the real
+  Holmesberg cookie, non-operator role, zero pending notifications, no active
+  timer, clean prefix, and mounted Pulse.
+- The complete Holmesberg loop passed `204/204` checks at
+  `tmp/post-wave-dogfood/wave6-macro-abd9c83/result.json`. It exercised capture,
+  idempotent task/deadline creation, estimate decisions, Pressure Map planning,
+  timer pause/resume/switch/stop, re-entry outcomes, Calendar/Table, prediction
+  and notification lifecycle, authenticated render truth, and cleanup.
+- Real-cookie multi-account proof resolved the operator as operator and
+  Holmesberg as non-operator. Operator read-only stress passed at
+  `tmp/operator-readonly-stress-2026-07-13T23-55-56-724Z/result.json` with zero
+  count, route-count, attribution, or dashboard diffs. Implementation readiness
+  remained green, cohort readiness honestly yellow, and
+  `exposure_without_render_count=0`.
+- Direct visual inspection covered Pressure Map mobile hierarchy, Today timer
+  output, and operator desktop/mobile. Controls were contained and readable;
+  no overlap or horizontal overflow was found. The long operator mobile page is
+  dense by design but remains structurally coherent.
+
+Diagnostics, cleanup, and proof manifest:
+
+- The loop retained three nonblocking diagnostics: the explicitly fixture-only
+  local account eligibility response, one run where an optional creation-nudge
+  Keep branch did not render before conflict creation, and expected Brain Dump
+  deadline-title normalization. Other nudge branches and canonical creation
+  behavior passed; the one-run absence does not authorize another product seam
+  without recurrence or user evidence.
+- Four paths remained honestly gated: provider credential mutation, account
+  hard-delete, Calendar drag/resize, and the historically named pending-drain
+  route. None was silently substituted with fixture evidence.
+- Postflight at `tmp/proof-preflight/wave6-macro-after.json` found the prefix
+  clean, pending count zero, and no active timer. Teardown removed the isolated
+  artifact and disposable database, closed both ports, and left Redis DB 15 at
+  zero keys. Public runtime, artifacts, accounts, and data were untouched.
+- The top-level evidence manifest is
+  `tmp/post-wave-dogfood/wave6-macro-abd9c83/evidence_manifest.json`. Exact-head
+  CI passed in GitHub Actions run `29294161455`.
+
+Next boundary:
+
+- Wave 6A and 6B plus this macro checkpoint prove direct rescheduling and
+  terminal stop convergence. The next seam may characterize one non-terminal
+  DB/Redis handoff or complete one already-documented manual recovery outcome.
+  It may not expand prediction policy, introduce automatic recovery, or begin
+  structural extraction by default.
