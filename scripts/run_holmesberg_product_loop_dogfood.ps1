@@ -28,6 +28,8 @@ param(
 
   [switch]$OnboardingPartialRecoveryProofOnly,
 
+  [switch]$OnboardingSkipProofOnly,
+
   [switch]$PulseStopwatchOutputProofOnly,
 
   [switch]$TimerSwitchProofOnly
@@ -149,6 +151,9 @@ try {
   }
   if ([bool]$OnboardingPartialRecoveryProofOnly) {
     $args += "--onboarding-partial-recovery-proof-only"
+  }
+  if ([bool]$OnboardingSkipProofOnly) {
+    $args += "--onboarding-skip-proof-only"
   }
   if ([bool]$PulseStopwatchOutputProofOnly) {
     $args += "--pulse-stopwatch-output-proof-only"
