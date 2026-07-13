@@ -21946,3 +21946,57 @@ Rollback and next boundary:
 - Shrink, split, irrelevant, and explicit keep/park outcomes remain partial.
   The next Wave 6 seam must close one present execution/recovery invariant; it
   may not expand prediction policy or perform structural extraction by default.
+
+## 2026-07-14 - Wave 6B Terminal Stopwatch Convergence
+
+Canonical stop truth under cache failure:
+
+- Issue `#261` recorded a demonstrated split-brain boundary: normal and
+  zero-duration stop paths committed terminal task/session truth before Redis
+  cleanup, then converted a cleanup exception into an HTTP `500`. Retrying
+  could therefore confront terminal DB truth while Redis still advertised an
+  active timer.
+- Product commit `4d5d3cf` keeps the database authoritative after the terminal
+  commit. Active and pause keys are cleared together when Redis is available;
+  a post-commit cleanup failure is logged without changing a successful stop
+  into a false failure. The existing status path still converges stale cache
+  state from the terminal task row.
+- Test commit `f853905` injects failure into both terminal Redis cleanup APIs.
+  The real stop endpoint remains `200` for EXECUTED and zero-duration SKIPPED
+  outcomes, the session is closed, the task is terminal, and the next restored
+  status read clears the stale cache. The targeted stop/recovery set passed
+  four tests.
+
+Focused mounted proof and verifier correction:
+
+- Exact-build local-current preflight passed on isolated `3018/8001` at
+  product/test build `f8539057a8c35c408d325b2dc22492bebd127560`, using the
+  real Holmesberg cookie, disposable SQLite, Redis DB 15, explicit API proxy,
+  zero pending notifications, no active timer, and a clean prefix.
+- Pulse reached both stop calls, returned SKIPPED rather than false completion,
+  emitted no completion output candidate, and cleaned all synthetic state. The
+  combined run then exposed verifier issue `#262`: Today correctly mounted the
+  EXECUTING task in its Active Timer banner, while the harness waited for an
+  intentionally absent ordinary task row.
+- Verifier commit `0529870` makes the proof require the task-specific Active
+  Timer title before using the canonical stop control. The focused Today rerun
+  passed at
+  `tmp/post-wave-dogfood/wave6b-stopwatch-today-rerun-f853905/result.json`.
+  Desktop and mobile captures were inspected directly; skipped truth was
+  explicit and the mobile result had zero horizontal overflow.
+- Postflight at `tmp/proof-preflight/wave6b-stopwatch-after.json` found no
+  active prefixed rows, pending notification, or timer. Teardown closed the
+  isolated listeners, removed `.next-local-current` and the disposable
+  database, and emptied Redis DB 15. Public artifacts and data were untouched.
+
+Registry correction, rollback, and next boundary:
+
+- Prior Wave 4 commits `ece3434` and `a8db03e` already closed Pulse/Today
+  zero-duration stop-result truth and Today rollback parity. Their stale
+  registry gaps are removed rather than reopened.
+- Revert `4d5d3cf` for product behavior, `f853905` for fault proof, and
+  `0529870` for the Today verifier correction. No schema or persisted-data
+  migration exists.
+- Terminal stop convergence is closed. Non-terminal start, pause, resume, and
+  switch DB/Redis handoffs remain explicitly unproven; they are not claimed
+  safe by this seam.

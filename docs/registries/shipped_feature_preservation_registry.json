@@ -174,7 +174,7 @@
       "proof": {"tests": ["backend/tests/test_stopwatch_switch.py", "backend/tests/test_execution_correction.py", "backend/tests/test_pause_resume_pause_event.py"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "today active timer banner shows paused session after navigation"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "today switch chip swaps active timer to parent"}], "minimum_tier": "local-current", "gated": []},
       "historical_sources": [],
       "rollback": "Revert Today controller/view changes while preserving canonical sessions, corrections, and Redis recovery compatibility.",
-      "known_gaps": ["Pulse and Today stop-result interpretation still needs centralized parity."]
+      "known_gaps": []
     },
     {
       "id": "views.calendar_schedule",
@@ -261,10 +261,10 @@
       "writes": ["Task state", "StopwatchSession", "PauseEvent", "active Redis stopwatch state", "execution correction"],
       "exposure_class": "explicit_execution_command",
       "output_surface_ids": [],
-      "proof": {"tests": ["backend/tests/test_stopwatch_switch.py", "backend/tests/test_stopwatch_recovery.py", "backend/tests/test_stale_pause_resolution.py", "backend/tests/test_void_clears_stopwatch.py"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "timer paused session survives pulse refresh"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "timer stop writes execution delta fields"}], "minimum_tier": "local-current", "gated": []},
+      "proof": {"tests": ["backend/tests/test_stopwatch_switch.py", "backend/tests/test_stopwatch_recovery.py", "backend/tests/test_stale_pause_resolution.py", "backend/tests/test_void_clears_stopwatch.py", "backend/tests/test_state_consistency.py"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "timer paused session survives pulse refresh"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "timer stop writes execution delta fields"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "Pulse and Today zero-duration stops preserve skipped terminal truth"}], "minimum_tier": "local-current", "gated": []},
       "historical_sources": [],
       "rollback": "Revert the touched lifecycle seam while retaining DB sessions and Redis recovery compatibility.",
-      "known_gaps": ["Multi-commit DB/Redis finalization still requires fault injection.", "Pulse and Today stop-result semantics differ."]
+      "known_gaps": ["Non-terminal start, pause, resume, and switch DB/Redis handoffs still require focused fault injection."]
     },
     {
       "id": "execution.stop_result_outputs",
