@@ -42,7 +42,7 @@ import {
 } from "@/lib/integrations";
 import {
   invalidateIntegrationAccountCaches,
-  invalidateIntegrationDisconnectCaches,
+  invalidateCalendarIntegrationCaches,
   invalidateIntegrationStatusCaches,
   invalidateMoodleConnectCaches,
   invalidateMoodleFeedSyncCaches,
@@ -98,7 +98,9 @@ export function IntegrationsSection() {
         kind: "success",
         title: `${humanName(connected)} connected.`,
       });
-      void invalidateIntegrationAccountCaches(qc);
+      void (connected === "google_calendar"
+        ? invalidateCalendarIntegrationCaches(qc)
+        : invalidateIntegrationAccountCaches(qc));
       cleanQueryParams();
     } else if (errored) {
       const text = ERROR_COPY[reason] || "Something went wrong connecting.";
@@ -133,7 +135,7 @@ export function IntegrationsSection() {
     setCardErrors((e) => ({ ...e, [id]: undefined }));
     try {
       await disconnectIntegration(id);
-      void invalidateIntegrationDisconnectCaches(qc);
+      void invalidateCalendarIntegrationCaches(qc);
       setBanner({
         kind: "success",
         title: `${humanName(id)} disconnected.`,

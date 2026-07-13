@@ -196,7 +196,7 @@ export function invalidateIntegrationStatusCaches(queryClient: QueryClient) {
   return invalidateKeys(queryClient, [queryKeys.integrations]);
 }
 
-export function invalidateIntegrationDisconnectCaches(queryClient: QueryClient) {
+export function invalidateCalendarIntegrationCaches(queryClient: QueryClient) {
   return Promise.all([
     invalidateIntegrationAccountCaches(queryClient),
     invalidateCalendarEventQueries(queryClient),
@@ -204,17 +204,14 @@ export function invalidateIntegrationDisconnectCaches(queryClient: QueryClient) 
 }
 
 export function invalidateMoodleFeedSyncCaches(queryClient: QueryClient) {
-  return invalidateKeys(queryClient, [
-    queryKeys.integrations,
-    queryKeys.deadlines,
+  return Promise.all([
+    invalidateIntegrationStatusCaches(queryClient),
+    invalidateDeadlineMutationCaches(queryClient),
   ]);
 }
 
 export function invalidateMoodleConnectCaches(queryClient: QueryClient) {
-  return Promise.all([
-    invalidateMoodleFeedSyncCaches(queryClient),
-    invalidateDeadlineQueries(queryClient),
-  ]);
+  return invalidateMoodleFeedSyncCaches(queryClient);
 }
 
 export function invalidateUndoCaches(queryClient: QueryClient) {
