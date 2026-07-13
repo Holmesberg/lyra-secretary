@@ -7,7 +7,8 @@ param(
   [switch]$SkipBrowser,
   [switch]$IncludeMutable,
   [switch]$AllowPublicFrontendArtifactMutation,
-  [int]$LocalCurrentPort = 3013
+  [int]$LocalCurrentPort = 3013,
+  [switch]$SelfTestNativeGate
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,8 +50,49 @@ function Invoke-Step {
   }) | Out-Null
 }
 
+function Invoke-NativeGate {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
+    [Parameter(Mandatory = $true)]
+    [scriptblock]$Body
+  )
+
+  $global:LASTEXITCODE = 0
+  & $Body
+  $succeeded = $?
+  $exitCode = $global:LASTEXITCODE
+  if (-not $succeeded -or $exitCode -ne 0) {
+    throw "$Name failed with exit code $exitCode"
+  }
+}
+
+if ($SelfTestNativeGate) {
+  $caught = $false
+  try {
+    Invoke-NativeGate "injected early failure" {
+      powershell -NoProfile -Command "exit 7"
+    }
+    powershell -NoProfile -Command "exit 0"
+  } catch {
+    $caught = $_.Exception.Message -eq "injected early failure failed with exit code 7"
+  }
+  if (-not $caught) {
+    throw "S1c native gate did not fail closed on an injected early failure."
+  }
+  [pscustomobject]@{
+    ok = $true
+    classification = "s1c_native_gate_negative_proof"
+  } | ConvertTo-Json
+  exit 0
+}
+
 Push-Location $repoRoot
 try {
+  Invoke-Step "S1c native-command failure contract" {
+    powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -SelfTestNativeGate
+  }
+
   Invoke-Step "git diff check" {
     git diff --check
   }
@@ -64,26 +106,48 @@ try {
   }
 
   Invoke-Step "static refactor contract scan" {
-    & $python -m py_compile scripts\scan_refactor_contracts.py
-    & $python scripts\scan_refactor_contracts.py --fail-on-errors
+    Invoke-NativeGate "static refactor contract compile" {
+      & $python -m py_compile scripts\scan_refactor_contracts.py
+    }
+    Invoke-NativeGate "static refactor contract scan" {
+      & $python scripts\scan_refactor_contracts.py --fail-on-errors
+    }
   }
 
   Invoke-Step "backend layer import gate" {
-    & $python -m py_compile scripts\scan_backend_layer_imports.py
-    & $python scripts\scan_backend_layer_imports.py --self-test
-    & $python scripts\scan_backend_layer_imports.py --fail-on-errors
+    Invoke-NativeGate "backend layer import compile" {
+      & $python -m py_compile scripts\scan_backend_layer_imports.py
+    }
+    Invoke-NativeGate "backend layer import self-test" {
+      & $python scripts\scan_backend_layer_imports.py --self-test
+    }
+    Invoke-NativeGate "backend layer import scan" {
+      & $python scripts\scan_backend_layer_imports.py --fail-on-errors
+    }
   }
 
   Invoke-Step "Cortex read-only gate" {
-    & $python -m py_compile scripts\scan_cortex_readonly.py
-    & $python scripts\scan_cortex_readonly.py --self-test
-    & $python scripts\scan_cortex_readonly.py --fail-on-errors
+    Invoke-NativeGate "Cortex read-only compile" {
+      & $python -m py_compile scripts\scan_cortex_readonly.py
+    }
+    Invoke-NativeGate "Cortex read-only self-test" {
+      & $python scripts\scan_cortex_readonly.py --self-test
+    }
+    Invoke-NativeGate "Cortex read-only scan" {
+      & $python scripts\scan_cortex_readonly.py --fail-on-errors
+    }
   }
 
   Invoke-Step "shipped feature preservation registry gate" {
-    & $python -m py_compile scripts\scan_feature_preservation_registry.py
-    & $python scripts\scan_feature_preservation_registry.py --self-test
-    & $python scripts\scan_feature_preservation_registry.py --fail-on-errors
+    Invoke-NativeGate "feature preservation registry compile" {
+      & $python -m py_compile scripts\scan_feature_preservation_registry.py
+    }
+    Invoke-NativeGate "feature preservation registry self-test" {
+      & $python scripts\scan_feature_preservation_registry.py --self-test
+    }
+    Invoke-NativeGate "feature preservation registry scan" {
+      & $python scripts\scan_feature_preservation_registry.py --fail-on-errors
+    }
   }
 
   Invoke-Step "onboarding Brain Dump recovery contract gate" {
