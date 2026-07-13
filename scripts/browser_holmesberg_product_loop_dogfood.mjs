@@ -2253,6 +2253,8 @@ async function assertPulseStopOutputRender(page, token, beforeExport, taskId, st
     {
       contentTemplateId: "micro_mirror",
       surfaceId: "stopwatch.micro_mirror",
+      toastCheckName: "Pulse renders micro_mirror in a real Toast",
+      renderCheckName: "Pulse micro_mirror creates exactly one authenticated render",
       message: stopBody?.micro_mirror || null,
       viewId: stopBody?.micro_mirror_view_id || null,
       exposureId: stopBody?.micro_mirror_exposure_id || null,
@@ -2260,6 +2262,8 @@ async function assertPulseStopOutputRender(page, token, beforeExport, taskId, st
     {
       contentTemplateId: "calibration_nudge",
       surfaceId: "stopwatch.calibration_nudge",
+      toastCheckName: "Pulse renders calibration_nudge in a real Toast",
+      renderCheckName: "Pulse calibration_nudge creates exactly one authenticated render",
       message: stopBody?.calibration_nudge || null,
       viewId: stopBody?.calibration_nudge_view_id || null,
       exposureId: stopBody?.calibration_nudge_exposure_id || null,
@@ -2325,7 +2329,7 @@ async function assertPulseStopOutputRender(page, token, beforeExport, taskId, st
       .waitFor({ state: "visible", timeout: 10_000 })
       .then(() => true)
       .catch(() => false);
-    addCheck(`Pulse renders ${output.contentTemplateId} in a real Toast`, toastVisible, {
+    addCheck(output.toastCheckName, toastVisible, {
       exposure_id: output.exposureId,
       surface_id: output.surfaceId,
       message: output.message,
@@ -2349,7 +2353,7 @@ async function assertPulseStopOutputRender(page, token, beforeExport, taskId, st
         ? { decision, renders, acks, legacy }
         : null;
     }, 15_000, 750);
-    addCheck(`Pulse ${output.contentTemplateId} creates exactly one authenticated render`, Boolean(evidence), evidence ? {
+    addCheck(output.renderCheckName, Boolean(evidence), evidence ? {
       exposure_id: output.exposureId,
       decision_status: evidence.decision.decision_status,
       render_count: evidence.renders.length,
