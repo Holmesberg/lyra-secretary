@@ -509,6 +509,7 @@ def test_pressure_projection_counts_linked_tasks_as_union_coverage(db):
     assert response.status_code == 200, response.text
     data = response.json()
     projection = data["demand_coverage_projection"]
+    snapshot_projection = data["render_snapshot"]["demand_coverage_projection"]
     assert projection["schema_version"] == "academic_demand_coverage_projection_v1"
     assert projection["projection_status"] == "provisional_demand_only"
     assert projection["capacity_status"] == "unavailable_no_authority"
@@ -537,6 +538,27 @@ def test_pressure_projection_counts_linked_tasks_as_union_coverage(db):
         + projection["unscheduled_demand"]["low_minutes"]
     )
     assert data["estimated_low_minutes"] > projection["total_estimate"]["low_minutes"]
+    assert snapshot_projection == {
+        "schema_version": "academic_demand_coverage_projection_v1",
+        "projection_status": "provisional_demand_only",
+        "capacity_status": "unavailable_no_authority",
+        "collision_state": "unknown",
+        "obligation_count": 1,
+        "scenario_count": projection["scenario_count"],
+        "total_estimate": projection["total_estimate"],
+        "completed_scope_credit": projection["completed_scope_credit"],
+        "remaining_demand": projection["remaining_demand"],
+        "feasible_future_coverage": projection["feasible_future_coverage"],
+        "applied_coverage": projection["applied_coverage"],
+        "unscheduled_demand": projection["unscheduled_demand"],
+        "overcoverage": projection["overcoverage"],
+        "inconsistent_obligation_count": 0,
+    }
+    assert "obligations" not in snapshot_projection
+    assert "inconsistent_obligation_ids" not in snapshot_projection
+    assert first.task_id not in json.dumps(snapshot_projection)
+    assert second.task_id not in json.dumps(snapshot_projection)
+    assert deadline.deadline_id not in json.dumps(snapshot_projection)
 
 
 def test_pressure_projection_keeps_uncovered_deadline_fully_unscheduled(db):
