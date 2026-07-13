@@ -169,7 +169,7 @@ export function stopStopwatch(
   });
 }
 
-export function pauseStopwatch(reason?: PauseReason, idempotencyKey?: string) {
+export function pauseStopwatch(reason: PauseReason, idempotencyKey?: string) {
   return api<unknown>("/v1/stopwatch/pause", {
     method: "POST",
     headers: idempotencyHeaders("stopwatch-pause", idempotencyKey),

@@ -11,7 +11,7 @@ import { useMutation } from "@tanstack/react-query";
 
 import { useTimerCommandInvalidation } from "@/lib/hooks/use-timer-command-invalidation";
 import { announceUndoAvailable } from "@/lib/undo";
-import { QUICK_PAUSE_REASON } from "@/lib/stopwatch-pause-reasons";
+import type { PauseReason } from "@/lib/stopwatch-pause-reasons";
 import {
   presentStopwatchStopOutputs,
   type PushStopwatchStopOutputToast,
@@ -102,8 +102,8 @@ export function usePulseFocusStopwatchCommands({
     onError: (e) => setErrorMsg(e.message ?? "Failed to start"),
   });
 
-  const pauseM = useMutation<unknown, Error, void>({
-    mutationFn: () => pauseStopwatch(QUICK_PAUSE_REASON),
+  const pauseM = useMutation<unknown, Error, PauseReason>({
+    mutationFn: (reason) => pauseStopwatch(reason),
     onSuccess: () => refreshTimerSurfaces(),
     onError: (e) => setErrorMsg(e.message ?? "Failed to pause"),
   });

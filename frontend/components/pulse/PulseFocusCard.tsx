@@ -9,8 +9,9 @@
  * compactly. The previous A1 ship hid the timer in idle and let the
  * picker dominate the card; that wasn't the vibe.
  *
- * Operator-narrowed action set still applies (no Switch button and no
- * pause-reason picker). The interactivity from the
+ * Operator-narrowed action set still applies (no Switch button). Pause uses
+ * the canonical reason vocabulary so route choice cannot silently alter
+ * measurement truth. The interactivity from the
  * inline shipped as A1 stays — just visually subordinated to the
  * timer-as-hero composition.
  *
@@ -49,6 +50,7 @@ import {
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
 import { queryKeys } from "@/lib/query-keys";
 import type { StopwatchStopOutputToast } from "@/lib/stopwatch-stop-outputs";
+import { PAUSE_REASON_OPTIONS } from "@/lib/stopwatch-pause-reasons";
 import {
   usePulseFocusStopwatchCommands,
   type PulseFocusMode,
@@ -131,6 +133,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const [showPauseReasons, setShowPauseReasons] = useState(false);
   const [toasts, setToasts] = useState<PulseToastEntry[]>([]);
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
@@ -171,6 +174,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   }, []);
 
   function beginReflection() {
+    setShowPauseReasons(false);
     setCompletionPct("");
     setScopeOutcome(null);
     setMode("reflection");
@@ -216,6 +220,12 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const showReflection = mode === "reflection" || (stopM.isPending && isActive);
   const showNextPrompt = mode === "next-prompt" && !isActive;
   const showIdle = !isActive && mode === "idle";
+
+  useEffect(() => {
+    if (!showRunning) {
+      setShowPauseReasons(false);
+    }
+  }, [showRunning]);
 
   // Eyebrow copy
   const eyebrow = showRunning
@@ -396,30 +406,63 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
 
       {/* RUNNING — Pause + Stop */}
       {showRunning && (
-        <div className="mt-5 flex w-full max-w-md items-center justify-center gap-3 px-1">
-          <button
-            data-testid="focus-pause"
-            type="button"
-            onClick={() => pauseM.mutate()}
-            disabled={pauseM.isPending}
-            className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-dust transition-colors hover:border-ember/40 hover:text-ember disabled:opacity-50"
-          >
-            {pauseM.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Pause className="h-3.5 w-3.5" />
-            )}
-            Pause
-          </button>
-          <button
-            data-testid="focus-stop"
-            type="button"
-            onClick={beginReflection}
-            className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon"
-          >
-            <Square className="h-3.5 w-3.5" />
-            Stop
-          </button>
+        <div className="mt-5 flex w-full max-w-md flex-col gap-3 px-1">
+          <div className="flex items-center justify-center gap-3">
+            <button
+              data-testid="focus-pause"
+              type="button"
+              onClick={() => setShowPauseReasons((visible) => !visible)}
+              disabled={pauseM.isPending}
+              aria-expanded={showPauseReasons}
+              aria-controls="focus-pause-reasons"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-dust transition-colors hover:border-ember/40 hover:text-ember disabled:opacity-50"
+            >
+              {pauseM.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Pause className="h-3.5 w-3.5" />
+              )}
+              Pause
+            </button>
+            <button
+              data-testid="focus-stop"
+              type="button"
+              onClick={beginReflection}
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon"
+            >
+              <Square className="h-3.5 w-3.5" />
+              Stop
+            </button>
+          </div>
+          {showPauseReasons && (
+            <div
+              id="focus-pause-reasons"
+              data-testid="focus-pause-reasons"
+              className="rounded-sm border border-hairline bg-void/45 p-2"
+            >
+              <div className="mb-2 font-display text-[9px] uppercase tracking-macro text-dust-deep">
+                Why are you pausing?
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {PAUSE_REASON_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    data-testid={`focus-pause-reason-${option.value}`}
+                    type="button"
+                    onClick={() =>
+                      pauseM.mutate(option.value, {
+                        onSuccess: () => setShowPauseReasons(false),
+                      })
+                    }
+                    disabled={pauseM.isPending}
+                    className="min-h-[40px] rounded-sm border border-hairline px-3 py-2 text-left text-xs text-parchment transition-colors hover:border-ember/45 hover:bg-ember/5 hover:text-ember disabled:opacity-50"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

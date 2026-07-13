@@ -48,7 +48,7 @@ export function useActiveTimerPauseResumeCommands({
   const refreshTimerSurfaces = useTimerCommandInvalidation();
 
   const applyPause = useCallback(
-    async (reason: PauseReason | undefined) => {
+    async (reason: PauseReason) => {
       setShowReasonPicker(false);
       setErr(null);
       setLocalPaused(true);
