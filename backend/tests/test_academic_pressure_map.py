@@ -388,6 +388,62 @@ def test_pressure_projection_counts_linked_tasks_as_union_coverage(db):
     assert data["estimated_low_minutes"] > projection["total_estimate"]["low_minutes"]
 
 
+def test_pressure_projection_does_not_transfer_overcoverage_between_obligations(db):
+    user = _user(db, "attributed-overcoverage-pressure@example.com")
+    covered_deadline = _deadline(db, user.user_id, "Covered reading", days=5)
+    uncovered_deadline = _deadline(db, user.user_id, "Uncovered reading", days=6)
+    now = datetime.utcnow()
+    linked_block = Task(
+        user_id=user.user_id,
+        title="Long covered reading block",
+        category="study",
+        planned_start_utc=now + timedelta(hours=2),
+        planned_end_utc=now + timedelta(hours=8),
+        planned_duration_minutes=360,
+        state=TaskState.PLANNED,
+        deadline_id=covered_deadline.deadline_id,
+        deadline_match_source="user_explicit",
+        deadline_match_confidence=1.0,
+    )
+    db.add(linked_block)
+    db.commit()
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    projection = response.json()["demand_coverage_projection"]
+    obligations = {
+        item["obligation_id"]: item
+        for item in projection["obligations"]
+    }
+    covered = obligations[covered_deadline.deadline_id]
+    uncovered = obligations[uncovered_deadline.deadline_id]
+    assert covered["overcoverage"]["low_minutes"] > 0
+    assert uncovered["unscheduled_demand"]["low_minutes"] > 0
+
+    for field in (
+        "total_estimate",
+        "remaining_demand",
+        "feasible_future_coverage",
+        "applied_coverage",
+        "unscheduled_demand",
+        "overcoverage",
+    ):
+        assert projection[field] == {
+            "low_minutes": sum(
+                obligation[field]["low_minutes"]
+                for obligation in obligations.values()
+            ),
+            "high_minutes": sum(
+                obligation[field]["high_minutes"]
+                for obligation in obligations.values()
+            ),
+        }
+
+
 def test_pressure_projection_self_links_standalone_planned_task(db):
     user = _user(db, "standalone-coverage-pressure@example.com")
     now = datetime.utcnow()
