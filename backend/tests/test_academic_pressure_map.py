@@ -18,6 +18,7 @@ from app.db.models import (
 from app.db.scoping import set_current_user_id
 from app.main import app
 from app.schemas.academic import AcademicMinuteEnvelope
+from app.services.calendar_sync import ExternalEvent
 from app.core.config import settings
 from app.core.kill_switches import (
     provider_progress_signals_enabled,
@@ -317,6 +318,43 @@ def test_pressure_map_includes_planned_task_load_but_not_deleted_or_executed(db)
     assert "planned duration is visible intention" in " ".join(
         data["items"][0]["estimate"]["assumptions"]
     )
+
+
+def test_pressure_map_unions_overlapping_calendar_busy_intervals(db, monkeypatch):
+    user = _user(db, "overlapping-calendar-pressure@example.com")
+    user.google_refresh_token = "fixture-token"
+    db.commit()
+    now = datetime.utcnow()
+    monkeypatch.setattr(
+        "app.services.academic_pressure.fetch_google_events",
+        lambda _user_id, _start, _end: [
+            ExternalEvent(
+                id="calendar-a",
+                title="Calendar A",
+                start=(now + timedelta(hours=1)).isoformat(),
+                end=(now + timedelta(hours=3)).isoformat(),
+                calendar_id="primary",
+            ),
+            ExternalEvent(
+                id="calendar-b",
+                title="Calendar B",
+                start=(now + timedelta(hours=2)).isoformat(),
+                end=(now + timedelta(hours=4)).isoformat(),
+                calendar_id="primary",
+            ),
+        ],
+    )
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=1",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["source_summary"]["google_calendar_connected"] is True
+    assert data["source_summary"]["calendar_busy_minutes"] == 180
+    assert data["capacity_context"]["known_busy_minutes"] == 180
 
 
 def test_pressure_projection_counts_linked_tasks_as_union_coverage(db):
