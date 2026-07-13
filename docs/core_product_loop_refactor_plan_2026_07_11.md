@@ -438,8 +438,9 @@ proceeds over known-bad totals.
 - Make `split_into_blocks` divide one remaining-effort range into explicit
   smaller chunks that reconcile with the original, or rename/remove it.
 - Treat `review_calendar` as navigation rather than mutation.
-- Prevent planning when a coverage unknown is explicitly blocking that plan,
-  while allowing the user to inspect why.
+- Do not invent a blocking-coverage state that the runtime cannot represent.
+  When a coverage question is unresolved, keep it visibly non-clickable and
+  label any available editable draft as provisional and capacity-unchecked.
 - Add `+N more` and `N more reasons` disclosure wherever Pulse caps content.
 - Preserve complete data through the dedicated view and export.
 
@@ -450,6 +451,18 @@ canonical command/navigation target or the absence of a clickable control.
 Browser proof covers only actions that genuinely exist. Any new correction or
 recovery command requires a separately approved authority seam before its
 apply/rollback path can enter this gate.
+
+Status: the action-parity gate passed on 2026-07-14. `split_into_blocks` is no
+longer emitted because it created whole-sized rows rather than reconciled
+chunks. `confirm_coverage` and `clear_or_ignore` are neutral planning notes;
+`review_calendar` navigates to the existing Settings integrations owner; and
+`create_plan` opens an explicitly provisional, capacity-unchecked `Plan draft`
+before TaskManager confirmation. The runtime action registry names every
+owner and target, while the compatibility type remains readable for older
+responses. Focused real-cookie proof passed all 41 checks with zero gated
+paths and exact synthetic cleanup. No correction command, capacity authority,
+schema, provider, or new mutation path was added. Hidden-item disclosure stays
+in the truthful Pulse-orientation seam rather than expanding this action seam.
 
 ### Wave 5C: Truthful Pulse Orientation And Activation Checkpoint
 

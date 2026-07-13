@@ -239,14 +239,14 @@
       "owner": "academic_pressure projection and output lifecycle; TaskManager owns confirmed recovery-block creation",
       "active_contracts": ["docs/academic_pressure_map_contract.md", "docs/core_product_loop_refactor_plan_2026_07_11.md"],
       "runtime_paths": ["backend/app/services/academic_pressure.py", "backend/app/api/v1/endpoints/academic.py", "frontend/components/pulse/PulseAcademicPressureMap.tsx", "frontend/components/pulse/use-pressure-map-plan-commit.ts"],
-      "user_effect": "Shows 1/7/14-day pressure, uncertainty and source distinctions; dismisses without writes; confirmed editable previews can create canonical planning blocks.",
+      "user_effect": "Shows 1/7/14-day pressure, uncertainty and source distinctions; dismisses without writes; provisional editable plan drafts can create canonical planning blocks only after explicit confirmation.",
       "writes": ["output decision/suppression/render lifecycle", "canonical task only after explicit preview confirmation"],
       "exposure_class": "registered_interpretation_and_suggestion",
       "output_surface_ids": ["academic.pressure_map"],
       "proof": {"tests": ["backend/tests/test_academic_pressure_map.py", "backend/tests/test_lyrasim_v0.py", "scripts/test_pressure_map_planning_provenance_contract.mjs"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pressure map plan action has explicit copy and a stable click target"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pressure map horizon controls expose one pressed 32px segmented state"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pressure map action controls remain visible and uncut on mobile"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pressure map estimate names broad evidence without identity-style provenance"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pressure map estimate remains readable and uncut in the mobile dialog"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pressure map dismiss does not create dogfood tasks"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pressure map double-lock creates exactly one recovery block"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "cleanup leaves no active prefixed task or deadline rows"}], "minimum_tier": "local-current", "gated": ["normal runtime safety-gates recovery emission; forced browser proof is fixture/configuration-labelled"]},
       "historical_sources": [],
       "rollback": "Disable action emission while preserving the read-only projection and existing canonical tasks.",
-      "known_gaps": ["Day-zero usefulness is unproven.", "Coverage questions lack canonical correction commands.", "Some visible recovery options are diagnostic labels only."]
+      "known_gaps": ["Day-zero usefulness is unproven.", "Coverage questions intentionally remain non-clickable until a canonical correction command has a separately approved owner."]
     },
     {
       "id": "execution.stopwatch_lifecycle",

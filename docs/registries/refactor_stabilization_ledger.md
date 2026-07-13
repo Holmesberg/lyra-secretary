@@ -21677,7 +21677,60 @@ Rollback and next boundary:
 
 - Revert `b15e127` to remove the additive context DTO/UI, `63ba372` to remove
   its proof, and `49024f9` independently to restore the old wrapper behavior.
-- Issue `#220` remains open for the still-representable Accounting Gate gaps.
-  Missing-estimate and unresolved-capture work must not invent persistence or
-  authority merely to satisfy a checklist; the next seam follows current
-  runtime evidence.
+- Issue `#220` is closed for the representable count-once/source-honesty
+  correction. Missing-estimate and unresolved-capture work must not invent
+  persistence or authority merely to satisfy a checklist; the next seam
+  follows current runtime evidence.
+
+## 2026-07-14 - Wave 5B Pressure Map Action Parity
+
+Truthful action behavior:
+
+- Product commit `13cca22` gives each existing Pressure Map option one runtime
+  disposition. `create_plan` remains the existing TaskManager-backed command;
+  `review_calendar` navigates to `/settings#integrations`;
+  `confirm_coverage` and `clear_or_ignore` remain non-clickable diagnostics;
+  and `split_into_blocks` is retained only as a compatibility type and is no
+  longer emitted. No missing correction or split command was invented.
+- Coverage questions no longer say they can lock or correct source coverage.
+  They remain a neutral `Planning note`. The existing editable preview is now
+  a `Plan draft` and states that it uses provisional ranges, does not check
+  free-time capacity, and writes nothing until explicit confirmation.
+- Characterization commit `2a77966` locks the exact action owners/targets,
+  rejects restoration of the false split selector, covers imported/native
+  provisional ranges, and extends the mounted proof through the existing
+  Settings owner. All 30 focused backend tests, the planning/action contract,
+  frontend typecheck, verifier syntax, and diff hygiene passed.
+
+Focused browser and cleanup proof:
+
+- Canonical preflight passed at exact build
+  `2a77966e97240b5fe76f0a5ae6aa5bd371f62c62` with checkout-owned ports,
+  real Holmesberg cookie, non-operator role, zero pending notifications, no
+  active timer, a clean `DOGFOOD-WAVE5B-2a77966` prefix, and mounted Pressure
+  Map. The disposable first-login eligibility fixture remained explicitly
+  labeled and did not become hosted-public proof.
+- The real-cookie local-current path passed all 41 checks with zero failures
+  and zero gated paths at
+  `tmp/post-wave-dogfood/wave5b-action-parity-2a77966/result.json`. It proved an
+  authenticated Pressure Map render, non-clickable coverage note, obvious
+  plan-draft and integration controls, dismiss-without-write, one canonical
+  recovery block despite double lock, deadline/provenance retention, Calendar
+  desktop/mobile visibility, and the Settings integrations landing.
+- Desktop, `390x844`, plan-draft, Calendar-mobile, and Settings screenshots
+  were inspected directly. Text and controls were contained, distinct, and
+  non-overlapping. Post-run preflight at
+  `tmp/proof-preflight/wave5b-action-parity-2a77966-after.json` found the exact
+  prefix clean, zero pending notifications, and no active timer.
+- Manifest teardown closed ports 3018/8001, removed `.next-local-current` and
+  the disposable SQLite database, and left Redis DB 15 at zero keys.
+  Hosted-public artifacts, processes, accounts, and data were untouched.
+
+Rollback and next boundary:
+
+- Revert `13cca22` for product behavior and `2a77966` for its proof. Existing
+  canonical tasks remain valid because this seam did not change TaskManager or
+  task schema authority.
+- Issues `#220` and `#221` now close the related accounting/action pair. The
+  next operation is their Wave 5 macro-checkpoint, not another local action
+  refinement or architecture audit.
