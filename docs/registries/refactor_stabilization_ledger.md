@@ -20093,3 +20093,39 @@ Issue and rollback:
   restart, or production repair changed. Revert `d1311f8` with `14794af` to
   restore the former child-publication behavior; revert `b56636b` and
   `83fcc81` to remove only the focused verifier entry point.
+
+### Five-obligation Capture Gate and inspectable destinations
+
+- Issue `#233` identified a product usefulness gap: Pulse reported aggregate
+  Brain Dump counts for four seconds, offered no destination, and classified a
+  successfully reused same-day deadline as a failed item.
+- Product commit `331508e` adds backward-compatible per-item `created`,
+  `reused`, `rejected`, and `failed` outcomes. Existing count, canonical-ID,
+  and `failed_items` fields remain available. Reuse now closes as successful
+  canonical reuse; known validation rejection and internal failure remain
+  distinct. No parser, write owner, binding authority, or database schema
+  changed.
+- The Pulse result now remains until dismissal or the next capture. It exposes
+  obvious links to the existing Pressure Map, Table task audit, Deadlines, and
+  Calendar. The existing Pressure Map has a stable in-page anchor. First-run
+  onboarding presentation remains separately partial.
+- Proof commit `7338b28` characterizes created, reused, and rejected outcomes.
+  The focused Brain Dump parser/endpoint set passed `76` tests with one existing
+  xfail. Frontend typecheck and production build passed.
+- Verifier commit `2b4b942` adds a focused five-obligation Capture Gate. The
+  successful real-cookie local-current run is
+  `tmp/browser-product-loop/wave4-capture-gate-7338b28-r4/result.json`.
+  It proved five editable preview rows, four created tasks plus one created
+  deadline, five canonical outcome IDs, persistent review destinations, zero
+  mobile horizontal overflow, exact export attribution, navigation to
+  `/pulse#pressure-map`, and no active prefixed task/deadline or timer residue.
+- Holmesberg's local current-source account row was behind consent, onboarding,
+  and survey gates. The verifier did not mutate those durable account fields;
+  it used an explicit `GET /v1/users/me` eligibility-only proxy fixture and
+  records that boundary in the result. Authentication, capture writes, export,
+  Pressure Map render acknowledgement, and cleanup remained real. This is not
+  hosted-public onboarding proof.
+- Exact-head CI passed for `2b4b942c0c6d1f550eadcf2c84b4fbfb258f3f0b`:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29245100638`.
+  Revert `331508e` to restore aggregate transient results, `7338b28` to remove
+  outcome characterization, and `2b4b942` to remove only the focused verifier.
