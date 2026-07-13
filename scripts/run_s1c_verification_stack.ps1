@@ -55,6 +55,10 @@ try {
     git diff --check
   }
 
+  Invoke-Step "runtime topology contract gate" {
+    node scripts\test_runtime_topology_contract.mjs
+  }
+
   Invoke-Step "authority surface scan" {
     & $python scripts\scan_authority_surfaces.py --fail-on-missing --fail-on-worker-write-drift
   }
