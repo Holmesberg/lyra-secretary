@@ -2605,21 +2605,27 @@ async function runPressureMapPath(page, token, beforeExport) {
     ), createdTask || { title: pressureBlockTitle });
 
     await goto(page, "/calendar", "calendar-after-pressure-map-commit");
-    await clickAny(page, "calendar month view for pressure block", [
-      () => page.getByTestId("calendar-view-month-grid"),
-      () => page.getByRole("button", { name: /^Month$/i }),
+    await clickAny(page, "calendar day view for pressure block", [
+      () => page.getByTestId("calendar-view-day"),
+      () => page.getByRole("button", { name: /^Day$/i }),
     ], 8_000);
     const taskStart = new Date(createdTask?.start || Date.now());
     const currentDate = new Date();
-    const monthOffset = (
-      (taskStart.getFullYear() - currentDate.getFullYear()) * 12
-      + taskStart.getMonth()
-      - currentDate.getMonth()
+    const taskDay = new Date(
+      taskStart.getFullYear(),
+      taskStart.getMonth(),
+      taskStart.getDate(),
     );
-    const boundedMonthOffset = Math.max(-2, Math.min(2, monthOffset));
-    for (let step = 0; step < Math.abs(boundedMonthOffset); step += 1) {
-      const direction = boundedMonthOffset > 0 ? /Next period/i : /Previous period/i;
-      await clickAny(page, "calendar pressure-block month navigation", [
+    const currentDay = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate(),
+    );
+    const dayOffset = Math.round((taskDay.getTime() - currentDay.getTime()) / 86_400_000);
+    const boundedDayOffset = Math.max(-2, Math.min(2, dayOffset));
+    for (let step = 0; step < Math.abs(boundedDayOffset); step += 1) {
+      const direction = boundedDayOffset > 0 ? /Next period/i : /Previous period/i;
+      await clickAny(page, "calendar pressure-block day navigation", [
         () => page.getByRole("button", { name: direction }).first(),
       ], 8_000);
       await page.waitForTimeout(500);
@@ -2632,7 +2638,7 @@ async function runPressureMapPath(page, token, beforeExport) {
     addCheck("calendar completes the pressure-block range query", calendarRangeLoaded, {
       task_id: createdTask?.task_id || null,
       task_date: Number.isNaN(taskStart.getTime()) ? null : dateKey(taskStart),
-      month_offset: monthOffset,
+      day_offset: dayOffset,
     });
     const calendarEvent = page
       .locator(`[data-event-id="${createdTask?.task_id || "missing"}"]`)
@@ -2641,12 +2647,13 @@ async function runPressureMapPath(page, token, beforeExport) {
       .waitFor({ state: "visible", timeout: 12_000 })
       .then(() => true)
       .catch(() => false);
-    await screenshot(page, "calendar-pressure-map-commit-month");
+    await screenshot(page, "calendar-pressure-map-commit-day");
     addCheck("calendar shows pressure-map committed recovery block before cleanup", calendarEventVisible, {
       title: pressureBlockTitle,
       task_id: createdTask?.task_id || null,
       task_date: Number.isNaN(taskStart.getTime()) ? null : dateKey(taskStart),
-      month_offset: monthOffset,
+      day_offset: dayOffset,
+      view: "day",
       locator_visible: calendarEventVisible,
     });
   } finally {
