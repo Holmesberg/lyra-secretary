@@ -280,20 +280,29 @@ Wave 4 checkpoint status on 2026-07-13:
   Holmesberg writes, exact export proof, direct destinations, and cleanup. The
   account-readiness fixture changed only the browser `GET /v1/users/me`
   response and is not hosted-public proof.
-- The remaining Wave 4 work is invalidation completeness. Do not repeat closed
-  layout, partial-read, integration-legibility, pause-reason, stop-result, or
-  capture-result seams.
+- Shared task/deadline invalidation recipes and the existing Deadlines,
+  Calendar, and Today deadline-mutation call sites are closed. The remaining
+  Wave 4 work is the bounded call-site list below. Do not repeat closed layout,
+  partial-read, integration-legibility, pause-reason, stop-result,
+  capture-result, shared-recipe, or deadline-call-site seams.
 
 Frozen invalidation backlog, in execution order:
 
 1. Completed 2026-07-13: Today's single-delete and bulk-void failure
    settlement now reconciles canonical state, so partial server success cannot
    be overwritten by a stale optimistic snapshot.
-2. Expand the existing shared query-key recipes for task, deadline, undo, and
-   re-entry mutations to include only their proven Pressure Map, evidence,
-   range, deadline, and `me` dependencies.
-3. Close remaining Calendar, Table-correction, Google-connect, and Moodle-sync
-   call-site gaps only when the shared recipes do not already cover them.
+2. Completed 2026-07-13: shared task, deadline, undo, and re-entry recipes now
+   include their proven Pressure Map, evidence, range, deadline, and `me`
+   dependencies. Deadlines, Calendar, and Today deadline mutations delegate to
+   the shared deadline recipe.
+3. Remaining: close Calendar task-mutation, Table-correction, Google-connect,
+   and Moodle-sync call-site gaps only when the shared recipes do not already
+   cover them.
+
+The related macro proof passed with 192 product-loop checks, zero operator read
+diffs, zero exposure-without-render cases, and exact synthetic cleanup. The
+macro also found and closed a real Calendar boundary defect: accepted planned
+tasks crossing 23:00 now remain visible through the 24:00 day boundary.
 
 Already-correct Pulse timer, Brain Dump, Pressure Map commit, deadline-prefix,
 Calendar task-range, and Google-disconnect recipes remain untouched. No new

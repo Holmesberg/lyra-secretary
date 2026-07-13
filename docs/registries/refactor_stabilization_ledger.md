@@ -21347,3 +21347,69 @@ Next boundary and rollback:
   `29906da` independently to remove the focused proof. Revert `5635543` and
   `6383fea` to remove the Windows ownership fixes. No schema migration, data
   repair, deployment, restart, or authority transfer is required.
+
+## 2026-07-13 - Wave 4 Shared Invalidation And Deadline Call Sites
+
+Usefulness and consistency:
+
+- Issues `#247` and `#248` bound the seam. Product commit `abeaafc` centralizes
+  task and deadline mutation dependencies without changing writer authority.
+  Test commit `ef2fe34` locks the shared recipes. Product commit `bee523e`
+  routes existing Deadlines, Calendar, and Today deadline mutations through
+  the shared deadline recipe; test commit `8ee0faf` forbids regression to
+  deadline-only invalidation on those routes.
+- The shared task recipe covers task-day and range queries, evidence,
+  Pressure Map, and `me`. The deadline recipe composes deadline reads with
+  those task projections. Undo, re-entry, timer, Brain Dump, and Pressure Map
+  helpers delegate instead of owning parallel dependency lists.
+- The first exact-head macro run found issue `#249`: a canonical Pressure Map
+  recovery task from 22:57 to 23:27 existed in export and the Calendar range
+  response but was clipped by the `23:00` day boundary. This was classified as
+  a product visibility defect, not an invalidation or selector failure.
+- Product commit `6d7dfd6` extends the existing 06:00 crop to the supported
+  `24:00` boundary; test commit `c119053` locks late Pressure Map block
+  visibility through the existing planning contract. No mutation, schema,
+  provider, exposure, or timezone authority changed.
+
+Macro proof:
+
+- S1c passed at the product/test head, including static authority and Cortex
+  gates, the backend suite, and a fresh Alembic upgrade. Multi-account proof
+  confirmed the operator role is read-only and Holmesberg is non-operator.
+- Canonical preflight passed before and after mutation at
+  `tmp/proof-preflight/invalidation-macro-holmesberg-c119053.json` and
+  `tmp/proof-preflight/invalidation-macro-holmesberg-c119053-after.json`.
+  Both proved exact build `c119053ca8442f2881644e2949ac110a81366865`,
+  checkout-owned ports, valid cookies, zero pending notifications, no active
+  timer, bounded export, and a clean synthetic prefix.
+- The complete real-cookie Holmesberg loop passed all 192 checks at
+  `tmp/post-wave-dogfood/invalidation-macro-c119053/product-loop/result.json`.
+  The late Calendar block was visible, Pressure Map controls remained obvious
+  on desktop/mobile, and all 16 tasks, 8 deadlines, 3 notifications, and 5
+  exposure suppressions were terminalized or cleaned without repair.
+- Operator stress passed after mutation at
+  `tmp/operator-readonly-stress-2026-07-13T19-52-06-965Z/result.json` using the
+  labeled local-current eligibility fixture only for `GET /v1/users/me`.
+  Counts and dashboard snapshots had zero diffs, browser issues/warnings were
+  empty, `implementation_green=true`, cohort readiness remained honestly
+  yellow, and `exposure_without_render_count=0`.
+- Calendar, Pressure Map desktop/mobile, and operator desktop/mobile artifacts
+  were inspected directly. No overlapping or clipped controls were found.
+  The top-level manifest is
+  `tmp/post-wave-dogfood/invalidation-macro-c119053/evidence-manifest.json`.
+- Hosted frontend and API remained read-only healthy with verified public
+  topology. Public frontend build `98bc1f8` and backend build
+  `6031ed88bf4355717b0891503ca832fd4c5ed414` are deliberate deployment lag;
+  no public deploy or restart occurred.
+
+Next boundary and rollback:
+
+- Frozen invalidation backlog items 1 and 2 are closed, as is the deadline
+  subset of item 3. The remaining bounded audit output is Calendar task
+  mutations, Table correction, Google connect, and Moodle sync, only where the
+  shared recipes do not already cover the call site.
+- Revert `abeaafc` and `bee523e` independently to restore prior invalidation
+  ownership; revert `ef2fe34` and `8ee0faf` to remove their contract locks.
+  Revert `6d7dfd6` and `c119053` to restore the 23:00 Calendar boundary and
+  remove its proof. No migration, data repair, deployment, or authority
+  transfer is required.
