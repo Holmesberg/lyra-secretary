@@ -102,6 +102,10 @@ try {
     node scripts\test_operator_account_preflight_contract.mjs
   }
 
+  Invoke-Step "proof preflight negative contract gate" {
+    node scripts\proof_preflight.mjs --self-test
+  }
+
   Invoke-Step "Pressure Map planning provenance contract gate" {
     node scripts\test_pressure_map_planning_provenance_contract.mjs
   }
