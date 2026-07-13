@@ -69,6 +69,7 @@ desktop.ini
 # Local operator artefacts — never belong in the public repo
 tmp/
 backups/
+frontend/.next-local-current*/
 docs/Screenshots/
 docs/presentations/*.zip
 archive/data_exports/*.pdf
