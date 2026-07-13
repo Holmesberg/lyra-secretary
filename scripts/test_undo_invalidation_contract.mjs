@@ -23,10 +23,10 @@ assert(
   "Undo invalidation must live in the central query-key authority"
 );
 assert(
-  /queryKeys\.tasks[\s\S]*queryKeys\.tasksRange[\s\S]*queryKeys\.tasksEvidence[\s\S]*queryKeys\.stopwatchStatus[\s\S]*queryKeys\.deadlines[\s\S]*queryKeys\.operatorDashboard[\s\S]*\["operator-dashboard"\][\s\S]*queryKeys\.me/.test(
+  /queryKeys\.tasks[\s\S]*queryKeys\.tasksRange[\s\S]*queryKeys\.tasksEvidence[\s\S]*queryKeys\.pressureMap[\s\S]*queryKeys\.stopwatchStatus[\s\S]*queryKeys\.deadlines[\s\S]*queryKeys\.operatorDashboard[\s\S]*\["operator-dashboard"\][\s\S]*queryKeys\.me/.test(
     queryKeys
   ),
-  "Undo invalidation must include task, range, evidence, stopwatch, deadline, active operator, legacy operator, and user caches"
+  "Undo invalidation must include task, range, evidence, Pressure Map, stopwatch, deadline, active operator, legacy operator, and user caches"
 );
 assert(
   undoToastHost.includes('import { invalidateUndoCaches } from "@/lib/query-keys";'),

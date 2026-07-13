@@ -37,5 +37,23 @@ assert(
   /operator\s*:\s*\[queryKeys\.operatorDashboard\]/.test(queryKeys),
   "invalidateDomain must keep the operator cockpit domain",
 );
+assert(
+  /export function invalidateTaskMutationCaches[\s\S]*queryKeys\.tasks,[\s\S]*queryKeys\.tasksRange,[\s\S]*queryKeys\.tasksEvidence,[\s\S]*queryKeys\.pressureMap,[\s\S]*queryKeys\.me,[\s\S]*?\n}/.test(queryKeys),
+  "task mutation invalidation must cover task, range, evidence, Pressure Map, and user projections",
+);
+assert(
+  /export function invalidateDeadlineMutationCaches[\s\S]*queryKeys\.deadlines,[\s\S]*queryKeys\.tasks,[\s\S]*queryKeys\.tasksRange,[\s\S]*queryKeys\.tasksEvidence,[\s\S]*queryKeys\.pressureMap,[\s\S]*queryKeys\.me,[\s\S]*?\n}/.test(queryKeys),
+  "deadline mutation invalidation must cover deadline and dependent task projections",
+);
+assert(
+  /export function invalidatePulseReentryCaches[\s\S]*invalidateTaskMutationCaches\(queryClient\)[\s\S]*queryKeys\.stopwatchStatus[\s\S]*?\n}/.test(queryKeys)
+    && /export function invalidateTodayTaskCommandSurfaces[\s\S]*invalidateTaskMutationCaches\(queryClient\)[\s\S]*queryKeys\.stopwatchStatus[\s\S]*?\n}/.test(queryKeys),
+  "Today and re-entry mutations must use the shared task recipe plus stopwatch truth",
+);
+assert(
+  /export function invalidateBrainDumpCommitCaches[\s\S]*return invalidateDeadlineMutationCaches\(queryClient\)/.test(queryKeys)
+    && /export function invalidatePressureRecoveryCommitCaches[\s\S]*return invalidateDeadlineMutationCaches\(queryClient\)/.test(queryKeys),
+  "capture and Pressure Map commits must use the shared deadline-dependent recipe",
+);
 
 console.log(JSON.stringify({ ok: true, checked: "frontend_query_keys_contract" }));
