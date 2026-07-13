@@ -59,6 +59,7 @@ const captureProofOnly = args.get("capture-proof-only") === "true";
 const onboardingPartialRecoveryProofOnly = args.get("onboarding-partial-recovery-proof-only") === "true";
 const onboardingSkipProofOnly = args.get("onboarding-skip-proof-only") === "true";
 const reentryProofOnly = args.get("reentry-proof-only") === "true";
+const creationNudgeProofOnly = args.get("creation-nudge-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
 const fixtureAccountReady = args.get("fixture-account-ready") === "true";
 const forcePressureRecovery = args.get("force-pressure-recovery") === "true";
@@ -1040,6 +1041,211 @@ async function chooseCustomCategory(page, category) {
 
 async function chooseNudgeEligibleCategory(page) {
   await chooseCustomCategory(page, `dogfood_nudge_${runKey.slice(0, 24)}`);
+}
+
+async function runCreationNudgePersistenceProof(page, token, beforeExport) {
+  const lookupPattern = "**/v1/analytics/bias_factor/lookup**";
+  let fixtureMode = "suppressed_fast";
+  let suppressedFastRequests = 0;
+  let delayedHydrationRequests = 0;
+  let resolveHydration;
+  const hydrationResolved = new Promise((resolve) => {
+    resolveHydration = resolve;
+  });
+  const lookupRoute = async (route) => {
+    const requestUrl = new URL(route.request().url());
+    const fast = requestUrl.searchParams.get("fast") === "true";
+    if (fixtureMode === "suppressed_fast" && fast) {
+      suppressedFastRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          cell: null,
+          sessions: 0,
+          min_sessions: 3,
+          source: "research",
+          suppressed_reason: "rule11_no_nudge_control_day",
+          surface_id: "task.creation_nudge",
+          truth_class: "intervention",
+        }),
+      });
+      return;
+    }
+    if (fixtureMode === "delayed_ineligible_hydration" && !fast) {
+      delayedHydrationRequests += 1;
+      await new Promise((resolve) => setTimeout(resolve, 1_800));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          cell: null,
+          sessions: 0,
+          min_sessions: 3,
+          source: "personal",
+          bias_factor_final: 1,
+          pause_overhead_minutes: 0,
+          pause_overhead_sample_size: 0,
+        }),
+      });
+      resolveHydration();
+      return;
+    }
+    await route.continue();
+  };
+  await page.route(lookupPattern, lookupRoute);
+
+  const fillNudgeForm = async (title, category) => {
+    const start = futureDate(20);
+    const end = futureDate(80);
+    await fillAny(page, "nudge proof title", [
+      (p) => p.getByTestId("new-task-title"),
+      (p) => p.locator("#title"),
+    ], title);
+    await fillAny(page, "nudge proof start", [
+      (p) => p.getByTestId("new-task-start"),
+      (p) => p.locator("#start"),
+    ], localInput(start));
+    await fillAny(page, "nudge proof end", [
+      (p) => p.getByTestId("new-task-end"),
+      (p) => p.locator("#end"),
+    ], localInput(end));
+    await fillAny(page, "nudge proof duration hours", [
+      (p) => p.getByTestId("new-task-duration-hours"),
+      (p) => p.getByTestId("new-task-modal").locator('input[type="number"]').nth(0),
+    ], "1");
+    await fillAny(page, "nudge proof duration minutes", [
+      (p) => p.getByTestId("new-task-duration-minutes"),
+      (p) => p.getByTestId("new-task-modal").locator('input[type="number"]').nth(1),
+    ], "0");
+    await chooseCustomCategory(page, category);
+  };
+
+  try {
+    await goto(page, "/today", "creation-nudge-persistence-start");
+    await clickAny(page, "open New Task for suppression proof", [
+      (p) => p.getByTestId("today-new-task"),
+      (p) => p.getByRole("button", { name: /New task/i }),
+    ]);
+    await fillNudgeForm(
+      `${prefix} suppressed estimate fixture`,
+      `dogfood_nudge_suppressed_${runKey.slice(0, 16)}`,
+    );
+    const nudgeCard = page.locator('[data-testid="new-task-nudge-use"]').first();
+    let suppressedCardFlashed = false;
+    const flashDeadline = Date.now() + 900;
+    while (Date.now() < flashDeadline) {
+      if (await nudgeCard.isVisible().catch(() => false)) {
+        suppressedCardFlashed = true;
+        break;
+      }
+      await page.waitForTimeout(20);
+    }
+    addCheck(
+      "suppressed creation estimate never flashes as actionable",
+      suppressedFastRequests >= 1 && !suppressedCardFlashed,
+      { suppressed_fast_requests: suppressedFastRequests, flashed: suppressedCardFlashed },
+    );
+    await clickAny(page, "close suppression proof modal", [
+      (p) => p.getByRole("button", { name: /^Cancel$/i }),
+    ]);
+
+    fixtureMode = "delayed_ineligible_hydration";
+    const title = `${prefix} stable estimate`;
+    await clickAny(page, "open New Task for persistence proof", [
+      (p) => p.getByTestId("today-new-task"),
+      (p) => p.getByRole("button", { name: /New task/i }),
+    ]);
+    await fillNudgeForm(title, `dogfood_nudge_stable_${runKey.slice(0, 16)}`);
+    const useNudge = page.locator('[data-testid="new-task-nudge-use"]').first();
+    await useNudge.waitFor({ state: "visible", timeout: 10_000 });
+    addCheck(
+      "authorized creation estimate is actionable",
+      await useNudge.isEnabled(),
+    );
+    const initialButtonText = await useNudge.innerText();
+    await Promise.race([
+      hydrationResolved,
+      new Promise((_, reject) => setTimeout(
+        () => reject(new Error("personal hydration did not resolve")),
+        10_000,
+      )),
+    ]);
+    await page.waitForTimeout(1_200);
+    addCheck(
+      "authorized creation estimate survives ineligible personal hydration",
+      delayedHydrationRequests === 1
+        && await useNudge.isVisible()
+        && await useNudge.isEnabled()
+        && await useNudge.innerText() === initialButtonText,
+      {
+        delayed_hydration_requests: delayedHydrationRequests,
+        initial_button_text: initialButtonText,
+        final_button_text: await useNudge.innerText().catch(() => null),
+      },
+    );
+    await screenshot(page, "new-task-estimate-stable-after-hydration");
+    await useNudge.click();
+    addCheck(
+      "Use estimate records an explicit decision and retires the card",
+      !(await useNudge.isVisible().catch(() => false)),
+    );
+    await clickAny(page, "create task after stable estimate", [
+      (p) => p.getByTestId("new-task-create"),
+      (p) => p.getByRole("button", { name: /^Create$/i }),
+    ]);
+    await clickCreateAnywayIfVisible(page, "creation-nudge-persistence");
+    const task = await pollFor(token, "stable-estimate task creation", async () => (
+      await findTaskByTitle(token, title)
+    ), 20_000, 500);
+    cleanup.tasks.add(task.task_id);
+
+    const evidence = await pollFor(token, "stable-estimate exposure and outcome", async () => {
+      const exported = await apiFetch(token, "/v1/users/me/export");
+      const beforeIds = new Set(
+        rows(beforeExport, "exposure_decision_events").map((row) => row.exposure_id),
+      );
+      const decisions = rows(exported, "exposure_decision_events")
+        .filter((row) => !beforeIds.has(row.exposure_id))
+        .filter((row) => row.content_template_id === "task_creation_nudge_lookup");
+      const renderIds = new Set(
+        rows(exported, "exposure_render_events")
+          .filter((row) => row.surface === "task.creation_nudge")
+          .map((row) => row.exposure_id),
+      );
+      const ackIds = new Set(
+        rows(exported, "exposure_ack_events")
+          .filter((row) => row.event_type === "render")
+          .map((row) => row.exposure_id),
+      );
+      const browserProven = decisions.filter((row) => (
+        renderIds.has(row.exposure_id) && ackIds.has(row.exposure_id)
+      ));
+      const outcome = rows(exported, "calibration_nudge_events").find((row) => (
+        row.task_id === task.task_id && row.user_decision === "accepted"
+      ));
+      return browserProven.length === 1 && outcome
+        ? { decisions, browserProven, outcome }
+        : null;
+    }, 15_000, 500);
+    addCheck(
+      "stable estimate has one authenticated render and accepted outcome",
+      evidence.browserProven.length === 1 && Boolean(evidence.outcome),
+      {
+        decision_count: evidence.decisions.length,
+        exposure_id: evidence.browserProven[0]?.exposure_id || null,
+        calibration_event_id: evidence.outcome?.event_id || null,
+        task_id: task.task_id,
+      },
+    );
+    return {
+      taskId: task.task_id,
+      exposureId: evidence.browserProven[0].exposure_id,
+      calibrationEventId: evidence.outcome.event_id,
+    };
+  } finally {
+    await page.unroute(lookupPattern, lookupRoute);
+  }
 }
 
 async function waitForDeadlineSuggestion(page, title, timeout = 20_000, options = {}) {
@@ -5881,6 +6087,59 @@ async function main() {
         api_origin: apiOrigin,
         user_ref: userRef(me.user_id),
         output_dir: outDir,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (creationNudgeProofOnly) {
+      addIssue("creation-nudge race fixtures enabled", {
+        scope: "fast suppression and delayed ineligible hydration responses only",
+        writes: "one real prefixed task plus canonical exposure/outcome rows",
+        hosted_public_proof: false,
+      });
+      const proof = await runCreationNudgePersistenceProof(page, token, beforeExport);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const afterCleanup = await apiFetch(token, "/v1/users/me/export");
+      const cleanedTask = rows(afterCleanup, "tasks").find(
+        (row) => row.task_id === proof.taskId,
+      );
+      const cleanedOutcome = rows(afterCleanup, "calibration_nudge_events").find(
+        (row) => row.event_id === proof.calibrationEventId,
+      );
+      addCheck(
+        "creation-nudge proof cleanup terminalizes task and outcome",
+        Boolean(
+          cleanedTask?.voided_at
+          && cleanedTask?.voided_reason === "test_contamination"
+          && cleanedOutcome?.voided_at
+        ),
+        { task: cleanedTask || null, outcome: cleanedOutcome || null },
+      );
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "creation_nudge_persistence",
+        proof_status: "passed",
+        fixture_only: true,
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        exposure_id: proof.exposureId,
+        calibration_event_id: proof.calibrationEventId,
         checks,
         issues,
         gated,

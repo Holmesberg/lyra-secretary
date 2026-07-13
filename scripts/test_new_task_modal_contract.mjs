@@ -17,6 +17,8 @@ function assert(condition, message) {
 
 const modal = read("frontend/components/new-task-modal.tsx");
 const timeControls = read("frontend/lib/hooks/use-new-task-time-controls.ts");
+const nudgeLookup = read("frontend/components/use-creation-nudge-lookup.ts");
+const nudgeCard = read("frontend/components/calibration-nudge-card.tsx");
 
 assert(
   modal.includes("Fresh defaults every time modal opens for a new task."),
@@ -43,4 +45,30 @@ assert(
   "resetTimeDefaults must reset start/end/duration from nextDefaultStart"
 );
 
-console.log(JSON.stringify({ ok: true, checked: "new_task_modal_fresh_defaults_contract" }));
+assert(
+  !nudgeLookup.includes("localResearchNudge"),
+  "New Task must not render an actionable estimate before backend eligibility"
+);
+
+assert(
+  /clearCreationNudge\(\);[\s\S]*?const\s+abortCtl\s*=\s*new\s+AbortController\(\)/.test(nudgeLookup),
+  "material form changes must retire the previous estimate while canonical lookup is pending"
+);
+
+assert(
+  /applyLookupResponse\(hydrated,\s*{\s*preserveVisibleOnIneligible:\s*true,?\s*}\)/.test(nudgeLookup),
+  "personal hydration must not retract an estimate already authorized by the fast path"
+);
+
+assert(
+  (nudgeCard.match(/disabled={!nudge\.exposureId\s*\|\|\s*!nudge\.backendReady}/g) || []).length === 2,
+  "Use and Keep must both require a backend-authorized exposure"
+);
+
+console.log(JSON.stringify({
+  ok: true,
+  checked: [
+    "new_task_modal_fresh_defaults_contract",
+    "new_task_creation_nudge_stability_contract",
+  ],
+}));
