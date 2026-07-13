@@ -20,7 +20,9 @@ param(
 
   [switch]$ForcePressureRecovery,
 
-  [switch]$PressureProofOnly
+  [switch]$PressureProofOnly,
+
+  [switch]$PulseStopwatchOutputProofOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -133,6 +135,9 @@ try {
   }
   if ([bool]$PressureProofOnly) {
     $args += "--pressure-proof-only"
+  }
+  if ([bool]$PulseStopwatchOutputProofOnly) {
+    $args += "--pulse-stopwatch-output-proof-only"
   }
 
   node @args
