@@ -20008,3 +20008,50 @@ Issue and rollback:
   exact-head CI. `#230` remains a separate operator-preflight improvement.
 - Revert each product commit above with its paired proof commit. The cache-key
   generation is TTL-bound and introduces no persisted schema dependency.
+
+## 2026-07-13 - Wave 4 Task Freshness And Stop-Output Parity
+
+Usefulness restored:
+
+- Task-range reads now converge immediately after an overlapping create or
+  mutation. Commit `e40ed65` scopes cached snapshots to a mutation generation;
+  stale in-flight reads can finish but cannot republish into the current
+  generation. Commit `6057b0f` proves the stale-writer interleaving, user
+  scoping, and captured-generation endpoint behavior.
+- Pulse and Today now interpret eligible stopwatch stop outputs through the
+  same pure mapping in `frontend/lib/stopwatch-stop-outputs.ts`. Product commit
+  `33d734d` mounts the existing Toast behavior on Pulse instead of suppressing
+  a renderable micro-mirror or calibration nudge as surface unavailable.
+- Completed-session truth, output wording, Rule 11, lifespan, detail link,
+  reflection compatibility, and correction authority remain unchanged. Only
+  the route-parity gap recorded by `#215` changed.
+
+Focused proof and cleanup:
+
+- The warmed-range negative proof created through the real New Task UI, read
+  through the same canonical range, rendered in Today, and voided cleanly:
+  `tmp/range-wave4/evidence/result.json`.
+- Verifier commit `131f073` replaces the obsolete Pulse suppression assertion
+  with mounted Toast and exactly-once authenticated render evidence. Wrapper
+  commit `5b941ee` exposes that proof as a focused mode.
+- Real-cookie local-current Holmesberg proof passed at
+  `tmp/browser-product-loop/wave4-pulse-stop-output-focused/result.json`.
+  It exercised start, pause, refresh, Calendar/Today/Pulse navigation, re-entry
+  resume, stop confirmation, mounted micro-mirror render, one render event,
+  one render ACK, one viewed compatibility row, and prefixed-row cleanup. It
+  left no active timer or unterminated synthetic stopwatch-output candidate.
+- Preservation repair commits `0faaf43` and `4dd1eb3` give the registry a
+  literal current check and remove the closed `#215` gap. All 45 required
+  preservation rows pass locally.
+- Exact-head CI passed for the range-cache stack at
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29202075873` and
+  for the stop-output stack at
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29242014002`.
+
+Issue and rollback:
+
+- `#229` and `#215` are closed with the proof above. No schema, provider,
+  predictor, claim, public deployment, or production repair was introduced.
+- Revert `e40ed65` with `6057b0f` to restore the former cache behavior. Revert
+  `33d734d`, then `131f073`, `5b941ee`, `0faaf43`, and `4dd1eb3` to restore the
+  former Pulse suppression path and its verifier/registry description.
