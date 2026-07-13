@@ -156,6 +156,7 @@ export function useTodayStopwatchCommands({
         queryKeys.stopwatchStatus,
       );
       const stoppedTaskId = snapshot?.task_id;
+      const restoredTaskState = snapshot?.paused ? "PAUSED" : "EXECUTING";
       qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, {
         active: false,
       });
@@ -179,7 +180,9 @@ export function useTodayStopwatchCommands({
           if (stoppedTaskId) {
             qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
               old?.map((t) =>
-                t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
+                t.task_id === stoppedTaskId
+                  ? { ...t, state: restoredTaskState }
+                  : t
               ),
             );
           }
@@ -215,11 +218,14 @@ export function useTodayStopwatchCommands({
         if (stoppedTaskId) {
           qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
             old?.map((t) =>
-              t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
+              t.task_id === stoppedTaskId
+                ? { ...t, state: restoredTaskState }
+                : t
             ),
           );
         }
         setErrorMsg(e instanceof Error ? e.message : "Failed to stop timer");
+        refresh();
       }
     },
     [
