@@ -47,6 +47,7 @@ const archetypeProofOnly = args.get("archetype-proof-only") === "true";
 const pressureProofOnly = args.get("pressure-proof-only") === "true";
 const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "true";
 const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-only") === "true";
+const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
 const forcePressureRecovery = args.get("force-pressure-recovery") === "true";
 const holmesbergCookie = process.env.LYRA_COOKIE_HOLMESBERG
@@ -3859,6 +3860,35 @@ async function main() {
         user_ref: userRef(me.user_id),
         output_dir: outDir,
         exposure_count: proof.exposureIds.length,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (timerSwitchProofOnly) {
+      await runTimerSwitchChipPath(page, token);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "timer_switch_continuity_only",
+        proof_status: "passed",
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
         checks,
         issues,
         gated,
