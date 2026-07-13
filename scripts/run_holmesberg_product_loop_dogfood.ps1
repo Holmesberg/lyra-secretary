@@ -28,6 +28,8 @@ param(
 
   [switch]$PressureCalendarPartialProofOnly,
 
+  [switch]$CaptureProofOnly,
+
   [switch]$OnboardingPartialRecoveryProofOnly,
 
   [switch]$OnboardingSkipProofOnly,
@@ -166,6 +168,9 @@ try {
   }
   if ([bool]$PressureCalendarPartialProofOnly) {
     $args += "--pressure-calendar-partial-proof-only"
+  }
+  if ([bool]$CaptureProofOnly) {
+    $args += "--capture-proof-only"
   }
   if ([bool]$OnboardingPartialRecoveryProofOnly) {
     $args += "--onboarding-partial-recovery-proof-only"
