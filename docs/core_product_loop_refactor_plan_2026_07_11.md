@@ -301,10 +301,13 @@ Frozen invalidation backlog, in execution order:
    task/deadline/integration recipes. Provider sync still preserves provider
    provenance and does not become execution truth.
 
-The related macro proof passed with 192 product-loop checks, zero operator read
-diffs, zero exposure-without-render cases, and exact synthetic cleanup. The
-macro also found and closed a real Calendar boundary defect: accepted planned
-tasks crossing 23:00 now remain visible through the 24:00 day boundary.
+The final related macro proof passed with 194 product-loop checks, zero
+operator read diffs, zero exposure-without-render cases, and exact synthetic
+cleanup. It retained the earlier 23:00 boundary correction and found one more
+real Calendar visibility defect: accepted planned tasks before 06:00 now remain
+visible through the full 00:00-24:00 day boundary. Desktop and narrow-screen
+proof both require the off-hours block to remain visible without horizontal
+overflow.
 
 Already-correct Pulse timer, Brain Dump, Pressure Map commit, deadline-prefix,
 Calendar task-range, and Google-disconnect recipes remain untouched. No new

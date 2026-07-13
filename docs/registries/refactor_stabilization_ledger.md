@@ -21524,3 +21524,61 @@ Next boundary and rollback:
   lock. Revert `409c2da`, `4cfc192`, and `1ab75db` independently to remove the
   reusable proof runtime and fail-closed wrappers. No schema, production data,
   provider credential, deploy, restart, or authority transfer is involved.
+
+## 2026-07-13 - Wave 4 Final Macro And Off-Hours Calendar Closure
+
+Failure classification and focused repair:
+
+- The first final macro run passed its setup and mutation paths but found issue
+  `#256`: a canonical Pressure Map recovery block before 06:00 existed in the
+  task export and Calendar range response but the day view cropped it. The run
+  still completed bounded cleanup. Independent preflight then proved the
+  failed-run prefix clean, pending notifications zero, and no active timer.
+- This was classified as a product visibility defect rather than a verifier
+  retry. Commit `7d01f5a` extends Calendar's supported day boundary to
+  `00:00-24:00` while preserving its existing relevant-event auto-scroll.
+  Commit `cf54164` locks the boundary in the planning contract. Commit
+  `a1b9413` requires the canonical pre-06:00 recovery block to remain visible
+  at `390x844` with zero document horizontal overflow.
+- The focused desktop/mobile proof passed at
+  `tmp/post-wave-dogfood/offhours-calendar-a1b9413/pressure-path/result.json`.
+  The screenshots were inspected directly: the recovery block, Calendar
+  controls, timeline, and event text remained contained and actionable.
+
+Final macro evidence:
+
+- S1c passed once for this related group, including static authority,
+  preservation, backend-layer and Cortex gates, the full backend suite, and a
+  fresh Alembic upgrade. Multi-account proof confirmed the operator account is
+  operator/read-only and Holmesberg is non-operator.
+- After the focused repair, one complete real-cookie Holmesberg rerun passed
+  all 194 checks at
+  `tmp/post-wave-dogfood/wave4-provider-macro-a1b9413/product-loop/result.json`.
+  It covered capture and partial recovery, task/deadline flows, timer
+  pause/resume/stop, notification terminal outcomes, Pressure Map planning,
+  Calendar/Table visibility, export, privacy, and cleanup. The run tracked 16
+  tasks, 8 deadlines, 3 notifications, and 5 exposure suppressions, and left
+  no active prefixed rows, active timer, or unterminated synthetic exposure.
+- Exact-build post-cleanup preflight passed at
+  `tmp/proof-preflight/wave4-provider-macro-a1b9413-after.json`. Operator
+  read-only stress passed at
+  `tmp/operator-readonly-stress-2026-07-13T21-12-15-771Z/result.json` with zero
+  count, attribution, route, and dashboard diffs; no browser issues/warnings;
+  `implementation_green=true`; honest cohort-yellow status; and
+  `exposure_without_render_count=0`.
+- Pressure Map desktop/mobile, Today mobile execution, Calendar off-hours, and
+  operator desktop/mobile screenshots were inspected directly. Primary
+  actions and readiness state were visible and non-overlapping. No hosted
+  mutation, provider credential mutation, public deploy, or restart occurred.
+
+Boundary and rollback:
+
+- Wave 4's frozen invalidation backlog and final macro are closed. Issue `#253`
+  continues to own true cross-midnight representation, and issue `#254`
+  continues to own a disposable local-current account primitive. Neither was
+  hidden inside the off-hours fix.
+- Revert `7d01f5a` to restore the previous 06:00 crop, `cf54164` to remove the
+  boundary contract, and `a1b9413` to remove the narrow-screen proof. Provider
+  invalidation and proof-runtime commits remain independently reversible as
+  recorded above. No schema migration, production repair, deploy, restart, or
+  authority transfer is required.
