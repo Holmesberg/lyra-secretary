@@ -482,13 +482,17 @@ def test_pressure_projection_does_not_transfer_overcoverage_between_obligations(
         }
 
 
-def test_pressure_projection_self_links_standalone_planned_task(db):
-    user = _user(db, "standalone-coverage-pressure@example.com")
+@pytest.mark.parametrize("category", ["study", "academic"])
+def test_pressure_projection_keeps_unlinked_block_out_of_demand_and_coverage(
+    db,
+    category,
+):
+    user = _user(db, f"unlinked-{category}-pressure@example.com")
     now = datetime.utcnow()
     task = Task(
         user_id=user.user_id,
-        title="Standalone study block",
-        category="study",
+        title=f"Standalone {category} block",
+        category=category,
         planned_start_utc=now + timedelta(hours=2),
         planned_end_utc=now + timedelta(hours=3),
         planned_duration_minutes=60,
@@ -503,20 +507,96 @@ def test_pressure_projection_self_links_standalone_planned_task(db):
     )
 
     assert response.status_code == 200, response.text
-    projection = response.json()["demand_coverage_projection"]
-    assert projection["obligation_count"] == 1
-    obligation = projection["obligations"][0]
-    assert obligation["obligation_id"] == task.task_id
-    assert obligation["projection_role"] == "standalone_task_obligation"
-    assert obligation["linked_task_ids"] == [task.task_id]
-    assert obligation["feasible_future_coverage"] == {
-        "low_minutes": 60,
-        "high_minutes": 60,
-    }
-    assert obligation["unscheduled_demand"] == {
+    data = response.json()
+    projection = data["demand_coverage_projection"]
+    assert projection["obligation_count"] == 0
+    assert projection["obligations"] == []
+    assert projection["total_estimate"] == {
         "low_minutes": 0,
         "high_minutes": 0,
     }
+    assert projection["feasible_future_coverage"] == {
+        "low_minutes": 0,
+        "high_minutes": 0,
+    }
+    assert data["source_summary"]["planned_lyra_minutes"] == 60
+
+
+def test_pressure_projection_does_not_mix_unlinked_block_into_linked_obligation(db):
+    user = _user(db, "mixed-linkage-pressure@example.com")
+    deadline = _deadline(db, user.user_id, "Linked assignment", days=5)
+    now = datetime.utcnow()
+    linked_block = Task(
+        user_id=user.user_id,
+        title="Linked assignment block",
+        category="study",
+        planned_start_utc=now + timedelta(hours=2),
+        planned_end_utc=now + timedelta(hours=3),
+        planned_duration_minutes=60,
+        state=TaskState.PLANNED,
+        deadline_id=deadline.deadline_id,
+        deadline_match_source="user_explicit",
+        deadline_match_confidence=1.0,
+    )
+    unlinked_block = Task(
+        user_id=user.user_id,
+        title="Unlinked seminar block",
+        category="academic",
+        planned_start_utc=now + timedelta(hours=4),
+        planned_end_utc=now + timedelta(hours=5, minutes=30),
+        planned_duration_minutes=90,
+        state=TaskState.PLANNED,
+    )
+    db.add_all([linked_block, unlinked_block])
+    db.commit()
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    projection = data["demand_coverage_projection"]
+    assert projection["obligation_count"] == 1
+    obligation = projection["obligations"][0]
+    assert obligation["obligation_id"] == deadline.deadline_id
+    assert obligation["linked_task_ids"] == [linked_block.task_id]
+    assert obligation["coverage_task_ids"] == [linked_block.task_id]
+    assert unlinked_block.task_id not in json.dumps(projection)
+    assert data["source_summary"]["planned_lyra_minutes"] == 150
+
+
+def test_pressure_projection_does_not_treat_suggested_link_as_canonical(db):
+    user = _user(db, "candidate-link-pressure@example.com")
+    deadline = _deadline(db, user.user_id, "Candidate assignment", days=5)
+    now = datetime.utcnow()
+    suggested_block = Task(
+        user_id=user.user_id,
+        title="Suggested assignment block",
+        category="study",
+        planned_start_utc=now + timedelta(hours=2),
+        planned_end_utc=now + timedelta(hours=3),
+        planned_duration_minutes=60,
+        state=TaskState.PLANNED,
+        llm_inferred_deadline_id=deadline.deadline_id,
+    )
+    db.add(suggested_block)
+    db.commit()
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    projection = response.json()["demand_coverage_projection"]
+    assert projection["obligation_count"] == 1
+    obligation = projection["obligations"][0]
+    assert obligation["obligation_id"] == deadline.deadline_id
+    assert obligation["linked_task_ids"] == []
+    assert obligation["coverage_task_ids"] == []
+    assert suggested_block.task_id not in json.dumps(projection)
 
 
 def test_pressure_projection_does_not_apply_linked_work_after_deadline(db):
