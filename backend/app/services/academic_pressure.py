@@ -38,6 +38,10 @@ from app.services.calendar_sync import fetch_google_events
 from app.services.academic_pressure_projection_builder import (
     build_demand_coverage_projection,
 )
+from app.services.academic_pressure_projection import (
+    TimeInterval,
+    union_interval_minutes,
+)
 from app.utils.time_utils import now_utc, strip_tz
 
 
@@ -316,21 +320,37 @@ def _task_estimate(task: Task) -> AcademicPressureEstimate:
     )
 
 
-def _calendar_busy_minutes(user_id: int, user: User | None, start: datetime, end: datetime) -> tuple[int, bool]:
+def _calendar_busy_minutes(
+    user_id: int,
+    user: User | None,
+    start: datetime,
+    end: datetime,
+) -> tuple[int, bool]:
     if user is None or not user.google_refresh_token:
         return 0, False
     events = fetch_google_events(user_id, start, end)
-    total = 0
-    for event in events:
+    intervals: list[TimeInterval] = []
+    for index, event in enumerate(events):
         try:
-            event_start = datetime.fromisoformat(event.start)
-            event_end = datetime.fromisoformat(event.end)
+            event_start = strip_tz(datetime.fromisoformat(event.start))
+            event_end = strip_tz(datetime.fromisoformat(event.end))
         except ValueError:
             continue
-        if event_end <= event_start:
+        if event_start is None or event_end is None or event_end <= event_start:
             continue
-        total += int((event_end - event_start).total_seconds() / 60)
-    return total, True
+        intervals.append(
+            TimeInterval(
+                interval_id=f"calendar:{index}:{event.id}",
+                start=event_start,
+                end=event_end,
+            )
+        )
+    busy = union_interval_minutes(
+        intervals,
+        window_start=start,
+        window_end=end,
+    )
+    return busy.total_minutes, True
 
 
 def _planned_task_minutes(db: Session, user_id: int, start: datetime, end: datetime) -> int:
