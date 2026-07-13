@@ -426,6 +426,99 @@ def test_pressure_projection_counts_linked_tasks_as_union_coverage(db):
     assert data["estimated_low_minutes"] > projection["total_estimate"]["low_minutes"]
 
 
+def test_pressure_projection_keeps_uncovered_deadline_fully_unscheduled(db):
+    user = _user(db, "uncovered-deadline-pressure@example.com")
+    deadline = _deadline(db, user.user_id, "Uncovered systems exam", days=5)
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    projection = response.json()["demand_coverage_projection"]
+    assert projection["obligation_count"] == 1
+    obligation = projection["obligations"][0]
+    assert obligation["obligation_id"] == deadline.deadline_id
+    assert obligation["linked_task_ids"] == []
+    assert obligation["coverage_task_ids"] == []
+    assert obligation["noncontributing_linked_task_ids"] == []
+    assert obligation["completed_scope_credit"] == {
+        "low_minutes": 0,
+        "high_minutes": 0,
+    }
+    assert obligation["feasible_future_coverage"] == {
+        "low_minutes": 0,
+        "high_minutes": 0,
+    }
+    assert obligation["applied_coverage"] == {
+        "low_minutes": 0,
+        "high_minutes": 0,
+    }
+    assert obligation["overcoverage"] == {
+        "low_minutes": 0,
+        "high_minutes": 0,
+    }
+    assert obligation["remaining_demand"] == obligation["total_estimate"]
+    assert obligation["unscheduled_demand"] == obligation["remaining_demand"]
+
+
+def test_pressure_projection_does_not_credit_elapsed_execution_without_scope_evidence(db):
+    user = _user(db, "executed-without-scope-credit-pressure@example.com")
+    deadline = _deadline(db, user.user_id, "Operating systems project", days=5)
+    now = datetime.utcnow()
+    executed_block = Task(
+        user_id=user.user_id,
+        title="Completed timer block without scope evidence",
+        category="study",
+        planned_start_utc=now - timedelta(hours=3),
+        planned_end_utc=now - timedelta(hours=2),
+        planned_duration_minutes=60,
+        executed_start_utc=now - timedelta(hours=3),
+        executed_end_utc=now - timedelta(hours=2),
+        executed_duration_minutes=60,
+        state=TaskState.EXECUTED,
+        deadline_id=deadline.deadline_id,
+        deadline_match_source="user_explicit",
+        deadline_match_confidence=1.0,
+    )
+    future_block = Task(
+        user_id=user.user_id,
+        title="Future project block",
+        category="study",
+        planned_start_utc=now + timedelta(hours=2),
+        planned_end_utc=now + timedelta(hours=3),
+        planned_duration_minutes=60,
+        state=TaskState.PLANNED,
+        deadline_id=deadline.deadline_id,
+        deadline_match_source="user_explicit",
+        deadline_match_confidence=1.0,
+    )
+    db.add_all([executed_block, future_block])
+    db.commit()
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    projection = response.json()["demand_coverage_projection"]
+    obligation = projection["obligations"][0]
+    assert obligation["obligation_id"] == deadline.deadline_id
+    assert obligation["completed_scope_credit"] == {
+        "low_minutes": 0,
+        "high_minutes": 0,
+    }
+    assert obligation["linked_task_ids"] == [future_block.task_id]
+    assert obligation["coverage_task_ids"] == [future_block.task_id]
+    assert obligation["feasible_future_coverage"] == {
+        "low_minutes": 60,
+        "high_minutes": 60,
+    }
+    assert executed_block.task_id not in json.dumps(projection)
+
+
 def test_pressure_projection_does_not_transfer_overcoverage_between_obligations(db):
     user = _user(db, "attributed-overcoverage-pressure@example.com")
     covered_deadline = _deadline(db, user.user_id, "Covered reading", days=5)
