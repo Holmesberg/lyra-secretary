@@ -20055,3 +20055,41 @@ Issue and rollback:
 - Revert `e40ed65` with `6057b0f` to restore the former cache behavior. Revert
   `33d734d`, then `131f073`, `5b941ee`, `0faaf43`, and `4dd1eb3` to restore the
   former Pulse suppression path and its verifier/registry description.
+
+### Stopwatch switch continuity and Wave 4 macro-checkpoint
+
+- Issue `#211` was a product lifecycle race, not a verifier expectation error.
+  While a paused parent was being replaced by a newly started child, a status
+  read could recover the parent into Redis between the clear and child
+  publication. The old child publication changed only the active key, leaving
+  the recovered parent pause marker attached to the child. A later switch then
+  treated the executing child as already paused and dropped it from
+  `paused_others`.
+- Product commit `d1311f8` publishes the child through the existing atomic
+  activate-and-clear transition. Test commit `14794af` injects the recovery
+  interleaving and proves the child starts unpaused, the parent remains
+  resumable, and switching back keeps the child resumable. All 16 focused
+  switch tests and the 30-test stopwatch/state set passed.
+- Verifier commit `b56636b` adds a focused real-browser switch path; wrapper
+  commit `83fcc81` exposes it without requiring the complete product loop.
+  Real-cookie local-current proof passed at
+  `tmp/browser-product-loop/wave4-switch-continuity-211/result.json`: the
+  Today chip was visible and clicked, the parent became active, the child
+  remained in `paused_others`, and cleanup left no active timer or prefixed
+  task/deadline residue.
+- The three related Wave 4 seams then passed a current-source macro-checkpoint
+  at `tmp/post-wave-dogfood/wave4-route-parity-macro-83fcc81/`. It includes
+  multi-account boundary proof, 167 Holmesberg product-loop checks, operator
+  read-only stress before and after mutation, zero operator count diffs, zero
+  exposure-without-render, implementation green, explicit cohort yellow,
+  and complete synthetic cleanup. The top-level summary is
+  `evidence-manifest.json` in that directory.
+- Exact-head CI passed for `83fcc816fc12a1a3fb4ce6a9fcae2a162c13dae7`:
+  `https://github.com/Holmesberg/lyra-secretary/actions/runs/29243007441`.
+  Issue `#211` is closed. Issue `#232` separately records that local-current
+  wrappers hardcode the hosted backend origin and therefore cannot yet launch
+  an isolated current-source backend without manual orchestration.
+- No schema, endpoint, provider, prediction, exposure, claim, public deploy,
+  restart, or production repair changed. Revert `d1311f8` with `14794af` to
+  restore the former child-publication behavior; revert `b56636b` and
+  `83fcc81` to remove only the focused verifier entry point.
