@@ -323,21 +323,23 @@ export default function PulsePage() {
             </div>
           )}
         </div>
-        <div className="lg:col-span-2">
-          {tasksRangeQ.isError ? (
-            <PulseUnavailablePanel testId="pulse-unavailable-recovery" label="Recovery rhythm" />
-          ) : (
-            <PulseRecovery recentTasks={recentTasks} />
-          )}
-        </div>
-        <div className="lg:col-span-2">
-          {integrationsQ.isError ? (
-            <PulseUnavailablePanel testId="pulse-unavailable-integrations" label="Integrations" />
-          ) : (
-            <div data-testid="pulse-integrations-section">
-              <PulseIntegrationsV2 integrations={integrations} />
-            </div>
-          )}
+        <div className="grid gap-4 lg:col-span-4">
+          <div>
+            {tasksRangeQ.isError ? (
+              <PulseUnavailablePanel testId="pulse-unavailable-recovery" label="Recovery rhythm" />
+            ) : (
+              <PulseRecovery recentTasks={recentTasks} />
+            )}
+          </div>
+          <div>
+            {integrationsQ.isError ? (
+              <PulseUnavailablePanel testId="pulse-unavailable-integrations" label="Integrations" />
+            ) : (
+              <div data-testid="pulse-integrations-section">
+                <PulseIntegrationsV2 integrations={integrations} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
