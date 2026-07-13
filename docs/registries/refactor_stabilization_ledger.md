@@ -20827,3 +20827,64 @@ Rollback:
 - Revert `ff5bd73` to restore the former false-empty/false-idle behavior.
   Revert `8b76c56` and `aec6b85` independently to remove only the focused
   browser and wrapper proof. No persisted data requires repair.
+
+## 2026-07-13 - Wave 4 Usefulness Macro Checkpoint
+
+Checkpoint scope:
+
+- This checkpoint closes the related Today mobile containment and Pulse
+  partial-read truth seams. It does not authorize another feature, provider,
+  schema, prediction family, or authority transfer.
+- Full S1c passed in `106s`: every authority/refactor/layer/Cortex/preservation
+  gate, fresh Alembic upgrade, `1106` backend tests with `1` expected xfail,
+  and the isolated frontend production build passed.
+- Real-cookie multi-account proof passed against `3018/8001`; operator and
+  Holmesberg identities remained distinct, operator boundaries held, exports
+  were scoped, and topology reported frontend build `99c06f1`.
+
+Verifier failure and bounded repair:
+
+- The first complete loop is retained at
+  `tmp/post-wave-dogfood/wave4-macro-99c06f1/product-loop/result.json`.
+  Product behavior and cleanup passed through the Today mobile stage, but the
+  new containment check waited on the exact active task row after the larger
+  loop had omitted that row from the mounted Today list. It failed as an
+  unclassified `boundingBox` timeout even though the task was executing and
+  the active timer controls were visible.
+- Issue `#240` owns that verifier regression. Commit `af39d97` bounds row
+  selection: prefer the proof task, fall back to another visible canonical
+  task row, and report absence as a normal failed check instead of a
+  Playwright timeout.
+- The focused Today rerun passed at
+  `tmp/post-wave-dogfood/wave4-macro-99c06f1/today-focused-af39d97/result.json`:
+  zero horizontal overflow, bounded row/actions at `390x844`, real timer stop,
+  exactly one authenticated micro-mirror render, and complete cleanup.
+
+Final browser proof:
+
+- The complete rerun passed at
+  `tmp/post-wave-dogfood/wave4-macro-99c06f1/product-loop-r2/result.json`.
+  It exercised the route set, New Task branches, Brain Dump recovery,
+  Pressure Map planning and Calendar destination, timer/re-entry, notification
+  lifecycle, exposure outcomes, export, and operator privacy. Cleanup
+  terminated `16` tasks, `8` deadlines, `3` notifications, and `6` exposure
+  candidates with no active prefixed row, active timer, or unterminated
+  synthetic output remaining.
+- Operator read-only stress passed at
+  `tmp/operator-readonly-stress-wave4-macro-operator-af39d97/result.json`.
+  Desktop and mobile had no issues or warnings; export counts, per-route
+  counts, and dashboard snapshots had zero diffs.
+  `implementation_green=true`, `exposure_without_render_count=0`, and cohort
+  status remained correctly yellow for missing real-use evidence.
+- Public ports `3000/8000` stayed listening and `.next-public` retained build
+  `4vmRw9lKO8m_ZWpDPW6t8`. Isolated processes and `.next-local-current` were
+  removed after proof. Hosted-public mutable proof was not run.
+
+Remaining and rollback:
+
+- Issue `#239` remains open for pre-existing Pulse Integrations text overlap.
+  The next product seam must be chosen from current Wave 4 gaps after exact-head
+  CI, not inferred from this browser checkpoint.
+- Revert `449b19a` and `ff5bd73` independently for the two product changes.
+  Revert their verifier/wrapper/CI commits independently. Revert `af39d97` to
+  restore exact-task-only Today row selection. No production repair is needed.
