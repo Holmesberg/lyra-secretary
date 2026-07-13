@@ -402,12 +402,16 @@ class StopwatchManager:
         self.db.refresh(session)
         self.db.refresh(task)
 
-        self.redis.set_active_stopwatch(
+        # A status poll can recover the paused parent from DB after the old
+        # Redis state is cleared but before this child is published. Activate
+        # the child and clear any recovered parent pause marker atomically so
+        # the child cannot inherit the parent's paused state.
+        self.redis.activate_stopwatch(
             user_id=user_id,
             session_id=session.session_id,
             task_id=task.task_id,
             title=task.title,
-            start_time=session.start_time_utc.isoformat()
+            start_time=session.start_time_utc.isoformat(),
         )
         try:
             self.redis.cache_undo_action(
