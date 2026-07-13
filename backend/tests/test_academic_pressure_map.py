@@ -357,6 +357,64 @@ def test_pressure_map_unions_overlapping_calendar_busy_intervals(db, monkeypatch
     assert data["capacity_context"]["known_busy_minutes"] == 180
 
 
+def test_pressure_projection_keeps_unconfirmed_calendar_mirror_sources_separate(
+    db,
+    monkeypatch,
+):
+    user = _user(db, "calendar-mirror-pressure@example.com")
+    user.google_refresh_token = "fixture-token"
+    now = datetime.utcnow()
+    start = now + timedelta(hours=1)
+    end = now + timedelta(hours=3)
+    task = Task(
+        user_id=user.user_id,
+        title="Shared systems workshop",
+        category="study",
+        planned_start_utc=start,
+        planned_end_utc=end,
+        planned_duration_minutes=120,
+        state=TaskState.PLANNED,
+    )
+    db.add(task)
+    db.commit()
+    monkeypatch.setattr(
+        "app.services.academic_pressure.fetch_google_events",
+        lambda _user_id, _start, _end: [
+            ExternalEvent(
+                id="calendar-original",
+                title=task.title,
+                start=start.isoformat(),
+                end=end.isoformat(),
+                calendar_id="primary",
+            ),
+            ExternalEvent(
+                id="calendar-duplicate",
+                title=task.title,
+                start=start.isoformat(),
+                end=end.isoformat(),
+                calendar_id="primary",
+            ),
+        ],
+    )
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=1",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["source_summary"]["calendar_busy_minutes"] == 120
+    assert data["source_summary"]["planned_lyra_minutes"] == 120
+    assert data["capacity_context"]["known_busy_minutes"] == 120
+    assert data["capacity_context"]["planned_lyra_minutes"] == 120
+    projection = data["demand_coverage_projection"]
+    assert projection["obligation_count"] == 0
+    assert projection["capacity_status"] == "unavailable_no_authority"
+    assert projection["collision_state"] == "unknown"
+    assert task.task_id not in json.dumps(projection)
+
+
 def test_pressure_projection_counts_linked_tasks_as_union_coverage(db):
     user = _user(db, "linked-coverage-pressure@example.com")
     deadline = _deadline(db, user.user_id, "Linked systems project", days=5)
