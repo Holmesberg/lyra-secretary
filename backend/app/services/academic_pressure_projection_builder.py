@@ -197,7 +197,6 @@ def build_demand_coverage_projection(
 ) -> AcademicDemandCoverageProjection:
     """Build a provider-blind projection without claiming capacity."""
 
-    tasks_by_id = {task.task_id: task for task in future_tasks}
     tasks_by_deadline: dict[str, list[Task]] = {}
     for task in future_tasks:
         if task.deadline_id:
@@ -206,20 +205,6 @@ def build_demand_coverage_projection(
     obligations: list[AcademicObligationDemandProjection] = []
     for item in items:
         if item.source_class == "lyra_task":
-            task = tasks_by_id.get(item.obligation_id)
-            if task is None:
-                continue
-            if task.deadline_id:
-                continue
-            obligations.append(
-                _obligation_projection(
-                    item,
-                    tasks=[task],
-                    projection_role="standalone_task_obligation",
-                    window_start=window_start,
-                    window_end=window_end,
-                )
-            )
             continue
 
         due_at = strip_tz(item.due_at_utc) or item.due_at_utc
