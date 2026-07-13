@@ -94,6 +94,10 @@ try {
     node scripts\test_onboarding_skip_contract.mjs
   }
 
+  Invoke-Step "product-loop account preflight contract gate" {
+    node scripts\test_product_loop_account_preflight_contract.mjs
+  }
+
   Invoke-Step "Pressure Map planning provenance contract gate" {
     node scripts\test_pressure_map_planning_provenance_contract.mjs
   }
