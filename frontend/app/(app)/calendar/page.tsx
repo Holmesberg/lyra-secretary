@@ -52,7 +52,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   invalidateDeadlineMutationCaches,
-  invalidateTaskQueries,
+  invalidateTaskMutationCaches,
   queryKeys,
 } from "@/lib/query-keys";
 import {
@@ -529,7 +529,7 @@ export default function CalendarPage() {
   // (`["tasks-range", dateFrom, dateTo]`) stay in lock-step without either
   // side knowing about the other's key shape.
   function refreshAll() {
-    void invalidateTaskQueries(qc);
+    void invalidateTaskMutationCaches(qc);
   }
 
   // Toast-style auto-dismiss for the drag/resize rejection banner —

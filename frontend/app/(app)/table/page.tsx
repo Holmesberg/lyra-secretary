@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Download, ChevronUp, ChevronDown } from "lucide-react";
 import { queryTasksRange, type TaskRow, type QueryResponse } from "@/lib/tasks";
 import { ExecutionCorrectionDialog } from "@/components/execution-correction-dialog";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidateTaskMutationCaches, queryKeys } from "@/lib/query-keys";
 import {
   CATEGORIES,
   getCategoryColor,
@@ -191,6 +191,7 @@ function SortHeader({
 // ─── Main Page ──────────────────────────────────────────────────────
 
 export default function TablePage() {
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [correctionTask, setCorrectionTask] = useState<TaskRow | null>(null);
   const mounted = useRef(false);
@@ -233,7 +234,6 @@ export default function TablePage() {
   const {
     data: taskData,
     isLoading: tasksLoading,
-    refetch: refetchTasks,
   } = useQuery<QueryResponse>({
     queryKey: queryKeys.tasksRangeWindow(dateFrom, dateTo, true),
     queryFn: () => queryTasksRange(dateFrom, dateTo, { includeVoided: true }),
@@ -245,8 +245,8 @@ export default function TablePage() {
   const truncated = taskData?.truncated ?? false;
   const loading = tasksLoading && !taskData;
   const reloadTasks = useCallback(() => {
-    void refetchTasks();
-  }, [refetchTasks]);
+    void invalidateTaskMutationCaches(queryClient);
+  }, [queryClient]);
 
   const filtered = useMemo(() => filterTableTasks(tasks, filters), [tasks, filters]);
 
