@@ -64,6 +64,7 @@ function buildMatches(actual, expected) {
 if (flag("--self-test")) {
   const failures = [];
   const wrapper = fs.readFileSync(path.join(repoRoot, "scripts", "proof_preflight.ps1"), "utf8");
+  const source = fs.readFileSync(path.join(repoRoot, "scripts", "proof_preflight.mjs"), "utf8");
   if (!policyErrors({ account: "operator", intent: "mutable", topology: "local-current" }).length) {
     failures.push("operator mutable intent was accepted");
   }
@@ -83,6 +84,9 @@ if (flag("--self-test")) {
   }
   if (wrapper.includes(".Contains($repoRoot, [StringComparison]::OrdinalIgnoreCase)")) {
     failures.push("unsupported Windows PowerShell String.Contains overload returned");
+  }
+  if (!source.includes('await context.unrouteAll({ behavior: "ignoreErrors" });')) {
+    failures.push("browser context can close before read-only proxy handlers settle");
   }
   console.log(JSON.stringify({ ok: failures.length === 0, checked: "proof_preflight", failures }));
   process.exit(failures.length ? 1 : 0);
@@ -251,6 +255,7 @@ try {
       pending_notifications: pendingRows.length,
       target: mounted,
     });
+    await context.unrouteAll({ behavior: "ignoreErrors" });
     await context.close();
   }
 } finally {
