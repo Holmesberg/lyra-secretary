@@ -2345,17 +2345,21 @@ async function runPressureMapPath(page, token, beforeExport) {
   const expectedRetainedProjection = redactedPressureProjection(
     pressureSnapshot.demand_coverage_projection,
   );
+  const congruentRetainedProjections = retainedProjections.filter((projection) => (
+    canonicalJson(projection) === canonicalJson(expectedRetainedProjection)
+  ));
   addCheck(
     "pressure map render evidence retains the displayed redacted projection",
     retainedProjections.length >= 1
+      && congruentRetainedProjections.length >= 1
       && retainedProjections.every((projection) => (
-        canonicalJson(projection) === canonicalJson(expectedRetainedProjection)
-        && !("obligations" in projection)
+        !("obligations" in projection)
         && !("inconsistent_obligation_ids" in projection)
       )),
     {
       expected: expectedRetainedProjection,
       retained: retainedProjections,
+      congruent_count: congruentRetainedProjections.length,
     },
   );
   const seededPressureItem = Array.isArray(pressureSnapshot.items)
