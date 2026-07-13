@@ -13,7 +13,6 @@ from app.schemas.academic import (
     AcademicProjectionRole,
 )
 from app.services.academic_pressure_projection import (
-    DemandCoverageProjection,
     DemandCoverageScenario,
     MinuteEnvelope,
     TimeInterval,
@@ -137,21 +136,55 @@ def _obligation_projection(
     )
 
 
+def _sum_projection_envelopes(
+    obligations: list[AcademicObligationDemandProjection],
+) -> dict[str, AcademicMinuteEnvelope]:
+    fields = (
+        "total_estimate",
+        "completed_scope_credit",
+        "remaining_demand",
+        "feasible_future_coverage",
+        "applied_coverage",
+        "unscheduled_demand",
+        "overcoverage",
+    )
+    return {
+        field: AcademicMinuteEnvelope(
+            low_minutes=sum(
+                getattr(obligation, field).low_minutes
+                for obligation in obligations
+            ),
+            high_minutes=sum(
+                getattr(obligation, field).high_minutes
+                for obligation in obligations
+            ),
+        )
+        for field in fields
+    }
+
+
 def _aggregate_projection(
     obligations: list[AcademicObligationDemandProjection],
-) -> DemandCoverageProjection:
-    low_total = sum(item.total_estimate.low_minutes for item in obligations)
-    high_total = sum(item.total_estimate.high_minutes for item in obligations)
-    coverage = sum(
-        item.feasible_future_coverage.low_minutes for item in obligations
-    )
-    return project_demand_coverage(
-        _scenarios(
-            "aggregate",
-            low_minutes=low_total,
-            high_minutes=high_total,
-            coverage_minutes=coverage,
-        )
+) -> AcademicDemandCoverageProjection:
+    totals = _sum_projection_envelopes(obligations)
+    scenario_count = 1
+    if any(
+        obligation.total_estimate.low_minutes
+        != obligation.total_estimate.high_minutes
+        for obligation in obligations
+    ):
+        scenario_count = 2
+
+    return AcademicDemandCoverageProjection(
+        obligation_count=len(obligations),
+        scenario_count=scenario_count,
+        inconsistent_obligation_ids=[
+            obligation.obligation_id
+            for obligation in obligations
+            if obligation.estimate_inconsistent
+        ],
+        obligations=obligations,
+        **totals,
     )
 
 
@@ -205,25 +238,4 @@ def build_demand_coverage_projection(
             )
         )
 
-    aggregate = _aggregate_projection(obligations)
-    return AcademicDemandCoverageProjection(
-        obligation_count=len(obligations),
-        scenario_count=aggregate.scenario_count,
-        total_estimate=_api_envelope(aggregate.total_estimate),
-        completed_scope_credit=_api_envelope(
-            aggregate.completed_scope_credit
-        ),
-        remaining_demand=_api_envelope(aggregate.remaining_demand),
-        feasible_future_coverage=_api_envelope(
-            aggregate.feasible_future_coverage
-        ),
-        applied_coverage=_api_envelope(aggregate.applied_coverage),
-        unscheduled_demand=_api_envelope(aggregate.unscheduled_demand),
-        overcoverage=_api_envelope(aggregate.overcoverage),
-        inconsistent_obligation_ids=[
-            item.obligation_id
-            for item in obligations
-            if item.estimate_inconsistent
-        ],
-        obligations=obligations,
-    )
+    return _aggregate_projection(obligations)
