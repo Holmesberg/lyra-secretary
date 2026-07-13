@@ -21145,3 +21145,57 @@ Rollback:
 - Revert `a8db03e` to restore the prior Today cache projection. Revert
   `7c220e6` independently to remove focused proof plumbing. No schema, data
   repair, deployment, restart, or authority transfer is required.
+
+## 2026-07-13 - Wave 4 Stop-Truth Macro Checkpoint
+
+Checkpoint proof:
+
+- Exact-head CI run `29274585021` passed backend, frontend, topology, and S1c
+  jobs for `1fffefcfa66c50bb9657eae1df0296e521165f92`.
+- Local S1c passed every static authority, refactor, backend-layer, Cortex,
+  preservation, and fresh-Alembic gate. The full backend suite passed `1106`
+  tests with `1` expected xfail. An isolated production frontend build and
+  typecheck compiled the exact head into `.next-local-current`.
+- Real-cookie multi-account smoke confirmed the operator identity remained
+  read-only and Holmesberg remained the non-operator mutable identity.
+- The final single-process Holmesberg loop passed `192/192` checks at
+  `tmp/post-wave-dogfood/wave4-stop-macro-1fffefc/product-loop-r2/result.json`.
+  It covered capture, planning, execution, pause/resume, stop results,
+  Pressure Map, Calendar, Table, notifications, browser-owned exposure,
+  export, and cleanup.
+- Cleanup terminalized `16` tasks, `8` deadlines, `3` notifications, and `5`
+  exposure candidates. No active prefixed task or deadline, active timer, or
+  unterminated synthetic creation nudge, deadline suggestion, or stopwatch
+  output remained.
+- One earlier macro attempt was invalid because two verifier processes were
+  accidentally launched with the same run ID; one process cleaned a contract
+  deadline while the other was selecting it. This was classified as verifier
+  orchestration, not product behavior. Both processes were stopped, focused
+  cleanup passed at
+  `tmp/post-wave-dogfood/wave4-stop-macro-1fffefc/cleanup/result.json`, and the
+  clean single-process `r2` run closed the class. The full loop was not used as
+  a retrying debugger afterward.
+- Operator read-only stress passed after the mutable run at
+  `tmp/operator-readonly-stress-2026-07-13T18-37-19-769Z/result.json`: desktop
+  and mobile returned `200`, API and dashboard counts had no diffs, route
+  issues and warnings were empty, `implementation_green=true`, and
+  `exposure_without_render_count=0`. Cohort readiness remains honestly yellow
+  for missing real-use evidence.
+- Five desktop/mobile screenshots covering Pressure Map affordances, Pulse
+  completion, Today execution controls, and operator readiness were inspected
+  directly. No overlapping or clipped control was found.
+- The top-level evidence manifest is
+  `tmp/post-wave-dogfood/wave4-stop-macro-1fffefc/evidence-manifest.json`.
+  Isolated ports `3018/8001` and `.next-local-current` were removed after proof.
+  Hosted frontend, public topology, and API remained `200`; public build
+  `98bc1f8` is recorded as deliberate deployment lag and was not restarted.
+
+Next boundary:
+
+- Stop-result work is complete for the present Wave 4 boundary. The next seam
+  begins with the focused five-obligation Capture Gate. Its observed result,
+  rather than architecture preference, selects either a capture repair or the
+  remaining query-invalidation audit.
+- Rollback remains the independent reversion of the zero-duration and Today
+  rollback product/verifier commits recorded above. This checkpoint added no
+  product code, runtime authority, production mutation, or deployment action.
