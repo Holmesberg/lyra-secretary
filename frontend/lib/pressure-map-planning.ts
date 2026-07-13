@@ -14,6 +14,7 @@ export interface PlanRow {
   startLocal: string;
   endLocal: string;
   durationMinutes: number;
+  suggestedDurationMinutes: number;
   category: string;
   estimateSource: string;
   estimateBasis: "linked_deadline_history" | "cold_start_prior";
@@ -158,19 +159,28 @@ export function calibratedMinutes(row: PlanRow, calibration: BiasLookupResponse)
 }
 
 export function calibrationSource(row: PlanRow, calibration: BiasLookupResponse): string {
-  const source = calibration.source === "personal"
-    ? `personal ${calibration.signal_level ?? "calibration"}`
-    : "research prior";
-  const archetype = calibration.archetype_id
-    ? `archetype ${calibration.archetype_id}`
-    : "archetype fallback";
-  const sample = calibration.sessions
-    ? `${calibration.sessions} eligible session${calibration.sessions === 1 ? "" : "s"}`
-    : "cold start";
+  const sessions = Math.max(0, calibration.sessions ?? 0);
+  const personalWeight = calibration.personal_weight
+    ?? (calibration.source === "personal" ? 1 : 0);
+  const priorWeight = calibration.prior_weight
+    ?? (calibration.source === "research" ? 1 : 0);
+  const sources: string[] = [];
+  if (calibration.source === "personal" && sessions > 0 && personalWeight > 0) {
+    sources.push(
+      `personal timing evidence from ${sessions} eligible session${sessions === 1 ? "" : "s"}`,
+    );
+  }
+  if (priorWeight > 0 || sources.length === 0) {
+    sources.push(
+      calibration.source === "research"
+        ? "research/population starting estimate"
+        : "starting estimate",
+    );
+  }
   const occupancy = calibration.pause_overhead_sample_size && calibration.pause_overhead_sample_size > 0
     ? `; pause overhead ${fmtMinutes(calibration.pause_overhead_minutes ?? null)} from ${calibration.pause_overhead_sample_size} sample${calibration.pause_overhead_sample_size === 1 ? "" : "s"}`
     : "";
-  return `${source} + ${archetype}: ${sample}; base ${fmtMinutes(row.durationMinutes)} -> ${fmtMinutes(calibratedMinutes(row, calibration))}${occupancy}`;
+  return `${sources.join(" + ")}; base ${fmtMinutes(row.durationMinutes)} -> ${fmtMinutes(calibratedMinutes(row, calibration))}${occupancy}`;
 }
 
 function linkedDeadlineTasks(item: AcademicPressureItem, tasks: TaskRow[]): TaskRow[] {
@@ -307,6 +317,7 @@ export function buildRows(
       startLocal,
       endLocal: endLocalFromDuration(startLocal, duration),
       durationMinutes: duration,
+      suggestedDurationMinutes: duration,
       category: evidenceEstimate?.category ?? fallbackCategory,
       estimateSource: evidenceEstimate?.source ?? `${item.estimate.confidence} confidence ${item.complexity_source}; ${item.estimate.assumptions[0] ?? "pressure-map prior"}`,
       estimateBasis: evidenceEstimate ? "linked_deadline_history" : "cold_start_prior",

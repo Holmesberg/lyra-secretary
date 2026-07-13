@@ -108,13 +108,13 @@ function PlanPreviewDialog({
             This option is diagnostic only right now. The selected pressure points are already planned tasks or need coverage confirmation before LyraOS creates blocks.
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex min-w-0 flex-col gap-3">
             {rows.map((row) => (
               <div
                 key={row.id}
                 data-testid="pressure-map-plan-row"
                 data-obligation-id={row.obligationId}
-                className="rounded-sm border border-hairline bg-void-2/35 p-3"
+                className="w-full min-w-0 max-w-full rounded-sm border border-hairline bg-void-2/35 p-3"
               >
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -141,36 +141,39 @@ function PlanPreviewDialog({
                   </button>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-[1.4fr_0.85fr_0.85fr_0.45fr]">
-                  <label className="flex flex-col gap-1">
+                <div className="grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-[1.4fr_0.85fr_0.85fr_0.45fr]">
+                  <label className="flex w-full min-w-0 max-w-full flex-col gap-1">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
                       Title
                     </span>
                     <Input
                       data-testid="pressure-map-plan-row-title"
+                      className="w-full min-w-0 max-w-full"
                       value={row.title}
                       disabled={!row.enabled || committing}
                       onChange={(event) => updateRow(row.id, { title: event.target.value })}
                     />
                   </label>
-                  <label className="flex flex-col gap-1">
+                  <label className="flex w-full min-w-0 max-w-full flex-col gap-1">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
                       Start
                     </span>
                     <Input
                       data-testid="pressure-map-plan-row-start"
+                      className="w-full min-w-0 max-w-full"
                       type="datetime-local"
                       value={row.startLocal}
                       disabled={!row.enabled || committing}
                       onChange={(event) => updateStart(row, event.target.value)}
                     />
                   </label>
-                  <label className="flex flex-col gap-1">
+                  <label className="flex w-full min-w-0 max-w-full flex-col gap-1">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
                       End
                     </span>
                     <Input
                       data-testid="pressure-map-plan-row-end"
+                      className="w-full min-w-0 max-w-full"
                       type="datetime-local"
                       value={row.endLocal}
                       disabled={!row.enabled || committing}
@@ -191,11 +194,20 @@ function PlanPreviewDialog({
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-sm border border-hairline/70 bg-void/40 px-2 py-2 text-[11px] leading-relaxed text-dust">
-                  <span className="font-mono uppercase tracking-widest text-dust-deep">
-                    Estimate source:
-                  </span>{" "}
-                  {row.estimateSource}. This is planning footprint, not execution truth.
+                <div
+                  data-testid="pressure-map-plan-row-estimate-source"
+                  className="mt-3 w-full min-w-0 max-w-full break-words rounded-sm border border-hairline/70 bg-void/40 px-2 py-2 text-[11px] leading-relaxed text-dust"
+                >
+                  <p className="text-parchment">
+                    <span className="font-medium text-signal">LyraOS&apos;s starting estimate:</span>{" "}
+                    {fmtMinutes(row.suggestedDurationMinutes)}. Edit the block if needed, then start the timer to prove it right or wrong.
+                  </p>
+                  <p className="mt-1">
+                    <span className="font-mono uppercase tracking-widest text-dust-deep">
+                      Based on:
+                    </span>{" "}
+                    {row.estimateSource}. This is planning footprint, not execution truth.
+                  </p>
                 </div>
 
                 {(row.status !== "pending" || forceCandidateId === row.id) && (
