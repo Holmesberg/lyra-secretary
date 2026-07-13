@@ -20997,3 +20997,50 @@ Rollback:
   frontend pause argument. Revert `8f47491` independently to remove only the
   focused reason and terminalization assertions. No schema or data repair is
   required.
+
+## 2026-07-13 - Wave 4 Pause-Parity Macro Checkpoint
+
+Checkpoint proof:
+
+- Exact-head CI run `29270923835` passed S1c static gates, topology, backend,
+  frontend typecheck, and production build for
+  `bcd4bac6050db48ead485c4d8228b5c0ae974613`.
+- Local S1c passed every authority, refactor, backend-layer, Cortex,
+  preservation, topology, and fresh-Alembic gate. The full backend suite passed
+  `1106` tests with `1` expected xfail. Frontend build was not duplicated in
+  that stack because exact-head CI had already built it; the browser checkpoint
+  used an isolated exact-head production build instead.
+- Real-cookie multi-account smoke confirmed the operator remains operator-only
+  and Holmesberg remains non-operator against frontend build `bcd4bac`.
+- The complete Holmesberg loop passed `192/192` checks at
+  `tmp/post-wave-dogfood/wave4-pause-macro-bcd4bac/product-loop/result.json`.
+  It exercised route rendering, New Task branches, Brain Dump recovery,
+  Pressure Map planning, Calendar, Table, explicit pause and re-entry,
+  notification lifecycle, browser-owned outputs, export, and cleanup.
+- Cleanup terminalized `16` tasks, `8` deadlines, `3` notifications, and `5`
+  exposure candidates. No active prefixed row, active timer, or unterminated
+  synthetic output remained. Historical synthetic execution evidence remains
+  explicitly voided as test contamination rather than destructively purged.
+- The first operator route pass retained zero API/dashboard diffs but stopped
+  because the read-only operator identity has no onboarding/task history. The
+  final response-only readiness-fixture run passed desktop and mobile with no
+  issues, warnings, count diffs, route diffs, or dashboard diffs at
+  `tmp/post-wave-dogfood/wave4-pause-macro-bcd4bac/operator-after-r2/result.json`.
+  The fixture wrote no operator state.
+- Operator truth remained `implementation_green=true`,
+  `exposure_without_render_count=0`, and cohort-yellow for missing real-use
+  evidence. `safe_to_invite_more_users=false` remains honest.
+- Desktop/mobile Pulse, Pressure Map, and operator screenshots were inspected
+  directly. No overlap, clipping, or hidden primary action was observed.
+- The top-level manifest is
+  `tmp/post-wave-dogfood/wave4-pause-macro-bcd4bac/evidence-manifest.json`.
+  Isolated ports `3018/8001` and `.next-local-current` were removed; public
+  ports `3000/8000`, `.next-public`, and hosted runtime were untouched.
+
+Next boundary:
+
+- Wave 4 may continue with one shared stop-result interpretation seam. Issues
+  `#242` and `#243` remain separate; neither was folded into pause parity.
+- Revert the bounded product and verifier commits named in the preceding two
+  ledger entries for rollback. This checkpoint added no runtime authority or
+  production data operation.
