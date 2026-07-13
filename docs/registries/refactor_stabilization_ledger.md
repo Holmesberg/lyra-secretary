@@ -20783,3 +20783,47 @@ Rollback:
 - Revert `449b19a` to restore the former narrow-screen overflow. Revert
   `6ec72ef`, `f3e7483`, and `a75170c` independently to remove only the browser,
   wrapper, and CI gates. No persisted data requires repair.
+
+## 2026-07-13 - Wave 4 Pulse Partial-Read Truth
+
+Usefulness restored:
+
+- Issue `#238` showed that failed Pulse reads collapsed into empty arrays and
+  false idle/zero states. Product commit `ff5bd73` now keeps the greeting and
+  healthy tools available while marking failed metrics as unavailable,
+  replacing only affected cards, and exposing one compact retry action.
+- The Focus card now treats a failed live stopwatch-status read as unavailable
+  rather than rendering an idle timer. Its retry remains separate from the
+  page-level query retry because the card owns that live status read.
+- No query key, API, mutation, exposure, task, deadline, stopwatch, provider,
+  clean-data, or claim authority changed.
+
+Focused negative proof and cleanup:
+
+- Verifier commit `8b76c56` injects `503` responses for the browser's Today
+  task read and live stopwatch-status read, then releases each failure and
+  retries through the mounted UI. Wrapper commit `aec6b85` exposes that path
+  without expanding the full product loop.
+- Real-cookie local-current proof passed at
+  `tmp/post-wave-dogfood/wave4-pulse-partial-aec6b85/focused-r2/result.json`.
+  Pulse rendered unavailable cards rather than `Nothing on the day yet`,
+  displayed `--` rather than false-zero focus/win metrics, preserved Quick
+  Capture, Pressure Map, Deadlines, and Integrations, then restored Today and
+  the canonical Focus card independently through their retry controls.
+- Exact canonical product-state digests matched before and after across `151`
+  tasks, `83` deadlines, `30` stopwatch sessions, and `16` pause events. No
+  active prefixed task/deadline, active timer, or unterminated synthetic output
+  remained. The account-readiness fixture changed only the browser response to
+  `GET /v1/users/me` and is explicitly fixture-only local-current proof.
+- Visual inspection found a separate pre-existing Integrations row overlap;
+  issue `#239` owns that adjacent defect and it remains outside this seam.
+- Current source ran on isolated frontend `3018`, lifespan-disabled backend
+  `8001`, and `.next-local-current`. Public ports `3000/8000` remained
+  listening, `.next-public` retained build `4vmRw9lKO8m_ZWpDPW6t8`, and the
+  isolated processes/artifact were removed after proof.
+
+Rollback:
+
+- Revert `ff5bd73` to restore the former false-empty/false-idle behavior.
+  Revert `8b76c56` and `aec6b85` independently to remove only the focused
+  browser and wrapper proof. No persisted data requires repair.
