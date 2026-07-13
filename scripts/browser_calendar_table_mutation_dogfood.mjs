@@ -106,16 +106,16 @@ function floorToMinute(date) {
   return next;
 }
 
-function todayVisibleTaskStart() {
+function todayVisibleTaskStart(durationMinutes = 45) {
   const now = new Date();
   const candidate = new Date(now.getTime() + 10 * 60_000);
-  if (dateKey(candidate) === dateKey(now)) {
+  const candidateEnd = new Date(candidate.getTime() + durationMinutes * 60_000);
+  if (dateKey(candidate) === dateKey(now) && dateKey(candidateEnd) === dateKey(now)) {
     return floorToMinute(candidate);
   }
-  // A run in the last ten minutes of a local day must not create tomorrow's
-  // task and then assert it appears in the still-selected current week. Keep
-  // the start on today while leaving its end in the near future.
-  return floorToMinute(new Date(now.getTime() - 10 * 60_000));
+  // This harness proves same-day Calendar mutation semantics. Keep late-night
+  // runs away from the separately tracked cross-midnight rendering boundary.
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0, 0, 0);
 }
 
 function iso(date) {
@@ -609,7 +609,7 @@ async function runTablePath(page, token) {
   });
 
   const voidedTitle = `${prefix} table voided ${runKey}`;
-  const voidedTask = await createPlannedTask(token, voidedTitle, todayVisibleTaskStart(), 30);
+  const voidedTask = await createPlannedTask(token, voidedTitle, todayVisibleTaskStart(30), 30);
   await apiFetch(token, `/v1/tasks/${encodeURIComponent(voidedTask.task_id)}/void`, {
     method: "POST",
     body: JSON.stringify({
