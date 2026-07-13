@@ -333,6 +333,84 @@ def test_start_planned_task_as_interruption_pauses_running_parent(db):
 
 
 @needs_redis
+def test_start_from_paused_parent_clears_concurrently_recovered_pause_state(
+    db, monkeypatch
+):
+    """A recovered parent pause marker must not attach to the new child."""
+    parent = _make_task(db, title="paused-parent", state=TaskState.PAUSED)
+    parent_paused_at = now_utc() - timedelta(minutes=4)
+    parent_session = _make_open_session(
+        db,
+        parent,
+        paused_at=parent_paused_at,
+        start_offset_min=25,
+    )
+    _make_pause_event(db, parent_session, parent_paused_at)
+    child = _make_task(db, title="interruption-child", state=TaskState.PLANNED)
+
+    _set_redis_active(
+        parent_session.session_id,
+        parent.task_id,
+        parent.title,
+        parent_session.start_time_utc.isoformat(),
+        paused=True,
+    )
+
+    mgr = StopwatchManager(db)
+    original_clear = mgr.redis.clear_stopwatch_state
+
+    def clear_then_recover_parent(user_id: str):
+        original_clear(user_id)
+        mgr.redis.activate_paused_stopwatch(
+            user_id=user_id,
+            session_id=parent_session.session_id,
+            task_id=parent.task_id,
+            title=parent.title,
+            start_time=parent_session.start_time_utc.isoformat(),
+            paused_at=parent_paused_at.isoformat(),
+        )
+
+    monkeypatch.setattr(
+        mgr.redis,
+        "clear_stopwatch_state",
+        clear_then_recover_parent,
+    )
+
+    child_session, started_child, _ = mgr.start(
+        task_id=child.task_id,
+        pre_task_readiness=3,
+    )
+
+    from app.utils.redis_client import RedisClient
+
+    rc = RedisClient()
+    active = rc.get_active_stopwatch(str(USER_ID))
+    assert active is not None
+    assert active["session_id"] == child_session.session_id
+    assert active["task_id"] == child.task_id
+    assert rc.get_pause_state(str(USER_ID)) is None
+
+    status = mgr.get_status()
+    assert status["active"] is True
+    assert status["task_id"] == child.task_id
+    assert status["paused"] is False
+    assert any(
+        other["task_id"] == parent.task_id
+        for other in status["paused_others"]
+    )
+
+    result = mgr.switch_to_task(parent.task_id)
+    assert result["from_task_id"] == started_child.task_id
+    switched_status = mgr.get_status()
+    assert switched_status["task_id"] == parent.task_id
+    assert switched_status["paused"] is False
+    assert any(
+        other["task_id"] == child.task_id
+        for other in switched_status["paused_others"]
+    )
+
+
+@needs_redis
 def test_switch_from_paused_source_to_paused_target_no_duplicate_event(db):
     """Source PAUSED (interruption-flow source) + target PAUSED → swap with NO new pause_event for source.
 
