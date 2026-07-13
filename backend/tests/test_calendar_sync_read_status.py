@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
@@ -125,6 +126,85 @@ def test_google_calendar_read_status_reports_not_connected(monkeypatch):
     assert result.events == []
     assert result.reason == "not_connected"
     assert session.closed is True
+
+
+def test_google_calendar_partial_read_status_survives_cache(monkeypatch):
+    user = SimpleNamespace(
+        user_id=20,
+        google_refresh_token="encrypted-fixture",
+        is_operator=False,
+    )
+    redis, session = _install_common(monkeypatch, user=user)
+    monkeypatch.setattr(calendar_sync, "_get_credentials", lambda _user, _db: object())
+    monkeypatch.setattr(
+        calendar_sync,
+        "build",
+        lambda *_args, **_kwargs: _FakeCalendarService(
+            {
+                "items": [
+                    {
+                        "id": "timed-event",
+                        "summary": "Timed fixture",
+                        "start": {"dateTime": "2026-07-13T08:00:00Z"},
+                        "end": {"dateTime": "2026-07-13T09:00:00Z"},
+                    },
+                    {
+                        "id": "all-day-event",
+                        "summary": "All-day fixture",
+                        "start": {"date": "2026-07-13"},
+                        "end": {"date": "2026-07-14"},
+                    },
+                ],
+                "nextPageToken": "more-events-exist",
+            }
+        ),
+    )
+    start, end = _window()
+
+    first = calendar_sync.fetch_google_events_with_status(user.user_id, start, end)
+
+    assert first.status == "partial"
+    assert [event.id for event in first.events] == ["timed-event"]
+    assert first.reason == "all_day_events_excluded,pagination_truncated"
+    assert session.closed is True
+    cached = json.loads(redis.cached)
+    assert cached["status"] == "partial"
+    assert cached["reason"] == first.reason
+
+    second = calendar_sync.fetch_google_events_with_status(user.user_id, start, end)
+
+    assert second.status == "partial"
+    assert [event.id for event in second.events] == ["timed-event"]
+    assert second.reason == first.reason
+
+
+def test_google_calendar_legacy_cached_list_remains_available(monkeypatch):
+    user = SimpleNamespace(
+        user_id=21,
+        google_refresh_token="encrypted-fixture",
+        is_operator=False,
+    )
+    redis, session = _install_common(monkeypatch, user=user)
+    redis.cached = json.dumps(
+        [
+            {
+                "id": "legacy-event",
+                "title": "Legacy fixture",
+                "start": "2026-07-13T10:00:00",
+                "end": "2026-07-13T11:00:00",
+                "calendar_id": "primary",
+                "source": "google",
+            }
+        ]
+    )
+    start, end = _window()
+
+    result = calendar_sync.fetch_google_events_with_status(user.user_id, start, end)
+
+    assert result.status == "available"
+    assert result.reason is None
+    assert [event.id for event in result.events] == ["legacy-event"]
+    assert session.closed is False
 
 
 def test_google_calendar_compatibility_reader_returns_only_events(monkeypatch):
