@@ -401,10 +401,11 @@ def mark_abandoned(
     default_reason = "user_skipped" if is_planned else "abandoned mid-session"
     try:
         manager = TaskManager(db)
-        task = manager.skip_task(task_id, reason=request.reason or default_reason)
-        task.initiation_status = "user_skipped" if is_planned else "abandoned"
-        db.commit()
-        db.refresh(task)
+        task = manager.skip_task(
+            task_id,
+            reason=request.reason or default_reason,
+            initiation_status="user_skipped" if is_planned else "abandoned",
+        )
     except ImmutableTaskError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

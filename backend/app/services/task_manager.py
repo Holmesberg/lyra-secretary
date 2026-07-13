@@ -755,7 +755,13 @@ class TaskManager:
         if nudge_event.resolved_at is None:
             nudge_event.resolved_at = now_utc()
 
-    def skip_task(self, task_id: str, reason: Optional[str] = None) -> Task:
+    def skip_task(
+        self,
+        task_id: str,
+        reason: Optional[str] = None,
+        *,
+        initiation_status: Optional[str] = None,
+    ) -> Task:
         """
         Mark task as skipped.
         
@@ -772,6 +778,8 @@ class TaskManager:
         if task.voided_at is not None:
             raise ValueError("Cannot skip a voided task")
 
+        if initiation_status is not None:
+            task.initiation_status = initiation_status
         task = self.state_machine.transition(task, TaskState.SKIPPED, notes=reason)
         _invalidate_user_runtime_caches(task.user_id, "skip_task")
         return task
