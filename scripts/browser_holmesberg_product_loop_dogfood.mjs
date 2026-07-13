@@ -155,6 +155,11 @@ function redactedPressureProjection(projection) {
     applied_coverage: projection.applied_coverage,
     unscheduled_demand: projection.unscheduled_demand,
     overcoverage: projection.overcoverage,
+    unlinked_planning_context: {
+      status: projection.unlinked_planning_context.status,
+      task_count: projection.unlinked_planning_context.task_count,
+      union_minutes: projection.unlinked_planning_context.union_minutes,
+    },
     inconsistent_obligation_count: Array.isArray(projection.inconsistent_obligation_ids)
       ? projection.inconsistent_obligation_ids.length
       : 0,
@@ -172,10 +177,20 @@ async function pressureProjectionUiState(page) {
       box: await locator.boundingBox(),
     };
   };
+  const contextLocator = page.getByTestId("pressure-map-unlinked-planning-context").first();
+  const unlinkedPlanningContext = await contextLocator.isVisible().catch(() => false)
+    ? {
+        task_count: Number(await contextLocator.getAttribute("data-task-count")),
+        union_minutes: Number(await contextLocator.getAttribute("data-union-minutes")),
+        text: (await contextLocator.innerText()).trim(),
+        box: await contextLocator.boundingBox(),
+      }
+    : null;
   return {
     remaining_demand: await readEnvelope("pressure-map-remaining-demand"),
     applied_coverage: await readEnvelope("pressure-map-applied-coverage"),
     unscheduled_demand: await readEnvelope("pressure-map-unscheduled-demand"),
+    unlinked_planning_context: unlinkedPlanningContext,
   };
 }
 
@@ -2949,6 +2964,7 @@ async function runCaptureGatePath(page, token) {
 async function runPressureMapPath(page, token, beforeExport) {
   const pressureDeadlineTitle = `${prefix} pressure map deadline`;
   const pressureBlockTitle = `${prefix} pressure recovery block`;
+  const pressureContextTitle = `${prefix} unlinked study context`;
   const pressureMapPattern = `${apiOrigin.replace(/\/$/, "")}/v1/academic/pressure-map**`;
   let pressureMapRouteHandler = null;
   const pressureDeadline = await createDeadlineViaApi(token, {
@@ -2957,11 +2973,19 @@ async function runPressureMapPath(page, token, beforeExport) {
     // same chaotic loop so a truthful top-N preview cannot rank it out.
     dueMinutes: 90,
   });
+  const pressureContextTask = await createTaskViaApi(token, {
+    title: pressureContextTitle,
+    startMinutes: 180,
+    durationMinutes: 75,
+    category: "study",
+  });
   const pressureSnapshot = await apiFetch(token, "/v1/academic/pressure-map?horizon_days=14");
   await suppressUnrenderedSurfaceProbe(token, pressureSnapshot, "pressure map setup probe");
   await goto(page, "/pulse", "pulse-pressure-map-render-proof");
   const browserExposureIds = await assertPressureMapBrowserRender(token, beforeExport);
   const uiProjection = await pressureProjectionUiState(page);
+  const uiUnlinkedContext = uiProjection.unlinked_planning_context;
+  delete uiProjection.unlinked_planning_context;
   const expectedUiProjection = {
     remaining_demand: pressureSnapshot.demand_coverage_projection.remaining_demand,
     applied_coverage: pressureSnapshot.demand_coverage_projection.applied_coverage,
@@ -2977,6 +3001,24 @@ async function runPressureMapPath(page, token, beforeExport) {
     "pressure map displays the count-once demand projection",
     canonicalJson(uiProjectionValues) === canonicalJson(expectedUiProjection),
     { expected: expectedUiProjection, displayed: uiProjectionValues },
+  );
+  const expectedUnlinkedContext = pressureSnapshot.demand_coverage_projection
+    .unlinked_planning_context;
+  addCheck(
+    "pressure map displays unlinked planning as context only",
+    Boolean(
+      uiUnlinkedContext
+      && expectedUnlinkedContext.task_ids.includes(pressureContextTask.task_id)
+      && uiUnlinkedContext.task_count === expectedUnlinkedContext.task_count
+      && uiUnlinkedContext.union_minutes === expectedUnlinkedContext.union_minutes
+      && /not linked to an obligation/i.test(uiUnlinkedContext.text)
+      && /planning context/i.test(uiUnlinkedContext.text)
+    ),
+    {
+      expected: expectedUnlinkedContext,
+      displayed: uiUnlinkedContext,
+      seeded_task_id: pressureContextTask.task_id,
+    },
   );
 
   const renderedExport = await apiFetch(token, "/v1/users/me/export");

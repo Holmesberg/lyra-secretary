@@ -510,7 +510,15 @@ def test_pressure_projection_keeps_unconfirmed_calendar_mirror_sources_separate(
     assert projection["obligation_count"] == 0
     assert projection["capacity_status"] == "unavailable_no_authority"
     assert projection["collision_state"] == "unknown"
-    assert task.task_id not in json.dumps(projection)
+    assert projection["unlinked_planning_context"] == {
+        "status": "context_only_not_demand_or_coverage",
+        "task_count": 1,
+        "union_minutes": 120,
+        "task_ids": [task.task_id],
+    }
+    assert task.task_id not in json.dumps(
+        data["render_snapshot"]["demand_coverage_projection"]
+    )
 
 
 def test_pressure_projection_counts_linked_tasks_as_union_coverage(db):
@@ -595,6 +603,11 @@ def test_pressure_projection_counts_linked_tasks_as_union_coverage(db):
         "applied_coverage": projection["applied_coverage"],
         "unscheduled_demand": projection["unscheduled_demand"],
         "overcoverage": projection["overcoverage"],
+        "unlinked_planning_context": {
+            "status": "context_only_not_demand_or_coverage",
+            "task_count": 0,
+            "union_minutes": 0,
+        },
         "inconsistent_obligation_count": 0,
     }
     assert "obligations" not in snapshot_projection
@@ -790,6 +803,19 @@ def test_pressure_projection_keeps_unlinked_block_out_of_demand_and_coverage(
         "low_minutes": 0,
         "high_minutes": 0,
     }
+    assert projection["unlinked_planning_context"] == {
+        "status": "context_only_not_demand_or_coverage",
+        "task_count": 1,
+        "union_minutes": 60,
+        "task_ids": [task.task_id],
+    }
+    assert data["render_snapshot"]["demand_coverage_projection"][
+        "unlinked_planning_context"
+    ] == {
+        "status": "context_only_not_demand_or_coverage",
+        "task_count": 1,
+        "union_minutes": 60,
+    }
     assert data["source_summary"]["planned_lyra_minutes"] == 60
 
 
@@ -834,8 +860,57 @@ def test_pressure_projection_does_not_mix_unlinked_block_into_linked_obligation(
     assert obligation["obligation_id"] == deadline.deadline_id
     assert obligation["linked_task_ids"] == [linked_block.task_id]
     assert obligation["coverage_task_ids"] == [linked_block.task_id]
-    assert unlinked_block.task_id not in json.dumps(projection)
+    assert projection["unlinked_planning_context"] == {
+        "status": "context_only_not_demand_or_coverage",
+        "task_count": 1,
+        "union_minutes": 90,
+        "task_ids": [unlinked_block.task_id],
+    }
+    assert unlinked_block.task_id not in json.dumps(
+        data["render_snapshot"]["demand_coverage_projection"]
+    )
     assert data["source_summary"]["planned_lyra_minutes"] == 150
+
+
+def test_pressure_projection_unions_overlapping_unlinked_planning_context(db):
+    user = _user(db, "overlapping-unlinked-pressure@example.com")
+    now = datetime.utcnow()
+    first = Task(
+        user_id=user.user_id,
+        title="Read assigned chapter",
+        category="study",
+        planned_start_utc=now + timedelta(hours=2),
+        planned_end_utc=now + timedelta(hours=3),
+        planned_duration_minutes=60,
+        state=TaskState.PLANNED,
+    )
+    second = Task(
+        user_id=user.user_id,
+        title="Draft seminar notes",
+        category="academic",
+        planned_start_utc=now + timedelta(hours=2, minutes=30),
+        planned_end_utc=now + timedelta(hours=4),
+        planned_duration_minutes=90,
+        state=TaskState.PLANNED,
+    )
+    db.add_all([first, second])
+    db.commit()
+
+    response = client.get(
+        "/v1/academic/pressure-map?horizon_days=14",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200, response.text
+    context = response.json()["demand_coverage_projection"][
+        "unlinked_planning_context"
+    ]
+    assert context == {
+        "status": "context_only_not_demand_or_coverage",
+        "task_count": 2,
+        "union_minutes": 120,
+        "task_ids": [first.task_id, second.task_id],
+    }
 
 
 def test_pressure_projection_does_not_treat_suggested_link_as_canonical(db):
@@ -867,7 +942,15 @@ def test_pressure_projection_does_not_treat_suggested_link_as_canonical(db):
     assert obligation["obligation_id"] == deadline.deadline_id
     assert obligation["linked_task_ids"] == []
     assert obligation["coverage_task_ids"] == []
-    assert suggested_block.task_id not in json.dumps(projection)
+    assert projection["unlinked_planning_context"] == {
+        "status": "context_only_not_demand_or_coverage",
+        "task_count": 1,
+        "union_minutes": 60,
+        "task_ids": [suggested_block.task_id],
+    }
+    assert suggested_block.task_id not in json.dumps(
+        response.json()["render_snapshot"]["demand_coverage_projection"]
+    )
 
 
 def test_pressure_projection_does_not_apply_linked_work_after_deadline(db):
@@ -939,6 +1022,12 @@ def test_pressure_projection_does_not_promote_block_for_out_of_scope_deadline(db
     assert projection["collision_state"] == "unknown"
     assert projection["obligation_count"] == 0
     assert projection["obligations"] == []
+    assert projection["unlinked_planning_context"] == {
+        "status": "context_only_not_demand_or_coverage",
+        "task_count": 0,
+        "union_minutes": 0,
+        "task_ids": [],
+    }
     assert data["source_summary"]["planned_lyra_minutes"] == 60
 
 
