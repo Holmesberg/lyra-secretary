@@ -51,6 +51,7 @@ const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-onl
 const zeroDurationStopProofOnly = args.get("zero-duration-stop-proof-only") === "true";
 const zeroDurationStopRoute = args.get("zero-duration-stop-route") || "both";
 const todayStopRollbackProofOnly = args.get("today-stop-rollback-proof-only") === "true";
+const todayVoidSettlementProofOnly = args.get("today-void-settlement-proof-only") === "true";
 const pulsePartialErrorProofOnly = args.get("pulse-partial-error-proof-only") === "true";
 const pulseIntegrationsLayoutProofOnly = args.get("pulse-integrations-layout-proof-only") === "true";
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
@@ -4185,6 +4186,142 @@ async function runTodayStopRollbackProof(page, token) {
   return proofs;
 }
 
+async function runTodayVoidSettlementProof(page, token) {
+  const singleTitle = `${prefix} today delete failure`;
+  const bulkSuccessTitle = `${prefix} today bulk success`;
+  const bulkFailureTitle = `${prefix} today bulk failure`;
+  const created = [];
+  for (const [index, title] of [singleTitle, bulkSuccessTitle, bulkFailureTitle].entries()) {
+    created.push(await createTaskViaApi(token, {
+      title,
+      startMinutes: 20 + index * 5,
+      durationMinutes: 20,
+      category: `dogfood_today_void_settlement_${runKey}`,
+    }));
+  }
+  addCheck("Today void-settlement fixture creates three canonical tasks", Boolean(
+    created.every((task) => task?.task_id)
+  ), { task_ids: created.map((task) => task?.task_id || null) });
+
+  const [singleTask, bulkSuccessTask, bulkFailureTask] = created;
+  const taskDate = dateKey(futureDate(20));
+  await goto(page, `/today?date=${encodeURIComponent(taskDate)}`, "today-void-settlement");
+  await closeBlockingDialog(page, "Today void settlement");
+
+  const rowFor = (taskId) => page
+    .locator(`[data-testid="task-row"][data-task-id="${taskId}"]`)
+    .first();
+  for (const task of created) {
+    await rowFor(task.task_id).waitFor({ state: "visible", timeout: 12_000 });
+  }
+
+  const deletePattern = "**/v1/delete";
+  await page.route(deletePattern, async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Focused Today delete failure fixture" }),
+    });
+  }, { times: 1 });
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+  const failedDelete = page.waitForResponse(
+    (response) => response.request().method() === "POST"
+      && response.url().endsWith("/v1/delete")
+      && response.status() === 503,
+    { timeout: 15_000 },
+  );
+  await rowFor(singleTask.task_id).locator('button[title="Delete task"]').click();
+  await failedDelete;
+  await page.unroute(deletePattern).catch(() => {});
+  await page.getByText(/Focused Today delete failure fixture/i).first().waitFor({
+    state: "visible",
+    timeout: 8_000,
+  });
+  await rowFor(singleTask.task_id).waitFor({ state: "visible", timeout: 8_000 });
+  const afterDeleteFailure = await apiFetch(token, "/v1/users/me/export");
+  const exportedSingle = rows(afterDeleteFailure, "tasks").find(
+    (row) => row.task_id === singleTask.task_id,
+  );
+  addCheck("Today failed single delete restores canonical active row", Boolean(
+    exportedSingle
+    && exportedSingle.state !== "DELETED"
+    && !exportedSingle.voided_at
+    && await rowFor(singleTask.task_id).isVisible()
+  ), { task: exportedSingle || null });
+
+  for (const task of [bulkSuccessTask, bulkFailureTask]) {
+    await rowFor(task.task_id).locator('input[type="checkbox"]').check();
+  }
+  await page.getByRole("button", { name: /^Void selected$/i }).click();
+  const voidDialog = page.getByRole("dialog", { name: /Void 2 sessions/i }).first();
+  await voidDialog.waitFor({ state: "visible", timeout: 8_000 });
+  await voidDialog.locator("#void-reason").selectOption("system_error");
+
+  const voidPattern = "**/v1/tasks/*/void";
+  await page.route(voidPattern, async (route) => {
+    if (route.request().url().includes(`/v1/tasks/${bulkFailureTask.task_id}/void`)) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Focused Today bulk void failure fixture" }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+  const successfulVoid = page.waitForResponse(
+    (response) => response.request().method() === "POST"
+      && response.url().includes(`/v1/tasks/${bulkSuccessTask.task_id}/void`)
+      && response.ok(),
+    { timeout: 15_000 },
+  );
+  const failedVoid = page.waitForResponse(
+    (response) => response.request().method() === "POST"
+      && response.url().includes(`/v1/tasks/${bulkFailureTask.task_id}/void`)
+      && response.status() === 503,
+    { timeout: 15_000 },
+  );
+  await voidDialog.getByRole("button", { name: /^Confirm void$/i }).click();
+  const [successfulResponse, failedResponse] = await Promise.all([successfulVoid, failedVoid]);
+  await page.unroute(voidPattern).catch(() => {});
+  await page.getByText(/1 of 2 tasks could not be voided/i).first().waitFor({
+    state: "visible",
+    timeout: 10_000,
+  });
+  await rowFor(bulkFailureTask.task_id).waitFor({ state: "visible", timeout: 10_000 });
+  await rowFor(bulkSuccessTask.task_id).waitFor({ state: "detached", timeout: 10_000 });
+
+  const afterBulkSettlement = await apiFetch(token, "/v1/users/me/export");
+  const exportedBulkSuccess = rows(afterBulkSettlement, "tasks").find(
+    (row) => row.task_id === bulkSuccessTask.task_id,
+  );
+  const exportedBulkFailure = rows(afterBulkSettlement, "tasks").find(
+    (row) => row.task_id === bulkFailureTask.task_id,
+  );
+  addCheck("Today partial bulk void preserves each canonical outcome", Boolean(
+    successfulResponse.ok()
+    && failedResponse.status() === 503
+    && exportedBulkSuccess?.voided_at
+    && !exportedBulkFailure?.voided_at
+    && await rowFor(bulkFailureTask.task_id).isVisible()
+    && await rowFor(bulkSuccessTask.task_id).count() === 0
+  ), {
+    successful_task: exportedBulkSuccess || null,
+    failed_task: exportedBulkFailure || null,
+    successful_status: successfulResponse.status(),
+    failed_status: failedResponse.status(),
+  });
+  await screenshot(page, "today-void-settlement-desktop");
+
+  return {
+    single_task_id: singleTask.task_id,
+    bulk_success_task_id: bulkSuccessTask.task_id,
+    bulk_failure_task_id: bulkFailureTask.task_id,
+  };
+}
+
 async function submitStopControl(page, dialog, buttonName, label) {
   const responsePromise = page.waitForResponse(
     (response) => response.url().includes("/v1/stopwatch/stop"),
@@ -5846,6 +5983,53 @@ async function main() {
           outcome: outcomeLabel,
           initial_state: stateLabel,
         })),
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (todayVoidSettlementProofOnly) {
+      addIssue("Today delete/void transport-failure fixture enabled", {
+        scope: "one delete POST and one of two void POSTs; all canonical reads and sibling writes remain real",
+        writes: "three prefixed Holmesberg tasks only",
+        hosted_public_proof: false,
+      });
+      const proof = await runTodayVoidSettlementProof(page, token);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const afterCleanup = await apiFetch(token, "/v1/users/me/export");
+      const cleanedTasks = [
+        proof.single_task_id,
+        proof.bulk_success_task_id,
+        proof.bulk_failure_task_id,
+      ].map((taskId) => rows(afterCleanup, "tasks").find((row) => row.task_id === taskId) || null);
+      addCheck("Today void-settlement proof terminalizes all synthetic tasks", Boolean(
+        cleanedTasks.every((task) => (
+          task?.voided_at && task?.voided_reason === "test_contamination"
+        ))
+      ), { tasks: cleanedTasks });
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "today_delete_void_failure_settlement",
+        proof_status: "passed",
+        fixture_only: true,
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        cases: proof,
         checks,
         issues,
         gated,

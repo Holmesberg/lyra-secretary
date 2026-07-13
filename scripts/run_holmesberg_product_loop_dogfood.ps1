@@ -45,6 +45,8 @@ param(
 
   [switch]$TodayStopRollbackProofOnly,
 
+  [switch]$TodayVoidSettlementProofOnly,
+
   [switch]$PulsePartialErrorProofOnly,
 
   [switch]$PulseIntegrationsLayoutProofOnly,
@@ -192,6 +194,9 @@ try {
   }
   if ([bool]$TodayStopRollbackProofOnly) {
     $args += "--today-stop-rollback-proof-only"
+  }
+  if ([bool]$TodayVoidSettlementProofOnly) {
+    $args += "--today-void-settlement-proof-only"
   }
   if ([bool]$PulsePartialErrorProofOnly) {
     $args += "--pulse-partial-error-proof-only"

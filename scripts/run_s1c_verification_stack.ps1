@@ -114,6 +114,10 @@ try {
     node scripts\test_today_task_row_mobile_contract.mjs
   }
 
+  Invoke-Step "Today void-settlement contract gate" {
+    node scripts\test_today_void_settlement_contract.mjs
+  }
+
   Invoke-Step "OpenClaw operator relay hermetic test" {
     node scripts\test_openclaw_operator_relay.mjs
   }
