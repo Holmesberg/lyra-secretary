@@ -36,6 +36,8 @@ param(
 
   [switch]$PulseStopwatchOutputProofOnly,
 
+  [switch]$PulsePartialErrorProofOnly,
+
   [switch]$TimerSwitchProofOnly
 )
 
@@ -167,6 +169,9 @@ try {
   }
   if ([bool]$PulseStopwatchOutputProofOnly) {
     $args += "--pulse-stopwatch-output-proof-only"
+  }
+  if ([bool]$PulsePartialErrorProofOnly) {
+    $args += "--pulse-partial-error-proof-only"
   }
   if ([bool]$TimerSwitchProofOnly) {
     $args += "--timer-switch-proof-only"
