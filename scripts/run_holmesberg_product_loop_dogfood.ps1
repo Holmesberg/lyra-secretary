@@ -22,6 +22,8 @@ param(
 
   [switch]$PressureProofOnly,
 
+  [switch]$PressureCalendarPartialProofOnly,
+
   [switch]$PulseStopwatchOutputProofOnly,
 
   [switch]$TimerSwitchProofOnly
@@ -137,6 +139,9 @@ try {
   }
   if ([bool]$PressureProofOnly) {
     $args += "--pressure-proof-only"
+  }
+  if ([bool]$PressureCalendarPartialProofOnly) {
+    $args += "--pressure-calendar-partial-proof-only"
   }
   if ([bool]$PulseStopwatchOutputProofOnly) {
     $args += "--pulse-stopwatch-output-proof-only"

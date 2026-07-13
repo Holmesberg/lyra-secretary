@@ -45,6 +45,7 @@ const prefix = args.get("prefix") || `DOGFOOD ${randomUUID().slice(0, 8)}`;
 const cleanupOnly = args.get("cleanup-only") === "true";
 const archetypeProofOnly = args.get("archetype-proof-only") === "true";
 const pressureProofOnly = args.get("pressure-proof-only") === "true";
+const pressureCalendarPartialProofOnly = args.get("pressure-calendar-partial-proof-only") === "true";
 const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "true";
 const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-only") === "true";
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
@@ -2025,6 +2026,108 @@ async function assertPressureMapBrowserRender(token, beforeExport) {
     },
   );
   return browserProven.map((row) => row.exposure_id);
+}
+
+async function runPressureMapPartialCalendarProof(page, token, beforeExport) {
+  const pressureMapPattern = `${apiOrigin.replace(/\/$/, "")}/v1/academic/pressure-map**`;
+  const pressureSnapshot = await apiFetch(token, "/v1/academic/pressure-map?horizon_days=14");
+  const partialSourceSummary = {
+    ...pressureSnapshot.source_summary,
+    google_calendar_connected: true,
+    google_calendar_read_status: "partial",
+    calendar_busy_minutes: 120,
+  };
+  const fixture = {
+    ...pressureSnapshot,
+    source_summary: partialSourceSummary,
+    capacity_context: {
+      ...pressureSnapshot.capacity_context,
+      known_busy_minutes: 120,
+      google_calendar_connected: true,
+      google_calendar_read_status: "partial",
+      caveat: (
+        "Google Calendar coverage is partial for this view; known busy time is included, "
+        + "but incomplete coverage cannot establish true free time."
+      ),
+    },
+    warnings: [
+      ...(pressureSnapshot.warnings || []),
+      "Browser-only verifier fixture: Google Calendar coverage is partial for this view.",
+    ],
+    render_snapshot: {
+      ...pressureSnapshot.render_snapshot,
+      source_summary: partialSourceSummary,
+    },
+  };
+  const routeHandler = async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "access-control-allow-origin": frontendOrigin,
+        "access-control-allow-credentials": "true",
+      },
+      body: JSON.stringify(fixture),
+    });
+  };
+  await page.route(pressureMapPattern, routeHandler);
+  try {
+    await goto(page, "/pulse", "pressure-map-partial-calendar-proof");
+    const coverage = page.getByTestId("pressure-map-calendar-coverage").first();
+    await coverage.waitFor({ state: "visible", timeout: 8_000 });
+    const displayed = {
+      status: await coverage.getAttribute("data-calendar-read-status"),
+      busy_minutes: Number(await coverage.getAttribute("data-calendar-busy-minutes")),
+      text: (await coverage.innerText()).trim(),
+      box: await coverage.boundingBox(),
+    };
+    addCheck(
+      "pressure map visibly preserves partial calendar coverage",
+      displayed.status === "partial"
+        && displayed.busy_minutes === 120
+        && /partial/i.test(displayed.text)
+        && /2h/.test(displayed.text)
+        && /may be missing/i.test(displayed.text),
+      { fixture_only: true, displayed },
+    );
+
+    const exposureIds = await assertPressureMapBrowserRender(token, beforeExport);
+    const renderedExport = await apiFetch(token, "/v1/users/me/export");
+    const exposureIdSet = new Set(exposureIds);
+    const retainedSources = rows(renderedExport, "exposure_render_events")
+      .filter((row) => exposureIdSet.has(row.exposure_id))
+      .map((row) => parseJsonObject(row.content_snapshot)?.source_summary)
+      .filter(Boolean);
+    addCheck(
+      "partial calendar source status survives authenticated render evidence",
+      retainedSources.length >= 1
+        && retainedSources.every((source) => (
+          source.google_calendar_read_status === "partial"
+          && source.google_calendar_connected === true
+          && source.calendar_busy_minutes === 120
+        )),
+      { fixture_only: true, retained: retainedSources },
+    );
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(250);
+    const mobileBox = await coverage.boundingBox();
+    const overflow = await page.getByTestId("pressure-map").first().evaluate((element) => (
+      element.scrollWidth - element.clientWidth
+    ));
+    addCheck(
+      "partial calendar coverage remains visible and uncut on mobile",
+      mobileBox !== null
+        && mobileBox.x >= 0
+        && mobileBox.x + mobileBox.width <= 390
+        && overflow <= 1,
+      { box: mobileBox, horizontal_overflow_pixels: overflow },
+    );
+    await screenshot(page, "pressure-map-partial-calendar-mobile");
+    return { exposureIds };
+  } finally {
+    await page.unroute(pressureMapPattern, routeHandler).catch(() => {});
+  }
 }
 
 async function runCaptureGatePath(page, token) {
@@ -4179,6 +4282,36 @@ async function main() {
         user_ref: userRef(me.user_id),
         output_dir: outDir,
         exposure_count: exposureIds.length,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (pressureCalendarPartialProofOnly) {
+      const proof = await runPressureMapPartialCalendarProof(page, token, beforeExport);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "pressure_map_partial_calendar_fixture",
+        proof_status: "passed",
+        fixture_only: true,
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        exposure_count: proof.exposureIds.length,
         checks,
         issues,
         gated,
