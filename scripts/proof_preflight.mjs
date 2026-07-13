@@ -78,6 +78,9 @@ if (flag("--self-test")) {
   if (!wrapper.includes(".IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0")) {
     failures.push("PowerShell 5 compatible checkout ownership comparison is missing");
   }
+  if (!wrapper.includes("function Get-CheckoutOwnerProcessId") || !wrapper.includes("$current.ParentProcessId")) {
+    failures.push("local port ownership does not inspect child-process ancestry");
+  }
   if (wrapper.includes(".Contains($repoRoot, [StringComparison]::OrdinalIgnoreCase)")) {
     failures.push("unsupported Windows PowerShell String.Contains overload returned");
   }

@@ -39,6 +39,27 @@ function Import-UserCookieEnv {
   Set-Item -Path "Env:\$Name" -Value $value
 }
 
+function Get-CheckoutOwnerProcessId {
+  param([Parameter(Mandatory = $true)][int]$ProcessId)
+  $seen = @{}
+  $currentId = $ProcessId
+  for ($depth = 0; $depth -lt 8 -and $currentId -gt 0; $depth++) {
+    if ($seen.ContainsKey($currentId)) { break }
+    $seen[$currentId] = $true
+    $current = Get-CimInstance Win32_Process -Filter "ProcessId = $currentId" -ErrorAction SilentlyContinue
+    if (-not $current) { break }
+    $commandLine = [string]$current.CommandLine
+    if (
+      $commandLine -and
+      $commandLine.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    ) {
+      return [int]$current.ProcessId
+    }
+    $currentId = [int]$current.ParentProcessId
+  }
+  return $null
+}
+
 function Get-LocalPortProof {
   param([Parameter(Mandatory = $true)][string]$Label, [Parameter(Mandatory = $true)][uri]$Origin)
   if ($Origin.Host -notin @("localhost", "127.0.0.1")) { return $null }
@@ -46,11 +67,8 @@ function Get-LocalPortProof {
   if ($listeners.Count -ne 1) { throw "$Label expected one listener on port $($Origin.Port); found $($listeners.Count)." }
   $pidValue = $listeners[0].OwningProcess
   $process = Get-CimInstance Win32_Process -Filter "ProcessId = $pidValue" -ErrorAction SilentlyContinue
-  $commandLine = [string]$process.CommandLine
-  $checkoutOwned = [bool](
-    $commandLine -and
-    $commandLine.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0
-  )
+  $checkoutOwnerPid = Get-CheckoutOwnerProcessId -ProcessId $pidValue
+  $checkoutOwned = $null -ne $checkoutOwnerPid
   if ($Topology -eq "local-current" -and -not $checkoutOwned) {
     throw "$Label listener $pidValue is not owned by this checkout."
   }
@@ -60,6 +78,7 @@ function Get-LocalPortProof {
     pid = $pidValue
     process = $process.Name
     checkout_owned = $checkoutOwned
+    checkout_owner_pid = $checkoutOwnerPid
   }
 }
 
