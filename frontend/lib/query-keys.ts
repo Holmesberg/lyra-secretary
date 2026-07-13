@@ -134,8 +134,25 @@ export function invalidateDomain(
 }
 
 export function invalidateTimerCommandSurfaces(queryClient: QueryClient) {
+  return Promise.all([
+    invalidateTaskMutationCaches(queryClient),
+    invalidateKeys(queryClient, [queryKeys.stopwatchStatus]),
+  ]);
+}
+
+export function invalidateTaskMutationCaches(queryClient: QueryClient) {
   return invalidateKeys(queryClient, [
-    queryKeys.stopwatchStatus,
+    queryKeys.tasks,
+    queryKeys.tasksRange,
+    queryKeys.tasksEvidence,
+    queryKeys.pressureMap,
+    queryKeys.me,
+  ]);
+}
+
+export function invalidateDeadlineMutationCaches(queryClient: QueryClient) {
+  return invalidateKeys(queryClient, [
+    queryKeys.deadlines,
     queryKeys.tasks,
     queryKeys.tasksRange,
     queryKeys.tasksEvidence,
@@ -145,46 +162,27 @@ export function invalidateTimerCommandSurfaces(queryClient: QueryClient) {
 }
 
 export function invalidatePulseReentryCaches(queryClient: QueryClient) {
-  return invalidateKeys(queryClient, [
-    queryKeys.stopwatchStatus,
-    queryKeys.tasks,
-    queryKeys.tasksRange,
-    queryKeys.tasksEvidence,
-    queryKeys.pressureMap,
+  return Promise.all([
+    invalidateTaskMutationCaches(queryClient),
+    invalidateKeys(queryClient, [queryKeys.stopwatchStatus]),
   ]);
 }
 
 export function invalidateTodayTaskCommandSurfaces(
   queryClient: QueryClient,
-  viewedDate: string,
-  nextDate: string,
 ) {
-  return invalidateKeys(queryClient, [
-    queryKeys.tasksDay(viewedDate),
-    queryKeys.tasksDay(nextDate),
-    queryKeys.stopwatchStatus,
+  return Promise.all([
+    invalidateTaskMutationCaches(queryClient),
+    invalidateKeys(queryClient, [queryKeys.stopwatchStatus]),
   ]);
 }
 
 export function invalidateBrainDumpCommitCaches(queryClient: QueryClient) {
-  return invalidateKeys(queryClient, [
-    queryKeys.tasks,
-    queryKeys.deadlines,
-    queryKeys.me,
-    queryKeys.tasksRange,
-    queryKeys.tasksEvidence,
-    queryKeys.pressureMap,
-  ]);
+  return invalidateDeadlineMutationCaches(queryClient);
 }
 
 export function invalidatePressureRecoveryCommitCaches(queryClient: QueryClient) {
-  return invalidateKeys(queryClient, [
-    queryKeys.tasks,
-    queryKeys.tasksRange,
-    queryKeys.tasksEvidence,
-    queryKeys.pressureMap,
-    queryKeys.deadlines,
-  ]);
+  return invalidateDeadlineMutationCaches(queryClient);
 }
 
 export function invalidateIntegrationAccountCaches(queryClient: QueryClient) {
@@ -224,6 +222,7 @@ export function invalidateUndoCaches(queryClient: QueryClient) {
     queryKeys.tasks,
     queryKeys.tasksRange,
     queryKeys.tasksEvidence,
+    queryKeys.pressureMap,
     queryKeys.stopwatchStatus,
     queryKeys.deadlines,
     queryKeys.operatorDashboard,

@@ -317,7 +317,7 @@ function TodayInner() {
   }, []);
 
   const refresh = () =>
-    invalidateTodayTaskCommandSurfaces(qc, viewedDate, nextDateStr);
+    invalidateTodayTaskCommandSurfaces(qc);
 
   const { handleStart, handleStop } = useTodayStopwatchCommands({
     tasksDayKey,
