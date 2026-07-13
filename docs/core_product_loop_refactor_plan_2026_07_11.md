@@ -265,9 +265,13 @@ Wave 4 checkpoint status on 2026-07-13:
 
 - Today narrow-screen execution rows, Pulse partial-read truth, and Pulse
   integration-row legibility have focused real-cookie browser proof.
-- The remaining Wave 4 work is explicit pause-reason parity, shared stop-result
-  interpretation, invalidation completeness, and any capture-route gap exposed
-  by the Capture Gate. Do not repeat closed layout or partial-read seams.
+- Explicit pause-reason parity is closed: every live frontend caller now supplies
+  a typed canonical reason, and Pulse requires an explicit selection before the
+  timer mutation. Dismissing the chooser writes nothing.
+- The remaining Wave 4 work is shared stop-result interpretation, invalidation
+  completeness, and any capture-route gap exposed by the Capture Gate. Do not
+  repeat closed layout, partial-read, integration-legibility, or pause-reason
+  seams.
 
 ### Capture Gate
 

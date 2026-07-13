@@ -20942,3 +20942,58 @@ Rollback:
   `e794a63` to restore the former single-line provider rows. Revert `4491ea3`
   and `2775355` independently to remove only focused proof plumbing. No data
   repair is required.
+
+## 2026-07-13 - Wave 4 Explicit Pulse Pause Reasons
+
+Measurement truth restored:
+
+- Issue `#241` recorded that Pulse silently mapped every direct Pause command
+  to `intentional_break`, while Today required an explicit choice from the
+  canonical seven-reason vocabulary. This made route choice alter persisted
+  self-report truth.
+- Product commit `3209be7` makes the shared frontend pause command require a
+  typed `PauseReason`, seals both live callers, and gives Pulse a compact inline
+  reason chooser. Closing the chooser performs no write. Prediction-triggered
+  quick pause remains unchanged and continues to provide its explicit reason.
+- Backend pause, resume, switch, finalization, schema, prediction, and provider
+  authorities are unchanged. Issues `#242` and `#243` separately own paused
+  rollback projection and zero-duration stop presentation findings from the
+  read-only route audit.
+
+Focused proof and classified failures:
+
+- Frontend typecheck passed. The backend pause/resume, switch, idempotency, and
+  multi-user suites passed `57` tests. Static search found no live call to
+  `pauseStopwatch` without a typed reason.
+- Verifier commit `8f47491` extends the existing focused Pulse stopwatch path.
+  It proves all seven options mount, the chooser fits desktop and mobile
+  document width, dismissing it leaves the timer running with zero pause rows,
+  `external_interruption` reaches the canonical endpoint, and the authenticated
+  export preserves that exact reason with initiator `self`.
+- The first browser invocation failed closed before mutation because the
+  disposable frontend was compiled for API `8000` while the declared isolated
+  backend was `8001`. Rebuilding `.next-local-current` with the declared origin
+  made topology verification pass. This was classified as proof configuration,
+  not product behavior.
+- A stronger cleanup assertion initially expected destructive row deletion.
+  The retained artifact showed the actual doctrine: cleanup voids the exact
+  task as `test_contamination`, ends its session, resumes its pause event, and
+  excludes it from active/clean truth while preserving auditable history. The
+  verifier now proves that terminalization contract without production purge.
+- Final real-cookie local-current proof passed at
+  `tmp/post-wave-dogfood/wave4-pulse-pause-8f47491/focused-r4/result.json`.
+  Desktop and mobile screenshots were inspected directly. Pulse completed
+  start, explicit pause, refresh, Calendar and Today navigation, re-entry
+  resume, stop confirmation, browser-owned output render, and cleanup with no
+  active timer or unterminated synthetic exposure.
+- The isolated frontend artifact reported build `8b4facbca9de1726f310af451f6f3eb4477af79b`;
+  later verifier-only amendments did not change product bytes. Isolated ports
+  `3018/8001` and `.next-local-current` were removed after proof. Public ports,
+  `.next-public`, and hosted runtime were untouched.
+
+Rollback:
+
+- Revert `3209be7` to restore the former Pulse one-tap mapping and optional
+  frontend pause argument. Revert `8f47491` independently to remove only the
+  focused reason and terminalization assertions. No schema or data repair is
+  required.
