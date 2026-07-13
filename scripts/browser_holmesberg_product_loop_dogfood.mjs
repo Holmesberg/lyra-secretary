@@ -2847,15 +2847,29 @@ async function runTodayStopOutputRenderPath(page, token) {
   const taskRow = page
     .locator(`[data-testid="task-row"][data-task-id="${task.task_id}"]`)
     .first();
-  const taskRowVisible = await taskRow
-    .waitFor({ state: "visible", timeout: 12_000 })
-    .then(() => true)
+  const taskRowStop = taskRow.locator('button[title="Stop timer"]').first();
+  const bannerStop = page.getByTestId("active-timer-stop").first();
+  const stopControl = await firstVisible(page, [
+    () => taskRowStop,
+    () => bannerStop,
+  ], 12_000, "Today active timer stop control").catch(() => null);
+  const stopSurface = stopControl
+    ? (await taskRowStop.isVisible().catch(() => false) ? "task_row" : "active_timer_banner")
+    : null;
+  const activeTitleVisible = await page
+    .getByText(task.title, { exact: true })
+    .first()
+    .isVisible()
     .catch(() => false);
-  addCheck("Today renders the active stop-output proof task", taskRowVisible, {
+  addCheck("Today renders the active stop-output proof task and stop control", Boolean(
+    stopControl && activeTitleVisible
+  ), {
     task_id: task.task_id,
     task_date: taskDate,
+    stop_surface: stopSurface,
+    title_visible: activeTitleVisible,
   });
-  await taskRow.locator('button[title="Stop timer"]').click();
+  await stopControl.click();
 
   const dialog = page.getByRole("dialog").filter({ hasText: /How was your focus/i }).first();
   await firstVisible(page, [() => dialog], 8_000, "Today reflection dialog");
