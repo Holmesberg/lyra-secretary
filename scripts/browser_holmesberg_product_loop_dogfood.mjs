@@ -2869,6 +2869,36 @@ async function runTodayStopOutputRenderPath(page, token) {
     stop_surface: stopSurface,
     title_visible: activeTitleVisible,
   });
+  const desktopViewport = page.viewportSize() || { width: 1440, height: 960 };
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileStopBox = await bannerStop.boundingBox();
+  const mobilePauseBox = await page
+    .locator('button[title="Pause"]')
+    .first()
+    .boundingBox();
+  const mobileControlsFit = [mobileStopBox, mobilePauseBox].every((box) => (
+    box
+    && box.x >= 0
+    && box.y >= 0
+    && box.x + box.width <= 390
+  ));
+  const mobileControlsOverlap = Boolean(
+    mobileStopBox
+    && mobilePauseBox
+    && mobileStopBox.x < mobilePauseBox.x + mobilePauseBox.width
+    && mobileStopBox.x + mobileStopBox.width > mobilePauseBox.x
+    && mobileStopBox.y < mobilePauseBox.y + mobilePauseBox.height
+    && mobileStopBox.y + mobileStopBox.height > mobilePauseBox.y
+  );
+  addCheck("Today active timer controls remain usable on mobile", Boolean(
+    mobileControlsFit && !mobileControlsOverlap
+  ), {
+    stop: mobileStopBox,
+    pause: mobilePauseBox,
+    viewport: { width: 390, height: 844 },
+  });
+  await screenshot(page, "today-stop-output-proof-mobile");
+  await page.setViewportSize(desktopViewport);
   await stopControl.click();
 
   const dialog = page.getByRole("dialog").filter({ hasText: /How was your focus/i }).first();
