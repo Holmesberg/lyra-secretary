@@ -2850,11 +2850,11 @@ async function runTodayStopOutputRenderPath(page, token) {
   const taskRowStop = taskRow.locator('button[title="Stop timer"]').first();
   const bannerStop = page.getByTestId("active-timer-stop").first();
   const stopControl = await firstVisible(page, [
-    () => taskRowStop,
     () => bannerStop,
+    () => taskRowStop,
   ], 12_000, "Today active timer stop control").catch(() => null);
   const stopSurface = stopControl
-    ? (await taskRowStop.isVisible().catch(() => false) ? "task_row" : "active_timer_banner")
+    ? (await bannerStop.isVisible().catch(() => false) ? "active_timer_banner" : "task_row")
     : null;
   const activeTitleVisible = await page
     .getByText(task.title, { exact: true })
