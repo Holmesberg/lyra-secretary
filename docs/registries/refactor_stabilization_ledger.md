@@ -20743,3 +20743,43 @@ Remaining boundary and rollback:
   revert `06ebb0d` through `3cd196e` to remove product-loop preflight/fixture
   plumbing; revert `47c9a31` through `1433c2d` to remove operator preflight and
   fixture plumbing. Product rows require no repair.
+
+## 2026-07-13 - Wave 4 Today Mobile Execution-Row Containment
+
+Usefulness restored:
+
+- Issue `#237` showed that the canonical Today task row extended beyond a
+  `390x844` viewport even though the active-timer controls themselves fit.
+- Product commit `449b19a` preserves every task state, badge, estimate,
+  deadline-link, and mutation command while stacking the row into bounded
+  primary and metadata/action bands on narrow viewports. At `sm` and above,
+  `display: contents` preserves the former single-row desktop composition.
+- No task, stopwatch, output-surface, query, exposure, or mutation authority
+  changed.
+
+Focused proof and cleanup:
+
+- Verifier commit `6ec72ef` makes the existing Today stop-output path fail on
+  document, task-row, or mounted-command overflow. Commit `f3e7483` exposes
+  that existing focused path through the PowerShell wrapper; CI commit
+  `a75170c` runs the cheap contract in local S1c and GitHub Actions.
+- Real-cookie local-current proof passed at
+  `tmp/post-wave-dogfood/wave4-today-mobile-a75170c/today-focused/result.json`.
+  At `390x844`, document overflow was zero, the task row occupied exactly
+  `x=20..370`, and all three mounted command buttons stayed inside the
+  viewport. The desktop screenshot retained the original horizontal row.
+- The path created one canonical Holmesberg task, completed a real timer stop,
+  recorded one authenticated browser render for the micro-mirror, then left
+  no active prefixed task/deadline, active timer, or unterminated synthetic
+  output candidate. The account-readiness fixture changed only the browser
+  response to `GET /v1/users/me` and is explicitly local-current proof.
+- Current source ran on isolated frontend `3018`, lifespan-disabled backend
+  `8001`, and `.next-local-current`. Public ports `3000/8000` remained
+  listening, `.next-public` retained build `4vmRw9lKO8m_ZWpDPW6t8`, and the
+  isolated processes/artifact were removed after proof.
+
+Rollback:
+
+- Revert `449b19a` to restore the former narrow-screen overflow. Revert
+  `6ec72ef`, `f3e7483`, and `a75170c` independently to remove only the browser,
+  wrapper, and CI gates. No persisted data requires repair.
