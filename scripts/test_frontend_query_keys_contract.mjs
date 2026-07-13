@@ -18,6 +18,7 @@ function assert(condition, message) {
 const queryKeys = read("frontend/lib/query-keys.ts");
 const deadlinesPage = read("frontend/app/(app)/deadlines/page.tsx");
 const calendarPage = read("frontend/app/(app)/calendar/page.tsx");
+const integrationsSection = read("frontend/components/integrations-section.tsx");
 const tablePage = read("frontend/app/(app)/table/page.tsx");
 const todayPage = read("frontend/app/(app)/today/page.tsx");
 
@@ -86,6 +87,23 @@ for (const [name, source] of [
 assert(
   !tablePage.includes("void refetchTasks();"),
   "Table correction must not refresh only its local task range",
+);
+assert(
+  /export function invalidateCalendarIntegrationCaches[\s\S]*invalidateIntegrationAccountCaches\(queryClient\)[\s\S]*invalidateCalendarEventQueries\(queryClient\)[\s\S]*?\n}/.test(queryKeys),
+  "calendar integration mutations must refresh account and Calendar event projections",
+);
+assert(
+  /export function invalidateMoodleFeedSyncCaches[\s\S]*invalidateIntegrationStatusCaches\(queryClient\)[\s\S]*invalidateDeadlineMutationCaches\(queryClient\)[\s\S]*?\n}/.test(queryKeys)
+    && /export function invalidateMoodleConnectCaches[\s\S]*return invalidateMoodleFeedSyncCaches\(queryClient\)/.test(queryKeys),
+  "Moodle connect and sync must use integration status plus shared deadline-dependent invalidation",
+);
+assert(
+  (integrationsSection.match(/invalidateCalendarIntegrationCaches/g) || []).length >= 3,
+  "Google connect and integration disconnect must use Calendar-dependent invalidation",
+);
+assert(
+  (integrationsSection.match(/invalidateMoodleFeedSyncCaches/g) || []).length >= 3,
+  "both Moodle sync controls must use the shared feed invalidation recipe",
 );
 
 console.log(JSON.stringify({ ok: true, checked: "frontend_query_keys_contract" }));
