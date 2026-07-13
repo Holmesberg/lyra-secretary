@@ -20564,3 +20564,59 @@ Rollback:
   continue-only partial state. Revert `6f88db3`, `cef5435`, `607e535`, and
   `68b4a5b` independently to remove contract, browser, topology-wrapper, and
   CI coverage. Accepted canonical rows require no repair or migration.
+
+### Pressure Map estimate provenance and mobile preview fit
+
+Seam and behavior:
+
+- Product commit `c95fb66` removes raw archetype slugs and identity-style
+  labels from visible and persisted Pressure Map estimate provenance. The
+  existing numerical calibration remains unchanged; the preview now keeps the
+  original system suggestion separate from user-edited block duration, names
+  broad personal or starting evidence, and invites the user to time the block
+  to prove the estimate right or wrong.
+- The same canonical `createTask` command and explicit lock-in remain in
+  charge of the write. Confirmed tasks retain broad estimate provenance and
+  the existing planning-footprint boundary; no prior, formula, weight,
+  threshold, range, provider, schema, or execution authority changed.
+- The mounted mobile proof exposed an existing intrinsic-width defect in the
+  native date controls. The product fix constrains the dialog's implicit grid
+  item and each editor to a `minmax(0,1fr)` mobile track instead of hiding the
+  overflow.
+- Characterization/verifier commit `ba22028` locks the source boundary, the
+  preserved suggestion, broad copy, exact stored description, and desktop and
+  mobile fit. CI commit `63f4a46` promotes the stable source contract into the
+  standard CI and S1c stacks.
+
+Proof:
+
+- The focused Pressure Map backend set passed `57` tests; the frontend
+  typecheck, source contract, verifier syntax, PowerShell parse, and `git diff
+  --check` passed.
+- The first mounted path passed before mobile-dialog measurement was added at
+  `tmp/post-wave-dogfood/wave3-pressure-provenance-0489f82/focused-r1/result.json`.
+  Runs `focused-r2` through `focused-r4` are retained as failures: they
+  attributed `100-101px` of horizontal overflow to the dialog's implicit grid
+  item. No synthetic task survived those failed runs.
+- Final real-cookie Holmesberg proof passed at
+  `tmp/post-wave-dogfood/wave3-pressure-provenance-0489f82/focused-r5/result.json`.
+  It created exactly one deadline-bound planning block, stored
+  `research/population starting estimate` without a raw archetype slug, showed
+  the block in Calendar, recorded one authenticated Pressure Map render, fit
+  the `390x844` dialog without horizontal overflow, and removed every active
+  prefixed task/deadline, active timer, and unterminated synthetic output.
+- The account-readiness and recovery-option fixtures changed only browser
+  responses and are explicitly labelled local-current, not hosted-public
+  product proof. Authentication, task/deadline writes, exports, exposure
+  acknowledgement, Calendar read, and cleanup remained real.
+- Local runtime used isolated frontend `3018`, lifespan-disabled backend
+  `8001`, and `.next-local-current`. Hosted-public ports `3000/8000` remained
+  listening, `.next-public` retained build `4vmRw9lKO8m_ZWpDPW6t8`, and the
+  isolated process tree and generated Next artifact were removed after proof.
+
+Rollback:
+
+- Revert `c95fb66` to restore technical archetype provenance and the former
+  unconstrained preview layout. Revert `ba22028` and `63f4a46` independently
+  to remove only focused verification and CI gating. Existing confirmed tasks
+  need no migration or data repair.
