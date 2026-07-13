@@ -120,6 +120,17 @@ class StopwatchManager:
                 type(exc).__name__,
             )
 
+    def _clear_terminal_stopwatch_state(self, user_id: str) -> None:
+        """Best-effort cache cleanup after terminal DB truth has committed."""
+        try:
+            self.redis.clear_stopwatch_state(user_id)
+        except Exception as exc:  # noqa: BLE001 - DB terminal state is canonical
+            logger.warning(
+                "stopwatch.stop: terminal Redis cleanup failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -1048,7 +1059,7 @@ class StopwatchManager:
             self._invalidate_task_ranges(user_id)
             self.db.refresh(session)
             self.db.refresh(task)
-            self.redis.clear_active_stopwatch(user_id)
+            self._clear_terminal_stopwatch_state(user_id)
             return session, task, is_early_stop, False, None, None, None, pre_existing_pct
 
         session.end_time_utc = stop_time
@@ -1098,7 +1109,7 @@ class StopwatchManager:
         micro_mirror = _compute_micro_mirror(task, interruption)
         calibration_nudge = _compute_calibration_nudge(task, self.db)
 
-        self.redis.clear_active_stopwatch(user_id)
+        self._clear_terminal_stopwatch_state(user_id)
 
         # Check for any paused parent session still open
         paused_parent = None
