@@ -21896,3 +21896,53 @@ Rollback and next boundary:
 - This seam closes only the reported estimate race and the cleanup blocker it
   exposed. It does not expand the creation-nudge policy, research prior,
   prediction families, or downstream refactor scope.
+
+## 2026-07-14 - Wave 6A Direct Re-entry Reschedule
+
+Useful recovery through existing authority:
+
+- Issue `#260` recorded that Pulse told users to reschedule parked or missed
+  work but offered only resume, open, done, drop, or hide. Product commit
+  `e784e8a` adds one explicit `Reschedule` command to each mounted re-entry
+  card and routes it to the existing Today task editor.
+- Today consumes the task-specific navigation once, resolves the target only
+  from the current user's loaded task feed, and rejects unknown, voided,
+  executed, or deleted targets. Confirmation still writes solely through
+  canonical `/v1/reschedule`; no recovery writer, schema, automatic scheduling,
+  or recovery-success claim was added.
+- Paused cards retain the task's planned day when the task is available in the
+  existing Pulse evidence range. The New Task editor now uses a viewport-inset,
+  vertically scrollable mobile boundary. The re-entry card grid uses explicit
+  minimum-width constraints so long task titles cannot widen the page.
+
+Focused proof and verifier classification:
+
+- Verifier commit `b2f6e23` adds a static authority/navigation contract and a
+  focused real-cookie Holmesberg path. Canonical reschedule isolation,
+  immutable/voided rejection, and cache invalidation passed nine targeted
+  backend tests; frontend typecheck and `git diff --check` passed.
+- The first mounted run reached `/v1/reschedule` successfully but the verifier
+  incorrectly required `reschedule_count` from the public task projection.
+  The assertion was narrowed to public contract fields. A subsequent mobile
+  check found a real 26-pixel re-entry overflow; the product width constraints
+  reduced it to zero.
+- Final focused evidence passed at
+  `tmp/post-wave-dogfood/wave6a-reentry-reschedule-trimmed-final-530faf3/result.json`.
+  It proves the task-specific command, existing editor handoff, canonical
+  same-ID time update, missed-plan removal, unknown-target rejection, and
+  exact void cleanup.
+- Desktop and `390x844` screenshots were inspected directly. The four recovery
+  commands wrap without overlap. The settled task editor bounding box is
+  `x=16`, `width=358`, with zero internal or page overflow. Preflight and
+  postflight used isolated ports `3018/8001`, disposable SQLite, Redis DB 15,
+  the real Holmesberg cookie, and a clean synthetic prefix. Public artifacts,
+  processes, accounts, and data were untouched.
+
+Rollback and next boundary:
+
+- Revert `e784e8a` to remove the direct navigation and mobile containment;
+  revert `b2f6e23` to remove focused proof. Existing task rows remain valid
+  because the seam introduced no writer or schema.
+- Shrink, split, irrelevant, and explicit keep/park outcomes remain partial.
+  The next Wave 6 seam must close one present execution/recovery invariant; it
+  may not expand prediction policy or perform structural extraction by default.

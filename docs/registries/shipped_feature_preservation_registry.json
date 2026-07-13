@@ -436,15 +436,15 @@
       "preservation_required": true,
       "owner": "PulseReentryQueue routes commands to StopwatchManager and TaskManager",
       "active_contracts": ["docs/core_product_loop_refactor_plan_2026_07_11.md", "docs/single_authority_contract.md"],
-      "runtime_paths": ["frontend/components/pulse/PulseReentryQueue.tsx", "frontend/lib/hooks/use-pulse-reentry-commands.ts", "backend/app/services/stopwatch_manager.py", "backend/app/services/task_manager.py"],
-      "user_effect": "Surfaces paused, stale, and missed-plan work and currently supports resume, stale resolution, open, done, and drop/hide commands.",
-      "writes": ["resume/stale resolution session state", "explicit done or drop task state"],
+      "runtime_paths": ["frontend/components/pulse/PulseReentryQueue.tsx", "frontend/lib/hooks/use-pulse-reentry-commands.ts", "frontend/app/(app)/today/page.tsx", "frontend/components/new-task-modal.tsx", "backend/app/services/stopwatch_manager.py", "backend/app/services/task_manager.py"],
+      "user_effect": "Surfaces paused, stale, and missed-plan work and currently supports resume, stale resolution, reschedule through the existing task editor, open, done, and drop/hide commands.",
+      "writes": ["resume/stale resolution session state", "explicit done or drop task state", "explicit editor-confirmed reschedule through TaskManager"],
       "exposure_class": "recovery_command_surface",
       "output_surface_ids": [],
-      "proof": {"tests": ["backend/tests/test_stale_pause_resolution.py", "backend/tests/test_client_shadow_recovery_protocol.py"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pulse re-entry pick-up resumes paused session"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pulse missed-plan drop marks planned task skipped"}], "minimum_tier": "local-current", "gated": []},
+      "proof": {"tests": ["backend/tests/test_stale_pause_resolution.py", "backend/tests/test_client_shadow_recovery_protocol.py", "scripts/test_pulse_reentry_reschedule_contract.mjs"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pulse re-entry pick-up resumes paused session"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "pulse missed-plan drop marks planned task skipped"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "re-entry editor confirms through canonical reschedule authority"}], "minimum_tier": "local-current", "gated": []},
       "historical_sources": [{"path": "docs/archive/legacy/planning/core_product_loop_wave_plan.md", "use": "documents broader recovery intent only"}],
       "rollback": "Remove or revert unsupported affordances, never the underlying session/task truth.",
-      "known_gaps": ["Mounted commands do not yet directly implement shrink, split, reschedule, irrelevant, and explicit keep/park outcomes.", "Recovery selection is not proof of later recovery success."]
+      "known_gaps": ["Mounted commands do not yet directly implement shrink, split, irrelevant, and explicit keep/park outcomes.", "Recovery selection is not proof of later recovery success."]
     },
     {
       "id": "insights.deterministic_page",
