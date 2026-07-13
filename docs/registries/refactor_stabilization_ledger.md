@@ -20669,3 +20669,77 @@ Remaining boundary and rollback:
   `ee56c21`, `86eabdc`, and `d07939b` independently to remove browser,
   wrapper, characterization, and CI coverage. Existing timestamps require no
   repair or migration.
+
+### Wave 3 macro checkpoint and browser preflight fidelity
+
+Scope and verifier repairs:
+
+- The macro checkpoint covers the related onboarding partial-recovery,
+  Pressure Map provenance/mobile-fit, and onboarding skip-durability seams.
+  It does not authorize new product behavior.
+- Wrapper commit `6661fab` adds an explicit local-current API port to the
+  multi-account and operator wrappers. Contract commit `d0859a2` locks the
+  selected origin into topology verification and adds the topology contract
+  to S1c. A negative run against API port `8999` failed before account proof
+  with `compiled API origin mismatch`; the matching `3018/8001` run passed.
+- The first complete product-loop attempt is retained at
+  `tmp/post-wave-dogfood/wave3-macro-d0859a2/product-loop-r1/result.json`.
+  It entered the real Holmesberg consent gate and failed later at Calendar
+  view selection without creating a row. Verifier commits `06ebb0d`,
+  `2ed2fc2`, `fd43df6`, and `3cd196e` make full-loop account blockers explicit
+  and expose the existing browser-response-only readiness fixture. Focused
+  negative proof now classifies `terms_not_accepted`,
+  `archetype_survey_pending`, and `no_active_task_history` before route
+  traversal or mutation.
+- The first operator route stress is retained at
+  `tmp/operator-readonly-stress-wave3-macro-operator-3cd196e/result.json`.
+  Its counts and dashboard snapshot were unchanged, but the browser remained
+  in onboarding and timed out twice. Verifier commits `47c9a31`, `b22fa13`,
+  `7224443`, and `1433c2d` classify those blockers before route waits and
+  expose the existing read-only response fixture. Focused proof produced zero
+  routes, count diffs, or dashboard diffs before the final positive run.
+
+Macro proof:
+
+- Full S1c passed at the pre-browser checkpoint: authority and refactor
+  scans, backend layer and Cortex gates, preservation registry, stable source
+  contracts, Alembic fresh upgrade, full backend suite, and frontend
+  production build all passed. The run took about `101s` with browser work
+  intentionally deferred to the macro pass.
+- Real-cookie multi-account proof passed against isolated `3018/8001`:
+  operator and Holmesberg identities were distinct, operator/non-operator
+  boundaries held, exports were scoped, and the mismatched port negative
+  proof failed closed.
+- The complete Holmesberg run passed `187` checks with no failed checks at
+  `tmp/post-wave-dogfood/wave3-macro-d0859a2/product-loop-r2/result.json`.
+  It covered route/view traversal, task/deadline creation and exact-once
+  branches, Brain Dump recovery, Pressure Map projection and obvious
+  desktop/mobile actions, Calendar destination, stopwatch and re-entry,
+  registered exposure and notification outcomes, export, and operator
+  privacy. Cleanup terminated `16` tasks, `8` deadlines, `3` notifications,
+  and `5` exposure candidates; no active prefixed row, active timer, or
+  unterminated synthetic output remained.
+- The full product-loop readiness fixture changed only browser `/me`
+  eligibility fields. Real authentication, API mutations, browser render
+  acknowledgements, export, operator privacy checks, and cleanup remained
+  live against the Holmesberg account. It is local-current product proof, not
+  hosted-public or durable consent/survey proof.
+- Final operator read-only stress passed on exact verifier head `1433c2d` at
+  `tmp/operator-readonly-stress-wave3-macro-operator-1433c2d/result.json`.
+  Desktop and mobile rendered with no issue or warning; exported counts,
+  per-route counts, and dashboard snapshots had zero diffs.
+  `implementation_green=true`, cohort status remained honestly yellow for
+  missing real evidence, and `exposure_without_render_count=0`.
+- Every isolated runtime used `.next-local-current`; public ports `3000/8000`
+  stayed listening and `.next-public` retained build
+  `4vmRw9lKO8m_ZWpDPW6t8`. Isolated processes and artifacts were removed after
+  proof.
+
+Remaining boundary and rollback:
+
+- The real operator and Holmesberg account gates remain unchanged. No consent,
+  survey, onboarding, or account data was mutated to make verification pass.
+- Revert `6661fab` with `d0859a2` to remove explicit isolated macro API ports;
+  revert `06ebb0d` through `3cd196e` to remove product-loop preflight/fixture
+  plumbing; revert `47c9a31` through `1433c2d` to remove operator preflight and
+  fixture plumbing. Product rows require no repair.
