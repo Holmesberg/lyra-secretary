@@ -21097,3 +21097,51 @@ Rollback:
 - Revert `ece3434` to restore the prior frontend type and presenters. Revert
   `c6baa2b` independently to remove focused proof plumbing. No schema, data
   repair, deployment, restart, or authority transfer is required.
+
+## 2026-07-13 - Wave 4 Today Stop Rollback Truth
+
+Usefulness restored:
+
+- Issue `#242` recorded that Today's early-stop confirmation and request-error
+  paths restored the stopwatch snapshot but always projected its task as
+  `EXECUTING`. A genuinely paused timer could therefore reappear as running in
+  the task row even while canonical stopwatch status remained paused.
+- Product commit `a8db03e` derives the restored task state from the captured
+  canonical snapshot and invalidates Today task/stopwatch reads after request
+  errors. It changes no backend finalization, exposure, prediction, schema, or
+  mutation authority.
+
+Focused proof and failure classification:
+
+- Frontend typecheck passed. Three existing backend contracts passed for the
+  unconfirmed early-stop gate, paused DB/Redis consistency, and the current
+  pause anchor exposed by canonical stopwatch status.
+- Verifier commit `7c220e6` adds a real-cookie local-current mode covering four
+  cases: running confirmation rollback, running `503` rollback, paused
+  confirmation rollback, and paused `503` rollback. The failure fixture affects
+  one browser stop request in each failure case; setup, canonical reads, later
+  terminal stop, export, and cleanup use the real backend.
+- The first focused run proved running confirmation, then retained a harness
+  failure when the next API-created task reused a still-fresh persisted Today
+  query for the same date. The focused correction assigns each case a distinct
+  date/query key instead of retrying a comprehensive loop.
+- The final result passed with zero failed checks at
+  `tmp/post-wave-dogfood/wave4-today-rollback-a8db03e/r2/result.json`. Every
+  case restored the exact `EXECUTING` or `PAUSED` row projection, retained the
+  same active canonical session, and preserved the matching paused flag. Error
+  cases also observed the canonical status refetch after the synthetic `503`.
+- Exact export and cleanup proved all four sessions ended, all four tasks were
+  voided as `test_contamination`, no active timer remained, and no synthetic
+  exposure candidate remained unterminated. The four restored-state screenshots
+  were inspected directly and showed coherent modal, task-row, and timer state.
+- The disposable production build used `.next-local-current` on `3018` with
+  backend `8001`, compiled product build
+  `a8db03e642c51db9fda122b1fac51ceab827671d`. Isolated processes and artifacts
+  were removed. Hosted `https://lyraos.org` and its topology remained `200` and
+  verified; public runtime was not restarted or modified.
+
+Rollback:
+
+- Revert `a8db03e` to restore the prior Today cache projection. Revert
+  `7c220e6` independently to remove focused proof plumbing. No schema, data
+  repair, deployment, restart, or authority transfer is required.
