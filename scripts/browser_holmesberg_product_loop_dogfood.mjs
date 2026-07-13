@@ -2343,7 +2343,11 @@ async function runPressureMapPath(page, token, beforeExport) {
       button.click();
     });
     const createAnyway = dialog.getByRole("button", { name: /Create anyway/i }).first();
-    if (await createAnyway.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    const createAnywayVisible = await createAnyway
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (createAnywayVisible) {
       await screenshot(page, "pressure-map-soft-conflict-create-anyway");
       await createAnyway.click();
     }
