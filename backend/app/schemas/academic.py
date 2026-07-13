@@ -26,6 +26,7 @@ AcademicPressureLevel = Literal["low", "medium", "high", "overdue"]
 AcademicSourceClass = Literal["external", "native", "lyra_task"]
 AcademicProviderReadStatus = Literal[
     "available",
+    "partial",
     "unavailable",
     "not_connected",
 ]

@@ -15,6 +15,7 @@ export type AcademicConfidence = "low" | "medium" | "high";
 export type AcademicSourceClass = "external" | "native" | "lyra_task";
 export type AcademicProviderReadStatus =
   | "available"
+  | "partial"
   | "unavailable"
   | "not_connected";
 export type AcademicEvidenceClass =

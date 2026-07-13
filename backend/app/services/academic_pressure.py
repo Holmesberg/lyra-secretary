@@ -330,7 +330,7 @@ def _calendar_busy_minutes(
     if user is None or not user.google_refresh_token:
         return None, False, "not_connected"
     result = fetch_google_events_with_status(user_id, start, end)
-    if result.status != "available":
+    if result.status not in {"available", "partial"}:
         return None, True, result.status
     intervals: list[TimeInterval] = []
     for index, event in enumerate(result.events):
@@ -353,7 +353,7 @@ def _calendar_busy_minutes(
         window_start=start,
         window_end=end,
     )
-    return busy.total_minutes, True, "available"
+    return busy.total_minutes, True, result.status
 
 
 def _planned_task_minutes(db: Session, user_id: int, start: datetime, end: datetime) -> int:
@@ -634,6 +634,11 @@ def _capacity_context(
             "Calendar busy time is available and planned LyraOS tasks are reported separately; "
             "neither establishes true free time."
         )
+    elif calendar_read_status == "partial":
+        caveat = (
+            "Google Calendar coverage is partial for this view; known busy time is included, "
+            "but incomplete coverage cannot establish true free time."
+        )
     elif calendar_read_status == "unavailable":
         caveat = (
             "Google Calendar is connected but unavailable for this view; busy time is unavailable, "
@@ -788,6 +793,10 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
         warnings.append("Some imported items need coverage confirmation before plan generation.")
     if not gcal_connected:
         warnings.append("Google Calendar is not connected, so free-time mismatch is incomplete.")
+    elif calendar_read_status == "partial":
+        warnings.append(
+            "Google Calendar coverage is partial for this view; known busy time is included, but more may be missing."
+        )
     elif calendar_read_status == "unavailable":
         warnings.append(
             "Google Calendar is unavailable for this view; calendar busy time is unavailable, not zero."

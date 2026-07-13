@@ -278,6 +278,20 @@ export function PulseAcademicPressureMap({
     primaryIsPlanOption,
   } = selectPressurePlanOption(pressure);
   const projection = pressure?.demand_coverage_projection;
+  const calendarSummary = (() => {
+    const source = pressure?.source_summary;
+    if (!source || source.google_calendar_read_status === "not_connected") {
+      return "Google Calendar not connected.";
+    }
+    if (source.google_calendar_read_status === "unavailable") {
+      return "Google Calendar connected; this view could not be read.";
+    }
+    const knownBusy = fmtMinutes(source.calendar_busy_minutes ?? 0);
+    if (source.google_calendar_read_status === "partial") {
+      return `Google Calendar partial: ${knownBusy} known busy; more may be missing.`;
+    }
+    return `Google Calendar available: ${knownBusy} known busy.`;
+  })();
 
   return (
     <div
@@ -331,6 +345,14 @@ export function PulseAcademicPressureMap({
                 {pressure.source_summary.native_obligation_count} native /{" "}
                 {pressure.source_summary.academic_task_count} linked tasks /{" "}
                 {pressure.source_summary.study_task_count} focus blocks
+              </p>
+              <p
+                data-testid="pressure-map-calendar-coverage"
+                data-calendar-read-status={pressure.source_summary.google_calendar_read_status}
+                data-calendar-busy-minutes={pressure.source_summary.calendar_busy_minutes ?? ""}
+                className="mt-1 text-[11px] leading-snug text-dust"
+              >
+                {calendarSummary}
               </p>
             </div>
           </div>
