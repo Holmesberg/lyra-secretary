@@ -6,7 +6,6 @@ import type {
   CalibrationNudge,
   CalibrationNudgeSource,
 } from "@/components/calibration-nudge-card";
-import { localResearchNudge } from "@/lib/creation-nudge";
 import {
   exposureIdForCreationNudge,
   suppressCreationNudgeExposure,
@@ -73,22 +72,16 @@ export function useCreationNudgeLookup({
     const tod = timeOfDay(start);
     const firedAt = new Date().toISOString();
     const exposureId = exposureIdForCreationNudge(category, tod, planned);
-    const provisional = localResearchNudge(
-      category,
-      tod,
-      planned,
-      firedAt,
-      exposureId,
-    );
-    if (provisional.factor >= 1.2) {
-      setCalibrationNudge(provisional);
-      setNudgeSource("research");
-    } else {
-      clearCreationNudge();
-    }
+    // A prior estimate is not actionable until the backend has confirmed
+    // eligibility and created its exposure decision. Clear any estimate for
+    // the previous form inputs while the next canonical lookup is pending.
+    clearCreationNudge();
 
     const abortCtl = new AbortController();
-    const applyLookupResponse = (res: BiasLookupResponse) => {
+    const applyLookupResponse = (
+      res: BiasLookupResponse,
+      { preserveVisibleOnIneligible = false } = {},
+    ) => {
       const isResearch = res.source === "research";
       const threshold = isResearch ? 1.20 : 1.25;
       const magnitude = res.bias_factor_final ?? res.cell?.bias_factor ?? null;
@@ -115,7 +108,10 @@ export function useCreationNudgeLookup({
         if (res.exposure_id && !res.suppressed_reason) {
           suppressCreationNudgeExposure(res.exposure_id);
         }
-        if (!abortCtl.signal.aborted) {
+        if (
+          !abortCtl.signal.aborted &&
+          (!preserveVisibleOnIneligible || Boolean(res.suppressed_reason))
+        ) {
           clearCreationNudge();
         }
         return false;
@@ -158,11 +154,17 @@ export function useCreationNudgeLookup({
           void lookupBiasFactor(category, tod, planned, {
             exposureId: res.exposure_id ?? exposureId,
           })
-            .then(applyLookupResponse)
+            .then((hydrated) => {
+              // The fast path has already authorized and rendered this
+              // estimate. Personal hydration may enrich it, but a stricter
+              // personal threshold must not make the actionable card vanish.
+              applyLookupResponse(hydrated, {
+                preserveVisibleOnIneligible: true,
+              });
+            })
             .catch(() => {
-              // Keep the instant research-backed card if the personal
-              // hydration path misses; the fast path already registered
-              // the visible surface for exposure accounting.
+              // Keep the backend-authorized fast card if personal hydration
+              // misses; the visible surface already has exposure authority.
             });
         })
         .catch(() => {
