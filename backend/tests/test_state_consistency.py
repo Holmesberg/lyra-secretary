@@ -266,6 +266,60 @@ def test_stop_executed_clears_all(state_env, client):
     _assert_session_closed(task_id)
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected_state"),
+    [
+        (
+            {"post_task_reflection": 4, "task_completion_percentage": 80},
+            TaskState.EXECUTED,
+        ),
+        ({"post_task_reflection": 4}, TaskState.SKIPPED),
+    ],
+)
+@needs_redis
+def test_stop_keeps_terminal_success_when_redis_cleanup_fails(
+    state_env, client, monkeypatch, payload, expected_state
+):
+    """A post-commit Redis failure cannot turn a completed stop into a 500."""
+    task_id = _create_and_start(
+        client, title=f"terminal cleanup {expected_state.value}"
+    )
+
+    from app.utils.redis_client import RedisClient
+
+    original_clear_active = RedisClient.clear_active_stopwatch
+    original_clear_state = RedisClient.clear_stopwatch_state
+
+    def fail_terminal_cleanup(*_args, **_kwargs):
+        raise ConnectionError("injected terminal Redis cleanup failure")
+
+    monkeypatch.setattr(RedisClient, "clear_active_stopwatch", fail_terminal_cleanup)
+    monkeypatch.setattr(RedisClient, "clear_stopwatch_state", fail_terminal_cleanup)
+
+    response = client.post(
+        "/v1/stopwatch/stop",
+        params={"confirmed": "true"},
+        json=payload,
+        headers=_h(),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["task_id"] == task_id
+    assert _get_task(task_id).state == expected_state
+    _assert_session_closed(task_id)
+
+    # Restore Redis access and prove the ordinary status path converges the
+    # stale cache from canonical terminal DB truth.
+    monkeypatch.setattr(RedisClient, "clear_active_stopwatch", original_clear_active)
+    monkeypatch.setattr(RedisClient, "clear_stopwatch_state", original_clear_state)
+    assert RedisClient().get_active_stopwatch(str(USER_ID)) is not None
+
+    status = client.get("/v1/stopwatch/status", headers=_h())
+    assert status.status_code == 200, status.text
+    assert status.json()["active"] is False
+    _assert_redis_clear()
+
+
 # ---------------------------------------------------------------
 # Invariant 4: mark_abandoned → SKIPPED, Redis clear, session closed
 # ---------------------------------------------------------------
