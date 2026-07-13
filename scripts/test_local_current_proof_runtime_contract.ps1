@@ -4,6 +4,7 @@ $startPath = Join-Path $PSScriptRoot "start_local_current_proof_runtime.ps1"
 $stopPath = Join-Path $PSScriptRoot "stop_local_current_proof_runtime.ps1"
 $startSource = Get-Content -Raw -LiteralPath $startPath
 $stopSource = Get-Content -Raw -LiteralPath $stopPath
+$preflightSource = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "proof_preflight.ps1")
 
 $requiredStartFragments = @(
   '.venv311\Scripts\python.exe',
@@ -27,6 +28,12 @@ if (-not $stopSource.Contains('PID $ProcessId was reused; refusing to stop it.')
 }
 if (-not $stopSource.Contains('Refusing to remove unsafe artifact path')) {
   throw "Teardown does not bound artifact deletion."
+}
+if (-not $preflightSource.Contains('[string]$RuntimeManifest')) {
+  throw "Proof preflight cannot consume the runtime ownership manifest."
+}
+if (-not $preflightSource.Contains('RuntimeManifest build ID does not match')) {
+  throw "Proof preflight does not bind runtime ownership to the expected build."
 }
 
 $frontendPort = 39118

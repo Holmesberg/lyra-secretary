@@ -22,12 +22,32 @@ param(
   [switch]$ProxyApi,
   [switch]$FixtureAccountReady,
   [switch]$RequireAccountReady,
+  [string]$RuntimeManifest = "",
   [string]$OutFile = ""
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $PSScriptRoot "local_frontend_topology.ps1")
+$runtimeManifestRecord = $null
+
+if (-not [string]::IsNullOrWhiteSpace($RuntimeManifest)) {
+  $manifestPath = if ([IO.Path]::IsPathRooted($RuntimeManifest)) {
+    [IO.Path]::GetFullPath($RuntimeManifest)
+  } else {
+    [IO.Path]::GetFullPath((Join-Path $repoRoot $RuntimeManifest))
+  }
+  if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+    throw "RuntimeManifest does not exist: $manifestPath"
+  }
+  $runtimeManifestRecord = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+  if ($runtimeManifestRecord.topology -ne "local-current") {
+    throw "RuntimeManifest is not a local-current runtime."
+  }
+  if (-not ([string]$runtimeManifestRecord.repo_root).Equals($repoRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "RuntimeManifest belongs to a different checkout."
+  }
+}
 
 function Import-UserCookieEnv {
   param([Parameter(Mandatory = $true)][string]$Name)
@@ -69,6 +89,24 @@ function Get-LocalPortProof {
   $process = Get-CimInstance Win32_Process -Filter "ProcessId = $pidValue" -ErrorAction SilentlyContinue
   $checkoutOwnerPid = Get-CheckoutOwnerProcessId -ProcessId $pidValue
   $checkoutOwned = $null -ne $checkoutOwnerPid
+  $ownershipSource = if ($checkoutOwned) { "process_ancestry" } else { $null }
+  if (-not $checkoutOwned -and $runtimeManifestRecord) {
+    $service = @($runtimeManifestRecord.frontend, $runtimeManifestRecord.backend) |
+      Where-Object { [int]$_.port -eq [int]$Origin.Port } |
+      Select-Object -First 1
+    if ($service -and [int]$service.listener_pid -eq [int]$pidValue) {
+      $running = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+      $expectedStart = [DateTime]::Parse([string]$service.listener_started_at).ToUniversalTime()
+      if (
+        $running -and
+        [Math]::Abs(($running.StartTime.ToUniversalTime() - $expectedStart).TotalSeconds) -le 2
+      ) {
+        $checkoutOwned = $true
+        $checkoutOwnerPid = [int]$service.launch_pid
+        $ownershipSource = "runtime_manifest"
+      }
+    }
+  }
   if ($Topology -eq "local-current" -and -not $checkoutOwned) {
     throw "$Label listener $pidValue is not owned by this checkout."
   }
@@ -79,6 +117,7 @@ function Get-LocalPortProof {
     process = $process.Name
     checkout_owned = $checkoutOwned
     checkout_owner_pid = $checkoutOwnerPid
+    ownership_source = $ownershipSource
   }
 }
 
@@ -101,6 +140,17 @@ if ([string]::IsNullOrWhiteSpace($ApiOrigin)) {
 }
 if ($Topology -eq "local-current" -and [string]::IsNullOrWhiteSpace($ExpectedFrontendBuildId)) {
   $ExpectedFrontendBuildId = (git -C $repoRoot rev-parse HEAD).Trim()
+}
+if ($runtimeManifestRecord) {
+  if ($FrontendOrigin -ne [string]$runtimeManifestRecord.frontend.origin) {
+    throw "RuntimeManifest frontend origin does not match the declared frontend."
+  }
+  if ($ApiOrigin -ne [string]$runtimeManifestRecord.backend.origin) {
+    throw "RuntimeManifest API origin does not match the declared API."
+  }
+  if ($ExpectedFrontendBuildId -ne [string]$runtimeManifestRecord.expected_build_id) {
+    throw "RuntimeManifest build ID does not match ExpectedFrontendBuildId."
+  }
 }
 
 if ($Topology -ne "public") {

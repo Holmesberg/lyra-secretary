@@ -96,6 +96,12 @@ if (flag("--self-test")) {
   if (!wrapper.includes("function Get-CheckoutOwnerProcessId") || !wrapper.includes("$current.ParentProcessId")) {
     failures.push("local port ownership does not inspect child-process ancestry");
   }
+  if (!wrapper.includes('[string]$RuntimeManifest') || !wrapper.includes('ownership_source = $ownershipSource')) {
+    failures.push("local port ownership cannot consume the checkout-owned runtime manifest");
+  }
+  if (!wrapper.includes('listener_started_at') || !wrapper.includes('RuntimeManifest build ID does not match')) {
+    failures.push("runtime manifest ownership is not bound to process time and exact build");
+  }
   if (wrapper.includes(".Contains($repoRoot, [StringComparison]::OrdinalIgnoreCase)")) {
     failures.push("unsupported Windows PowerShell String.Contains overload returned");
   }
