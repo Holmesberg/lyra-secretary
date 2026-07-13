@@ -35,6 +35,7 @@ const cookieHeader = process.env.LYRA_COOKIE_ALINASSERSABRY || "";
 const runId = args.get("run-id") || process.env.LYRA_BROWSER_STRESS_RUN_ID || new Date().toISOString().replace(/[:.]/g, "-");
 const outDir = path.resolve(args.get("out-dir") || path.join(repoRoot, "tmp", `operator-readonly-stress-${runId}`));
 const proxyApi = args.get("proxy-api") === "true";
+const fixtureAccountReady = args.get("fixture-account-ready") === "true";
 const expectReadinessSplit = args.get("expect-readiness-split") === "true";
 const selfTestAttribution = args.get("self-test-attribution") === "true";
 
@@ -432,13 +433,30 @@ async function installApiProxy(context) {
         timeout: 45_000,
         failOnStatusCode: false,
       });
+      const responseHeaders = {
+        ...response.headers(),
+        ...corsHeaders,
+      };
+      let responseBody = await response.body();
+      if (
+        fixtureAccountReady
+        && request.method().toUpperCase() === "GET"
+        && new URL(request.url()).pathname === "/v1/users/me"
+        && response.ok()
+      ) {
+        const me = JSON.parse(responseBody.toString("utf8"));
+        me.terms_accepted_at = me.terms_accepted_at || "1970-01-01T00:00:00Z";
+        me.archetype_survey_eligible = false;
+        me.onboarding_completed_at = me.onboarding_completed_at || "1970-01-01T00:00:00Z";
+        me.has_active_task_history = true;
+        responseBody = Buffer.from(JSON.stringify(me));
+        delete responseHeaders["content-encoding"];
+        delete responseHeaders["content-length"];
+      }
       await route.fulfill({
         status: response.status(),
-        headers: {
-          ...response.headers(),
-          ...corsHeaders,
-        },
-        body: await response.body(),
+        headers: responseHeaders,
+        body: responseBody,
       });
     } catch (error) {
       if (/Target page, context or browser has been closed/i.test(String(error?.message || error))) {
@@ -648,6 +666,7 @@ const result = {
   apiOrigin,
   outDir: path.relative(repoRoot, outDir).replaceAll("\\", "/"),
   proxy_api: proxyApi,
+  fixture_account_ready: fixtureAccountReady,
   expect_readiness_split: expectReadinessSplit,
   user_ref: null,
   is_operator: null,

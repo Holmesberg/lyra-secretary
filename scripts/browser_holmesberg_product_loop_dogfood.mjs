@@ -49,6 +49,7 @@ const stopwatchOutputProofOnly = args.get("stopwatch-output-proof-only") === "tr
 const pulseStopwatchOutputProofOnly = args.get("pulse-stopwatch-output-proof-only") === "true";
 const timerSwitchProofOnly = args.get("timer-switch-proof-only") === "true";
 const captureProofOnly = args.get("capture-proof-only") === "true";
+const reentryProofOnly = args.get("reentry-proof-only") === "true";
 const proxyApi = args.get("proxy-api") === "true";
 const fixtureAccountReady = args.get("fixture-account-ready") === "true";
 const forcePressureRecovery = args.get("force-pressure-recovery") === "true";
@@ -2341,18 +2342,16 @@ async function runPressureMapPath(page, token, beforeExport) {
       button.click();
       button.click();
     });
+    const createAnyway = dialog.getByRole("button", { name: /Create anyway/i }).first();
+    if (await createAnyway.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await screenshot(page, "pressure-map-soft-conflict-create-anyway");
+      await createAnyway.click();
+    }
     const createdMatches = await pollFor(token, "pressure map recovery block visibility", async () => {
       const matches = await findTasksByExactTitle(token, pressureBlockTitle);
       return matches.length >= 1 ? matches : null;
     }, 20_000, 1_000);
     for (const task of createdMatches || []) cleanup.tasks.add(task.task_id);
-    if (!createdMatches || createdMatches.length === 0) {
-      const createAnyway = dialog.getByRole("button", { name: /Create anyway/i }).first();
-      if (await createAnyway.isVisible({ timeout: 2_000 }).catch(() => false)) {
-        await screenshot(page, "pressure-map-soft-conflict-create-anyway");
-        await createAnyway.click();
-      }
-    }
     await page.waitForTimeout(1_500);
     const finalMatches = await findTasksByExactTitle(token, pressureBlockTitle);
     for (const task of finalMatches || []) cleanup.tasks.add(task.task_id);
@@ -2818,9 +2817,29 @@ async function runTodayStopOutputRenderPath(page, token) {
     }),
   });
 
-  const taskDate = dateKey(new Date(task.planned_start_utc || Date.now()));
+  const taskDate = dateKey(new Date(task.start || task.planned_start_utc || Date.now()));
+  const queriedTask = await pollFor(
+    token,
+    "Today stop-output task query visibility",
+    async () => {
+      const response = await apiFetch(
+        token,
+        `/v1/tasks/query?date=${encodeURIComponent(taskDate)}&days=1&state=all`,
+      );
+      return (response.tasks || []).find((row) => row.task_id === task.task_id) || null;
+    },
+    12_000,
+    500,
+  );
+  addCheck("Today task query includes the active stop-output proof task", Boolean(queriedTask), {
+    task_id: task.task_id,
+    task_date: taskDate,
+    state: queriedTask?.state || null,
+  });
   await goto(page, `/today?date=${encodeURIComponent(taskDate)}`, "today-stop-output-proof");
   await closeBlockingDialog(page, "today stop-output proof");
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 45_000 });
+  await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
   const taskRow = page
     .locator(`[data-testid="task-row"][data-task-id="${task.task_id}"]`)
     .first();
@@ -4106,6 +4125,38 @@ async function main() {
         user_ref: userRef(me.user_id),
         output_dir: outDir,
         exposure_count: proof.exposureIds.length,
+        checks,
+        issues,
+        gated,
+        cleanup: {
+          task_ids: [...cleanup.tasks],
+          deadline_ids: [...cleanup.deadlines],
+          notification_ids: [...cleanup.notifications],
+          exposure_suppression_ids: [...cleanup.exposureSuppressions],
+        },
+      };
+      await writeJson("result.json", result);
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (reentryProofOnly) {
+      const dropped = await runPulseMissedPlanDropPath(page, token);
+      const completed = await runPulseMissedPlanDonePath(page, token);
+      await cleanupCreatedRows(token);
+      await cleanupSyntheticExposureDebt(token, beforeExport);
+      const result = {
+        ok: checks.every((check) => check.ok),
+        run_id: runId,
+        proof_scope: "pulse_reentry_mutations_only",
+        proof_status: "passed",
+        topology,
+        frontend_origin: frontendOrigin,
+        api_origin: apiOrigin,
+        user_ref: userRef(me.user_id),
+        output_dir: outDir,
+        dropped_task_id: dropped?.task_id || null,
+        completed_task_id: completed?.task_id || null,
         checks,
         issues,
         gated,
