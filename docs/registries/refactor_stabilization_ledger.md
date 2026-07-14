@@ -22121,3 +22121,56 @@ Rollback and next boundary:
   DB/Redis handoffs remain explicitly unproven and are the next eligible
   execution-reliability boundaries. This seam does not authorize prediction
   expansion or structural extraction.
+
+## 2026-07-14 - Wave 6D Committed Stopwatch Pause Publication
+
+Canonical pause truth and cache convergence:
+
+- Issue `#265` recorded a demonstrated post-commit split: pause committed the
+  session timestamp, PauseEvent, and PAUSED task state before Redis
+  publication. A cache exception then produced an HTTP `500`, left Redis
+  reporting the timer as running, and allowed a retry to create duplicate
+  pause evidence.
+- Product commit `9405ffe` makes post-commit pause publication best effort and
+  keeps DB truth authoritative. `ActiveStopwatchStore`, the existing cache
+  reconciliation owner, now recognizes an active Redis record whose canonical
+  task is PAUSED but whose pause key is missing or bound to another session;
+  it atomically republishes the same session from DB truth. No compensation
+  writer, schema, or authority transfer was added.
+- Test commit `28ee2c0` injects failure into Redis pause publication. The real
+  pause endpoint remains `200`, exactly one open PauseEvent exists, and task
+  and session truth are PAUSED. After Redis publication is restored, status
+  rehydrates the same paused session, a repeated pause stays idempotent, and
+  resume plus stop converge cleanly. The targeted pause/recovery set passed
+  three tests against isolated Redis DB 15.
+
+Focused mounted proof and cleanup:
+
+- Exact product/test build
+  `28ee2c0ea3b2a2d4e2d688f4cd2149c38f2d6290` ran on isolated ports
+  `3018/8001`, disposable SQLite, Redis DB 15, explicit API proxying, and the
+  real Holmesberg cookie. Preflight at
+  `tmp/proof-preflight/wave6d-pause-before.json` proved the non-operator role,
+  no active timer or pending notification, and a clean synthetic prefix.
+- The focused Pulse lifecycle passed at
+  `tmp/post-wave-dogfood/wave6d-pause-focused-28ee2c0/result.json`. It proved
+  the complete explicit pause-reason vocabulary, dismissal without mutation,
+  canonical pause `200`, exported reason provenance, pause persistence across
+  refresh and Calendar/Today navigation, anchored pause duration, direct
+  re-entry resume, terminal stop, one authenticated output render, execution
+  delta, and exact retained-evidence cleanup.
+- Desktop and mobile captures were inspected directly. Pause choices, timer
+  controls, re-entry, and Pressure Map remained contained with zero mobile
+  horizontal overflow. Postflight at
+  `tmp/proof-preflight/wave6d-pause-after.json` was green. Teardown closed both
+  listeners, removed `.next-local-current` and the disposable database, and
+  left Redis DB 15 at zero keys. Hosted-public artifacts and processes were
+  untouched.
+
+Rollback and next boundary:
+
+- Revert `9405ffe` for the product behavior and `28ee2c0` for its injected
+  proof. No persisted-data migration exists.
+- Committed pause publication is characterized. Resume and switch DB/Redis
+  handoffs remain explicitly unproven. Prediction expansion and structural
+  extraction remain outside this seam.
