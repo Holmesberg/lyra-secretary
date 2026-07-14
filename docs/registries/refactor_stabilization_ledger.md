@@ -22551,3 +22551,73 @@ Rollback and next boundary:
   and resume delivery may still be hardened against the plan's declared caps,
   spacing, quiet hours, dismissal, and invalidation requirements, but no v2
   tuning or visible expansion is authorized by this result.
+
+## 2026-07-14 - Wave 6I-J Existing Prediction Burden Caps
+
+Present burden mismatches and bounded fixes:
+
+- Issue `#270` recorded that shipped resume delivery still allowed three
+  prompts per paused session while the approved burden contract allows two.
+  Product commit `d46dc67` changes only `MAX_FIRES_PER_SESSION` from three to
+  two and makes the second operator-owned message explicitly final. Test
+  commit `c8f11bb` locks the numeric cap and proves two existing rows prevent
+  predictor invocation, queueing, and a third write. Commit `c0fd3bf` corrects
+  the stale five-minute worker comment to the shipped 60-minute cadence.
+- Issue `#271` recorded that pause v1 claimed active-session delivery but
+  required only `Task.state=EXECUTING`, and its ten-minute cooldown allowed
+  another firing during the same open session. Product commit `6cbb2c9`
+  requires a canonical open, non-auto-closed, non-DQ StopwatchSession and
+  refuses another task-linked firing after that session's start. It preserves
+  v1 predictor thresholds and fills a missing active-task id from the already
+  resolved canonical task. Test commit `5c0116b` proves no-session refusal,
+  same-session refusal after cooldown, and eligibility for a genuinely new
+  session on the same task.
+- The focused pause/resume predictor, worker, and notification lifecycle set
+  passed 38 tests. Exact resume-cap CI `29299767480` passed at `c0fd3bf`; exact
+  combined-head CI `29299888078` passed at
+  `5c0116bd39afae9afccc0dc951124e1bed4889c5` with 1,042 passed, 85 skipped,
+  and one expected xfail in the backend job plus green frontend, topology, and
+  S1c jobs.
+
+Macro browser, cleanup, and operator proof:
+
+- Full local S1c passed at exact head, including the native negative gate,
+  authority and refactor scans, layer/Cortex/registry contracts, full local
+  backend suite, frontend production build/typecheck, and fresh Alembic smoke.
+- An exact-head isolated runtime used ports `3018/8001`, disposable SQLite,
+  Redis DB 15, `.next-local-current-wave6ij`, and the real Holmesberg cookie.
+  The first preflight invocation used nonexistent selector
+  `[data-testid="pulse-page"]`; every topology, build, role, export, pending,
+  and prefix check passed, and the run stopped before mutation. Focused
+  preflight then used code-backed `[data-testid="pulse-quick-capture"]` and
+  passed without rerunning the product loop as a selector debugger.
+- `tmp/post-wave-dogfood/wave6ij-macro-5c0116b/result.json` passed all 204
+  product-loop checks. It covered task creation and persistent estimate
+  Use/Keep actions, Brain Dump partial recovery, deadline binding, Pressure
+  Map preview/commit/navigation, stopwatch start/pause/resume/switch/stop,
+  recovery outcomes, notification render/action/expiry, route rendering, and
+  export-backed cleanup. Postflight found no prefixed rows, active timer, or
+  pending notification after cleanup of 17 tasks, 12 deadlines, three
+  notifications, and five suppression rows.
+- Direct visual inspection found the task estimate actions still visible,
+  mobile Pressure Map's `Preview plan draft` primary action obvious, and the
+  resume toast and recovery controls coherent without overlap. The fixture is
+  local-current-only and is not hosted-public proof.
+- A separate exact-head shared-data runtime proved the operator cookie resolved
+  `is_operator=true` and Holmesberg `false`. Operator desktop/mobile stress at
+  `tmp/operator-readonly-stress-2026-07-14T02-07-27-417Z/result.json` reported
+  zero count, attribution, route, or dashboard snapshot diffs; no browser
+  issues or warnings; `implementation_green=true`; cohort yellow for explicit
+  evidence gaps; and `exposure_without_render_count=0`.
+- Manifest-owned teardown removed both isolated frontend artifacts and the
+  disposable database, left ports `3018/8001` closed, and did not touch public
+  runtime processes or artifacts.
+
+Rollback and remaining boundary:
+
+- Revert `d46dc67`/`c8f11bb` to restore the historical third resume prompt and
+  `6cbb2c9`/`5c0116b` to remove canonical-session gating. No migration or data
+  repair is involved; historical firing rows remain unchanged.
+- The per-session caps now match the approved burden contract. Quiet hours,
+  30-minute cross-family spacing, dismissal-to-session silence, and immediate
+  transition invalidation remain separate named seams; v2 remains disabled.
