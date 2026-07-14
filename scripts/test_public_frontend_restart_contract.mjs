@@ -129,6 +129,11 @@ assert(
 );
 
 assert(
+  script.includes('$bashScript = $bashScript.Replace("`r`n", "`n")'),
+  "restart script must normalize generated Bash payloads to LF before WSL execution"
+);
+
+assert(
   /snapshotPublicBuildInputs\(frontendRoot\)/.test(publicTopology) &&
     /child\.on\("error",[\s\S]*?restoreBuildInputs\(\)/.test(publicTopology) &&
     /child\.on\("exit",[\s\S]*?restoreBuildInputs\(\)/.test(publicTopology),
