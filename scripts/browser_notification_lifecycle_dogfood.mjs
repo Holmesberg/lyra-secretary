@@ -36,6 +36,117 @@ function isLoopbackOrigin(origin) {
   return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
+function normalizeOrigin(origin) {
+  return String(origin || "").replace(/\/$/, "");
+}
+
+function topologyTrustDecision({
+  declared,
+  frontendOrigin: expectedFrontendOrigin,
+  apiOrigin: expectedApiOrigin,
+  frontendReport,
+  backendReport,
+}) {
+  const originsMatch = (
+    normalizeOrigin(frontendReport?.frontend_origin) === normalizeOrigin(expectedFrontendOrigin)
+    && normalizeOrigin(frontendReport?.compiled_api_origin) === normalizeOrigin(expectedApiOrigin)
+    && normalizeOrigin(frontendReport?.nextauth_url) === normalizeOrigin(expectedFrontendOrigin)
+    && normalizeOrigin(backendReport?.api_origin) === normalizeOrigin(expectedApiOrigin)
+  );
+  const localCurrent = declared === "local-current";
+  const classMatches = localCurrent
+    ? isLoopbackOrigin(expectedFrontendOrigin) && isLoopbackOrigin(expectedApiOrigin)
+    : frontendReport?.verified_topology === true
+      && backendReport?.verified_topology === true
+      && frontendReport?.topology_class === declared
+      && backendReport?.topology_class === declared;
+  return {
+    ok: originsMatch && classMatches,
+    topology_class: localCurrent ? "local-current" : declared,
+    frontend_reported_class: frontendReport?.topology_class ?? null,
+    backend_reported_class: backendReport?.topology_class ?? null,
+    origins_match: originsMatch,
+    class_matches: classMatches,
+  };
+}
+
+if (args.get("self-test") === "true") {
+  const goodLocal = topologyTrustDecision({
+    declared: "local-current",
+    frontendOrigin: "http://localhost:3018",
+    apiOrigin: "http://localhost:8001",
+    frontendReport: {
+      topology_class: "mixed",
+      frontend_origin: "http://localhost:3018",
+      compiled_api_origin: "http://localhost:8001",
+      nextauth_url: "http://localhost:3018",
+    },
+    backendReport: {
+      topology_class: "unknown",
+      api_origin: "http://localhost:8001",
+    },
+  });
+  const wrongApi = topologyTrustDecision({
+    declared: "local-current",
+    frontendOrigin: "http://localhost:3018",
+    apiOrigin: "http://localhost:8001",
+    frontendReport: {
+      topology_class: "mixed",
+      frontend_origin: "http://localhost:3018",
+      compiled_api_origin: "http://localhost:8000",
+      nextauth_url: "http://localhost:3018",
+    },
+    backendReport: {
+      topology_class: "unknown",
+      api_origin: "http://localhost:8001",
+    },
+  });
+  const mixedPublic = topologyTrustDecision({
+    declared: "public",
+    frontendOrigin: "https://lyraos.org",
+    apiOrigin: "https://api.lyraos.org",
+    frontendReport: {
+      topology_class: "mixed",
+      verified_topology: false,
+      frontend_origin: "https://lyraos.org",
+      compiled_api_origin: "https://api.lyraos.org",
+      nextauth_url: "https://lyraos.org",
+    },
+    backendReport: {
+      topology_class: "public",
+      verified_topology: true,
+      api_origin: "https://api.lyraos.org",
+    },
+  });
+  const nonLoopbackLocal = topologyTrustDecision({
+    declared: "local-current",
+    frontendOrigin: "https://lyraos.org",
+    apiOrigin: "https://api.lyraos.org",
+    frontendReport: {
+      topology_class: "public",
+      frontend_origin: "https://lyraos.org",
+      compiled_api_origin: "https://api.lyraos.org",
+      nextauth_url: "https://lyraos.org",
+    },
+    backendReport: {
+      topology_class: "public",
+      api_origin: "https://api.lyraos.org",
+    },
+  });
+  const failures = [
+    !goodLocal.ok ? "valid explicit local-current topology was rejected" : null,
+    wrongApi.ok ? "wrong local-current API origin was accepted" : null,
+    mixedPublic.ok ? "mixed public topology was accepted" : null,
+    nonLoopbackLocal.ok ? "non-loopback local-current topology was accepted" : null,
+  ].filter(Boolean);
+  console.log(JSON.stringify({
+    ok: failures.length === 0,
+    checked: "notification_lifecycle_topology_trust",
+    failures,
+  }));
+  process.exit(failures.length ? 1 : 0);
+}
+
 if (
   fixtureAccountReady
   && (
@@ -227,10 +338,18 @@ try {
   );
   const topology = await topologyResponse.json();
   const healthResponse = await withTimeout(
-    "backend health preflight",
-    fetch(`${apiOrigin}/v1/health`),
+    "backend topology preflight",
+    fetch(`${apiOrigin}/v1/health/topology`),
     10_000
   );
+  const backendTopology = await healthResponse.json();
+  const topologyTrust = topologyTrustDecision({
+    declared: declaredTopology,
+    frontendOrigin,
+    apiOrigin,
+    frontendReport: topology,
+    backendReport: backendTopology,
+  });
   const me = await withTimeout(
     "account eligibility preflight",
     apiFetch(apiOrigin, token, "/v1/users/me"),
@@ -275,6 +394,7 @@ try {
   preflight = {
     ok: topologyResponse.ok
       && healthResponse.ok
+      && topologyTrust.ok
       && me.response.ok
       && me.body?.is_operator === false
       && (termsAccepted || fixtureAccountReady)
@@ -284,8 +404,10 @@ try {
     frontend_health: topologyResponse.status,
     backend_health: healthResponse.status,
     declared_topology: declaredTopology,
-    topology_class: topology.topology_class,
+    topology_class: topologyTrust.topology_class,
+    topology_trust: topologyTrust,
     frontend_build_id: topology.build_id,
+    backend_build_id: backendTopology.build_id,
     compiled_api_origin: topology.compiled_api_origin,
     proxy_mode: proxyApi,
     fixture_account_ready: fixtureAccountReady,
