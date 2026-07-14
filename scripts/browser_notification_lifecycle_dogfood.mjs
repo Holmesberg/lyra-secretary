@@ -8,8 +8,6 @@ import {
   frontendRequire,
 } from "./browser_auth_helpers.mjs";
 
-const { chromium } = frontendRequire("playwright");
-
 const args = new Map();
 for (let i = 2; i < process.argv.length; i += 1) {
   const arg = process.argv[i];
@@ -146,6 +144,8 @@ if (args.get("self-test") === "true") {
   }));
   process.exit(failures.length ? 1 : 0);
 }
+
+const { chromium } = frontendRequire("playwright");
 
 if (
   fixtureAccountReady
