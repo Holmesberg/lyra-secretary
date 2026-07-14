@@ -131,6 +131,29 @@ class StopwatchManager:
                 type(exc).__name__,
             )
 
+    def _publish_committed_start(
+        self,
+        *,
+        user_id: str,
+        session: StopwatchSession,
+        task: Task,
+    ) -> None:
+        """Best-effort Redis publication after start truth has committed."""
+        try:
+            self.redis.activate_stopwatch(
+                user_id=user_id,
+                session_id=session.session_id,
+                task_id=task.task_id,
+                title=task.title,
+                start_time=session.start_time_utc.isoformat(),
+            )
+        except Exception as exc:  # noqa: BLE001 - DB start state is canonical
+            logger.warning(
+                "stopwatch.start: Redis publication failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -417,13 +440,7 @@ class StopwatchManager:
         # Redis state is cleared but before this child is published. Activate
         # the child and clear any recovered parent pause marker atomically so
         # the child cannot inherit the parent's paused state.
-        self.redis.activate_stopwatch(
-            user_id=user_id,
-            session_id=session.session_id,
-            task_id=task.task_id,
-            title=task.title,
-            start_time=session.start_time_utc.isoformat(),
-        )
+        self._publish_committed_start(user_id=user_id, session=session, task=task)
         try:
             self.redis.cache_undo_action(
                 "start_stopwatch",
