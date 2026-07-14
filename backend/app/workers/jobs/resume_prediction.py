@@ -28,7 +28,10 @@ from app.services.output_surfaces import (
     create_output_surface_decision,
     emit_surface_suppression,
 )
-from app.services.prediction_burden import is_within_prediction_quiet_hours
+from app.services.prediction_burden import (
+    acquire_prediction_spacing_window,
+    is_within_prediction_quiet_hours,
+)
 from app.services.resume_predictor import (
     COOLDOWN_MINUTES,
     MAX_FIRES_PER_SESSION,
@@ -132,6 +135,19 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
         elapsed = (now - recent.fired_at).total_seconds() / 60.0
         if elapsed < COOLDOWN_MINUTES:
             return
+
+    try:
+        if not acquire_prediction_spacing_window(db, user.user_id, now):
+            return
+    except Exception as exc:  # noqa: BLE001 - burden gates fail closed
+        db.rollback()
+        logger.warning(
+            "resume_prediction: spacing gate failed for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
+        return
 
     prediction = ResumePredictor(db).predict(
         user_id=user.user_id,

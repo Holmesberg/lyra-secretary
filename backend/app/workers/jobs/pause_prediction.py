@@ -38,7 +38,10 @@ from app.services.output_surfaces import (
     create_output_surface_decision,
     emit_surface_suppression,
 )
-from app.services.prediction_burden import is_within_prediction_quiet_hours
+from app.services.prediction_burden import (
+    acquire_prediction_spacing_window,
+    is_within_prediction_quiet_hours,
+)
 from app.services.pause_predictor import PausePredictor
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
@@ -214,6 +217,19 @@ def _run_for_one_user(db, user: User):
         .first()
     )
     if already_fired_for_session is not None:
+        return
+
+    try:
+        if not acquire_prediction_spacing_window(db, user.user_id, now):
+            return
+    except Exception as exc:  # noqa: BLE001 - burden gates fail closed
+        db.rollback()
+        logger.warning(
+            "pause_prediction: spacing gate failed for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
         return
 
     try:
