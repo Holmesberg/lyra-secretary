@@ -186,6 +186,29 @@ class StopwatchManager:
                 type(exc).__name__,
             )
 
+    def _publish_committed_switch(
+        self,
+        *,
+        user_id: str,
+        session: StopwatchSession,
+        task: Task,
+    ) -> None:
+        """Best-effort Redis publication after switch truth has committed."""
+        try:
+            self.redis.activate_stopwatch(
+                user_id=user_id,
+                session_id=session.session_id,
+                task_id=task.task_id,
+                title=task.title,
+                start_time=session.start_time_utc.isoformat(),
+            )
+        except Exception as exc:  # noqa: BLE001 - DB switch state is canonical
+            logger.warning(
+                "stopwatch.switch: Redis publication failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -875,13 +898,11 @@ class StopwatchManager:
         self.db.commit()
         self._invalidate_task_ranges(user_id)
 
-        # ---- Update Redis: clear old, set new ----
-        self.redis.activate_stopwatch(
+        # ---- Publish the committed target to Redis ----
+        self._publish_committed_switch(
             user_id=user_id,
-            session_id=target_session.session_id,
-            task_id=target.task_id,
-            title=target.title,
-            start_time=target_session.start_time_utc.isoformat(),
+            session=target_session,
+            task=target,
         )
         return {
             "switched": True,

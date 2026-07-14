@@ -52,6 +52,22 @@ class ActiveStopwatchStore:
                 self.redis.clear_stopwatch_state(user_id)
                 return None
             if task.state == TaskState.PAUSED:
+                executing_session = self.find_executing_session(user_id)
+                if (
+                    executing_session is not None
+                    and executing_session.task_id != task.task_id
+                ):
+                    executing_task = self.db.query(Task).filter(
+                        Task.task_id == executing_session.task_id
+                    ).first()
+                    self.redis.activate_stopwatch(
+                        user_id=user_id,
+                        session_id=executing_session.session_id,
+                        task_id=executing_task.task_id,
+                        title=executing_task.title,
+                        start_time=executing_session.start_time_utc.isoformat(),
+                    )
+                    return self.redis.get_active_stopwatch(user_id)
                 pause_state = self.redis.get_pause_state(user_id)
                 if (
                     pause_state is None
@@ -74,6 +90,26 @@ class ActiveStopwatchStore:
                 if self.redis.get_pause_state(user_id) is not None:
                     self.redis.clear_pause_state(user_id)
         return active
+
+    def find_executing_session(self, user_id: str) -> Optional[StopwatchSession]:
+        """Return the DB-canonical executing session for cache reconciliation."""
+        try:
+            uid_int = int(user_id)
+        except (TypeError, ValueError):
+            return None
+
+        return (
+            self.db.query(StopwatchSession)
+            .join(Task, Task.task_id == StopwatchSession.task_id)
+            .filter(
+                StopwatchSession.user_id == uid_int,
+                StopwatchSession.end_time_utc.is_(None),
+                Task.state == TaskState.EXECUTING,
+                Task.voided_at.is_(None),
+            )
+            .order_by(StopwatchSession.start_time_utc.desc())
+            .first()
+        )
 
     def close_orphan_session(self, session_id: str) -> None:
         """Close an unclosed StopwatchSession without touching task metrics.
@@ -156,18 +192,7 @@ class ActiveStopwatchStore:
         except (TypeError, ValueError):
             return None
 
-        executing_session = (
-            self.db.query(StopwatchSession)
-            .join(Task, Task.task_id == StopwatchSession.task_id)
-            .filter(
-                StopwatchSession.user_id == uid_int,
-                StopwatchSession.end_time_utc.is_(None),
-                Task.state == TaskState.EXECUTING,
-                Task.voided_at.is_(None),
-            )
-            .order_by(StopwatchSession.start_time_utc.desc())
-            .first()
-        )
+        executing_session = self.find_executing_session(user_id)
 
         if executing_session:
             task = self.db.query(Task).filter(
