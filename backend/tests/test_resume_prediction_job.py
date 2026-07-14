@@ -2,9 +2,9 @@
 
 Wave 0 stabilization: the Today banner is only useful if the worker creates
 one continuity notification for a genuinely paused session, stays quiet on
-fresh pauses, and respects cooldown / max-fire caps.
+fresh pauses and user-local quiet hours, and respects cooldown / max-fire caps.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import DEFAULT, patch
 from uuid import uuid4
 
@@ -27,7 +27,17 @@ from app.services.resume_predictor import (
     ResumePrediction,
 )
 from app.utils.time_utils import now_utc
+from app.workers.jobs import resume_prediction
 from app.workers.jobs.resume_prediction import _run_for_one_user
+
+
+TEST_NOW_UTC = datetime(2026, 7, 15, 12, 0)
+
+
+@pytest.fixture(autouse=True)
+def _stable_worker_clock(monkeypatch):
+    monkeypatch.setattr(resume_prediction, "now_utc", lambda: TEST_NOW_UTC)
+    monkeypatch.setitem(globals(), "now_utc", lambda: TEST_NOW_UTC)
 
 
 @pytest.fixture(autouse=True)
@@ -174,6 +184,44 @@ def test_resume_prediction_firing_writes_log_and_queues_notification(db):
     decision_kwargs = patched["create_output_surface_decision"].call_args.kwargs
     assert decision_kwargs["decision_status"] == "queued"
     assert decision_kwargs["delivered_at"] is None
+
+
+def test_quiet_hours_skip_resume_prediction_before_any_write(db):
+    user = _make_user(db)
+    user.timezone = "Asia/Tokyo"
+    db.commit()
+    _make_paused_task_with_open_pause(db, user.user_id)
+    set_current_user_id(user.user_id)
+
+    with patch(
+        "app.workers.jobs.resume_prediction.now_utc",
+        return_value=datetime(2026, 7, 15, 13, 0),
+    ), patch(
+        "app.workers.jobs.resume_prediction.ResumePredictor"
+    ) as mock_cls, _patch_delivery() as patched:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert patched["enqueue_user_notification"].call_count == 0
+    assert patched["create_output_surface_decision"].call_count == 0
+    assert db.query(ResumePredictionLog).count() == 0
+
+
+def test_invalid_timezone_fails_closed_for_resume_prediction(db):
+    user = _make_user(db)
+    user.timezone = "Not/A-Timezone"
+    db.commit()
+    _make_paused_task_with_open_pause(db, user.user_id)
+    set_current_user_id(user.user_id)
+
+    with patch(
+        "app.workers.jobs.resume_prediction.ResumePredictor"
+    ) as mock_cls, _patch_delivery() as patched:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert patched["enqueue_user_notification"].call_count == 0
+    assert db.query(ResumePredictionLog).count() == 0
 
 
 def test_fresh_pause_does_not_fire_resume_prediction(db):

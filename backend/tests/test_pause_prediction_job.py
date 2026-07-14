@@ -13,9 +13,11 @@
   * Apr 25 product gate: when there is no active task, the job returns
     before invoking the predictor — clock-anchor-only firings without a
     session were noise the user could never confirm via an actual pause.
+  * Quiet hours use the persisted user timezone and fail closed before the
+    predictor or any prediction/exposure write.
   * A predictor exception for one user does not leave partial writes.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -46,6 +48,13 @@ from app.workers.jobs._scheduler_contract import (
 from tests.conftest import TestingSession
 
 USER_ID = 910
+TEST_NOW_UTC = datetime(2026, 7, 15, 12, 0)
+
+
+@pytest.fixture(autouse=True)
+def _stable_worker_clock(monkeypatch):
+    monkeypatch.setattr(pause_prediction, "now_utc", lambda: TEST_NOW_UTC)
+    monkeypatch.setitem(globals(), "now_utc", lambda: TEST_NOW_UTC)
 
 
 @pytest.fixture(autouse=True)
@@ -196,6 +205,50 @@ def test_firing_writes_log_row_and_queues_notification(db, user):
     assert decision.decision_status == "queued"
     assert decision.delivered_at is None
     assert db.query(ExposureRenderEvent).count() == 0
+
+
+def test_quiet_hours_skip_pause_prediction_before_any_write(db, user):
+    user.timezone = "Asia/Tokyo"
+    db.commit()
+    _make_executing_task(db)
+
+    with patch(
+        "app.workers.jobs.pause_prediction.now_utc",
+        return_value=datetime(2026, 7, 15, 13, 0),
+    ), patch(
+        "app.workers.jobs.pause_prediction.PausePredictor"
+    ) as mock_cls, patch(
+        "app.workers.jobs.pause_prediction.enqueue_user_notification"
+    ) as mock_enqueue, patch(
+        "app.workers.jobs.pause_prediction.create_output_surface_decision"
+    ) as mock_decision, patch(
+        "app.workers.jobs.pause_prediction.notify_operator"
+    ) as mock_notify:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert mock_enqueue.call_count == 0
+    assert mock_decision.call_count == 0
+    assert mock_notify.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
+    assert db.query(ExposureDecisionEvent).count() == 0
+
+
+def test_invalid_timezone_fails_closed_for_pause_prediction(db, user):
+    user.timezone = "Not/A-Timezone"
+    db.commit()
+    _make_executing_task(db)
+
+    with patch(
+        "app.workers.jobs.pause_prediction.PausePredictor"
+    ) as mock_cls, patch(
+        "app.workers.jobs.pause_prediction.enqueue_user_notification"
+    ) as mock_enqueue:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert mock_enqueue.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
 
 
 def test_run_pause_prediction_only_iterates_active_candidates(monkeypatch):
