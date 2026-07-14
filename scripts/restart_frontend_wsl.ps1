@@ -206,6 +206,7 @@ PY
 fi
 "@
 
+$bashScript = $bashScript.Replace("`r`n", "`n")
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bashScript))
 & wsl.exe -e bash -lc "echo $encoded | base64 -d | bash"
 if ($LASTEXITCODE -ne 0) {
