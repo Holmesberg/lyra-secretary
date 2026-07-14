@@ -22655,3 +22655,40 @@ Focused proof and rollback:
 - Quiet hours are now enforced. Cross-family spacing,
   dismissal-to-session silence, and immediate transition invalidation remain
   separate named seams; v2 remains disabled.
+
+## 2026-07-14 - Wave 6L Cross-Family Prediction Spacing
+
+Present concurrency boundary and behavior parity:
+
+- Issue `#273` recorded that pause and resume had independent cooldowns while
+  APScheduler limits instances only within each job. The two jobs could
+  therefore pass their own gates concurrently and queue a same-user prompt
+  burst inside the approved 30-minute cross-family window.
+- Product commit `81e8de3` extends the existing prediction-burden owner. Each
+  worker reaches the shared check only after its canonical task/session and
+  own-family gates pass, locks the existing user row, checks both durable
+  firing tables with a strict less-than-30-minute cutoff, and persists any
+  allowed firing in that same transaction. Exactly 30 minutes is eligible.
+- The durable firing is intentionally the conservative reservation boundary:
+  a failed, delayed, or unacknowledged browser render does not permit a second
+  queued prediction burst. No shadow-candidate schema or process-local lock
+  was introduced.
+- Predictor thresholds, one-pause-per-session, two-resume-per-session,
+  user-local quiet hours, exposure/render authority, and disabled v2 status
+  remain unchanged.
+
+Focused proof and rollback:
+
+- Test commit `621f721` proves resume blocks pause, pause blocks resume,
+  same-user firing at 29:59 blocks, exactly 30:00 passes, another user's recent
+  firing does not block, and a genuinely new task session remains eligible
+  once spacing has elapsed. All 38 shared-burden and worker tests passed.
+- Blocked paths invoke neither predictor nor notification delivery and create
+  no sibling firing row. Existing daytime happy paths continue to create one
+  decision and queue payload.
+- Revert `81e8de3` and `621f721` to restore independent family cooldowns. No
+  migration, historical-row rewrite, production repair, or public runtime
+  action is involved.
+- Cross-family spacing is now enforced. Dismissal-to-session silence and
+  immediate transition invalidation remain separate named seams; v2 remains
+  disabled.
