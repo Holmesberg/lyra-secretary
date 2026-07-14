@@ -175,6 +175,17 @@ class StopwatchManager:
                 type(exc).__name__,
             )
 
+    def _clear_committed_resume_pause_state(self, user_id: str) -> None:
+        """Best-effort Redis cleanup after resume truth has committed."""
+        try:
+            self.redis.clear_pause_state(user_id)
+        except Exception as exc:  # noqa: BLE001 - DB resume state is canonical
+            logger.warning(
+                "stopwatch.resume: Redis cleanup failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -662,7 +673,7 @@ class StopwatchManager:
         # Single commit for session + task + pause_event close.
         self.db.commit()
         self._invalidate_task_ranges(user_id)
-        self.redis.clear_pause_state(user_id)
+        self._clear_committed_resume_pause_state(user_id)
 
         return {
             "resumed": True,

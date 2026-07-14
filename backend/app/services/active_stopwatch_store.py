@@ -70,6 +70,9 @@ class ActiveStopwatchStore:
                             paused_at=session.paused_at_utc.isoformat(),
                         )
                         active = self.redis.get_active_stopwatch(user_id)
+            elif task.state == TaskState.EXECUTING:
+                if self.redis.get_pause_state(user_id) is not None:
+                    self.redis.clear_pause_state(user_id)
         return active
 
     def close_orphan_session(self, session_id: str) -> None:
