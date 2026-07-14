@@ -22354,3 +22354,82 @@ Rollback and next boundary:
   have focused negative characterization. Wave 6E-F form the next related
   stopwatch macro-checkpoint; no additional stopwatch extraction or prediction
   expansion is authorized before that proof reports reality.
+
+## 2026-07-14 - Wave 6E-F Stopwatch Macro-Checkpoint
+
+Exact-head static and CI proof:
+
+- Macro runtime/docs head `5781302257892bdc70944e0642f935293a5ef3e2`
+  passed the local S1c stack. Native negative self-test, topology, authority,
+  refactor, layer-import, Cortex, feature registry, preflight, Pressure Map,
+  Today, relay, public-isolation, and fresh Alembic gates passed. The backend
+  suite reported `1114 passed, 1 xfailed`; the frontend production build and
+  typecheck passed.
+- GitHub Actions run `29296921864` passed at the same full SHA across static
+  gates, topology contract, backend tests, and frontend build. No CI repair
+  cycle was required.
+
+Complete Holmesberg product loop:
+
+- An exact-head disposable runtime used `.next-local-current`, ports
+  `3018/8001`, SQLite, Redis DB 15, explicit API proxying, and the real
+  Holmesberg cookie. Preflight at
+  `tmp/proof-preflight/wave6ef-macro-before.json` proved build identity,
+  non-operator role, clean prefix, no active timer, zero pending notifications,
+  and mounted Pulse before mutation.
+- `tmp/post-wave-dogfood/wave6ef-macro-5781302/result.json` passed all 204
+  checks. It exercised capture and partial Brain Dump recovery, ordinary and
+  forced task creation, estimate Use/Keep persistence, deadline binding,
+  conflict override, Pressure Map preview/commit/navigation, timer
+  start/pause/resume/switch/stop, re-entry outcomes, Calendar/Table routes,
+  notification outcomes, browser-authenticated exposure acknowledgement, and
+  export-backed cleanup.
+- Cleanup accounted for 17 task IDs, 12 deadline IDs, three notification IDs,
+  and six suppression IDs. Postflight at
+  `tmp/proof-preflight/wave6ef-macro-after.json` found no prefixed rows, active
+  timer, or pending notification. Teardown removed the isolated build and
+  database and left Redis DB 15 at zero keys.
+- The result keeps four paths explicitly gated: provider credential mutation,
+  account hard-delete/Redis purge, Calendar drag/resize, and the historically
+  named OpenClaw pending-drain route. Non-blocking diagnostics remain labeled:
+  the local-only eligibility fixture, an optional creation-nudge Keep branch
+  absent before one conflict create, and deterministic Brain Dump title
+  normalization.
+
+Account boundary and operator read-only proof:
+
+- Disposable operator preflight was refused because a fresh disposable
+  database cannot truthfully provision operator authority. After Holmesberg
+  teardown, a separate exact-head shared-data runtime was started for read-only
+  operator proof. The unmodified shared account was correctly classified as
+  onboarding-required; the local-only response fixture then enabled cockpit
+  mounting without writes. Neither result is hosted-public proof.
+- Multi-account smoke proved the operator cookie resolved `is_operator=true`
+  and Holmesberg resolved `is_operator=false`. Operator stress artifact
+  `tmp/operator-readonly-stress-2026-07-14T00-57-36-462Z/result.json` reported
+  zero pre-dashboard, final-count, attribution, route-count, and dashboard
+  snapshot diffs. Desktop and mobile `/operator` returned `200` without browser
+  issues or warnings.
+- The cockpit remained implementation green and cohort yellow. The explicit
+  cohort gaps were no closed sessions in the 14-day local dataset, low timer
+  closure evidence, insufficient full-loop users, no closed-session trace
+  denominator, invalid recovery actions not instrumented, and product-loop
+  dropoff. `exposure_without_render_count=0`; notification, state, provider,
+  and measurement blockers were not weakened to create a green result.
+- Operator postflight passed at
+  `tmp/proof-preflight/wave6ef-operator-after.json`. Teardown removed the
+  isolated frontend artifact and both listeners; no public runtime was changed.
+
+Visual inspection and reality gate:
+
+- The task-creation estimate remained visibly actionable with distinct
+  `Use 80 min` and `Keep 60 min` actions. Mobile Pressure Map showed the
+  pressure range, provenance, obligation list, and primary `Preview plan draft`
+  action without overlap. Today switch state, pause controls, and desktop/mobile
+  operator layouts were coherent; the long mobile cockpit was dense but
+  scannable and had no horizontal collision.
+- Stopwatch reliability is now sufficient to move out of handoff hardening.
+  This macro does not establish founder product-loop fit, cohort readiness,
+  experimentation readiness, or permission to expand prediction policy. The
+  next seam must follow the weakest remaining declared product-loop gate rather
+  than extract stopwatch structure for neatness.
