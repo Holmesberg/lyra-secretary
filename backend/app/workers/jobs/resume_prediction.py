@@ -6,8 +6,8 @@ banner when paused-for duration approaches the user's historical p75
 for the (category, time_of_day) cell. Cold-start fallback at 30min flat
 cap with synthetic mechanism.
 
-Per-session 5min cooldown — the predictor is meant to nudge once, not
-nag. If user ignores, they ignore.
+Per-session 60-minute cooldown with a two-prompt cap keeps recovery available
+without turning a long pause into hourly nagging.
 
 Best-effort delivery: research row commits first; notification enqueue
 is best-effort (failure logged, row stays committed).
