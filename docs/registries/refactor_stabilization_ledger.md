@@ -22286,3 +22286,71 @@ Rollback and next boundary:
   characterized. Switch DB/Redis convergence remains the only named stopwatch
   handoff gap in the preservation registry. Prediction expansion and structural
   extraction remain outside this seam.
+
+## 2026-07-14 - Wave 6F Committed Stopwatch Switch Publication
+
+Canonical switch truth and cache convergence:
+
+- Issue `#267` recorded a demonstrated post-commit split: the switch transaction
+  paused the source, resumed the target, closed the target PauseEvent, opened
+  the source PauseEvent, and committed both task states before Redis published
+  the target as active. Publication failure then returned an error while Redis
+  still pointed at the paused source; status could prefer that stale pointer
+  over the unique DB-canonical EXECUTING target.
+- Product commit `b962dc8` makes post-commit switch publication best effort and
+  teaches `ActiveStopwatchStore` to prefer the DB-canonical executing session
+  when a stale Redis pointer names a different paused task. The existing store
+  remains the sole cache-reconciliation owner. The switch transaction,
+  eligibility, schema, and mutation authority are unchanged.
+- Test commit `122095c` injects failure into Redis target activation. The switch
+  still succeeds, source and target lifecycle rows commit once, stale Redis is
+  observable, and a restored status read rehydrates the target session. A
+  repeated invalid switch is rejected before mutation and does not duplicate
+  either PauseEvent or pause count. The full switch and state-consistency set
+  passed 32 tests.
+
+Verifier residue closure:
+
+- The canonical disposable-runtime launcher correctly refused browser proof
+  when the preceding tests left five user-scoped cache-generation keys in Redis
+  DB 15. Issue `#268` records that fixture gap. Harness commit `b2f5e19` uses the
+  existing per-user runtime purge for dedicated test users `77` and `920`.
+  Re-running all 32 tests left Redis DB 15 at exactly zero keys; the launcher's
+  fail-closed behavior was not weakened.
+
+Focused mounted proof and cleanup:
+
+- Exact build `b2f5e19d2f89821ca03128efece52463f7fb6f5d` ran on isolated
+  ports `3018/8001`, disposable SQLite, Redis DB 15, explicit API proxying, and
+  the real Holmesberg cookie. Preflight at
+  `tmp/proof-preflight/wave6f-switch-before.json` proved exact frontend/backend
+  build IDs, non-operator role, Pulse mount, no active timer, no pending
+  notification, and a clean synthetic prefix.
+- Focused proof at
+  `tmp/post-wave-dogfood/wave6f-switch-focused-b2f5e19/result.json` passed 15
+  checks. It created an executing child plus paused parent, rendered the Today
+  switch chip, observed the canonical switch request return `200`, proved the
+  parent became the active EXECUTING session and the child remained a paused
+  switch candidate, then removed both synthetic tasks and all timer/output
+  residue.
+- The post-switch desktop capture was inspected directly: active and
+  other-in-progress controls were visible, task state labels agreed with
+  status, and no controls overlapped. The first postflight attempt used the
+  nonexistent `[data-testid="today-page"]` selector and was classified as an
+  invocation error after all topology, role, export, pending, timer, and prefix
+  checks passed. The focused rerun used the code-backed
+  `[data-testid="today-new-task"]` selector and passed at
+  `tmp/proof-preflight/wave6f-switch-after.json`; the product loop was not
+  rerun as a debugging tool.
+- Teardown closed both listeners, removed `.next-local-current` and the
+  disposable database, and left Redis DB 15 at zero keys. Hosted-public
+  artifacts and processes were untouched.
+
+Rollback and next boundary:
+
+- Revert `b962dc8` for product behavior, `122095c` for the fault injection, and
+  `b2f5e19` for fixture cleanup. No persisted-data migration exists.
+- Start, pause, resume, switch, and terminal stop post-commit boundaries now
+  have focused negative characterization. Wave 6E-F form the next related
+  stopwatch macro-checkpoint; no additional stopwatch extraction or prediction
+  expansion is authorized before that proof reports reality.
