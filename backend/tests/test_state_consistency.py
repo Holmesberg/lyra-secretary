@@ -326,6 +326,79 @@ def test_pause_keeps_committed_success_when_redis_publication_fails(
     _assert_redis_clear()
 
 
+@needs_redis
+def test_resume_keeps_committed_success_when_redis_cleanup_fails(
+    state_env, client, monkeypatch
+):
+    """A post-commit Redis failure cannot duplicate or hide resume truth."""
+    task_id = _create_and_start(client, title="committed resume cleanup")
+    session_id = _assert_session_open(task_id).session_id
+    paused = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
+    assert paused.status_code == 200, paused.text
+
+    from app.utils.redis_client import RedisClient
+
+    original_clear_pause = RedisClient.clear_pause_state
+
+    def fail_pause_cleanup(*_args, **_kwargs):
+        raise ConnectionError("injected Redis resume cleanup failure")
+
+    monkeypatch.setattr(
+        RedisClient,
+        "clear_pause_state",
+        fail_pause_cleanup,
+    )
+    response = client.post("/v1/stopwatch/resume", headers=_h())
+
+    assert response.status_code == 200, response.text
+    committed_task = _get_task(task_id)
+    committed_session = _assert_session_open(task_id)
+    assert committed_task.state == TaskState.EXECUTING
+    assert committed_task.pause_count == 1
+    assert committed_session.session_id == session_id
+    assert committed_session.paused_at_utc is None
+    assert RedisClient().get_pause_state(str(USER_ID)) is not None
+
+    check = TestingSession()
+    try:
+        events = check.query(PauseEvent).filter(
+            PauseEvent.session_id == session_id,
+        ).all()
+        assert len(events) == 1
+        assert events[0].resumed_at_utc is not None
+        assert events[0].duration_minutes is not None
+    finally:
+        check.close()
+
+    committed_total_paused = committed_session.total_paused_minutes
+    monkeypatch.setattr(RedisClient, "clear_pause_state", original_clear_pause)
+    status = client.get("/v1/stopwatch/status", headers=_h())
+    assert status.status_code == 200, status.text
+    assert status.json()["active"] is True
+    assert status.json()["paused"] is False
+    assert status.json()["task_id"] == task_id
+    assert status.json()["session_id"] == session_id
+    assert RedisClient().get_pause_state(str(USER_ID)) is None
+
+    retry = client.post("/v1/stopwatch/resume", headers=_h())
+    assert retry.status_code == 200, retry.text
+    assert _get_task(task_id).pause_count == 1
+    assert _assert_session_open(task_id).total_paused_minutes == committed_total_paused
+
+    stopped = client.post(
+        "/v1/stopwatch/stop",
+        params={"confirmed": "true"},
+        json={"post_task_reflection": 3, "task_completion_percentage": 80},
+        headers=_h(),
+    )
+    assert stopped.status_code == 200, stopped.text
+    _assert_redis_clear()
+
+
 # ---------------------------------------------------------------
 # Invariant 1: EXECUTING → Redis active, session open
 # ---------------------------------------------------------------
