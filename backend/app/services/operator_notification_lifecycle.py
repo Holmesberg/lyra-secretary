@@ -163,6 +163,7 @@ def notification_lifecycle_snapshot(
         "web_lost_unrendered": sum(
             1 for row in lifecycle_rows if row.lost_unrendered_at is not None
         ),
+        "web_superseded": lifecycle_status_counts.get("superseded", 0),
         "duplicate_prompt_count": max(
             notification_counts["duplicate_prompt_count"],
             lifecycle_duplicate_count,

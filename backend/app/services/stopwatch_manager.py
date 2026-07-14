@@ -12,6 +12,10 @@ from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
 from app.core.exceptions import InvalidStateTransitionError
 from app.services.active_stopwatch_store import ActiveStopwatchStore
 from app.services.interruption_metrics import task_interruption_metrics
+from app.services.notification_lifecycle import (
+    supersede_pending_prediction_notifications,
+)
+from app.services.notification_queue import remove_user_notifications
 from app.services.stopwatch_reflections import (
     _compute_calibration_nudge as _reflection_compute_calibration_nudge,
     _compute_micro_mirror as _reflection_compute_micro_mirror,
@@ -127,6 +131,51 @@ class StopwatchManager:
         except Exception as exc:  # noqa: BLE001 - DB terminal state is canonical
             logger.warning(
                 "stopwatch.stop: terminal Redis cleanup failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
+    def _supersede_prediction_prompts(
+        self,
+        *,
+        user_id: str,
+        transition: str,
+        invalidations: list[tuple[str | None, tuple[str, ...]]],
+    ) -> None:
+        """Fail-soft terminalization after canonical stopwatch truth commits."""
+        notification_ids: set[str] = set()
+        try:
+            for session_id, notification_types in invalidations:
+                if not session_id:
+                    continue
+                notification_ids.update(
+                    supersede_pending_prediction_notifications(
+                        self.db,
+                        user_id=int(user_id),
+                        session_id=str(session_id),
+                        notification_types=notification_types,
+                    )
+                )
+            if notification_ids:
+                self.db.commit()
+        except Exception as exc:  # noqa: BLE001 - timer truth is already canonical
+            self.db.rollback()
+            logger.warning(
+                "stopwatch.%s: prediction lifecycle invalidation failed for user %s: %s",
+                transition,
+                user_id,
+                type(exc).__name__,
+            )
+            return
+
+        if not notification_ids:
+            return
+        try:
+            remove_user_notifications(int(user_id), sorted(notification_ids))
+        except Exception as exc:  # noqa: BLE001 - durable terminal state fails closed
+            logger.warning(
+                "stopwatch.%s: prediction queue prune failed for user %s: %s",
+                transition,
                 user_id,
                 type(exc).__name__,
             )
@@ -519,6 +568,18 @@ class StopwatchManager:
         except Exception as e:
             logger.warning("stopwatch.start: undo cache write failed: %s", e)
 
+        if active_before_start:
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="start",
+                invalidations=[
+                    (
+                        active_before_start.get("session_id"),
+                        ("pause_prediction", "resume_prediction"),
+                    )
+                ],
+            )
+
         return session, task, is_future_task
 
     def pause(
@@ -557,13 +618,19 @@ class StopwatchManager:
                 if paused_at_raw
                 else strip_tz(session.paused_at_utc)
             )
-            return {
+            result = {
                 "paused": True,
                 "elapsed_minutes": self._active_elapsed(session, existing_pause_state),
                 "paused_at": paused_at or now_utc(),
                 "pause_reason": session.pause_reason or pause_reason,
                 "pause_initiator": session.pause_initiator or pause_initiator,
             }
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="pause",
+                invalidations=[(session.session_id, ("pause_prediction",))],
+            )
+            return result
 
         session = self._get_session(active["session_id"])
         now = now_utc()
@@ -611,6 +678,11 @@ class StopwatchManager:
             session=session,
             paused_at=now,
         )
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="pause",
+            invalidations=[(session.session_id, ("pause_prediction",))],
+        )
 
         return {
             "paused": True,
@@ -630,11 +702,17 @@ class StopwatchManager:
         pause_state = self.redis.get_pause_state(user_id)
         if not pause_state:
             session = self._get_session(active["session_id"])
-            return {
+            result = {
                 "resumed": True,
                 "paused_minutes": 0.0,
                 "total_paused_minutes": session.total_paused_minutes or 0.0,
             }
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="resume",
+                invalidations=[(session.session_id, ("resume_prediction",))],
+            )
+            return result
 
         now = now_utc()
         # strip_tz: Redis-stored ISO may parse to aware (see time_utils).
@@ -697,6 +775,11 @@ class StopwatchManager:
         self.db.commit()
         self._invalidate_task_ranges(user_id)
         self._clear_committed_resume_pause_state(user_id)
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="resume",
+            invalidations=[(session.session_id, ("resume_prediction",))],
+        )
 
         return {
             "resumed": True,
@@ -904,6 +987,14 @@ class StopwatchManager:
             session=target_session,
             task=target,
         )
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="switch",
+            invalidations=[
+                (source_session_id, ("pause_prediction",)),
+                (target_session.session_id, ("resume_prediction",)),
+            ],
+        )
         return {
             "switched": True,
             "noop": False,
@@ -1074,6 +1165,13 @@ class StopwatchManager:
             session.auto_closed = True
             self.db.commit()
             self._invalidate_task_ranges(user_id)
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="stop",
+                invalidations=[
+                    (session.session_id, ("pause_prediction", "resume_prediction"))
+                ],
+            )
             raise ValueError("Task was voided — session auto-closed without completion")
 
         stop_time = now_utc()
@@ -1134,6 +1232,13 @@ class StopwatchManager:
             self.db.refresh(session)
             self.db.refresh(task)
             self._clear_terminal_stopwatch_state(user_id)
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="stop",
+                invalidations=[
+                    (session.session_id, ("pause_prediction", "resume_prediction"))
+                ],
+            )
             return session, task, is_early_stop, False, None, None, None, pre_existing_pct
 
         session.end_time_utc = stop_time
@@ -1206,6 +1311,14 @@ class StopwatchManager:
                     "title": parent_task.title,
                     "paused_minutes": paused_mins,
                 }
+
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="stop",
+            invalidations=[
+                (session.session_id, ("pause_prediction", "resume_prediction"))
+            ],
+        )
 
         return session, task, is_early_stop, False, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct
 
@@ -1359,6 +1472,13 @@ class StopwatchManager:
         self.db.refresh(session)
         self.db.refresh(task)
         self._invalidate_task_ranges(user_id_int)
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="resolve_stale_pause",
+            invalidations=[
+                (session.session_id, ("pause_prediction", "resume_prediction"))
+            ],
+        )
 
         return {
             "resolved": True,
