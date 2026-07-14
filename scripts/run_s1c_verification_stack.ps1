@@ -170,6 +170,10 @@ try {
     node scripts\proof_preflight.mjs --self-test
   }
 
+  Invoke-Step "notification lifecycle topology trust gate" {
+    node scripts\browser_notification_lifecycle_dogfood.mjs --self-test
+  }
+
   Invoke-Step "Pressure Map planning provenance contract gate" {
     node scripts\test_pressure_map_planning_provenance_contract.mjs
   }
