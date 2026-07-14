@@ -750,6 +750,41 @@ def delete_my_account(
         redacted_metadata={"retain_for_research": body.retain_for_research},
     )
 
+    # Runtime cleanup must succeed before the irreversible database mutation.
+    # If Redis is unavailable, leave the account intact so the authenticated
+    # user can retry instead of returning a false-success response after the
+    # user row has already disappeared.
+    try:
+        RedisClient().purge_user_runtime_state(uid)
+    except Exception as exc:  # noqa: BLE001 - convert to a recoverable boundary
+        logger.warning(
+            "delete_my_account: pre-delete runtime purge failed for user %s: %s",
+            uid,
+            exc,
+        )
+        write_security_audit_event(
+            db=db,
+            actor_user_id=uid,
+            user_id=uid,
+            event_type="account_delete_failed",
+            surface="/users/me",
+            target_type="user",
+            target_id=audit_user_target(uid),
+            status="failed",
+            request=request,
+            redacted_metadata={
+                "phase": "runtime_purge_precondition",
+                "retain_for_research": body.retain_for_research,
+            },
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Account deletion could not safely clear runtime state. "
+                "Nothing was deleted; try again."
+            ),
+        ) from exc
+
     # Drop scope so the cascade DELETEs/UPDATEs can run unfiltered.
     set_current_user_id(None)
     try:
@@ -780,16 +815,9 @@ def delete_my_account(
     finally:
         set_current_user_id(uid)
 
-    runtime_purged = False
-    try:
-        RedisClient().purge_user_runtime_state(uid)
-        runtime_purged = True
-    except Exception as exc:  # noqa: BLE001 - DB deletion must remain durable
-        logger.warning("delete_my_account: Redis runtime purge failed for user %s: %s", uid, exc)
-
     return {
         "ok": True,
         "deleted_user_id": uid,
         "data_retained_for_research": body.retain_for_research,
-        "runtime_state_purged": runtime_purged,
+        "runtime_state_purged": True,
     }
