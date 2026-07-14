@@ -38,6 +38,12 @@ bounded, founder-only pause-policy v2 exception in the active core-loop plan;
 it grants no authority to resume-policy expansion or another prediction
 family.
 
+The frozen founder replay completed on 2026-07-14 and stopped at calibration:
+no configuration met the predefined opportunity-distribution gate, so the
+untouched holdout was not evaluated. Pause-policy v2 remains disabled and the
+shipped v1 policy remains unchanged. This result closes the approved replay;
+it does not authorize retuning, a new prediction family, or a cohort prior.
+
 The Pressure Map dedicated tab is an approved **design target**, not an
 approved runtime expansion. Current Pressure Map work may correct shipped
 arithmetic and authority defects, demote unsupported actions, preserve

@@ -791,6 +791,29 @@ Even after passing, the strongest allowed claim is:
 Do not claim that LyraOS predicts when users pause. Cohort evidence and
 transportability remain separately required.
 
+### Founder Replay Outcome - 2026-07-14
+
+The frozen method at commit `8a31d02f2d815211cf469ef1b81d3a94855063ed`
+ran once against the hosted-public operator export through authenticated,
+read-only browser retrieval. Raw export values remained in memory; the saved
+artifact contains aggregate counts and replay metrics only.
+
+- 84 sessions across 47 active-use days met the frozen eligibility rules;
+- the chronological split was 58 calibration sessions and 26 untouched
+  holdout sessions;
+- every frozen grid configuration produced 15 calibration opportunities,
+  `0.259` opportunities per session, and a median of zero opportunities per
+  active-use day;
+- no configuration met the frozen median one-to-two opportunity constraint;
+- no configuration was selected and the holdout was not evaluated;
+- v2 is therefore `inconclusive`, visible v2 remains disabled, and v1 remains
+  the shipped policy.
+
+The definitions, opportunity constraint, split, and untouched holdout must not
+be retuned in response to this result. Any later calibration attempt requires
+a new approved method and must not be represented as continuation of this
+frozen evaluation.
+
 ### Visible Prediction Burden
 
 Across pause and resume:

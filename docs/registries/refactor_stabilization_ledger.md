@@ -22500,3 +22500,54 @@ Rollback and remaining gate:
 - Actual browser deletion remains gated to a disposable delete-only identity
   and explicit approval. The fixture proof establishes recoverable UI behavior;
   backend fault injection establishes the real write boundary.
+
+## 2026-07-14 - Wave 6H Frozen Founder Pause-Policy Replay
+
+Frozen method and negative contracts:
+
+- Issue `#269` scoped the approved work to founder-only, provisional replay
+  with no runtime delivery change, no resume expansion, no schema, and no
+  population claim. Measurement commits `08439fc`, `f403045`, `e32c7a6`, and
+  `bbe472f` froze the eligibility rules, temporal split, configuration grid,
+  outcome definitions, burden constraints, simple comparators, random null,
+  and paired bootstrap before founder holdout inspection.
+- Twenty-two focused replay, CLI, baseline, and shipped-predictor tests passed.
+  Negative contracts reject private fields and row identifiers in aggregate
+  output, refuse an existing result path, and require committed-clean method
+  files before authenticated evaluation.
+- Exact-method CI run `29299172802` passed at
+  `bbe472f6032f576cda42619784ad32af3147d000`. Runner commits `cf7467c`,
+  `7fae03a`, and `8a31d02` then added stdin-only evaluation, real-cookie
+  read-only retrieval, fail-closed reservation, and orchestration. Exact-runner
+  CI `29299386305` passed at
+  `8a31d02f2d815211cf469ef1b81d3a94855063ed` before the real replay ran.
+
+Authenticated read-only evidence:
+
+- Canonical hosted-public preflight passed frontend/backend topology, operator
+  cookie and role, account readiness, export envelope, pending envelope, and
+  no-write policy. It recorded frontend build `98bc1f8` and backend build
+  `6031ed88bf4355717b0891503ca832fd4c5ed414`. The browser bridge held the raw
+  export in memory and persisted aggregate section counts and replay metrics
+  only.
+- The one-time aggregate artifact is
+  `tmp/pause-policy-replay/8a31d02f2d815211cf469ef1b81d3a94855063ed/result.json`.
+  It classified 84 eligible sessions across 47 active-use days, split 58
+  calibration and 26 untouched holdout sessions. Every frozen configuration
+  produced 15 calibration opportunities, `0.259` opportunities per session,
+  five hits, three late pauses, seven misses, and `0.333` descriptive accuracy,
+  but the median opportunities per active-use day was zero.
+- No configuration met the predefined median one-to-two opportunity gate.
+  The evaluator returned `inconclusive` without selecting a configuration or
+  evaluating the holdout. Visible v2 remains disabled; shipped v1 behavior is
+  unchanged. The frozen definitions and untouched holdout were not retuned.
+
+Rollback and next boundary:
+
+- Revert `08439fc`, `f403045`, `e32c7a6`, `bbe472f`, `cf7467c`, `7fae03a`, and
+  `8a31d02` to remove the offline measurement tooling. No product rows, worker
+  constants, delivery policy, schema, or public process changed.
+- This closes the approved v2 replay as inconclusive. Existing shipped pause
+  and resume delivery may still be hardened against the plan's declared caps,
+  spacing, quiet hours, dismissal, and invalidation requirements, but no v2
+  tuning or visible expansion is authorized by this result.
