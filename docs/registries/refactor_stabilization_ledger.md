@@ -22174,3 +22174,64 @@ Rollback and next boundary:
 - Committed pause publication is characterized. Resume and switch DB/Redis
   handoffs remain explicitly unproven. Prediction expansion and structural
   extraction remain outside this seam.
+
+## 2026-07-14 - Wave 6C-D Execution Reliability Macro Checkpoint
+
+Static, migration, and build proof:
+
+- Full S1c passed from clean exact head
+  `7e691147f2f7e020ca21fd858178fcd52e4230a3`: native-command negative proof,
+  topology, authority, refactor, backend-layer, Cortex, preservation-registry,
+  preflight, Pressure Map, Today, relay, and public-isolation gates; fresh
+  Alembic migration; `1113` backend tests plus one expected xfail; and the
+  frontend production build/typecheck.
+- Exact-head GitHub Actions run `29295550728` passed backend, frontend,
+  topology, Alembic, and S1c jobs.
+
+Exact-head browser macro:
+
+- The same frontend/backend build ran on checkout-owned isolated ports
+  `3018/8001`, disposable SQLite, Redis DB 15, and explicit API proxying.
+  Preflight at `tmp/proof-preflight/wave6cd-macro-before.json` proved the real
+  Holmesberg cookie, non-operator role, no active timer or pending
+  notification, clean prefix, and exact build IDs.
+- The complete Holmesberg loop passed `204/204` checks at
+  `tmp/post-wave-dogfood/wave6cd-macro-7e69114/result.json`. It exercised
+  capture, task/deadline creation and idempotency, persistent estimate choices,
+  Pressure Map planning, timer pause/resume/switch/stop, recovery, Calendar and
+  Table, notification and exposure lifecycles, authenticated browser render
+  truth, and retained-evidence cleanup.
+- Multi-account proof resolved the operator as operator and Holmesberg as
+  non-operator. Operator read-only stress passed at
+  `tmp/operator-readonly-stress-2026-07-14T00-26-22-660Z/result.json` with zero
+  count, attribution, route-count, or dashboard diffs. Implementation readiness
+  remained green, cohort readiness remained honestly yellow, and
+  `exposure_without_render_count=0`.
+- Direct visual inspection covered the Pressure Map mobile action hierarchy
+  and operator desktop/mobile layouts. Controls remained readable and
+  contained with no overlap or horizontal overflow; the operator mobile page
+  remains intentionally dense.
+
+Diagnostics, gates, and cleanup:
+
+- Three nonblocking diagnostics remained unchanged: explicitly fixture-only
+  local account eligibility, one optional creation-nudge Keep branch absent
+  before conflict creation, and expected Brain Dump deadline-title
+  normalization. The loop passed the surrounding canonical behavior, so these
+  observations do not authorize adjacent fixes without recurrence or user
+  evidence.
+- Provider credential mutation, account hard-delete/Redis purge, Calendar
+  drag/resize mutation, and the historically named pending-drain route stayed
+  explicitly gated. No fixture result was substituted for those paths.
+- Postflight at `tmp/proof-preflight/wave6cd-macro-after.json` found the prefix
+  clean, pending count zero, and no active timer. Teardown removed the isolated
+  artifact and database, closed both ports, and left Redis DB 15 at zero keys.
+  Hosted-public runtime and artifacts were untouched.
+
+Next boundary:
+
+- Committed start, pause, and terminal stop are now characterized through
+  targeted negative proof and a full product loop. The next eligible seam is
+  resume publication or switch convergence. Another full browser macro is not
+  due until two or three related seams complete or a serious failure demands
+  it.
