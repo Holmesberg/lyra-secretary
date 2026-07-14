@@ -256,6 +256,7 @@ def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
 
     assert body["activity_frequency"]["login_frequency_status"] == "not_instrumented"
     assert body["notification_lifecycle"]["web_rendered"] == 0
+    assert body["notification_lifecycle"]["web_superseded"] == 0
     assert "web_rendered" not in body["notification_lifecycle"]["not_instrumented_fields"]
     assert "login_only" in body["meaningful_activity_definition"]["excluded_events"]
     assert "task_created" in body["meaningful_activity_definition"]["included_events"]

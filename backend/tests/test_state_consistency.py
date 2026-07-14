@@ -22,8 +22,17 @@ from datetime import datetime, timedelta
 import pytest
 from sqlalchemy import text
 
-from app.db.models import PauseEvent, StopwatchSession, Task, TaskState, User
+from app.services import stopwatch_manager as stopwatch_manager_module
+from app.db.models import (
+    NotificationLifecycleEvent,
+    PauseEvent,
+    StopwatchSession,
+    Task,
+    TaskState,
+    User,
+)
 from app.db.scoping import set_current_user_id
+from app.services.notification_queue import enqueue_user_notification
 from tests.conftest import TestingSession
 
 
@@ -57,6 +66,7 @@ def state_env(db):
     set_current_user_id(None)
     wipe = TestingSession()
     try:
+        wipe.execute(text("DELETE FROM notification_lifecycle_event"))
         wipe.execute(text("DELETE FROM stopwatch_session"))
         wipe.execute(text("DELETE FROM task"))
         wipe.execute(text("DELETE FROM user"))
@@ -182,6 +192,38 @@ def _get_task(task_id: str) -> Task:
         task = check.query(Task).filter(Task.task_id == task_id).first()
         assert task is not None, f"Task {task_id} not found"
         return task
+    finally:
+        check.close()
+
+
+def _queue_prediction(session_id: str, notification_type: str) -> str:
+    notification_id = f"transition-{notification_type}-{session_id}"
+    write = TestingSession()
+    try:
+        enqueue_user_notification(
+            USER_ID,
+            {
+                "notification_id": notification_id,
+                "type": notification_type,
+                "session_id": session_id,
+                "message": f"{notification_type} test",
+            },
+            db=write,
+        )
+        write.commit()
+    finally:
+        write.close()
+    return notification_id
+
+
+def _notification_status(notification_id: str) -> str:
+    check = TestingSession()
+    try:
+        return (
+            check.query(NotificationLifecycleEvent.status)
+            .filter(NotificationLifecycleEvent.notification_id == notification_id)
+            .scalar()
+        )
     finally:
         check.close()
 
@@ -459,6 +501,100 @@ def test_paused_state_redis_and_session(state_env, client):
     # Session: paused_at_utc stamped, still open
     session = _assert_session_open(task_id)
     assert session.paused_at_utc is not None
+
+
+@needs_redis
+def test_timer_transitions_supersede_prediction_prompts(state_env, client):
+    task_id = _create_and_start(client, title="prediction invalidation")
+    session = _assert_session_open(task_id)
+
+    pause_notification = _queue_prediction(
+        session.session_id,
+        "pause_prediction",
+    )
+    paused = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
+    assert paused.status_code == 200, paused.text
+    assert _notification_status(pause_notification) == "superseded"
+
+    resume_notification = _queue_prediction(
+        session.session_id,
+        "resume_prediction",
+    )
+    resumed = client.post("/v1/stopwatch/resume", headers=_h())
+    assert resumed.status_code == 200, resumed.text
+    assert _notification_status(resume_notification) == "superseded"
+
+    stop_pause_notification = _queue_prediction(
+        session.session_id,
+        "pause_prediction",
+    )
+    stop_resume_notification = _queue_prediction(
+        session.session_id,
+        "resume_prediction",
+    )
+    stopped = client.post(
+        "/v1/stopwatch/stop",
+        json={"post_task_reflection": 4, "task_completion_percentage": 80},
+        params={"confirmed": "true"},
+        headers=_h(),
+    )
+    assert stopped.status_code == 200, stopped.text
+    assert _notification_status(stop_pause_notification) == "superseded"
+    assert _notification_status(stop_resume_notification) == "superseded"
+
+    pending = client.get("/v1/notifications/web/pending", headers=_h())
+    assert pending.status_code == 200, pending.text
+    assert pending.json()["notifications"] == []
+
+
+@pytest.mark.parametrize("failure_stage", ["lifecycle", "redis_prune"])
+@needs_redis
+def test_prediction_invalidation_failure_cannot_undo_timer_truth(
+    state_env,
+    client,
+    monkeypatch,
+    failure_stage,
+):
+    task_id = _create_and_start(
+        client,
+        title=f"prediction invalidation {failure_stage}",
+    )
+    session = _assert_session_open(task_id)
+    notification_id = _queue_prediction(session.session_id, "pause_prediction")
+
+    if failure_stage == "lifecycle":
+        monkeypatch.setattr(
+            stopwatch_manager_module,
+            "supersede_pending_prediction_notifications",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("injected lifecycle failure")
+            ),
+        )
+    else:
+        monkeypatch.setattr(
+            stopwatch_manager_module,
+            "remove_user_notifications",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                ConnectionError("injected Redis prune failure")
+            ),
+        )
+
+    paused = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
+    assert paused.status_code == 200, paused.text
+    assert _get_task(task_id).state == TaskState.PAUSED
+
+    if failure_stage == "lifecycle":
+        assert _notification_status(notification_id) == "queued"
+    else:
+        assert _notification_status(notification_id) == "superseded"
 
 
 # ---------------------------------------------------------------
