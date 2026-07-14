@@ -22692,3 +22692,39 @@ Focused proof and rollback:
 - Cross-family spacing is now enforced. Dismissal-to-session silence and
   immediate transition invalidation remain separate named seams; v2 remains
   disabled.
+
+## 2026-07-14 - Wave 6M Prediction Dismissal Session Silence
+
+Present burden mismatch and bounded behavior change:
+
+- Issue `#274` recorded that authenticated web dismissal was durable in
+  `NotificationLifecycleEvent`, but pause and resume workers did not consult
+  it. Resume could therefore send its second prompt for the same paused
+  session after explicit dismissal. Pause was already capped at one prompt per
+  session, but its queue payload omitted the canonical session id needed for
+  direct lifecycle correlation.
+- Product commit `8d78d3b` makes authenticated dismissal a same-family,
+  same-session burden veto before predictor invocation or any new firing,
+  decision, queue, or alert write. Pause queue payloads now carry the already
+  canonical open-session id. Expiry, action, another family, another user, and
+  another session do not count as dismissal for this gate.
+- The gate does not rewrite `PausePredictionLog.user_response`,
+  `ResumePredictionLog.user_response`, model accuracy, historical rows,
+  eligibility thresholds, session caps, spacing, quiet hours, or the disabled
+  v2 status. Browser render, browser dismissal, predictor response, and later
+  behavior remain distinct evidence.
+
+Focused proof and rollback:
+
+- Test commit `7f653b7` proves family/user/session scoping, expired-versus-
+  dismissed semantics, pause lifecycle correlation, and both workers refusing
+  predictor invocation, queueing, and firing writes after same-session
+  dismissal. The 54-test shared burden, worker, and notification lifecycle set
+  passed.
+- Revert `8d78d3b` and `7f653b7` to restore the prior behavior. No migration,
+  historical-row rewrite, production repair, frontend change, or public
+  runtime action is involved.
+- Quiet hours, cross-family spacing, and dismissal silence now form one related
+  burden-control cohort. The required macro S1c, browser product-loop,
+  lifecycle, multi-account, operator read-only, and cleanup proof follows this
+  checkpoint; immediate transition invalidation remains a separate named seam.
