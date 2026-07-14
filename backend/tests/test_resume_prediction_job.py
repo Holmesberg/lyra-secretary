@@ -220,6 +220,7 @@ def test_resume_prediction_cooldown_blocks_refire(db):
 
 
 def test_resume_prediction_max_fire_cap_blocks_nagging(db):
+    assert MAX_FIRES_PER_SESSION == 2
     user = _make_user(db)
     task, session, _pause = _make_paused_task_with_open_pause(db, user.user_id)
     for i in range(MAX_FIRES_PER_SESSION):
