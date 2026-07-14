@@ -22477,6 +22477,21 @@ Focused contract and mounted-browser proof:
   no-write checks. Manifest-owned teardown closed both listeners and removed
   the isolated Next artifact.
 
+Exact-head CI classification:
+
+- CI run `29297988102` passed static gates, topology, and frontend build but
+  failed the backend job because CI deliberately has no Redis service. Five
+  pre-existing deletion success tests therefore exercised the new fail-closed
+  production path and returned `503`; their undeleted rows caused one later
+  notification test to fail from shared-test-database residue.
+- The failure was reproduced locally with Redis pointed at an unreachable port
+  before any rerun. Test commit `15dff38` adds an explicit successful-purge
+  fixture and opts in only the five tests whose subject is successful DB
+  retention/deletion or cross-user isolation. The two purge-outage tests keep
+  their own failing stub. Ten focused tests then passed in no-Redis mode,
+  including the formerly contaminated notification test. Production behavior
+  and CI service topology were not weakened.
+
 Rollback and remaining gate:
 
 - Revert `f6c591a` for runtime behavior and `0dfda16` for characterization.
